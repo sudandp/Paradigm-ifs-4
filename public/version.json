@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 102,
-  "latestVersionName": "19.2.0",
+  "latestVersionCode": 103,
+  "latestVersionName": "19.3.0",
   "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
   "apkDownloadUrl": "https://app.paradigmfms.com",
-  "releaseNotes": "feat: configure Android build settings, ProGuard rules, and Firebase dependencies for production support\nfeat: update to version 19.1.0, configure Android background services, and resolve RLS policy issues for notifications and audit logs.\nfeat: add Aadhaar QR scanner with anti-fraud verification and implement leave dashboard page\nrefactor: consolidate notification effects, prevent redundant profile fetches on session refresh, and update CSP headers for Vercel integration\nfeat: initialize Supabase client with environment variable fallbacks and Capacitor storage adapter",
+  "releaseNotes": "feat: implement native Google Auth with secure profile initialization and update app version to 19.2.0\nfeat: configure Android build settings, ProGuard rules, and Firebase dependencies for production support\nfeat: update to version 19.1.0, configure Android background services, and resolve RLS policy issues for notifications and audit logs.\nfeat: add Aadhaar QR scanner with anti-fraud verification and implement leave dashboard page\nrefactor: consolidate notification effects, prevent redundant profile fetches on session refresh, and update CSP headers for Vercel integration",
   "isMandatory": true
 }

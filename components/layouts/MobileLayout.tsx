@@ -14,7 +14,7 @@ const MobileLayout: React.FC = () => {
     const appVersion = store.apiSettings.appVersion || '1.0.0';
     const location = useLocation();
     const { fetchNotifications, isPanelOpen, setIsPanelOpen } = useNotificationStore();
-    const { user } = useAuthStore();
+    const { user, isOffline } = useAuthStore();
     const [isHeaderVisible, setIsHeaderVisible] = useState(true);
     const lastScrollY = useRef(0);
     const ticking = useRef(false);
@@ -73,7 +73,7 @@ const MobileLayout: React.FC = () => {
 
             {/* Mobile Header - Auto-hide on scroll (FAST) */}
             {/* Hide global header for specific standalone pages like Apply for Leave or Site Attendance Tracker */}
-             {!isFullScreenLoading &&
+             {!isFullScreenLoading && !isOffline &&
               !location.pathname.startsWith('/leaves/apply') && 
               !location.pathname.startsWith('/onboarding/aadhaar-scan') && 
               !location.pathname.startsWith('/finance/attendance/add') && 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { WifiOff, RefreshCw, Smartphone, CloudLightning, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Network } from '@capacitor/network';
 import { useDevice } from '../../hooks/useDevice';
@@ -8,6 +8,8 @@ import { useEnrollmentRulesStore } from '../../store/enrollmentRulesStore';
 import { usePermissionsStore } from '../../store/permissionsStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { motion, AnimatePresence, Variants } from 'framer-motion';
+import { Capacitor } from '@capacitor/core';
+import Logo from './Logo';
 
 const OfflineScreen: React.FC = () => {
   const [isRetrying, setIsRetrying] = useState(false);
@@ -18,42 +20,86 @@ const OfflineScreen: React.FC = () => {
   const { initRoles } = usePermissionsStore();
   const { initSettings } = useSettingsStore();
 
+  // Mount / Unmount logging
+  useEffect(() => {
+    console.log('[FLICKER_DEBUG] OfflineScreen MOUNTED');
+    return () => {
+      console.log('[FLICKER_DEBUG] OfflineScreen UNMOUNTED');
+    };
+  }, []);
+
   const handleRetry = async () => {
+    console.log('[FLICKER_DEBUG] handleRetry started');
+    if (isRetrying) return;
     setIsRetrying(true);
     setRetryFailed(false);
     try {
       const status = await Network.getStatus();
+      console.log(`[FLICKER_DEBUG] handleRetry Network.getStatus: ${status.connected}`);
       if (!status.connected) {
+        console.log('[FLICKER_DEBUG] handleRetry status.connected is false, setting retryFailed');
         setRetryFailed(true);
+        setIsRetrying(false);
         return;
       }
-      // Reconnected — resync all app data
-      const { settings, roles, holidays } = await apiService.getInitialAppData();
-      const recurringHolidays = await apiService.getRecurringHolidays();
-      if (settings.enrollmentRules) initEnrollmentRules(settings.enrollmentRules);
-      if (roles) initRoles(roles);
-      if (settings.attendanceSettings && holidays) {
-        initSettings({
-          holidays,
-          attendanceSettings: settings.attendanceSettings,
-          recurringHolidays: recurringHolidays || [],
-          apiSettings: settings.apiSettings,
-          addressSettings: settings.addressSettings,
-          geminiApiSettings: settings.geminiApiSettings,
-          kycApiSettings: settings.kycApiSettings,
-          esignApiSettings: settings.esignApiSettings,
-          offlineOcrSettings: settings.offlineOcrSettings,
-          perfiosApiSettings: settings.perfiosApiSettings,
-          otpSettings: settings.otpSettings,
-          siteManagementSettings: settings.siteManagementSettings,
-          notificationSettings: settings.notificationSettings,
-          voipSettings: settings.voipSettings,
+
+      // Active Ping check because Android's status.connected can falsely report true 
+      // when connected to a router/network without actual internet access.
+      try {
+        console.log('[FLICKER_DEBUG] handleRetry starting active ping...');
+        await fetch('https://app.paradigmfms.com/version.json?_=' + Date.now(), {
+          method: 'HEAD',
+          cache: 'no-cache',
+          signal: AbortSignal.timeout(4000)
         });
+        console.log('[FLICKER_DEBUG] handleRetry active ping SUCCESS');
+      } catch (pingErr) {
+        console.log('[FLICKER_DEBUG] handleRetry active ping FAILED', pingErr);
+        setRetryFailed(true);
+        setIsRetrying(false);
+        return;
       }
-      await useAuthStore.getState().checkAttendanceStatus();
-      setIsOffline(false);
+
+      // Reconnected and internet verified — resync all app data safely
+      try {
+        console.log('[FLICKER_DEBUG] handleRetry syncing data...');
+        const appData = await apiService.getInitialAppData().catch(() => null);
+        if (appData) {
+          const { settings, roles, holidays } = appData;
+          const recurringHolidays = await apiService.getRecurringHolidays().catch(() => []);
+          if (settings?.enrollmentRules) initEnrollmentRules(settings.enrollmentRules);
+          if (roles) initRoles(roles);
+          if (settings?.attendanceSettings && holidays) {
+            initSettings({
+              holidays,
+              attendanceSettings: settings.attendanceSettings,
+              recurringHolidays: recurringHolidays || [],
+              apiSettings: settings.apiSettings,
+              addressSettings: settings.addressSettings,
+              geminiApiSettings: settings.geminiApiSettings,
+              kycApiSettings: settings.kycApiSettings,
+              esignApiSettings: settings.esignApiSettings,
+              offlineOcrSettings: settings.offlineOcrSettings,
+              perfiosApiSettings: settings.perfiosApiSettings,
+              otpSettings: settings.otpSettings,
+              siteManagementSettings: settings.siteManagementSettings,
+              notificationSettings: settings.notificationSettings,
+              voipSettings: settings.voipSettings,
+            });
+          }
+        }
+        await useAuthStore.getState().checkAttendanceStatus().catch(() => {});
+        console.log('[FLICKER_DEBUG] Calling setIsOffline(false) from handleRetry success');
+        setIsOffline(false);
+      } catch (dataErr) {
+        console.warn('[OfflineScreen] Resync warning:', dataErr);
+        console.log('[FLICKER_DEBUG] Calling setIsOffline(false) from handleRetry catch block');
+        // Even if background sync fails, network is connected - remove offline lock
+        setIsOffline(false);
+      }
     } catch (err) {
-      console.warn('[OfflineScreen] Retry failed:', err);
+      console.warn('[OfflineScreen] Network check error:', err);
+      console.log('[FLICKER_DEBUG] handleRetry outer catch block triggered');
       setRetryFailed(true);
     } finally {
       setIsRetrying(false);
@@ -62,11 +108,11 @@ const OfflineScreen: React.FC = () => {
 
   // Entrance animation variants for staggering items
   const containerVariants: Variants = {
-    hidden: { opacity: 0 },
+    hidden: { opacity: 1 },
     visible: {
       opacity: 1,
       transition: {
-        staggerChildren: 0.15,
+        staggerChildren: 0.1,
       },
     },
   };
@@ -84,69 +130,52 @@ const OfflineScreen: React.FC = () => {
     },
   };
 
-  // Sonar radar pulse animation component
+  const isNative = Capacitor.isNativePlatform();
+
+  // Sonar radar pulse animation component (Static lightweight GPU rings)
   const RadarSignal = () => (
     <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-0">
-      {[0, 1, 2].map((i) => (
-        <motion.div
-          key={i}
-          className="absolute rounded-full border border-emerald-500/15 bg-emerald-500/[0.01]"
-          initial={{ width: 144, height: 144, opacity: 0.8 }}
-          animate={{
-            width: 380,
-            height: 380,
-            opacity: 0,
-          }}
-          transition={{
-            duration: 4.5,
-            repeat: Infinity,
-            delay: i * 1.5,
-            ease: "easeOut",
-          }}
-        />
-      ))}
+      <div className="absolute w-[200px] h-[200px] rounded-full border border-emerald-500/20 bg-emerald-500/[0.01]" />
+      <div className="absolute w-[280px] h-[280px] rounded-full border border-emerald-500/15 bg-emerald-500/[0.01]" />
+      <div className="absolute w-[360px] h-[360px] rounded-full border border-emerald-500/10 bg-emerald-500/[0.01]" />
     </div>
   );
 
-  // Cloud Card with floating animation
+  // Cloud Card
   const CloudCard = () => (
-    <motion.div
-      animate={{ y: [0, -12, 0] }}
-      transition={{
-        duration: 5.5,
-        repeat: Infinity,
-        ease: 'easeInOut',
-      }}
-      className="w-38 h-38 rounded-[2.5rem] bg-white/70 border border-white/60 backdrop-blur-md flex items-center justify-center shadow-[inset_0_1px_1px_rgba(255,255,255,0.7),0_25px_60px_rgba(0,107,63,0.06)] relative z-10"
+    <div
+      className="w-38 h-38 rounded-[2.5rem] border border-white/90 flex items-center justify-center shadow-[inset_0_1px_1px_rgba(255,255,255,0.7),0_25px_60px_rgba(0,107,63,0.06)] relative z-10"
+      style={{ backgroundColor: '#ffffff', opacity: 1 }}
     >
       <svg className="w-18 h-18 text-[#006b3f]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
         <path d="M17.5 19A3.5 3.5 0 0 0 21 15.5c0-2.79-2.54-4.5-5-4.5-.42 0-.83.05-1.23.15A5.5 5.5 0 0 0 5 13c0 2.21 1.79 4 4 4" />
-        <path className="animate-pulse text-amber-500" d="m13 14-3 4.5h5l-3 4.5" strokeWidth="1.5" fill="currentColor" />
+        <path className="text-amber-500" d="m13 14-3 4.5h5l-3 4.5" strokeWidth="1.5" fill="currentColor" />
       </svg>
       
-      {/* Wifi Off Badge Indicator */}
-      <motion.div
-        initial={{ scale: 0, rotate: -35 }}
-        animate={{ scale: 1, rotate: 0 }}
-        transition={{ type: 'spring', stiffness: 220, damping: 15, delay: 0.7 }}
-        className="absolute -top-1 -right-1 bg-amber-500 text-white rounded-full p-2.5 shadow-md border-2 border-white"
-      >
-        <WifiOff className="w-4 h-4" strokeWidth={2.5} />
-      </motion.div>
-    </motion.div>
+      {/* Wifi Off Badge Indicator — static on native to avoid animation overhead */}
+      {isNative ? (
+        <div className="absolute -top-1 -right-1 bg-amber-500 text-white rounded-full p-2.5 shadow-md border-2 border-white">
+          <WifiOff className="w-4 h-4" strokeWidth={2.5} />
+        </div>
+      ) : (
+        <motion.div
+          initial={{ scale: 0, rotate: -35 }}
+          animate={{ scale: 1, rotate: 0 }}
+          transition={{ type: 'spring', stiffness: 220, damping: 15, delay: 0.2 }}
+          className="absolute -top-1 -right-1 bg-amber-500 text-white rounded-full p-2.5 shadow-md border-2 border-white"
+        >
+          <WifiOff className="w-4 h-4" strokeWidth={2.5} />
+        </motion.div>
+      )}
+    </div>
   );
 
-  // Diagnostics Card with float animation
+  // Diagnostics Card
   const DiagnosticsCard = () => (
     <motion.div
       variants={itemVariants}
-      animate={{ y: [0, 8, 0] }}
-      transition={{
-        duration: 7,
-        repeat: Infinity,
-        ease: 'easeInOut',
-      }}
-      className="w-full max-w-[340px] bg-white/70 border border-white/60 backdrop-blur-md rounded-[24px] p-6 text-left flex flex-col gap-4.5 shadow-[inset_0_1px_1px_rgba(255,255,255,0.7),0_20px_50px_rgba(0,107,63,0.04)] select-none z-10"
+      className="w-full max-w-[340px] border border-slate-200/80 rounded-[24px] p-6 text-left flex flex-col gap-4.5 shadow-lg shadow-emerald-950/5 select-none z-10"
+      style={{ backgroundColor: '#ffffff', opacity: 1 }}
     >
       <div className="flex items-center justify-between text-xs">
         <span className="text-slate-500 flex items-center gap-3 font-semibold">
@@ -162,48 +191,23 @@ const OfflineScreen: React.FC = () => {
           <CloudLightning className="w-4.5 h-4.5 text-amber-600" /> Paradigm Cloud
         </span>
         <span className="text-amber-600 flex items-center gap-2 font-extrabold">
-          <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping" />
-          <span className="animate-pulse">Connecting</span>
+          <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+          <span>Connecting...</span>
         </span>
       </div>
     </motion.div>
   );
 
-  // Animated background blurs and mesh grid overlay
+  // Static background with zero filter blur overhead
   const AnimatedBackground = () => (
     <div className="absolute inset-0 overflow-hidden pointer-events-none select-none z-0">
-      {/* Drift glow 1 */}
-      <motion.div 
-        className="absolute top-[-10%] left-[-5%] w-[600px] h-[600px] rounded-full bg-emerald-200/25 blur-[120px]"
-        animate={{
-          x: [0, 70, -40, 0],
-          y: [0, -50, 40, 0],
-        }}
-        transition={{
-          duration: 25,
-          repeat: Infinity,
-          ease: 'easeInOut'
-        }}
-      />
-      {/* Drift glow 2 */}
-      <motion.div 
-        className="absolute bottom-[-10%] right-[-5%] w-[650px] h-[650px] rounded-full bg-teal-100/30 blur-[130px]"
-        animate={{
-          x: [0, -50, 60, 0],
-          y: [0, 40, -60, 0],
-        }}
-        transition={{
-          duration: 30,
-          repeat: Infinity,
-          ease: 'easeInOut'
-        }}
-      />
-      {/* Ambient soft glow center */}
-      <div className="absolute top-[35%] left-[25%] w-[350px] h-[350px] rounded-full bg-emerald-500/5 blur-[90px]" />
+      {/* Soft background gradient circles without blur filters */}
+      <div className="absolute -top-20 -left-20 w-80 h-80 rounded-full bg-emerald-100/60" />
+      <div className="absolute -bottom-20 -right-20 w-80 h-80 rounded-full bg-teal-100/60" />
       
-      {/* Diagonal grid overlay */}
+      {/* Subtle grid pattern */}
       <div 
-        className="absolute inset-0 opacity-[0.05] mix-blend-overlay" 
+        className="absolute inset-0 opacity-[0.04]" 
         style={{
           backgroundImage: 'radial-gradient(circle, #006b3f 1.5px, transparent 1.5px)',
           backgroundSize: '36px 36px',
@@ -213,22 +217,36 @@ const OfflineScreen: React.FC = () => {
   );
 
   if (isMobile) {
+    // On native Android, use a plain div instead of motion.div to prevent
+    // framer-motion entrance/exit animations from causing visual flickering
+    // when the component rapidly mounts/unmounts during network state changes.
+    const Container = isNative ? 'div' : motion.div;
+    const containerProps = isNative ? {} : {
+      initial: { opacity: 0 },
+      animate: { opacity: 1 },
+      exit: { opacity: 0 },
+      transition: { duration: 0.3 },
+    };
+
     return (
-      <div
-        className="fixed inset-0 z-[99999] flex flex-col justify-between bg-gradient-to-b from-[#f3faf6] via-white to-[#edf3ef] p-6 select-none text-slate-800 overflow-hidden font-sans"
+      <Container
+        {...containerProps as any}
+        className="fixed inset-0 z-[9999999] flex flex-col justify-between p-6 select-none text-slate-800 overflow-hidden font-sans"
         style={{ 
-          paddingTop: 'calc(3rem + env(safe-area-inset-top))', 
-          paddingBottom: 'calc(2rem + env(safe-area-inset-bottom))' 
+          backgroundColor: '#f3faf6',
+          opacity: 1,
+          zIndex: 9999999,
+          paddingTop: 'calc(2.5rem + env(safe-area-inset-top))', 
+          paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))',
+          willChange: 'auto',
         }}
       >
         <AnimatedBackground />
 
         {/* Top Header */}
-        <div className="flex flex-col items-center justify-center gap-1 opacity-70 relative z-10">
-          <p className="text-[10px] font-bold tracking-[0.25em] uppercase text-[#006b3f] font-outfit">
-            Paradigm Services
-          </p>
-          <div className="h-[2px] w-8 bg-[#006b3f]/30 rounded-full" />
+        <div className="flex flex-col items-center justify-center gap-1 relative z-10">
+          <Logo className="h-7 w-auto mx-auto" variant="bottle-green" />
+          <div className="h-[2px] w-8 bg-[#006b3f]/30 rounded-full mt-1" />
         </div>
 
         {/* Center content */}
@@ -236,7 +254,7 @@ const OfflineScreen: React.FC = () => {
           variants={containerVariants}
           initial="hidden"
           animate="visible"
-          className="flex flex-col items-center text-center px-2 relative z-10 gap-8"
+          className="flex flex-col items-center text-center px-2 relative z-10 gap-6"
         >
           <div className="relative flex items-center justify-center w-full">
             <RadarSignal />
@@ -252,13 +270,13 @@ const OfflineScreen: React.FC = () => {
             </motion.h1>
             <motion.h1 
               variants={itemVariants} 
-              className="text-3xl font-extrabold tracking-tight text-[#006b3f] mb-3 leading-none font-outfit"
+              className="text-3xl font-extrabold tracking-tight text-[#006b3f] mb-2 leading-none font-outfit"
             >
               You're Offline
             </motion.h1>
             <motion.h2 
               variants={itemVariants} 
-              className="text-[#006b3f] font-bold text-[10px] uppercase tracking-[0.2em] mb-4"
+              className="text-[#006b3f] font-bold text-[10px] uppercase tracking-[0.2em] mb-2"
             >
               Service Disconnected
             </motion.h2>
@@ -268,7 +286,7 @@ const OfflineScreen: React.FC = () => {
         </motion.div>
 
         {/* Bottom Button Action */}
-        <div className="w-full flex flex-col items-center relative z-10 px-2 gap-4">
+        <div className="w-full flex flex-col items-center relative z-10 px-2 gap-3">
           <AnimatePresence>
             {retryFailed && (
               <motion.p 
@@ -282,43 +300,41 @@ const OfflineScreen: React.FC = () => {
             )}
           </AnimatePresence>
 
-          <motion.button
+        {/* Mobile: Use a plain button — framer-motion whileHover/whileTap cause 
+             continuous JS-driven frame updates on Android WebView */}
+          <button
             onClick={handleRetry}
             disabled={isRetrying}
-            whileHover={{ scale: 1.01 }}
-            whileTap={{ scale: 0.98 }}
-            className="w-full max-w-[320px] bg-[#006b3f] hover:bg-[#005632] disabled:opacity-50 text-white font-bold py-4 px-6 rounded-2xl shadow-[0_10px_25px_rgba(0,107,63,0.18)] transition-all duration-200 flex items-center justify-center gap-2.5 text-xs uppercase tracking-wider border border-[#006b3f]/10 relative overflow-hidden cursor-pointer"
+            className="w-full max-w-[320px] bg-[#006b3f] hover:bg-[#005632] disabled:opacity-50 text-white font-bold py-4 px-6 rounded-2xl shadow-[0_10px_25px_rgba(0,107,63,0.18)] transition-all duration-200 flex items-center justify-center gap-2.5 text-xs uppercase tracking-wider border border-[#006b3f]/10 cursor-pointer active:scale-[0.98]"
           >
-            {/* Shiny sweeping light effect */}
-            <div className="absolute inset-0 overflow-hidden pointer-events-none rounded-2xl">
-              <motion.div
-                className="absolute top-0 bottom-0 w-1/2 bg-gradient-to-r from-transparent via-white/15 to-transparent skew-x-12"
-                initial={{ left: "-100%" }}
-                animate={{ left: "150%" }}
-                transition={{
-                  repeat: Infinity,
-                  repeatDelay: 3.5,
-                  duration: 1.6,
-                  ease: "easeInOut",
-                }}
-              />
-            </div>
-
             <RefreshCw className={`w-4 h-4 ${isRetrying ? 'animate-spin' : ''}`} />
             {isRetrying ? 'Checking Network...' : 'TRY AGAIN'}
-          </motion.button>
+          </button>
           
-          <p className="text-slate-400 text-[8px] font-bold tracking-widest uppercase mt-4 select-none">
+          <p className="text-slate-400 text-[8px] font-bold tracking-widest uppercase select-none">
             Paradigm FMS v1.8.0
           </p>
         </div>
-      </div>
+      </Container>
     );
   }
 
   // ─── Web / Desktop Design (Full-screen Immersive Light Overlay) ──────────
   return (
-    <div className="fixed inset-0 z-[99999] flex flex-col justify-between bg-gradient-to-br from-[#f3faf6] via-white to-[#edf3ef] text-slate-800 select-none overflow-y-auto font-sans">
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.3 }}
+      className="fixed inset-0 z-[9999999] flex flex-col justify-between text-slate-800 select-none overflow-y-auto font-sans"
+      style={{ 
+        backgroundColor: '#f3faf6', 
+        opacity: 1, 
+        zIndex: 9999999,
+        paddingTop: 'env(safe-area-inset-top)',
+        paddingBottom: 'env(safe-area-inset-bottom)'
+      }}
+    >
       <AnimatedBackground />
 
       {/* Top Branding Header */}
@@ -397,19 +413,21 @@ const OfflineScreen: React.FC = () => {
               whileTap={{ scale: 0.98 }}
               className="w-full bg-[#006b3f] hover:bg-[#005632] disabled:opacity-60 text-white font-bold py-4 rounded-2xl transition-colors duration-200 text-xs tracking-wider uppercase border border-[#006b3f]/10 flex items-center justify-center gap-2 cursor-pointer relative overflow-hidden"
             >
-              {/* Shiny sweeping light effect */}
+              {/* Shiny sweeping light — CSS animation instead of framer-motion repeat:Infinity
+                   to avoid continuous JS-driven WebView redraws on Android */}
               <div className="absolute inset-0 overflow-hidden pointer-events-none rounded-2xl">
-                <motion.div
+                <div
                   className="absolute top-0 bottom-0 w-1/2 bg-gradient-to-r from-transparent via-white/20 to-transparent skew-x-12"
-                  initial={{ left: "-100%" }}
-                  animate={{ left: "150%" }}
-                  transition={{
-                    repeat: Infinity,
-                    repeatDelay: 3.5,
-                    duration: 1.6,
-                    ease: "easeInOut",
+                  style={{
+                    animation: 'offlineSweep 5s ease-in-out infinite',
                   }}
                 />
+                <style>{`
+                  @keyframes offlineSweep {
+                    0%, 70% { left: -100%; }
+                    100% { left: 150%; }
+                  }
+                `}</style>
               </div>
 
               <RefreshCw className={`w-4 h-4 ${isRetrying ? 'animate-spin' : ''}`} />
@@ -430,11 +448,11 @@ const OfflineScreen: React.FC = () => {
       </motion.div>
 
       {/* Bottom Footer Info */}
-      <div className="w-full text-center py-6 border-t border-slate-200/50 text-slate-400 text-[8px] font-bold tracking-[0.25em] uppercase relative z-10 bg-white/10 backdrop-blur-sm">
+      <div className="w-full text-center py-6 border-t border-slate-200/50 text-slate-400 text-[8px] font-bold tracking-[0.25em] uppercase relative z-10 bg-white/10">
         Paradigm FMS Terminal &bull; All Systems Monitored
       </div>
 
-    </div>
+    </motion.div>
   );
 };
 

@@ -31,23 +31,17 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ message = 'Loading...', f
 
     const isDark = theme === 'dark';
 
-    // Mobile → no background (floating). Desktop → themed gradient.
-    const bgStyle: React.CSSProperties = isMobile && fullScreen
-        ? { background: 'transparent' }
-        : {
-            background: isDark
-                ? 'radial-gradient(circle at center, #0a331c 0%, #03130a 100%)'
-                : 'radial-gradient(circle at center, #ffffff 0%, #f3f8f5 100%)',
-          };
+    // Loading screen always uses bottle green brand gradient
+    const bgStyle: React.CSSProperties = {
+        background: 'radial-gradient(circle at center, #0a3d23 0%, #041b0f 100%)',
+    };
 
-    // On mobile the text needs to be readable over whatever page is behind it.
-    // Dark theme mobile → white. Light theme mobile → dark green (page bg is dark green anyway).
-    const textPrimary = (isMobile || isDark) ? 'text-white' : 'text-[#1A4331]';
-    const textSub    = (isMobile || isDark) ? 'text-gray-300' : 'text-[#2f6a42]';
-    const statusText = (isMobile || isDark) ? 'text-[#22c55e]' : 'text-[#006b3f]';
-    const barBg      = (isMobile || isDark) ? 'bg-[#1f3d2b]'  : 'bg-[#e2ede7]';
+    const textPrimary = 'text-white';
+    const textSub    = 'text-emerald-200/80';
+    const statusText = 'text-emerald-400';
+    const barBg      = 'bg-[#041b0f] border border-emerald-900/40';
     const barFill    = 'bg-gradient-to-r from-[#22c55e] via-[#4ade80] to-[#22c55e]';
-    const dotColor   = (isMobile || isDark) ? 'bg-[#22c55e]'  : 'bg-[#006b3f]';
+    const dotColor   = 'bg-[#22c55e]';
 
     const containerClass = fullScreen
         ? `fixed inset-0 overflow-hidden flex items-center justify-center font-['Inter',_sans-serif] desktop-scaled ls-container-animate`

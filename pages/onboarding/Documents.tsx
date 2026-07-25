@@ -11,13 +11,18 @@ import { useAuthStore } from '../../store/authStore';
 import { Plus } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
-import Tesseract from 'tesseract.js';
 import Input from '../../components/ui/Input';
 
 const formatNameToTitleCase = (value: string | undefined) => {
     if (!value) return '';
     return value.toLowerCase().replace(/\b(\w)/g, s => s.toUpperCase());
 }
+
+export const performOCR = async (file: File) => {
+    const { default: Tesseract } = await import('tesseract.js');
+    const result = await Tesseract.recognize(file, 'eng');
+    return result.data.text;
+};
 
 interface OutletContext {
   onValidated: () => Promise<void>;
@@ -40,6 +45,7 @@ const Documents = () => {
         setIsOcrProcessing(true);
         setToast({ message: 'Analyzing license for expiry date...', type: 'success' });
         try {
+            const { default: Tesseract } = await import('tesseract.js');
             const result = await Tesseract.recognize(file, 'eng');
             const text = result.data.text;
             

@@ -6,6 +6,7 @@ import { Preferences } from '@capacitor/preferences';
 import { secureSet, secureRemove, secureGet } from './utils/secureStorage';
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
 import { SocialLogin } from '@capgo/capacitor-social-login';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
 import { useThemeStore } from './store/themeStore';
@@ -29,7 +30,10 @@ import { KioskPlugin } from './plugins/KioskPlugin';
 
 import { pushNotificationService } from './services/pushNotificationService';
 import { routeTrackingService } from './services/routeTrackingService';
-import { useNetworkStatus } from './hooks/useNetworkStatus';
+// useNetworkStatus hook REMOVED — App.tsx has its own debounced network
+// detection logic in the Network Status Tracking useEffect. The hook created
+// a duplicate un-debounced Network.addListener that caused rapid re-renders
+// on Android, contributing to offline screen flickering.
 import { Toaster } from 'react-hot-toast';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { useScreenOrientation } from './hooks/useScreenOrientation';
@@ -404,7 +408,7 @@ const App: React.FC = () => {
   const { setDeferredPrompt } = usePWAStore();
   const { isUpdateRequired, updateInfo } = useAppUpdate();
   const [updateDismissed, setUpdateDismissed] = useState(false);
-  const { isOnline } = useNetworkStatus();
+  // useNetworkStatus() removed — was creating a duplicate un-debounced listener
   const [permissionsComplete, setPermissionsComplete] = useState(false);
   const [isAppOutdated, setIsAppOutdated] = useState(false);
   const [showExitWarning, setShowExitWarning] = useState(false);
@@ -418,6 +422,79 @@ const App: React.FC = () => {
 
   // ── Network Status Tracking ────────────────────────────────────────────────
   useEffect(() => {
+    // Separate timers for offline and online transitions to prevent mutual cancellation
+    let offlineTimer: ReturnType<typeof setTimeout> | null = null;
+    let onlineTimer: ReturnType<typeof setTimeout> | null = null;
+    // Cooldown: minimum time between online↔offline state transitions to prevent flicker
+    let lastStateChangeTime = 0;
+    const STATE_CHANGE_COOLDOWN = 3000; // 3s minimum between transitions
+    // Mutex: prevent concurrent network verification from racing
+    let isVerifying = false;
+
+    const clearOfflineTimer = () => {
+      if (offlineTimer) { clearTimeout(offlineTimer); offlineTimer = null; }
+    };
+    const clearOnlineTimer = () => {
+      if (onlineTimer) { clearTimeout(onlineTimer); onlineTimer = null; }
+    };
+    const clearTimers = () => {
+      clearOfflineTimer();
+      clearOnlineTimer();
+    };
+
+    const setStableOffline = (offline: boolean, onConfirmedOnline?: () => void) => {
+      const now = Date.now();
+      const currentlyOffline = useAuthStore.getState().isOffline;
+
+      // If already in the desired state, skip (no-op prevents redundant re-renders)
+      if (offline === currentlyOffline) {
+        // Cancel any pending opposite-direction timer since we're stable
+        if (offline) clearOnlineTimer(); else clearOfflineTimer();
+        return;
+      }
+
+      // Enforce cooldown: if we recently changed state, don't flip back too quickly
+      if (now - lastStateChangeTime < STATE_CHANGE_COOLDOWN) {
+        console.log(`[Network] Ignoring rapid ${offline ? 'offline' : 'online'} transition (cooldown active)`);
+        return;
+      }
+
+      if (offline) {
+        // Cancel any pending online restoration — we're going offline
+        clearOnlineTimer();
+        // Only start a new offline timer if one isn't already pending
+        if (!offlineTimer) {
+          console.log('[FLICKER_DEBUG] Starting offlineTimer (2500ms)');
+          offlineTimer = setTimeout(() => {
+            offlineTimer = null;
+            lastStateChangeTime = Date.now();
+            console.log('[FLICKER_DEBUG] Calling setIsOffline(true) from timer');
+            setIsOffline(true);
+            console.log('[Network] State → OFFLINE (debounced)');
+          }, 2500); // 2.5s debounce before marking offline
+        } else {
+          console.log('[FLICKER_DEBUG] offlineTimer already running, ignoring');
+        }
+      } else {
+        // Cancel any pending offline timer — connection seems restored
+        clearOfflineTimer();
+        // Only start a new online timer if one isn't already pending
+        if (!onlineTimer) {
+          console.log('[FLICKER_DEBUG] Starting onlineTimer (2000ms)');
+          onlineTimer = setTimeout(() => {
+            onlineTimer = null;
+            lastStateChangeTime = Date.now();
+            console.log('[FLICKER_DEBUG] Calling setIsOffline(false) from timer');
+            setIsOffline(false);
+            console.log('[Network] State → ONLINE (debounced)');
+            if (onConfirmedOnline) onConfirmedOnline();
+          }, 2000); // 2s debounce before restoring online
+        } else {
+          console.log('[FLICKER_DEBUG] onlineTimer already running, ignoring');
+        }
+      }
+    };
+
     const syncData = async () => {
       try {
         const { settings, roles, holidays } = await apiService.getInitialAppData();
@@ -444,32 +521,132 @@ const App: React.FC = () => {
         }
         await useAuthStore.getState().checkAttendanceStatus();
         console.log('[Network] Successfully synced all app details after reconnecting.');
-        setIsOffline(false);
       } catch (err) {
-        console.error('[Network] Failed to sync data after reconnecting:', err);
-        window.location.reload();
+        console.warn('[Network] Sync data warning after reconnecting:', err);
       }
     };
 
     if (Capacitor.isNativePlatform()) {
-      // Native Android/iOS: use Capacitor Network plugin
+      // Native Android/iOS: use Capacitor Network plugin + active ping hysteresis
+      const PING_URL = 'https://app.paradigmfms.com/version.json';
+      let nativePingTimer: ReturnType<typeof setInterval> | null = null;
+      let consecutiveSuccesses = 0;
+      let consecutiveFailures = 0;
+
+      const verifyInternetAndSetState = async (connectedStatus: boolean) => {
+        // Mutex: skip if another verification is already in-flight
+        if (isVerifying) return;
+        isVerifying = true;
+
+        try {
+          if (!connectedStatus) {
+            consecutiveSuccesses = 0;
+            // Instantly block user with offline screen on disconnect
+            setStableOffline(true);
+            return;
+          }
+          // Device reports Wi-Fi/Cellular is connected — ping server to confirm real internet access
+          try {
+            await fetch(`${PING_URL}?_=${Date.now()}`, {
+              method: 'HEAD',
+              cache: 'no-cache',
+              signal: AbortSignal.timeout(4000),
+            });
+            consecutiveSuccesses += 1;
+            consecutiveFailures = 0;
+            // Confirmed internet access — dismiss offline screen and restore user panel
+            setStableOffline(false, () => {
+              syncData();
+            });
+          } catch (pingErr) {
+            console.warn('[Network] Wi-Fi connected but internet unreachable:', pingErr);
+            consecutiveSuccesses = 0;
+            // Internet ping failed — block user with offline screen
+            setStableOffline(true);
+          }
+        } finally {
+          isVerifying = false;
+        }
+      };
+
       const initNetwork = async () => {
         const status = await Network.getStatus();
-        setIsOffline(!status.connected);
+        console.log(`[FLICKER_DEBUG] initNetwork status: ${status.connected}`);
+        // For initial check, set state directly without debounce
+        if (!status.connected) {
+          console.log('[FLICKER_DEBUG] Calling setIsOffline(true) from initNetwork');
+          setIsOffline(true);
+          lastStateChangeTime = Date.now();
+        } else {
+          try {
+            await fetch(`${PING_URL}?_=${Date.now()}`, {
+              method: 'HEAD',
+              cache: 'no-cache',
+              signal: AbortSignal.timeout(4000),
+            });
+            console.log('[FLICKER_DEBUG] Calling setIsOffline(false) from initNetwork fetch success');
+            setIsOffline(false);
+            lastStateChangeTime = Date.now();
+          } catch {
+            console.log('[FLICKER_DEBUG] Calling setIsOffline(true) from initNetwork fetch fail');
+            setIsOffline(true);
+            lastStateChangeTime = Date.now();
+          }
+        }
       };
       initNetwork();
 
-      const networkListener = Network.addListener('networkStatusChange', async status => {
-        console.log('[Network] Status changed:', status.connected ? 'Online' : 'Offline');
-        setIsOffline(!status.connected);
-        if (status.connected) await syncData();
+      // Debounce the networkStatusChange listener — Android fires this VERY frequently
+      let networkChangeDebounce: ReturnType<typeof setTimeout> | null = null;
+      const networkListener = Network.addListener('networkStatusChange', status => {
+        console.log('[Network] Native status changed:', status.connected ? 'Connected' : 'Disconnected');
+        // Debounce rapid-fire events from Android: wait 1s of stability before acting
+        if (networkChangeDebounce) clearTimeout(networkChangeDebounce);
+        networkChangeDebounce = setTimeout(() => {
+          networkChangeDebounce = null;
+          verifyInternetAndSetState(status.connected);
+        }, 1000);
+      });
+
+      // Periodic 8s background check on native (increased from 6s for stability)
+      nativePingTimer = setInterval(async () => {
+        const status = await Network.getStatus();
+        await verifyInternetAndSetState(status.connected);
+      }, 8000);
+
+      // Pause network pinging when the app is in the background to prevent battery drain and 
+      // network errors (like geofencing settings fetch failing) due to OS restrictions.
+      const appStateListener = CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+        console.log(`[FLICKER_DEBUG] appStateChange isActive: ${isActive}`);
+        if (!isActive) {
+          if (nativePingTimer) {
+            console.log('[FLICKER_DEBUG] Pausing nativePingTimer');
+            clearInterval(nativePingTimer);
+            nativePingTimer = null;
+          }
+        } else {
+          if (!nativePingTimer) {
+            console.log('[FLICKER_DEBUG] Resuming nativePingTimer');
+            // Check immediately on resume, then restart interval
+            Network.getStatus().then(status => verifyInternetAndSetState(status.connected));
+            nativePingTimer = setInterval(async () => {
+              const status = await Network.getStatus();
+              await verifyInternetAndSetState(status.connected);
+            }, 8000);
+          }
+        }
       });
 
       return () => {
+        console.log('[FLICKER_DEBUG] Network useEffect UNMOUNTING, clearing timers');
+        clearTimers();
+        if (nativePingTimer) clearInterval(nativePingTimer);
+        if (networkChangeDebounce) clearTimeout(networkChangeDebounce);
         networkListener.then(h => h.remove());
+        appStateListener.then(h => h.remove());
       };
     } else {
-      // Web browser: active ping-based connectivity check (works even if WiFi is connected but no internet)
+      // Web browser: active ping-based connectivity check
       const PING_URL = 'https://app.paradigmfms.com/version.json';
       const PING_INTERVAL_ONLINE = 5000;   // check every 5s when online
       const PING_INTERVAL_OFFLINE = 3000;  // retry every 3s when offline
@@ -485,17 +662,20 @@ const App: React.FC = () => {
             signal: AbortSignal.timeout(4000),
           });
           // Successfully reached the internet
+          clearOfflineTimer();
           if (wasOffline) {
             wasOffline = false;
-            await syncData(); // resync data now that we're back online
+            setStableOffline(false, () => {
+              syncData();
+            });
           } else {
-            setIsOffline(false);
+            setStableOffline(false);
           }
           pingTimer = setTimeout(checkConnectivity, PING_INTERVAL_ONLINE);
         } catch {
           // Failed — truly offline or no internet access
           wasOffline = true;
-          setIsOffline(true);
+          setStableOffline(true);
           console.log('[Network] Ping failed — marking offline.');
           pingTimer = setTimeout(checkConnectivity, PING_INTERVAL_OFFLINE);
         }
@@ -504,7 +684,7 @@ const App: React.FC = () => {
       // Also keep browser events as a fast-path trigger
       const handleOffline = () => {
         wasOffline = true;
-        setIsOffline(true);
+        setStableOffline(true);
         if (pingTimer) clearTimeout(pingTimer);
         pingTimer = setTimeout(checkConnectivity, PING_INTERVAL_OFFLINE);
       };
@@ -514,6 +694,7 @@ const App: React.FC = () => {
       checkConnectivity();
 
       return () => {
+        if (offlineTimer) clearTimeout(offlineTimer);
         if (pingTimer) clearTimeout(pingTimer);
         window.removeEventListener('offline', handleOffline);
       };
@@ -946,11 +1127,11 @@ const App: React.FC = () => {
     // If Supabase is unreachable, we still allow the app to render the login page.
     const fallbackTimeout = setTimeout(() => {
       if (isMounted) {
-        console.warn('App initialization is taking too long. Proceeding without a session.');
+        console.warn('App initialization took >3s. Unblocking UI rendering.');
         setLoading(false);
         setInitialized(true);
       }
-    }, 5000); // Optimized fallback (reduced from 10s)
+    }, 3000); // 3s fallback threshold for fast rendering
 
     const initializeApp = async () => {
       setLoading(true);
@@ -1398,8 +1579,10 @@ const App: React.FC = () => {
 
   // Once initialized, render the main application structure.
   return (
-    <>
-      {isOffline && <OfflineScreen />}
+    <div className="relative min-h-screen w-full overflow-x-hidden bg-slate-50 dark:bg-slate-900">
+      <AnimatePresence mode="wait">
+        {isOffline && <OfflineScreen key="offline-screen-modal" />}
+      </AnimatePresence>
       <ScrollToTop />
       <ThemeManager />
       {isAppOutdated && <UpdateRequiredBanner />}
@@ -1727,7 +1910,7 @@ const App: React.FC = () => {
         onCancel={() => setShowExitWarning(false)}
       />
 
-    </>
+    </div>
   );
 };
 

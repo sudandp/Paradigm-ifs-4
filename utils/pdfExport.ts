@@ -1,5 +1,3 @@
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { format } from 'date-fns';
 
 export interface PDFReportColumn {
@@ -30,7 +28,9 @@ const STATUS_COLORS: Record<string, { bg: number[]; text: number[] }> = {
     'CORRECTION MADE': { bg: [209, 250, 229], text: [6, 95, 70] },
 };
 
-export const exportLeaveReportToPDF = (options: PDFExportOptions) => {
+export const exportLeaveReportToPDF = async (options: PDFExportOptions) => {
+    const { default: jsPDF } = await import('jspdf');
+    const { default: autoTable } = await import('jspdf-autotable');
     const {
         title,
         subtitle,

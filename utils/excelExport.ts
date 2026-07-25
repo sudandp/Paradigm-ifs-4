@@ -1,4 +1,3 @@
-import * as ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
 import { type EmployeeMonthlyData } from '../components/attendance/MonthlyHoursReport';
@@ -61,6 +60,7 @@ export const exportGenericReportToExcel = async (
     logoBase64?: string,
     generatedBy?: string
 ) => {
+    const ExcelJS = await import('exceljs');
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet(reportTitle);
 
@@ -167,6 +167,7 @@ export const exportAttendanceToExcel = async (
     logoBase64?: string,
     generatedBy?: string
 ) => {
+    const ExcelJS = await import('exceljs');
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Monthly Attendance Report');
 
@@ -361,6 +362,7 @@ export const exportLeaveBalancesToExcel = async (
     logoBase64?: string,
     generatedBy?: string
 ) => {
+    const ExcelJS = await import('exceljs');
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Leave Balance Report');
 
@@ -465,6 +467,7 @@ export const exportMonthlyMatrixToExcel = async (
     logoBase64?: string,
     generatedBy?: string
 ) => {
+    const ExcelJS = await import('exceljs');
     const workbook = new ExcelJS.Workbook();
 
     // Sort month keys to ensure chronological order in sheets

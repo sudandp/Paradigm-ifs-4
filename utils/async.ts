@@ -1,7 +1,10 @@
 export const withTimeout = <T,>(promise: PromiseLike<T>, ms: number, message: string = 'Operation timed out'): Promise<T> => {
+  let timerId: ReturnType<typeof setTimeout>;
   const timeout = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error(message)), ms);
+    timerId = setTimeout(() => reject(new Error(message)), ms);
   });
-  // Cast to any to avoid strict Promise.race vs PromiseLike issues in some environments
-  return Promise.race([promise as any, timeout]);
+  return Promise.race([
+    Promise.resolve(promise).finally(() => clearTimeout(timerId)),
+    timeout
+  ]);
 };

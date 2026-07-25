@@ -47,7 +47,6 @@ import { isTechnicalRole, calculateWorkingHours, isBangaloreLocation, getStaffCa
 import { buildAttendanceDayKeyByEventId } from '../utils/attendanceDayGrouping';
 import { FIXED_HOLIDAYS } from '../utils/constants';
 import { GoogleGenAI, Type, Modality } from '@google/genai';
-import { createWorker } from 'tesseract.js';
 import { withTimeout } from '../utils/async';
 import { getProxyUrl } from '../utils/fileUrl';
 import {
@@ -7254,6 +7253,7 @@ export const api = {
     }).then(r => JSON.parse(r.text.trim())));
   },
   extractDataFromImageLocal: async (base64: string, docType?: string): Promise<any> => {
+    const { createWorker } = await import('tesseract.js');
     const worker = await createWorker('eng');
     try {
         const { data: { text } } = await worker.recognize(`data:image/png;base64,${base64}`);

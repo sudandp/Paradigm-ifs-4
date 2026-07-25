@@ -1238,7 +1238,6 @@ const ProfilePage: React.FC = () => {
     const getRoleName = (role: string) => role.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 
     if (!user) return <LoadingScreen message="Initializing profile..." />;
-    if (isScoresLoading) return <LoadingScreen message="Syncing performance data..." />;
 
     const avatarFile: UploadedFile | null = user.photoUrl
         ? { preview: user.photoUrl, name: 'Profile Photo', type: 'image/jpeg', size: 0 }
