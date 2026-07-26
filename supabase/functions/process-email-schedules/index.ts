@@ -353,6 +353,27 @@ serve(async (req: Request) => {
 
       const reportDataList: Record<string, string>[] = Array.isArray(reportData) ? reportData : [reportData];
 
+      // Check if report data is missing/empty before sending email
+      if (!reportData || reportDataList.length === 0) {
+        const errorMsg = `Report generation returned no data for rule "${rule.name}" (${rule.report_type})`;
+        console.error(`  ❌ DATA ERROR: ${errorMsg}`);
+        processingLog.push({ rule: rule.name, status: 'failed', error: errorMsg });
+
+        let recipients = await resolveRecipients(supabase, rule);
+        if (recipients.length === 0) recipients = ['system@paradigmfms.com'];
+
+        await Promise.all(recipients.map(email => supabase.from('email_logs').insert({
+          rule_id: rule.id,
+          template_id: rule.template_id,
+          recipient_email: email,
+          subject: rule.name,
+          status: 'failed',
+          error_message: errorMsg,
+          trigger_type: test ? 'manual' : 'automatic'
+        })));
+        continue;
+      }
+
       for (const dataItem of reportDataList) {
         let subject = template?.subject_template || rule.name;
         
