@@ -224,12 +224,14 @@ serve(async (req: Request) => {
         console.log(`  Schedule time: ${scheduleTime} IST (${schedHour}:${String(schedMinute).padStart(2,'0')})`);
         console.log(`  Current IST:  ${String(istTime.hours).padStart(2,'0')}:${String(istTime.minutes).padStart(2,'0')}`);
 
-        // Check if current IST time has passed the scheduled time
+        // Check if current IST time is within the scheduled 15-minute execution window
         const currentTotalMinutes = istTime.hours * 60 + istTime.minutes;
         const scheduleTotalMinutes = schedHour * 60 + schedMinute;
+        const diff = currentTotalMinutes - scheduleTotalMinutes;
 
-        if (currentTotalMinutes < scheduleTotalMinutes) {
-          const reason = `Time ${scheduleTime} IST not reached yet (current IST: ${String(istTime.hours).padStart(2,'0')}:${String(istTime.minutes).padStart(2,'0')})`;
+        // Skip if current IST time has not reached the scheduled time, OR if it's past the 15-minute window
+        if (diff < 0 || diff > 15) {
+          const reason = `Current IST (${String(istTime.hours).padStart(2,'0')}:${String(istTime.minutes).padStart(2,'0')}) is outside the execution window for scheduled time ${scheduleTime} IST`;
           console.log(`  → SKIPPED: ${reason}`);
           processingLog.push({ rule: rule.name, status: 'skipped', reason });
           continue;
