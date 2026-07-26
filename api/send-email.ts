@@ -49,7 +49,7 @@ const reportGenerators = {
     const startOfTodayUTC = startOfDay(new Date(new Date(todayStr).getTime()));
     const [settingsRes, usersRes, eventsRes, leavesRes] = await Promise.all([
       supabase.from('settings').select('attendance_settings').eq('id', 'singleton').maybeSingle(),
-      supabase.from('users').select('id, name, role:roles(display_name)').neq('role_id', 'unverified').eq('is_active', true),
+      supabase.from('users').select('id, name, role:roles(display_name)').eq('is_blocked', false),
       supabase.from('attendance_events').select('user_id, type, timestamp').gte('timestamp', startOfTodayUTC.toISOString()).order('timestamp', { ascending: true }),
       supabase.from('leave_requests').select('user_id').eq('status', 'approved').lte('start_date', todayStr).gte('end_date', todayStr)
     ]);
