@@ -368,15 +368,15 @@ serve(async (req: Request) => {
         // Helper to replace placeholders {Key} or {key}
         const render = (text: string, data: Record<string, string>) => {
           if (!text) return '';
-          return text.replace(/\{(\w+)\}/g, (match, key) => {
+          return text.replace(/\{([\w]+)\}/gi, (match, key) => {
             // Flexible key matching: case-insensitive and ignoring underscores/dashes
             const cleanKey = key.toLowerCase().replace(/[_-]/g, '');
-            const dataKey = Object.keys(data).find(k => {
+            const dataKey = Object.keys(data || {}).find(k => {
                 const cleanK = k.toLowerCase().replace(/[_-]/g, '');
                 return cleanK === cleanKey;
             });
             
-            if (dataKey) {
+            if (dataKey && data[dataKey] !== undefined && data[dataKey] !== null) {
                 return data[dataKey];
             }
             return match;

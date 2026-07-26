@@ -672,6 +672,18 @@ const EmailConfigPanel: React.FC = () => {
         }
     };
 
+    const handleSendLiveSchedule = async (id: string) => {
+        setToast({ message: 'Compiling real-time data and sending report...', type: 'success' });
+        try {
+            await api.testEmailScheduleRule(id);
+            setToast({ message: 'Live report with real-time data delivered successfully to recipients!', type: 'success' });
+            const logs = await api.getEmailLogs();
+            setEmailLogs(logs);
+        } catch (err: any) {
+            setToast({ message: `Failed to send report: ${err.message}`, type: 'error' });
+        }
+    };
+
     const handleTestSchedule = async (id: string) => {
         setToast({ message: 'Sending test email...', type: 'success' });
         try {
@@ -1450,13 +1462,22 @@ const EmailConfigPanel: React.FC = () => {
                                             </div>
                                         </div>
 
-                                        <div className="flex items-center gap-3 ml-4">
+                                        <div className="flex items-center gap-2 ml-4">
+                                            <Button
+                                                variant="primary"
+                                                size="sm"
+                                                onClick={() => handleSendLiveSchedule(rule.id)}
+                                                className="text-[10px] h-8 px-3 font-bold bg-emerald-600 hover:bg-emerald-700 text-white tracking-wider flex items-center gap-1 shadow-sm"
+                                                title="Send present live report with data to email"
+                                            >
+                                                <Send className="h-3 w-3" /> SEND
+                                            </Button>
                                             <Button
                                                 variant="secondary"
                                                 size="sm"
                                                 onClick={() => handleTestSchedule(rule.id)}
                                                 className="text-[10px] h-8 px-3 font-black tracking-tighter"
-                                                title="Send test email now"
+                                                title="Send test sample email now"
                                             >
                                                 TEST
                                             </Button>
