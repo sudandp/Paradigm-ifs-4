@@ -84,7 +84,20 @@ const reportGenerators = {
       if ((e.type === 'punch-in' || e.type === 'check_in') && !userFirstPunches[e.user_id]) userFirstPunches[e.user_id] = e.timestamp;
     });
 
-    let tableHtml = '';
+    let tableHtml = `<table width="100%" style="border-collapse:collapse;font-family:sans-serif;font-size:12px;">
+      <thead><tr style="background:#f8fafc;color:#64748b;font-size:10px;text-transform:uppercase;font-weight:700;">
+        <th style="border:1px solid #e2e8f0;padding:10px 8px;text-align:center;">#</th>
+        <th style="border:1px solid #e2e8f0;padding:10px 8px;text-align:left;">Employee Name</th>
+        <th style="border:1px solid #e2e8f0;padding:10px 8px;text-align:left;">Role / Dept</th>
+        <th style="border:1px solid #e2e8f0;padding:10px 8px;text-align:center;">Check In</th>
+        <th style="border:1px solid #e2e8f0;padding:10px 8px;text-align:center;">Check Out</th>
+        <th style="border:1px solid #e2e8f0;padding:10px 8px;text-align:center;">Break In</th>
+        <th style="border:1px solid #e2e8f0;padding:10px 8px;text-align:center;">Break Out</th>
+        <th style="border:1px solid #e2e8f0;padding:10px 8px;text-align:center;">OT In</th>
+        <th style="border:1px solid #e2e8f0;padding:10px 8px;text-align:center;">OT Out</th>
+        <th style="border:1px solid #e2e8f0;padding:10px 8px;text-align:center;">Work Hours</th>
+        <th style="border:1px solid #e2e8f0;padding:10px 8px;text-align:center;">Status</th>
+      </tr></thead><tbody>`;
     let lateCount = 0;
     targetUsers.forEach((user: any, i: number) => {
       let dept = (Array.isArray(user.role) ? user.role[0]?.display_name : user.role?.display_name) || 'Staff';
@@ -140,6 +153,8 @@ const reportGenerators = {
     const onLeaveCount = Array.from(onLeaveUserIds).filter(id => staffIds.has(id)).length;
     const totalAbsent = Math.max(0, targetUsers.length - totalPresent - onLeaveCount);
 
+    tableHtml += `</tbody></table>`;
+
     return {
       date: safeFormat(new Date(todayStr), 'EEEE, MMMM do, yyyy'),
       reportDate: safeFormat(new Date(todayStr), 'dd MMM yyyy'),
@@ -152,7 +167,7 @@ const reportGenerators = {
       attendancePercentage: targetUsers.length > 0 ? Math.round((totalPresent/targetUsers.length)*100).toString() : '0',
       onLeaveCount: String(onLeaveCount),
       logo: '<img src="https://app.paradigmfms.com/paradigm-logo.png" alt="Logo" style="height: 40px; display: block;">',
-      table: tableHtml || '<tr><td colspan="7">No data</td></tr>'
+      table: tableHtml
     };
   },
   attendance_monthly: async (supabase: SupabaseClient, nowIST: Date, filters?: any) => {
