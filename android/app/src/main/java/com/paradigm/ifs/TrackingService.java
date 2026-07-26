@@ -282,33 +282,47 @@ public class TrackingService extends Service implements SensorEventListener {
         final double lat = loc.getLatitude();
         final double lng = loc.getLongitude();
         final float  acc = loc.getAccuracy();
-        final String ts  = isoTimestamp();
+        if (supabaseAccessToken == null || supabaseAccessToken.trim().isEmpty()) {
+            Log.w(TAG, "[RouteTracking] Missing user JWT access token — deferring upload until session is refreshed");
+            boolean refreshed = attemptTokenRefresh();
+            if (!refreshed) {
+                isAuthPaused = true;
+                return;
+            }
+        }
 
         networkExecutor.execute(() -> {
             try {
                 String endpoint = supabaseUrl.endsWith("/")
-                        ? supabaseUrl + "rest/v1/route_history"
-                        : supabaseUrl + "/rest/v1/route_history";
+                        ? supabaseUrl + "functions/v1/record-tracking-ping"
+                        : supabaseUrl + "/functions/v1/record-tracking-ping";
+
+                String requestId = "bg-ping-" + java.util.UUID.randomUUID().toString();
 
                 JSONObject body = new JSONObject();
-                body.put("user_id",   userId);
-                body.put("latitude",  lat);
-                body.put("longitude", lng);
-                body.put("accuracy",  acc);
-                body.put("timestamp", ts);
+                body.put("requestId",  requestId);
+                body.put("userId",     userId);
+                body.put("latitude",   lat);
+                body.put("longitude",  lng);
+                body.put("accuracy",   acc);
+                body.put("timestamp",  ts);
+                body.put("status",     "successful");
+                body.put("source",     "android_foreground_service");
+
+                String bearer = supabaseAccessToken;
+
+                Log.d(TAG, "[RouteTrackingDebug] Destination URL: " + endpoint);
+                Log.d(TAG, "[RouteTrackingDebug] Authorization header present? " + (bearer != null && !bearer.isEmpty() ? "yes" : "no"));
+                Log.d(TAG, "[RouteTrackingDebug] JWT length (>0)? " + (bearer != null ? bearer.length() : 0));
+                Log.d(TAG, "[RouteTrackingDebug] apikey header present? " + (supabaseAnonKey != null && !supabaseAnonKey.isEmpty() ? "yes" : "no"));
+                Log.d(TAG, "[RouteTrackingDebug] Tracking method: EDGE_FUNCTION");
 
                 URL url = new URL(endpoint);
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("POST");
                 conn.setRequestProperty("Content-Type",  "application/json");
                 conn.setRequestProperty("apikey",        supabaseAnonKey);
-
-                String bearer = (supabaseAccessToken != null && !supabaseAccessToken.isEmpty())
-                        ? supabaseAccessToken
-                        : supabaseAnonKey;
                 conn.setRequestProperty("Authorization", "Bearer " + bearer);
-
-                conn.setRequestProperty("Prefer",        "return=minimal");
                 conn.setDoOutput(true);
                 conn.setConnectTimeout(15_000);
                 conn.setReadTimeout(15_000);
@@ -319,14 +333,14 @@ public class TrackingService extends Service implements SensorEventListener {
 
                 int code = conn.getResponseCode();
                 if (code == 201 || code == 200) {
-                    Log.i(TAG, "✅ Location uploaded: " + lat + "," + lng + " at " + ts);
+                    Log.i(TAG, "✅ Location uploaded via Edge Function: " + lat + "," + lng + " at " + ts);
                     isAuthPaused = false;
                 } else if (code == 401) {
-                    Log.w(TAG, "⚠️ Supabase returned HTTP 401 Unauthorized for route_history — attempting native token refresh");
+                    Log.w(TAG, "⚠️ Edge Function returned HTTP 401 — attempting native token refresh");
                     conn.disconnect();
                     boolean refreshed = attemptTokenRefresh();
                     if (refreshed) {
-                        Log.i(TAG, "Token refresh succeeded — retrying location upload");
+                        Log.i(TAG, "Token refresh succeeded — retrying location upload via Edge Function");
                         uploadLocationToSupabase(loc);
                         return;
                     } else {
@@ -334,7 +348,7 @@ public class TrackingService extends Service implements SensorEventListener {
                         isAuthPaused = true;
                     }
                 } else {
-                    Log.w(TAG, "⚠️ Supabase returned HTTP " + code + " for location upload");
+                    Log.w(TAG, "⚠️ Edge Function returned HTTP " + code + " for location upload");
                 }
                 conn.disconnect();
             } catch (Exception e) {

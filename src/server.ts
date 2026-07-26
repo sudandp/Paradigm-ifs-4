@@ -20,6 +20,7 @@ import { authMiddleware } from './api/middleware/auth.middleware.js';
 import FormData from 'form-data';
 
 import fetch from 'node-fetch';
+import { normalizePhoneNumber } from '../services/phoneUtils.js';
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
 // [SECURITY FIX C7] Service Role Key MUST come from a non-VITE_ env var only.
@@ -368,11 +369,17 @@ async function processExotelCallbackInBackground(body: any) {
         return;
     }
 
+    const cleanPhone = normalizePhoneNumber(phoneNumber);
+    if (!cleanPhone) {
+        console.warn('[Exotel Callback] Phone number could not be normalized to 10 digits.');
+        return;
+    }
+
     // Broadcast call_ended to update frontend
-    await supabase.channel('call_updates').send({
+    await supabase.channel(`call_updates:${cleanPhone}`).send({
         type: 'broadcast',
         event: 'call_ended',
-        payload: { phoneNumber }
+        payload: { phoneNumber: cleanPhone }
     });
 
     if (status !== 'completed' || !recordingUrl) {
@@ -390,10 +397,10 @@ async function processExotelCallbackInBackground(body: any) {
             s3_path: 'FAILED_OR_NO_RECORDING'
         });
 
-        await supabase.channel('call_updates').send({
+        await supabase.channel(`call_updates:${cleanPhone}`).send({
             type: 'broadcast',
             event: 'call_error',
-            payload: { phoneNumber }
+            payload: { phoneNumber: cleanPhone }
         });
         return;
     }
@@ -501,19 +508,19 @@ async function processExotelCallbackInBackground(body: any) {
         }
 
         // Broadcast success update to frontend
-        await supabase.channel('call_updates').send({
+        await supabase.channel(`call_updates:${cleanPhone}`).send({
             type: 'broadcast',
             event: 'call_processed',
-            payload: { recording_id: recRecord.id, phoneNumber }
+            payload: { recording_id: recRecord.id, phoneNumber: cleanPhone }
         });
 
         console.log('[Exotel Callback] Call processing fully completed!');
     } catch (err: any) {
         console.error('[Exotel Callback] Failed background task:', err.message);
-        await supabase.channel('call_updates').send({
+        await supabase.channel(`call_updates:${cleanPhone}`).send({
             type: 'broadcast',
             event: 'call_error',
-            payload: { phoneNumber }
+            payload: { phoneNumber: cleanPhone }
         });
     }
 }

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../../services/supabase';
+import { normalizePhoneNumber } from '../../../services/phoneUtils';
 import { Mic, Loader2, CheckCircle, PhoneOff } from 'lucide-react';
 
 type Status = 'idle' | 'recording' | 'transcribing' | 'ready' | 'error';
@@ -14,30 +15,26 @@ export const TranscriptionStatus: React.FC<TranscriptionStatusProps> = ({ phoneN
   const [transcriptId, setTranscriptId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!phoneNumber) return;
+    const sanitizedPhone = normalizePhoneNumber(phoneNumber);
+    if (!sanitizedPhone) return;
 
-    // Listen to broadcast events from the Electron agent
-    const channel = supabase.channel('call_updates')
-      .on('broadcast', { event: 'call_started' }, (payload) => {
-        if (payload.payload?.phoneNumber === phoneNumber) {
-          setStatus('recording');
-        }
+    // Listen to broadcast events on a scoped topic for this phone number
+    const channel = supabase.channel(`call_updates:${sanitizedPhone}`)
+      .on('broadcast', { event: 'call_started' }, () => {
+        setStatus('recording');
       })
-      .on('broadcast', { event: 'call_ended' }, (payload) => {
-        if (payload.payload?.phoneNumber === phoneNumber) {
-          setStatus('transcribing');
-        }
+      .on('broadcast', { event: 'call_ended' }, () => {
+        setStatus('transcribing');
       })
       .on('broadcast', { event: 'call_processed' }, (payload) => {
-        if (payload.payload?.phoneNumber === phoneNumber) {
-          setStatus('ready');
-          setTranscriptId(payload.payload.recording_id);
+        setStatus('ready');
+        const recId = payload.payload?.recording_id;
+        if (recId) {
+          setTranscriptId(recId);
         }
       })
-      .on('broadcast', { event: 'call_error' }, (payload) => {
-        if (payload.payload?.phoneNumber === phoneNumber) {
-          setStatus('error');
-        }
+      .on('broadcast', { event: 'call_error' }, () => {
+        setStatus('error');
       })
       .subscribe();
 
