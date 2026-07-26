@@ -1674,10 +1674,10 @@ async function generateCRMBdDailyReport(supabase: ReturnType<typeof createClient
     const punchesOut = bdEvents.filter((e: any) => e.type === 'punch-out' || e.type === 'site-out' || e.type === 'site-ot-out');
     
     if (punchesIn.length > 0) {
-      check_in_time = format(new Date(new Date(punchesIn[0].timestamp).getTime() + IST_OFFSET), 'hh:mm a');
+      check_in_time = format(new Date(punchesIn[0].timestamp), 'hh:mm a');
     }
     if (punchesOut.length > 0) {
-      check_out_time = format(new Date(new Date(punchesOut[punchesOut.length - 1].timestamp).getTime() + IST_OFFSET), 'hh:mm a');
+      check_out_time = format(new Date(punchesOut[punchesOut.length - 1].timestamp), 'hh:mm a');
     }
   
     let netWorkMinutes = 0;
