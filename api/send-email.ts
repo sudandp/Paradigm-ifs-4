@@ -498,21 +498,53 @@ const reportGenerators = {
       new_leads_table += `</tbody></table>`;
     }
 
-    const stageGroups: Record<string, number> = {
-      'New Lead': 0, 'Contacted': 0, 'Site Visit Planned': 0,
-      'Survey Completed': 0, 'Proposal Sent': 0, 'Negotiation': 0, 'Won': 0, 'Lost': 0
-    };
-    (allActiveLeads || []).forEach((l: any) => {
-      if (l.assigned_to === bd.id || l.created_by === bd.id) {
-        stageGroups[l.status] = (stageGroups[l.status] || 0) + 1;
-      }
-    });
+    let metrics_table = `<table width="100%" style="border-collapse:collapse;">
+      <thead><tr style="background:#f8fafc;">
+        <th style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Metric</th>
+        <th style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Target</th>
+        <th style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Actual</th>
+        <th style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Remarks</th>
+      </tr></thead><tbody>`;
+    
+    const metricsData = [
+      { metric: 'Outbound Calls (New Prospects)', target: '-', actual: prospect_calls, remarks: '' },
+      { metric: 'Follow-up Calls / Emails', target: '-', actual: followup_calls, remarks: '' },
+      { metric: 'Site Visits Conducted', target: '-', actual: sites_count, remarks: 'Automated' },
+      { metric: 'Proposals Submitted', target: '-', actual: 0, remarks: 'Automated' },
+      { metric: 'New Leads Added', target: '-', actual: new_leads_count, remarks: '' }
+    ];
 
-    let pipeline_snapshot = Object.entries(stageGroups).map(([stage, count], i) => `
-      <tr style="background:${i % 2 === 0 ? '#ffffff' : '#f8fafc'};">
-        <td style="padding:8px 14px;color:#1e293b;font-size:12px;font-weight:600;">${stage}</td>
-        <td style="padding:8px 14px;text-align:center;color:#374151;font-size:12px;font-weight:700;">${count}</td>
-      </tr>`).join('');
+    metricsData.forEach((row, i) => {
+      const bg = i % 2 === 0 ? '#ffffff' : '#f8fafc';
+      metrics_table += `<tr style="background:${bg};">
+        <td style="padding:12px 14px;font-size:12px;color:#1e293b;font-weight:500;border-top:1px solid #f1f5f9;">${row.metric}</td>
+        <td style="padding:12px 14px;text-align:center;font-size:12px;color:#64748b;border-top:1px solid #f1f5f9;">${row.target}</td>
+        <td style="padding:12px 14px;text-align:center;font-size:12px;font-weight:600;color:#0f172a;border-top:1px solid #f1f5f9;">${row.actual}</td>
+        <td style="padding:12px 14px;font-size:11px;color:#64748b;font-style:italic;border-top:1px solid #f1f5f9;">${row.remarks || '-'}</td>
+      </tr>`;
+    });
+    metrics_table += `</tbody></table>`;
+
+    const myActiveLeads = (allActiveLeads || []).filter((l: any) => l.assigned_to === bd.id || l.created_by === bd.id);
+    const statuses = ['New Lead', 'Contacted', 'Site Visit Planned', 'Survey Completed', 'Proposal Sent', 'Negotiation', 'Won', 'Lost'];
+    let pipeline_snapshot = `<table width="100%" style="border-collapse:collapse;">
+      <thead><tr style="background:#f8fafc;">
+        <th style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Stage</th>
+        <th style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Count</th>
+      </tr></thead><tbody>`;
+    
+    let activeTotal = 0;
+    statuses.forEach((stage, i) => {
+      const count = myActiveLeads.filter((l: any) => l.status === stage).length;
+      if (stage !== 'Won' && stage !== 'Lost') activeTotal += count;
+      const bg = i % 2 === 0 ? '#ffffff' : '#f8fafc';
+      pipeline_snapshot += `<tr style="background:${bg};">
+        <td style="padding:12px 14px;font-size:12px;color:#1e293b;font-weight:500;border-top:1px solid #f1f5f9;">${stage}</td>
+        <td style="padding:12px 14px;text-align:center;font-size:12px;font-weight:700;color:#3b82f6;border-top:1px solid #f1f5f9;">${count}</td>
+      </tr>`;
+    });
+    pipeline_snapshot += `</tbody></table>
+    <div style="margin-top:8px;text-align:right;font-size:12px;font-weight:700;color:#166534;padding:8px;background:#f0fdf4;border-top:1px solid #bbf7d0;">TOTAL ACTIVE PIPELINE: ${activeTotal} leads</div>`;
 
     return {
       bd_name: bd.name,
@@ -541,6 +573,8 @@ const reportGenerators = {
       sitesVisited: 'Automated Schedule',
       new_leads_table,
       newLeadsTable: new_leads_table,
+      metrics_table,
+      metricsTable: metrics_table,
       pipeline_snapshot,
       pipelineSnapshot: pipeline_snapshot
     };
