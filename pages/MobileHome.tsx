@@ -39,7 +39,7 @@ const SUPER_CATEGORY_MAP: Record<string, string> = {
     'CRM & Sales':           'FINANCE & SALES',
     'Finance Hub':           'FINANCE & SALES',
     'Finance & Invoicing':   'FINANCE & SALES',
-    'Audit & Costing':       'FINANCE & SALES',
+    'Audit & Snag Reports':  'FINANCE & SALES',
 
     'Dashboards':            'ADMIN & COMPLIANCE',
     'Enterprise Controls':   'ADMIN & COMPLIANCE',
@@ -83,7 +83,7 @@ const CATEGORY_ICONS: Record<string, React.ComponentType<any>> = {
     'Policies & Compliance':  ShieldHalf,
     'Finance & Invoicing':    IndianRupee,
     'Finance Hub':            Wallet,
-    'Audit & Costing':        ClipboardCheck,
+    'Audit & Snag Reports':   ClipboardCheck,
     'Enterprise Controls':    CheckCircle2,
     'Biometric Devices':      Cpu,
     'Gate Attendance':        ShieldCheck,

@@ -65,7 +65,23 @@ export type Permission =
   | 'view_letter_templates'
   | 'view_reports_dashboard'
   | 'view_snag_audit'
-  | 'view_snag_report';
+  | 'view_snag_report'
+  | 'view_templates_hub'
+  | 'view_ht_master_data'
+  | 'view_ht_yard_audits'
+  | 'view_ppm_audits'
+  | 'manage_family_verification'
+  | 'view_audit_trail'
+  | 'view_profitability'
+  | 'view_payment_tracker'
+  | 'view_helpdesk_tickets'
+  | 'view_preventive_maintenance'
+  | 'view_contract_manager'
+  | 'manage_user_vehicles'
+  | 'view_voip_configuration'
+  | 'view_notification_management'
+  | 'view_attendance_bulk_feed'
+  | 'view_monthly_attendance_feed';
 
 export interface TaskGroup {
   id: string;

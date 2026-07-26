@@ -91,6 +91,10 @@ const AdvancedNotificationSettings = lazyWithRetry(() => import('./pages/admin/A
 const ApiSettings = lazyWithRetry(() => import('./pages/developer/ApiSettings').then(m => ({ default: m.ApiSettings })));
 const VoipSettings = lazyWithRetry(() => import('./pages/developer/VoipSettings'));
 const OperationsDashboard = lazyWithRetry(() => import('./pages/operations/OperationsDashboard'));
+const PPMDashboard = lazyWithRetry(() => import('./pages/operations/PPMDashboard').then(m => ({ default: m.PPMDashboard })));
+const PPMExecution = lazyWithRetry(() => import('./pages/operations/PPMExecution').then(m => ({ default: m.PPMExecution })));
+const HTYardAuditDashboard = lazyWithRetry(() => import('./pages/operations/HTYardAuditDashboard.tsx').then(m => ({ default: m.HTYardAuditDashboard })));
+const HTMasterDataAdmin = lazyWithRetry(() => import('./pages/admin/HTMasterDataAdmin.tsx').then(m => ({ default: m.HTMasterDataAdmin })));
 const TeamActivity = lazyWithRetry(() => import('./pages/operations/TeamActivity'));
 const SiteDashboard = lazyWithRetry(() => import('./pages/site/OrganizationDashboard'));
 const ClientDashboard = lazyWithRetry(() => import('./pages/client/ClientDashboard'));
@@ -225,17 +229,13 @@ import { VoipDialer } from './components/hr/VoipDialer';
 
 // Theme Manager
 const ThemeManager: React.FC = () => {
-  const { theme, isAutomatic, _setThemeInternal } = useThemeStore();
-  const { isMobile } = useDevice();
+  const { _setThemeInternal } = useThemeStore();
+  
   useEffect(() => {
     const body = document.body;
-    let newTheme = 'light';
-
-    if (isAutomatic) {
-      newTheme = isMobile ? 'dark' : 'light';
-    } else {
-      newTheme = theme;
-    }
+    
+    // Force native Android/iOS apps to use dark theme, and web app to use light theme
+    const newTheme = Capacitor.isNativePlatform() ? 'dark' : 'light';
 
     _setThemeInternal(newTheme as 'light' | 'dark');
 
@@ -244,7 +244,7 @@ const ThemeManager: React.FC = () => {
     } else {
       body.classList.remove('pro-dark-theme');
     }
-  }, [theme, isAutomatic, isMobile, _setThemeInternal]);
+  }, [_setThemeInternal]);
 
   return null;
 };
@@ -1723,6 +1723,16 @@ const App: React.FC = () => {
           <Route element={<ProtectedRoute requiredPermission="view_operations_dashboard" />}>
             <Route path="operations/dashboard" element={<OperationsDashboard />} />
             <Route path="operations/team-activity" element={<TeamActivity />} />
+          </Route>
+          <Route element={<ProtectedRoute requiredPermission="view_ht_yard_audits" />}>
+            <Route path="operations/ht-yard-audits" element={<HTYardAuditDashboard />} />
+          </Route>
+          <Route element={<ProtectedRoute requiredPermission="view_ppm_audits" />}>
+            <Route path="operations/ppm-audits" element={<PPMDashboard />} />
+            <Route path="operations/ppm-audits/:categoryId" element={<PPMExecution />} />
+          </Route>
+          <Route element={<ProtectedRoute requiredPermission="view_ht_master_data" />}>
+            <Route path="admin/ht-master-data" element={<HTMasterDataAdmin />} />
           </Route>
           <Route element={<ProtectedRoute requiredPermission="view_my_team" />}>
             <Route path="my-team" element={<MyTeam />} />

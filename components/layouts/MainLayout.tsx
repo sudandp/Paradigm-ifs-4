@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Outlet, NavLink, Navigate, useLocation } from 'react-router-dom';
-import { Bell, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, ChevronRight, ShieldCheck, ClipboardCheck, Map as MapIcon, ClipboardList, User, Briefcase, ListTodo, Building, Users, Shirt, Settings, GitBranch, Calendar, CalendarCheck2, ShieldHalf, FileDigit, GitPullRequest, Home, BriefcaseBusiness, UserPlus, IndianRupee, PackagePlus, LifeBuoy, MapPin, ArrowLeft, Navigation, Cpu, FileText, Smartphone, Baby, Grid3X3, LayoutDashboard, Target, Ticket, Wrench, FileSignature, Wallet, LineChart, History, CheckCircle2, Calculator, Badge, HeartPulse, Archive, CalendarDays, BarChart, BarChart3, Mail, UserX, LayoutTemplate, FileSpreadsheet, Sun, Phone, Car } from 'lucide-react';
+import { Bell, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, ChevronRight, ShieldCheck, ClipboardCheck, Map as MapIcon, ClipboardList, User, Briefcase, ListTodo, Building, Users, Shirt, Settings, GitBranch, Calendar, CalendarCheck2, ShieldHalf, FileDigit, GitPullRequest, Home, BriefcaseBusiness, UserPlus, IndianRupee, PackagePlus, LifeBuoy, MapPin, ArrowLeft, Navigation, Cpu, FileText, Smartphone, Baby, Grid3X3, LayoutDashboard, Target, Ticket, Wrench, FileSignature, Wallet, LineChart, History, CheckCircle2, Calculator, Badge, HeartPulse, Archive, CalendarDays, BarChart, BarChart3, Mail, UserX, LayoutTemplate, FileSpreadsheet, Sun, Phone, Car, Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
 import { usePermissionsStore } from '../../store/permissionsStore';
@@ -48,17 +48,17 @@ export const allNavLinks: NavLinkConfig[] = [
     { to: '/verification/dashboard', label: 'All Submissions', icon: ClipboardList, permission: 'view_all_submissions', category: 'Dashboards' },
 
     // Operations Hub (Phase 2)
-    { to: '/operations/tickets', label: 'Helpdesk Tickets', icon: Ticket, permission: 'view_operations', category: 'Operations Hub' },
-    { to: '/operations/maintenance', label: 'Preventive Maintenance', icon: Wrench, permission: 'view_operations', category: 'Operations Hub' },
-    { to: '/operations/contracts', label: 'Contract Manager', icon: FileSignature, permission: 'view_operations', category: 'Operations Hub' },
+    { to: '/operations/tickets', label: 'Helpdesk Tickets', icon: Ticket, permission: 'view_helpdesk_tickets', category: 'Operations Hub' },
+    { to: '/operations/maintenance', label: 'Preventive Maintenance', icon: Wrench, permission: 'view_preventive_maintenance', category: 'Operations Hub' },
+    { to: '/operations/contracts', label: 'Contract Manager', icon: FileSignature, permission: 'view_contract_manager', category: 'Operations Hub' },
 
     // Finance Hub (Phase 3)
-    { to: '/finance/profitability', label: 'Profitability', icon: LineChart, permission: 'view_finance_reports', category: 'Finance Hub' },
-    { to: '/finance/payments', label: 'Payment Tracker', icon: Wallet, permission: 'view_finance_reports', category: 'Finance Hub' },
+    { to: '/finance/profitability', label: 'Profitability', icon: LineChart, permission: 'view_profitability', category: 'Finance Hub' },
+    { to: '/finance/payments', label: 'Payment Tracker', icon: Wallet, permission: 'view_payment_tracker', category: 'Finance Hub' },
 
     // Enterprise Controls (Phase 4)
     { to: '/enterprise/approvals', label: 'Approvals Inbox', icon: CheckCircle2, permission: 'manage_approval_workflow', category: 'Enterprise Controls' },
-    { to: '/enterprise/audit-trail', label: 'Audit Trail', icon: History, permission: 'manage_approval_workflow', category: 'Enterprise Controls' },
+    { to: '/enterprise/audit-trail', label: 'Audit Trail', icon: History, permission: 'view_audit_trail', category: 'Enterprise Controls' },
 
     // Attendance Logs
     { to: '/attendance/dashboard', label: 'Attendance', icon: Calendar, permission: 'view_own_attendance', category: 'Attendance Logs' },
@@ -75,7 +75,7 @@ export const allNavLinks: NavLinkConfig[] = [
     // Employee Onboarding
     { to: '/onboarding', label: 'New Enrollment', icon: UserPlus, permission: 'create_enrollment', category: 'Employee Onboarding' },
     { to: '/hr/enrollment-rules', label: 'Enrollment Rules', icon: FileDigit, permission: 'manage_enrollment_rules', category: 'Employee Onboarding' },
-    { to: '/hr/family-verification', label: 'Family Verification', icon: Baby, permission: 'manage_enrollment_rules', category: 'Employee Onboarding' },
+    { to: '/hr/family-verification', label: 'Family Verification', icon: Baby, permission: 'manage_family_verification', category: 'Employee Onboarding' },
 
     // Client Management
     { to: '/hr/entity-management?tab=client_structure', label: 'Client Structure', icon: ClipboardList, permission: 'view_entity_management', category: 'Client Management' },
@@ -90,9 +90,9 @@ export const allNavLinks: NavLinkConfig[] = [
     { to: '/hr/entity-management?tab=company_holiday_selection', label: 'Company Holiday Selection', icon: Sun, permission: 'view_entity_management', category: 'Client Management' },
 
     // Templates Hub
-    { to: '/hr/entity-management?tab=templates_hub', label: 'Client Management', icon: FileSpreadsheet, permission: 'view_entity_management', category: 'Templates Hub' },
-    { to: '/hr/entity-management?tab=attendance_bulk', label: 'Attendance Bulk Feed', icon: BarChart, permission: 'view_entity_management', category: 'Templates Hub' },
-    { to: '/hr/entity-management?tab=attendance_monthly_bulk', label: 'Monthly Attendance Feed', icon: CalendarDays, permission: 'view_entity_management', category: 'Templates Hub' },
+    { to: '/hr/entity-management?tab=templates_hub', label: 'Client Management', icon: FileSpreadsheet, permission: 'view_templates_hub', category: 'Templates Hub' },
+    { to: '/hr/entity-management?tab=attendance_bulk', label: 'Attendance Bulk Feed', icon: BarChart, permission: 'view_attendance_bulk_feed', category: 'Templates Hub' },
+    { to: '/hr/entity-management?tab=attendance_monthly_bulk', label: 'Monthly Attendance Feed', icon: CalendarDays, permission: 'view_monthly_attendance_feed', category: 'Templates Hub' },
 
     // Site Management
     { to: '/admin/sites', label: 'Site Management', icon: Building, permission: 'manage_sites', category: 'Site Management' },
@@ -100,11 +100,9 @@ export const allNavLinks: NavLinkConfig[] = [
     { to: '/hr/locations', label: 'Geo Locations', icon: MapIcon, permission: 'manage_geo_locations', category: 'Site Management' },
 
     // Operations & Team
-    { to: '/tasks', label: 'Task Manager', icon: ListTodo, permission: 'view_profile', category: 'Operations & Team' },
+    { to: '/tasks', label: 'Task Manager', icon: ListTodo, permission: 'manage_tasks', category: 'Operations & Team' },
     { to: '/my-team/field-reports', label: 'Field Reports', icon: ClipboardList, permission: 'view_field_reports', category: 'Operations & Team' },
     { to: '/my-team', label: 'My Team', icon: Users, permission: 'view_my_team', category: 'Operations & Team' },
-    { to: '/operations/snag-audit', label: 'Snag Audit', icon: ClipboardCheck, permission: 'view_snag_audit', category: 'Operations & Team' },
-    { to: '/operations/snag-report', label: 'Report', icon: FileSpreadsheet, permission: 'view_snag_report', category: 'Operations & Team' },
 
     // Uniforms & Kit
     { to: '/uniforms', label: 'Uniform Management', icon: Shirt, permission: 'manage_uniforms', category: 'Uniforms & Kit' },
@@ -115,8 +113,12 @@ export const allNavLinks: NavLinkConfig[] = [
     // Finance & Invoicing
     { to: '/billing/summary', label: 'Invoice Summary', icon: IndianRupee, permission: 'view_invoice_summary', category: 'Finance & Invoicing' },
 
-    // Audit & Costing
-    { to: '/billing/cost-analysis', label: 'Verification Costing', icon: ClipboardCheck, permission: 'view_verification_costing', category: 'Audit & Costing' },
+    // Audit & Snag Reports
+    { to: '/admin/ht-master-data', label: 'Master Data', icon: Settings, permission: 'view_ht_master_data', category: 'Audit & Snag Reports' },
+    { to: '/operations/ppm-audits', label: 'PPM Audits', icon: ShieldCheck, permission: 'view_ppm_audits', category: 'Audit & Snag Reports' },
+    { to: '/operations/snag-report', label: 'Report', icon: FileSpreadsheet, permission: 'view_snag_report', category: 'Audit & Snag Reports' },
+    { to: '/operations/ht-yard-audits', label: 'Site Audit', icon: Zap, permission: 'view_ht_yard_audits', category: 'Audit & Snag Reports' },
+    { to: '/operations/snag-audit', label: 'Snag Audit', icon: ClipboardCheck, permission: 'view_snag_audit', category: 'Audit & Snag Reports' },
 
     // Biometric Devices
     { to: '/admin/device-approvals', label: 'Device Approvals', icon: ShieldCheck, permission: 'manage_device_approvals', category: 'Biometric Devices' },
@@ -132,13 +134,14 @@ export const allNavLinks: NavLinkConfig[] = [
     // Security & Roles
     { to: '/admin/roles', label: 'Role Management', icon: ShieldCheck, permission: 'manage_roles_and_permissions', category: 'Security & Roles' },
     { to: '/admin/users', label: 'User Management', icon: Users, permission: 'manage_users', category: 'Security & Roles' },
-    { to: '/admin/user-vehicles', label: 'User Vehicles', icon: Car, permission: 'manage_users', category: 'Security & Roles' },
+    { to: '/admin/user-vehicles', label: 'User Vehicles', icon: Car, permission: 'manage_user_vehicles', category: 'Security & Roles' },
     { to: '/admin/modules', label: 'Access Tasks', icon: PackagePlus, permission: 'manage_modules', category: 'Security & Roles' },
 
     // System Config
     { to: '/developer/api', label: 'API Settings', icon: Settings, permission: 'view_developer_settings', category: 'System Config' },
-    { to: '/developer/voip', label: 'VoIP Configuration', icon: Phone, permission: 'view_developer_settings', category: 'System Config' },
-    { to: '/notifications', label: 'Notification Management', icon: Bell, permission: 'view_developer_settings', category: 'System Config' },
+    { to: '/developer/voip', label: 'VoIP Configuration', icon: Phone, permission: 'view_voip_configuration', category: 'System Config' },
+    { to: '/notifications', label: 'Notification Management', icon: Bell, permission: 'view_notification_management', category: 'System Config' },
+    { to: '/billing/cost-analysis', label: 'Verification Costing', icon: ClipboardCheck, permission: 'view_verification_costing', category: 'System Config' },
 
     // Support & Profile
     { to: '/support', label: 'Backend Support', icon: LifeBuoy, permission: 'access_support_desk', category: 'Support & Profile' },
@@ -160,7 +163,7 @@ const CATEGORY_ICONS: Record<string, any> = {
     'Uniforms & Kit': Shirt,
     'Policies & Compliance': ShieldHalf,
     'Finance & Invoicing': IndianRupee,
-    'Audit & Costing': ClipboardCheck,
+    'Audit & Snag Reports': ClipboardCheck,
     'Biometric Devices': Smartphone,
     'Gate Attendance': ShieldCheck,
     'Security & Roles': ShieldCheck,

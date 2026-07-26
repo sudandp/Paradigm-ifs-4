@@ -2852,6 +2852,89 @@ export const api = {
     if (error) throw error;
   },
 
+  saveHTYardAudit: async (auditData: { activeAudit: any; equipmentInstances: any[]; responses: any; snagItems: any[] }): Promise<void> => {
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('paradigm_ht_yard_active_audit', JSON.stringify(auditData));
+        const rawList = localStorage.getItem('paradigm_ht_yard_audits_list');
+        const existingList = rawList ? JSON.parse(rawList) : [];
+        const updatedList = [auditData, ...existingList.filter((a: any) => a.activeAudit?.id !== auditData.activeAudit?.id)];
+        localStorage.setItem('paradigm_ht_yard_audits_list', JSON.stringify(updatedList));
+      }
+      const record = {
+        id: auditData.activeAudit.id,
+        site_name: auditData.activeAudit.siteName,
+        reference_number: auditData.activeAudit.referenceNumber,
+        audit_date: auditData.activeAudit.auditDate,
+        client_division: auditData.activeAudit.clientDivision,
+        status: auditData.activeAudit.status || 'Draft',
+        equipment_instances: auditData.equipmentInstances,
+        responses: auditData.responses,
+        snag_items: auditData.snagItems,
+        updated_at: new Date().toISOString()
+      };
+      const { error } = await supabase.from('ht_yard_audits').upsert(record);
+      if (error) {
+        console.warn('[API] ht_yard_audits upsert fallback to local storage:', error.message);
+      }
+    } catch (err) {
+      console.warn('[API] Error saving HT Yard audit:', err);
+    }
+  },
+
+  getAllHTYardAudits: async (): Promise<any[]> => {
+    try {
+      const { data, error } = await supabase.from('ht_yard_audits').select('*').order('updated_at', { ascending: false });
+      if (!error && data && data.length > 0) {
+        return data.map((first: any) => ({
+          activeAudit: {
+            id: first.id,
+            siteName: first.site_name,
+            referenceNumber: first.reference_number,
+            auditDate: first.audit_date,
+            clientDivision: first.client_division,
+            status: first.status,
+            auditorName: first.auditor_name || 'Field Engineer'
+          },
+          equipmentInstances: first.equipment_instances || [],
+          responses: first.responses || {},
+          snagItems: first.snag_items || []
+        }));
+      }
+    } catch (err) {
+      console.warn('[API] Failed to fetch HT Yard audits list from cloud, checking local storage');
+    }
+    if (typeof window !== 'undefined') {
+      const cachedList = localStorage.getItem('paradigm_ht_yard_audits_list');
+      if (cachedList) {
+        try {
+          return JSON.parse(cachedList);
+        } catch (e) {
+          return [];
+        }
+      }
+      const activeSingle = localStorage.getItem('paradigm_ht_yard_active_audit');
+      if (activeSingle) {
+        try {
+          return [JSON.parse(activeSingle)];
+        } catch (e) {
+          return [];
+        }
+      }
+    }
+    return [];
+  },
+
+  getHTYardAudits: async (): Promise<any | null> => {
+    const list = await (api.getAllHTYardAudits ? api.getAllHTYardAudits() : []);
+    if (list.length > 0) {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const todayAudit = list.find((a: any) => a.activeAudit?.auditDate === todayStr);
+      return todayAudit || list[0];
+    }
+    return null;
+  },
+
   ensureRoleExists: async (roleId: string, displayName: string, templateRoleId: string = 'technician'): Promise<void> => {
     try {
       const { data: existing } = await supabase.from('roles').select('id').eq('id', roleId).maybeSingle();

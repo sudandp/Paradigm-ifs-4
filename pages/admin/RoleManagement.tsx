@@ -27,19 +27,26 @@ export const allPermissions: { key: Permission; name: string; description: strin
     { key: 'view_reports_dashboard', name: 'Reports Dashboard', description: 'Access the HRM reports dashboard.', category: 'HRM Portal' },
 
     // Dashboards
+    { key: 'view_client_dashboard', name: 'Client Dashboard', description: 'View the client dashboard summary and analytics.', category: 'Dashboards' },
     { key: 'view_site_dashboard', name: 'Site Dashboard', description: 'View the dashboard for a specific site/organization.', category: 'Dashboards' },
     { key: 'view_operations_dashboard', name: 'Operations Dashboard', description: 'View the operations management dashboard.', category: 'Dashboards' },
     { key: 'view_management_dashboard', name: 'Management Dashboard', description: 'View the dashboard for head office/back office management.', category: 'Dashboards' },
     { key: 'view_all_submissions', name: 'View All Submissions', description: 'Access the main dashboard to view all employee submissions.', category: 'Dashboards' },
 
     // Operations Hub
-    { key: 'view_operations', name: 'Access Operations Hub', description: 'Access helpdesk tickets, maintenance, and contracts management.', category: 'Operations Hub' },
+    { key: 'view_operations', name: 'Access Operations Hub', description: 'Access overall operations hub modules.', category: 'Operations Hub' },
+    { key: 'view_helpdesk_tickets', name: 'Helpdesk Tickets', description: 'Access and manage operations helpdesk tickets.', category: 'Operations Hub' },
+    { key: 'view_preventive_maintenance', name: 'Preventive Maintenance', description: 'Access preventive maintenance schedules and tracking.', category: 'Operations Hub' },
+    { key: 'view_contract_manager', name: 'Contract Manager', description: 'Manage site operations contracts and agreements.', category: 'Operations Hub' },
 
     // Finance Hub
-    { key: 'view_finance_reports', name: 'Access Finance Hub', description: 'Access payment tracker and profitability reports.', category: 'Finance Hub' },
+    { key: 'view_finance_reports', name: 'Access Finance Hub', description: 'Access financial overview and reports.', category: 'Finance Hub' },
+    { key: 'view_profitability', name: 'View Profitability', description: 'View site and project profitability metrics.', category: 'Finance Hub' },
+    { key: 'view_payment_tracker', name: 'View Payment Tracker', description: 'Track client payments and invoice status.', category: 'Finance Hub' },
 
     // Enterprise Controls
-    { key: 'manage_approval_workflow', name: 'Manage Enterprise Controls', description: 'Manage approval workflows and view audit trails across the organization.', category: 'Enterprise Controls' },
+    { key: 'manage_approval_workflow', name: 'Manage Enterprise Approvals', description: 'Manage approval workflows across the organization.', category: 'Enterprise Controls' },
+    { key: 'view_audit_trail', name: 'View Audit Trail', description: 'Access organization audit trail logs.', category: 'Enterprise Controls' },
 
     // Attendance Logs
     { key: 'view_own_attendance', name: 'View Own Attendance', description: 'Allows users to see their own attendance records.', category: 'Attendance Logs' },
@@ -59,10 +66,18 @@ export const allPermissions: { key: Permission; name: string; description: strin
     { key: 'create_enrollment', name: 'Create Enrollment', description: 'Access the multi-step form to onboard new employees.', category: 'Employee Onboarding' },
     { key: 'manage_enrollment_rules', name: 'Manage Enrollment Rules', description: 'Set rules for ESI/GMC, manpower limits, and documents.', category: 'Employee Onboarding' },
     { key: 'manage_attendance_rules', name: 'Attendance Rules (Onboarding)', description: 'Settings specifically for onboarding flow rules.', category: 'Employee Onboarding' },
+    { key: 'manage_family_verification', name: 'Family Verification', description: 'Verify employee family members and documents.', category: 'Employee Onboarding' },
+
+    // Client Management
+    { key: 'view_entity_management', name: 'Client Management', description: 'Access the HR dashboard for managing company entities.', category: 'Client Management' },
+
+    // Templates Hub
+    { key: 'view_templates_hub', name: 'Templates Hub', description: 'Access client management templates and attendance bulk feeds.', category: 'Templates Hub' },
+    { key: 'view_attendance_bulk_feed', name: 'Attendance Bulk Feed', description: 'Import and manage attendance bulk feeds.', category: 'Templates Hub' },
+    { key: 'view_monthly_attendance_feed', name: 'Monthly Attendance Feed', description: 'Import and manage monthly attendance feeds.', category: 'Templates Hub' },
 
     // Site Management
     { key: 'manage_sites', name: 'Manage Sites', description: 'Create, edit, and delete organizations/sites.', category: 'Site Management' },
-    { key: 'view_entity_management', name: 'Client Management', description: 'Access the HR dashboard for managing company entities.', category: 'Site Management' },
     { key: 'view_my_locations', name: 'View My Locations', description: 'View assigned geofenced locations for personal attendance.', category: 'Site Management' },
     { key: 'manage_geo_locations', name: 'Manage Geo Locations', description: 'Create and manage geofenced locations for attendance.', category: 'Site Management' },
 
@@ -82,8 +97,12 @@ export const allPermissions: { key: Permission; name: string; description: strin
     { key: 'view_invoice_summary', name: 'View Invoice Summary', description: 'View and generate monthly invoices for sites.', category: 'Finance & Invoicing' },
     { key: 'manage_finance_settings', name: 'Manage Finance Settings', description: 'Control over global finance configurations.', category: 'Finance & Invoicing' },
 
-    // Audit & Costing
-    { key: 'view_verification_costing', name: 'View Verification Costing', description: 'Analyze costs associated with third-party document verifications.', category: 'Audit & Costing' },
+    // Audit & Snag Reports
+    { key: 'view_ht_master_data', name: 'View Master Data', description: 'Manage master data equipment and options.', category: 'Audit & Snag Reports' },
+    { key: 'view_ppm_audits', name: 'View PPM Audits', description: 'Access preventive maintenance audits and schedules.', category: 'Audit & Snag Reports' },
+    { key: 'view_snag_report', name: 'View Snag Report', description: 'Access snag audit reports and summary exports.', category: 'Audit & Snag Reports' },
+    { key: 'view_ht_yard_audits', name: 'View Site Audit', description: 'Access site audit checklists and logs.', category: 'Audit & Snag Reports' },
+    { key: 'view_snag_audit', name: 'View Snag Audit', description: 'View and manage site snag inspections and defects.', category: 'Audit & Snag Reports' },
 
     // Biometric Devices
     { key: 'manage_device_approvals', name: 'Device Approvals', description: 'Manage and approve device linking requests.', category: 'Biometric Devices' },
@@ -99,10 +118,14 @@ export const allPermissions: { key: Permission; name: string; description: strin
     // Security & Roles
     { key: 'manage_users', name: 'Manage Users', description: 'Create, edit, and delete user accounts.', category: 'Security & Roles' },
     { key: 'manage_roles_and_permissions', name: 'Manage Roles & Permissions', description: 'Access this page to edit role permissions.', category: 'Security & Roles' },
+    { key: 'manage_user_vehicles', name: 'Manage User Vehicles', description: 'View and manage employee vehicle registrations.', category: 'Security & Roles' },
     { key: 'manage_modules', name: 'Manage Access Tasks', description: 'Create, edit, and group permissions into access task groups.', category: 'Security & Roles' },
 
     // System Config
     { key: 'view_developer_settings', name: 'Developer Settings', description: 'Access API settings and other developer tools.', category: 'System Config' },
+    { key: 'view_voip_configuration', name: 'VoIP Configuration', description: 'Configure VoIP settings and phone integrations.', category: 'System Config' },
+    { key: 'view_notification_management', name: 'Notification Management', description: 'Manage push notifications and broadcast alerts.', category: 'System Config' },
+    { key: 'view_verification_costing', name: 'View Verification Costing', description: 'Analyze costs associated with third-party document verifications.', category: 'System Config' },
 
     // Support & Profile
     { key: 'view_profile', name: 'View Profile', description: 'Access personal profile and settings.', category: 'Support & Profile' },
@@ -342,6 +365,32 @@ const RoleManagement: React.FC = () => {
         return groups;
     }, [permissionSearchQuery]);
 
+    const { totalModulesCount, enabledModulesCount } = useMemo(() => {
+        const categories = Array.from(new Set(allPermissions.map(p => p.category)));
+        const total = categories.length;
+        if (!selectedRole) return { totalModulesCount: total, enabledModulesCount: 0 };
+
+        const groups: Record<string, typeof allPermissions> = {};
+        allPermissions.forEach(perm => {
+            if (!groups[perm.category]) groups[perm.category] = [];
+            groups[perm.category].push(perm);
+        });
+
+        const rolePerms = permissions[selectedRole.id] || [];
+        const isRoleAdmin = isAdmin(selectedRole.id) && selectedRole.id.toLowerCase() !== 'developer';
+
+        let enabledCount = 0;
+        Object.entries(groups).forEach(([, perms]) => {
+            const hasChecked = perms.some(p => {
+                const isMobileNavAuth = p.key.startsWith('view_mobile_nav_');
+                return isRoleAdmin ? (isMobileNavAuth ? rolePerms.includes(p.key) : true) : rolePerms.includes(p.key);
+            });
+            if (hasChecked) enabledCount++;
+        });
+
+        return { totalModulesCount: total, enabledModulesCount: enabledCount };
+    }, [permissions, selectedRole]);
+
     if (isLoading) {
         return <LoadingScreen message="Loading page data..." />;
     }
@@ -466,11 +515,14 @@ const RoleManagement: React.FC = () => {
                                             <ShieldCheck className="w-5 h-5 text-accent" />
                                         </div>
                                         <div>
-                                            <h2 className="text-xl font-bold text-primary-text flex items-center gap-2">
+                                            <h2 className="text-xl font-bold text-primary-text flex items-center gap-2 flex-wrap">
                                                 {selectedRole.displayName}
                                                 <span className="text-base font-bold text-muted/60 uppercase tracking-widest">Permissions</span>
+                                                <span className="ml-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-accent/10 text-accent border border-accent/20">
+                                                    {totalModulesCount} Modules ({enabledModulesCount} Enabled)
+                                                </span>
                                             </h2>
-                                            <p className="text-sm font-medium text-muted mt-1">Configure what users with this role can access.</p>
+                                            <p className="text-sm font-medium text-muted mt-1">Configure what users with this role can access across all {totalModulesCount} system modules.</p>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-3">
