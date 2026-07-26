@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Plus, FileSpreadsheet, FileText, Zap, Layers, AlertTriangle, 
   CheckCircle2, Clock, Activity, Cpu, ShieldCheck, Search, Filter, 
-  ArrowUpRight, Sparkles, SlidersHorizontal, Save, ChevronDown, Check
+  ArrowUpRight, Sparkles, SlidersHorizontal, Save, ChevronDown, Check, Trash2
 } from 'lucide-react';
 import { HTAuditHeader, HTEquipmentInstance, HTAuditResponse, HTSnagItem, HTEquipmentModuleType } from '../../types/htYard';
 import { HT_YARD_FIELD_SPECS } from '../../config/htYardFieldSpecs';
@@ -28,6 +28,10 @@ export const HTYardAuditDashboard: React.FC = () => {
   const [showNewAuditModal, setShowNewAuditModal] = useState(false);
   const [newSiteName, setNewSiteName] = useState('');
   const [newClientDivision, setNewClientDivision] = useState('');
+
+  // Modal for delete audit
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [auditToDelete, setAuditToDelete] = useState<{ id: string; siteName: string } | null>(null);
 
   const loadAudits = async () => {
     try {
@@ -62,6 +66,43 @@ export const HTYardAuditDashboard: React.FC = () => {
     setActiveInstanceId('site_common');
     setShowSiteDropdown(false);
     toast.success(`Switched to ${item.activeAudit.siteName}`);
+  };
+
+  const handleDeleteAuditClick = (auditId: string, siteName: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setAuditToDelete({ id: auditId, siteName });
+    setShowDeleteModal(true);
+  };
+
+  const handleConfirmDeleteAudit = async () => {
+    if (!auditToDelete) return;
+    const targetId = auditToDelete.id;
+    toast.loading('Deleting audit...', { id: 'delete-ht-audit' });
+    try {
+      await api.deleteHTYardAudit(targetId);
+      const updatedList = allAudits.filter(a => a.activeAudit?.id !== targetId);
+      setAllAudits(updatedList);
+
+      if (activeAudit?.id === targetId) {
+        if (updatedList.length > 0) {
+          const next = updatedList[0];
+          setActiveAudit(next.activeAudit);
+          setEquipmentInstances(next.equipmentInstances || []);
+          setResponses(next.responses || {});
+          setSnagItems(next.snagItems || []);
+        } else {
+          setActiveAudit(null);
+          setEquipmentInstances([]);
+          setResponses({});
+          setSnagItems([]);
+        }
+      }
+      setShowDeleteModal(false);
+      setAuditToDelete(null);
+      toast.success('Site Audit deleted successfully!', { id: 'delete-ht-audit' });
+    } catch (err) {
+      toast.error('Failed to delete audit.', { id: 'delete-ht-audit' });
+    }
   };
 
   const handleSaveAuditToDatabase = async () => {
@@ -307,10 +348,10 @@ export const HTYardAuditDashboard: React.FC = () => {
                     const isToday = item.activeAudit?.auditDate === new Date().toISOString().split('T')[0];
                     const isSelected = item.activeAudit?.id === activeAudit?.id;
                     return (
-                      <button
+                      <div
                         key={item.activeAudit?.id || Math.random()}
                         onClick={() => handleSelectAudit(item)}
-                        className={`w-full text-left p-3 rounded-xl transition-all flex items-center justify-between ${
+                        className={`w-full text-left p-3 rounded-xl transition-all flex items-center justify-between cursor-pointer ${
                           isSelected
                             ? 'bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200/80 dark:border-emerald-800'
                             : 'hover:bg-slate-50 dark:hover:bg-slate-800/60'
@@ -333,8 +374,17 @@ export const HTYardAuditDashboard: React.FC = () => {
                             <span>{item.activeAudit?.auditDate}</span>
                           </div>
                         </div>
-                        {isSelected && <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />}
-                      </button>
+                        <div className="flex items-center gap-1">
+                          {isSelected && <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 mr-1" />}
+                          <button
+                            onClick={(e) => handleDeleteAuditClick(item.activeAudit?.id, item.activeAudit?.siteName, e)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-lg transition-colors"
+                            title="Delete Audit"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
                     );
                   })}
                 </div>
@@ -375,6 +425,13 @@ export const HTYardAuditDashboard: React.FC = () => {
             className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl text-xs font-bold transition-all flex items-center gap-2 border border-slate-200 dark:border-slate-700"
           >
             <Plus className="w-4 h-4 text-slate-600 dark:text-slate-400" /> New Audit
+          </button>
+          <button
+            onClick={() => activeAudit && handleDeleteAuditClick(activeAudit.id, activeAudit.siteName)}
+            className="px-3.5 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:hover:bg-rose-900/60 dark:text-rose-300 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border border-rose-200/80 dark:border-rose-800"
+            title="Delete Active Audit"
+          >
+            <Trash2 className="w-4 h-4 text-rose-600" /> Delete Audit
           </button>
           <button
             onClick={handleExportExcel}
@@ -633,6 +690,38 @@ export const HTYardAuditDashboard: React.FC = () => {
                 {newSiteName.trim() && allAudits.some(a => a.activeAudit?.siteName?.trim().toLowerCase() === newSiteName.trim().toLowerCase())
                   ? 'Switch to Existing Audit'
                   : 'Create Audit Draft'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="w-12 h-12 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <div className="text-center space-y-1">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">Delete Site Audit?</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Are you sure you want to delete the audit for <strong className="text-slate-800 dark:text-slate-200">"{auditToDelete?.siteName}"</strong>? This action cannot be undone.
+              </p>
+            </div>
+            <div className="flex justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+              <button
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setAuditToDelete(null);
+                }}
+                className="px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDeleteAudit}
+                className="px-4 py-2 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow-xs transition-all flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Delete Audit
               </button>
             </div>
           </div>

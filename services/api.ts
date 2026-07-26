@@ -2935,6 +2935,37 @@ export const api = {
     return null;
   },
 
+  deleteHTYardAudit: async (auditId: string): Promise<void> => {
+    try {
+      if (typeof window !== 'undefined') {
+        const rawList = localStorage.getItem('paradigm_ht_yard_audits_list');
+        const existingList = rawList ? JSON.parse(rawList) : [];
+        const updatedList = existingList.filter((a: any) => a.activeAudit?.id !== auditId);
+        localStorage.setItem('paradigm_ht_yard_audits_list', JSON.stringify(updatedList));
+
+        const activeSingle = localStorage.getItem('paradigm_ht_yard_active_audit');
+        if (activeSingle) {
+          try {
+            const parsed = JSON.parse(activeSingle);
+            if (parsed.activeAudit?.id === auditId) {
+              if (updatedList.length > 0) {
+                localStorage.setItem('paradigm_ht_yard_active_audit', JSON.stringify(updatedList[0]));
+              } else {
+                localStorage.removeItem('paradigm_ht_yard_active_audit');
+              }
+            }
+          } catch (e) {}
+        }
+      }
+      const { error } = await supabase.from('ht_yard_audits').delete().eq('id', auditId);
+      if (error) {
+        console.warn('[API] ht_yard_audits delete fallback:', error.message);
+      }
+    } catch (err) {
+      console.warn('[API] Error deleting HT Yard audit:', err);
+    }
+  },
+
   ensureRoleExists: async (roleId: string, displayName: string, templateRoleId: string = 'technician'): Promise<void> => {
     try {
       const { data: existing } = await supabase.from('roles').select('id').eq('id', roleId).maybeSingle();
