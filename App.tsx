@@ -230,21 +230,26 @@ import { VoipDialer } from './components/hr/VoipDialer';
 // Theme Manager
 const ThemeManager: React.FC = () => {
   const { _setThemeInternal } = useThemeStore();
+  const { isMobile } = useDevice();
   
   useEffect(() => {
     const body = document.body;
+    const html = document.documentElement;
     
-    // Force native Android/iOS apps to use dark theme, and web app to use light theme
-    const newTheme = Capacitor.isNativePlatform() ? 'dark' : 'light';
+    // Automatically apply Dark Bottle Green theme for Android / iOS / Mobile devices
+    const isMobileDevice = isMobile || Capacitor.isNativePlatform() || (typeof window !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
+    const newTheme = isMobileDevice ? 'dark' : 'light';
 
     _setThemeInternal(newTheme as 'light' | 'dark');
 
     if (newTheme === 'dark') {
       body.classList.add('pro-dark-theme');
+      html.classList.add('dark');
     } else {
       body.classList.remove('pro-dark-theme');
+      html.classList.remove('dark');
     }
-  }, [_setThemeInternal]);
+  }, [isMobile, _setThemeInternal]);
 
   return null;
 };

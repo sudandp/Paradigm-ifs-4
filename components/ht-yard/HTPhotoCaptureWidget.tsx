@@ -124,7 +124,7 @@ export const HTPhotoCaptureWidget: React.FC<HTPhotoCaptureWidgetProps> = ({
           <button
             type="button"
             onClick={handleNativeCamera}
-            className="w-16 h-16 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-700 flex flex-col items-center justify-center text-gray-500 hover:border-blue-500 hover:text-blue-500 transition-colors bg-gray-50 dark:bg-gray-800/40"
+            className="w-16 h-16 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-700 flex flex-col items-center justify-center text-gray-500 hover:border-emerald-500 hover:text-emerald-500 transition-colors bg-gray-50 dark:bg-gray-800/40"
           >
             <Camera className="w-5 h-5 mb-0.5" />
             <span className="text-[10px] font-medium">+ Photo</span>

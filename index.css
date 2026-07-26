@@ -1304,30 +1304,63 @@ body {
     height: 1.25rem;
     margin-right: 0.75rem;
 }
-.pro-dark-theme {
+/* Dark Bottle Green Theme for Android / Mobile devices */
+.pro-dark-theme, html.dark {
     background-color: #041b0f !important;
-    color: #e5e7eb;
+    color: #f3f4f6;
 }
-body.pro-dark-theme, body.pro-dark-theme #root, .pro-dark-theme .bg-page {
+
+body.pro-dark-theme, html.dark body, body.pro-dark-theme #root, html.dark #root, .pro-dark-theme .bg-page, html.dark .bg-page {
     background-color: #041b0f !important;
-    color: #e5e7eb;
+    color: #f3f4f6;
 }
-.pro-dark-theme .bg-card {
-    background-color: #0d2c18;
-    border: 1px solid #123820;
-    border-radius: 1.5rem;
+
+/* Page background overrides for dark mode on Android/Mobile */
+html.dark .bg-slate-950, 
+html.dark .bg-slate-900\/60,
+html.dark .bg-slate-50\/60,
+html.dark .bg-slate-50 {
+    background-color: #041b0f !important;
 }
-.pro-dark-theme .shadow-card {
-    box-shadow: none;
+
+/* Card & container overrides for dark mode on Android/Mobile */
+html.dark .bg-white,
+html.dark .bg-slate-900, 
+html.dark .bg-slate-800,
+.pro-dark-theme .bg-card, 
+html.dark .bg-card {
+    background-color: #092c19 !important;
+    border-color: #134426 !important;
+    color: #ffffff !important;
 }
-.pro-dark-theme .text-primary-text {
-    color: #ffffff;
+
+/* Border overrides for dark mode on Android/Mobile */
+html.dark .border-slate-800, 
+html.dark .border-slate-700, 
+html.dark .border-slate-200,
+html.dark .border-slate-200\/80 {
+    border-color: #134426 !important;
 }
-.pro-dark-theme .text-muted {
-    color: #d1d5db;
+
+/* High-contrast Header & Text Overrides for Mobile Dark Theme */
+html.dark h1, html.dark h2, html.dark h3, html.dark h4,
+.pro-dark-theme h1, .pro-dark-theme h2, .pro-dark-theme h3, .pro-dark-theme h4,
+html.dark .text-slate-900, html.dark .text-slate-800, html.dark .text-slate-700,
+.pro-dark-theme .text-slate-900, .pro-dark-theme .text-slate-800, .pro-dark-theme .text-slate-700 {
+    color: #ffffff !important;
 }
-.pro-dark-theme .border-border {
-    border-color: #123820;
+
+html.dark .text-slate-500, html.dark .text-slate-400,
+.pro-dark-theme .text-slate-500, .pro-dark-theme .text-slate-400 {
+    color: #a3c4b1 !important;
+}
+
+/* Inputs & Form Controls on Mobile Dark Theme */
+html.dark input, html.dark select, html.dark textarea,
+.pro-dark-theme input, .pro-dark-theme select, .pro-dark-theme textarea {
+    background-color: #051f11 !important;
+    border-color: #134426 !important;
+    color: #ffffff !important;
 }
 .pro-dark-theme .form-header-title::after {
     background-color: #006b3f;

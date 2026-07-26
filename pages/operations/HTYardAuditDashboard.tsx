@@ -233,11 +233,11 @@ export const HTYardAuditDashboard: React.FC = () => {
   // Empty State when no active audit exists
   if (!activeAudit) {
     return (
-      <div className="min-h-screen bg-slate-50/60 dark:bg-slate-950 p-4 sm:p-6 flex flex-col items-center justify-center relative overflow-hidden">
+      <div className="min-h-screen bg-slate-50/60 dark:bg-slate-950 p-4 sm:p-6 pb-32 md:pb-6 flex flex-col items-center justify-center relative overflow-hidden">
         
         <div className="absolute inset-0 bg-grid-slate-100 dark:bg-grid-slate-900/40 [mask-image:linear-gradient(0deg,transparent,black)] pointer-events-none" />
         
-        <div className="relative z-10 max-w-lg w-full bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 p-10 text-center shadow-xl shadow-slate-200/20 dark:shadow-none">
+        <div className="relative z-10 max-w-lg w-full bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 p-8 sm:p-10 text-center shadow-xl shadow-slate-200/20 dark:shadow-none">
           <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-900/50 rounded-2xl flex items-center justify-center mx-auto mb-6 transform rotate-3">
             <Zap className="w-8 h-8 text-emerald-600 dark:text-emerald-400" />
           </div>
@@ -252,11 +252,13 @@ export const HTYardAuditDashboard: React.FC = () => {
           
           <button
             onClick={() => setShowNewAuditModal(true)}
-            className="w-full sm:w-auto px-8 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-lg shadow-emerald-600/20 hover:shadow-emerald-600/30 transition-all flex items-center justify-center gap-2 mx-auto"
+            className="w-full sm:w-auto px-8 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-lg shadow-emerald-600/20 hover:shadow-emerald-600/30 transition-all flex items-center justify-center gap-2 mx-auto mb-4"
           >
             <Plus className="w-5 h-5" /> Start Fresh Audit
           </button>
         </div>
+
+        {/* New Audit Modal */}
 
         {/* New Audit Modal (rendered conditionally here too so it can be opened from the empty state) */}
         {showNewAuditModal && (
@@ -313,7 +315,7 @@ export const HTYardAuditDashboard: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50/60 dark:bg-slate-950 p-4 sm:p-6 lg:p-8 space-y-6">
+    <div className="min-h-screen bg-slate-50/60 dark:bg-slate-950 p-4 sm:p-6 lg:p-8 pb-32 md:pb-8 space-y-6">
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs">
         <div>
@@ -457,7 +459,7 @@ export const HTYardAuditDashboard: React.FC = () => {
             <div className="text-2xl font-black text-slate-900 dark:text-white mt-1">{totalEquipmentCount} <span className="text-xs font-normal text-slate-500">instances</span></div>
             <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium mt-1 inline-block">RMU, Transformer, Kiosk</span>
           </div>
-          <div className="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-950/50 flex items-center justify-center text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900/40">
+          <div className="w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 flex items-center justify-center text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/40">
             <Cpu className="w-6 h-6" />
           </div>
         </div>
@@ -467,9 +469,9 @@ export const HTYardAuditDashboard: React.FC = () => {
           <div>
             <span className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Checked Items</span>
             <div className="text-2xl font-black text-slate-900 dark:text-white mt-1">{totalResponses} <span className="text-xs font-normal text-slate-500">recorded</span></div>
-            <span className="text-[11px] text-indigo-600 dark:text-indigo-400 font-medium mt-1 inline-block">Field observations logged</span>
+            <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium mt-1 inline-block">Field observations logged</span>
           </div>
-          <div className="w-12 h-12 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 flex items-center justify-center text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/40">
+          <div className="w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 flex items-center justify-center text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/40">
             <Activity className="w-6 h-6" />
           </div>
         </div>
