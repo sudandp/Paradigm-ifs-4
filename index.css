@@ -1306,6 +1306,11 @@ body {
 }
 /* Dark Bottle Green Theme for Android / Mobile devices */
 .pro-dark-theme, html.dark {
+    --color-page: #041b0f;
+    --color-card: #092c19;
+    --color-muted: #a3c4b1;
+    --color-primary-text: #ffffff;
+    --color-border: #134426;
     background-color: #041b0f !important;
     color: #f3f4f6;
 }
@@ -1343,15 +1348,22 @@ html.dark .border-slate-200\/80 {
 }
 
 /* High-contrast Header & Text Overrides for Mobile Dark Theme */
-html.dark h1, html.dark h2, html.dark h3, html.dark h4,
-.pro-dark-theme h1, .pro-dark-theme h2, .pro-dark-theme h3, .pro-dark-theme h4,
+html.dark h1, html.dark h2, html.dark h3, html.dark h4, html.dark h5, html.dark h6,
+.pro-dark-theme h1, .pro-dark-theme h2, .pro-dark-theme h3, .pro-dark-theme h4, .pro-dark-theme h5, .pro-dark-theme h6,
+html.dark .text-primary-text, .pro-dark-theme .text-primary-text,
 html.dark .text-slate-900, html.dark .text-slate-800, html.dark .text-slate-700,
-.pro-dark-theme .text-slate-900, .pro-dark-theme .text-slate-800, .pro-dark-theme .text-slate-700 {
+.pro-dark-theme .text-slate-900, .pro-dark-theme .text-slate-800, .pro-dark-theme .text-slate-700,
+html.dark .text-gray-900, html.dark .text-gray-800, html.dark .text-gray-700, html.dark .text-gray-600,
+.pro-dark-theme .text-gray-900, .pro-dark-theme .text-gray-800, .pro-dark-theme .text-gray-700, .pro-dark-theme .text-gray-600 {
     color: #ffffff !important;
 }
 
+html.dark .text-muted, .pro-dark-theme .text-muted,
+html.dark .text-muted-foreground, .pro-dark-theme .text-muted-foreground,
 html.dark .text-slate-500, html.dark .text-slate-400,
-.pro-dark-theme .text-slate-500, .pro-dark-theme .text-slate-400 {
+.pro-dark-theme .text-slate-500, .pro-dark-theme .text-slate-400,
+html.dark .text-gray-500, html.dark .text-gray-400, html.dark .text-gray-300,
+.pro-dark-theme .text-gray-500, .pro-dark-theme .text-gray-400, .pro-dark-theme .text-gray-300 {
     color: #a3c4b1 !important;
 }
 
