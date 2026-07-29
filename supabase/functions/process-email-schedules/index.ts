@@ -1628,18 +1628,22 @@ async function generateCRMBdDailyReport(supabase: ReturnType<typeof createClient
   const todayStr = getISTDateString(nowIST);
   const startOfTodayUTC = startOfDay(new Date(nowIST.getTime() - IST_OFFSET));
 
-  const { data: usersRes } = await supabase.from('users').select('id, name, role:roles(display_name)').eq('is_blocked', false);
-  const bdUsers = ((usersRes || []) as User[]).filter((u: User) => {
+  const { data: usersRes } = await supabase.from('users').select('id, name, role_id, role:roles(display_name)').eq('is_blocked', false);
+  const bdUsers = ((usersRes || []) as User[]).filter((u: any) => {
     const roleName = (Array.isArray(u.role) ? u.role[0]?.display_name : u.role?.display_name) || '';
-    return roleName.toLowerCase() === 'business developer' || roleName.toLowerCase() === 'business_developer';
+    const roleId = (u.role_id || '').toLowerCase();
+    const rName = roleName.toLowerCase();
+    return rName === 'business developer' || rName === 'business_developer' || rName === 'bd' || roleId === 'business_developer' || roleId === 'bd';
   });
 
   if (bdUsers.length === 0) {
+    const defaultDate = format(nowIST, 'dd MMM yyyy');
     return [{
+      date: defaultDate,
       bd_name: 'All BDs',
       bdName: 'All BDs',
-      report_date: format(nowIST, 'dd MMM yyyy'),
-      reportDate: format(nowIST, 'dd MMM yyyy'),
+      report_date: defaultDate,
+      reportDate: defaultDate,
       attendance_status: 'No Active BDs',
       attendanceStatus: 'No Active BDs',
       check_in_time: 'N/A',
@@ -1662,10 +1666,10 @@ async function generateCRMBdDailyReport(supabase: ReturnType<typeof createClient
       sitesVisited: 'None',
       new_leads_table: '<div style="padding:16px;text-align:center;color:#64748b;">No active Business Developers found.</div>',
       newLeadsTable: '<div style="padding:16px;text-align:center;color:#64748b;">No active Business Developers found.</div>',
-      metrics_table: '',
-      metricsTable: '',
-      pipeline_snapshot: '',
-      pipelineSnapshot: ''
+      metrics_table: '<div style="padding:16px;text-align:center;color:#64748b;">No activity metrics available.</div>',
+      metricsTable: '<div style="padding:16px;text-align:center;color:#64748b;">No activity metrics available.</div>',
+      pipeline_snapshot: '<div style="padding:16px;text-align:center;color:#64748b;">No pipeline data available.</div>',
+      pipelineSnapshot: '<div style="padding:16px;text-align:center;color:#64748b;">No pipeline data available.</div>'
     }];
   }
 

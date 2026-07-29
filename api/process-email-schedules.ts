@@ -166,13 +166,50 @@ const reportGenerators = {
     const startOfTodayUTC = startOfDay(new Date(nowIST.getTime() - IST_OFFSET));
 
     // Fetch BD users
-    const { data: usersRes } = await supabase.from('users').select('id, name, role:roles(display_name)').eq('is_blocked', false);
+    const { data: usersRes } = await supabase.from('users').select('id, name, role_id, role:roles(display_name)').eq('is_blocked', false);
     const bdUsers = (usersRes || []).filter((u: any) => {
       const roleName = (Array.isArray(u.role) ? u.role[0]?.display_name : u.role?.display_name) || '';
-      return roleName.toLowerCase() === 'business developer' || roleName.toLowerCase() === 'business_developer';
+      const roleId = (u.role_id || '').toLowerCase();
+      const rName = roleName.toLowerCase();
+      return rName === 'business developer' || rName === 'business_developer' || rName === 'bd' || roleId === 'business_developer' || roleId === 'bd';
     });
 
-    if (bdUsers.length === 0) return [];
+    if (bdUsers.length === 0) {
+      const defaultDate = format(nowIST, 'dd MMM yyyy');
+      return [{
+        date: defaultDate,
+        bd_name: 'All BDs',
+        bdName: 'All BDs',
+        report_date: defaultDate,
+        reportDate: defaultDate,
+        attendance_status: 'No Active BDs',
+        attendanceStatus: 'No Active BDs',
+        check_in_time: 'N/A',
+        checkInTime: 'N/A',
+        check_out_time: 'N/A',
+        checkOutTime: 'N/A',
+        working_hours: '0h 0m',
+        workingHours: '0h 0m',
+        kms_travelled: '0',
+        kmsTravelled: '0',
+        prospect_calls: '0',
+        prospectCalls: '0',
+        followup_calls: '0',
+        followupCalls: '0',
+        new_leads_count: '0',
+        newLeadsCount: '0',
+        sites_count: '0',
+        sitesCount: '0',
+        sites_visited: 'None',
+        sitesVisited: 'None',
+        new_leads_table: '<div style="padding:16px;text-align:center;color:#64748b;">No active Business Developers found.</div>',
+        newLeadsTable: '<div style="padding:16px;text-align:center;color:#64748b;">No active Business Developers found.</div>',
+        metrics_table: '<div style="padding:16px;text-align:center;color:#64748b;">No activity metrics available.</div>',
+        metricsTable: '<div style="padding:16px;text-align:center;color:#64748b;">No activity metrics available.</div>',
+        pipeline_snapshot: '<div style="padding:16px;text-align:center;color:#64748b;">No pipeline data available.</div>',
+        pipelineSnapshot: '<div style="padding:16px;text-align:center;color:#64748b;">No pipeline data available.</div>'
+      }];
+    }
 
     // Fetch related data for today
     const [eventsRes, leadsRes, callsRes] = await Promise.all([
@@ -348,6 +385,9 @@ const reportGenerators = {
     }
 
     return reports;
+  },
+  bd_daily: async (supabase: SupabaseClient, nowIST: Date) => {
+    return (reportGenerators as any).crm_bd_daily(supabase, nowIST);
   }
 };
 
@@ -452,11 +492,17 @@ async function processSchedules(req: VercelRequest) {
         }
       }
 
-      const render = (text: string, data: any) => (text || '').replace(/\{(\w+)\}/g, (match, key) => {
-        const cleanKey = key.toLowerCase().replace(/[_-]/g, '');
-        const dataKey = Object.keys(data).find(k => k.toLowerCase().replace(/[_-]/g, '') === cleanKey);
-        return dataKey ? (data as any)[dataKey] : match;
-      });
+      const render = (text: string, data: any) => {
+        if (!text) return '';
+        return text.replace(/\{([\w]+)\}/gi, (match, key) => {
+          const cleanKey = key.toLowerCase().replace(/[_-]/g, '');
+          const dataKey = Object.keys(data || {}).find(k => k.toLowerCase().replace(/[_-]/g, '') === cleanKey);
+          if (dataKey && (data as any)[dataKey] !== undefined && (data as any)[dataKey] !== null) {
+            return String((data as any)[dataKey]);
+          }
+          return match;
+        });
+      };
 
       greetingMessage = render(greetingMessage, dataItem || {});
 
