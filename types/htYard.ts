@@ -78,7 +78,7 @@ export interface HTSnagItem {
   updatedAt?: string;
 }
 
-export type HTMasterCategory = 'Cable Details' | 'RMUMD' | 'TRMaster Data' | 'LTKMD';
+export type HTMasterCategory = 'Cable Details' | 'RMUMD' | 'TRMaster Data' | 'LTKMD' | 'HTYardCommon' | (string & {});
 
 export interface HTMasterOption {
   id: string;
@@ -87,6 +87,7 @@ export interface HTMasterOption {
   fieldKey: string;
   optionValue: string;
   isActive: boolean;
+  updatedBy?: string;
   createdAt?: string;
   updatedAt?: string;
 }

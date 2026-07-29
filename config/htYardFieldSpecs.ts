@@ -23,7 +23,7 @@ export const HT_YARD_FIELD_SPECS: Record<string, ModuleSpec> = {
         sectionKey: 'incoming_od1',
         title: '7. Incoming OD 1 Details',
         fields: [
-          { key: 'cable_rating', label: 'Cable Rating', type: 'select', optionsCategory: 'Cable Details' },
+          { key: 'cable_rating', label: 'Cable Rating', type: 'select', optionsCategory: 'Cable Details', optionsFieldKey: 'cable_rating_rmu' },
           { key: 'from_source', label: 'From Source', type: 'text' },
           { key: 'power_indicator', label: 'Power Line Indicator Details', type: 'cascading_select', optionsCategory: 'RMUMD', optionsFieldKey: 'power_indicator' },
           { key: 'fault_indicator', label: 'Line Fault / Earth Indicator Details', type: 'cascading_select', optionsCategory: 'RMUMD', optionsFieldKey: 'fault_indicator' },
@@ -107,32 +107,32 @@ export const HT_YARD_FIELD_SPECS: Record<string, ModuleSpec> = {
           { key: 'oil_level_indicator', label: '10. Oil Level Indicator', type: 'select', optionsCategory: 'TRMaster Data', optionsFieldKey: 'oil_level_indicator' },
           { key: 'oil_temp_indicator', label: '11. Oil Temperature Indicator', type: 'select', optionsCategory: 'TRMaster Data', optionsFieldKey: 'oil_temp_indicator' },
           { key: 'winding_temp_indicator', label: '12. Winding Temperature Indicator', type: 'select', optionsCategory: 'TRMaster Data', optionsFieldKey: 'winding_temp_indicator' },
-          { key: 'prv', label: '13. Pressure Relief Valve (PRV)', type: 'boolean' },
-          { key: 'drain_valve', label: '14. Drain Valve', type: 'text' },
+          { key: 'prv', label: '13. Pressure Relief Valve (PRV)', type: 'select', optionsCategory: 'TRMaster Data', optionsFieldKey: 'prv' },
+          { key: 'drain_valve', label: '14. Drain Valve', type: 'select', optionsCategory: 'TRMaster Data', optionsFieldKey: 'drain_valve' },
           { key: 'tap_changer', label: '15. Tap Changer (Automatic / Manual)', type: 'select', optionsCategory: 'TRMaster Data', optionsFieldKey: 'tap_changer' },
-          { key: 'conservator_cond', label: '16. Condition of Oil Conservator', type: 'text' },
-          { key: 'explosion_vent', label: '17. Explosion Vent', type: 'boolean' },
+          { key: 'conservator_cond', label: '16. Condition of Oil Conservator', type: 'select', optionsCategory: 'TRMaster Data', optionsFieldKey: 'conservator_cond' },
+          { key: 'explosion_vent', label: '17. Explosion Vent', type: 'select', optionsCategory: 'TRMaster Data', optionsFieldKey: 'explosion_vent' },
           { key: 'buchholz_relay', label: '18. Buchholz Relay', type: 'boolean' },
-          { key: 'air_breather', label: '19. Air Breather (Silica Gel)', type: 'select', optionsCategory: 'TRMaster Data', optionsFieldKey: 'silica_gel' },
-          { key: 'body_earth_terminals', label: '20. Earthing Terminals at Transformer Body', type: 'boolean' },
-          { key: 'neutral_earth_terminals', label: '21. Earthing Terminals at Neutral', type: 'boolean' },
-          { key: 'lifting_lugs', label: '22. Lifting Lugs', type: 'boolean' }
+          { key: 'air_breather', label: '19. Air Breather (Silica Gel)', type: 'select', optionsCategory: 'TRMaster Data', optionsFieldKey: 'air_breather' },
+          { key: 'body_earth_terminals', label: '20. Earthing Terminals at Transformer Body', type: 'select', optionsCategory: 'TRMaster Data', optionsFieldKey: 'body_earth_terminals' },
+          { key: 'neutral_earth_terminals', label: '21. Earthing Terminals at Neutral', type: 'select', optionsCategory: 'TRMaster Data', optionsFieldKey: 'neutral_earth_terminals' },
+          { key: 'lifting_lugs', label: '22. Lifting Lugs', type: 'select', optionsCategory: 'TRMaster Data', optionsFieldKey: 'lifting_lugs' }
         ]
       },
       {
         sectionKey: 'installation_condition',
         title: 'Installation Condition',
         fields: [
-          { key: 'foundation_cond', label: '23. Condition of Foundation', type: 'text' },
-          { key: 'cable_laying', label: '24. Laying of Cables', type: 'text' },
-          { key: 'incoming_cable_fixing', label: '25. Incoming Cable Fixing & Copper Earthing', type: 'text' },
-          { key: 'outgoing_cable_fixing', label: '26. Outgoing Cable Fixing', type: 'text' },
-          { key: 'gland_condition', label: '27. Cable Gland Condition', type: 'text' },
-          { key: 'gland_earthing', label: '28. Cable Gland Earthing', type: 'boolean' },
+          { key: 'foundation_cond', label: '23. Condition of Foundation', type: 'select', optionsCategory: 'TRMaster Data', optionsFieldKey: 'foundation_cond' },
+          { key: 'cable_laying', label: '24. Laying of Cables', type: 'select', optionsCategory: 'TRMaster Data', optionsFieldKey: 'cable_laying' },
+          { key: 'incoming_cable_fixing', label: '25. Incoming Cable Fixing & Copper Earthing', type: 'select', optionsCategory: 'TRMaster Data', optionsFieldKey: 'incoming_cable_fixing' },
+          { key: 'outgoing_cable_fixing', label: '26. Outgoing Cable Fixing', type: 'select', optionsCategory: 'TRMaster Data', optionsFieldKey: 'outgoing_cable_fixing' },
+          { key: 'gland_condition', label: '27. Cable Gland Condition', type: 'select', optionsCategory: 'TRMaster Data', optionsFieldKey: 'gland_condition' },
+          { key: 'gland_earthing', label: '28. Cable Gland Earthing', type: 'select', optionsCategory: 'TRMaster Data', optionsFieldKey: 'gland_earthing' },
           { key: 'body_condition', label: '29. Body Condition', type: 'select', optionsCategory: 'TRMaster Data', optionsFieldKey: 'body_condition' },
           { key: 'earth_pit_distances', label: '30. Location of Earthing Pits (TR to NEP / BEP)', type: 'text' },
-          { key: 'incoming_cable_details', label: '31. Incoming Cable Details (Rating & From)', type: 'select', optionsCategory: 'Cable Details' },
-          { key: 'outgoing_cable_details', label: '32. Outgoing Cable Details (Rating & To)', type: 'select', optionsCategory: 'Cable Details' }
+          { key: 'incoming_cable_details', label: '31. Incoming Cable Details (Rating & From)', type: 'select', optionsCategory: 'Cable Details', optionsFieldKey: 'cable_rating_transformer' },
+          { key: 'outgoing_cable_details', label: '32. Outgoing Cable Details (Rating & To)', type: 'select', optionsCategory: 'Cable Details', optionsFieldKey: 'cable_rating_transformer' }
         ]
       },
       {
@@ -142,9 +142,9 @@ export const HT_YARD_FIELD_SPECS: Record<string, ModuleSpec> = {
           { key: 'bescom_tc_no', label: '33. BESCOM TC No.', type: 'text' },
           { key: 'silica_gel_cond', label: '34. Silica Gel Condition', type: 'select', optionsCategory: 'TRMaster Data', optionsFieldKey: 'silica_gel' },
           { key: 'oil_level', label: '35. Oil Level', type: 'select', optionsCategory: 'TRMaster Data', optionsFieldKey: 'oil_level' },
-          { key: 'oil_leakage', label: '36. Oil Leakage if Any', type: 'boolean' },
+          { key: 'oil_leakage', label: '36. Oil Leakage if Any', type: 'select', optionsCategory: 'TRMaster Data', optionsFieldKey: 'oil_leakage' },
           { key: 'heating_cables', label: '37. Heating Cables', type: 'text' },
-          { key: 'humming_sound', label: '38. Humming Sound if Any', type: 'boolean' }
+          { key: 'humming_sound', label: '38. Humming Sound if Any', type: 'select', optionsCategory: 'TRMaster Data', optionsFieldKey: 'humming_sound' }
         ]
       }
     ]
@@ -170,26 +170,27 @@ export const HT_YARD_FIELD_SPECS: Record<string, ModuleSpec> = {
         sectionKey: 'incomer_accessories',
         title: 'Equipment Accessories',
         fields: [
-          { key: 'incomer_mccb', label: '5. Incomer MCCB/COS/ACB Details', type: 'cascading_select', optionsCategory: 'LTKMD', optionsFieldKey: 'incomer_mccb' },
+          { key: 'incomer_mccb', label: '5. Incomer MCCB/COS/ACB Details', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'incomer_mccb_make' },
           { key: 'single_phase_preventor', label: '6. Single Phase Preventor & Logic Circuit', type: 'boolean' },
-          { key: 'earth_leakage_relay', label: '7. Earth Leakage Relay Make', type: 'cascading_select', optionsCategory: 'LTKMD', optionsFieldKey: 'earth_leakage_relay' },
-          { key: 'voltmeter', label: '8. Volt Meter', type: 'cascading_select', optionsCategory: 'LTKMD', optionsFieldKey: 'voltmeter' },
-          { key: 'ammeter', label: '9. Ammeter', type: 'cascading_select', optionsCategory: 'LTKMD', optionsFieldKey: 'ammeter' },
-          { key: 'mf_meter', label: '10. Multi Function Meter', type: 'cascading_select', optionsCategory: 'LTKMD', optionsFieldKey: 'mf_meter' },
-          { key: 'selector_switch_make', label: '11. Selector Switch Make', type: 'cascading_select', optionsCategory: 'LTKMD', optionsFieldKey: 'selector_switch' },
+          { key: 'earth_leakage_relay', label: '7. Earth Leakage Relay Make', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'earth_leakage_relay' },
+          { key: 'voltmeter', label: '8. Volt Meter', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'voltmeter' },
+          { key: 'ammeter', label: '9. Ammeter', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'ammeter' },
+          { key: 'mf_meter', label: '10. Multi Function Meter', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'mf_meter' },
+          { key: 'selector_switch_make', label: '11. Selector Switch Make', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'selector_switch_make' },
           { key: 'phase_lamps', label: '12. Phase Indicating Lamps', type: 'boolean' },
           { key: 'trip_lamps', label: '13. Trip Indicating Lamps', type: 'boolean' },
-          { key: 'bescom_master_meter', label: '14. BESCOM Master Meter Details', type: 'text' },
-          { key: 'bus_coupler_details', label: '15. Bus Coupler Details', type: 'cascading_select', optionsCategory: 'LTKMD', optionsFieldKey: 'bus_coupler' }
+          { key: 'bescom_master_meter', label: '14. BESCOM Master Meter Details', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'bescom_master_meter' },
+          { key: 'bus_coupler_details', label: '15. Bus Coupler Details', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'bus_coupler' }
         ]
       },
       {
         sectionKey: 'capacitor_banks',
         title: 'Capacitor Bank Details',
         fields: [
-          { key: 'cap_incomer_mccb', label: '24. Incoming MCCB Details', type: 'cascading_select', optionsCategory: 'LTKMD', optionsFieldKey: 'cap_incomer_mccb' },
-          { key: 'pfc_controller', label: '26. PFC Controller Make', type: 'cascading_select', optionsCategory: 'LTKMD', optionsFieldKey: 'pfc_controller' },
-          { key: 'cap_bank_sizes', label: 'Capacitor Bank Sizes', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'cap_bank_sizes' }
+          { key: 'cap_incomer_mccb', label: '24. Incoming MCCB Details', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'incomer_mccb_make' },
+          { key: 'pfc_controller', label: '26. PFC Controller Make', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'pfc_controller' },
+          { key: 'cap_bank_sizes', label: 'Capacitor Bank Sizes', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'cap_bank_sizes' },
+          { key: 'relay_timer_lvm', label: 'Relay / Timer / LVM', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'relay_timer_lvm' }
         ]
       },
       {
@@ -202,6 +203,7 @@ export const HT_YARD_FIELD_SPECS: Record<string, ModuleSpec> = {
           { key: 'gland_earthing', label: '45. Cable Gland Earthing', type: 'boolean' },
           { key: 'body_condition', label: '46. Body Condition', type: 'text' },
           { key: 'earth_pit_location', label: '47. Location of Earthing Pits (m)', type: 'text' },
+          { key: 'cable_details', label: '50. Cable Details (Rating & Cores)', type: 'select', optionsCategory: 'Cable Details', optionsFieldKey: 'cable_rating_ltkiosk' },
           { key: 'rain_shade', label: '48. Provision of Rain Shade', type: 'boolean' },
           { key: 'rubber_mat', label: '49. Provision of Rubber Mat', type: 'boolean' }
         ]
@@ -224,14 +226,14 @@ export const HT_YARD_FIELD_SPECS: Record<string, ModuleSpec> = {
           { key: 'caution_board', label: '3. Caution Board Display', type: 'boolean' },
           { key: 'oil_filtration', label: '4. Oil Filtration Details', type: 'text' },
           { key: 'bdv_test', label: '5. BDV Test & Acidity of Oil', type: 'text' },
-          { key: 'yard_cleanliness', label: '6. Yard Cleanliness', type: 'select', optionsCategory: 'RMUMD', optionsFieldKey: 'body_condition' }
+          { key: 'yard_cleanliness', label: '6. Yard Cleanliness', type: 'select', optionsCategory: 'HTYardCommon', optionsFieldKey: 'yard_cleanliness' }
         ]
       },
       {
         sectionKey: 'yard_checks_stage_2',
         title: 'Stage 2: Safety & Initial Reports',
         fields: [
-          { key: 'fire_extinguishers', label: '7. Provision of Fire Extinguisher (Type 1, 2, 3)', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'fire_extinguisher' },
+          { key: 'fire_extinguishers', label: '7. Provision of Fire Extinguisher (Type 1, 2, 3)', type: 'select', optionsCategory: 'HTYardCommon', optionsFieldKey: 'fire_extinguishers' },
           { key: 'sand_buckets', label: '8. Provision of Sand Buckets & Condition', type: 'boolean' },
           { key: 'earthing_report', label: '9. Earthing Test Report Availability', type: 'boolean' },
           { key: 'ceig_report', label: '10. CEIG Inspection Report Availability', type: 'boolean' },

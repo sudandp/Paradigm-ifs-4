@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { 
   Plus, FileSpreadsheet, FileText, Zap, Layers, AlertTriangle, 
   CheckCircle2, Clock, Activity, Cpu, ShieldCheck, Search, Filter, 
@@ -15,6 +16,9 @@ import { api } from '../../services/api';
 import toast from 'react-hot-toast';
 
 export const HTYardAuditDashboard: React.FC = () => {
+  const [searchParams] = useSearchParams();
+  const selectedAuditId = searchParams.get('auditId');
+
   const [activeAudit, setActiveAudit] = useState<HTAuditHeader | null>(null);
   const [equipmentInstances, setEquipmentInstances] = useState<HTEquipmentInstance[]>([]);
   const [activeInstanceId, setActiveInstanceId] = useState<string>('site_common');
@@ -38,9 +42,15 @@ export const HTYardAuditDashboard: React.FC = () => {
       const list = await api.getAllHTYardAudits();
       setAllAudits(list);
       if (list && list.length > 0) {
-        const todayStr = new Date().toISOString().split('T')[0];
-        const todayAudit = list.find((a: any) => a.activeAudit?.auditDate === todayStr);
-        const selected = todayAudit || list[0];
+        let selected = list[0];
+        if (selectedAuditId) {
+          const found = list.find((a: any) => a.activeAudit?.id === selectedAuditId);
+          if (found) selected = found;
+        } else {
+          const todayStr = new Date().toISOString().split('T')[0];
+          const todayAudit = list.find((a: any) => a.activeAudit?.auditDate === todayStr);
+          if (todayAudit) selected = todayAudit;
+        }
         setActiveAudit(selected.activeAudit);
         setEquipmentInstances(selected.equipmentInstances || []);
         setResponses(selected.responses || {});

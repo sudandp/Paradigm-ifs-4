@@ -30,7 +30,7 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
   customStages = []
 }) => {
   const [activeSectionKey, setActiveSectionKey] = useState<string>(spec.sections[0]?.sectionKey || '');
-  const [masterOptionsMap, setMasterOptionsMap] = useState<Record<string, string[]>>({});
+  const [masterOptionsMap, setMasterOptionsMap] = useState<Record<string, any[]>>({});
 
   // When spec changes, reset active section
   useEffect(() => {
@@ -53,14 +53,14 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
       });
     });
 
-    const map: Record<string, string[]> = {};
+    const map: Record<string, any[]> = {};
     for (const cat of Array.from(categoriesNeeded)) {
       try {
         const options = await htYardMasterDataService.getMasterOptions(
           cat as any,
           selectedManufacturer
         );
-        map[cat] = options.map((o) => o.optionValue);
+        map[cat] = options;
       } catch (e) {
         console.warn('Failed to load master options for', cat);
       }
@@ -189,7 +189,23 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
                   isNotApplicable: false
                 };
 
-                const optionsList = field.optionsCategory ? masterOptionsMap[field.optionsCategory] || [] : [];
+                let optionsList: string[] = [];
+                if (field.optionsCategory) {
+                  const categoryOptions = masterOptionsMap[field.optionsCategory] || [];
+                  const targetFieldKey = field.optionsFieldKey || (field.isManufacturerField ? 'mfr_name' : field.key);
+                  const matching = categoryOptions.filter(o => o.fieldKey === targetFieldKey);
+                  if (matching.length > 0) {
+                    optionsList = matching.map(o => o.optionValue);
+                  } else {
+                    const fallback = categoryOptions.filter(o => !o.fieldKey || o.fieldKey === 'generic' || o.fieldKey === targetFieldKey);
+                    optionsList = fallback.length > 0 ? fallback.map(o => o.optionValue) : categoryOptions.map(o => o.optionValue);
+                  }
+                }
+                const cleanOptionsList = Array.from(
+                  new Set(
+                    optionsList.map(opt => (opt.trim().toLowerCase() === 'other' ? 'Other — Specify in Remarks' : opt))
+                  )
+                );
 
                 return (
                   <div key={field.key} className="flex flex-col p-4 rounded-xl border border-slate-100 dark:border-slate-800/60 bg-slate-50/30 dark:bg-slate-800/20 shadow-[0_2px_4px_rgba(0,0,0,0.01)] hover:shadow-md transition-shadow">
@@ -245,12 +261,14 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
                               className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-900 dark:text-white rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 transition-all"
                             >
                               <option value="">Select option...</option>
-                              {optionsList.map((opt, i) => (
+                              {cleanOptionsList.map((opt, i) => (
                                 <option key={i} value={opt}>
                                   {opt}
                                 </option>
                               ))}
-                              <option value="Other — Specify in Remarks">Other — Specify in Remarks</option>
+                              {!cleanOptionsList.some(opt => opt.toLowerCase().includes('other')) && (
+                                <option value="Other — Specify in Remarks">Other — Specify in Remarks</option>
+                              )}
                             </select>
                           ) : field.type === 'date' ? (
                             <input
