@@ -167,10 +167,12 @@ interface AuthState {
     isFieldCheckedIn: boolean;
     isFieldCheckedOut: boolean;
     isSiteOtCheckedIn: boolean;
-    /** True when a technical_reliever has an unclosed session from a previous day */
+    /** True when a technical_reliever has an unclosed session from a previous day (>48h old = truly missed) */
     hasPreviousDayOpenSession: boolean;
-    /** Info about the open previous-day session (date, last event type) */
-    previousDaySessionInfo: { date: string; lastEventType: string; lastEventTime: string; firstIn?: string | null; lastOut?: string | null; firstBreakIn?: string | null; lastBreakOut?: string | null; workingHours?: number; } | null;
+    /** True when an unclosed session exists from a previous calendar day but started within 48h (still active, not yet missed) */
+    hasActiveOpenSession: boolean;
+    /** Info about the open session (previous-day or active cross-midnight) */
+    previousDaySessionInfo: { date: string; lastEventType: string; lastEventTime: string; firstIn?: string | null; lastOut?: string | null; firstBreakIn?: string | null; lastBreakOut?: string | null; workingHours?: number; isRegularPunchOpen: boolean; isSiteDutyOpen: boolean; isFieldDutyOpen: boolean; hoursElapsed: number; } | null;
     isBreakingOut: boolean;
     setIsBreakingOut: (val: boolean) => void;
     loginWithPasscode: (email: string, passcode: string, rememberMe: boolean) => Promise<{ error: { message: string } | null }>;
@@ -240,6 +242,7 @@ export const useAuthStore = create<AuthState>()(
         isFieldCheckedOut: false,
         isSiteOtCheckedIn: false,
         hasPreviousDayOpenSession: false,
+        hasActiveOpenSession: false,
         previousDaySessionInfo: null,
         isBreakingOut: false,
         setIsBreakingOut: (val) => set({ isBreakingOut: val }),
@@ -358,6 +361,7 @@ export const useAuthStore = create<AuthState>()(
             isFieldCheckedOut: false,
             isSiteOtCheckedIn: false,
             hasPreviousDayOpenSession: false,
+            hasActiveOpenSession: false,
             previousDaySessionInfo: null
         }),
         setError: (error) => set({ error }),
@@ -780,6 +784,7 @@ export const useAuthStore = create<AuthState>()(
                         isFieldCheckedOut: false,
                         isSiteOtCheckedIn: false,
                         hasPreviousDayOpenSession: false,
+                        hasActiveOpenSession: false,
                         previousDaySessionInfo: null
                     });
                     return;
@@ -903,21 +908,29 @@ export const useAuthStore = create<AuthState>()(
                 const extraPunchCyclesUsed = Math.max(0, dailyPunchCount - 1);
                 const isPunchUnlocked = approvedUnlockCount > extraPunchCyclesUsed;
 
-                // Technical Reliever: Detect open sessions from PREVIOUS days.
-                // If the last punch-in or site-ot-in is from a day before today and has no
-                // corresponding punch-out/site-ot-out, the session is considered "open from previous day".
+                // Technical Reliever: Detect open sessions from PREVIOUS calendar days.
+                // Sessions within 48 hours are "active" (cross-midnight is normal for multi-shift workers).
+                // Sessions older than 48 hours are "missed" and require correction.
+                const ACTIVE_SESSION_THRESHOLD_MS = 48 * 60 * 60 * 1000; // 48 hours
                 let hasPreviousDayOpenSession = false;
-                let previousDaySessionInfo: { date: string; lastEventType: string; lastEventTime: string; firstIn?: string | null; lastOut?: string | null; firstBreakIn?: string | null; lastBreakOut?: string | null; workingHours?: number; } | null = null;
+                let hasActiveOpenSession = false;
+                let previousDaySessionInfo: { date: string; lastEventType: string; lastEventTime: string; firstIn?: string | null; lastOut?: string | null; firstBreakIn?: string | null; lastBreakOut?: string | null; workingHours?: number; isRegularPunchOpen: boolean; isSiteDutyOpen: boolean; isFieldDutyOpen: boolean; hoursElapsed: number; } | null = null;
 
                 if (lastEvent) {
                     const todayDateStr = getLocalDateKey(today);
                     const openSessions: Date[] = [];
-                    
+
+                    // Track which session types are open
+                    let isRegularPunchOpen = false;
+                    let isSiteDutyOpen = false;
+                    let isFieldDutyOpen = false;
+
                     if (currentlyCheckedIn) {
                         const officePunchEvents = events.filter(e => !e.workType || e.workType === 'office');
                         const lastOfficePunch = officePunchEvents.filter(e => e.type === 'punch-in' || e.type === 'punch-out').pop();
                         if (lastOfficePunch && lastOfficePunch.type === 'punch-in') {
                             openSessions.push(new Date(lastOfficePunch.timestamp));
+                            isRegularPunchOpen = true;
                         }
                     }
                     if (isFieldCheckedIn) {
@@ -925,6 +938,7 @@ export const useAuthStore = create<AuthState>()(
                         const lastFieldPunch = fieldPunchEvents.filter(e => e.type === 'punch-in' || e.type === 'punch-out' || e.type === 'site-in' || e.type === 'site-out').pop();
                         if (lastFieldPunch && (lastFieldPunch.type === 'punch-in' || lastFieldPunch.type === 'site-in')) {
                             openSessions.push(new Date(lastFieldPunch.timestamp));
+                            isFieldDutyOpen = true;
                         }
                     }
                     if (isSiteOtCheckedIn) {
@@ -932,26 +946,27 @@ export const useAuthStore = create<AuthState>()(
                         const lastSiteOtPunch = siteOtPunchEvents.pop();
                         if (lastSiteOtPunch && lastSiteOtPunch.type === 'site-ot-in') {
                             openSessions.push(new Date(lastSiteOtPunch.timestamp));
+                            isSiteDutyOpen = true;
                         }
                     }
-                    
+
                     if (openSessions.length > 0) {
                         const earliestSessionTime = new Date(Math.min(...openSessions.map(d => d.getTime())));
                         const sessionDateStr = getLocalDateKey(earliestSessionTime);
-                        
+                        const hoursElapsed = (today.getTime() - earliestSessionTime.getTime()) / (1000 * 60 * 60);
+
                         if (sessionDateStr < todayDateStr) {
-                            const isResolvedByRequest = leaveRequests.some((r: any) => 
+                            const isResolvedByRequest = leaveRequests.some((r: any) =>
                                 ['Permission', 'Correction', 'Regularization'].includes(r.leaveType) &&
                                 r.startDate === sessionDateStr &&
                                 !['rejected', 'withdrawn', 'cancelled'].includes(r.status)
                             );
 
                             if (!isResolvedByRequest) {
-                                hasPreviousDayOpenSession = true;
                                 const previousDayEvents = events.filter(e => e.timestamp.startsWith(sessionDateStr));
                                 const { checkIn, checkOut, firstBreakIn, breakOut, workingHours: calculatedWorkingHours } = processDailyEvents(previousDayEvents, earliestSessionTime);
 
-                                previousDaySessionInfo = {
+                                const sessionInfo = {
                                     date: sessionDateStr,
                                     lastEventType: lastEvent.type,
                                     lastEventTime: new Date(lastEvent.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
@@ -959,8 +974,21 @@ export const useAuthStore = create<AuthState>()(
                                     lastOut: checkOut,
                                     firstBreakIn: firstBreakIn,
                                     lastBreakOut: breakOut,
-                                    workingHours: calculatedWorkingHours
+                                    workingHours: calculatedWorkingHours,
+                                    isRegularPunchOpen,
+                                    isSiteDutyOpen,
+                                    isFieldDutyOpen,
+                                    hoursElapsed: Math.round(hoursElapsed),
                                 };
+
+                                if ((today.getTime() - earliestSessionTime.getTime()) > ACTIVE_SESSION_THRESHOLD_MS) {
+                                    // Session is older than 48 hours — genuinely missed
+                                    hasPreviousDayOpenSession = true;
+                                } else {
+                                    // Session started within 48 hours — still active (cross-midnight shift)
+                                    hasActiveOpenSession = true;
+                                }
+                                previousDaySessionInfo = sessionInfo;
                             }
                         }
                     }
@@ -994,6 +1022,7 @@ export const useAuthStore = create<AuthState>()(
                     isFieldCheckedOut: lastFieldPunchEvent ? (lastFieldPunchEvent.type === 'punch-out' || lastFieldPunchEvent.type === 'site-out') : false,
                     isSiteOtCheckedIn,
                     hasPreviousDayOpenSession,
+                    hasActiveOpenSession,
                     previousDaySessionInfo,
                     liveSteps: activeSteps
                 });

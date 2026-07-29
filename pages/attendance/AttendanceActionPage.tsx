@@ -179,11 +179,15 @@ const AttendanceActionPage: React.FC = () => {
         ? new Date(`${sessionDate}T23:59:00`).toISOString()
         : undefined;
     
-    let action = isCheckIn ? (workType === 'field' ? 'Site Check In' : (workType === 'site-ot' ? 'Site OT In' : 'Punch In')) : (workType === 'field' ? 'Site Check Out' : (workType === 'site-ot' ? 'Site OT Out' : 'Punch Out'));
+    let action = isCheckIn 
+        ? (workType === 'field' ? 'Regular Duty Check In' : (workType === 'site-ot' ? 'Site Duty Check In' : 'Punch In')) 
+        : (workType === 'field' ? 'Regular Duty Check Out' : (workType === 'site-ot' ? 'Site Duty Check Out' : 'Punch Out'));
     if (isBreakIn) action = 'Break In';
     if (isBreakOut) action = 'Break Out';
-    if (actionParam === 'site-ot-in') action = 'Site OT In';
-    if (actionParam === 'site-ot-out') action = 'Site OT Out';
+    if (actionParam === 'site-ot-in') action = 'Site Duty Check In';
+    if (actionParam === 'site-ot-out') action = 'Site Duty Check Out';
+    if (actionParam === 'site-in') action = 'Regular Duty Check In';
+    if (actionParam === 'site-out') action = 'Regular Duty Check Out';
 
     const Icon = (isCheckIn || isBreakIn || isBreakOut) ? LogIn : LogOut;
     let iconBgColor = isCheckIn ? 'bg-emerald-500/15' : 'bg-rose-500/15';
@@ -646,7 +650,7 @@ const AttendanceActionPage: React.FC = () => {
                     </div>
 
                     {/* Title */}
-                    <h1 className="text-4xl font-black text-white tracking-tighter uppercase italic">
+                    <h1 className="text-3xl sm:text-4xl font-black text-white tracking-normal uppercase italic">
                         {action}<span className={`${
                             accentColor === 'emerald' ? 'text-emerald-500' :
                             accentColor === 'amber' ? 'text-amber-500' :

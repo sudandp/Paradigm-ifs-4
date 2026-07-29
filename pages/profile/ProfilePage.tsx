@@ -90,6 +90,7 @@ const ProfilePage: React.FC = () => {
         breakIntervals,
         hasPreviousDayOpenSession,
         previousDaySessionInfo,
+        hasActiveOpenSession,
         loginWithPasscode
     } = useAuthStore();
     const { permissions } = usePermissionsStore();
@@ -1542,7 +1543,7 @@ const ProfilePage: React.FC = () => {
                         <section className="flex flex-col items-center justify-center py-8 relative">
                             {/* Monthly Missed Punches Banner */}
                             {monthlyMissedPunchesCount > 0 && (
-                                <div className="w-full max-w-sm mb-4 px-4">
+                                <div className="w-full max-w-2xl mb-4 px-4">
                                     <div className="relative overflow-hidden rounded-2xl border border-rose-500/30 bg-gradient-to-br from-rose-900/40 to-pink-900/30 backdrop-blur-xl p-3 shadow-lg">
                                         <div className="flex items-center gap-2">
                                             <AlertTriangle className="h-4 w-4 text-rose-400" />
@@ -1554,40 +1555,106 @@ const ProfilePage: React.FC = () => {
                                 </div>
                             )}
 
-                            {/* ── Previous Day Open Session Banner ── */}
-                            {hasPreviousDayOpenSession && previousDaySessionInfo && (
-                                <div className="w-full max-w-sm mb-6 px-4">
-                                    <div className="relative overflow-hidden rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-900/40 to-orange-900/30 backdrop-blur-xl p-4 shadow-lg">
-                                        <div className="absolute inset-0 bg-amber-500/5 animate-pulse" />
+                            {/* ── Session Banner: Active (≤48h) cross-midnight session ── */}
+                            {hasActiveOpenSession && previousDaySessionInfo && (
+                                <div className="w-full max-w-2xl mb-6 px-4 transition-all duration-300">
+                                    <div className="relative overflow-hidden rounded-2xl border border-indigo-500/30 bg-gradient-to-br from-indigo-900/40 to-blue-900/30 backdrop-blur-xl p-4 sm:p-5 shadow-lg">
+                                        <div className="absolute inset-0 bg-indigo-500/5 animate-pulse" />
                                         <div className="relative z-10">
-                                            <div className="flex items-center gap-2 mb-2">
-                                                <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0" />
-                                                <h4 className="text-sm font-black text-amber-300 uppercase tracking-wider">
-                                                    {isCheckedIn && isFieldCheckedIn ? 'Missed Punch Out & Site Out' : isFieldCheckedIn ? 'Missed Site Out' : 'Missed Punch Out'}
+                                            <div className="flex items-center gap-2.5 mb-2">
+                                                <Clock className="w-5 h-5 text-indigo-400 flex-shrink-0" />
+                                                <h4 className="text-sm sm:text-base font-black text-indigo-300 uppercase tracking-wider">
+                                                    {previousDaySessionInfo.isSiteDutyOpen ? 'Active Site Duty' : previousDaySessionInfo.isFieldDutyOpen ? 'Active Regular Duty' : 'Active Session'}
+                                                    {' '}— Cross-Midnight
                                                 </h4>
                                             </div>
-                                            <p className="text-xs text-amber-200/80 leading-relaxed mb-3">
-                                                You forgot to {isCheckedIn && isFieldCheckedIn ? 'punch out and site out' : isFieldCheckedIn ? 'site out' : 'punch out'} on <span className="font-bold text-white">{new Date(previousDaySessionInfo.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}</span>.
-                                                Please close the previous session with current data or apply for correction.
+                                            <p className="text-xs sm:text-sm text-indigo-200/80 leading-relaxed mb-4">
+                                                You have an open session from <span className="font-bold text-white">{new Date(previousDaySessionInfo.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}</span> ({previousDaySessionInfo.hoursElapsed}h ago). Close it when your shift ends.
                                             </p>
-                                            <div className="flex gap-3 mt-3">
-                                                {!isCheckedIn && (
+                                            <div className={`grid ${(previousDaySessionInfo.isSiteDutyOpen && previousDaySessionInfo.isRegularPunchOpen) ? 'grid-cols-2' : 'grid-cols-1'} gap-3 mt-3`}>
+                                                {/* Site Duty Check Out — close site-ot session first */}
+                                                {previousDaySessionInfo.isSiteDutyOpen && (
                                                     <button
                                                         disabled={isSubmittingAttendance}
-                                                        onClick={() => setShowCorrectionModal(true)}
-                                                        className="flex-1 py-2.5 px-3 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                                                        onClick={() => navigate('/attendance/check-out?workType=site-ot&action=site-ot-out')}
+                                                        className="w-full py-2.5 sm:py-3 px-2 sm:px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs sm:text-sm font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-1.5 shadow-md shadow-indigo-900/30"
                                                     >
-                                                        {isSubmittingAttendance ? (
-                                                            <Loader2 className="w-4 h-4 animate-spin" />
-                                                        ) : (
-                                                            isFieldCheckedIn ? 'Site Out' : 'Punch Out'
-                                                        )}
+                                                        <MapPin className="w-4 h-4" /> Site Duty Check Out
+                                                    </button>
+                                                )}
+                                                {/* Regular/Field Duty Check Out — if site duty already closed */}
+                                                {!previousDaySessionInfo.isSiteDutyOpen && previousDaySessionInfo.isFieldDutyOpen && (
+                                                    <button
+                                                        disabled={isSubmittingAttendance}
+                                                        onClick={() => navigate('/attendance/check-out?workType=field&action=site-out')}
+                                                        className="w-full py-2.5 sm:py-3 px-2 sm:px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs sm:text-sm font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-1.5 shadow-md shadow-emerald-900/30"
+                                                    >
+                                                        <MapPin className="w-4 h-4" /> Regular Duty Check Out
+                                                    </button>
+                                                )}
+                                                {/* Regular punch out — only show if no site/field duty is blocking */}
+                                                {!previousDaySessionInfo.isSiteDutyOpen && !previousDaySessionInfo.isFieldDutyOpen && previousDaySessionInfo.isRegularPunchOpen && (
+                                                    <button
+                                                        disabled={isSubmittingAttendance}
+                                                        onClick={() => setIsPunchOutModalOpen(true)}
+                                                        className="w-full py-2.5 sm:py-3 px-2 sm:px-4 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs sm:text-sm font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-1.5 shadow-md shadow-rose-900/30"
+                                                    >
+                                                        {isSubmittingAttendance ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Punch Out'}
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* ── Missed Punch Banner: Stale session (>48h = genuinely missed) ── */}
+                            {hasPreviousDayOpenSession && previousDaySessionInfo && (
+                                <div className="w-full max-w-2xl mb-6 px-4 transition-all duration-300">
+                                    <div className="relative overflow-hidden rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-900/40 to-orange-900/30 backdrop-blur-xl p-4 sm:p-5 md:p-6 shadow-lg">
+                                        <div className="absolute inset-0 bg-amber-500/5 animate-pulse" />
+                                        <div className="relative z-10">
+                                            <div className="flex items-center gap-2.5 mb-2">
+                                                <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-amber-400 flex-shrink-0" />
+                                                <h4 className="text-sm sm:text-base md:text-lg font-black text-amber-300 uppercase tracking-wider">
+                                                    {previousDaySessionInfo.isSiteDutyOpen ? 'Missed Site Duty Out' : previousDaySessionInfo.isFieldDutyOpen ? 'Missed Regular Duty Out' : 'Missed Punch Out'}
+                                                </h4>
+                                            </div>
+                                            <p className="text-xs sm:text-sm text-amber-200/80 leading-relaxed mb-4">
+                                                You have an unclosed session from <span className="font-bold text-white">{new Date(previousDaySessionInfo.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}</span> ({previousDaySessionInfo.hoursElapsed}h ago).
+                                                Please close it or apply for correction.
+                                            </p>
+                                            <div className="grid grid-cols-2 gap-3 mt-3">
+                                                {/* Primary close action — pick the most specific open session */}
+                                                {previousDaySessionInfo.isSiteDutyOpen ? (
+                                                    <button
+                                                        disabled={isSubmittingAttendance}
+                                                        onClick={() => navigate('/attendance/check-out?workType=site-ot&action=site-ot-out')}
+                                                        className="w-full py-2.5 sm:py-3 px-2 sm:px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs sm:text-sm font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-1.5 shadow-md shadow-indigo-900/30"
+                                                    >
+                                                        Site Duty Out
+                                                    </button>
+                                                ) : previousDaySessionInfo.isFieldDutyOpen ? (
+                                                    <button
+                                                        disabled={isSubmittingAttendance}
+                                                        onClick={() => navigate('/attendance/check-out?workType=field&action=site-out')}
+                                                        className="w-full py-2.5 sm:py-3 px-2 sm:px-4 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs sm:text-sm font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-1.5 shadow-md shadow-rose-900/30"
+                                                    >
+                                                        Regular Duty Out
+                                                    </button>
+                                                ) : (
+                                                    <button
+                                                        disabled={isSubmittingAttendance}
+                                                        onClick={() => setIsPunchOutModalOpen(true)}
+                                                        className="w-full py-2.5 sm:py-3 px-2 sm:px-4 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs sm:text-sm font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-1.5 shadow-md shadow-rose-900/30"
+                                                    >
+                                                        {isSubmittingAttendance ? <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" /> : 'Punch Out'}
                                                     </button>
                                                 )}
                                                 <button
                                                     disabled={isSubmittingAttendance}
                                                     onClick={() => navigate(`/leaves/apply?leaveType=Correction&startDate=${previousDaySessionInfo.date}`)}
-                                                    className="flex-1 py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                                                    className="w-full py-2.5 sm:py-3 px-2 sm:px-4 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs sm:text-sm font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-1.5 shadow-md shadow-amber-900/30"
                                                 >
                                                     Correction
                                                 </button>
@@ -1644,8 +1711,23 @@ const ProfilePage: React.FC = () => {
                                                 return;
                                             }
                                             if (effectivelyCheckedIn) {
+                                                // Active cross-midnight session (≤48h)
+                                                if (hasActiveOpenSession && previousDaySessionInfo) {
+                                                    if (previousDaySessionInfo.isSiteDutyOpen) {
+                                                        // Site duty still running — navigate to site duty check-out
+                                                        navigate('/attendance/check-out?workType=site-ot&action=site-ot-out');
+                                                    } else if (previousDaySessionInfo.isFieldDutyOpen) {
+                                                        // Field/regular duty still running — navigate to regular duty check-out
+                                                        navigate('/attendance/check-out?workType=field&action=site-out');
+                                                    } else {
+                                                        // Only regular punch remaining — open punch-out modal
+                                                        setIsPunchOutModalOpen(true);
+                                                    }
+                                                    return;
+                                                }
+                                                // Genuinely missed session (>48h)
                                                 if (hasPreviousDayOpenSession && isCheckedIn && previousDaySessionInfo) {
-                                                    navigate(`/leaves/apply?leaveType=Correction&startDate=${previousDaySessionInfo.date}`);
+                                                    setIsPunchOutModalOpen(true);
                                                     return;
                                                 }
                                                 const wt = isSiteOtCheckedIn ? 'site-ot' : isFieldCheckedIn ? 'field' : 'office';
@@ -1680,14 +1762,35 @@ const ProfilePage: React.FC = () => {
                                                 className="flex flex-col items-center relative z-10"
                                             >
                                                 {effectivelyCheckedIn ? (
-                                                    (hasPreviousDayOpenSession && isCheckedIn) ? (
-                                                        // Missed punch out from previous day -> force correction
+                                                    // Active cross-midnight session (≤48h)
+                                                    (hasActiveOpenSession && previousDaySessionInfo) ? (
+                                                        previousDaySessionInfo.isSiteDutyOpen ? (
+                                                            // Site duty still running
+                                                            <>
+                                                                <MapPin className="h-9 w-9 text-indigo-400 mb-1 drop-shadow-[0_0_8px_rgba(99,102,241,0.5)] animate-pulse" />
+                                                                <span className="text-[11px] font-black text-indigo-300 tracking-tight leading-tight px-2 text-center font-mono">ACTIVE{`\n`}SITE DUTY</span>
+                                                            </>
+                                                        ) : previousDaySessionInfo.isFieldDutyOpen ? (
+                                                            // Field/regular duty still running
+                                                            <>
+                                                                <MapPin className="h-9 w-9 text-emerald-400 mb-1 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)] animate-pulse" />
+                                                                <span className="text-[11px] font-black text-emerald-300 tracking-tight leading-tight px-2 text-center font-mono">ACTIVE{`\n`}DUTY</span>
+                                                            </>
+                                                        ) : (
+                                                            // Only regular punch remaining — show PUNCH OUT
+                                                            <>
+                                                                <LogOut className="h-9 w-9 text-rose-500 mb-1 drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]" />
+                                                                <span className="text-lg font-black text-white tracking-widest">PUNCH OUT</span>
+                                                            </>
+                                                        )
+                                                    // Genuinely missed session (>48h)
+                                                    ) : (hasPreviousDayOpenSession && isCheckedIn) ? (
                                                         <>
                                                             <AlertTriangle className="h-9 w-9 text-amber-400 mb-1 drop-shadow-[0_0_8px_rgba(245,158,11,0.5)] animate-pulse" />
-                                                            <span className="text-[13px] font-black text-amber-300 tracking-tight leading-tight px-2 text-center font-mono">APPLY{`\n`}CORRECTION</span>
+                                                            <span className="text-[13px] font-black text-amber-300 tracking-tight leading-tight px-2 text-center font-mono">MISSED{`\n`}PUNCH</span>
                                                         </>
                                                     ) : (isFieldCheckedIn || isSiteOtCheckedIn) ? (
-                                                        // Field/site session active → user must site-out before punching out
+                                                        // Today's field/site session active — must site-out first
                                                         <>
                                                             <MapPin className="h-9 w-9 text-amber-400 mb-1 drop-shadow-[0_0_8px_rgba(245,158,11,0.5)] animate-pulse" />
                                                             <span className="text-[13px] font-black text-amber-300 tracking-tight leading-tight px-2 text-center">SITE OUT{`\n`}FIRST</span>
@@ -1776,7 +1879,7 @@ const ProfilePage: React.FC = () => {
                                                 onClick={() => { triggerHaptic(); setSiteWorkMode('ot'); }}
                                                 className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-[0.2em] rounded-xl transition-all duration-300 ${siteWorkMode === 'ot' ? 'bg-indigo-500 text-white shadow-lg' : 'text-slate-400'}`}
                                             >
-                                                Overtime (OT)
+                                                Site Duty
                                             </button>
                                         </div>
                                     )}
@@ -1814,7 +1917,7 @@ const ProfilePage: React.FC = () => {
                                             >
                                                 {isOnBreak ? <Lock className="h-4 w-4" /> : <MapPin className="h-4 w-4" />}
                                                 <span className="text-[11px] font-black uppercase tracking-[0.3em] flex items-center gap-2">
-                                                    {isOnBreak ? 'Site Locked' : (isFieldCheckedIn || isSiteOtCheckedIn ? 'Site Out' : 'Site In')}
+                                                    {isOnBreak ? 'Locked' : (isFieldCheckedIn || isSiteOtCheckedIn ? 'Check Out' : 'Check In')}
                                                     {(isFieldCheckedIn || isSiteOtCheckedIn) && (
                                                         <div className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.6)]" />
                                                     )}
@@ -2922,7 +3025,7 @@ const ProfilePage: React.FC = () => {
                                                         onClick={() => {
                                                             if (hasPreviousDayOpenSession) {
                                                                 if (isCheckedIn && previousDaySessionInfo) {
-                                                                    navigate(`/leaves/apply?leaveType=Correction&startDate=${previousDaySessionInfo.date}`);
+                                                                    setIsPunchOutModalOpen(true);
                                                                 } else {
                                                                     handleAutoCheckOut();
                                                                 }
@@ -2947,7 +3050,7 @@ const ProfilePage: React.FC = () => {
                                                         disabled={isOnBreak || isActionInProgress}
                                                     >
                                                         {(hasPreviousDayOpenSession && isCheckedIn) ? (
-                                                            <><AlertTriangle className="mr-2 h-4 w-4" /> Apply Correction</>
+                                                            <><AlertTriangle className="mr-2 h-4 w-4" /> Active Session</>
                                                         ) : (isFieldCheckedIn || isSiteOtCheckedIn) ? (
                                                             <><MapPin className="mr-2 h-4 w-4" /> Site Out First</>
                                                         ) : (
@@ -2974,7 +3077,7 @@ const ProfilePage: React.FC = () => {
                                                                         onClick={() => setSiteWorkMode('ot')}
                                                                         className={`flex-1 py-2 text-[11px] font-black uppercase tracking-[0.1em] rounded-xl transition-all ${siteWorkMode === 'ot' ? 'bg-white text-indigo-600 shadow-md border border-indigo-100' : 'text-slate-400 hover:text-slate-600'}`}
                                                                     >
-                                                                        Overtime (OT)
+                                                                        Site Duty
                                                                     </button>
                                                                 )}
                                                             </div>
@@ -2983,7 +3086,7 @@ const ProfilePage: React.FC = () => {
                                                                 className={`w-full !h-11 !rounded-2xl transition-all font-bold uppercase tracking-widest text-[12px] shadow-lg ${siteWorkMode === 'duty' ? '!bg-emerald-600 shadow-emerald-900/10' : '!bg-indigo-600 shadow-indigo-900/10'} ${isOnBreak || isActionInProgress || isPunchBlocked ? 'opacity-50 pointer-events-none' : ''}`}
                                                                 disabled={isOnBreak || isActionInProgress || isPunchBlocked}
                                                             >
-                                                                <MapPin className="mr-2 h-4 w-4" /> Check In to Site
+                                                                <MapPin className="mr-2 h-4 w-4" /> {siteWorkMode === 'duty' ? 'Check In (Regular Duty)' : 'Check In (Site Duty)'}
                                                             </Button>
                                                          </div>
                                                      ) : (
@@ -2994,7 +3097,7 @@ const ProfilePage: React.FC = () => {
                                                              disabled={isOnBreak || isActionInProgress || isPunchBlocked}
                                                          >
                                                              <LogOut className="mr-2 h-4 w-4" /> 
-                                                             {isFieldCheckedIn ? 'Check Out (Duty Site)' : 'Check Out (Site OT)'}
+                                                             {isFieldCheckedIn ? 'Check Out (Regular Duty)' : 'Check Out (Site Duty)'}
                                                          </Button>
                                                      )}
                                                  </div>
@@ -4001,28 +4104,45 @@ const ProfilePage: React.FC = () => {
             <Modal
                 isOpen={isPunchOutModalOpen}
                 onClose={() => setIsPunchOutModalOpen(false)}
-                title="Punch Out"
+                title="Active Session Punch Out"
                 confirmButtonText="Confirm Punch Out"
                 confirmButtonVariant="danger"
                 onConfirm={() => handleAutoCheckOut(punchOutReason)}
                 isLoading={isSubmittingAttendance}
             >
                 <div className="space-y-4">
-                    <div className="p-3 bg-amber-50 rounded-xl border border-amber-200">
-                        <p className="text-amber-800 text-sm font-bold">You are closing an open session from {previousDaySessionInfo?.date}</p>
-                        <p className="text-amber-700 text-xs mt-1">Calculated Hours: <strong>{previousDaySessionInfo?.workingHours || 0} hrs</strong></p>
+                    <div className="p-3.5 bg-amber-500/10 rounded-xl border border-amber-500/20">
+                        <div className="flex items-center gap-2 mb-1">
+                            <AlertTriangle className="h-4 w-4 text-amber-500" />
+                            <p className="text-amber-700 dark:text-amber-400 text-sm font-bold">Open Session from {previousDaySessionInfo?.date}</p>
+                        </div>
+                        <p className="text-amber-800 dark:text-amber-300 text-xs mt-1">Calculated Hours: <strong>{previousDaySessionInfo?.workingHours || 0} hrs</strong></p>
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Reason for missed punch out / late punch out</label>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Reason for missed punch out / session closure</label>
                         <textarea
                             value={punchOutReason}
                             onChange={(e) => setPunchOutReason(e.target.value)}
-                            className="w-full form-input rounded-xl text-sm"
+                            className="w-full form-input rounded-xl text-sm border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
                             rows={3}
-                            placeholder="Please provide a reason..."
+                            placeholder="Please enter a reason..."
                             required
                         />
                     </div>
+                    {previousDaySessionInfo?.date && (
+                        <div className="pt-1 text-center">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setIsPunchOutModalOpen(false);
+                                    navigate(`/leaves/apply?leaveType=Correction&startDate=${previousDaySessionInfo.date}`);
+                                }}
+                                className="text-xs text-amber-600 hover:text-amber-500 font-semibold underline underline-offset-2 transition-colors"
+                            >
+                                Need to submit a formal attendance correction instead?
+                            </button>
+                        </div>
+                    )}
                 </div>
             </Modal>
         </div>
