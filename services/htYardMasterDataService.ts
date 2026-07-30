@@ -1,9 +1,28 @@
 import { supabase } from './supabase';
 import { HTMasterOption, HTMasterCategory } from '../types/htYard';
+import { isOfflineEnabled } from './offline/featureFlag';
+import { isOnline } from './offline/networkStatus';
+import { cacheMasterOptions, getCachedMasterOptions, invalidateMasterOptions } from './offline/cache';
 
 export const htYardMasterDataService = {
   // Fetch options by category and optional manufacturer
   async getMasterOptions(category: HTMasterCategory, manufacturer?: string): Promise<HTMasterOption[]> {
+    // ── Offline path ─────────────────────────────────────────────────────────
+    if (isOfflineEnabled() && !isOnline()) {
+      const cached = await getCachedMasterOptions(category);
+      if (cached.length > 0) {
+        if (manufacturer) {
+          return cached.filter(
+            (o) => !o.manufacturer || o.manufacturer === manufacturer
+          );
+        }
+        return cached;
+      }
+      // Nothing cached — fall back to hardcoded seed data
+      return getInitialSeedOptions(category, manufacturer);
+    }
+
+    // ── Online path (unchanged logic, with write-through cache) ───────────────
     try {
       let query = supabase
         .from('ht_master_options')
@@ -18,6 +37,11 @@ export const htYardMasterDataService = {
       const { data, error } = await query;
       if (error) {
         console.warn('Fallback to local master options due to error:', error.message);
+        // Try IDB cache before seed data
+        if (isOfflineEnabled()) {
+          const cached = await getCachedMasterOptions(category);
+          if (cached.length > 0) return cached;
+        }
         return getInitialSeedOptions(category, manufacturer);
       }
 
@@ -25,7 +49,7 @@ export const htYardMasterDataService = {
         return getInitialSeedOptions(category, manufacturer);
       }
 
-      return data.map((item) => ({
+      const options: HTMasterOption[] = data.map((item) => ({
         id: item.id,
         category: item.category as HTMasterCategory,
         manufacturer: item.manufacturer,
@@ -35,6 +59,11 @@ export const htYardMasterDataService = {
         createdAt: item.created_at,
         updatedAt: item.updated_at
       }));
+
+      // Write-through: cache the full category result in IDB
+      cacheMasterOptions(options).catch(() => {});
+
+      return options;
     } catch (err) {
       console.error('Error in getMasterOptions:', err);
       return getInitialSeedOptions(category, manufacturer);
@@ -60,6 +89,8 @@ export const htYardMasterDataService = {
           .select()
           .single();
         if (!error && data) {
+          // Invalidate IDB cache so next read re-fetches fresh data
+          invalidateMasterOptions(data.category).catch(() => {});
           return {
             id: data.id,
             category: data.category as HTMasterCategory,
@@ -76,6 +107,8 @@ export const htYardMasterDataService = {
           .select()
           .single();
         if (!error && data) {
+          // Invalidate IDB cache so next read gets the new row
+          invalidateMasterOptions(data.category).catch(() => {});
           return {
             id: data.id,
             category: data.category as HTMasterCategory,
@@ -117,6 +150,8 @@ export const htYardMasterDataService = {
           .from('ht_master_options')
           .update({ is_active: false })
           .eq('id', id);
+        // Invalidate IDB cache for this category
+        if (category) invalidateMasterOptions(category).catch(() => {});
       }
     } catch (e) {
       console.warn('Supabase delete failed, falling back to local storage', e);

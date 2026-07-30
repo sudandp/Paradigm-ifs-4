@@ -486,13 +486,20 @@ const App: React.FC = () => {
         // Only start a new online timer if one isn't already pending
         if (!onlineTimer) {
           console.log('[FLICKER_DEBUG] Starting onlineTimer (2000ms)');
-          onlineTimer = setTimeout(() => {
+          onlineTimer = setTimeout(async () => {
             onlineTimer = null;
             lastStateChangeTime = Date.now();
-            console.log('[FLICKER_DEBUG] Calling setIsOffline(false) from timer');
+            console.log('[Network] Pre-fetching app data before closing offline screen...');
+            if (onConfirmedOnline) {
+              try {
+                await onConfirmedOnline();
+              } catch (syncErr) {
+                console.warn('[Network] Sync data warning before dismiss:', syncErr);
+              }
+            }
+            console.log('[FLICKER_DEBUG] Calling setIsOffline(false) AFTER data sync completed');
             setIsOffline(false);
             console.log('[Network] State → ONLINE (debounced)');
-            if (onConfirmedOnline) onConfirmedOnline();
           }, 2000); // 2s debounce before restoring online
         } else {
           console.log('[FLICKER_DEBUG] onlineTimer already running, ignoring');

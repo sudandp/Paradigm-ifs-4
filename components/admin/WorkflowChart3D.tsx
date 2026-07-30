@@ -36,7 +36,7 @@ const WorkflowChart3D: React.FC<WorkflowChart3DProps> = ({ users }) => {
     const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
     const [searchQuery, setSearchQuery] = useState('');
     const [zoom, setZoom] = useState(1.0);
-    const animationRef = useRef<number>();
+    const animationRef = useRef<number>(undefined as unknown as number);
     const rotationRef = useRef({ x: 0.2, y: 0 });
     const targetRotationRef = useRef({ x: 0.2, y: 0 });
     const isDraggingRef = useRef(false);

@@ -183,15 +183,15 @@ export const downloadTemplate = async (
       if (isIdCol && lookupRange) {
         const existingValue = cell.value ? String(cell.value) : '';
         cell.value = {
-          formula: `IF(${nameColLetter}${r}<>"",IFERROR(VLOOKUP(${nameColLetter}${r},${lookupRange},2,FALSE),""),"")`,
+          formula: `IF(${nameColLetter}${r}<>"",(IFERROR(VLOOKUP(${nameColLetter}${r},${lookupRange},2,FALSE),"")),"")`,
           result: existingValue
-        };
+        } as any;
       } else if (isSiteCol && lookupRange) {
         const existingValue = cell.value ? String(cell.value) : '';
         cell.value = {
-          formula: `IF(${nameColLetter}${r}<>"",IFERROR(VLOOKUP(${nameColLetter}${r},${lookupRange},3,FALSE),""),"")`,
+          formula: `IF(${nameColLetter}${r}<>"",(IFERROR(VLOOKUP(${nameColLetter}${r},${lookupRange},3,FALSE),"")),"")`,
           result: existingValue
-        };
+        } as any;
       } else if (isNameCol && empNameRef) {
         cell.dataValidation = {
           type: 'list',
@@ -761,7 +761,7 @@ export const downloadMasterTemplate = async (
               type: 'expression',
               formulae: [`COUNTIF($${columnLetter}$2:$${columnLetter}$${rowLimit}, ${columnLetter}2)>1`],
               style: {
-                fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: 'FFFFC7CE' } },
+                fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC7CE' }, bgColor: { argb: 'FFFFC7CE' } },
                 font: { color: { argb: 'FF9C0006' } }
               }
             }
@@ -780,7 +780,7 @@ export const downloadMasterTemplate = async (
               type: 'expression',
               formulae: [`AND(ISBLANK(${columnLetter}2), COUNTA($A2:$${lastColLetter}2)>0)`],
               style: {
-                fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: 'FFFFCCCC' } }
+                fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFCCCC' }, bgColor: { argb: 'FFFFCCCC' } }
               }
             }
           ]

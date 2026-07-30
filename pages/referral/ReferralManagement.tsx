@@ -21,7 +21,7 @@ interface StatCardProps {
 const StatCard: React.FC<StatCardProps> = ({ icon, label, value, color, sub }) => (
   <div className="bg-white rounded-3xl border border-border p-4 md:p-5 relative overflow-hidden group hover:shadow-lg transition-all duration-300 shadow-sm max-md:bg-white/[0.03] max-md:backdrop-blur-xl max-md:border-white/5 max-md:shadow-2xl">
     <div className="absolute top-0 right-0 p-3 opacity-[0.05] group-hover:opacity-[0.08] transition-opacity">
-      {React.cloneElement(icon as React.ReactElement, { className: 'w-16 h-16' })}
+      {React.cloneElement(icon as React.ReactElement, { className: 'w-16 h-16' } as any)}
     </div>
     <div className="flex items-center gap-3 mb-3">
       <div className="w-10 h-10 rounded-2xl flex items-center justify-center shadow-inner" style={{ backgroundColor: `${color}18` }}>

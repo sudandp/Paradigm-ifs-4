@@ -765,6 +765,13 @@ export const useAuthStore = create<AuthState>()(
 
                 // Online but genuinely no events today – safe to reset
                 if (events.length === 0) {
+                    const currentState = get();
+                    // If device is offline or user is already checked in today, do not wipe state on empty fallback
+                    if (currentState.isOffline || currentState.lastCheckInTime) {
+                        console.warn('[authStore] Zero events returned during offline/reconnect fallback – keeping existing state.');
+                        set({ isAttendanceLoading: false });
+                        return;
+                    }
                     set({
                         isCheckedIn: false,
                         lastCheckInTime: null,

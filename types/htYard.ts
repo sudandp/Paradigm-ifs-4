@@ -123,3 +123,18 @@ export interface ModuleSpec {
   repeatsPerSite: boolean;
   sections: SectionSpec[];
 }
+
+export interface OfflineHTYardAuditRecord {
+  id: string;
+  site_name: string;
+  reference_number: string;
+  audit_date: string;
+  client_division?: string;
+  status: string;
+  equipment_instances?: any[];
+  responses?: any;
+  snag_items?: any[];
+  updated_at?: string;
+  pending?: boolean;
+}
+

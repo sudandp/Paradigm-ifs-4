@@ -36,6 +36,10 @@ interface ImportMetaEnv {
     readonly VITE_KYC_HYPERVERGE_APP_KEY: string;
     readonly VITE_KYC_SIGNZY_API_KEY: string;
     readonly VITE_KYC_SIGNZY_PATIENT_ID: string;
+    readonly VITE_AGENT_DOWNLOAD_WIN: string;
+    readonly VITE_AGENT_DOWNLOAD_MAC: string;
+    /** Offline-first layer feature flag. Set to 'true' to enable. */
+    readonly VITE_OFFLINE_ENABLED: string;
   }
 
   

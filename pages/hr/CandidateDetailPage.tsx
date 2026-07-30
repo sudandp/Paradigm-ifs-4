@@ -486,7 +486,7 @@ const InfoRow: React.FC<{ icon: React.ReactNode; label: string; value: string; i
     }`}>
       {React.cloneElement(icon as React.ReactElement, {
         className: `w-4 h-4 ${accent ? (isMobile ? 'text-emerald-400' : 'text-emerald-600') : (isMobile ? 'text-white/30' : 'text-muted')}`
-      })}
+      } as any)}
     </div>
     <div className="min-w-0">
       <p className={`text-[10px] font-black uppercase tracking-widest ${isMobile ? 'text-white/40' : 'text-muted'}`}>{label}</p>

@@ -23,7 +23,43 @@ import {
   subDays, subMonths, eachMonthOfInterval, isSameMonth, startOfWeek
 } from 'date-fns';
 import { useAuthStore } from '../store/authStore';
-const offlineDb = { getCache: async (key?: string) => null, setCache: async (key?: string, val?: any) => {}, addToOutbox: async (val?: any) => {}, deleteOldDescriptors: async (userId?: string) => {}, getCacheWithMeta: async (key?: string) => null, setLastOnlineTimestamp: async () => {}, getSyncTime: async () => null, removeCache: async (key?: string) => {} };
+const offlineDb = {
+  getCache: async (key?: string) => {
+    if (!key || typeof window === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem(`paradigm_cache_${key}`);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  },
+  setCache: async (key?: string, val?: any) => {
+    if (!key || typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(`paradigm_cache_${key}`, JSON.stringify(val));
+    } catch {}
+  },
+  removeCache: async (key?: string) => {
+    if (!key || typeof window === 'undefined') return;
+    try { localStorage.removeItem(`paradigm_cache_${key}`); } catch {}
+  },
+  addToOutbox: async (val?: any) => {},
+  deleteOldDescriptors: async (userId?: string) => {},
+  getCacheWithMeta: async (key?: string) => null,
+  setLastOnlineTimestamp: async () => {},
+  getSyncTime: async () => null,
+};
+import { isOfflineEnabled } from './offline/featureFlag';
+import { isOnline as _isOfflineOnline } from './offline/networkStatus';
+import { enqueue as _offlineEnqueue } from './offline/outbox';
+import {
+  cacheHtYardAudit,
+  getCachedHtYardAudits,
+  deleteHtYardAuditFromCache,
+  cachePpmExecution,
+  getCachedPpmExecutions,
+  deletePpmExecutionFromCache
+} from './offline/cache';
+import type { OfflineHTYardAuditRecord } from '../types/htYard';
+import type { PPMExecutionRecord } from '../types/ppm';
 import { Network as CapacitorNetwork } from '@capacitor/network';
 const Network = {
   ...CapacitorNetwork,
@@ -2882,6 +2918,20 @@ export const api = {
   },
 
   saveHTYardAudit: async (auditData: { activeAudit: any; equipmentInstances: any[]; responses: any; snagItems: any[] }): Promise<void> => {
+    const record = {
+      id: auditData.activeAudit.id,
+      site_name: auditData.activeAudit.siteName,
+      reference_number: auditData.activeAudit.referenceNumber,
+      audit_date: auditData.activeAudit.auditDate,
+      client_division: auditData.activeAudit.clientDivision,
+      status: auditData.activeAudit.status || 'Draft',
+      equipment_instances: auditData.equipmentInstances,
+      responses: auditData.responses,
+      snag_items: auditData.snagItems,
+      updated_at: new Date().toISOString()
+    };
+
+    // Always keep localStorage as a quick tertiary mirror (pre-existing behaviour)
     try {
       if (typeof window !== 'undefined') {
         localStorage.setItem('paradigm_ht_yard_active_audit', JSON.stringify(auditData));
@@ -2890,18 +2940,26 @@ export const api = {
         const updatedList = [auditData, ...existingList.filter((a: any) => a.activeAudit?.id !== auditData.activeAudit?.id)];
         localStorage.setItem('paradigm_ht_yard_audits_list', JSON.stringify(updatedList));
       }
-      const record = {
-        id: auditData.activeAudit.id,
-        site_name: auditData.activeAudit.siteName,
-        reference_number: auditData.activeAudit.referenceNumber,
-        audit_date: auditData.activeAudit.auditDate,
-        client_division: auditData.activeAudit.clientDivision,
-        status: auditData.activeAudit.status || 'Draft',
-        equipment_instances: auditData.equipmentInstances,
-        responses: auditData.responses,
-        snag_items: auditData.snagItems,
-        updated_at: new Date().toISOString()
-      };
+    } catch { /* non-fatal */ }
+
+    // ── Offline path ─────────────────────────────────────────────────────────
+    if (isOfflineEnabled() && !_isOfflineOnline()) {
+      await cacheHtYardAudit(record);
+      await _offlineEnqueue({
+        id: record.id,
+        tableName: 'ht_yard_audits',
+        action: 'INSERT',
+        payload: record as Record<string, unknown>,
+      });
+      console.log(`[API] HT Yard audit queued offline (id=${record.id})`);
+      return;
+    }
+
+    // ── Online path (unchanged) ────────────────────────────────────────────────
+    try {
+      // Write-through to IDB for future offline reads
+      cacheHtYardAudit(record).catch(() => {});
+
       const { error } = await supabase.from('ht_yard_audits').upsert(record);
       if (error) {
         console.warn('[API] ht_yard_audits upsert fallback to local storage:', error.message);
@@ -2912,9 +2970,37 @@ export const api = {
   },
 
   getAllHTYardAudits: async (): Promise<any[]> => {
+    // ── Offline path: serve from IDB ───────────────────────────────────────────
+    if (isOfflineEnabled() && !_isOfflineOnline()) {
+      const cached = await getCachedHtYardAudits();
+      if (cached.length > 0) {
+        return cached.map((first) => ({
+          activeAudit: {
+            id: first.id,
+            siteName: first.site_name,
+            referenceNumber: first.reference_number,
+            auditDate: first.audit_date,
+            clientDivision: first.client_division,
+            status: first.status,
+            auditorName: (first as any).auditor_name || 'Field Engineer'
+          },
+          equipmentInstances: first.equipment_instances || [],
+          responses: first.responses || {},
+          snagItems: first.snag_items || []
+        }));
+      }
+      // IDB empty — fall back to localStorage
+      const cachedList = typeof window !== 'undefined' ? localStorage.getItem('paradigm_ht_yard_audits_list') : null;
+      if (cachedList) { try { return JSON.parse(cachedList); } catch { return []; } }
+      return [];
+    }
+
+    // ── Online path (unchanged, with write-through) ─────────────────────────
     try {
       const { data, error } = await supabase.from('ht_yard_audits').select('*').order('updated_at', { ascending: false });
       if (!error && data && data.length > 0) {
+        // Write-through to IDB for offline reads
+        data.forEach((row: any) => cacheHtYardAudit(row as OfflineHTYardAuditRecord).catch(() => {}));
         return data.map((first: any) => ({
           activeAudit: {
             id: first.id,
@@ -2931,25 +3017,32 @@ export const api = {
         }));
       }
     } catch (err) {
-      console.warn('[API] Failed to fetch HT Yard audits list from cloud, checking local storage');
+      console.warn('[API] Failed to fetch HT Yard audits list from cloud, checking IDB then localStorage');
     }
+    // IDB fallback
+    if (isOfflineEnabled()) {
+      const cached = await getCachedHtYardAudits();
+      if (cached.length > 0) return cached.map((first: any) => ({
+        activeAudit: {
+          id: first.id,
+          siteName: first.site_name,
+          referenceNumber: first.reference_number,
+          auditDate: first.audit_date,
+          clientDivision: first.client_division,
+          status: first.status,
+          auditorName: first.auditor_name || 'Field Engineer'
+        },
+        equipmentInstances: first.equipment_instances || [],
+        responses: first.responses || {},
+        snagItems: first.snag_items || []
+      }));
+    }
+    // Final localStorage fallback (legacy)
     if (typeof window !== 'undefined') {
       const cachedList = localStorage.getItem('paradigm_ht_yard_audits_list');
-      if (cachedList) {
-        try {
-          return JSON.parse(cachedList);
-        } catch (e) {
-          return [];
-        }
-      }
+      if (cachedList) { try { return JSON.parse(cachedList); } catch (e) { return []; } }
       const activeSingle = localStorage.getItem('paradigm_ht_yard_active_audit');
-      if (activeSingle) {
-        try {
-          return [JSON.parse(activeSingle)];
-        } catch (e) {
-          return [];
-        }
-      }
+      if (activeSingle) { try { return [JSON.parse(activeSingle)]; } catch (e) { return []; } }
     }
     return [];
   },
@@ -2986,13 +3079,96 @@ export const api = {
           } catch (e) {}
         }
       }
-      const { error } = await supabase.from('ht_yard_audits').delete().eq('id', auditId);
-      if (error) {
-        console.warn('[API] ht_yard_audits delete fallback:', error.message);
+      // ── Offline path ─────────────────────────────────────────────────────────
+      if (isOfflineEnabled() && !_isOfflineOnline()) {
+        await deleteHtYardAuditFromCache(auditId);
+        const { cancelPendingInsert } = await import('./offline/outbox');
+        const wasCancelled = await cancelPendingInsert(auditId);
+        if (!wasCancelled) {
+          await _offlineEnqueue({
+            id: auditId,
+            tableName: 'ht_yard_audits',
+            action: 'DELETE',
+            payload: { id: auditId },
+          });
+        }
+        return;
       }
+
+      // ── Online path ──────────────────────────────────────────────────────────
+      deleteHtYardAuditFromCache(auditId).catch(() => {});
+      const { error } = await supabase.from('ht_yard_audits').delete().eq('id', auditId);
+      if (error) console.warn('[API] ht_yard_audits delete fallback:', error.message);
     } catch (err) {
       console.warn('[API] Error deleting HT Yard audit:', err);
     }
+  },
+
+  // ─── PPM Executions API ───────────────────────────────────────────────────
+
+  savePPMExecution: async (record: PPMExecutionRecord): Promise<void> => {
+    // Tertiary mirror to localStorage
+    try {
+      if (typeof window !== 'undefined') {
+        const rawList = localStorage.getItem('paradigm_ppm_audits_list');
+        const existingList = rawList ? JSON.parse(rawList) : [];
+        const updatedList = [record, ...existingList.filter((a: any) => a.id !== record.id)];
+        localStorage.setItem('paradigm_ppm_audits_list', JSON.stringify(updatedList));
+      }
+    } catch { /* non-fatal */ }
+
+    // ── Offline path ─────────────────────────────────────────────────────────
+    if (isOfflineEnabled() && !_isOfflineOnline()) {
+      await cachePpmExecution(record);
+      await _offlineEnqueue({
+        id: record.id,
+        tableName: 'ppm_executions',
+        action: 'INSERT',
+        payload: record as unknown as Record<string, unknown>,
+      });
+      console.log(`[API] PPM execution queued offline (id=${record.id})`);
+      return;
+    }
+
+    // ── Online path ──────────────────────────────────────────────────────────
+    try {
+      cachePpmExecution(record).catch(() => {});
+      const { error } = await supabase.from('ppm_executions').upsert(record);
+      if (error) console.warn('[API] ppm_executions upsert cloud fallback:', error.message);
+    } catch (err) {
+      console.warn('[API] Error saving PPM execution:', err);
+    }
+  },
+
+  getAllPPMExecutions: async (): Promise<PPMExecutionRecord[]> => {
+    if (isOfflineEnabled() && !_isOfflineOnline()) {
+      return getCachedPpmExecutions();
+    }
+    try {
+      const { data, error } = await supabase.from('ppm_executions').select('*').order('updated_at', { ascending: false });
+      if (!error && data) {
+        data.forEach((row: any) => cachePpmExecution(row as PPMExecutionRecord).catch(() => {}));
+        return data as PPMExecutionRecord[];
+      }
+    } catch (err) {
+      console.warn('[API] Failed to fetch PPM executions from cloud, falling back to IDB');
+    }
+    return getCachedPpmExecutions();
+  },
+
+  deletePPMExecution: async (id: string): Promise<void> => {
+    if (isOfflineEnabled() && !_isOfflineOnline()) {
+      await deletePpmExecutionFromCache(id);
+      const { cancelPendingInsert } = await import('./offline/outbox');
+      const wasCancelled = await cancelPendingInsert(id);
+      if (!wasCancelled) {
+        await _offlineEnqueue({ id, tableName: 'ppm_executions', action: 'DELETE', payload: { id } });
+      }
+      return;
+    }
+    const { error } = await supabase.from('ppm_executions').delete().eq('id', id);
+    if (error) console.warn('[API] ppm_executions delete error:', error.message);
+    deletePpmExecutionFromCache(id).catch(() => {});
   },
 
   ensureRoleExists: async (roleId: string, displayName: string, templateRoleId: string = 'technician'): Promise<void> => {

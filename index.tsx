@@ -12,9 +12,14 @@ if (!rootElement) {
 
 import { SpeedInsights } from "@vercel/speed-insights/react";
 import { defineCustomElements } from '@ionic/pwa-elements/loader';
+import { syncEngine } from './services/offline/syncEngine';
 
 // Initialize PWA elements for camera support in web browser
 defineCustomElements(window);
+
+// Start the offline sync engine — listens for reconnect and drains the outbox.
+// No-op when VITE_OFFLINE_ENABLED !== 'true'.
+syncEngine.start();
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -29,7 +34,7 @@ const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <HashRouter {...{ future: { v7_startTransition: true, v7_relativeSplatPath: true } } as any}>
         <App />
         <SpeedInsights />
       </HashRouter>

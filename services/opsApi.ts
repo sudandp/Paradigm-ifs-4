@@ -8,6 +8,15 @@ import type {
   TicketPriority,
   SnagEntry
 } from '../types/operations';
+import { isOfflineEnabled } from './offline/featureFlag';
+import { isOnline } from './offline/networkStatus';
+import { enqueue, storePhoto, cancelPendingInsert } from './offline/outbox';
+import {
+  cacheSnagEntry,
+  cacheSnagEntries,
+  getCachedSnagEntries,
+  deleteSnagEntryFromCache,
+} from './offline/cache';
 
 // Helper to convert snake_case DB fields to camelCase TS fields
 const toCamelCase = (data: any): any => {
@@ -233,16 +242,75 @@ export const opsApi = {
   // ==========================================================================
 
   getSnagEntries: async (): Promise<SnagEntry[]> => {
+    // ── Offline path ──────────────────────────────────────────────────────────
+    if (isOfflineEnabled() && !isOnline()) {
+      const cached = await getCachedSnagEntries();
+      return cached.map((row) => toCamelCase(row) as SnagEntry);
+    }
+    // ── Online path (unchanged) ───────────────────────────────────────────────
     const { data, error } = await supabase
       .from('snag_audits')
       .select('*')
       .order('timestamp', { ascending: false });
     
     if (error) throw error;
-    return (data || []).map((row: any) => toCamelCase(row));
+    const entries = (data || []).map((row: any) => toCamelCase(row) as SnagEntry);
+    // Write-through: update local cache after every successful online fetch
+    cacheSnagEntries(entries).catch(() => {});
+    return entries;
   },
 
   saveSnagEntry: async (entry: Partial<SnagEntry>, fileToUpload?: File): Promise<SnagEntry> => {
+    // ── Offline path ──────────────────────────────────────────────────────────
+    if (isOfflineEnabled() && !isOnline()) {
+      const localId = (entry.id && !entry.id.startsWith('snag-') && !entry.id.startsWith('sample-'))
+        ? entry.id
+        : crypto.randomUUID();
+
+      // Store photo blob in IDB for later upload
+      let photoId: string | undefined;
+      if (fileToUpload) {
+        try {
+          photoId = await storePhoto(fileToUpload, fileToUpload.name, localId);
+        } catch (photoErr) {
+          console.warn('[opsApi] Failed to store photo blob offline:', photoErr);
+        }
+      }
+
+      const now = new Date().toISOString();
+      const offlineEntry: SnagEntry = {
+        ...entry,
+        id: localId,
+        timestamp: entry.timestamp || now,
+        createdAt: entry.createdAt || now,
+        updatedAt: now,
+        // Photo URL unknown until sync — leave as existing or undefined
+        snagPictureUrl: entry.snagPictureUrl,
+        snagPictureName: fileToUpload?.name ?? entry.snagPictureName,
+      } as SnagEntry;
+
+      const snakePayload = toSnakeCase(offlineEntry) as Record<string, unknown>;
+
+      // Write to local IDB mirror for immediate UI display
+      await cacheSnagEntry(offlineEntry);
+
+      // Enqueue to outbox for sync on reconnect
+      await enqueue({
+        id: localId,
+        tableName: 'snag_audits',
+        action: entry.id && !entry.id.startsWith('snag-') && !entry.id.startsWith('sample-')
+          ? 'UPDATE'
+          : 'INSERT',
+        payload: snakePayload,
+        photoId,
+      });
+
+      console.log(`[opsApi] Snag entry queued offline (id=${localId})`);
+      // Return same shape as online — pending:true signals a badge in the UI
+      return { ...offlineEntry, pending: true } as SnagEntry & { pending: boolean };
+    }
+
+    // ── Online path (completely unchanged) ────────────────────────────────────
     let pictureUrl = entry.snagPictureUrl;
     let pictureName = entry.snagPictureName;
 
@@ -280,6 +348,9 @@ export const opsApi = {
     }
 
     const saved = toCamelCase(data) as SnagEntry;
+
+    // Cache the saved entry locally for offline reads
+    cacheSnagEntry(saved).catch(() => {});
 
     // Trigger critical notifications to all managers if criticality is High
     if (saved.criticality === 'High') {
@@ -320,8 +391,31 @@ export const opsApi = {
   },
 
   deleteSnagEntry: async (id: string): Promise<void> => {
+    // Offline path: queue the DELETE for sync, remove from IDB immediately
+    // so the withdrawn record cannot reappear in the offline list.
+    // Compliance note: this closes the gap where an admin deletes a snag
+    // while an auditor's device is offline — the delete propagates on reconnect.
+    if (isOfflineEnabled() && !isOnline()) {
+      // Remove from local IDB immediately so it cannot reappear in the offline list
+      await deleteSnagEntryFromCache(id);
+
+      // Edge case: record was created offline and deleted offline before it ever synced.
+      // The server has never seen this ID — sending a DELETE would be a no-op at best
+      // or a permission error at worst. Cancel the pending INSERT instead.
+      const wasCancelledLocally = await cancelPendingInsert(id);
+      if (!wasCancelledLocally) {
+        // Record has been synced before — safe to enqueue a DELETE for propagation
+        await enqueue({ id, tableName: 'snag_audits', action: 'DELETE', payload: { id } });
+      }
+      return;
+    }
+
     const { error } = await supabase.from('snag_audits').delete().eq('id', id);
     if (error) throw error;
+    // Mirror delete to IDB — prevents withdrawn records from reappearing offline
+    deleteSnagEntryFromCache(id).catch((e) =>
+      console.warn('[Offline] IDB delete mirror failed for snag', id, e)
+    );
   },
 
   updateSnagStatus: async (id: string, status: SnagEntry['status']): Promise<void> => {

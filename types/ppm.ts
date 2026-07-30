@@ -85,3 +85,23 @@ export interface PPMSummaryCounts {
   minor: number;
   total: number;
 }
+
+export interface PPMExecutionRecord {
+  id: string;
+  site_name: string;
+  reference_number: string;
+  category_id: PPMCategory | string;
+  audit_date: string;
+  client_division?: string;
+  status: PPMAuditStatus;
+  auditor_name?: string;
+  organization_id?: string;
+  observations?: Record<string, PPMObservation>;
+  summary_counts?: PPMSummaryCounts;
+  snag_ids?: string[];
+  photo_urls?: string[];
+  created_at?: string;
+  updated_at?: string;
+  pending?: boolean;
+}
+

@@ -447,7 +447,7 @@ const HRCallQueue: React.FC = () => {
 const StatCard: React.FC<{ icon: React.ReactNode; label: string; value: number; color: string; trend?: string; isMobile?: boolean }> = ({ icon, label, value, color, trend, isMobile }) => (
   <div className={`relative overflow-hidden group hover:shadow-lg transition-all duration-300 ${isMobile ? 'bg-[#182a20] rounded-[24px] border border-[#2a4536] p-4' : 'bg-white rounded-3xl border border-border p-4 md:p-5 shadow-sm'}`}>
     <div className={`absolute top-0 right-0 p-3 transition-opacity ${isMobile ? 'opacity-5 group-hover:opacity-10' : 'opacity-[0.05] group-hover:opacity-[0.08]'}`}>
-      {React.cloneElement(icon as React.ReactElement, { className: 'w-16 h-16 md:w-20 md:h-20' })}
+      {React.cloneElement(icon as React.ReactElement, { className: 'w-16 h-16 md:w-20 md:h-20' } as any)}
     </div>
     <div className="flex items-center gap-3 md:gap-4 mb-3 md:mb-4">
       <div className="w-10 h-10 md:w-12 md:h-12 rounded-2xl flex items-center justify-center shadow-inner" style={{ backgroundColor: `${color}15` }}>
