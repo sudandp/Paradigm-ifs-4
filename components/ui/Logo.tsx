@@ -31,7 +31,7 @@ const Logo: React.FC<LogoProps> = ({ className = '', localPath, variant = 'white
             src={src}
             alt="Paradigm Logo"
             style={getFilterStyle()}
-            className={`w-auto object-contain transition-all duration-500 ${!className.includes('h-') && 'h-10'} ${className}`}
+            className={`object-contain transition-all duration-500 ${!className.includes('h-') ? 'h-10' : ''} ${!className.includes('w-') ? 'w-auto' : ''} ${className}`}
             onError={(e) => {
                 const target = e.target as HTMLImageElement;
                 // prevent infinite loop if default also fails

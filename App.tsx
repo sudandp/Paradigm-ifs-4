@@ -1141,25 +1141,44 @@ const App: React.FC = () => {
     const initializeApp = async () => {
       setLoading(true);
 
-      // Helper: restore user session from offline cache (14-day window)
+      // Helper: restore user session from offline cache (14-day window).
+      // User profile is cached to localStorage on every successful login/profile fetch.
+      // This allows the app to stay authenticated during transient network outages.
       const restoreFromOfflineCache = async () => {
         try {
-          const cachedUser: any = null;
+          const OFFLINE_USER_KEY = 'paradigm:cachedUser';
+          const OFFLINE_TS_KEY = 'paradigm:lastOnlineTimestamp';
+          const MAX_OFFLINE_DAYS = 14;
 
-          if (false) {
-            console.log('[App] Offline session expired (>14 days). Requiring re-login.');
+          const raw = localStorage.getItem(OFFLINE_USER_KEY);
+          const lastOnlineStr = localStorage.getItem(OFFLINE_TS_KEY);
+
+          if (!raw) {
+            console.log('[App] No offline user cache found. Requiring login.');
             setUser(null);
             resetAttendance();
             return;
           }
 
-          if (false) {
+          // Enforce a 14-day offline window for security
+          if (lastOnlineStr) {
+            const lastOnline = parseInt(lastOnlineStr, 10);
+            const daysSinceOnline = (Date.now() - lastOnline) / (1000 * 60 * 60 * 24);
+            if (daysSinceOnline > MAX_OFFLINE_DAYS) {
+              console.log(`[App] Offline session expired (${daysSinceOnline.toFixed(1)} days). Requiring re-login.`);
+              localStorage.removeItem(OFFLINE_USER_KEY);
+              setUser(null);
+              resetAttendance();
+              return;
+            }
+          }
+
+          const cachedUser = JSON.parse(raw);
+          if (cachedUser && cachedUser.id) {
             console.log('[App] ✅ Restored user from offline cache:', cachedUser.name);
             setUser(cachedUser);
-            // Run cache maintenance in background
-
           } else {
-            console.log('[App] No cached user profile found. Requiring login.');
+            console.log('[App] Offline cache was empty or malformed. Requiring login.');
             setUser(null);
             resetAttendance();
           }
@@ -1318,6 +1337,16 @@ const App: React.FC = () => {
 
               if (isMounted && appUser) {
                 setUser(appUser);
+
+                // Persist profile to localStorage for offline restoration.
+                // This cache is read by restoreFromOfflineCache() when the device is offline.
+                try {
+                  localStorage.setItem('paradigm:cachedUser', JSON.stringify(appUser));
+                  localStorage.setItem('paradigm:lastOnlineTimestamp', String(Date.now()));
+                } catch (e) {
+                  console.warn('[App] Failed to cache user profile for offline use:', e);
+                }
+
                 // Greeting logic — only once per session
                 const greetKey = `greeting_${new Date().toDateString()}_${appUser.id}`;
                 if (!localStorage.getItem(greetKey)) {
@@ -1352,6 +1381,9 @@ const App: React.FC = () => {
           secureRemove('rememberedEmail').catch(() => {});
           Preferences.remove({ key: 'supabase.auth.rememberMe' }).catch(() => {}); // legacy cleanup
           Preferences.remove({ key: 'rememberedEmail' }).catch(() => {}); // legacy cleanup
+          // Clear the offline user profile cache so a new user logging in starts fresh
+          localStorage.removeItem('paradigm:cachedUser');
+          localStorage.removeItem('paradigm:lastOnlineTimestamp');
         }
       }
     });
@@ -1375,6 +1407,9 @@ const App: React.FC = () => {
         // supabase.auth.getSession() returns the in-memory session; if the access token
         // has expired, Supabase will automatically try to refresh it via autoRefreshToken.
         // If it cannot (e.g. no network), we fall back to our persisted refreshToken.
+        // IMPORTANT: Network errors during refresh must NEVER force a logout — the user
+        // may simply be in a tunnel/area with no connectivity. Only a definitively invalid
+        // or revoked token (HTTP 400 / "invalid refresh token") warrants a forced logout.
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
           // [SECURITY] Read encrypted token, fall back to legacy plaintext key for backward compatibility.
@@ -1387,20 +1422,45 @@ const App: React.FC = () => {
               .catch(e => ({ data: { session: null }, error: e }));
             
             if (refreshErr) {
-              // Token is definitively invalid (e.g. revoked server-side). Only THEN do we force logout.
-              const isDefinitiveFailure = refreshErr.message?.includes('invalid') || refreshErr.message?.includes('not found');
+              // Distinguish network errors from genuine token invalidation.
+              // Network errors: TypeError (fetch failed), timeout, net::ERR_* — keep user in app.
+              // Token errors: 400 / "invalid refresh token" / "not found" — force logout.
+              const isNetworkFailure =
+                refreshErr instanceof TypeError ||
+                (typeof refreshErr.message === 'string' && (
+                  refreshErr.message.toLowerCase().includes('failed to fetch') ||
+                  refreshErr.message.toLowerCase().includes('network') ||
+                  refreshErr.message.toLowerCase().includes('timed out') ||
+                  refreshErr.message.toLowerCase().includes('timeout')
+                ));
+              const isDefinitiveFailure =
+                !isNetworkFailure && (
+                  refreshErr.message?.includes('invalid') ||
+                  refreshErr.message?.includes('not found') ||
+                  (refreshErr as any).status === 400
+                );
+
               if (isDefinitiveFailure) {
-                console.warn('[AppState] Saved token is invalid. Forcing logout.');
+                console.warn('[AppState] Saved token is definitively invalid. Forcing logout.');
                 useAuthStore.getState().forceLogout('Your session has expired. Please log in again.');
+              } else {
+                // Network/transient error — silently retain existing user state.
+                console.warn('[AppState] Session refresh failed due to network issue. Keeping user logged in:', refreshErr.message);
               }
-              // If it was a network error, we keep the user in the app and retry next time.
             } else if (refreshData.session) {
               console.log('[AppState] Session silently restored.');
             }
           } else if (currentUser) {
-            // No token and no session — user state is stale. Clear it.
-            console.warn('[AppState] No session or refresh token found. Clearing stale user state.');
-            useAuthStore.getState().forceLogout('Your session has expired. Please log in again.');
+            // No refresh token stored. This can happen if the user deliberately cleared
+            // storage or if the device OS wiped the secure storage. Only log out if we are
+            // online — offline with no token could just mean the secure storage wasn't
+            // accessible on this resume cycle.
+            if (navigator.onLine) {
+              console.warn('[AppState] No session or refresh token found (online). Clearing stale user state.');
+              useAuthStore.getState().forceLogout('Your session has expired. Please log in again.');
+            } else {
+              console.log('[AppState] No refresh token, but device is offline. Keeping current user state.');
+            }
           }
         }
       }

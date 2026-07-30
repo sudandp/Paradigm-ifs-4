@@ -489,17 +489,46 @@ export const api = {
   toCamelCase,
   handleError: (error: any): never => {
     if (!error) throw new Error('An unknown error occurred.');
-    
-    // Check for definitive auth failures (400 - Invalid Token/Expired Session)
-    const isAuthError = 
+
+    // --- NETWORK ERROR GUARD ---
+    // Network outages, DNS failures, and timeouts manifest as TypeError: "Failed to fetch"
+    // or similar. These are NOT auth failures — the token may still be valid.
+    // Dispatching supabase-auth-failure on a network error forces the user to re-login
+    // even though their session is perfectly intact. Guard against this first.
+    const isNetworkError =
+        error instanceof TypeError ||
+        error.name === 'AbortError' ||
+        (typeof error.message === 'string' && (
+            error.message.toLowerCase().includes('failed to fetch') ||
+            error.message.toLowerCase().includes('network request failed') ||
+            error.message.toLowerCase().includes('timed out') ||
+            error.message.toLowerCase().includes('timeout') ||
+            error.message.toLowerCase().includes('net::err_') ||
+            error.message.toLowerCase().includes('load failed')
+        ));
+
+    if (isNetworkError) {
+        // Log for debugging but DO NOT treat as an auth failure.
+        console.warn('[API] Network error (not an auth failure):', error.message);
+        throw error;
+    }
+
+    // --- GENUINE AUTH FAILURES ---
+    // Only 401 Unauthorized, 403 Forbidden, or a 400 specifically about invalid/expired tokens
+    // should be treated as definitive authentication failures.
+    const isTokenError = 
         (error.status === 400 || error.code === '400') && 
         (error.message?.includes('invalid') || error.message?.includes('expired') || error.message?.includes('token'));
     
     const isUnauthorized = error.status === 401 || error.code === '401' || error.status === 403 || error.code === '403';
     
-    if (isAuthError || isUnauthorized) {
+    // Extra safety: only fire supabase-auth-failure if we are currently online.
+    // If the device is offline, even a 400/401 could be a stale cached error — skip it.
+    const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+    
+    if ((isTokenError || isUnauthorized) && isOnline) {
         console.error('CRITICAL AUTH ERROR (400/401) DETECTED:', error.message);
-        // We trigger an event that authStore or App.tsx can handle
+        // Trigger event that App.tsx listens to for forced logout
         window.dispatchEvent(new CustomEvent('supabase-auth-failure', { detail: error }));
     }
     

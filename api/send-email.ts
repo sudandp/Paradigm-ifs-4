@@ -403,6 +403,7 @@ const reportGenerators = {
   crm_bd_daily: async (supabase: SupabaseClient, nowIST: Date) => {
     const todayStr = getISTDateString(nowIST);
     const startOfTodayUTC = startOfDay(new Date(nowIST.getTime() - IST_OFFSET));
+    const sevenDaysAgoUTC = new Date(startOfTodayUTC.getTime() - 7 * 24 * 3600000);
 
     const { data: usersRes } = await supabase.from('users').select('id, name, role_id, role:roles(display_name)').eq('is_blocked', false);
     const bdUsers = (usersRes || []).filter((u: any) => {
@@ -414,7 +415,7 @@ const reportGenerators = {
 
     if (bdUsers.length === 0) {
       const defaultDate = safeFormat(nowIST, 'EEEE, MMMM do, yyyy');
-      return {
+      return [{
         date: defaultDate,
         bd_name: 'All BDs',
         bdName: 'All BDs',
@@ -428,8 +429,8 @@ const reportGenerators = {
         checkOutTime: 'N/A',
         working_hours: '0h 0m',
         workingHours: '0h 0m',
-        kms_travelled: '0',
-        kmsTravelled: '0',
+        kms_travelled: '0.00',
+        kmsTravelled: '0.00',
         prospect_calls: '0',
         prospectCalls: '0',
         followup_calls: '0',
@@ -438,198 +439,274 @@ const reportGenerators = {
         newLeadsCount: '0',
         sites_count: '0',
         sitesCount: '0',
-        sites_visited: 'None',
-        sitesVisited: 'None',
+        sites_visited: '0',
+        sitesVisited: '0',
         new_leads_table: '<div style="padding:16px;text-align:center;color:#64748b;">No active Business Developers found.</div>',
         newLeadsTable: '<div style="padding:16px;text-align:center;color:#64748b;">No active Business Developers found.</div>',
         metrics_table: '<div style="padding:16px;text-align:center;color:#64748b;">No activity metrics available.</div>',
         metricsTable: '<div style="padding:16px;text-align:center;color:#64748b;">No activity metrics available.</div>',
         pipeline_snapshot: '<div style="padding:16px;text-align:center;color:#64748b;">No pipeline data available.</div>',
         pipelineSnapshot: '<div style="padding:16px;text-align:center;color:#64748b;">No pipeline data available.</div>'
-      };
+      }];
     }
 
-    const [eventsRes, leadsRes, callsRes] = await Promise.all([
+    // Fetch all data in one parallel batch
+    const [eventsRes, leadsRes, callsRes, allLeadsRes, sevenDayFollowupsRes, sevenDayEventsRes] = await Promise.all([
       supabase.from('attendance_events').select('user_id, type, timestamp, latitude, longitude, travel_distance').gte('timestamp', startOfTodayUTC.toISOString()).order('timestamp', { ascending: true }),
-      supabase.from('crm_leads').select('id, created_by, assigned_to, company_name, contact_person, status, created_at').gte('created_at', startOfTodayUTC.toISOString()),
-      supabase.from('crm_followups').select('created_by, type, lead_id, created_at').gte('created_at', startOfTodayUTC.toISOString())
+      supabase.from('crm_leads').select('id, created_by, assigned_to, company_name, client_name, association_name, contact_person, status, source, city, created_at, stage_updated_at, updated_at, next_followup_date, lost_reason').gte('created_at', startOfTodayUTC.toISOString()),
+      supabase.from('crm_followups').select('created_by, type, outcome, lead_id, created_at, next_followup_date').gte('created_at', startOfTodayUTC.toISOString()),
+      supabase.from('crm_leads').select('id, created_by, assigned_to, company_name, client_name, association_name, contact_person, status, source, city, created_at, stage_updated_at, updated_at, next_followup_date, lost_reason'),
+      supabase.from('crm_followups').select('created_by, type, outcome, lead_id, created_at, next_followup_date').gte('created_at', sevenDaysAgoUTC.toISOString()),
+      supabase.from('attendance_events').select('user_id, type, timestamp').gte('timestamp', sevenDaysAgoUTC.toISOString()).eq('type', 'punch-in')
     ]);
 
     const events = eventsRes.data || [];
     const leads = leadsRes.data || [];
     const calls = callsRes.data || [];
+    const allLeads = allLeadsRes.data || [];
+    const sevenDayFollowups = sevenDayFollowupsRes.data || [];
+    const sevenDayEvents = sevenDayEventsRes.data || [];
 
-    const { data: allActiveLeads } = await supabase.from('crm_leads')
-      .select('assigned_to, created_by, status')
-      .neq('status', 'Won')
-      .neq('status', 'Lost');
+    // Helpers
+    const leadName = (l: any) => l.company_name || l.association_name || l.client_name || 'Unknown';
+    const daysSince = (dateStr: string | null | undefined): number => {
+      if (!dateStr) return 999;
+      return (nowIST.getTime() - new Date(dateStr).getTime()) / 86400000;
+    };
+    const stageOrder: Record<string, number> = { 'Negotiation': 1, 'Proposal Sent': 2, 'Survey Completed': 3, 'Site Visit Planned': 4, 'Contacted': 5, 'New Lead': 6, 'Onboarding Started': 1 };
+    const stageColor: Record<string, string> = { 'Negotiation': '#f97316', 'Proposal Sent': '#ec4899', 'Survey Completed': '#06b6d4', 'Site Visit Planned': '#f59e0b', 'Contacted': '#8b5cf6', 'New Lead': '#3b82f6', 'Won': '#10b981', 'Lost': '#ef4444', 'Onboarding Started': '#006b3f' };
 
-    const bd = bdUsers[0];
-    const bdEvents = [...events.filter((e: any) => e.user_id === bd.id)].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-    let attendance_status = bdEvents.length > 0 ? 'Present' : 'Absent';
-    let check_in_time = 'N/A';
-    let check_out_time = 'N/A';
-    let working_hours = '0h 0m';
-    
-    const punchesIn = bdEvents.filter((e: any) => e.type === 'punch-in' || e.type === 'site-in' || e.type === 'site-ot-in');
-    const punchesOut = bdEvents.filter((e: any) => e.type === 'punch-out' || e.type === 'site-out' || e.type === 'site-ot-out');
-    
-    if (punchesIn.length > 0) {
-      check_in_time = safeFormat(punchesIn[0].timestamp, 'hh:mm a');
-    }
-    if (punchesOut.length > 0) {
-      check_out_time = safeFormat(punchesOut[punchesOut.length - 1].timestamp, 'hh:mm a');
-    }
-  
-    let netWorkMinutes = 0;
-    let isOnBreak = false;
-    let lastTime: Date | null = null;
-    let isPunchedIn = false;
+    const reports: any[] = [];
 
-    bdEvents.forEach((e: any) => {
-      const evTime = new Date(e.timestamp);
-      if (lastTime) {
-        const elapsed = (evTime.getTime() - lastTime.getTime()) / 60000;
-        if (isPunchedIn && !isOnBreak && elapsed > 0 && elapsed < 30 * 60) {
-          netWorkMinutes += elapsed;
+    for (const bd of bdUsers) {
+      // ── Attendance & Time ─────────────────────────────────────────────────
+      const bdEvents = [...events.filter((e: any) => e.user_id === bd.id)].sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      const attendance_status = bdEvents.length > 0 ? 'Present' : 'Absent';
+      const toIST = (ts: string): Date => new Date(new Date(ts).getTime() + IST_OFFSET);
+      const firstPunchIn = bdEvents.find((e: any) => e.type === 'punch-in');
+      const lastPunchOut = [...bdEvents].reverse().find((e: any) => e.type === 'punch-out');
+      let check_in_time = 'N/A';
+      let check_out_time = 'N/A';
+      if (firstPunchIn) check_in_time = format(toIST(firstPunchIn.timestamp), 'hh:mm a');
+      if (lastPunchOut) check_out_time = format(toIST(lastPunchOut.timestamp), 'hh:mm a');
+      let working_hours = '0h 0m';
+      if (firstPunchIn && lastPunchOut) {
+        const totalMs = new Date(lastPunchOut.timestamp).getTime() - new Date(firstPunchIn.timestamp).getTime();
+        if (totalMs > 0) {
+          let breakMs = 0; let lastBreakInTs: number | null = null;
+          bdEvents.forEach((e: any) => {
+            if (e.type === 'break-in') { lastBreakInTs = new Date(e.timestamp).getTime(); }
+            else if (e.type === 'break-out' && lastBreakInTs !== null) { breakMs += new Date(e.timestamp).getTime() - lastBreakInTs; lastBreakInTs = null; }
+          });
+          const netMs = Math.max(0, totalMs - breakMs);
+          working_hours = `${Math.floor(netMs / 3600000)}h ${Math.floor((netMs % 3600000) / 60000)}m`;
         }
       }
-      
-      if (e.type === 'punch-in' || e.type === 'site-in' || e.type === 'site-ot-in') {
-        isPunchedIn = true;
-      } else if (e.type === 'punch-out' || e.type === 'site-out' || e.type === 'site-ot-out') {
-        isPunchedIn = false;
-        isOnBreak = false;
-      } else if (e.type === 'break-in') {
-        isOnBreak = true;
-      } else if (e.type === 'break-out') {
-        isOnBreak = false;
+      let savedDistance = 0;
+      bdEvents.forEach((e: any) => { if (e.travel_distance > 0) savedDistance += e.travel_distance; });
+      const kms_travelled = savedDistance.toFixed(2);
+
+      // ── Today's CRM Activity ─────────────────────────────────────────────
+      const newLeadsToday = leads.filter((l: any) => l.created_by === bd.id || l.assigned_to === bd.id);
+      const newLeadsIds = new Set(newLeadsToday.map((l: any) => l.id));
+      const isCallType = (t: string) => ['call', 'phone call', 'outbound call'].includes((t || '').toLowerCase());
+      const isSiteVisitType = (t: string) => ['site visit', 'sitevisit', 'site-visit'].includes((t || '').toLowerCase());
+      const prospect_calls = calls.filter((c: any) => c.created_by === bd.id && isCallType(c.type) && newLeadsIds.has(c.lead_id)).length;
+      const followup_calls = calls.filter((c: any) => c.created_by === bd.id && isCallType(c.type) && !newLeadsIds.has(c.lead_id)).length;
+      const new_leads_count = newLeadsToday.length;
+      const siteVisitsFromCRM = calls.filter((c: any) => c.created_by === bd.id && isSiteVisitType(c.type)).length;
+      const siteVisitsFromAttendance = bdEvents.filter((e: any) => e.type === 'site-in').length;
+      const sites_count = siteVisitsFromCRM > 0 ? siteVisitsFromCRM : siteVisitsFromAttendance;
+
+      // ── All-time BD leads ─────────────────────────────────────────────────
+      const allBDLeads = allLeads.filter((l: any) => l.assigned_to === bd.id || l.created_by === bd.id);
+
+      // ── SECTION 1: Follow-up Completion Rate ─────────────────────────────
+      const todayFollowupsDone = calls.filter((c: any) => c.created_by === bd.id).length;
+      const todayScheduled = sevenDayFollowups.filter((f: any) => {
+        if (!f.next_followup_date) return false;
+        const fDateStr = new Date(f.next_followup_date).toISOString().substring(0, 10);
+        return fDateStr === todayStr && allBDLeads.some((l: any) => l.id === f.lead_id);
+      }).length;
+      const completionRate = todayScheduled > 0 ? Math.min(100, Math.round((todayFollowupsDone / todayScheduled) * 100)) : (todayFollowupsDone > 0 ? 100 : 0);
+      const rateColor = completionRate >= 80 ? '#10b981' : completionRate >= 50 ? '#f59e0b' : '#ef4444';
+      const rateLabel = completionRate >= 80 ? '✅ On Track' : completionRate >= 50 ? '⚠️ Moderate' : '🔴 Needs Attention';
+      const followup_completion_block = `<div style="margin-bottom:20px;padding:20px;background:#f8fafc;border-radius:12px;border:1px solid #e2e8f0;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;"><div style="font-size:13px;font-weight:700;color:#1e293b;text-transform:uppercase;letter-spacing:0.5px;">📋 Follow-up Completion</div><div style="font-size:11px;font-weight:600;color:${rateColor};background:${rateColor}15;padding:4px 10px;border-radius:20px;">${rateLabel}</div></div><div style="display:flex;align-items:center;gap:16px;"><div style="font-size:36px;font-weight:800;color:${rateColor};">${completionRate}%</div><div><div style="font-size:12px;color:#64748b;margin-bottom:2px;">Done today: <strong style="color:#1e293b;">${todayFollowupsDone}</strong></div><div style="font-size:12px;color:#64748b;">Scheduled: <strong style="color:#1e293b;">${todayScheduled}</strong></div></div></div><div style="margin-top:12px;background:#e2e8f0;border-radius:100px;height:8px;overflow:hidden;"><div style="width:${completionRate}%;background:${rateColor};height:8px;border-radius:100px;"></div></div></div>`;
+
+      // ── SECTION 2: Overdue/Stale Leads Alert ─────────────────────────────
+      const overdueLeads = allBDLeads.filter((l: any) => {
+        if (['Won', 'Lost'].includes(l.status)) return false;
+        const lastActivity = l.stage_updated_at || l.updated_at || l.created_at;
+        const daysStale = daysSince(lastActivity);
+        const hasOverdueFollowup = l.next_followup_date && new Date(l.next_followup_date) < nowIST;
+        return daysStale >= 7 || hasOverdueFollowup;
+      }).sort((a: any, b: any) => daysSince(b.stage_updated_at || b.updated_at || b.created_at) - daysSince(a.stage_updated_at || a.updated_at || a.created_at));
+      let overdue_leads_block = '';
+      if (overdueLeads.length === 0) {
+        overdue_leads_block = `<div style="padding:16px;text-align:center;color:#10b981;font-weight:600;background:#f0fdf4;border-radius:12px;border:1px solid #bbf7d0;">✅ No stale leads — all active leads have recent activity!</div>`;
+      } else {
+        const criticalCount = overdueLeads.filter((l: any) => daysSince(l.stage_updated_at || l.updated_at || l.created_at) >= 14).length;
+        const alertColor = criticalCount > 0 ? '#ef4444' : '#f59e0b';
+        const alertBg = criticalCount > 0 ? '#fef2f2' : '#fffbeb';
+        overdue_leads_block = `<div style="background:${alertBg};border:1px solid ${alertColor}30;border-left:4px solid ${alertColor};border-radius:8px;padding:12px 16px;margin-bottom:12px;"><div style="font-size:12px;font-weight:700;color:${alertColor};">${criticalCount > 0 ? '🔴' : '🟡'} ${overdueLeads.length} lead(s) need attention${criticalCount > 0 ? ` — ${criticalCount} critical (14+ days)` : ''}</div></div><table width="100%" style="border-collapse:collapse;font-size:12px;"><thead><tr style="background:#f8fafc;"><th style="padding:8px 12px;text-align:left;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;">Lead</th><th style="padding:8px 12px;text-align:left;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;">Stage</th><th style="padding:8px 12px;text-align:center;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;">Days Stale</th><th style="padding:8px 12px;text-align:center;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;">Next Action</th></tr></thead><tbody>` +
+          overdueLeads.slice(0, 8).map((l: any, i: number) => {
+            const days = Math.floor(daysSince(l.stage_updated_at || l.updated_at || l.created_at));
+            const daysColor = days >= 14 ? '#ef4444' : days >= 7 ? '#f59e0b' : '#64748b';
+            const sc = stageColor[l.status] || '#64748b';
+            const nextAction = l.next_followup_date ? format(new Date(l.next_followup_date), 'dd MMM') : 'Not set';
+            const overdueNote = l.next_followup_date && new Date(l.next_followup_date) < nowIST ? ' ⚠️' : '';
+            return `<tr style="background:${i % 2 === 0 ? '#fff' : '#f9fafb'};border-top:1px solid #f1f5f9;"><td style="padding:10px 12px;font-weight:600;color:#1e293b;">${leadName(l)}</td><td style="padding:10px 12px;"><span style="background:${sc}20;color:${sc};padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600;">${l.status}</span></td><td style="padding:10px 12px;text-align:center;font-weight:700;color:${daysColor};">${days}d</td><td style="padding:10px 12px;text-align:center;font-size:11px;color:#64748b;">${nextAction}${overdueNote}</td></tr>`;
+          }).join('') + `</tbody></table>`;
       }
-      lastTime = evTime;
-    });
 
-    if (netWorkMinutes > 0) {
-      const hrs = Math.floor(netWorkMinutes / 60);
-      const mins = Math.floor(netWorkMinutes % 60);
-      working_hours = `${hrs}h ${mins}m`;
-    }
+      // ── SECTION 3: Top 5 Closest-to-Close ────────────────────────────────
+      const activeLeads = allBDLeads.filter((l: any) => !['Won', 'Lost'].includes(l.status)).sort((a: any, b: any) => (stageOrder[a.status] || 9) - (stageOrder[b.status] || 9)).slice(0, 5);
+      const top_leads_block = activeLeads.length === 0
+        ? `<div style="padding:16px;text-align:center;color:#64748b;font-style:italic;">No active leads in pipeline.</div>`
+        : `<table width="100%" style="border-collapse:collapse;font-size:12px;"><thead><tr style="background:#f8fafc;"><th style="padding:8px 12px;text-align:left;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;">#</th><th style="padding:8px 12px;text-align:left;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;">Lead</th><th style="padding:8px 12px;text-align:left;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;">Stage</th><th style="padding:8px 12px;text-align:left;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;">City</th><th style="padding:8px 12px;text-align:center;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;">Next Followup</th></tr></thead><tbody>` +
+          activeLeads.map((l: any, i: number) => {
+            const sc = stageColor[l.status] || '#64748b';
+            const nf = l.next_followup_date ? format(new Date(l.next_followup_date), 'dd MMM') : '—';
+            return `<tr style="background:${i % 2 === 0 ? '#fff' : '#f9fafb'};border-top:1px solid #f1f5f9;"><td style="padding:10px 12px;font-weight:700;color:#94a3b8;">${i + 1}</td><td style="padding:10px 12px;font-weight:600;color:#1e293b;">${leadName(l)}</td><td style="padding:10px 12px;"><span style="background:${sc}20;color:${sc};padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600;">${l.status}</span></td><td style="padding:10px 12px;color:#64748b;">${l.city || '—'}</td><td style="padding:10px 12px;text-align:center;font-size:11px;color:#64748b;">${nf}</td></tr>`;
+          }).join('') + `</tbody></table>`;
 
-    const newLeadsToday = leads.filter((l: any) => l.created_by === bd.id || l.assigned_to === bd.id);
-    const newLeadsIds = new Set(newLeadsToday.map((l: any) => l.id));
-    
-    const prospect_calls = calls.filter((c: any) => c.created_by === bd.id && c.type === 'Call' && newLeadsIds.has(c.lead_id)).length;
-    const followup_calls = calls.filter((c: any) => c.created_by === bd.id && c.type === 'Call' && !newLeadsIds.has(c.lead_id)).length;
-    
-    const new_leads_count = newLeadsToday.length;
-    const sites_count = calls.filter((c: any) => c.created_by === bd.id && c.type === 'Site Visit').length;
-    
-    let savedDistance = 0;
-    bdEvents.forEach((e: any) => {
-      if (e.travel_distance > 0) savedDistance += e.travel_distance;
-    });
-    const kms_travelled = savedDistance.toFixed(2);
+      // ── SECTION 4: Won/Lost This Week ─────────────────────────────────────
+      const wonThisWeek = allBDLeads.filter((l: any) => l.status === 'Won' && daysSince(l.stage_updated_at || l.updated_at) <= 7);
+      const lostThisWeek = allBDLeads.filter((l: any) => l.status === 'Lost' && daysSince(l.stage_updated_at || l.updated_at) <= 7);
+      const totalDecided = wonThisWeek.length + lostThisWeek.length;
+      const winRate = totalDecided > 0 ? Math.round((wonThisWeek.length / totalDecided) * 100) : 0;
+      const won_lost_block = `<div style="display:table;width:100%;border-collapse:separate;border-spacing:12px;"><div style="display:table-cell;width:50%;vertical-align:top;"><div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:16px;text-align:center;"><div style="font-size:28px;font-weight:800;color:#10b981;">${wonThisWeek.length}</div><div style="font-size:11px;font-weight:600;color:#166534;text-transform:uppercase;letter-spacing:0.5px;">🏆 Won This Week</div>${wonThisWeek.slice(0, 3).map((l: any) => `<div style="font-size:11px;color:#064e3b;margin-top:4px;">• ${leadName(l)}</div>`).join('')}</div></div><div style="display:table-cell;width:50%;vertical-align:top;"><div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:16px;text-align:center;"><div style="font-size:28px;font-weight:800;color:#ef4444;">${lostThisWeek.length}</div><div style="font-size:11px;font-weight:600;color:#991b1b;text-transform:uppercase;letter-spacing:0.5px;">❌ Lost This Week</div>${lostThisWeek.slice(0, 3).map((l: any) => `<div style="font-size:11px;color:#7f1d1d;margin-top:4px;">• ${leadName(l)}${l.lost_reason ? ` (${l.lost_reason})` : ''}</div>`).join('')}</div></div></div>${totalDecided > 0 ? `<div style="margin-top:8px;text-align:center;font-size:12px;color:#64748b;">Win Rate this week: <strong style="color:${winRate >= 50 ? '#10b981' : '#ef4444'};">${winRate}%</strong></div>` : '<div style="margin-top:8px;text-align:center;font-size:12px;color:#94a3b8;font-style:italic;">No Won/Lost decisions this week.</div>'}`;
 
-    let new_leads_table = `<div style="padding:16px;text-align:center;color:#64748b;font-style:italic;">No new leads added today.</div>`;
-    if (newLeadsToday.length > 0) {
-      new_leads_table = `<table width="100%" style="border-collapse:collapse;">
-        <thead><tr style="background:#f8fafc;">
-          <th style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Company</th>
-          <th style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Contact</th>
-          <th style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Status</th>
-        </tr></thead><tbody>`;
-      newLeadsToday.forEach((lead: any, i: number) => {
-        const bg = i % 2 === 0 ? '#ffffff' : '#f8fafc';
-        new_leads_table += `<tr style="background:${bg};">
-          <td style="padding:12px 14px;font-size:12px;color:#1e293b;font-weight:600;border-top:1px solid #f1f5f9;">${lead.company_name || '-'}</td>
-          <td style="padding:12px 14px;font-size:12px;color:#475569;border-top:1px solid #f1f5f9;">${lead.contact_person || '-'}</td>
-          <td style="padding:12px 14px;text-align:center;border-top:1px solid #f1f5f9;">
-            <span style="background:#e0e7ff;color:#4338ca;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600;">${lead.status}</span>
-          </td>
-        </tr>`;
+      // ── SECTION 5: Lead Source Breakdown ─────────────────────────────────
+      const sourceCounts: Record<string, number> = {};
+      allBDLeads.forEach((l: any) => { const src = l.source || 'Unknown'; sourceCounts[src] = (sourceCounts[src] || 0) + 1; });
+      const sourceEntries = Object.entries(sourceCounts).sort(([, a], [, b]) => b - a);
+      const maxSourceCount = sourceEntries.length > 0 ? sourceEntries[0][1] : 1;
+      const sourceColors = ['#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4', '#f97316'];
+      const lead_source_block = sourceEntries.length === 0
+        ? `<div style="padding:16px;text-align:center;color:#64748b;font-style:italic;">No lead source data available.</div>`
+        : sourceEntries.map(([src, count], i) => {
+          const pct = Math.round((count / maxSourceCount) * 100);
+          const clr = sourceColors[i % sourceColors.length];
+          return `<div style="margin-bottom:10px;"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;"><span style="font-weight:500;color:#1e293b;">${src}</span><span style="font-weight:700;color:${clr};">${count} lead${count !== 1 ? 's' : ''}</span></div><div style="background:#e2e8f0;border-radius:100px;height:8px;overflow:hidden;"><div style="width:${pct}%;background:${clr};height:8px;border-radius:100px;"></div></div></div>`;
+        }).join('');
+
+      // ── SECTION 6: Today vs 7-Day Average ────────────────────────────────
+      const dailyMetrics = Array.from({ length: 7 }, (_, i) => {
+        const dayStr = new Date(startOfTodayUTC.getTime() - i * 86400000).toISOString().substring(0, 10);
+        const dayFu = sevenDayFollowups.filter((f: any) => f.created_by === bd.id && f.created_at?.startsWith(dayStr));
+        return { calls: dayFu.filter((f: any) => isCallType(f.type)).length, sites: dayFu.filter((f: any) => isSiteVisitType(f.type)).length };
       });
-      new_leads_table += `</tbody></table>`;
+      const avgCalls = dailyMetrics.slice(1).reduce((a, d) => a + d.calls, 0) / 6 || 0;
+      const avgSites = dailyMetrics.slice(1).reduce((a, d) => a + d.sites, 0) / 6 || 0;
+      const todayTotalCalls = prospect_calls + followup_calls;
+      const callsDelta = todayTotalCalls - avgCalls;
+      const sitesDelta = sites_count - avgSites;
+      const deltaStyle = (v: number) => v >= 0 ? 'color:#10b981;' : 'color:#ef4444;';
+      const deltaSign = (v: number) => v >= 0 ? `+${v.toFixed(1)}` : v.toFixed(1);
+      const seven_day_avg_block = `<table width="100%" style="border-collapse:collapse;font-size:12px;"><thead><tr style="background:#f8fafc;"><th style="padding:10px 14px;text-align:left;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;">Metric</th><th style="padding:10px 14px;text-align:center;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;">Today</th><th style="padding:10px 14px;text-align:center;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;">6-Day Avg</th><th style="padding:10px 14px;text-align:center;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;">Δ Trend</th></tr></thead><tbody><tr><td style="padding:10px 14px;font-weight:500;color:#1e293b;border-top:1px solid #f1f5f9;">📞 Total Calls</td><td style="padding:10px 14px;text-align:center;font-weight:700;border-top:1px solid #f1f5f9;">${todayTotalCalls}</td><td style="padding:10px 14px;text-align:center;color:#64748b;border-top:1px solid #f1f5f9;">${avgCalls.toFixed(1)}</td><td style="padding:10px 14px;text-align:center;font-weight:700;border-top:1px solid #f1f5f9;${deltaStyle(callsDelta)}">${deltaSign(callsDelta)}</td></tr><tr style="background:#f9fafb;"><td style="padding:10px 14px;font-weight:500;color:#1e293b;border-top:1px solid #f1f5f9;">🏗️ Site Visits</td><td style="padding:10px 14px;text-align:center;font-weight:700;border-top:1px solid #f1f5f9;">${sites_count}</td><td style="padding:10px 14px;text-align:center;color:#64748b;border-top:1px solid #f1f5f9;">${avgSites.toFixed(1)}</td><td style="padding:10px 14px;text-align:center;font-weight:700;border-top:1px solid #f1f5f9;${deltaStyle(sitesDelta)}">${deltaSign(sitesDelta)}</td></tr><tr><td style="padding:10px 14px;font-weight:500;color:#1e293b;border-top:1px solid #f1f5f9;">📋 New Leads</td><td style="padding:10px 14px;text-align:center;font-weight:700;border-top:1px solid #f1f5f9;">${new_leads_count}</td><td style="padding:10px 14px;text-align:center;color:#64748b;border-top:1px solid #f1f5f9;">—</td><td style="padding:10px 14px;text-align:center;color:#94a3b8;border-top:1px solid #f1f5f9;">—</td></tr></tbody></table>`;
+
+      // ── SECTION 7: Proposal→Negotiation Conversion Funnel ────────────────
+      const inProposal = allBDLeads.filter((l: any) => l.status === 'Proposal Sent').length;
+      const inNegotiation = allBDLeads.filter((l: any) => l.status === 'Negotiation').length;
+      const inWon = allBDLeads.filter((l: any) => l.status === 'Won').length;
+      const totalSent = inProposal + inNegotiation + inWon;
+      const propToNegRate = totalSent > 0 ? Math.round(((inNegotiation + inWon) / totalSent) * 100) : 0;
+      const negToWonRate = (inNegotiation + inWon) > 0 ? Math.round((inWon / (inNegotiation + inWon)) * 100) : 0;
+      const conversion_funnel_block = `<div style="display:flex;gap:0;align-items:stretch;font-size:12px;"><div style="flex:1;background:#ede9fe;border-radius:8px 0 0 8px;padding:14px;text-align:center;"><div style="font-size:22px;font-weight:800;color:#7c3aed;">${totalSent}</div><div style="font-size:10px;font-weight:600;color:#6d28d9;text-transform:uppercase;">Proposal Sent</div></div><div style="width:28px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f3f0ff;font-size:14px;color:#7c3aed;font-weight:700;">→<span style="font-size:9px;color:#8b5cf6;">${propToNegRate}%</span></div><div style="flex:1;background:#fff7ed;padding:14px;text-align:center;"><div style="font-size:22px;font-weight:800;color:#f97316;">${inNegotiation + inWon}</div><div style="font-size:10px;font-weight:600;color:#ea580c;text-transform:uppercase;">Negotiation</div></div><div style="width:28px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fef3e2;font-size:14px;color:#f97316;font-weight:700;">→<span style="font-size:9px;color:#f97316;">${negToWonRate}%</span></div><div style="flex:1;background:#f0fdf4;border-radius:0 8px 8px 0;padding:14px;text-align:center;"><div style="font-size:22px;font-weight:800;color:#10b981;">${inWon}</div><div style="font-size:10px;font-weight:600;color:#059669;text-transform:uppercase;">Won</div></div></div>`;
+
+      // ── SECTION 8: Call Outcomes Breakdown ───────────────────────────────
+      const outcomeCounts: Record<string, number> = {};
+      calls.filter((c: any) => c.created_by === bd.id && isCallType(c.type)).forEach((c: any) => { const o = c.outcome || 'Not Recorded'; outcomeCounts[o] = (outcomeCounts[o] || 0) + 1; });
+      const outcomeColors: Record<string, string> = { 'Interested': '#10b981', 'Not Interested': '#ef4444', 'Callback': '#f59e0b', 'Callback Requested': '#f59e0b', 'No Answer': '#94a3b8', 'Not Recorded': '#cbd5e1' };
+      const call_outcomes_block = Object.keys(outcomeCounts).length === 0
+        ? `<div style="padding:16px;text-align:center;color:#64748b;font-style:italic;">No calls logged today.</div>`
+        : `<div style="display:flex;flex-wrap:wrap;gap:8px;padding:8px 0;">` +
+          Object.entries(outcomeCounts).map(([outcome, count]) => {
+            const clr = outcomeColors[outcome] || '#64748b';
+            return `<div style="display:inline-flex;align-items:center;gap:6px;background:${clr}15;border:1px solid ${clr}40;border-radius:20px;padding:6px 14px;"><div style="width:8px;height:8px;border-radius:50%;background:${clr};"></div><span style="font-size:12px;font-weight:600;color:${clr};">${outcome}</span><span style="font-size:12px;font-weight:800;color:#1e293b;">${count}</span></div>`;
+          }).join('') + `</div>`;
+
+      // ── SECTION 9: Geography / City Coverage ─────────────────────────────
+      const uniqueCities = [...new Set(allBDLeads.map((l: any) => l.city).filter(Boolean))] as string[];
+      const todaySiteInCount = bdEvents.filter((e: any) => e.type === 'site-in').length;
+      const geography_block = `<div style="margin-bottom:12px;font-size:12px;color:#64748b;">🏗️ <strong style="color:#1e293b;">${todaySiteInCount} site visit${todaySiteInCount !== 1 ? 's' : ''}</strong> today &nbsp;|&nbsp; 🗺️ Active in <strong style="color:#1e293b;">${uniqueCities.length} city/cities</strong></div><div style="display:flex;flex-wrap:wrap;gap:6px;">${uniqueCities.slice(0, 10).map(city => `<span style="background:#e0f2fe;color:#0369a1;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;">${city}</span>`).join('')}${uniqueCities.length > 10 ? `<span style="background:#f1f5f9;color:#64748b;padding:4px 10px;border-radius:20px;font-size:11px;">+${uniqueCities.length - 10} more</span>` : ''}</div>`;
+
+      // ── SECTION 10: Motivational Streak Strip ────────────────────────────
+      let streak = 0;
+      for (let i = 0; i < 7; i++) {
+        const dayStr = new Date(startOfTodayUTC.getTime() - i * 86400000).toISOString().substring(0, 10);
+        if (sevenDayEvents.some((e: any) => e.user_id === bd.id && e.timestamp?.startsWith(dayStr))) streak++;
+        else break;
+      }
+      const streakBadge = streak >= 7 ? '🏆 7-Day Attendance Streak!' : streak >= 5 ? '🔥 On Fire! 5+ Days!' : streak >= 3 ? '⭐ Building Momentum!' : streak >= 1 ? '💪 Keep Going!' : "📅 Let's Start Strong!";
+      const streakBg = streak >= 5 ? 'linear-gradient(135deg,#f59e0b,#d97706)' : streak >= 3 ? 'linear-gradient(135deg,#3b82f6,#2563eb)' : 'linear-gradient(135deg,#64748b,#475569)';
+      const streak_block = `<div style="background:${streakBg};border-radius:12px;padding:16px 20px;color:white;display:flex;justify-content:space-between;align-items:center;"><div><div style="font-size:16px;font-weight:800;">${streakBadge}</div><div style="font-size:12px;opacity:0.85;margin-top:2px;">${streak} consecutive day${streak !== 1 ? 's' : ''} present</div></div><div style="font-size:36px;font-weight:800;opacity:0.9;">${streak}</div></div>`;
+
+      // ── Original tables: New Leads + Metrics + Pipeline ──────────────────
+      let new_leads_table = `<div style="padding:16px;text-align:center;color:#64748b;font-style:italic;">No new leads added today.</div>`;
+      if (newLeadsToday.length > 0) {
+        new_leads_table = `<table width="100%" style="border-collapse:collapse;"><thead><tr style="background:#f8fafc;"><th style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Company</th><th style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Contact</th><th style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Status</th></tr></thead><tbody>` +
+          newLeadsToday.map((lead: any, i: number) => {
+            const sc = stageColor[lead.status] || '#64748b';
+            return `<tr style="background:${i % 2 === 0 ? '#ffffff' : '#f8fafc'};"><td style="padding:12px 14px;font-size:12px;color:#1e293b;font-weight:600;border-top:1px solid #f1f5f9;">${leadName(lead)}</td><td style="padding:12px 14px;font-size:12px;color:#475569;border-top:1px solid #f1f5f9;">${lead.contact_person || '-'}</td><td style="padding:12px 14px;text-align:center;border-top:1px solid #f1f5f9;"><span style="background:${sc}20;color:${sc};padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600;">${lead.status}</span></td></tr>`;
+          }).join('') + `</tbody></table>`;
+      }
+      const metricsData = [
+        { metric: 'Outbound Calls (New Prospects)', actual: prospect_calls },
+        { metric: 'Follow-up Calls', actual: followup_calls },
+        { metric: 'Site Visits Conducted', actual: sites_count },
+        { metric: 'New Leads Added', actual: new_leads_count },
+        { metric: 'KMs Travelled', actual: kms_travelled }
+      ];
+      const metrics_table = `<table width="100%" style="border-collapse:collapse;"><thead><tr style="background:#f8fafc;"><th style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Metric</th><th style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Actual</th></tr></thead><tbody>` +
+        metricsData.map((row, i) => `<tr style="background:${i % 2 === 0 ? '#fff' : '#f8fafc'};"><td style="padding:12px 14px;font-size:12px;color:#1e293b;font-weight:500;border-top:1px solid #f1f5f9;">${row.metric}</td><td style="padding:12px 14px;text-align:center;font-size:13px;font-weight:700;color:#0f172a;border-top:1px solid #f1f5f9;">${row.actual}</td></tr>`).join('') +
+        `</tbody></table>`;
+
+      const myLeads = allLeads.filter((l: any) => l.assigned_to === bd.id || l.created_by === bd.id);
+      const allStages = ['New Lead', 'Contacted', 'Site Visit Planned', 'Survey Completed', 'Proposal Sent', 'Negotiation', 'Won', 'Lost'];
+      let activeTotal = 0;
+      const pipeline_snapshot = `<table width="100%" style="border-collapse:collapse;"><thead><tr style="background:#f8fafc;"><th style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Stage</th><th style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Count</th></tr></thead><tbody>` +
+        allStages.map((stage, i) => {
+          const count = myLeads.filter((l: any) => l.status === stage).length;
+          if (!['Won', 'Lost'].includes(stage)) activeTotal += count;
+          const sc = stageColor[stage] || '#64748b';
+          return `<tr style="background:${i % 2 === 0 ? '#fff' : '#f8fafc'};"><td style="padding:12px 14px;font-size:12px;color:#1e293b;font-weight:500;border-top:1px solid #f1f5f9;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${sc};margin-right:6px;"></span>${stage}</td><td style="padding:12px 14px;text-align:center;font-size:13px;font-weight:700;color:${sc};border-top:1px solid #f1f5f9;">${count}</td></tr>`;
+        }).join('') +
+        `</tbody></table><div style="margin-top:8px;text-align:right;font-size:12px;font-weight:700;color:#166534;padding:8px;background:#f0fdf4;border-top:1px solid #bbf7d0;">Total active pipeline: ${activeTotal} leads</div>`;
+
+      reports.push({
+        bd_name: bd.name, bdName: bd.name,
+        report_date: format(nowIST, 'dd MMM yyyy'), reportDate: format(nowIST, 'dd MMM yyyy'),
+        date: format(nowIST, 'EEEE, MMMM do, yyyy'),
+        attendance_status, attendanceStatus: attendance_status,
+        check_in_time, checkInTime: check_in_time,
+        check_out_time, checkOutTime: check_out_time,
+        working_hours, workingHours: working_hours,
+        kms_travelled, kmsTravelled: kms_travelled,
+        prospect_calls: String(prospect_calls), prospectCalls: String(prospect_calls),
+        followup_calls: String(followup_calls), followupCalls: String(followup_calls),
+        new_leads_count: String(new_leads_count), newLeadsCount: String(new_leads_count),
+        sites_count: String(sites_count), sitesCount: String(sites_count),
+        sites_visited: String(sites_count), sitesVisited: String(sites_count),
+        new_leads_table, newLeadsTable: new_leads_table,
+        metrics_table, metricsTable: metrics_table,
+        pipeline_snapshot, pipelineSnapshot: pipeline_snapshot,
+        // 10 new enhanced sections
+        followup_completion_block, followupCompletionBlock: followup_completion_block,
+        overdue_leads_block, overdueLeadsBlock: overdue_leads_block,
+        top_leads_block, topLeadsBlock: top_leads_block,
+        won_lost_block, wonLostBlock: won_lost_block,
+        lead_source_block, leadSourceBlock: lead_source_block,
+        seven_day_avg_block, sevenDayAvgBlock: seven_day_avg_block,
+        conversion_funnel_block, conversionFunnelBlock: conversion_funnel_block,
+        call_outcomes_block, callOutcomesBlock: call_outcomes_block,
+        geography_block, geographyBlock: geography_block,
+        streak_block, streakBlock: streak_block
+      });
     }
 
-    let metrics_table = `<table width="100%" style="border-collapse:collapse;">
-      <thead><tr style="background:#f8fafc;">
-        <th style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Metric</th>
-        <th style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Target</th>
-        <th style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Actual</th>
-        <th style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Remarks</th>
-      </tr></thead><tbody>`;
-    
-    const metricsData = [
-      { metric: 'Outbound Calls (New Prospects)', target: '-', actual: prospect_calls, remarks: '' },
-      { metric: 'Follow-up Calls / Emails', target: '-', actual: followup_calls, remarks: '' },
-      { metric: 'Site Visits Conducted', target: '-', actual: sites_count, remarks: 'Automated' },
-      { metric: 'Proposals Submitted', target: '-', actual: 0, remarks: 'Automated' },
-      { metric: 'New Leads Added', target: '-', actual: new_leads_count, remarks: '' }
-    ];
-
-    metricsData.forEach((row, i) => {
-      const bg = i % 2 === 0 ? '#ffffff' : '#f8fafc';
-      metrics_table += `<tr style="background:${bg};">
-        <td style="padding:12px 14px;font-size:12px;color:#1e293b;font-weight:500;border-top:1px solid #f1f5f9;">${row.metric}</td>
-        <td style="padding:12px 14px;text-align:center;font-size:12px;color:#64748b;border-top:1px solid #f1f5f9;">${row.target}</td>
-        <td style="padding:12px 14px;text-align:center;font-size:12px;font-weight:600;color:#0f172a;border-top:1px solid #f1f5f9;">${row.actual}</td>
-        <td style="padding:12px 14px;font-size:11px;color:#64748b;font-style:italic;border-top:1px solid #f1f5f9;">${row.remarks || '-'}</td>
-      </tr>`;
-    });
-    metrics_table += `</tbody></table>`;
-
-    const myActiveLeads = (allActiveLeads || []).filter((l: any) => l.assigned_to === bd.id || l.created_by === bd.id);
-    const statuses = ['New Lead', 'Contacted', 'Site Visit Planned', 'Survey Completed', 'Proposal Sent', 'Negotiation', 'Won', 'Lost'];
-    let pipeline_snapshot = `<table width="100%" style="border-collapse:collapse;">
-      <thead><tr style="background:#f8fafc;">
-        <th style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Stage</th>
-        <th style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Count</th>
-      </tr></thead><tbody>`;
-    
-    let activeTotal = 0;
-    statuses.forEach((stage, i) => {
-      const count = myActiveLeads.filter((l: any) => l.status === stage).length;
-      if (stage !== 'Won' && stage !== 'Lost') activeTotal += count;
-      const bg = i % 2 === 0 ? '#ffffff' : '#f8fafc';
-      pipeline_snapshot += `<tr style="background:${bg};">
-        <td style="padding:12px 14px;font-size:12px;color:#1e293b;font-weight:500;border-top:1px solid #f1f5f9;">${stage}</td>
-        <td style="padding:12px 14px;text-align:center;font-size:12px;font-weight:700;color:#3b82f6;border-top:1px solid #f1f5f9;">${count}</td>
-      </tr>`;
-    });
-    pipeline_snapshot += `</tbody></table>
-    <div style="margin-top:8px;text-align:right;font-size:12px;font-weight:700;color:#166534;padding:8px;background:#f0fdf4;border-top:1px solid #bbf7d0;">TOTAL ACTIVE PIPELINE: ${activeTotal} leads</div>`;
-
-    return {
-      bd_name: bd.name,
-      bdName: bd.name,
-      report_date: safeFormat(nowIST, 'EEEE, MMMM do, yyyy'),
-      reportDate: safeFormat(nowIST, 'EEEE, MMMM do, yyyy'),
-      attendance_status,
-      attendanceStatus: attendance_status,
-      check_in_time,
-      checkInTime: check_in_time,
-      check_out_time,
-      checkOutTime: check_out_time,
-      working_hours,
-      workingHours: working_hours,
-      kms_travelled,
-      kmsTravelled: kms_travelled,
-      prospect_calls: String(prospect_calls),
-      prospectCalls: String(prospect_calls),
-      followup_calls: String(followup_calls),
-      followupCalls: String(followup_calls),
-      new_leads_count: String(new_leads_count),
-      newLeadsCount: String(new_leads_count),
-      sites_count: String(sites_count),
-      sitesCount: String(sites_count),
-      sites_visited: 'Automated Schedule',
-      sitesVisited: 'Automated Schedule',
-      new_leads_table,
-      newLeadsTable: new_leads_table,
-      metrics_table,
-      metricsTable: metrics_table,
-      pipeline_snapshot,
-      pipelineSnapshot: pipeline_snapshot
-    };
+    return reports;
   },
   bd_daily: async (supabase: SupabaseClient, nowIST: Date) => {
     return (reportGenerators as any).crm_bd_daily(supabase, nowIST);
