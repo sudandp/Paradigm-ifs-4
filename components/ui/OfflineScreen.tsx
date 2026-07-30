@@ -15,6 +15,7 @@ const OfflineScreen: React.FC = () => {
   const [isRetrying, setIsRetrying] = useState(false);
   const [retryFailed, setRetryFailed] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [isDismissed, setIsDismissed] = useState(false);
   const { isMobile } = useDevice();
   const setIsOffline = useAuthStore(state => state.setIsOffline);
   const { init: initEnrollmentRules } = useEnrollmentRulesStore();
@@ -117,6 +118,36 @@ const OfflineScreen: React.FC = () => {
       transition: { type: 'spring', stiffness: 85, damping: 13 },
     },
   };
+
+  if (isDismissed) {
+    return (
+      <div
+        className="fixed top-3 left-1/2 -translate-x-1/2 z-[999999] pointer-events-auto select-none transition-all duration-300"
+        style={{
+          marginTop: 'calc(0.5rem + env(safe-area-inset-top, 0px))',
+        }}
+      >
+        <div className="flex items-center gap-3 px-4 py-2 bg-slate-950/90 backdrop-blur-md border border-amber-500/40 rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.35)] text-white text-xs max-w-[92vw] sm:max-w-md">
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+            <span className="font-extrabold text-amber-400 uppercase tracking-wider text-[10px] sm:text-[11px] whitespace-nowrap">
+              ⚡ Offline Mode
+            </span>
+          </div>
+          <span className="hidden sm:inline text-slate-300 text-[11px] font-medium truncate">
+            Saving to local device storage
+          </span>
+          <button
+            onClick={() => setIsDismissed(false)}
+            className="flex-shrink-0 ml-auto px-2.5 py-1 rounded-full bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 font-bold text-[9px] sm:text-[10px] uppercase tracking-wider transition-all cursor-pointer active:scale-95 flex items-center gap-1"
+          >
+            <WifiOff className="w-3 h-3" />
+            <span>Status</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // ── Shared sub-components ───────────────────────────────────────────────────
 
@@ -395,7 +426,14 @@ const OfflineScreen: React.FC = () => {
             </span>
           </button>
 
-          <p className="text-[8px] font-bold tracking-widest uppercase select-none" style={{ color: '#94a3b8' }}>
+          <button
+            onClick={() => setIsDismissed(true)}
+            className="w-full max-w-xs bg-slate-800/80 hover:bg-slate-800 text-slate-200 font-bold py-3 px-6 rounded-2xl transition-all duration-200 flex items-center justify-center gap-2 text-xs uppercase tracking-wider border border-slate-700/50 cursor-pointer active:scale-[0.97]"
+          >
+            <span>⚡ Continue Working Offline</span>
+          </button>
+
+          <p className="text-[8px] font-bold tracking-widest uppercase select-none mt-1" style={{ color: '#94a3b8' }}>
             Paradigm FMS v1.8.0
           </p>
         </div>
@@ -515,6 +553,15 @@ const OfflineScreen: React.FC = () => {
               <span className="relative z-10" style={{ color: '#ffffff' }}>
                 {isRetrying ? 'CHECKING CONNECTION...' : 'TRY AGAIN'}
               </span>
+            </motion.button>
+
+            <motion.button
+              onClick={() => setIsDismissed(true)}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              className="w-full mt-3 bg-slate-800 hover:bg-slate-900 text-slate-200 font-bold py-3.5 rounded-2xl transition-all duration-200 text-xs tracking-wider uppercase border border-slate-700/50 flex items-center justify-center gap-2 cursor-pointer shadow-md"
+            >
+              <span>⚡ Continue Working Offline</span>
             </motion.button>
           </motion.div>
         </div>

@@ -46,8 +46,6 @@ export async function initNetworkStatus(): Promise<void> {
   }
 }
 
-// ─── Public API ───────────────────────────────────────────────────────────────
-
 /** Synchronous snapshot of the current network state. */
 export function isOnline(): boolean {
   return _online;

@@ -22,6 +22,7 @@ import { GOOGLE_CONFIG } from './config/authConfig';
 // to `apiService` prevents conflicts with other variables or globals named `api`.
 import { api as apiService } from './services/api';
 import type { User } from './types';
+import { syncEngine } from './services/offline/syncEngine';
 import { useOnboardingStore } from './store/onboardingStore';
 import { usePWAStore } from './store/pwaStore';
 import { useNotificationStore } from './store/notificationStore';
@@ -532,6 +533,8 @@ const App: React.FC = () => {
           });
         }
         await useAuthStore.getState().checkAttendanceStatus();
+        // Drain offline outbox queue to sync any pending snags / audits to Supabase
+        await syncEngine.drain().catch((err) => console.warn('[Network] Outbox sync drain warning:', err));
         console.log('[Network] Successfully synced all app details after reconnecting.');
       } catch (err) {
         console.warn('[Network] Sync data warning after reconnecting:', err);

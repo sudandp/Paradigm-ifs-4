@@ -22,6 +22,8 @@ import { isOfflineEnabled } from './featureFlag';
 import { initNetworkStatus, isOnline, onStatusChange } from './networkStatus';
 import {
   getPending,
+  getFailed,
+  retryFailedItem,
   markSyncing,
   markSynced,
   markFailed,
@@ -31,6 +33,7 @@ import {
 } from './outbox';
 import { type OutboxItem, getStoragePersistenceState } from './db';
 import { migrateLocalStoragePpmDrafts } from './cache';
+import { useAuthStore } from '../../store/authStore';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -116,6 +119,23 @@ async function syncItem(item: OutboxItem): Promise<'synced' | 'failed'> {
       }
     }
 
+    // Strip transient UI flags from database payload
+    delete (payload as any).pending;
+    delete (payload as any).failed;
+    delete (payload as any).attempt_count;
+    delete (payload as any).next_attempt_at;
+
+    // ── Auto-heal: inject user_id if missing ─────────────────────────────────
+    // Old offline entries created before the useAuthStore fix may lack user_id,
+    // causing RLS rejections. Patch from the current session at sync time.
+    if (item.tableName === 'snag_audits' && !payload['user_id']) {
+      const authUser = useAuthStore?.getState?.()?.user;
+      if (authUser?.id) {
+        payload = { ...payload, user_id: authUser.id };
+        console.log(`[SyncEngine] Auto-patched missing user_id for snag ${item.id}`);
+      }
+    }
+
     // ── Step 2: Upsert / update / delete in Supabase ─────────────────────────
     if (item.action === 'INSERT' || item.action === 'UPDATE') {
       const { error } = await supabase
@@ -151,6 +171,21 @@ async function syncItem(item: OutboxItem): Promise<'synced' | 'failed'> {
 // ─── Drain loop ───────────────────────────────────────────────────────────────
 
 async function drainOutbox(): Promise<SyncResult> {
+  // ── Auto-retry permanently-failed items ──────────────────────────────────
+  // Items reach 'failed' status for two reasons:
+  //   1. A transient error that exhausted all backoff attempts (network blip)
+  //   2. A payload bug (e.g. missing user_id) that has since been fixed
+  // Resetting them to 'pending' with 0 attempts gives them a fresh chance.
+  try {
+    const failedItems = await getFailed();
+    if (failedItems.length > 0) {
+      console.log(`[SyncEngine] Auto-retrying ${failedItems.length} previously-failed item(s)…`);
+      await Promise.all(failedItems.map(item => retryFailedItem(item.id)));
+    }
+  } catch (retryErr) {
+    console.warn('[SyncEngine] Auto-retry reset error (non-fatal):', retryErr);
+  }
+
   const pending = await getPending();
   if (pending.length === 0) return { synced: 0, failed: 0 };
 
@@ -233,6 +268,7 @@ function showStorageDenialToastIfNeeded(): void {
 class SyncEngine {
   private _running = false;
   private _cleanup: (() => void) | null = null;
+  private _retryTimer: ReturnType<typeof setInterval> | null = null;
 
   async start(): Promise<void> {
     if (!isOfflineEnabled()) return;
@@ -248,12 +284,12 @@ class SyncEngine {
     // the navigator.storage.persist() Promise in db.ts to resolve first.
     setTimeout(showStorageDenialToastIfNeeded, 2000);
 
-    // Drain immediately on start in case items were queued during a previous session
+    // Drain immediately on start — picks up any items queued in a previous session
     if (isOnline()) {
       this._drain();
     }
 
-    // Drain whenever we reconnect
+    // Drain whenever the network reports reconnection
     this._cleanup = onStatusChange(async (online) => {
       if (online) {
         console.log('[SyncEngine] Network reconnected — starting drain');
@@ -261,13 +297,29 @@ class SyncEngine {
       }
     });
 
-    console.log('[SyncEngine] Started and listening for reconnects');
+    // ── Periodic background retry (every 5 minutes while online) ─────────────
+    // Catches items that failed silently without a network-change event.
+    this._retryTimer = setInterval(async () => {
+      if (!isOnline()) return;
+      const failedCount = await getFailedCount().catch(() => 0);
+      const pendingCount = (await getPending().catch(() => [])).length;
+      if (failedCount > 0 || pendingCount > 0) {
+        console.log(`[SyncEngine] Periodic retry — ${pendingCount} pending, ${failedCount} failed`);
+        await this._drain();
+      }
+    }, 5 * 60 * 1000); // every 5 minutes
+
+    console.log('[SyncEngine] Started, listening for reconnects + 5-min periodic retry');
   }
 
   stop(): void {
     if (this._cleanup) {
       this._cleanup();
       this._cleanup = null;
+    }
+    if (this._retryTimer) {
+      clearInterval(this._retryTimer);
+      this._retryTimer = null;
     }
     this._running = false;
   }

@@ -479,10 +479,40 @@ const InfoRow: React.FC<{ icon: React.ReactNode; label: string; value: string }>
   </div>
 );
 
+const SyncStatusBadge: React.FC<{ pending?: boolean; failed?: boolean }> = ({ pending, failed }) => {
+  if (failed) {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700 border border-red-300 whitespace-nowrap">
+        <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />
+        Sync Failed
+      </span>
+    );
+  }
+  if (pending) {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-red-50 text-red-600 border border-red-200 whitespace-nowrap">
+        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+        Not Synced
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
+      <CheckCircle2 size={12} className="text-emerald-600" />
+      Synced
+    </span>
+  );
+};
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 const SnagAuditPage: React.FC = () => {
   const { user } = useAuthStore();
+  // Track isOffline so we can re-fetch when the app comes back online.
+  // This keeps offline records visible (with correct sync badges) rather than
+  // disappearing when the online path runs for the first time after reconnect.
+  const isOffline = useAuthStore(state => state.isOffline);
+  const prevIsOfflineRef = useRef(isOffline);
   const [entries, setEntries] = useState<SnagEntry[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -532,15 +562,28 @@ const SnagAuditPage: React.FC = () => {
     }
   }, []);
 
+  // Initial load
   useEffect(() => {
     fetchEntries();
-    
-    // Fetch users for manager validation
+
+    // Fetch users for manager validation (graceful fallback when offline)
     api.getUsers({ fetchAll: true }).then(data => {
       if (Array.isArray(data)) setUsers(data);
       else if (data && Array.isArray(data.users)) setUsers(data.users);
-    }).catch(console.error);
+    }).catch(() => setUsers([]));
   }, [fetchEntries]);
+
+  // Re-fetch when coming back online so offline records update their sync
+  // status badges (Not Synced → Synced) instead of disappearing.
+  useEffect(() => {
+    const wasOffline = prevIsOfflineRef.current;
+    prevIsOfflineRef.current = isOffline;
+    if (wasOffline && !isOffline) {
+      // Transition: offline → online. Re-fetch so the merged list is current.
+      fetchEntries();
+    }
+  }, [isOffline, fetchEntries]);
+
 
   const canDelete = useCallback((entry: SnagEntry) => {
     return ['admin', 'super_admin', 'developer'].includes(user?.role || '');
@@ -828,7 +871,7 @@ const SnagAuditPage: React.FC = () => {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-100">
-                    {['Timestamp', 'Site Name', 'Department', 'Criticality', 'Snag Description', 'Action', 'Status', ''].map(h => (
+                    {['Timestamp', 'Site Name', 'Department', 'Criticality', 'Snag Description', 'Action', 'Status', 'Sync Status', ''].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
                         {h}
                       </th>
@@ -857,6 +900,9 @@ const SnagAuditPage: React.FC = () => {
                       </td>
                       <td className="px-4 py-3">
                         <StatusBadge value={entry.status} />
+                      </td>
+                      <td className="px-4 py-3">
+                        <SyncStatusBadge pending={(entry as any).pending} failed={(entry as any).failed} />
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
@@ -933,8 +979,13 @@ const SnagAuditPage: React.FC = () => {
                   onSave={async (entry, file) => {
                     setIsSaving(true);
                     try {
-                      await opsApi.saveSnagEntry(entry, file);
-                      toast.success(editingEntry ? 'Snag entry updated' : 'Snag entry saved successfully');
+                      const res = await opsApi.saveSnagEntry(entry, file);
+                      const isPending = res && (res as any).pending;
+                      if (isPending) {
+                        toast.success('⚡ Snag entry saved locally in offline outbox. Will sync on reconnect.');
+                      } else {
+                        toast.success(editingEntry ? 'Snag entry updated' : 'Snag entry saved successfully');
+                      }
                       setShowForm(false);
                       setEditingEntry(null);
                       fetchEntries();
