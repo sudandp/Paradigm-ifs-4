@@ -5,6 +5,10 @@ import { PPMAuditFormEngine } from '../../components/ppm/PPMAuditFormEngine';
 import { PPMSummaryRollup } from '../../components/ppm/PPMSummaryRollup';
 import { PPMObservation } from '../../types/ppm';
 
+import { cachePpmExecution } from '../../services/offline/cache';
+import { enqueue } from '../../services/offline/outbox';
+import toast from 'react-hot-toast';
+
 export const PPMExecution: React.FC = () => {
   const { categoryId } = useParams<{ categoryId: string }>();
   const navigate = useNavigate();
@@ -37,8 +41,35 @@ export const PPMExecution: React.FC = () => {
     }));
   };
 
-  const handleSubmit = () => {
-    alert("Audit Submitted Successfully!");
+  const handleSubmit = async () => {
+    const executionId = `ppm-${categoryId}-${Date.now()}`;
+    const record = {
+      id: executionId,
+      site_name: 'PPM Site Audit',
+      reference_number: `PPM-${Date.now()}`,
+      category_id: categoryId || 'ELECTRICAL_PANEL',
+      audit_date: new Date().toISOString().split('T')[0],
+      status: 'SUBMITTED' as const,
+      auditor_name: 'Field Technician',
+      observations,
+      summary_counts: { critical: 0, major: 0, medium: 0, minor: 0, total: Object.keys(observations).length },
+      snag_ids: [],
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    try {
+      await cachePpmExecution({ ...record, pending: true });
+      await enqueue({
+        id: executionId,
+        tableName: 'ppm_executions',
+        action: 'INSERT',
+        payload: record,
+      });
+      toast.success('PPM Audit saved & queued for sync!');
+    } catch (err: any) {
+      console.warn('Saved local PPM execution fallback:', err);
+    }
     navigate('/operations/ppm-audits');
   };
 

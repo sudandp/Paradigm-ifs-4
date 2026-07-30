@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import type { OnboardingData, PersonalDetails, AddressDetails, FamilyMember, EducationRecord, BankDetails, UanDetails, EsiDetails, GmcDetails, OrganizationDetails, EmployeeUniformSelection, Address, SalaryChangeRequest, BiometricsData, VerificationUsageItem } from '../types';
 import { differenceInYears, format } from 'date-fns';
 
@@ -114,7 +115,9 @@ const getInitialState = (): OnboardingData => ({
 });
 
 // Fix: Removed generic type argument from create() to avoid untyped function call error.
-export const useOnboardingStore = create<OnboardingState>((set) => ({
+export const useOnboardingStore = create<OnboardingState>()(
+  persist(
+    (set) => ({
       data: getInitialState(),
       setData: (data) => set({ data }),
       updatePersonal: (personalUpdate) => set((state) => ({
@@ -249,4 +252,10 @@ export const useOnboardingStore = create<OnboardingState>((set) => ({
         // No changes needed if not a family relationship or no name
         return state;
     }),
-    }));
+    }),
+    {
+      name: 'paradigm_onboarding_draft',
+      storage: createJSONStorage(() => localStorage),
+    }
+  )
+);

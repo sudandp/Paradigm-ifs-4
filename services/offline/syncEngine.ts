@@ -32,8 +32,8 @@ import {
   getFailedCount,
 } from './outbox';
 import { type OutboxItem, getStoragePersistenceState } from './db';
-import { migrateLocalStoragePpmDrafts } from './cache';
-import { useAuthStore } from '../../store/authStore';
+import { migrateLocalStoragePpmDrafts, cacheSnagEntry, cachePpmExecution, cacheHtYardAudit, cacheOnboardingSubmission } from './cache';
+import { api } from '../api';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -54,10 +54,11 @@ async function uploadPhotoBlob(
   linkedToId: string
 ): Promise<string> {
   const ext = fileName.split('.').pop() ?? 'jpg';
-  const storagePath = `documents/offline/${linkedToId}.${ext}`;
+  const sanitized = fileName.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_.-]/g, '');
+  const storagePath = `snags/offline/${linkedToId}_${Date.now()}.${ext}`;
 
   const { error } = await supabase.storage
-    .from('documents')
+    .from('onboarding-documents')
     .upload(storagePath, blob, {
       contentType: blob.type || 'image/jpeg',
       upsert: true,
@@ -65,7 +66,7 @@ async function uploadPhotoBlob(
 
   if (error) throw new Error(`Photo upload failed: ${error.message}`);
 
-  const { data } = supabase.storage.from('documents').getPublicUrl(storagePath);
+  const { data } = supabase.storage.from('onboarding-documents').getPublicUrl(storagePath);
   return data.publicUrl;
 }
 
@@ -117,6 +118,23 @@ async function syncItem(item: OutboxItem): Promise<'synced' | 'failed'> {
           snag_picture_name: photo.fileName,
         };
       }
+    } else if (
+      typeof payload.snag_picture_url === 'string' &&
+      payload.snag_picture_url.startsWith('data:')
+    ) {
+      // Base64 Data URL fallback upload
+      try {
+        const res = await fetch(payload.snag_picture_url);
+        const blob = await res.blob();
+        const fileName = (payload.snag_picture_name as string) || 'snag_photo.jpg';
+        const publicUrl = await uploadPhotoBlob(blob, fileName, item.id);
+        payload = {
+          ...payload,
+          snag_picture_url: publicUrl,
+        };
+      } catch (dataUrlErr) {
+        console.warn('[SyncEngine] Failed to upload base64 fallback photo:', dataUrlErr);
+      }
     }
 
     // Strip transient UI flags from database payload
@@ -125,15 +143,12 @@ async function syncItem(item: OutboxItem): Promise<'synced' | 'failed'> {
     delete (payload as any).attempt_count;
     delete (payload as any).next_attempt_at;
 
-    // ── Auto-heal: inject user_id if missing ─────────────────────────────────
-    // Old offline entries created before the useAuthStore fix may lack user_id,
-    // causing RLS rejections. Patch from the current session at sync time.
-    if (item.tableName === 'snag_audits' && !payload['user_id']) {
-      const authUser = useAuthStore?.getState?.()?.user;
-      if (authUser?.id) {
-        payload = { ...payload, user_id: authUser.id };
-        console.log(`[SyncEngine] Auto-patched missing user_id for snag ${item.id}`);
-      }
+    // Strip user_id — snag_audits has no such column. Old outbox entries may
+    // have been created with user_id in the payload (before this was understood),
+    // causing every upsert to fail with "column does not exist". Remove it here
+    // so those entries can be retried successfully.
+    if (item.tableName === 'snag_audits') {
+      delete (payload as any).user_id;
     }
 
     // ── Step 2: Upsert / update / delete in Supabase ─────────────────────────
@@ -150,12 +165,55 @@ async function syncItem(item: OutboxItem): Promise<'synced' | 'failed'> {
       if (error) throw new Error(error.message);
     }
 
-    // ── Step 3: Cleanup ───────────────────────────────────────────────────────
+    // ── Step 3: Cleanup & Local Cache Update ──────────────────────────────────
     await markSynced(item.id);
     if (item.photoId) {
       await deletePhoto(item.photoId).catch(() => {
         /* non-fatal */
       });
+    }
+
+    if (item.tableName === 'snag_audits' && api.toCamelCase) {
+      try {
+        const camelEntry = api.toCamelCase({
+          ...payload,
+          pending: false,
+          failed: false,
+        });
+        await cacheSnagEntry(camelEntry as any);
+      } catch (cacheErr) {
+        console.warn('[SyncEngine] Failed to update local cache after sync:', cacheErr);
+      }
+    } else if (item.tableName === 'ppm_executions') {
+      try {
+        await cachePpmExecution({
+          ...payload,
+          pending: false,
+          failed: false,
+        } as any);
+      } catch (cacheErr) {
+        console.warn('[SyncEngine] Failed to update PPM cache after sync:', cacheErr);
+      }
+    } else if (item.tableName === 'ht_yard_audits') {
+      try {
+        await cacheHtYardAudit({
+          ...payload,
+          pending: false,
+          failed: false,
+        } as any);
+      } catch (cacheErr) {
+        console.warn('[SyncEngine] Failed to update HT Yard cache after sync:', cacheErr);
+      }
+    } else if (item.tableName === 'onboarding_submissions') {
+      try {
+        await cacheOnboardingSubmission({
+          ...(payload as any),
+          pending: false,
+          failed: false,
+        });
+      } catch (cacheErr) {
+        console.warn('[SyncEngine] Failed to update onboarding submission cache after sync:', cacheErr);
+      }
     }
 
     return 'synced';

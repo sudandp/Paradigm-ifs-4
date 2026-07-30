@@ -19,6 +19,7 @@ import { openDB, type IDBPDatabase } from 'idb';
 import type { SnagEntry } from '../../types/operations';
 import type { HTMasterOption, OfflineHTYardAuditRecord } from '../../types/htYard';
 import type { PPMExecutionRecord } from '../../types/ppm';
+import type { OnboardingData } from '../../types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -77,6 +78,10 @@ export interface ParadigmDB {
     key: string;
     value: PPMExecutionRecord;
   };
+  onboarding_submissions: {
+    key: string;
+    value: OnboardingData & { pending?: boolean; failed?: boolean };
+  };
   outbox: {
     key: string;
     value: OutboxItem;
@@ -116,6 +121,11 @@ export function getDb(): Promise<IDBPDatabase<ParadigmDB>> {
         // ppm_executions
         if (!db.objectStoreNames.contains('ppm_executions')) {
           db.createObjectStore('ppm_executions', { keyPath: 'id' });
+        }
+
+        // onboarding_submissions
+        if (!db.objectStoreNames.contains('onboarding_submissions')) {
+          db.createObjectStore('onboarding_submissions', { keyPath: 'id' });
         }
 
         // outbox — the heart of the offline pattern

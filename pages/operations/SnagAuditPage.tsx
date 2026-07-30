@@ -25,6 +25,10 @@ import {
   Clock,
   Info,
   ArrowLeft,
+  RefreshCw,
+  Bug,
+  Play,
+  RotateCcw,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import Button from '../../components/ui/Button';
@@ -35,6 +39,9 @@ import toast from 'react-hot-toast';
 import { opsApi } from '../../services/opsApi';
 import { api } from '../../services/api';
 import type { SnagEntry, Criticality, PurposeOfVisit, Department } from '../../types';
+import { syncEngine } from '../../services/offline/syncEngine';
+import * as outbox from '../../services/offline/outbox';
+import { getDb } from '../../services/offline/db';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -102,22 +109,93 @@ interface SnagFormProps {
   onCancel: () => void;
 }
 
+// ─── Draft persistence key ───────────────────────────────────────────────────
+const SNAG_DRAFT_KEY = 'paradigm_snag_form_draft';
+
 const SnagForm: React.FC<SnagFormProps> = ({ initialData, onSave, onCancel }) => {
   const { user } = useAuthStore();
+
+  // ── Restore draft from sessionStorage (new entries only, never edit mode) ────
+  const isEditMode = !!initialData;
+  const restoredDraft = !isEditMode ? (() => {
+    try {
+      const raw = sessionStorage.getItem(SNAG_DRAFT_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  })() : null;
+
   const [form, setForm] = useState({
-    nameOfSite: initialData?.nameOfSite || '',
-    purposeOfVisit: initialData?.purposeOfVisit || ([] as PurposeOfVisit[]),
-    department: initialData?.department || ([] as Department[]),
-    criticality: initialData?.criticality || 'Medium' as Criticality,
-    snagDescription: initialData?.snagDescription || '',
-    actionToBeTaken: initialData?.actionToBeTaken || '',
-    remarks: initialData?.remarks || '',
-    snagPictureName: initialData?.snagPictureUrl?.split('/').pop() || '',
-    snagPictureUrl: initialData?.snagPictureUrl || '',
+    nameOfSite: restoredDraft?.nameOfSite ?? initialData?.nameOfSite ?? '',
+    purposeOfVisit: restoredDraft?.purposeOfVisit ?? initialData?.purposeOfVisit ?? ([] as PurposeOfVisit[]),
+    department: restoredDraft?.department ?? initialData?.department ?? ([] as Department[]),
+    criticality: (restoredDraft?.criticality ?? initialData?.criticality ?? 'Medium') as Criticality,
+    snagDescription: restoredDraft?.snagDescription ?? initialData?.snagDescription ?? '',
+    actionToBeTaken: restoredDraft?.actionToBeTaken ?? initialData?.actionToBeTaken ?? '',
+    remarks: restoredDraft?.remarks ?? initialData?.remarks ?? '',
+    snagPictureName: restoredDraft?.snagPictureName ?? initialData?.snagPictureUrl?.split('/').pop() ?? '',
+    snagPictureUrl: restoredDraft?.snagPictureUrl ?? initialData?.snagPictureUrl ?? '',
   });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(initialData?.snagPictureUrl || null);
+  const [imagePreview, setImagePreview] = useState<string | null>(
+    restoredDraft?.snagPictureUrl || initialData?.snagPictureUrl || null
+  );
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Show restore toast with Discard option
+  useEffect(() => {
+    if (restoredDraft && Object.values(restoredDraft).some(v => v !== '' && (Array.isArray(v) ? v.length > 0 : true))) {
+      toast(
+        (t) => (
+          <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span>📝 <strong>Draft restored</strong> — your unsaved data is back</span>
+            <button
+              onClick={() => {
+                clearDraft();
+                setForm({
+                  nameOfSite: '',
+                  purposeOfVisit: [],
+                  department: [],
+                  criticality: 'Medium',
+                  snagDescription: '',
+                  actionToBeTaken: '',
+                  remarks: '',
+                  snagPictureName: '',
+                  snagPictureUrl: '',
+                });
+                setImagePreview(null);
+                toast.dismiss(t.id);
+              }}
+              style={{
+                padding: '2px 8px',
+                fontSize: '12px',
+                borderRadius: '4px',
+                border: '1px solid #ef4444',
+                color: '#ef4444',
+                background: 'transparent',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Discard
+            </button>
+          </span>
+        ),
+        { id: 'snag-draft-restored', duration: 8000 },
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auto-save every field change to sessionStorage (new entries only)
+  useEffect(() => {
+    if (!isEditMode) {
+      try {
+        sessionStorage.setItem(SNAG_DRAFT_KEY, JSON.stringify(form));
+      } catch { /* storage quota exceeded — ignore */ }
+    }
+  }, [form, isEditMode]);
+
+  const clearDraft = () => sessionStorage.removeItem(SNAG_DRAFT_KEY);
 
   const toggleCheckbox = <T extends string>(arr: T[], val: T): T[] =>
     arr.includes(val) ? arr.filter(x => x !== val) : [...arr, val];
@@ -148,8 +226,16 @@ const SnagForm: React.FC<SnagFormProps> = ({ initialData, onSave, onCancel }) =>
       status: initialData?.status || 'Open',
       submittedBy: initialData?.submittedBy || user?.name || user?.email || '',
     };
+    clearDraft(); // form successfully submitted — data is in Supabase, draft no longer needed
     onSave(entry, selectedFile || undefined);
   };
+
+  // Cancel/X: intentionally does NOT clear the draft so the user can reopen
+  // the form and find their data still there (accidental tap protection).
+  const handleCancel = () => {
+    onCancel();
+  };
+
 
   const purposeOptions: PurposeOfVisit[] = ['Monthly Audit', 'Quarterly Audit', 'Breakdown Visit', 'Training', 'Other'];
   const departmentOptions: Department[] = ['MEP', 'House Keeping', 'Security', 'Landscaping', 'Fire and Safety', 'Other'];
@@ -504,6 +590,195 @@ const SyncStatusBadge: React.FC<{ pending?: boolean; failed?: boolean }> = ({ pe
   );
 };
 
+// ─── Sync Debug Modal ─────────────────────────────────────────────────────────
+
+interface SyncDebugModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onRefreshList: () => void;
+}
+
+const SyncDebugModal: React.FC<SyncDebugModalProps> = ({ isOpen, onClose, onRefreshList }) => {
+  const [items, setItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  const loadOutbox = useCallback(async () => {
+    setLoading(true);
+    try {
+      const all = await outbox.getAll();
+      setItems(all);
+      console.log('[SyncDebugModal] 📋 Current Outbox Items:', all);
+    } catch (err) {
+      console.error('[SyncDebugModal] Failed to load outbox:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isOpen) {
+      loadOutbox();
+    }
+  }, [isOpen, loadOutbox]);
+
+  const handleRetryItem = async (id: string) => {
+    try {
+      await outbox.retryFailedItem(id);
+      toast.success('Item reset to pending for retry');
+      loadOutbox();
+    } catch (err: any) {
+      toast.error('Failed to reset item: ' + err?.message);
+    }
+  };
+
+  const handleDeleteItem = async (id: string) => {
+    if (!confirm('Remove this item from offline queue? Unsynted data will be removed from queue.')) return;
+    try {
+      const db = await getDb();
+      await db.delete('outbox', id);
+      toast.success('Removed outbox item');
+      loadOutbox();
+      onRefreshList();
+    } catch (err: any) {
+      toast.error('Failed to remove item: ' + err?.message);
+    }
+  };
+
+  const handleTriggerSync = async () => {
+    setSyncing(true);
+    toast.loading('Running manual sync...', { id: 'modal-sync' });
+    try {
+      const res = await syncEngine.drain();
+      toast.success(`Sync finished: ${res.synced} synced, ${res.failed} failed`, { id: 'modal-sync' });
+      await loadOutbox();
+      await onRefreshList();
+    } catch (err: any) {
+      toast.error('Sync failed: ' + err?.message, { id: 'modal-sync' });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  const failedItems = items.filter(i => i.status === 'failed');
+  const pendingItems = items.filter(i => i.status === 'pending');
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
+      <div className="bg-white rounded-2xl shadow-xl border border-gray-200 w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="p-5 bg-gradient-to-r from-gray-900 to-gray-800 text-white flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <Bug className="text-amber-400" size={20} />
+            <div>
+              <h3 className="font-bold text-lg">Offline Sync Diagnostics & Debugging</h3>
+              <p className="text-xs text-gray-300">View error tracebacks, retry stuck records, or purge bad test entries</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1 hover:bg-white/10 rounded-lg transition-colors">
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Action Toolbar */}
+        <div className="p-4 bg-gray-50 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex gap-4 text-xs font-semibold">
+            <span className="text-gray-700">Total Queued: <strong className="text-gray-900">{items.length}</strong></span>
+            <span className="text-amber-700">Pending: <strong>{pendingItems.length}</strong></span>
+            <span className="text-red-700">Failed: <strong>{failedItems.length}</strong></span>
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={loadOutbox} disabled={loading}>
+              <RefreshCw size={13} className={`mr-1 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+            <Button size="sm" onClick={handleTriggerSync} disabled={syncing}>
+              <Play size={13} className={`mr-1 ${syncing ? 'animate-spin' : ''}`} />
+              {syncing ? 'Syncing...' : 'Sync All Now'}
+            </Button>
+          </div>
+        </div>
+
+        {/* Content list */}
+        <div className="p-5 overflow-y-auto flex-1 space-y-3">
+          {items.length === 0 ? (
+            <div className="text-center py-10 text-gray-400">
+              <CheckCircle2 size={40} className="mx-auto mb-2 text-emerald-500" />
+              <p className="font-medium text-gray-600">Outbox is completely clear!</p>
+              <p className="text-xs mt-1">All offline records have been synced to the database.</p>
+            </div>
+          ) : (
+            items.map(item => (
+              <div
+                key={item.id}
+                className={`p-4 rounded-xl border transition-all ${
+                  item.status === 'failed'
+                    ? 'bg-red-50/50 border-red-200'
+                    : item.status === 'syncing'
+                    ? 'bg-blue-50/50 border-blue-200'
+                    : 'bg-amber-50/50 border-amber-200'
+                }`}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold uppercase px-2 py-0.5 rounded bg-gray-200 text-gray-800">
+                      {item.action}
+                    </span>
+                    <span className="text-xs font-mono font-semibold text-gray-700">
+                      {item.tableName}
+                    </span>
+                    <span className="text-xs text-gray-400">ID: {item.id}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                      item.status === 'failed' ? 'bg-red-100 text-red-700 border border-red-300' :
+                      item.status === 'syncing' ? 'bg-blue-100 text-blue-700 animate-pulse' :
+                      'bg-amber-100 text-amber-700'
+                    }`}>
+                      {item.status} (Attempts: {item.attempts || 0})
+                    </span>
+                  </div>
+                </div>
+
+                {item.failureReason && (
+                  <div className="mt-2 p-2.5 bg-red-100/80 rounded-lg text-xs font-mono text-red-900 border border-red-200 flex items-start gap-2">
+                    <AlertTriangle size={14} className="text-red-600 shrink-0 mt-0.5" />
+                    <div className="break-all">
+                      <strong>Failure Reason:</strong> {item.failureReason}
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-3 flex items-center justify-between text-xs text-gray-500 border-t border-gray-200/50 pt-2">
+                  <span>Queued: {new Date(item.createdAt).toLocaleTimeString()}</span>
+                  <div className="flex gap-2">
+                    {item.status === 'failed' && (
+                      <button
+                        onClick={() => handleRetryItem(item.id)}
+                        className="flex items-center gap-1 text-teal-700 hover:text-teal-900 font-semibold hover:underline"
+                      >
+                        <RotateCcw size={12} /> Retry Item
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleDeleteItem(item.id)}
+                      className="flex items-center gap-1 text-red-600 hover:text-red-800 font-semibold hover:underline"
+                    >
+                      <Trash2 size={12} /> Remove
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 const SnagAuditPage: React.FC = () => {
@@ -527,6 +802,9 @@ const SnagAuditPage: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState('');
   const [importing, setImporting] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
+  const [pendingOrFailedCount, setPendingOrFailedCount] = useState(0);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [showDebugModal, setShowDebugModal] = useState(false);
 
   const fetchEntries = useCallback(async () => {
     setIsLoading(true);
@@ -561,6 +839,78 @@ const SnagAuditPage: React.FC = () => {
       setIsLoading(false);
     }
   }, []);
+
+  const updateOutboxCount = useCallback(async () => {
+    try {
+      const items = await outbox.getAll();
+      setPendingOrFailedCount(items.length);
+    } catch {
+      setPendingOrFailedCount(0);
+    }
+  }, []);
+
+  useEffect(() => {
+    updateOutboxCount();
+    const interval = setInterval(updateOutboxCount, 3000);
+    return () => clearInterval(interval);
+  }, [updateOutboxCount]);
+
+  const handleManualSync = useCallback(async () => {
+    setIsSyncing(true);
+    console.log('===========================================================');
+    console.log('[SyncDebug] 🚀 Manual Sync Initiated at', new Date().toISOString());
+
+    try {
+      const allOutbox = await outbox.getAll();
+      const failedOutbox = await outbox.getFailed();
+      const pendingOutbox = await outbox.getPending();
+
+      console.log('[SyncDebug] 📊 Outbox Summary:', {
+        total: allOutbox.length,
+        pending: pendingOutbox.length,
+        failed: failedOutbox.length,
+      });
+      console.log('[SyncDebug] 📋 Outbox Items Detail:', allOutbox);
+
+      if (allOutbox.length === 0) {
+        toast.success('Everything is already synced to cloud!');
+        setIsSyncing(false);
+        return;
+      }
+
+      toast.loading(`Syncing ${allOutbox.length} offline item(s)...`, { id: 'manual-sync' });
+
+      const result = await syncEngine.drain();
+
+      const remainingFailed = await outbox.getFailed();
+      console.log('[SyncDebug] 🎯 Sync Result:', result);
+      console.log('[SyncDebug] ⚠️ Remaining Failed Items:', remainingFailed);
+
+      if (remainingFailed.length > 0) {
+        console.error('[SyncDebug] ❌ Failed items detail:');
+        remainingFailed.forEach(item => {
+          console.error(`  - Item [${item.id}] table=${item.tableName} action=${item.action}:`, item.failureReason);
+        });
+
+        toast.error(`Sync finished: ${result.synced} synced, ${remainingFailed.length} failed. Opening diagnostics...`, {
+          id: 'manual-sync',
+          duration: 6000,
+        });
+        setShowDebugModal(true);
+      } else {
+        toast.success(`✅ Successfully synced ${result.synced} item(s)!`, { id: 'manual-sync' });
+      }
+
+      await fetchEntries();
+      await updateOutboxCount();
+    } catch (err: any) {
+      console.error('[SyncDebug] Manual sync error:', err);
+      toast.error(`Sync error: ${err?.message || 'Unknown error'}`, { id: 'manual-sync' });
+    } finally {
+      setIsSyncing(false);
+      console.log('===========================================================');
+    }
+  }, [fetchEntries, updateOutboxCount]);
 
   // Initial load
   useEffect(() => {
@@ -724,6 +1074,27 @@ const SnagAuditPage: React.FC = () => {
           <p className="text-muted mt-1">Site inspection & defect tracking</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button
+            variant={pendingOrFailedCount > 0 ? "primary" : "outline"}
+            onClick={handleManualSync}
+            disabled={isSyncing}
+            className={pendingOrFailedCount > 0 ? "bg-amber-600 hover:bg-amber-700 text-white" : ""}
+            title="Trigger immediate sync of all offline records"
+          >
+            <RefreshCw size={15} className={`mr-1.5 ${isSyncing ? 'animate-spin' : ''}`} />
+            {isSyncing ? 'Syncing...' : `Sync Now${pendingOrFailedCount > 0 ? ` (${pendingOrFailedCount})` : ''}`}
+          </Button>
+
+          <Button
+            variant="outline"
+            onClick={() => setShowDebugModal(true)}
+            title="View sync diagnostics and error tracebacks"
+            className="border-gray-300 text-gray-700 hover:bg-gray-50"
+          >
+            <Bug size={15} className="mr-1.5 text-amber-500" />
+            Debug
+          </Button>
+
           {user?.role === 'admin' && (
             <>
               <Button
@@ -1003,6 +1374,12 @@ const SnagAuditPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      <SyncDebugModal
+        isOpen={showDebugModal}
+        onClose={() => setShowDebugModal(false)}
+        onRefreshList={fetchEntries}
+      />
     </div>
   );
 };

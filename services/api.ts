@@ -49,14 +49,17 @@ const offlineDb = {
 };
 import { isOfflineEnabled } from './offline/featureFlag';
 import { isOnline as _isOfflineOnline } from './offline/networkStatus';
-import { enqueue as _offlineEnqueue } from './offline/outbox';
+import { enqueue as _offlineEnqueue, getAll as _offlineGetOutboxAll } from './offline/outbox';
 import {
   cacheHtYardAudit,
   getCachedHtYardAudits,
   deleteHtYardAuditFromCache,
   cachePpmExecution,
   getCachedPpmExecutions,
-  deletePpmExecutionFromCache
+  deletePpmExecutionFromCache,
+  cacheOnboardingSubmission,
+  getCachedOnboardingSubmissions,
+  deleteOnboardingSubmissionFromCache
 } from './offline/cache';
 import type { OfflineHTYardAuditRecord } from '../types/htYard';
 import type { PPMExecutionRecord } from '../types/ppm';
@@ -1393,11 +1396,54 @@ export const api = {
 
 
   getVerificationSubmissions: async (status?: string, organizationId?: string, managerId?: string): Promise<OnboardingData[]> => {
+    const mergeLocalPendingOnboardings = async (remoteList: OnboardingData[]): Promise<OnboardingData[]> => {
+      if (!isOfflineEnabled()) return remoteList;
+      try {
+        const allOutbox = await _offlineGetOutboxAll().catch(() => []);
+        const onboardingOutboxMap = new Map<string, any>();
+        allOutbox
+          .filter((i: any) => i.tableName === 'onboarding_submissions')
+          .forEach((i: any) => onboardingOutboxMap.set(i.id, i));
+
+        const result = [...remoteList];
+        onboardingOutboxMap.forEach((outboxItem, id) => {
+          const idx = result.findIndex((r: any) => r.id === id);
+          const isPending = outboxItem.status === 'pending' || outboxItem.status === 'syncing';
+          const isFailed = outboxItem.status === 'failed';
+
+          if (idx >= 0) {
+            (result[idx] as any).pending = isPending;
+            (result[idx] as any).failed = isFailed;
+          } else {
+            const payload = outboxItem.payload;
+            if (payload) {
+              const camel = toCamelCase(payload) as OnboardingData;
+              (camel as any).pending = isPending;
+              (camel as any).failed = isFailed;
+              result.unshift(camel);
+            }
+          }
+        });
+        return result;
+      } catch (err) {
+        console.warn('[API] Failed to merge local pending onboarding submissions:', err);
+        return remoteList;
+      }
+    };
+
+    // Offline path
+    if (isOfflineEnabled() && !_isOfflineOnline()) {
+      const cached = await getCachedOnboardingSubmissions();
+      let filtered = cached;
+      if (status) filtered = filtered.filter(row => row.status === status);
+      if (organizationId) filtered = filtered.filter(row => row.organization?.organizationId === organizationId);
+      return mergeLocalPendingOnboardings(filtered);
+    }
+
     const cacheKey = `verification_submissions_${status || 'all'}_${organizationId || 'all'}_${managerId || 'all'}`;
     return fetchWithCache(cacheKey, async () => {
       const { data: { session } } = await supabase.auth.getSession();
       let query = supabase.from('onboarding_submissions').select('*, user:user_id(reporting_manager_id)');
-      // Always filter by the logged-in user so RLS policies apply correctly
       if (session?.user?.id) query = query.eq('user_id', session.user.id);
       if (status) query = query.eq('status', status);
       if (organizationId) query = query.eq('organization_id', organizationId);
@@ -1413,7 +1459,9 @@ export const api = {
           );
       }
       
-      return filteredData.map(toCamelCase);
+      const mapped = filteredData.map(toCamelCase) as OnboardingData[];
+      mapped.forEach(item => cacheOnboardingSubmission(item).catch(() => {}));
+      return mergeLocalPendingOnboardings(mapped);
     });
   },
 
@@ -1425,6 +1473,7 @@ export const api = {
         if (error && error.code !== 'PGRST116') throw error;
         if (data) {
           const formatted = processUrlsForDisplay(toCamelCase(data));
+          await cacheOnboardingSubmission(formatted).catch(() => {});
           await offlineDb.setCache(`onboarding_${id}`, formatted);
           return formatted;
         }
@@ -1432,34 +1481,45 @@ export const api = {
         console.warn('Failed to fetch onboarding data from cloud, falling back to cache');
       }
     }
+    const idbCached = await getCachedOnboardingSubmissions().then(items => items.find(i => i.id === id) || null);
+    if (idbCached) return idbCached;
     return processUrlsForDisplay(await offlineDb.getCache(`onboarding_${id}`));
   },
 
   _saveSubmission: async (data: OnboardingData, asDraft: boolean): Promise<{ draftId: string }> => {
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user) throw new Error("User not authenticated");
+    const userId = session?.user?.id || 'offline_user';
 
-    // Bug fix: draft_ prefixed IDs are local-only placeholders and must never
-    // be used as the Supabase record ID (UUID column). Always generate a real UUID.
     const submissionId = (data.id && !data.id.startsWith('draft_'))
         ? data.id
         : crypto.randomUUID();
     
+    const offlineSubmission: OnboardingData = {
+      ...data,
+      id: submissionId,
+      status: asDraft ? 'draft' : data.status,
+    };
+
     const status = await Network.getStatus();
-    if (!status.connected) {
-        const offlineData = { ...data, id: submissionId, status: asDraft ? 'draft' : data.status };
-        await offlineDb.addToOutbox({ table_name: 'onboarding_submissions', action: 'INSERT', payload: { data, asDraft } });
-        await offlineDb.setCache(`onboarding_${submissionId}`, offlineData);
-        return { draftId: submissionId };
+    if (!status.connected || (isOfflineEnabled() && !_isOfflineOnline())) {
+      await cacheOnboardingSubmission({ ...offlineSubmission, pending: true });
+      await _offlineEnqueue({
+        id: submissionId,
+        tableName: 'onboarding_submissions',
+        action: 'INSERT',
+        payload: toSnakeCase(offlineSubmission) as Record<string, unknown>,
+      });
+      console.log(`[API] Onboarding submission queued offline (id=${submissionId})`);
+      return { draftId: submissionId };
     }
 
-    const dataWithPaths = await processFilesForUpload(data, session.user.id, submissionId);
+    const dataWithPaths = await processFilesForUpload(data, userId, submissionId);
     const snakedData = toSnakeCase(dataWithPaths);
     
     const dbData = {
       ...snakedData,
       id: submissionId,
-      user_id: session.user.id,
+      user_id: userId,
       employee_id: data.personal?.employeeId || null,
       status: asDraft ? 'draft' : data.status,
       organization_id: data.organization?.organizationId || null,
@@ -1471,17 +1531,22 @@ export const api = {
     delete dbData.confirm_account_number;
     delete (dbData as any).is_qr_verified; 
 
-    const { data: savedData, error } = await supabase.from('onboarding_submissions').upsert(dbData, { onConflict: 'id' }).select('id').single();
-    if (error) {
-        console.error('Save submission error:', error);
-        throw error;
+    try {
+      const { data: savedData, error } = await supabase.from('onboarding_submissions').upsert(dbData, { onConflict: 'id' }).select('id').single();
+      if (error) throw error;
+      await cacheOnboardingSubmission(toCamelCase(dbData) as OnboardingData).catch(() => {});
+      return { draftId: savedData.id };
+    } catch (err: any) {
+      console.warn('[API] Online onboarding submission failed, queueing offline fallback:', err?.message || err);
+      await cacheOnboardingSubmission({ ...offlineSubmission, pending: true, failed: true });
+      await _offlineEnqueue({
+        id: submissionId,
+        tableName: 'onboarding_submissions',
+        action: 'INSERT',
+        payload: dbData as Record<string, unknown>,
+      });
+      return { draftId: submissionId };
     }
-    // Update cache
-    await offlineDb.setCache(`onboarding_${savedData.id}`, toCamelCase(dbData));
-    // Bust the submission list cache so MySubmissions immediately shows new/updated drafts.
-    // Setting to null makes fetchWithCache treat it as a miss and re-query Supabase.
-    await offlineDb.setCache('verification_submissions_all_all_all', null);
-    return { draftId: savedData.id };
   },
 
   saveDraft: async (data: OnboardingData) => api._saveSubmission(data, true),

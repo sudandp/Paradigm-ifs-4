@@ -16,6 +16,7 @@ import { isOfflineEnabled } from './featureFlag';
 import type { SnagEntry } from '../../types/operations';
 import type { HTMasterOption, OfflineHTYardAuditRecord } from '../../types/htYard';
 import type { PPMExecutionRecord } from '../../types/ppm';
+import type { OnboardingData } from '../../types';
 
 // ─── ht_master_options cache ─────────────────────────────────────────────────
 
@@ -288,6 +289,43 @@ export async function migrateLocalStoragePpmDrafts(): Promise<number> {
   } catch (err) {
     console.warn('[Offline] Failed to migrate localStorage PPM drafts:', err);
     return 0;
+  }
+}
+
+// ─── onboarding_submissions local read & write ────────────────────────────────
+
+export type CachedOnboardingData = OnboardingData & { pending?: boolean; failed?: boolean };
+
+export async function getCachedOnboardingSubmissions(): Promise<CachedOnboardingData[]> {
+  if (!isOfflineEnabled()) return [];
+  try {
+    const db = await getDb();
+    return await db.getAll('onboarding_submissions');
+  } catch (err) {
+    console.warn('[Cache] Failed to read onboarding_submissions cache:', err);
+    return [];
+  }
+}
+
+export async function cacheOnboardingSubmission(submission: CachedOnboardingData): Promise<void> {
+  if (!isOfflineEnabled()) return;
+  try {
+    const db = await getDb();
+    await db.put('onboarding_submissions', submission);
+    console.debug(`[Cache] Cached onboarding submission in IDB: ${submission.id}`);
+  } catch (err) {
+    console.warn('[Cache] Failed to cache onboarding submission:', err);
+  }
+}
+
+export async function deleteOnboardingSubmissionFromCache(id: string): Promise<void> {
+  if (!isOfflineEnabled()) return;
+  try {
+    const db = await getDb();
+    await db.delete('onboarding_submissions', id);
+    console.debug(`[Cache] Deleted onboarding submission from IDB: ${id}`);
+  } catch (err) {
+    console.warn('[Cache] Failed to delete onboarding submission from IDB:', err);
   }
 }
 

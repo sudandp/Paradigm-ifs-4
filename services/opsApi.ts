@@ -345,11 +345,18 @@ export const opsApi = {
         ? entry.id
         : crypto.randomUUID();
 
-      // Store photo blob in IDB for later upload
+      // Store photo blob in IDB for later upload & generate base64 dataUrl for local preview
       let photoId: string | undefined;
+      let localPhotoDataUrl: string | undefined;
       if (fileToUpload) {
         try {
           photoId = await storePhoto(fileToUpload, fileToUpload.name, localId);
+          localPhotoDataUrl = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onload = ev => resolve((ev.target?.result as string) || '');
+            reader.onerror = () => resolve('');
+            reader.readAsDataURL(fileToUpload);
+          });
         } catch (photoErr) {
           console.warn('[opsApi] Failed to store photo blob offline:', photoErr);
         }
@@ -365,9 +372,9 @@ export const opsApi = {
         updatedAt: now,
         submittedBy: entry.submittedBy || currentUser?.name || 'Staff',
         emailAddress: entry.emailAddress || currentUser?.email || '',
-        userId: (entry as any).userId || currentUser?.id,
-        snagPictureUrl: entry.snagPictureUrl,
-        snagPictureName: fileToUpload?.name ?? entry.snagPictureName,
+        // Note: snag_audits has no user_id column — attribution via submittedBy/emailAddress
+        snagPictureUrl: entry.snagPictureUrl || localPhotoDataUrl || '',
+        snagPictureName: fileToUpload?.name ?? entry.snagPictureName ?? '',
         pending: true,
       } as SnagEntry & { pending: boolean };
 
@@ -404,7 +411,7 @@ export const opsApi = {
       // Upload picture to storage if present
       if (fileToUpload) {
         try {
-          const uploadResult = await api.uploadDocument(fileToUpload, 'documents');
+          const uploadResult = await api.uploadDocument(fileToUpload, 'onboarding-documents');
           pictureUrl = uploadResult.url;
           pictureName = fileToUpload.name;
         } catch (err) {

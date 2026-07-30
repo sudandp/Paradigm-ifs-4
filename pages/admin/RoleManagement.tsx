@@ -31,7 +31,6 @@ export const allPermissions: { key: Permission; name: string; description: strin
     { key: 'view_site_dashboard', name: 'Site Dashboard', description: 'View the dashboard for a specific site/organization.', category: 'Dashboards' },
     { key: 'view_operations_dashboard', name: 'Operations Dashboard', description: 'View the operations management dashboard.', category: 'Dashboards' },
     { key: 'view_management_dashboard', name: 'Management Dashboard', description: 'View the dashboard for head office/back office management.', category: 'Dashboards' },
-    { key: 'view_all_submissions', name: 'View All Submissions', description: 'Access the main dashboard to view all employee submissions.', category: 'Dashboards' },
 
     // Operations Hub
     { key: 'view_operations', name: 'Access Operations Hub', description: 'Access overall operations hub modules.', category: 'Operations Hub' },
@@ -63,6 +62,7 @@ export const allPermissions: { key: Permission; name: string; description: strin
     { key: 'manage_attendance_rules', name: 'Manage Attendance Rules', description: 'Set work hours, holidays, and leave allocations.', category: 'Leaves & Rules' },
 
     // Employee Onboarding
+    { key: 'view_all_submissions', name: 'View All Submissions', description: 'Access the main dashboard to view all employee submissions.', category: 'Employee Onboarding' },
     { key: 'create_enrollment', name: 'Create Enrollment', description: 'Access the multi-step form to onboard new employees.', category: 'Employee Onboarding' },
     { key: 'manage_enrollment_rules', name: 'Manage Enrollment Rules', description: 'Set rules for ESI/GMC, manpower limits, and documents.', category: 'Employee Onboarding' },
     { key: 'manage_attendance_rules', name: 'Attendance Rules (Onboarding)', description: 'Settings specifically for onboarding flow rules.', category: 'Employee Onboarding' },

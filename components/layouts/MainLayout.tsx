@@ -45,7 +45,6 @@ export const allNavLinks: NavLinkConfig[] = [
     { to: '/site/dashboard', label: 'Site Dashboard', icon: Home, permission: 'view_site_dashboard', category: 'Dashboards' },
     { to: '/operations/dashboard', label: 'Operations', icon: BriefcaseBusiness, permission: 'view_operations_dashboard', category: 'Dashboards' },
     { to: '/management/dashboard', label: 'Management Dashboard', icon: LayoutDashboard, permission: 'view_management_dashboard', category: 'Dashboards' },
-    { to: '/verification/dashboard', label: 'All Submissions', icon: ClipboardList, permission: 'view_all_submissions', category: 'Dashboards' },
 
     // Operations Hub (Phase 2)
     { to: '/operations/tickets', label: 'Helpdesk Tickets', icon: Ticket, permission: 'view_helpdesk_tickets', category: 'Operations Hub' },
@@ -73,6 +72,7 @@ export const allNavLinks: NavLinkConfig[] = [
     { to: '/hr/attendance-settings', label: 'Attendance Rules', icon: ListTodo, permission: 'manage_attendance_rules', category: 'Leaves & Rules' },
 
     // Employee Onboarding
+    { to: '/verification/dashboard', label: 'All Submissions', icon: ClipboardList, permission: 'view_all_submissions', category: 'Employee Onboarding' },
     { to: '/onboarding', label: 'New Enrollment', icon: UserPlus, permission: 'create_enrollment', category: 'Employee Onboarding' },
     { to: '/hr/enrollment-rules', label: 'Enrollment Rules', icon: FileDigit, permission: 'manage_enrollment_rules', category: 'Employee Onboarding' },
     { to: '/hr/family-verification', label: 'Family Verification', icon: Baby, permission: 'manage_family_verification', category: 'Employee Onboarding' },
