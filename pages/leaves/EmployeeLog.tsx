@@ -531,7 +531,9 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                                                         const hasLocationText = !!event.locationName;
                                                         const isAutoOut = event.source === 'auto_system' && (event.type === 'punch-out' || event.type === 'site-ot-out');
                                                         const displayLocation = hasCoords || hasLocationText || isAutoOut;
-                                                        const locationFallback = event.locationName || (isAutoOut ? 'Auto Check-out' : undefined);
+                                                        const isCoordLoc = !!(event.locationName && /^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(event.locationName.trim()));
+                                                        const cleanLocationName = isCoordLoc ? undefined : event.locationName;
+                                                        const locationFallback = cleanLocationName || (isAutoOut ? 'Auto Check-out' : undefined);
 
                                                         return displayLocation ? (
                                                             <div className="flex items-start gap-1.5 bg-white max-md:bg-[#041b0f] px-3 py-1.5 rounded-lg border border-gray-200 max-md:border-white/10 w-full md:max-w-[210px]">

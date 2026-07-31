@@ -29,87 +29,99 @@ export function calculateDistanceMeters(lat1: number, lon1: number, lat2: number
  */
 export async function reverseGeocode(lat: number, lon: number): Promise<string> {
   const fallback = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+  
+  // 1. Try BigDataCloud Client Reverse Geocode API (CORS enabled, no API key, browser-safe)
+  try {
+    const bdcUrl = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`;
+    const bdcRes = await fetch(bdcUrl);
+    if (bdcRes.ok) {
+      const bdcData = await bdcRes.json();
+      const parts = [
+        bdcData.locality || bdcData.sublocality || bdcData.city,
+        bdcData.city !== bdcData.locality ? bdcData.city : null,
+        bdcData.principalSubdivision,
+        bdcData.postcode
+      ].filter(Boolean);
+      if (parts.length > 0) {
+        return parts.join(', ');
+      }
+    }
+  } catch (bdcErr) {
+    console.warn('BigDataCloud reverse geocode failed:', bdcErr);
+  }
+
+  // 2. Try Nominatim OpenStreetMap API (without unsafe browser User-Agent headers)
   try {
     const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=16&addressdetails=1`;
     const res = await fetch(url);
-    if (!res.ok) return fallback;
-    const data = await res.json();
-    if (data.address) {
-      const { 
-        house_number, house_name,
-        hotel, school, university, college, 
-        apartment, apartments, mall, supermarket,
-        bus_stop, fuel, petrol_pump,
-        hospital, clinic, doctors,
-        cinema, theatre, museum, 
-        attraction, tourism, historic,
-        building, amenity, shop, office, 
-        park, garden,
-        road, residential, neighbourhood, suburb, city_district,
-        city, village, town, state, postcode
-        // NOTE: 'county' (e.g. "Bengaluru South City Corporation") and 'country' ("India") are intentionally excluded
-        // because Nominatim returns these as redundant noise for Indian addresses
-      } = data.address;
-      
-      // Get the most descriptive "name" of the place first
-      const poiName = house_name || hotel || school || university || college || 
-                      apartment || apartments || mall || supermarket ||
-                      bus_stop || fuel || petrol_pump ||
-                      hospital || clinic || doctors ||
-                      cinema || theatre || museum || 
-                      attraction || tourism || historic ||
-                      building || amenity || shop || office || 
-                      park || garden;
-      
-      // Build a deduped, clean parts list.
-      // We skip 'county' (municipal corporation) and 'country' entirely.
-      // For city/village/town: only include if it doesn't duplicate suburb/neighbourhood already included.
-      const placeName = city || village || town || null;
-      const suburbOrNeighbourhood = suburb || neighbourhood || null;
-      
-      // Only include city if it's distinct from what we already have in suburb/neighbourhood/city_district
-      const shouldIncludeCity = placeName && 
-        placeName !== suburbOrNeighbourhood && 
-        placeName !== city_district &&
-        placeName !== road;
+    if (res.ok) {
+      const data = await res.json();
+      if (data.address) {
+        const { 
+          house_number, house_name,
+          hotel, school, university, college, 
+          apartment, apartments, mall, supermarket,
+          bus_stop, fuel, petrol_pump,
+          hospital, clinic, doctors,
+          cinema, theatre, museum, 
+          attraction, tourism, historic,
+          building, amenity, shop, office, 
+          park, garden,
+          road, residential, neighbourhood, suburb, city_district,
+          city, village, town, state, postcode
+        } = data.address;
+        
+        const poiName = house_name || hotel || school || university || college || 
+                        apartment || apartments || mall || supermarket ||
+                        bus_stop || fuel || petrol_pump ||
+                        hospital || clinic || doctors ||
+                        cinema || theatre || museum || 
+                        attraction || tourism || historic ||
+                        building || amenity || shop || office || 
+                        park || garden;
+        
+        const placeName = city || village || town || null;
+        const suburbOrNeighbourhood = suburb || neighbourhood || null;
+        
+        const shouldIncludeCity = placeName && 
+          placeName !== suburbOrNeighbourhood && 
+          placeName !== city_district &&
+          placeName !== road;
 
-      const rawParts = [
-        house_number, 
-        road, 
-        residential,
-        neighbourhood,
-        suburb, 
-        city_district,
-        shouldIncludeCity ? placeName : null,
-        state, 
-        postcode,
-      ].filter(Boolean) as string[];
+        const rawParts = [
+          house_number, 
+          road, 
+          residential,
+          neighbourhood,
+          suburb, 
+          city_district,
+          shouldIncludeCity ? placeName : null,
+          state, 
+          postcode,
+        ].filter(Boolean) as string[];
 
-      // Deduplicate consecutive identical values (e.g. suburb === city)
-      const parts = rawParts.filter((part, i) => i === 0 || part !== rawParts[i - 1]);
-      
-      const shortAddress = parts.join(', ');
-      
-      if (poiName) {
-        return `${poiName} - ${shortAddress || data.display_name}`;
+        const parts = rawParts.filter((part, i) => i === 0 || part !== rawParts[i - 1]);
+        const shortAddress = parts.join(', ');
+        
+        if (poiName) {
+          return `${poiName} - ${shortAddress || data.display_name}`;
+        }
+        if (shortAddress) return shortAddress;
       }
       
-      if (shortAddress) return shortAddress;
+      if (data.display_name) {
+        const cleaned = (data.display_name as string)
+          .split(', ')
+          .filter(p => !/(India|South City Corporation|Municipal Corporation|Corporation|District)/i.test(p))
+          .join(', ');
+        if (cleaned) return cleaned;
+      }
     }
-    
-    if (data.display_name) {
-      // Fallback: strip country and county from display_name as a best-effort clean
-      const cleaned = (data.display_name as string)
-        .split(', ')
-        .filter(p => !/(India|South City Corporation|Municipal Corporation|Corporation|District)/i.test(p))
-        .join(', ');
-      return cleaned || data.display_name;
-    }
-    return fallback;
   } catch (err) {
-    console.warn('Reverse geocode failed:', err);
-    return fallback;
+    console.warn('Nominatim reverse geocode failed:', err);
   }
+
+  return fallback;
 }
 
 /**
@@ -150,8 +162,22 @@ export async function resolveLocationName(
     }
   }
 
-  // 3. Check address string match if reverse geocode address or raw address is available
-  const addressToCheck = rawAddress || (lat != null && lon != null ? await reverseGeocode(lat, lon) : null);
+  // 3. Resolve address via Reverse Geocoding if lat/lon exist
+  // Check if rawAddress is missing, a coordinate string ("12.9596, 77.6456"), or generic fallback
+  const isCoordString = !!(rawAddress && /^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(rawAddress.trim()));
+  const isGeneric = !rawAddress || isCoordString || rawAddress.includes('GPS') || rawAddress.includes('Location');
+
+  let geocodedAddress: string | null = null;
+  if (lat != null && lon != null && isGeneric) {
+    geocodedAddress = await reverseGeocode(lat, lon);
+  }
+
+  const isGeocodedCoord = !!(geocodedAddress && /^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(geocodedAddress.trim()));
+
+  const addressToCheck = (geocodedAddress && !isGeocodedCoord)
+    ? geocodedAddress
+    : (!isCoordString && rawAddress ? rawAddress : (geocodedAddress || rawAddress));
+
   if (addressToCheck) {
     if (user?.homeAddress) {
       const normAddress = addressToCheck.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -166,10 +192,13 @@ export async function resolveLocationName(
         return homeLocName;
       }
     }
+    if (/^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(addressToCheck.trim())) {
+      return 'GPS Location';
+    }
     return addressToCheck;
   }
 
-  return rawAddress || (lat != null && lon != null ? `${lat.toFixed(4)}, ${lon.toFixed(4)}` : 'Unknown Location');
+  return rawAddress && !/^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(rawAddress.trim()) ? rawAddress : (lat != null && lon != null ? 'GPS Location' : 'Unknown Location');
 }
 
 export interface SiteDistanceInfo {
@@ -246,8 +275,10 @@ export function findRegisteredSiteDistance(
         const eLon = Number(e.longitude);
         if (!isNaN(eLat) && !isNaN(eLon)) {
           const isHomeType = e.locationName?.toLowerCase().includes('home');
+          const rawName = e.locationName || 'Site Location';
+          const candName = /^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(rawName.trim()) ? 'Registered Site' : rawName;
           candidates.push({
-            name: e.locationName || 'Site Location',
+            name: candName,
             lat: eLat,
             lon: eLon,
             isHome: isHomeType,

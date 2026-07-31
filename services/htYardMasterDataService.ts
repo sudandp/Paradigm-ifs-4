@@ -6,68 +6,88 @@ import { cacheMasterOptions, getCachedMasterOptions, invalidateMasterOptions } f
 
 export const htYardMasterDataService = {
   // Fetch options by category and optional manufacturer
+  // Fetch options by category and optional manufacturer
   async getMasterOptions(category: HTMasterCategory, manufacturer?: string): Promise<HTMasterOption[]> {
-    // ── Offline path ─────────────────────────────────────────────────────────
-    if (isOfflineEnabled() && !isOnline()) {
-      const cached = await getCachedMasterOptions(category);
-      if (cached.length > 0) {
+    let dbOptions: HTMasterOption[] = [];
+
+    // ── Online path (fetch from Supabase) ───────────────
+    if (!isOfflineEnabled() || isOnline()) {
+      try {
+        let query = supabase
+          .from('ht_master_options')
+          .select('*')
+          .eq('category', category)
+          .eq('is_active', true);
+
         if (manufacturer) {
-          return cached.filter(
-            (o) => !o.manufacturer || o.manufacturer === manufacturer
-          );
+          query = query.or(`manufacturer.eq.${manufacturer},manufacturer.is.null`);
         }
-        return cached;
+
+        const { data, error } = await query;
+        if (!error && data) {
+          dbOptions = data.map((item) => ({
+            id: item.id,
+            category: item.category as HTMasterCategory,
+            manufacturer: item.manufacturer,
+            fieldKey: item.field_key,
+            optionValue: item.option_value,
+            isActive: item.is_active,
+            createdAt: item.created_at,
+            updatedAt: item.updated_at
+          }));
+          // Write-through: cache the full category result in IDB
+          cacheMasterOptions(dbOptions).catch(() => {});
+        }
+      } catch (err) {
+        console.warn('Error fetching Supabase master options:', err);
       }
-      // Nothing cached — fall back to hardcoded seed data
-      return getInitialSeedOptions(category, manufacturer);
     }
 
-    // ── Online path (unchanged logic, with write-through cache) ───────────────
+    // ── Fallback to IDB cache if DB returns empty or offline ──
+    if (dbOptions.length === 0 && isOfflineEnabled()) {
+      try {
+        const cached = await getCachedMasterOptions(category);
+        if (cached.length > 0) {
+          dbOptions = manufacturer
+            ? cached.filter((o) => !o.manufacturer || o.manufacturer === manufacturer)
+            : cached;
+        }
+      } catch (e) {}
+    }
+
+    // ── Local Storage Fallback items ──
+    let localOptions: HTMasterOption[] = [];
     try {
-      let query = supabase
-        .from('ht_master_options')
-        .select('*')
-        .eq('category', category)
-        .eq('is_active', true);
-
-      if (manufacturer) {
-        query = query.or(`manufacturer.eq.${manufacturer},manufacturer.is.null`);
+      const stored = localStorage.getItem(`ht_master_options_${category}`);
+      if (stored) {
+        localOptions = JSON.parse(stored);
       }
+    } catch (e) {}
 
-      const { data, error } = await query;
-      if (error) {
-        console.warn('Fallback to local master options due to error:', error.message);
-        // Try IDB cache before seed data
-        if (isOfflineEnabled()) {
-          const cached = await getCachedMasterOptions(category);
-          if (cached.length > 0) return cached;
-        }
-        return getInitialSeedOptions(category, manufacturer);
+    // ── Seed items ──
+    const seedOptions = getInitialSeedOptions(category, manufacturer);
+
+    // ── Combine & Deduplicate ──
+    // Custom/DB/Local items placed FIRST (on top of seed items)
+    const combined: HTMasterOption[] = [];
+    const seenKeys = new Set<string>();
+
+    const addOption = (opt: HTMasterOption) => {
+      const dedupKey = `${opt.category}_${opt.fieldKey}_${(opt.optionValue || '').trim().toLowerCase()}`;
+      if (!seenKeys.has(dedupKey)) {
+        seenKeys.add(dedupKey);
+        combined.push(opt);
       }
+    };
 
-      if (!data || data.length === 0) {
-        return getInitialSeedOptions(category, manufacturer);
-      }
+    // 1. Newly added / DB / Local options placed ON TOP
+    localOptions.forEach(addOption);
+    dbOptions.forEach(addOption);
 
-      const options: HTMasterOption[] = data.map((item) => ({
-        id: item.id,
-        category: item.category as HTMasterCategory,
-        manufacturer: item.manufacturer,
-        fieldKey: item.field_key,
-        optionValue: item.option_value,
-        isActive: item.is_active,
-        createdAt: item.created_at,
-        updatedAt: item.updated_at
-      }));
+    // 2. Default Seed Options added below
+    seedOptions.forEach(addOption);
 
-      // Write-through: cache the full category result in IDB
-      cacheMasterOptions(options).catch(() => {});
-
-      return options;
-    } catch (err) {
-      console.error('Error in getMasterOptions:', err);
-      return getInitialSeedOptions(category, manufacturer);
-    }
+    return combined;
   },
 
   // Save or update a master option
@@ -314,6 +334,16 @@ function getInitialSeedOptions(category: HTMasterCategory, manufacturer?: string
     const sf6Statuses = ['Green - Mid level', 'Green - High level', 'Green - Low level', 'Red'];
     sf6Statuses.forEach((sf, idx) => {
       seed.push({ id: `seed-rmu-sf6-${idx}`, category: 'RMUMD', fieldKey: 'sf6_status', optionValue: sf, isActive: true });
+    });
+
+    const icOgs = ['From-', 'To-'];
+    icOgs.forEach((ic, idx) => {
+      seed.push({ id: `seed-rmu-icog-${idx}`, category: 'RMUMD', fieldKey: 'ic_og', optionValue: ic, isActive: true });
+    });
+
+    const outgoings = ['Incoming OD 1', 'Outgoing OD 2', 'Outgoing VL1', 'Outgoing VL2', 'Outgoing VL3', 'Outgoing VL4', 'Outgoing VL5'];
+    outgoings.forEach((og, idx) => {
+      seed.push({ id: `seed-rmu-og-${idx}`, category: 'RMUMD', fieldKey: 'outgoing', optionValue: og, isActive: true });
     });
 
     const labellings = ['Yes, done', 'Not done', 'Not done properly'];

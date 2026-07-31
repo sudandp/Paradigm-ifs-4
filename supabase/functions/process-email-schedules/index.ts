@@ -1598,13 +1598,16 @@ function calculateDailyTravelKm(events: any[]): number {
   let savedDistance = 0;
   let hasNonZeroSavedDistance = false;
   events.forEach(e => {
-    if (e.travel_distance !== undefined && e.travel_distance !== null && e.travel_distance > 0) {
-      savedDistance += e.travel_distance;
+    const val = e.travel_distance || e.travelDistance || 0;
+    if (val > 0) {
+      savedDistance += Number(val);
       hasNonZeroSavedDistance = true;
     }
   });
   if (hasNonZeroSavedDistance) {
-    return Number(savedDistance.toFixed(2));
+    // If distance value is > 100, it is stored in meters (e.g. 1044.15 meters = 1.04 km)
+    const travelKm = savedDistance > 100 ? savedDistance / 1000 : savedDistance;
+    return Number(travelKm.toFixed(2));
   }
   const sorted = [...events]
       .filter(e => e.type === 'punch-in' || e.type === 'punch-out' || e.type === 'site-in' || e.type === 'site-out')
@@ -1683,10 +1686,8 @@ async function generateCRMBdDailyReport(supabase: ReturnType<typeof createClient
   const leads = leadsRes.data || [];
   const calls = callsRes.data || [];
 
-  const { data: allActiveLeads } = await supabase.from('crm_leads')
-    .select('assigned_to, created_by, status')
-    .neq('status', 'Won')
-    .neq('status', 'Lost');
+  const { data: allLeads } = await supabase.from('crm_leads')
+    .select('assigned_to, created_by, status');
 
   const reports: Record<string, string>[] = [];
 
@@ -1799,7 +1800,7 @@ async function generateCRMBdDailyReport(supabase: ReturnType<typeof createClient
     });
     metrics_table += `</tbody></table>`;
 
-    const myActiveLeads = (allActiveLeads || []).filter((l: any) => l.assigned_to === bd.id || l.created_by === bd.id);
+    const myLeads = (allLeads || []).filter((l: any) => l.assigned_to === bd.id || l.created_by === bd.id || l.assignedTo === bd.id || l.createdBy === bd.id);
     const statuses = ['New Lead', 'Contacted', 'Site Visit Planned', 'Survey Completed', 'Proposal Sent', 'Negotiation', 'Won', 'Lost'];
     let pipeline_snapshot = `<table width="100%" style="border-collapse:collapse;">
       <thead><tr style="background:#f8fafc;">
@@ -1809,8 +1810,10 @@ async function generateCRMBdDailyReport(supabase: ReturnType<typeof createClient
     
     let activeTotal = 0;
     statuses.forEach((stage, i) => {
-      const count = myActiveLeads.filter((l: any) => l.status === stage).length;
-      activeTotal += count;
+      const count = myLeads.filter((l: any) => l.status === stage).length;
+      if (!['Won', 'Lost'].includes(stage)) {
+        activeTotal += count;
+      }
       const bg = i % 2 === 0 ? '#ffffff' : '#f8fafc';
       pipeline_snapshot += `<tr style="background:${bg};">
         <td style="padding:12px 14px;font-size:12px;color:#1e293b;font-weight:500;border-top:1px solid #f1f5f9;">${stage}</td>

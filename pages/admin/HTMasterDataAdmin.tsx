@@ -18,8 +18,10 @@ const INITIAL_FIELD_TARGETS_MAP: Record<HTMasterCategory, Array<{ key: string; l
     { key: 'selector_switch', label: 'Selector Switch 1 & 2 Details' },
     { key: 'line_charge_indicator', label: 'Line Charge Indicator' },
     { key: 'sf6_status', label: 'SF-6 Status' },
+    { key: 'ic_og', label: 'I/C/OG' },
     { key: 'labelling', label: 'Labelling' },
     { key: 'door_condition', label: 'Condition of Doors' },
+    { key: 'outgoing', label: 'Outgoing' },
     { key: 'vcb_breaker_make', label: 'VCB Breaker Make' },
     { key: 'capacity', label: 'Current Rating / Capacity' },
     { key: 'master_trip_relay', label: 'Master Trip Relay' },
@@ -106,7 +108,24 @@ export const HTMasterDataAdmin: React.FC = () => {
   const [viewMode, setViewMode] = useState<'grouped' | 'flat'>('grouped');
 
   const [selectedFieldKey, setSelectedFieldKey] = useState<string>('All');
-  const [fieldTargetsMap, setFieldTargetsMap] = useState(INITIAL_FIELD_TARGETS_MAP);
+  const [fieldTargetsMap, setFieldTargetsMap] = useState<Record<string, Array<{ key: string; label: string }>>>(() => {
+    try {
+      const saved = localStorage.getItem('ht_custom_field_targets');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const merged: Record<string, Array<{ key: string; label: string }>> = { ...INITIAL_FIELD_TARGETS_MAP };
+        Object.keys(parsed).forEach((cat) => {
+          const defaultList = merged[cat] || [];
+          const customList = parsed[cat] || [];
+          const existingKeys = new Set(defaultList.map(t => t.key));
+          const additions = customList.filter((t: { key: string }) => !existingKeys.has(t.key));
+          merged[cat] = [...defaultList, ...additions];
+        });
+        return merged;
+      }
+    } catch (e) {}
+    return INITIAL_FIELD_TARGETS_MAP;
+  });
 
   // Accordion state
   const [expandedKeys, setExpandedKeys] = useState<Record<string, boolean>>({});
@@ -488,6 +507,37 @@ export const HTMasterDataAdmin: React.FC = () => {
     try {
       const data = await htYardMasterDataService.getMasterOptions(activeTab);
       setOptions(data);
+
+      if (data && data.length > 0) {
+        setFieldTargetsMap(prev => {
+          const currentList = prev[activeTab] || [];
+          const existingKeys = new Set(currentList.map(t => t.key));
+          const newTargets: Array<{ key: string; label: string }> = [];
+
+          data.forEach(opt => {
+            if (opt.fieldKey && opt.fieldKey !== 'generic' && !existingKeys.has(opt.fieldKey)) {
+              existingKeys.add(opt.fieldKey);
+              const formattedLabel = opt.fieldKey
+                .split('_')
+                .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                .join(' ');
+              newTargets.push({ key: opt.fieldKey, label: formattedLabel });
+            }
+          });
+
+          if (newTargets.length > 0) {
+            const updated = {
+              ...prev,
+              [activeTab]: [...currentList, ...newTargets]
+            };
+            try {
+              localStorage.setItem('ht_custom_field_targets', JSON.stringify(updated));
+            } catch (e) {}
+            return updated;
+          }
+          return prev;
+        });
+      }
     } catch (error) {
       toast.error('Failed to load master options');
     } finally {
@@ -583,10 +633,22 @@ export const HTMasterDataAdmin: React.FC = () => {
     const cleanKey = newTargetKey.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
     const label = newTargetLabel.trim();
 
-    setFieldTargetsMap(prev => ({
-      ...prev,
-      [activeTab]: [...(prev[activeTab] || []), { key: cleanKey, label }]
-    }));
+    setFieldTargetsMap(prev => {
+      const currentList = prev[activeTab] || [];
+      const exists = currentList.some(t => t.key === cleanKey);
+      const updatedList = exists
+        ? currentList.map(t => t.key === cleanKey ? { key: cleanKey, label } : t)
+        : [...currentList, { key: cleanKey, label }];
+
+      const updated = {
+        ...prev,
+        [activeTab]: updatedList
+      };
+      try {
+        localStorage.setItem('ht_custom_field_targets', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
 
     toast.success(`Target field "${cleanKey}" created!`);
     setShowAddTargetModal(false);
