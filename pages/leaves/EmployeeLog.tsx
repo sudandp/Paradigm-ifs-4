@@ -145,13 +145,18 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
         fetchAttendanceEvents();
     }, [user, selectedRange, selectedDate, isCheckedIn, dailyPunchCount]);
 
-    // Update internal events if initialEvents changes (e.g. parent refetch)
+    // Update internal events if initialEvents changes (e.g. parent refetch).
+    // ONLY apply when viewing the current month in month-range mode.
+    // In day/week mode, each range triggers its own fresh fetch — applying
+    // the parent's month-level snapshot here would clobber the fresh data
+    // (e.g. auto punch-outs added after the parent's last fetch would disappear).
     useEffect(() => {
-        if (initialEvents.length > 0) {
+        const isCurrentMonth = isSameDay(startOfMonth(selectedDate), startOfMonth(new Date()));
+        if (initialEvents.length > 0 && selectedRange === 'month' && isCurrentMonth) {
             setEvents(initialEvents);
             setIsLoading(false);
         }
-    }, [initialEvents]);
+    }, [initialEvents, selectedRange, selectedDate]);
 
     const groupedByDate = useMemo(() => {
         const groups: Record<string, GroupedAttendance> = {};
@@ -517,18 +522,34 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
 
                                                 {/* Row 3 (Mobile) / Col 3 (Desktop): Full Address Tag */}
                                                 <div className="flex items-center gap-2 justify-start md:justify-end flex-shrink-0 md:w-[220px]">
-                                                    {(event.locationName || (event.latitude && event.longitude)) && (
-                                                        <div className="flex items-start gap-1.5 bg-white max-md:bg-[#041b0f] px-3 py-1.5 rounded-lg border border-gray-200 max-md:border-white/10 w-full md:max-w-[210px]">
-                                                            <MapPin className="h-3.5 w-3.5 text-indigo-400 max-md:text-emerald-400 md:text-indigo-600 flex-shrink-0 mt-0.5" />
-                                                            <span className="text-xs text-gray-700 max-md:text-gray-200 leading-tight break-words">
-                                                                <AddressResolver
-                                                                    lat={event.latitude!}
-                                                                    lng={event.longitude!}
-                                                                    fallback={event.locationName}
-                                                                />
-                                                            </span>
-                                                        </div>
-                                                    )}
+                                                    {(() => {
+                                                        // Determine what to show in the location column:
+                                                        // 1. Has real GPS → resolve to address
+                                                        // 2. Has location name text only → show that text
+                                                        // 3. Auto system punch-out with no location → show "Auto Check-out" fallback
+                                                        const hasCoords = event.latitude && event.longitude;
+                                                        const hasLocationText = !!event.locationName;
+                                                        const isAutoOut = event.source === 'auto_system' && (event.type === 'punch-out' || event.type === 'site-ot-out');
+                                                        const displayLocation = hasCoords || hasLocationText || isAutoOut;
+                                                        const locationFallback = event.locationName || (isAutoOut ? 'Auto Check-out' : undefined);
+
+                                                        return displayLocation ? (
+                                                            <div className="flex items-start gap-1.5 bg-white max-md:bg-[#041b0f] px-3 py-1.5 rounded-lg border border-gray-200 max-md:border-white/10 w-full md:max-w-[210px]">
+                                                                <MapPin className="h-3.5 w-3.5 text-indigo-400 max-md:text-emerald-400 md:text-indigo-600 flex-shrink-0 mt-0.5" />
+                                                                <span className="text-xs text-gray-700 max-md:text-gray-200 leading-tight break-words">
+                                                                    {hasCoords ? (
+                                                                        <AddressResolver
+                                                                            lat={event.latitude!}
+                                                                            lng={event.longitude!}
+                                                                            fallback={locationFallback}
+                                                                        />
+                                                                    ) : (
+                                                                        locationFallback
+                                                                    )}
+                                                                </span>
+                                                            </div>
+                                                        ) : null;
+                                                    })()}
                                                     {canDelete && (
                                                         <button
                                                             onClick={() => handleDeleteEvent(event.id)}

@@ -257,13 +257,48 @@ export const useAuthStore = create<AuthState>()(
             }
             
             try {
+                // Deduplication guard: the cron (trigger-missed-checkouts) may have already
+                // inserted a punch-out. Check the last 2 hours before creating another one.
+                const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+                const recentEvents = await api.getAttendanceEvents(user.id, twoHoursAgo, new Date().toISOString());
+                const alreadyPunchedOut = recentEvents.some(e => e.type === 'punch-out');
+
+                if (alreadyPunchedOut) {
+                    console.log('[AutoPunchOut] Punch-out already exists in the last 2 hours (likely from cron). Skipping duplicate insert — syncing state only.');
+                    await get().checkAttendanceStatus(true);
+                    set({ pendingAutoPunchOut: null });
+                    return;
+                }
+
+                // Try to capture the device's current GPS location for the punch-out record.
+                // This ensures the location column in Employee Log is populated (like a manual punch-out).
+                let punchOutLat: number | undefined;
+                let punchOutLng: number | undefined;
+                let punchOutLocationName: string | undefined;
+                try {
+                    const pos = await Promise.race([
+                        Geolocation.getCurrentPosition({ enableHighAccuracy: false }),
+                        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('GPS timeout')), 5000))
+                    ]) as Awaited<ReturnType<typeof Geolocation.getCurrentPosition>>;
+                    punchOutLat = pos.coords.latitude;
+                    punchOutLng = pos.coords.longitude;
+                    punchOutLocationName = 'Last Known Location';
+                } catch (_) {
+                    // GPS unavailable — punch-out proceeds without coords
+                }
+
                 await api.addAttendanceEvent({
                     userId: user.id,
                     timestamp: new Date().toISOString(),
                     type: 'punch-out',
                     checkoutNote: 'Auto punch-out: No response to reminder within 5 minutes',
                     workType: 'office',
-                    source: 'auto_system'
+                    source: 'auto_system',
+                    ...(punchOutLat !== undefined && punchOutLng !== undefined && {
+                        latitude: punchOutLat,
+                        longitude: punchOutLng,
+                        locationName: punchOutLocationName,
+                    }),
                 });
                 
                 try {

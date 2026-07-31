@@ -98,6 +98,11 @@ Deno.serve(async (req: Request) => {
     // 2. Process Each Staff Category Independently
     const staffCategories = ['office', 'field', 'site'] as const;
     
+    // Global deduplication: a user whose role matches multiple groups (e.g. 'supervisor'
+    // appears in both field and site defaults) must only receive ONE auto punch-out.
+    // Without this guard the same user gets processed — and punched out — twice.
+    const alreadyPunchedOutUsers = new Set<string>();
+    
     for (const group of staffCategories) {
       if (!enabledGroups.includes(group)) {
         report.groups[group] = { status: 'skipped', reason: 'group not enabled' };
@@ -188,6 +193,12 @@ Deno.serve(async (req: Request) => {
       const groupProcessedUsers = [];
 
       for (const user of users) {
+        // Skip if this user was already punched out by a previous group iteration
+        if (alreadyPunchedOutUsers.has(user.id)) {
+          console.log(`[${group}] Skipped ${user.name}: already processed by a previous group.`);
+          continue;
+        }
+
         const { data: events, error: eventError } = await supabaseClient
             .from('attendance_events')
             .select('*')
@@ -270,13 +281,39 @@ Deno.serve(async (req: Request) => {
                 }
                 
                 // 1. Insert Check-out
+                // Fetch last known GPS location from route_history so the punch-out
+                // shows a location in the Employee Log (same as a manual punch-out would).
+                let lastLat: number | null = null;
+                let lastLng: number | null = null;
+                let lastLocationName: string = isManualOverride ? 'Manual Force Check-out' : 'Auto Check-out';
+
+                try {
+                    const { data: lastPing } = await supabaseClient
+                        .from('route_history')
+                        .select('latitude, longitude')
+                        .eq('user_id', user.id)
+                        .order('timestamp', { ascending: false })
+                        .limit(1)
+                        .single();
+                    if (lastPing?.latitude && lastPing?.longitude) {
+                        lastLat = lastPing.latitude;
+                        lastLng = lastPing.longitude;
+                        // Keep location_name descriptive; the UI resolves lat/lng to address
+                        lastLocationName = isManualOverride ? 'Manual Force Check-out' : 'Last Known Location';
+                    }
+                } catch (_) {
+                    // No route_history — no-op, fallback to text-only location
+                }
+
                 const { error: insertError } = await supabaseClient
                     .from('attendance_events')
                     .insert({
                         user_id: user.id,
                         timestamp: punchOutTimestamp,
                         type: 'punch-out',
-                        location_name: isManualOverride ? 'Manual Force Check-out' : 'Auto Check-out',
+                        location_name: lastLocationName,
+                        latitude: lastLat,
+                        longitude: lastLng,
                         reason: isManualOverride ? 'Force Punch-out: Admin Trigger' : 'Auto-checkout: Shift End',
                         is_manual: true,
                         device_info: { device: 'System', os: 'Cron', browser: 'EdgeFunction' },
@@ -286,6 +323,8 @@ Deno.serve(async (req: Request) => {
                 if (!insertError) {
                     processed++;
                     groupProcessedUsers.push(user.name);
+                    // Mark user as processed globally so subsequent group iterations skip them
+                    alreadyPunchedOutUsers.add(user.id);
                     
                     // 2. Log to Audit
                     await supabaseClient.from('attendance_audit_logs').insert({

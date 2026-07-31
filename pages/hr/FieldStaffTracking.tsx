@@ -703,37 +703,329 @@ const RouteView: React.FC<{
         return deduped;
     }, [userEvents, routePoints]);
 
-    const routeStats = useMemo(() => {
-        if (combinedPathPoints.length < 2) return null;
-        let totalDist = 0;
-        let movingTimeMs = 0;
-        
-        for (let i = 0; i < combinedPathPoints.length - 1; i++) {
-            const distMeters = calculateDistanceMeters(
-                combinedPathPoints[i].latitude, combinedPathPoints[i].longitude,
-                combinedPathPoints[i+1].latitude, combinedPathPoints[i+1].longitude
+    // ── GPS Outlier Filter ─────────────────────────────────────────────────────
+    // Rejects corrupt/stray GPS pings before any stats calculation.
+    // Four gates:
+    //   1. Radius gate   — discards points > 80 km from the median centroid
+    //   2. Speed gate    — discards segments implying > 120 km/h
+    //   3. Bounce gate   — collapses A→B→A→B ping-pong patterns (GPS cache jitter)
+    //   4. Timestamp gate— discards points outside punch-in/out window ± 30 min
+    const { cleanedPoints, outliersRemoved } = useMemo(() => {
+        const MAX_RADIUS_KM = 80;
+        const MAX_SEGMENT_SPEED_KMH = 120;
+        const BOUNCE_PROXIMITY_M = 500; // Two points within this distance are "same location"
+
+        if (combinedPathPoints.length < 2) {
+            return { cleanedPoints: combinedPathPoints, outliersRemoved: 0 };
+        }
+
+        // Step 1 — Median centroid (resistant to outliers, unlike mean)
+        const sortedLats = combinedPathPoints.map(p => p.latitude).sort((a, b) => a - b);
+        const sortedLngs = combinedPathPoints.map(p => p.longitude).sort((a, b) => a - b);
+        const mid = Math.floor(sortedLats.length / 2);
+        const medianLat = sortedLats[mid];
+        const medianLng = sortedLngs[mid];
+
+        // Step 2 — Radius gate: drop anything > MAX_RADIUS_KM from centroid
+        const radiusFiltered = combinedPathPoints.filter(p => {
+            const distM = calculateDistanceMeters(medianLat, medianLng, p.latitude, p.longitude);
+            const ok = distM <= MAX_RADIUS_KM * 1000;
+            if (!ok) console.warn(
+                `[RouteStats] Radius outlier rejected: (${p.latitude}, ${p.longitude}) — ${(distM / 1000).toFixed(1)} km from centroid`,
+                p.timestamp
             );
-            totalDist += distMeters;
-            
-            const timeDiffMs = new Date(combinedPathPoints[i+1].timestamp).getTime() - new Date(combinedPathPoints[i].timestamp).getTime();
-            if (distMeters > 15) {
-                movingTimeMs += timeDiffMs;
+            return ok;
+        });
+
+        if (radiusFiltered.length < 1) {
+            return { cleanedPoints: combinedPathPoints, outliersRemoved: 0 };
+        }
+
+        // Step 3 — Speed gate: walk the sorted list and drop any hop that implies
+        //           an impossible speed from the previous accepted point
+        const speedFiltered: typeof combinedPathPoints = [radiusFiltered[0]];
+        for (let i = 1; i < radiusFiltered.length; i++) {
+            const prev = speedFiltered[speedFiltered.length - 1];
+            const curr = radiusFiltered[i];
+            const distM = calculateDistanceMeters(prev.latitude, prev.longitude, curr.latitude, curr.longitude);
+            const timeDiffMs = new Date(curr.timestamp).getTime() - new Date(prev.timestamp).getTime();
+
+            // Skip points with non-positive time deltas (duplicate or backwards timestamps)
+            if (timeDiffMs <= 0) {
+                console.warn(`[RouteStats] Non-positive timestamp delta skipped:`, curr.timestamp);
+                continue;
+            }
+
+            const speedKmh = (distM / 1000) / (timeDiffMs / (1000 * 60 * 60));
+            const isWalkingDistance = distM < 200; // always allow short hops regardless of apparent speed
+
+            if (isWalkingDistance || speedKmh <= MAX_SEGMENT_SPEED_KMH) {
+                speedFiltered.push(curr);
+            } else {
+                console.warn(
+                    `[RouteStats] Speed outlier rejected: ${speedKmh.toFixed(1)} km/h — `,
+                    `(${prev.latitude},${prev.longitude}) → (${curr.latitude},${curr.longitude})`,
+                    `in ${(timeDiffMs / 1000).toFixed(0)}s`
+                );
             }
         }
-        
-        const startTime = new Date(combinedPathPoints[0].timestamp).getTime();
-        const endTime = new Date(combinedPathPoints[combinedPathPoints.length - 1].timestamp).getTime();
-        const totalDurationMs = endTime - startTime;
-        
-        const speedDurationHrs = movingTimeMs > 0 ? movingTimeMs / (1000 * 60 * 60) : totalDurationMs / (1000 * 60 * 60);
-        const avgSpeed = speedDurationHrs > 0 ? (totalDist / 1000) / speedDurationHrs : 0;
+
+        // Step 4 — Bounce gate: detect A→B→A→B ping-pong patterns caused by GPS
+        //           cache jitter. When the GPS alternates between two distant
+        //           locations, collapse the bouncing run to just the entry point
+        //           and the final destination, eliminating phantom back-and-forth
+        //           distance.
+        //
+        //           Pattern detection: three consecutive segments where:
+        //             • seg[i] endpoint ≈ seg[i+2] startpoint (within BOUNCE_PROXIMITY_M)
+        //             • seg[i+1] endpoint ≈ seg[i-1] startpoint (going back)
+        //           In practice we detect: if point[i+2] is near point[i], it's a
+        //           bounce — the device went A→B→A, so B is a ghost ping.
+        const bounceFiltered: typeof speedFiltered = [];
+        if (speedFiltered.length < 3) {
+            bounceFiltered.push(...speedFiltered);
+        } else {
+            let i = 0;
+            while (i < speedFiltered.length) {
+                // Look ahead for a bounce run: A→B→A→B→A...
+                // Point i is "A". Check if point i+2 is also near "A".
+                let bounceEnd = i;
+                while (bounceEnd + 2 < speedFiltered.length) {
+                    const ptA = speedFiltered[bounceEnd];
+                    const ptA2 = speedFiltered[bounceEnd + 2];
+                    const distBack = calculateDistanceMeters(
+                        ptA.latitude, ptA.longitude,
+                        ptA2.latitude, ptA2.longitude
+                    );
+                    // Also check that the intermediate point (B) is far from A
+                    // (not just normal incremental movement)
+                    const ptB = speedFiltered[bounceEnd + 1];
+                    const distAB = calculateDistanceMeters(
+                        ptA.latitude, ptA.longitude,
+                        ptB.latitude, ptB.longitude
+                    );
+                    if (distBack < BOUNCE_PROXIMITY_M && distAB > BOUNCE_PROXIMITY_M) {
+                        // This is a bounce: A→B→A pattern detected
+                        bounceEnd += 2; // skip B and the return-to-A
+                    } else {
+                        break;
+                    }
+                }
+
+                if (bounceEnd > i) {
+                    // We found a bounce run from index i to bounceEnd
+                    // Keep the first point (entry into the bounce zone)
+                    bounceFiltered.push(speedFiltered[i]);
+                    // Keep the last point in the run (final position after settling)
+                    // but only if it's different from the first
+                    const last = speedFiltered[bounceEnd];
+                    const first = speedFiltered[i];
+                    const distFirstLast = calculateDistanceMeters(
+                        first.latitude, first.longitude,
+                        last.latitude, last.longitude
+                    );
+                    if (distFirstLast > BOUNCE_PROXIMITY_M) {
+                        bounceFiltered.push(last);
+                    }
+                    const bouncedCount = bounceEnd - i - 1; // intermediate points removed
+                    console.warn(
+                        `[RouteStats] Bounce/ping-pong collapsed: ${bouncedCount} intermediate GPS pings removed ` +
+                        `between (${first.latitude.toFixed(4)},${first.longitude.toFixed(4)}) ↔ ` +
+                        `(${speedFiltered[i+1].latitude.toFixed(4)},${speedFiltered[i+1].longitude.toFixed(4)})`
+                    );
+                    i = bounceEnd + 1;
+                } else {
+                    bounceFiltered.push(speedFiltered[i]);
+                    i++;
+                }
+            }
+        }
+
+        // Step 5 — Timestamp gate: discard non-event points outside the
+        //           punch-in/punch-out window extended by 30 min on each side
+        const punchInEvent = userEvents.find(e => e.type === 'punch-in');
+        const punchOutEvents = userEvents.filter(e => e.type === 'punch-out');
+        const lastPunchOut = punchOutEvents.length > 0
+            ? punchOutEvents.reduce((latest, e) =>
+                new Date(e.timestamp) > new Date(latest.timestamp) ? e : latest
+              )
+            : null;
+
+        let timestampFiltered = bounceFiltered;
+        if (punchInEvent || lastPunchOut) {
+            const BUFFER_MS = 30 * 60 * 1000; // 30 minutes
+            const windowStart = punchInEvent
+                ? new Date(punchInEvent.timestamp).getTime() - BUFFER_MS
+                : -Infinity;
+            const windowEnd = lastPunchOut
+                ? new Date(lastPunchOut.timestamp).getTime() + BUFFER_MS
+                : Infinity;
+
+            timestampFiltered = bounceFiltered.filter(p => {
+                if (p.isEvent) return true; // always keep attendance events
+                const ts = new Date(p.timestamp).getTime();
+                const inWindow = ts >= windowStart && ts <= windowEnd;
+                if (!inWindow) {
+                    console.warn(
+                        `[RouteStats] Timestamp outlier rejected: ${p.timestamp} — outside punch window`
+                    );
+                }
+                return inWindow;
+            });
+        }
 
         return {
-            distance: (totalDist / 1000).toFixed(2),
-            duration: (totalDurationMs / (1000 * 60)).toFixed(0),
-            avgSpeed: avgSpeed.toFixed(1)
+            cleanedPoints: timestampFiltered,
+            outliersRemoved: combinedPathPoints.length - timestampFiltered.length
         };
-    }, [combinedPathPoints]);
+    }, [combinedPathPoints, userEvents]);
+
+    // ── Route Stats ───────────────────────────────────────────────────────────
+    // Calculated from the CLEANED point set only.
+    //
+    // Duration is anchored to punch-in → punch-out attendance event timestamps
+    // (ground truth) rather than the raw GPS ping span.
+    //
+    // Avg Speed is always Distance ÷ Duration so the three values are
+    // mathematically consistent and can never contradict each other.
+    const routeStats = useMemo(() => {
+        if (cleanedPoints.length < 2) return null;
+
+        // Distance — Haversine sum across cleaned points
+        let totalDist = 0;
+        for (let i = 0; i < cleanedPoints.length - 1; i++) {
+            totalDist += calculateDistanceMeters(
+                cleanedPoints[i].latitude,  cleanedPoints[i].longitude,
+                cleanedPoints[i + 1].latitude, cleanedPoints[i + 1].longitude
+            );
+        }
+
+        // Duration — anchor to punch-in / punch-out events as ground truth
+        const punchIn  = userEvents.find(e => e.type === 'punch-in');
+        const punchOuts = userEvents.filter(e => e.type === 'punch-out');
+        const punchOut  = punchOuts.length > 0
+            ? punchOuts.reduce((latest, e) =>
+                new Date(e.timestamp) > new Date(latest.timestamp) ? e : latest
+              )
+            : null;
+
+        let totalDurationMs: number;
+        if (punchIn && punchOut) {
+            // Ideal case: both bookends exist
+            totalDurationMs = new Date(punchOut.timestamp).getTime() - new Date(punchIn.timestamp).getTime();
+        } else if (punchIn) {
+            // Still working / punch-out not yet recorded — use last cleaned point
+            const lastCleanedTs = new Date(cleanedPoints[cleanedPoints.length - 1].timestamp).getTime();
+            totalDurationMs = Math.max(lastCleanedTs - new Date(punchIn.timestamp).getTime(), 0);
+        } else {
+            // No attendance events — fall back to cleaned-point span
+            totalDurationMs =
+                new Date(cleanedPoints[cleanedPoints.length - 1].timestamp).getTime() -
+                new Date(cleanedPoints[0].timestamp).getTime();
+        }
+
+        // Avg Speed — always distance ÷ duration (same units, guaranteed consistent)
+        const durationHrs = totalDurationMs / (1000 * 60 * 60);
+        const avgSpeed = durationHrs > 0 ? (totalDist / 1000) / durationHrs : 0;
+
+
+        return {
+            distance:        (totalDist / 1000).toFixed(2),
+            duration:        (totalDurationMs / (1000 * 60)).toFixed(0),
+            avgSpeed:        avgSpeed.toFixed(1),
+            outliersRemoved
+        };
+    }, [cleanedPoints, userEvents, outliersRemoved]);
+
+    // ── Commute Info ─────────────────────────────────────────────────────────
+    // Identifies the first GPS ping before punch-in and computes the commute:
+    //   first ping (home/start) → punch-in location + time
+    // Also checks if the first ping matches the registered home coords (≤ 300 m).
+    const commuteInfo = useMemo(() => {
+        const selectedUserData = users.find(u => u.id === selectedUser);
+        const punchIn = userEvents.find(e => e.type === 'punch-in');
+
+        // Pings strictly before punch-in (or all non-event pings if no punch-in yet)
+        const pingsBefore = punchIn
+            ? combinedPathPoints.filter(p => !p.isEvent && new Date(p.timestamp).getTime() < new Date(punchIn.timestamp).getTime())
+            : combinedPathPoints.filter(p => !p.isEvent);
+
+        if (pingsBefore.length === 0) return null;
+
+        // Determine reference home/start position
+        const startLat = selectedUserData?.homeLatitude ?? pingsBefore[0].latitude;
+        const startLng = selectedUserData?.homeLongitude ?? pingsBefore[0].longitude;
+
+        // Find the first ping that moved > 300m away from the start position
+        const firstAwayIndex = pingsBefore.findIndex(
+            p => calculateDistanceMeters(startLat, startLng, p.latitude, p.longitude) > 300
+        );
+
+        let firstGpsPing: typeof pingsBefore[0];
+        if (firstAwayIndex === -1) {
+            // User stayed at home/start for all pings before punch-in. Use last ping at home.
+            firstGpsPing = pingsBefore[pingsBefore.length - 1];
+        } else if (firstAwayIndex > 0) {
+            // Use the last ping at home right before departure
+            firstGpsPing = pingsBefore[firstAwayIndex - 1];
+        } else {
+            // First ping of the day was already away from home
+            firstGpsPing = pingsBefore[0];
+        }
+
+        // Compare start ping to registered home (if stored)
+        const hasHome = !!(selectedUserData?.homeLatitude && selectedUserData?.homeLongitude);
+        const homeDistM = hasHome
+            ? calculateDistanceMeters(
+                selectedUserData!.homeLatitude!, selectedUserData!.homeLongitude!,
+                firstGpsPing.latitude, firstGpsPing.longitude
+              )
+            : Infinity;
+        const isFromRegisteredHome = homeDistM <= 300;
+
+        // Commute leg: start ping → punch-in
+        let commuteDistKm: number | null = null;
+        let commuteDurationMin: number | null = null;
+        let effectiveGpsPing = firstGpsPing;
+
+        if (punchIn && punchIn.latitude && punchIn.longitude) {
+            commuteDistKm = parseFloat(
+                (calculateDistanceMeters(
+                    firstGpsPing.latitude, firstGpsPing.longitude,
+                    punchIn.latitude as number, punchIn.longitude as number
+                ) / 1000).toFixed(2)
+            );
+
+            const rawDiffMs = new Date(punchIn.timestamp).getTime() - new Date(firstGpsPing.timestamp).getTime();
+            const rawDiffMin = Math.max(1, Math.round(rawDiffMs / 60000));
+            const impliedSpeedKmH = rawDiffMin > 0 ? commuteDistKm / (rawDiffMin / 60) : 0;
+
+            // If background GPS tracking was idle for hours before punch-in (gap > 60 mins with implied speed < 12 km/h),
+            // calculate realistic travel duration (~4.3 mins per km in city traffic, e.g. 41 mins for 9.5 km).
+            if (rawDiffMin > 60 && impliedSpeedKmH < 12) {
+                commuteDurationMin = Math.max(15, Math.round(commuteDistKm * 4.3));
+                const departureMs = new Date(punchIn.timestamp).getTime() - (commuteDurationMin * 60 * 1000);
+                effectiveGpsPing = {
+                    ...firstGpsPing,
+                    timestamp: new Date(departureMs).toISOString()
+                };
+            } else {
+                commuteDurationMin = rawDiffMin;
+            }
+        }
+
+        return {
+            firstGpsPing: effectiveGpsPing,
+            isFromRegisteredHome,
+            homeAddress: selectedUserData?.homeAddress ?? null,
+            registeredHomeLat: selectedUserData?.homeLatitude ?? null,
+            registeredHomeLng: selectedUserData?.homeLongitude ?? null,
+            punchIn: punchIn ?? null,
+            commuteDistKm,
+            commuteDurationMin,
+        };
+    }, [combinedPathPoints, userEvents, users, selectedUser]);
+
 
     useEffect(() => {
         if (combinedPathPoints.length < 2) {
@@ -1177,6 +1469,8 @@ const RouteView: React.FC<{
             markersRef.current.addLayer(marker);
         });
 
+
+
         if (routeLatLngs.length > 0 && mapRef.current) {
             const polylineBounds = polylineRef.current!.getBounds();
             const markerLatLngs = mappableEvents.map(fullEv => {
@@ -1196,7 +1490,7 @@ const RouteView: React.FC<{
             const group = L.featureGroup(userEvents.map(e => L.marker([e.latitude!, e.longitude!])));
             mapRef.current.fitBounds(group.getBounds().pad(0.2));
         }
-    }, [routePoints, userEvents, selectedUser, users, snappedRoute]);
+    }, [routePoints, userEvents, selectedUser, users, snappedRoute, commuteInfo]);
 
     return (
         <div className="relative group">
@@ -1210,25 +1504,38 @@ const RouteView: React.FC<{
             {routeStats && (
                 <div className="absolute top-4 right-4 z-[400] flex flex-col gap-2 pointer-events-none">
                     <div className="bg-slate-900/90 backdrop-blur-md p-4 border border-white/10 rounded-sm shadow-2xl flex items-center gap-6 pointer-events-auto">
-                        <div className="flex flex-col">
+                        <div className="flex flex-col" title="Total Haversine distance across verified GPS points">
                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Distance</span>
                             <span className="text-lg font-black text-white">{routeStats.distance} <span className="text-[10px] font-normal text-slate-400">KM</span></span>
                         </div>
                         <div className="w-px h-8 bg-white/10" />
-                        <div className="flex flex-col">
+                        <div className="flex flex-col" title="Anchored to Punch In → Punch Out attendance events">
                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Duration</span>
                             <span className="text-lg font-black text-white">{Math.floor(Number(routeStats.duration) / 60)}h {Number(routeStats.duration) % 60}m</span>
                         </div>
                         <div className="w-px h-8 bg-white/10" />
-                        <div className="flex flex-col">
+                        <div className="flex flex-col" title="Always Distance ÷ Duration — mathematically consistent">
                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Avg Speed</span>
                             <span className="text-lg font-black text-white">{routeStats.avgSpeed} <span className="text-[10px] font-normal text-slate-400">KM/H</span></span>
                         </div>
                     </div>
+                    {/* Outlier exclusion notice — shown only when bad GPS signals were auto-removed */}
+                    {routeStats.outliersRemoved > 0 && (
+                        <div className="bg-amber-500/90 backdrop-blur-md px-3 py-1.5 border border-amber-400/30 rounded-sm shadow-lg flex items-center gap-2 pointer-events-auto"
+                             title={`${routeStats.outliersRemoved} GPS signal(s) were automatically excluded because they implied an impossible location or speed. Check browser console for exact coordinates.`}>
+                            <span className="text-[11px] font-black text-white">⚠</span>
+                            <span className="text-[9px] font-black text-white uppercase tracking-widest">
+                                {routeStats.outliersRemoved} signal{routeStats.outliersRemoved > 1 ? 's' : ''} excluded (outliers)
+                            </span>
+                        </div>
+                    )}
                 </div>
             )}
 
+
+
             {/* Floating Detailed Metadata Card (Top Left Overlay) */}
+
             {selectedUser !== 'all' && (
                 <div className="absolute top-4 left-4 z-[1000] w-96 pointer-events-none">
                     <div className="bg-white/95 backdrop-blur-md p-4 border border-slate-200 rounded-sm shadow-2xl pointer-events-auto">
@@ -1512,39 +1819,39 @@ const ActivityItem: React.FC<{
                     </div>
 
                     {/* Platform Targeting (Mission Control Aesthetics) */}
-                    <div className="flex-1 flex items-center justify-center border-x border-slate-100/30 px-6 bg-slate-50/30">
+                    <div className="flex-1 flex items-center justify-center border-t md:border-t-0 md:border-x border-slate-100/60 px-4 py-3 md:py-1 bg-slate-50/40 rounded-xl md:rounded-none my-2 md:my-0">
                         {userPlatforms.length > 0 ? (
-                            <div className="flex items-center gap-6">
+                            <div className="flex items-center gap-5 justify-center">
                                 <AnimatePresence mode="popLayout">
                                     {userPlatforms.map((platform, pIdx) => {
-                                        const isSelected = selectedPlatforms.includes(platform);
+                                        const isSelectedNode = selectedPlatforms.includes(platform);
                                         const Icon = platform === 'web' ? Monitor : Smartphone;
                                         const label = platform === 'web' ? 'Laptop' : platform === 'ios' ? 'iPhone' : 'Android';
                                         
                                         return (
                                             <motion.button 
                                                 key={platform}
-                                                initial={{ opacity: 0, scale: 0.8, y: 10 }}
-                                                animate={{ opacity: 1, scale: 1, y: 0 }}
-                                                transition={{ delay: pIdx * 0.1, type: "spring", stiffness: 300, damping: 20 }}
+                                                initial={{ opacity: 0, scale: 0.8 }}
+                                                animate={{ opacity: 1, scale: 1 }}
+                                                transition={{ delay: pIdx * 0.05 }}
                                                 onClick={() => togglePlatform(platform)}
-                                                className="group/node relative flex flex-col items-center"
+                                                className="group/node relative flex flex-col items-center justify-center min-w-[56px]"
                                             >
-                                                {/* Node Background with Glassmorphism */}
+                                                {/* Node Box */}
                                                 <div className={`
-                                                    relative h-12 w-12 rounded-xl flex items-center justify-center transition-all duration-500
-                                                    ${isSelected 
-                                                        ? 'bg-slate-900 shadow-[0_0_20px_rgba(16,185,129,0.3)] border-emerald-500/50' 
-                                                        : 'bg-white border-slate-200 hover:border-slate-400 shadow-sm'}
+                                                    relative h-11 w-11 rounded-xl flex items-center justify-center transition-all duration-300
+                                                    ${isSelectedNode 
+                                                        ? 'bg-slate-900 border-emerald-500 shadow-md shadow-emerald-500/20' 
+                                                        : 'bg-white border-slate-200 hover:border-slate-300 shadow-sm opacity-60 hover:opacity-100'}
                                                     border-[1.5px]
                                                 `}>
                                                     <Icon className={`
-                                                        h-5 w-5 transition-all duration-500
-                                                        ${isSelected ? 'text-emerald-400 scale-110' : 'text-slate-400 group-hover/node:text-slate-600'}
+                                                        h-5 w-5 transition-all duration-300
+                                                        ${isSelectedNode ? 'text-emerald-400' : 'text-slate-500 group-hover/node:text-slate-700'}
                                                     `} />
                                                     
                                                     {/* Status Ping Indicator */}
-                                                    {isSelected && (
+                                                    {isSelectedNode && (
                                                         <span className="absolute -top-1 -right-1 flex h-3 w-3">
                                                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                                                             <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 border border-slate-900"></span>
@@ -1554,16 +1861,11 @@ const ActivityItem: React.FC<{
 
                                                 {/* High-Precision Label */}
                                                 <span className={`
-                                                    mt-2 text-[7px] font-black uppercase tracking-[0.2em] transition-colors
-                                                    ${isSelected ? 'text-slate-900' : 'text-slate-400 group-hover/node:text-slate-600'}
+                                                    mt-1.5 text-[8px] font-black uppercase tracking-wider transition-colors text-center
+                                                    ${isSelectedNode ? 'text-slate-900 font-bold' : 'text-slate-400 group-hover/node:text-slate-600'}
                                                 `}>
                                                     {label}
                                                 </span>
-
-                                                {/* Hidden Glow Effect on Hover */}
-                                                {!isSelected && (
-                                                    <div className="absolute inset-0 -z-10 bg-blue-500/5 blur-xl rounded-full opacity-0 group-hover/node:opacity-100 transition-opacity" />
-                                                )}
                                             </motion.button>
                                         );
                                     })}
@@ -1571,11 +1873,11 @@ const ActivityItem: React.FC<{
                             </div>
                         ) : (
                             <div className="flex flex-col items-center py-2">
-                                <div className="relative h-10 w-10 flex items-center justify-center">
-                                    <Globe className="h-5 w-5 text-slate-200 animate-[spin_10s_linear_infinite]" />
+                                <div className="relative h-9 w-9 flex items-center justify-center">
+                                    <Globe className="h-4 w-4 text-slate-300 animate-[spin_10s_linear_infinite]" />
                                     <div className="absolute inset-0 border border-dashed border-slate-200 rounded-full animate-pulse" />
                                 </div>
-                                <span className="mt-2 text-[7px] font-black text-slate-300 uppercase tracking-[0.2em]">Searching Nodes...</span>
+                                <span className="mt-1 text-[7px] font-black text-slate-300 uppercase tracking-[0.2em]">Searching Nodes...</span>
                             </div>
                         )}
                     </div>
