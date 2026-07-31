@@ -962,14 +962,14 @@ const AttendanceSettings: React.FC = () => {
                         {currentRules.enablePermission && (
                             <div className="pl-8 grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <Input
-                                    label="Max Permission Duration (Hours)"
+                                    label="Monthly Permission Pool (Hours)"
                                     id="maxPermissionDurationHours"
                                     type="number"
                                     min="0.5"
                                     step="0.5"
                                     value={currentRules.maxPermissionDurationHours || 2}
                                     onChange={(e) => handleSettingChange('maxPermissionDurationHours', parseFloat(e.target.value) || 2)}
-                                    description="Maximum duration per permission request."
+                                    description="Total permission hours allowed per user per month (e.g. 3h can be taken as 1×3h, 3×1h, or any split)."
                                 />
                                 <Input
                                     label="Max Permissions Per Month"

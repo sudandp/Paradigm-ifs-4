@@ -101,7 +101,7 @@ const initialAttendance: AttendanceSettings = {
     weeklyOffDays: [0], // Sunday
     enableMaternityChildCare: true,
     enablePermission: true,
-    maxPermissionDurationHours: 2,
+    maxPermissionDurationHours: 3,
     maxPermissionsPerMonth: 3,
     enableCorrectionLimits: true,
     maxCorrectionDurationHours: 2,
@@ -138,7 +138,7 @@ const initialAttendance: AttendanceSettings = {
     holidayPool: [...HOLIDAY_SELECTION_POOL],
     enableMaternityChildCare: true,
     enablePermission: true,
-    maxPermissionDurationHours: 2,
+    maxPermissionDurationHours: 3,
     maxPermissionsPerMonth: 3,
     enableCorrectionLimits: true,
     maxCorrectionDurationHours: 2,
@@ -171,7 +171,7 @@ const initialAttendance: AttendanceSettings = {
     enableMaternityChildCare: true,
     weeklyOffDays: [0], // Sunday
     enablePermission: true,
-    maxPermissionDurationHours: 2,
+    maxPermissionDurationHours: 3,
     maxPermissionsPerMonth: 3,
     enableCorrectionLimits: true,
     maxCorrectionDurationHours: 2,

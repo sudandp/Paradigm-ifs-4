@@ -188,7 +188,7 @@ const ApplyLeave: React.FC = () => {
     const [leaveBalance, setLeaveBalance] = React.useState<number>(0);
     const [fullBalance, setFullBalance] = React.useState<LeaveBalance | null>(null);
     const [correctionUsage, setCorrectionUsage] = React.useState({ used: 0, limit: 3, enabled: false });
-    const [permissionUsage, setPermissionUsage] = React.useState({ used: 0, limit: 3, enabled: false });
+    const [permissionUsage, setPermissionUsage] = React.useState<{ used: number; usedMins: number; limitHrs: number; limit: number; enabled: boolean; requests: any[] }>({ used: 0, usedMins: 0, limitHrs: 3, limit: 3, enabled: false, requests: [] });
     const [allLeaveRequests, setAllLeaveRequests] = React.useState<any[]>([]);
     const [dayEvents, setDayEvents] = React.useState<AttendanceEvent[]>([]);
 
@@ -317,7 +317,8 @@ const ApplyLeave: React.FC = () => {
     React.useEffect(() => {
         if (rules) {
             setCorrectionUsage(prev => ({ ...prev, limit: rules.maxCorrectionsPerMonth || 3, enabled: !!rules.enableCorrectionLimits }));
-            setPermissionUsage(prev => ({ ...prev, limit: rules.maxPermissionsPerMonth || 3, enabled: rules.enablePermission !== false }));
+            const monthlyLimitHrs = (rules.maxPermissionDurationHours && rules.maxPermissionDurationHours >= 3) ? rules.maxPermissionDurationHours : 3;
+            setPermissionUsage(prev => ({ ...prev, limitHrs: monthlyLimitHrs, limit: rules.maxPermissionsPerMonth || 3, enabled: rules.enablePermission !== false }));
         }
     }, [rules]);
 
@@ -350,8 +351,30 @@ const ApplyLeave: React.FC = () => {
                 autoClosedCount = await api.getAutoClosedMissedPunchesCount(user.id, startDate, endDate);
             }
             
+            // Calculate total minutes used by existing permission requests this month
+            const calcPermMins = (reqs: any[]) => {
+                let total = 0;
+                reqs.forEach(r => {
+                    if (r.correctionDetails?.permissionMinutes) {
+                        total += Number(r.correctionDetails.permissionMinutes);
+                    } else if (r.correctionDetails?.punchIn && r.correctionDetails?.punchOut) {
+                        const toMins = (t: string) => { if (!t) return 0; const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+                        let worked = toMins(r.correctionDetails.punchOut) - toMins(r.correctionDetails.punchIn);
+                        if (worked < 0) worked += 24 * 60;
+                        if (r.correctionDetails.breakIn && r.correctionDetails.breakOut) {
+                            let bMins = toMins(r.correctionDetails.breakOut) - toMins(r.correctionDetails.breakIn);
+                            if (bMins > 0) worked -= bMins;
+                        }
+                        const targetShiftMins = (rules?.minimumHoursFullDay || 8) * 60;
+                        const shortage = Math.max(0, targetShiftMins - worked);
+                        total += (shortage > 0 && shortage <= 180 ? shortage : Math.min(worked, 180));
+                    }
+                });
+                return total;
+            };
+            const usedPermMins = calcPermMins(monthPerms);
             setCorrectionUsage(prev => ({ ...prev, used: monthCorrections.length + autoClosedCount }));
-            setPermissionUsage(prev => ({ ...prev, used: monthPerms.length }));
+            setPermissionUsage(prev => ({ ...prev, used: monthPerms.length, usedMins: usedPermMins, requests: monthPerms }));
         };
         fetchUsage();
     }, [watchStartDate, allLeaveRequests, editId, user?.id]);
@@ -1073,35 +1096,50 @@ const ApplyLeave: React.FC = () => {
                 // Calculate existing permission minutes for this month
                 let totalExistingPermMins = 0;
                 monthPerms.forEach(r => {
-                    if (r.correctionDetails?.punchIn && r.correctionDetails?.punchOut) {
+                    if (r.correctionDetails?.permissionMinutes) {
+                        totalExistingPermMins += Number(r.correctionDetails.permissionMinutes);
+                    } else if (r.correctionDetails?.punchIn && r.correctionDetails?.punchOut) {
                         const getMinutes = (timeStr: string) => {
                             if (!timeStr) return 0;
                             const [h, m] = timeStr.split(':').map(Number);
                             return h * 60 + m;
                         };
-                        const start = getMinutes(r.correctionDetails.punchIn);
-                        const end = getMinutes(r.correctionDetails.punchOut);
-                        let diff = end - start;
-                        if (diff < 0) diff += 24 * 60;
-                        totalExistingPermMins += diff;
-                        
-                        if (r.correctionDetails?.punchIn2 && r.correctionDetails?.punchOut2) {
-                            const start2 = getMinutes(r.correctionDetails.punchIn2);
-                            const end2 = getMinutes(r.correctionDetails.punchOut2);
-                            let diff2 = end2 - start2;
-                            if (diff2 < 0) diff2 += 24 * 60;
-                            totalExistingPermMins += diff2;
+                        let worked = getMinutes(r.correctionDetails.punchOut) - getMinutes(r.correctionDetails.punchIn);
+                        if (worked < 0) worked += 24 * 60;
+                        if (r.correctionDetails.breakIn && r.correctionDetails.breakOut) {
+                            let bMins = getMinutes(r.correctionDetails.breakOut) - getMinutes(r.correctionDetails.breakIn);
+                            if (bMins > 0) worked -= bMins;
                         }
+                        const targetShiftMins = (rules?.minimumHoursFullDay || 8) * 60;
+                        const shortage = Math.max(0, targetShiftMins - worked);
+                        totalExistingPermMins += (shortage > 0 && shortage <= 180 ? shortage : Math.min(worked, 180));
                     }
                 });
 
-                // Verify duration and monthly total hours
-                const maxHours = rules?.maxPermissionDurationHours || 3;
+                // Verify cumulative monthly permission hours pool (3 hours monthly pool)
+                const monthlyPoolHours = (rules?.maxPermissionDurationHours && rules.maxPermissionDurationHours >= 3) ? rules.maxPermissionDurationHours : 3;
                 const durationHours = permissionMinutes / 60;
-                const totalMonthPermHours = (totalExistingPermMins + permissionMinutes) / 60;
+                const totalUsedAfterThis = (totalExistingPermMins + permissionMinutes) / 60;
+                const remainingHours = monthlyPoolHours - (totalExistingPermMins / 60);
 
-                if (totalMonthPermHours > maxHours) {
-                    setToast({ message: `Total permission time cannot exceed ${maxHours} hours per month. You have already used ${(totalExistingPermMins / 60).toFixed(1)} hours and requested ${durationHours.toFixed(1)} hours.`, type: 'error' });
+                if (totalUsedAfterThis > monthlyPoolHours) {
+                    const usedH = Math.floor(totalExistingPermMins / 60);
+                    const usedM = totalExistingPermMins % 60;
+                    const remMins = Math.max(0, Math.round(monthlyPoolHours * 60 - totalExistingPermMins));
+                    const remH = Math.floor(remMins / 60);
+                    const remM = remMins % 60;
+                    
+                    if (remMins <= 0) {
+                        setToast({ 
+                            message: `Monthly permission pool exhausted. You have used your full ${monthlyPoolHours}h pool for this month.`, 
+                            type: 'error' 
+                        });
+                    } else {
+                        setToast({ 
+                            message: `Requested permission (${durationHours.toFixed(1)}h) exceeds remaining pool. You have ${remH > 0 ? `${remH}h ` : ''}${remM}m remaining (Used: ${usedH}h ${usedM}m of ${monthlyPoolHours}h limit). Please reduce your request to ${remH > 0 ? `${remH}h ` : ''}${remM}m or less.`, 
+                            type: 'error' 
+                        });
+                    }
                     setIsSubmitting(false);
                     return;
                 }
@@ -1202,6 +1240,7 @@ const ApplyLeave: React.FC = () => {
                     punchOut2,
                     breakIn,
                     breakOut,
+                    permissionMinutes,
                     locationName,
                     includeSiteOt,
                     siteOtIn,
@@ -1472,29 +1511,126 @@ const ApplyLeave: React.FC = () => {
                                 </div>
                             )}
 
-                            {watchLeaveType === 'Permission' && permissionUsage.enabled && (
-                                <div className={`p-4 rounded-xl border ${permissionUsage.used >= permissionUsage.limit 
-                                    ? (isMobile ? 'bg-rose-500/10 border-rose-500/20 text-rose-400' : 'bg-rose-50 border-rose-200 text-rose-800') 
-                                    : (isMobile ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' : 'bg-amber-50 border-amber-200 text-amber-900')}`}>
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <Clock className="w-5 h-5" />
-                                        <h4 className="font-bold text-sm">Monthly Permission Limit</h4>
-                                    </div>
-                                    <div className={`text-xs leading-relaxed mb-2 space-y-2 ${isMobile ? 'opacity-90' : 'text-amber-800'}`}>
-                                        <p>
-                                            You have used <strong>{permissionUsage.used}</strong> out of <strong>{permissionUsage.limit}</strong> allowed permissions this month.
-                                        </p>
-                                        <p className={`p-2.5 rounded-lg border ${isMobile ? 'bg-amber-500/15 border-amber-500/30' : 'bg-amber-100/50 border-amber-200'}`}>
-                                            <strong>💡 Friendly Note:</strong> You have a monthly limit of <strong>3 hours</strong>. You can use it all in one day or split it — e.g., 1 hour per day across 3 days. Note that this is a <strong>permitted absence</strong>, not a granted leave.
-                                        </p>
-                                    </div>
-                                    {permissionUsage.used >= permissionUsage.limit && (
-                                        <div className="text-[11px] font-black uppercase tracking-widest bg-rose-500/20 p-2 rounded-lg mt-2">
-                                            Limit Exceeded. Please contact admin for manual permission.
+                            {watchLeaveType === 'Permission' && permissionUsage.enabled && (() => {
+                                const usedH = Math.floor(permissionUsage.usedMins / 60);
+                                const usedM = permissionUsage.usedMins % 60;
+                                const limitHrs = permissionUsage.limitHrs || 3;
+                                const remainingMins = Math.max(0, limitHrs * 60 - permissionUsage.usedMins);
+                                const remH = Math.floor(remainingMins / 60);
+                                const remM = remainingMins % 60;
+                                const isExhausted = permissionUsage.usedMins >= limitHrs * 60;
+                                const pct = Math.min(100, Math.round((permissionUsage.usedMins / (limitHrs * 60)) * 100));
+
+                                // Helper: compute display duration for a single request
+                                const getReqDuration = (r: any) => {
+                                    if (r.correctionDetails?.permissionMinutes) {
+                                        return Number(r.correctionDetails.permissionMinutes);
+                                    }
+                                    const toMins = (t: string) => { if (!t) return 0; const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+                                    if (r.correctionDetails?.punchIn && r.correctionDetails?.punchOut) {
+                                        let worked = toMins(r.correctionDetails.punchOut) - toMins(r.correctionDetails.punchIn);
+                                        if (worked < 0) worked += 24 * 60;
+                                        if (r.correctionDetails.breakIn && r.correctionDetails.breakOut) {
+                                            let bMins = toMins(r.correctionDetails.breakOut) - toMins(r.correctionDetails.breakIn);
+                                            if (bMins > 0) worked -= bMins;
+                                        }
+                                        const targetShiftMins = (rules?.minimumHoursFullDay || 8) * 60;
+                                        const shortage = Math.max(0, targetShiftMins - worked);
+                                        return (shortage > 0 && shortage <= 180 ? shortage : Math.min(worked, 180));
+                                    }
+                                    return 0;
+                                };
+
+                                return (
+                                    <div className={`p-4 rounded-xl border ${
+                                        isExhausted
+                                            ? (isMobile ? 'bg-rose-500/10 border-rose-500/20 text-rose-400' : 'bg-rose-50 border-rose-200 text-rose-800')
+                                            : (isMobile ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' : 'bg-amber-50 border-amber-200 text-amber-900')
+                                    }`}>
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <Clock className="w-5 h-5" />
+                                            <h4 className="font-bold text-sm">Monthly Permission Hours Pool</h4>
                                         </div>
-                                    )}
-                                </div>
-                            )}
+                                        <div className="flex items-center justify-between text-xs font-semibold mb-1">
+                                            <span>Used: {usedH}h {usedM}m</span>
+                                            <span>Limit: {limitHrs}h</span>
+                                        </div>
+                                        <div className={`w-full rounded-full h-2 mb-3 ${isMobile ? 'bg-white/10' : 'bg-amber-200'}`}>
+                                            <div
+                                                className={`h-2 rounded-full transition-all ${isExhausted ? 'bg-rose-500' : pct > 75 ? 'bg-orange-500' : 'bg-emerald-500'}`}
+                                                style={{ width: `${pct}%` }}
+                                            />
+                                        </div>
+
+                                        {/* Per-request usage history */}
+                                        {permissionUsage.requests.length > 0 && (
+                                            <div className={`mb-3 rounded-lg border overflow-hidden ${
+                                                isMobile ? 'border-white/10' : 'border-amber-200'
+                                            }`}>
+                                                <div className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-widest ${
+                                                    isMobile ? 'bg-white/5 text-white/50' : 'bg-amber-100 text-amber-700'
+                                                }`}>
+                                                    Usage History This Month
+                                                </div>
+                                                {permissionUsage.requests.map((r: any, idx: number) => {
+                                                    const durMins = getReqDuration(r);
+                                                    const dH = Math.floor(durMins / 60);
+                                                    const dM = durMins % 60;
+                                                    const dateStr = r.startDate
+                                                        ? format(new Date(r.startDate.replace(/-/g, '/')), 'dd MMM yyyy')
+                                                        : '—';
+                                                    const timeRange = r.correctionDetails?.punchIn && r.correctionDetails?.punchOut
+                                                        ? `${r.correctionDetails.punchIn} – ${r.correctionDetails.punchOut}${
+                                                            r.correctionDetails.punchIn2 && r.correctionDetails.punchOut2
+                                                                ? ` & ${r.correctionDetails.punchIn2} – ${r.correctionDetails.punchOut2}`
+                                                                : ''
+                                                          }`
+                                                        : 'Time not recorded';
+                                                    const statusColor = r.status === 'approved'
+                                                        ? 'text-emerald-600'
+                                                        : r.status === 'rejected' || r.status === 'cancelled'
+                                                        ? 'text-rose-500'
+                                                        : 'text-amber-600';
+                                                    return (
+                                                        <div key={r.id || idx} className={`flex items-center justify-between px-3 py-2 text-xs ${
+                                                            idx % 2 === 0
+                                                                ? (isMobile ? 'bg-white/3' : 'bg-white')
+                                                                : (isMobile ? 'bg-white/5' : 'bg-amber-50/60')
+                                                        } ${idx > 0 ? (isMobile ? 'border-t border-white/5' : 'border-t border-amber-100') : ''}`}>
+                                                            <div className="flex flex-col gap-0.5">
+                                                                <span className="font-bold">{dateStr}</span>
+                                                                <span className={`opacity-70 ${isMobile ? '' : 'text-amber-700'}`}>{timeRange}</span>
+                                                            </div>
+                                                            <div className="flex flex-col items-end gap-0.5">
+                                                                <span className="font-black">{dH > 0 ? `${dH}h ` : ''}{dM}m</span>
+                                                                <span className={`text-[10px] font-semibold capitalize ${statusColor}`}>
+                                                                    {r.status?.replace(/_/g, ' ')}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+
+                                        <div className={`text-xs leading-relaxed space-y-2 ${isMobile ? 'opacity-90' : 'text-amber-800'}`}>
+                                            {!isExhausted ? (
+                                                <p>You have <strong>{remH}h {remM}m remaining</strong> this month. Split it however you like — 1 request or multiple smaller ones.</p>
+                                            ) : (
+                                                <p className="font-semibold">Your monthly permission pool of <strong>{limitHrs}h</strong> is fully used. No more permissions can be requested this month.</p>
+                                            )}
+                                            <p className={`p-2.5 rounded-lg border ${isMobile ? 'bg-amber-500/15 border-amber-500/30' : 'bg-amber-100/50 border-amber-200'}`}>
+                                                <strong>💡 Note:</strong> The {limitHrs}h pool resets every month. Permissions are a <strong>permitted absence</strong>, not granted leave.
+                                            </p>
+                                        </div>
+                                        {isExhausted && (
+                                            <div className="text-[11px] font-black uppercase tracking-widest bg-rose-500/20 p-2 rounded-lg mt-2">
+                                                Pool Exhausted. Contact admin for manual permission.
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })()}
 
                             {isMobile ? (
                                 <div className="space-y-6">
@@ -1775,7 +1911,7 @@ const ApplyLeave: React.FC = () => {
                                                             <span className={`font-bold text-sm px-2 py-0.5 rounded border ${
                                                                 isMobile ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20' : 'bg-white text-emerald-700 border-emerald-200'
                                                             }`}>
-                                                                {permissionUsage.used} / {permissionUsage.limit}
+                                                                {Math.floor(permissionUsage.usedMins / 60)}h {permissionUsage.usedMins % 60}m / {permissionUsage.limitHrs || 3}h
                                                             </span>
                                                         </div>
                                                     </>
@@ -2188,7 +2324,7 @@ const ApplyLeave: React.FC = () => {
                                 disabled={
                                     isSubmitting || 
                                     (watchLeaveType === 'Correction' && correctionUsage.enabled && correctionUsage.used >= correctionUsage.limit) || 
-                                    (watchLeaveType === 'Permission' && permissionUsage.enabled && permissionUsage.used >= permissionUsage.limit)
+                                    (watchLeaveType === 'Permission' && permissionUsage.enabled && permissionUsage.usedMins >= (permissionUsage.limitHrs || 3) * 60)
                                 }
                                 className="flex-1 md:flex-none md:w-48"
                             >

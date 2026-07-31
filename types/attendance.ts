@@ -476,6 +476,7 @@ export interface CorrectionDetails {
   includeBreak: boolean;
   breakIn?: string;
   breakOut?: string;
+  permissionMinutes?: number;
   locationName: string;
   includeSiteOt?: boolean;
   siteOtIn?: string;
