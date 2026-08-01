@@ -39,41 +39,82 @@ function evaluateConditionalsInternal(str: string, data: Record<string, string>)
   });
 }
 
-/**
- * Calculates total travel distance from attendance events.
- * attendance_events.travel_distance stores a CUMULATIVE running total (not incremental).
- * Naive summation across all events inflates the result by 10x.
- * Correct approach: return the maximum value (final cumulative reading), or
- * fall back to haversine calculation between known GPS waypoints.
- */
 function calculateDailyTravelKm(events: any[]): number {
   if (!events || events.length === 0) return 0;
-  const nonZero = events
-    .map((e: any) => (e.travel_distance !== undefined && e.travel_distance !== null ? Number(e.travel_distance) : 0))
-    .filter((d: number) => d > 0);
-  if (nonZero.length > 0) {
-    // travel_distance is cumulative — take the highest (final) recorded value
-    return Number(Math.max(...nonZero).toFixed(2));
-  }
-  // Fallback: haversine between GPS waypoints
-  const sorted = [...events]
-    .filter((e: any) => ['punch-in', 'punch-out', 'site-in', 'site-out'].includes(e.type))
-    .sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-  let totalDist = 0;
-  for (let i = 0; i < sorted.length - 1; i++) {
-    const cur = sorted[i], nxt = sorted[i + 1];
-    if (cur.latitude && cur.longitude && nxt.latitude && nxt.longitude) {
-      const toRad = (d: number) => (d * Math.PI) / 180;
-      const R = 6371;
-      const dLat = toRad(Number(nxt.latitude) - Number(cur.latitude));
-      const dLon = toRad(Number(nxt.longitude) - Number(cur.longitude));
-      const a = Math.sin(dLat / 2) ** 2 +
-        Math.cos(toRad(Number(cur.latitude))) * Math.cos(toRad(Number(nxt.latitude))) * Math.sin(dLon / 2) ** 2;
-      totalDist += R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  
+  // Group events by session (separated by punch-in)
+  const sessions: any[][] = [];
+  let curSession: any[] = [];
+  
+  // Sort events chronologically
+  const sortedEvents = [...events].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  
+  sortedEvents.forEach(e => {
+    if (e.type === 'punch-in') {
+      if (curSession.length > 0) {
+        sessions.push(curSession);
+      }
+      curSession = [e];
+    } else {
+      curSession.push(e);
     }
+  });
+  if (curSession.length > 0) {
+    sessions.push(curSession);
   }
-  return Number(totalDist.toFixed(2));
+  
+  let totalDailyKm = 0;
+  
+  sessions.forEach(sess => {
+    // 1. Calculate device distance (Max - Min in session)
+    const deviceValues = sess.map(e => Number(e.travel_distance || 0)).filter(d => d > 0);
+    let deviceDist = 0;
+    if (deviceValues.length > 0) {
+      const maxVal = Math.max(...deviceValues);
+      const minVal = Math.min(...deviceValues);
+      deviceDist = maxVal - minVal;
+      
+      // Special case: if there's only 1 reading, we treat it as starting from 0 if it's small,
+      // or if it's large and we don't have a baseline, we reject it as a jump.
+      if (deviceValues.length === 1) {
+        deviceDist = deviceValues[0] > 50 ? 0 : deviceValues[0];
+      }
+    }
+    
+    // 2. Calculate haversine distance
+    let haversineDist = 0;
+    for (let i = 0; i < sess.length - 1; i++) {
+      const current = sess[i];
+      const next = sess[i + 1];
+      if (current.latitude && current.longitude && next.latitude && next.longitude) {
+        const toRad = (d: number) => (d * Math.PI) / 180;
+        const R = 6371;
+        const dLat = toRad(Number(next.latitude) - Number(current.latitude));
+        const dLon = toRad(Number(next.longitude) - Number(current.longitude));
+        const a = Math.sin(dLat / 2) ** 2 +
+          Math.cos(toRad(Number(current.latitude))) * Math.cos(toRad(Number(next.latitude))) * Math.sin(dLon / 2) ** 2;
+        haversineDist += R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      }
+    }
+    
+    // 3. Robust combination
+    if (deviceDist > 0) {
+      // If device says they traveled more than 100km but haversine is under 30km,
+      // it's almost certainly a GPS coordinate background jump error on the device.
+      if (deviceDist > 100 && haversineDist < 30) {
+        totalDailyKm += haversineDist;
+      } else {
+        // Use device distance if it's larger (winding path), otherwise use haversine (stale device distance)
+        totalDailyKm += Math.max(deviceDist, haversineDist);
+      }
+    } else {
+      totalDailyKm += haversineDist;
+    }
+  });
+  
+  return Number(totalDailyKm.toFixed(2));
 }
+
 
 // Inlined Report Generators to avoid import crashes
 const reportGenerators = {

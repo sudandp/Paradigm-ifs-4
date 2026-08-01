@@ -141,38 +141,52 @@ const ProfilePage: React.FC = () => {
     }, [hasPreviousDayOpenSession, fetchUsedCorrections]);
 
     const handleAutoCheckOut = async (userReason?: string) => {
+        console.log('[handleAutoCheckOut Debug] Starting auto check-out...', {
+            userReason,
+            hasActiveOpenSession,
+            hasPreviousDayOpenSession,
+            previousDaySessionInfo,
+            isCheckedIn,
+            isFieldCheckedIn,
+            isSiteOtCheckedIn
+        });
         triggerHaptic(ImpactStyle.Medium);
         setIsSubmittingAttendance(true);
         try {
-            // 1. Fetch current GPS coordinates (we record the location as present,
-            //    but the timestamp will be set to end of the missed session day)
             let lat: number | undefined = undefined;
             let lng: number | undefined = undefined;
             try {
                 const pos = await getPrecisePosition(150, 10000);
                 lat = pos.coords.latitude;
                 lng = pos.coords.longitude;
+                console.log('[handleAutoCheckOut Debug] Position acquired:', { lat, lng });
             } catch (err) {
-                console.warn("Failed to get coordinates for auto check-out:", err);
+                console.warn("[handleAutoCheckOut Debug] Failed to get coordinates for auto check-out:", err);
             }
 
-            // 3. Determine which sessions to close
+            // Determine which sessions to close
             const toClose: ('field' | 'office')[] = [];
-            if (isFieldCheckedIn) toClose.push('field');
-            if (isCheckedIn) toClose.push('office');
+            if (isFieldCheckedIn || previousDaySessionInfo?.isFieldDutyOpen) toClose.push('field');
+            if (isCheckedIn || previousDaySessionInfo?.isRegularPunchOpen) toClose.push('office');
+
+            // Fallback: If still empty but we have an active or previous day open session, default to 'office'
+            if (toClose.length === 0 && (hasActiveOpenSession || hasPreviousDayOpenSession)) {
+                toClose.push('office');
+            }
 
             const overrideTimestamp = previousDaySessionInfo?.date ? `${previousDaySessionInfo.date}T23:59:59Z` : undefined;
+            console.log('[handleAutoCheckOut Debug] Sessions to close:', { toClose, overrideTimestamp });
 
             let success = true;
             let errMsg = '';
+
+            // Optional audit correction for stale (>48h) sessions
             if (hasPreviousDayOpenSession && previousDaySessionInfo?.date && user) {
                 try {
                     const punchInTimeStr = previousDaySessionInfo.firstIn ? previousDaySessionInfo.firstIn.substring(0, 5) : '09:00';
                     const punchOutTimeStr = '23:59';
-                    
                     const baseNote = `user clicked for punch out from missed punch-out dialog`;
                     const note = userReason ? `${baseNote}. Reason: ${userReason}` : baseNote;
-                    
                     const payload = {
                         userId: user.id,
                         userName: user.name,
@@ -187,45 +201,47 @@ const ProfilePage: React.FC = () => {
                             punchOut: punchOutTimeStr
                         }
                     };
-                    
+                    console.log('[handleAutoCheckOut Debug] Submitting audit correction request:', payload);
                     const newReq = await api.submitLeaveRequest(payload as any);
                     await api.approveLeaveRequest(newReq.id, user.id);
                 } catch (correctionErr: any) {
-                     success = false;
-                     errMsg = correctionErr.message || 'Failed to process Correction for missed punch-out.';
+                    console.warn('[handleAutoCheckOut Debug] Correction audit submission note:', correctionErr.message);
                 }
-            } else {
-                for (const wt of toClose) {
-                    const forcedType = wt === 'field' ? 'site-out' : 'punch-out';
-                    // Inject the intended session date in brackets so the frontend can properly group it
-                    const dateTag = previousDaySessionInfo?.date ? ` [SessionDate: ${previousDaySessionInfo.date}]` : '';
-                    const baseNote = wt === 'field'
-                        ? `user clicked for site out${dateTag}`
-                        : `user clicked for punch out with out applying correction this is the record of punch out${dateTag}`;
-                    const note = userReason ? `${baseNote}. Reason: ${userReason}` : baseNote;
-                    const res = await toggleCheckInStatus(
-                        note,
-                        null,
-                        wt,
-                        undefined,
-                        forcedType,
-                        undefined,
-                        overrideTimestamp
-                    );
-                    if (!res.success) {
-                        success = false;
-                        errMsg = res.message;
-                    }
+            }
+
+            // ALWAYS execute toggleCheckInStatus so punch-out attendance event is saved
+            for (const wt of toClose) {
+                const forcedType = wt === 'field' ? 'site-out' : 'punch-out';
+                const dateTag = previousDaySessionInfo?.date ? ` [SessionDate: ${previousDaySessionInfo.date}]` : '';
+                const baseNote = wt === 'field'
+                    ? `user clicked for site out${dateTag}`
+                    : `user clicked for punch out with out applying correction this is the record of punch out${dateTag}`;
+                const note = userReason ? `${baseNote}. Reason: ${userReason}` : baseNote;
+                console.log('[handleAutoCheckOut Debug] Executing toggleCheckInStatus:', { wt, forcedType, note, overrideTimestamp });
+                const res = await toggleCheckInStatus(
+                    note,
+                    null,
+                    wt,
+                    undefined,
+                    forcedType,
+                    undefined,
+                    overrideTimestamp
+                );
+                console.log('[handleAutoCheckOut Debug] toggleCheckInStatus response:', res);
+                if (!res.success) {
+                    success = false;
+                    errMsg = res.message;
                 }
             }
 
             if (success) {
-                setToast({ message: 'Previous session closed successfully.', type: 'success' });
+                setToast({ message: 'Session closed successfully.', type: 'success' });
             } else {
-                setToast({ message: errMsg || 'Failed to close some sessions.', type: 'error' });
+                setToast({ message: errMsg || 'Failed to close session.', type: 'error' });
             }
             await checkAttendanceStatus();
         } catch (err: any) {
+            console.error('[handleAutoCheckOut Debug] Exception:', err);
             setToast({ message: err.message || 'Auto check-out failed.', type: 'error' });
         } finally {
             setIsSubmittingAttendance(false);
@@ -833,10 +849,10 @@ const ProfilePage: React.FC = () => {
     }, []);
     
     const isThirdSaturdayToday = isThirdSaturday(new Date());
-    // Blocked if: (Punched Today OR today is 3rd Saturday) AND Not Currently Checked In (office or field) AND Not Unlocked
-    const isPunchBlocked = (hasPunchedToday || isThirdSaturdayToday) && !isCheckedIn && !isFieldCheckedIn && !isSiteOtCheckedIn && !isPunchUnlocked;
-    // Combined check-in state: true if user is checked in via either office or field
-    const effectivelyCheckedIn = isCheckedIn || isFieldCheckedIn || isSiteOtCheckedIn;
+    // Blocked if: (Punched Today OR today is 3rd Saturday) AND Not Currently Checked In (office, field, or active open session) AND Not Unlocked
+    const isPunchBlocked = (hasPunchedToday || isThirdSaturdayToday) && !isCheckedIn && !isFieldCheckedIn && !isSiteOtCheckedIn && !hasActiveOpenSession && !isPunchUnlocked;
+    // Combined check-in state: true if user is checked in via either office, field, site-ot, or has active open session
+    const effectivelyCheckedIn = isCheckedIn || isFieldCheckedIn || isSiteOtCheckedIn || (hasActiveOpenSession && previousDaySessionInfo != null);
 
     // Poll attendance status / live steps when checked in
     useEffect(() => {
@@ -1568,41 +1584,33 @@ const ProfilePage: React.FC = () => {
                                                     {' '}— Cross-Midnight
                                                 </h4>
                                             </div>
-                                            <p className="text-xs sm:text-sm text-indigo-200/80 leading-relaxed mb-4">
-                                                You have an open session from <span className="font-bold text-white">{new Date(previousDaySessionInfo.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}</span> ({previousDaySessionInfo.hoursElapsed}h ago). Close it when your shift ends.
+                                            <p className="text-xs sm:text-sm text-indigo-200/80 leading-relaxed">
+                                                You have an open session from <span className="font-bold text-white">{new Date(previousDaySessionInfo.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}</span> ({previousDaySessionInfo.hoursElapsed}h ago). Tap the Punch Out button below when your shift ends.
                                             </p>
-                                            <div className={`grid ${(previousDaySessionInfo.isSiteDutyOpen && previousDaySessionInfo.isRegularPunchOpen) ? 'grid-cols-2' : 'grid-cols-1'} gap-3 mt-3`}>
-                                                {/* Site Duty Check Out — close site-ot session first */}
-                                                {previousDaySessionInfo.isSiteDutyOpen && (
-                                                    <button
-                                                        disabled={isSubmittingAttendance}
-                                                        onClick={() => navigate('/attendance/check-out?workType=site-ot&action=site-ot-out')}
-                                                        className="w-full py-2.5 sm:py-3 px-2 sm:px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs sm:text-sm font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-1.5 shadow-md shadow-indigo-900/30"
-                                                    >
-                                                        <MapPin className="w-4 h-4" /> Site Duty Check Out
-                                                    </button>
-                                                )}
-                                                {/* Regular/Field Duty Check Out — if site duty already closed */}
-                                                {!previousDaySessionInfo.isSiteDutyOpen && previousDaySessionInfo.isFieldDutyOpen && (
-                                                    <button
-                                                        disabled={isSubmittingAttendance}
-                                                        onClick={() => navigate('/attendance/check-out?workType=field&action=site-out')}
-                                                        className="w-full py-2.5 sm:py-3 px-2 sm:px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs sm:text-sm font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-1.5 shadow-md shadow-emerald-900/30"
-                                                    >
-                                                        <MapPin className="w-4 h-4" /> Regular Duty Check Out
-                                                    </button>
-                                                )}
-                                                {/* Regular punch out — only show if no site/field duty is blocking */}
-                                                {!previousDaySessionInfo.isSiteDutyOpen && !previousDaySessionInfo.isFieldDutyOpen && previousDaySessionInfo.isRegularPunchOpen && (
-                                                    <button
-                                                        disabled={isSubmittingAttendance}
-                                                        onClick={() => setIsPunchOutModalOpen(true)}
-                                                        className="w-full py-2.5 sm:py-3 px-2 sm:px-4 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs sm:text-sm font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-1.5 shadow-md shadow-rose-900/30"
-                                                    >
-                                                        {isSubmittingAttendance ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Punch Out'}
-                                                    </button>
-                                                )}
-                                            </div>
+                                            {(previousDaySessionInfo.isSiteDutyOpen || previousDaySessionInfo.isFieldDutyOpen) && (
+                                                <div className={`grid ${(previousDaySessionInfo.isSiteDutyOpen && previousDaySessionInfo.isRegularPunchOpen) ? 'grid-cols-2' : 'grid-cols-1'} gap-3 mt-3`}>
+                                                    {/* Site Duty Check Out — close site-ot session first */}
+                                                    {previousDaySessionInfo.isSiteDutyOpen && (
+                                                        <button
+                                                            disabled={isSubmittingAttendance}
+                                                            onClick={() => navigate('/attendance/check-out?workType=site-ot&action=site-ot-out')}
+                                                            className="w-full py-2.5 sm:py-3 px-2 sm:px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs sm:text-sm font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-1.5 shadow-md shadow-indigo-900/30"
+                                                        >
+                                                            <MapPin className="w-4 h-4" /> Site Duty Check Out
+                                                        </button>
+                                                    )}
+                                                    {/* Regular/Field Duty Check Out — if site duty already closed */}
+                                                    {!previousDaySessionInfo.isSiteDutyOpen && previousDaySessionInfo.isFieldDutyOpen && (
+                                                        <button
+                                                            disabled={isSubmittingAttendance}
+                                                            onClick={() => navigate('/attendance/check-out?workType=field&action=site-out')}
+                                                            className="w-full py-2.5 sm:py-3 px-2 sm:px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs sm:text-sm font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-1.5 shadow-md shadow-emerald-900/30"
+                                                        >
+                                                            <MapPin className="w-4 h-4" /> Regular Duty Check Out
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
@@ -1645,7 +1653,10 @@ const ProfilePage: React.FC = () => {
                                                 ) : (
                                                     <button
                                                         disabled={isSubmittingAttendance}
-                                                        onClick={() => setIsPunchOutModalOpen(true)}
+                                                        onClick={() => {
+                                                            console.log('[BannerPunchOut Debug] Clicked missed punch banner Punch Out button!');
+                                                            setIsPunchOutModalOpen(true);
+                                                        }}
                                                         className="w-full py-2.5 sm:py-3 px-2 sm:px-4 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs sm:text-sm font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-1.5 shadow-md shadow-rose-900/30"
                                                     >
                                                         {isSubmittingAttendance ? <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" /> : 'Punch Out'}
@@ -1704,24 +1715,33 @@ const ProfilePage: React.FC = () => {
                                             transition: { type: "spring", stiffness: 400, damping: 10 } 
                                         }}
                                         onClick={() => {
+                                            console.log('[PunchOrb Debug] Clicked! State:', {
+                                                effectivelyCheckedIn,
+                                                hasActiveOpenSession,
+                                                hasPreviousDayOpenSession,
+                                                previousDaySessionInfo,
+                                                isPunchBlocked,
+                                                isCheckedIn,
+                                                isFieldCheckedIn,
+                                                isSiteOtCheckedIn,
+                                                isOnBreak,
+                                                isSubmittingAttendance,
+                                                unlockRequestStatus
+                                            });
                                             triggerHaptic(ImpactStyle.Heavy);
-                                            if (isPunchBlocked) {
-                                                if (unlockRequestStatus === 'pending') return;
-                                                navigate('/attendance/request-unlock');
-                                                return;
-                                            }
-                                            if (effectivelyCheckedIn) {
+                                            if (effectivelyCheckedIn || hasActiveOpenSession) {
                                                 // Active cross-midnight session (≤48h)
                                                 if (hasActiveOpenSession && previousDaySessionInfo) {
+                                                    const sessionParam = previousDaySessionInfo.date ? `&sessionDate=${previousDaySessionInfo.date}` : '';
                                                     if (previousDaySessionInfo.isSiteDutyOpen) {
                                                         // Site duty still running — navigate to site duty check-out
-                                                        navigate('/attendance/check-out?workType=site-ot&action=site-ot-out');
+                                                        navigate(`/attendance/check-out?workType=site-ot&action=site-ot-out${sessionParam}`);
                                                     } else if (previousDaySessionInfo.isFieldDutyOpen) {
                                                         // Field/regular duty still running — navigate to regular duty check-out
-                                                        navigate('/attendance/check-out?workType=field&action=site-out');
+                                                        navigate(`/attendance/check-out?workType=field&action=site-out${sessionParam}`);
                                                     } else {
-                                                        // Only regular punch remaining — open punch-out modal
-                                                        setIsPunchOutModalOpen(true);
+                                                        // Regular punch — navigate to standard check-out page flow
+                                                        navigate(`/attendance/check-out?workType=office&action=punch-out${sessionParam}`);
                                                     }
                                                     return;
                                                 }
@@ -1732,9 +1752,14 @@ const ProfilePage: React.FC = () => {
                                                 }
                                                 const wt = isSiteOtCheckedIn ? 'site-ot' : isFieldCheckedIn ? 'field' : 'office';
                                                 navigate(`/attendance/check-out?workType=${wt}`);
-                                            } else {
-                                                navigate('/attendance/check-in?workType=office');
+                                                return;
                                             }
+                                            if (isPunchBlocked) {
+                                                if (unlockRequestStatus === 'pending') return;
+                                                navigate('/attendance/request-unlock');
+                                                return;
+                                            }
+                                            navigate('/attendance/check-in?workType=office');
                                         }}
                                         disabled={isOnBreak || isSubmittingAttendance || (isPunchBlocked && unlockRequestStatus === 'pending')}
                                         className={`

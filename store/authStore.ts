@@ -1240,7 +1240,7 @@ export const useAuthStore = create<AuthState>()(
                     }
 
                     try {
-                        await api.addAttendanceEvent({
+                        const eventPayload = {
                             userId: user.id,
                             timestamp: overrideTimestamp || new Date().toISOString(),
                             type: newType,
@@ -1255,8 +1255,12 @@ export const useAuthStore = create<AuthState>()(
                             isOt: isOtCycle ? true : undefined,
                             steps: stepsValue,
                             travelDistance: distanceKmValue
-                        });
+                        };
+                        console.log('[authStore Debug] Submitting addAttendanceEvent payload:', eventPayload);
+                        await api.addAttendanceEvent(eventPayload);
+                        console.log('[authStore Debug] addAttendanceEvent SUCCESS!');
                     } catch (err: any) {
+                        console.error('[authStore Debug] addAttendanceEvent FAILED:', err);
                         return { success: false, message: err.message || 'Failed to record attendance' };
                     }
 

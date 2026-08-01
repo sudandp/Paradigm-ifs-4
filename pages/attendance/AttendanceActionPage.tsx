@@ -214,6 +214,7 @@ const AttendanceActionPage: React.FC = () => {
     };
 
     const handleConfirm = async (isAutoConfirm = false) => {
+        console.log('[AttendanceActionPage Debug] handleConfirm started:', { workType, isCheckIn, isBreakIn, isBreakOut, actionParam, bypassReport, overrideTimestamp });
         setIsSubmitting(true);
         try {
             const user = useAuthStore.getState().user;
@@ -251,7 +252,9 @@ const AttendanceActionPage: React.FC = () => {
             const settings = geofencingSettings || { enabled: false };
             const { attendance } = useSettingsStore.getState();
             const currentWorkTypeCategory = workType === 'site-ot' ? 'site' : (workType as 'office' | 'field' | 'site');
-            const enableFieldReport = attendance?.[currentWorkTypeCategory]?.enableFieldReport ?? true;
+            const enableFieldReport = currentWorkTypeCategory === 'office'
+                ? false
+                : (attendance?.[currentWorkTypeCategory]?.enableFieldReport ?? true);
             
             if (!isCheckIn && !isBreakIn && !isBreakOut && !actionParam?.includes('site-ot') && settings.enabled && enableFieldReport && !bypassReport) {
                 setIsReportModalOpen(true); setIsSubmitting(false); return;

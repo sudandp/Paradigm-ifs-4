@@ -16,6 +16,95 @@ export function getISTDateString(date: Date): string {
   return istDate.toISOString().substring(0, 10);
 }
 
+function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const R = 6371000; // Earth radius in meters
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function calculateDailyTravelKm(events: any[]): number {
+  if (!events || events.length === 0) return 0;
+  
+  // Group events by session (separated by punch-in)
+  const sessions: any[][] = [];
+  let curSession: any[] = [];
+  
+  // Sort events chronologically
+  const sortedEvents = [...events].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  
+  sortedEvents.forEach(e => {
+    if (e.type === 'punch-in') {
+      if (curSession.length > 0) {
+        sessions.push(curSession);
+      }
+      curSession = [e];
+    } else {
+      curSession.push(e);
+    }
+  });
+  if (curSession.length > 0) {
+    sessions.push(curSession);
+  }
+  
+  let totalDailyKm = 0;
+  
+  sessions.forEach(sess => {
+    // 1. Calculate device distance (Max - Min in session)
+    const deviceValues = sess.map(e => Number(e.travel_distance || 0)).filter(d => d > 0);
+    let deviceDist = 0;
+    if (deviceValues.length > 0) {
+      const maxVal = Math.max(...deviceValues);
+      const minVal = Math.min(...deviceValues);
+      deviceDist = maxVal - minVal;
+      
+      // Special case: if there's only 1 reading, we treat it as starting from 0 if it's small,
+      // or if it's large and we don't have a baseline, we reject it as a jump.
+      if (deviceValues.length === 1) {
+        deviceDist = deviceValues[0] > 50 ? 0 : deviceValues[0];
+      }
+    }
+    
+    // 2. Calculate haversine distance
+    let haversineDist = 0;
+    for (let i = 0; i < sess.length - 1; i++) {
+      const current = sess[i];
+      const next = sess[i + 1];
+      if (current.latitude && current.longitude && next.latitude && next.longitude) {
+        const toRad = (d: number) => (d * Math.PI) / 180;
+        const R = 6371;
+        const dLat = toRad(Number(next.latitude) - Number(current.latitude));
+        const dLon = toRad(Number(next.longitude) - Number(current.longitude));
+        const a = Math.sin(dLat / 2) ** 2 +
+          Math.cos(toRad(Number(current.latitude))) * Math.cos(toRad(Number(next.latitude))) * Math.sin(dLon / 2) ** 2;
+        haversineDist += R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      }
+    }
+    
+    // 3. Robust combination
+    if (deviceDist > 0) {
+      // If device says they traveled more than 100km but haversine is under 30km,
+      // it's almost certainly a GPS coordinate background jump error on the device.
+      if (deviceDist > 100 && haversineDist < 30) {
+        totalDailyKm += haversineDist;
+      } else {
+        // Use device distance if it's larger (winding path), otherwise use haversine (stale device distance)
+        totalDailyKm += Math.max(deviceDist, haversineDist);
+      }
+    } else {
+      totalDailyKm += haversineDist;
+    }
+  });
+  
+  return Number(totalDailyKm.toFixed(2));
+}
+
+
 /**
  * Shared Report Generation Utility
  * These functions can be used by both Vercel APIs and local scripts.
@@ -757,9 +846,9 @@ export const reportGenerators = {
       }
       // Fix: travel_distance is cumulative (each GPS ping stores the running total, not delta).
       // The old naive sum was multiplying the value by the number of pings (~10x inflation).
-      // Correct approach: use the maximum recorded value (the final cumulative reading).
-      const travelValues = bdEvents.map((e: any) => e.travel_distance || 0).filter((d: number) => d > 0);
-      const kms_travelled = travelValues.length > 0 ? Math.max(...travelValues).toFixed(2) : '0.00';
+      // Correct approach: use calculateDailyTravelKm() which handles multi-session baseline delta and coordinate haversine checks.
+      const kms_travelled = calculateDailyTravelKm(bdEvents).toFixed(2);
+
 
       const newLeadsToday = leads.filter((l: any) => l.created_by === bd.id || l.assigned_to === bd.id);
       const newLeadsIds = new Set(newLeadsToday.map((l: any) => l.id));

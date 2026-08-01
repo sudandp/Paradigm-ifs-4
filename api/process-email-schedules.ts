@@ -24,34 +24,78 @@ function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2:
 
 function calculateDailyTravelKm(events: any[]): number {
   if (!events || events.length === 0) return 0;
-  let savedDistance = 0;
-  let hasNonZeroSavedDistance = false;
-  events.forEach(e => {
-    if (e.travel_distance !== undefined && e.travel_distance !== null && e.travel_distance > 0) {
-      savedDistance += e.travel_distance;
-      hasNonZeroSavedDistance = true;
+  
+  // Group events by session (separated by punch-in)
+  const sessions: any[][] = [];
+  let curSession: any[] = [];
+  
+  // Sort events chronologically
+  const sortedEvents = [...events].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  
+  sortedEvents.forEach(e => {
+    if (e.type === 'punch-in') {
+      if (curSession.length > 0) {
+        sessions.push(curSession);
+      }
+      curSession = [e];
+    } else {
+      curSession.push(e);
     }
   });
-  if (hasNonZeroSavedDistance) {
-    return Number(savedDistance.toFixed(2));
+  if (curSession.length > 0) {
+    sessions.push(curSession);
   }
-  const sorted = [...events]
-      .filter(e => e.type === 'punch-in' || e.type === 'punch-out' || e.type === 'site-in' || e.type === 'site-out')
-      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-  let totalDist = 0;
-  for (let i = 0; i < sorted.length - 1; i++) {
-      const current = sorted[i];
-      const next = sorted[i + 1];
-      if (current.latitude && current.longitude && next.latitude && next.longitude) {
-          const dist = calculateDistanceMeters(
-              Number(current.latitude), Number(current.longitude),
-              Number(next.latitude), Number(next.longitude)
-          ) / 1000;
-          totalDist += dist;
+  
+  let totalDailyKm = 0;
+  
+  sessions.forEach(sess => {
+    // 1. Calculate device distance (Max - Min in session)
+    const deviceValues = sess.map(e => Number(e.travel_distance || 0)).filter(d => d > 0);
+    let deviceDist = 0;
+    if (deviceValues.length > 0) {
+      const maxVal = Math.max(...deviceValues);
+      const minVal = Math.min(...deviceValues);
+      deviceDist = maxVal - minVal;
+      
+      // Special case: if there's only 1 reading, we treat it as starting from 0 if it's small,
+      // or if it's large and we don't have a baseline, we reject it as a jump.
+      if (deviceValues.length === 1) {
+        deviceDist = deviceValues[0] > 50 ? 0 : deviceValues[0];
       }
-  }
-  return Number(totalDist.toFixed(2));
+    }
+    
+    // 2. Calculate haversine distance
+    let haversineDist = 0;
+    for (let i = 0; i < sess.length - 1; i++) {
+      const current = sess[i];
+      const next = sess[i + 1];
+      if (current.latitude && current.longitude && next.latitude && next.longitude) {
+        const dist = calculateDistanceMeters(
+          Number(current.latitude), Number(current.longitude),
+          Number(next.latitude), Number(next.longitude)
+        ) / 1000;
+        haversineDist += dist;
+      }
+    }
+    
+    // 3. Robust combination
+    if (deviceDist > 0) {
+      // If device says they traveled more than 100km but haversine is under 30km,
+      // it's almost certainly a GPS coordinate background jump error on the device.
+      if (deviceDist > 100 && haversineDist < 30) {
+        totalDailyKm += haversineDist;
+      } else {
+        // Use device distance if it's larger (winding path), otherwise use haversine (stale device distance)
+        totalDailyKm += Math.max(deviceDist, haversineDist);
+      }
+    } else {
+      totalDailyKm += haversineDist;
+    }
+  });
+  
+  return Number(totalDailyKm.toFixed(2));
 }
+
 
 
 function evaluateConditionals(str: string, data: Record<string, string>) {
