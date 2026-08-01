@@ -96,6 +96,8 @@ export interface EmployeeMonthlyData {
   employeeName: string;
   userName?: string;
   role?: string;
+  email?: string;
+  phone?: string;
   statuses: string[];
   totalGrossWorkDuration: number;
   totalNetWorkDuration: number;
@@ -646,7 +648,7 @@ export function processEmployeeMonth(
   const cappedPayableDays = Math.min(getDaysInMonth(monthStart), totalPayableDays);
 
   return {
-    employeeId: user.id, employeeName: user.name, role: user.role, statuses: dailyData.map(d => d.status),
+    employeeId: user.id, employeeName: user.name, role: user.role, email: user.email, phone: user.phone, statuses: dailyData.map(d => d.status),
     totalGrossWorkDuration, totalNetWorkDuration, totalBreakDuration, totalOT, totalTravelDistance, totalTravelDuration, totalSteps,
     presentDays, absentDays, weekOffs, holidays: holidaysCount, holidayPresents, weekendPresents,
     halfDays, threeQuarterDays, quarterDays, sickLeaves, earnedLeaves, casualLeaves, floatingHolidays, compOffs,

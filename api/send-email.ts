@@ -39,6 +39,42 @@ function evaluateConditionalsInternal(str: string, data: Record<string, string>)
   });
 }
 
+/**
+ * Calculates total travel distance from attendance events.
+ * attendance_events.travel_distance stores a CUMULATIVE running total (not incremental).
+ * Naive summation across all events inflates the result by 10x.
+ * Correct approach: return the maximum value (final cumulative reading), or
+ * fall back to haversine calculation between known GPS waypoints.
+ */
+function calculateDailyTravelKm(events: any[]): number {
+  if (!events || events.length === 0) return 0;
+  const nonZero = events
+    .map((e: any) => (e.travel_distance !== undefined && e.travel_distance !== null ? Number(e.travel_distance) : 0))
+    .filter((d: number) => d > 0);
+  if (nonZero.length > 0) {
+    // travel_distance is cumulative — take the highest (final) recorded value
+    return Number(Math.max(...nonZero).toFixed(2));
+  }
+  // Fallback: haversine between GPS waypoints
+  const sorted = [...events]
+    .filter((e: any) => ['punch-in', 'punch-out', 'site-in', 'site-out'].includes(e.type))
+    .sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  let totalDist = 0;
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const cur = sorted[i], nxt = sorted[i + 1];
+    if (cur.latitude && cur.longitude && nxt.latitude && nxt.longitude) {
+      const toRad = (d: number) => (d * Math.PI) / 180;
+      const R = 6371;
+      const dLat = toRad(Number(nxt.latitude) - Number(cur.latitude));
+      const dLon = toRad(Number(nxt.longitude) - Number(cur.longitude));
+      const a = Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(Number(cur.latitude))) * Math.cos(toRad(Number(nxt.latitude))) * Math.sin(dLon / 2) ** 2;
+      totalDist += R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+  }
+  return Number(totalDist.toFixed(2));
+}
+
 // Inlined Report Generators to avoid import crashes
 const reportGenerators = {
   attendance_daily: async (supabase: SupabaseClient, nowIST: Date, filters?: any) => {
@@ -502,24 +538,31 @@ const reportGenerators = {
           working_hours = `${Math.floor(netMs / 3600000)}h ${Math.floor((netMs % 3600000) / 60000)}m`;
         }
       }
-      let savedDistance = 0;
-      bdEvents.forEach((e: any) => { if (e.travel_distance > 0) savedDistance += e.travel_distance; });
-      const kms_travelled = savedDistance.toFixed(2);
+      // Fix: use calculateDailyTravelKm() which correctly handles cumulative travel_distance values.
+      // The old naive sum was adding every GPS ping's running total, inflating the result by ~10x.
+      const kms_travelled = calculateDailyTravelKm(bdEvents).toFixed(2);
 
       // ── Today's CRM Activity ─────────────────────────────────────────────
       const newLeadsToday = leads.filter((l: any) => l.created_by === bd.id || l.assigned_to === bd.id);
       const newLeadsIds = new Set(newLeadsToday.map((l: any) => l.id));
       const isCallType = (t: string) => ['call', 'phone call', 'outbound call'].includes((t || '').toLowerCase());
       const isSiteVisitType = (t: string) => ['site visit', 'sitevisit', 'site-visit'].includes((t || '').toLowerCase());
-      const prospect_calls = calls.filter((c: any) => c.created_by === bd.id && isCallType(c.type) && newLeadsIds.has(c.lead_id)).length;
-      const followup_calls = calls.filter((c: any) => c.created_by === bd.id && isCallType(c.type) && !newLeadsIds.has(c.lead_id)).length;
-      const new_leads_count = newLeadsToday.length;
-      const siteVisitsFromCRM = calls.filter((c: any) => c.created_by === bd.id && isSiteVisitType(c.type)).length;
-      const siteVisitsFromAttendance = bdEvents.filter((e: any) => e.type === 'site-in').length;
-      const sites_count = siteVisitsFromCRM > 0 ? siteVisitsFromCRM : siteVisitsFromAttendance;
 
       // ── All-time BD leads ─────────────────────────────────────────────────
       const allBDLeads = allLeads.filter((l: any) => l.assigned_to === bd.id || l.created_by === bd.id);
+      const allBDLeadIds = new Set(allBDLeads.map((l: any) => l.id));
+
+      // Fix: match calls by lead ownership (lead_id in BD's lead set) as a fallback when
+      // created_by doesn't match bd.id — handles auto-created or imported followup records.
+      const bdCalls = calls.filter((c: any) =>
+        c.created_by === bd.id || allBDLeadIds.has(c.lead_id)
+      );
+      const prospect_calls = bdCalls.filter((c: any) => isCallType(c.type) && newLeadsIds.has(c.lead_id)).length;
+      const followup_calls = bdCalls.filter((c: any) => isCallType(c.type) && !newLeadsIds.has(c.lead_id)).length;
+      const new_leads_count = newLeadsToday.length;
+      const siteVisitsFromCRM = bdCalls.filter((c: any) => isSiteVisitType(c.type)).length;
+      const siteVisitsFromAttendance = bdEvents.filter((e: any) => e.type === 'site-in').length;
+      const sites_count = siteVisitsFromCRM > 0 ? siteVisitsFromCRM : siteVisitsFromAttendance;
 
       // ── SECTION 1: Follow-up Completion Rate ─────────────────────────────
       const todayFollowupsDone = calls.filter((c: any) => c.created_by === bd.id).length;

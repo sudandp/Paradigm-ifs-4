@@ -755,22 +755,29 @@ export const reportGenerators = {
           working_hours = `${Math.floor(netMs / 3600000)}h ${Math.floor((netMs % 3600000) / 60000)}m`;
         }
       }
-      let savedDistance = 0;
-      bdEvents.forEach((e: any) => { if (e.travel_distance > 0) savedDistance += e.travel_distance; });
-      const kms_travelled = savedDistance.toFixed(2);
+      // Fix: travel_distance is cumulative (each GPS ping stores the running total, not delta).
+      // The old naive sum was multiplying the value by the number of pings (~10x inflation).
+      // Correct approach: use the maximum recorded value (the final cumulative reading).
+      const travelValues = bdEvents.map((e: any) => e.travel_distance || 0).filter((d: number) => d > 0);
+      const kms_travelled = travelValues.length > 0 ? Math.max(...travelValues).toFixed(2) : '0.00';
 
       const newLeadsToday = leads.filter((l: any) => l.created_by === bd.id || l.assigned_to === bd.id);
       const newLeadsIds = new Set(newLeadsToday.map((l: any) => l.id));
       const isCallType = (t: string) => ['call', 'phone call', 'outbound call'].includes((t || '').toLowerCase());
       const isSiteVisitType = (t: string) => ['site visit', 'sitevisit', 'site-visit'].includes((t || '').toLowerCase());
-      const prospect_calls = calls.filter((c: any) => c.created_by === bd.id && isCallType(c.type) && newLeadsIds.has(c.lead_id)).length;
-      const followup_calls = calls.filter((c: any) => c.created_by === bd.id && isCallType(c.type) && !newLeadsIds.has(c.lead_id)).length;
+      const allBDLeads = allLeads.filter((l: any) => l.assigned_to === bd.id || l.created_by === bd.id);
+      const allBDLeadIds = new Set(allBDLeads.map((l: any) => l.id));
+      // Fix: match calls by lead ownership too, not just created_by,
+      // to handle followups where created_by differs from the BD's user id.
+      const bdCalls = calls.filter((c: any) => c.created_by === bd.id || allBDLeadIds.has(c.lead_id));
+      const prospect_calls = bdCalls.filter((c: any) => isCallType(c.type) && newLeadsIds.has(c.lead_id)).length;
+      const followup_calls = bdCalls.filter((c: any) => isCallType(c.type) && !newLeadsIds.has(c.lead_id)).length;
       const new_leads_count = newLeadsToday.length;
-      const siteVisitsFromCRM = calls.filter((c: any) => c.created_by === bd.id && isSiteVisitType(c.type)).length;
+      const siteVisitsFromCRM = bdCalls.filter((c: any) => isSiteVisitType(c.type)).length;
       const siteVisitsFromAttendance = bdEvents.filter((e: any) => e.type === 'site-in').length;
       const sites_count = siteVisitsFromCRM > 0 ? siteVisitsFromCRM : siteVisitsFromAttendance;
 
-      const allBDLeads = allLeads.filter((l: any) => l.assigned_to === bd.id || l.created_by === bd.id);
+
 
       // ── SECTION 1: Follow-up Completion Rate ─────────────────────────────
       const todayFollowupsDone = calls.filter((c: any) => c.created_by === bd.id).length;

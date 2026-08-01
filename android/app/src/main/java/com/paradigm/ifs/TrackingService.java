@@ -282,6 +282,11 @@ public class TrackingService extends Service implements SensorEventListener {
         final double lat = loc.getLatitude();
         final double lng = loc.getLongitude();
         final float  acc = loc.getAccuracy();
+
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
+        sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
+        final String ts = sdf.format(new Date(loc.getTime()));
+
         if (supabaseAccessToken == null || supabaseAccessToken.trim().isEmpty()) {
             Log.w(TAG, "[RouteTracking] Missing user JWT access token — deferring upload until session is refreshed");
             boolean refreshed = attemptTokenRefresh();

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { format, getDaysInMonth, startOfMonth, endOfMonth, eachDayOfInterval, startOfDay, isAfter, isSameDay, isWithinInterval, endOfDay, startOfWeek, subDays, isBefore, addDays, startOfToday } from 'date-fns';
-import { Download, Lock, Loader2, Unlock } from 'lucide-react';
+import { Download, Lock, Loader2, Unlock, Mail, Phone } from 'lucide-react';
 import { api } from '../../services/api';
 import { processDailyEvents, calculateWorkingHours, isLateCheckIn, isEarlyCheckOut, evaluateAttendanceStatus, getStaffCategory, calculateDailyTravelKm, calculateDailyPathTravelKm } from '../../utils/attendanceCalculations';
 import { getFieldStaffStatus } from '../../utils/fieldStaffTracking';
@@ -282,6 +282,8 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
               employeeId: snap.employeeId,
               employeeName: targetUsers.find(u => u.id === snap.employeeId)?.name || snap.employeeId,
               role: targetUsers.find(u => u.id === snap.employeeId)?.role,
+              email: targetUsers.find(u => u.id === snap.employeeId)?.email || snap.summary?.email || (snap as any)?.email,
+              phone: targetUsers.find(u => u.id === snap.employeeId)?.phone || snap.summary?.phone || (snap as any)?.phone,
               statuses: dailyData.map((d: any) => d.status),
               dailyData,
               shiftCounts: summary.shiftCounts || {},
@@ -683,7 +685,18 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
                     <div className="text-[15px]">
                         <span className="font-normal text-gray-500">Billing Cycle:</span> <span className="font-medium text-gray-700 ml-1">{format(monthStart, 'do MMMM')} to {format(effectiveEnd, 'do MMMM')}</span>
                     </div>
+                    <div className="text-[15px] flex items-center gap-1.5">
+                        <Mail className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+                        <span className="font-normal text-gray-500">Email:</span>
+                        <span className="font-medium text-gray-700 ml-0.5">{employee.email || 'N/A'}</span>
+                    </div>
+                    <div className="text-[15px] flex items-center gap-1.5">
+                        <Phone className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+                        <span className="font-normal text-gray-500">Contact:</span>
+                        <span className="font-medium text-gray-700 ml-0.5">{employee.phone || 'N/A'}</span>
+                    </div>
                 </div>
+
                 <div className="mt-5 mb-6 flex flex-wrap xl:flex-nowrap gap-4">
                     {/* Key Time Metrics - Cards */}
                     <div className="flex flex-wrap md:flex-nowrap gap-3">
