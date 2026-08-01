@@ -2002,7 +2002,70 @@ export const api = {
     return formattedData.map(processUrlsForDisplay);
   },
 
+  /**
+   * Batch-checks activity for a list of users.
+   * Returns 'active' | 'inactive' | 'unknown' per userId.
+   * Only field roles (field_staff, site_manager, operation_manager, gate_only, unverified)
+   * receive a meaningful green/red status. Office/admin roles return 'unknown'.
+   */
+  getUsersActivityStatus: async (
+    users: { id: string; role: string }[]
+  ): Promise<Record<string, 'active' | 'inactive' | 'unknown'>> => {
+    // Roles that don't punch in/out — always 'unknown'
+    const NON_FIELD_ROLES = new Set(['admin', 'developer', 'management', 'super_admin', 'finance', 'hr', 'kiosk']);
+
+    const result: Record<string, 'active' | 'inactive' | 'unknown'> = {};
+    const fieldUserIds: string[] = [];
+
+    for (const u of users) {
+      if (NON_FIELD_ROLES.has(u.role)) {
+        result[u.id] = 'unknown';
+      } else {
+        fieldUserIds.push(u.id);
+      }
+    }
+
+    if (fieldUserIds.length === 0) return result;
+
+    const since14d = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    try {
+      // Query 1: any attendance event in last 14 days
+      const { data: events } = await supabase
+        .from('attendance_events')
+        .select('user_id')
+        .in('user_id', fieldUserIds)
+        .gte('timestamp', since14d);
+
+      const activeByPunch = new Set((events || []).map((e: any) => e.user_id));
+
+      // Query 2: any approved/pending leave overlapping the last 14 days
+      const { data: leaves } = await supabase
+        .from('leave_requests')
+        .select('user_id')
+        .in('user_id', fieldUserIds)
+        .in('status', ['approved', 'pending'])
+        .gte('end_date', since14d.split('T')[0])
+        .lte('start_date', todayStr);
+
+      const activeByLeave = new Set((leaves || []).map((l: any) => l.user_id));
+
+      for (const uid of fieldUserIds) {
+        result[uid] = (activeByPunch.has(uid) || activeByLeave.has(uid)) ? 'active' : 'inactive';
+      }
+    } catch {
+      // On error, default all to unknown (graceful degradation)
+      for (const uid of fieldUserIds) {
+        result[uid] = 'unknown';
+      }
+    }
+
+    return result;
+  },
+
   getUserHolidays: async (userId: string): Promise<UserHoliday[]> => {
+
     const { data, error } = await supabase
       .from('user_holidays')
       .select('*')

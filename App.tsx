@@ -54,6 +54,7 @@ import UpdateRequiredBanner, { isVersionOutdated } from './components/UpdateRequ
 import OfflineScreen from './components/ui/OfflineScreen';
 import { APP_VERSION } from './src/config/appVersion';
 import { Network } from '@capacitor/network';
+import ImpersonationBanner from './components/admin/ImpersonationBanner';
 
 
 
@@ -1987,6 +1988,7 @@ const App: React.FC = () => {
         }}
       />
       {/* ── Break Alert Modal: full-screen overlay with looping alarm ── */}
+      <ImpersonationBanner />
       <BreakAlertModal />
       {/* ── Exit Warning Modal: shown when user tries to close while clocked in ── */}
       <ExitWarningModal

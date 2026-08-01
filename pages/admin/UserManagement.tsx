@@ -3,7 +3,9 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import type { User, OrganizationGroup, Role } from '../../types';
-import { ShieldCheck, Plus, Edit, Trash2, Info, UserCheck, MapPin, Search, Filter, FilterX, FileSpreadsheet, X, RotateCw, Copy, Check, Clock, Ban } from 'lucide-react';
+import { ShieldCheck, Plus, Edit, Trash2, Info, UserCheck, MapPin, Search, Filter, FilterX, FileSpreadsheet, X, RotateCw, Copy, Check, Clock, Ban, LogIn } from 'lucide-react';
+import { useImpersonationStore } from '../../store/impersonationStore';
+import { useAuthStore } from '../../store/authStore';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import Toast from '../../components/ui/Toast';
@@ -55,6 +57,28 @@ const resolveUserLocation = (user: User, orgStructure: OrganizationGroup[]) => {
     return '';
 };
 
+// Activity status dot — green/red/grey depending on 14-day activity window
+const ActivityDot = React.memo(({ status }: { status: 'active' | 'inactive' | 'unknown' | undefined }) => {
+    if (!status || status === 'unknown') return null;
+    if (status === 'active') {
+        return (
+            <span
+                title="Active — punched in or on leave in the last 14 days"
+                className="relative inline-flex h-2.5 w-2.5 flex-shrink-0"
+            >
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+            </span>
+        );
+    }
+    return (
+        <span
+            title="Inactive — no activity or leave for 14+ days"
+            className="inline-flex h-2.5 w-2.5 rounded-full bg-red-500 flex-shrink-0"
+        />
+    );
+});
+
 interface UserActionProps {
     user: User;
     isSelected: boolean;
@@ -65,11 +89,13 @@ interface UserActionProps {
     handleResetPasscode: (u: User) => void;
     handleDelete: (u: User) => void;
     handleToggleBlock: (u: User) => void;
+    handleImpersonate: (u: User) => void;
+    activityStatus?: 'active' | 'inactive' | 'unknown';
 }
 
 // Memoized Row for performance
 const UserRow = React.memo(({ 
-    user, isSelected, onSelect, handleApprove, handleEdit, handleManageLocations, handleResetPasscode, handleDelete, handleToggleBlock, orgStructure 
+    user, isSelected, onSelect, handleApprove, handleEdit, handleManageLocations, handleResetPasscode, handleDelete, handleToggleBlock, handleImpersonate, activityStatus, orgStructure 
 }: UserActionProps & { orgStructure: OrganizationGroup[] }) => {
     return (
         <tr className={`hover:bg-slate-50 transition-colors border-b border-border ${isSelected ? 'bg-emerald-50/50' : ''}`}>
@@ -83,6 +109,7 @@ const UserRow = React.memo(({
             </td>
             <td data-label="Name" className="p-3 align-top">
                 <div className="flex items-center gap-2">
+                    <ActivityDot status={activityStatus} />
                     <div className="font-semibold text-primary-text truncate" title={user.name}>{user.name}</div>
                     {user.isBlocked && (
                         <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-red-100 text-red-800 uppercase tracking-wider">
@@ -157,6 +184,14 @@ const UserRow = React.memo(({
                         <RotateCw className="h-4 w-4" />
                     </button>
                     <button 
+                        onClick={() => handleImpersonate(user)} 
+                        aria-label={`Login as ${user.name}`} 
+                        title={`Login as ${user.name} (Impersonate)`} 
+                        className="p-1 text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50 rounded transition-all"
+                    >
+                        <LogIn className="h-4 w-4" />
+                    </button>
+                    <button 
                         onClick={() => handleToggleBlock(user)} 
                         aria-label={`${user.isBlocked ? 'Unblock' : 'Block'} ${user.name}`} 
                         title={`${user.isBlocked ? 'Unblock' : 'Block'} ${user.name}`} 
@@ -180,7 +215,7 @@ const UserRow = React.memo(({
 
 // Memoized Card for Mobile view performance
 const UserCard = React.memo(({ 
-    user, isSelected, onSelect, handleApprove, handleEdit, handleManageLocations, handleResetPasscode, handleDelete, handleToggleBlock, orgStructure 
+    user, isSelected, onSelect, handleApprove, handleEdit, handleManageLocations, handleResetPasscode, handleDelete, handleToggleBlock, handleImpersonate, activityStatus, orgStructure 
 }: UserActionProps & { orgStructure: OrganizationGroup[] }) => {
     return (
         <div className={`bg-card p-4 rounded-xl border shadow-sm flex flex-col gap-3 h-full transition-all ${isSelected ? 'border-emerald-500 bg-emerald-50/5 ring-1 ring-emerald-500' : 'border-border'}`}>
@@ -194,6 +229,7 @@ const UserCard = React.memo(({
                     </button>
                     <div>
                         <div className="flex items-center gap-2">
+                            <ActivityDot status={activityStatus} />
                             <h3 className="font-semibold text-primary-text">{user.name}</h3>
                             {user.isBlocked && (
                                 <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-red-100 text-red-800 uppercase tracking-wider">
@@ -246,6 +282,14 @@ const UserCard = React.memo(({
                 >
                     <RotateCw className="h-4 w-4" />
                 </button>
+                <button 
+                    onClick={() => handleImpersonate(user)} 
+                    className="p-2.5 rounded-xl !bg-indigo-500/10 !border !border-indigo-500/20 text-indigo-500 hover:text-indigo-400 hover:bg-indigo-500/20 transition-all active:scale-90 flex-shrink-0"
+                    aria-label="Login As"
+                    title="Login As (Impersonate)"
+                >
+                    <LogIn className="h-4 w-4" />
+                </button>
                 
                 {(user.role === 'unverified' || user.role === 'gate_only') && (
                     <button 
@@ -294,6 +338,19 @@ const UserManagement: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [fetchedAllFiltered, setFetchedAllFiltered] = useState(false);
+
+    // Impersonation state
+    const adminUser = useAuthStore(s => s.user);
+    const { startImpersonation } = useImpersonationStore();
+    const [impersonateTarget, setImpersonateTarget] = useState<User | null>(null);
+    const [impersonateReason, setImpersonateReason] = useState('');
+    const [isImpersonateModalOpen, setIsImpersonateModalOpen] = useState(false);
+    const [isStartingImpersonation, setIsStartingImpersonation] = useState(false);
+
+    // Activity status map: userId -> 'active' | 'inactive' | 'unknown'
+    const [activityMap, setActivityMap] = useState<Record<string, 'active' | 'inactive' | 'unknown'>>({});
+    // Activity filter for the filter bar: 'all' | 'active' | 'inactive'
+    const [activityFilter, setActivityFilter] = useState<'all' | 'active' | 'inactive'>('all');
 
     // Column filters as a single state object
     const [pendingFilters, setPendingFilters] = useState({
@@ -481,6 +538,14 @@ const UserManagement: React.FC = () => {
         fetchUsers();
     }, [fetchUsers]);
 
+    // Batch-fetch activity status after users load (2 queries, not per-user)
+    useEffect(() => {
+        if (users.length === 0) return;
+        api.getUsersActivityStatus(users.map(u => ({ id: u.id, role: u.role })))
+            .then(setActivityMap)
+            .catch(() => {}); // fail silently — dots just won't show
+    }, [users]);
+
     // Recovery Modal Countdown Logic
     useEffect(() => {
         let timer: NodeJS.Timeout;
@@ -527,6 +592,30 @@ const UserManagement: React.FC = () => {
         setCurrentUser(user);
         setIsResetModalOpen(true);
     }, []);
+
+    const handleImpersonate = useCallback((user: User) => {
+        setImpersonateTarget(user);
+        setImpersonateReason('');
+        setIsImpersonateModalOpen(true);
+    }, []);
+
+    const handleConfirmImpersonation = async () => {
+        if (!adminUser || !impersonateTarget) return;
+        if (!impersonateReason.trim()) {
+            setToast({ message: 'Please enter a reason for impersonation.', type: 'error' });
+            return;
+        }
+        setIsStartingImpersonation(true);
+        try {
+            await startImpersonation(adminUser, impersonateTarget, impersonateReason.trim());
+            setIsImpersonateModalOpen(false);
+            navigate('/');
+        } catch (err) {
+            setToast({ message: 'Failed to start impersonation. Please try again.', type: 'error' });
+        } finally {
+            setIsStartingImpersonation(false);
+        }
+    };
 
     const handleConfirmApproval = async (userId: string, newRole: string) => {
         setIsSaving(true);
@@ -856,10 +945,17 @@ const UserManagement: React.FC = () => {
             }
 
             if (activeFilters.employee && user.id !== activeFilters.employee) return false;
+
+            // Activity filter (client-side — uses already-loaded activityMap)
+            if (activityFilter !== 'all') {
+                const userActivity = activityMap[user.id];
+                if (activityFilter === 'active' && userActivity !== 'active') return false;
+                if (activityFilter === 'inactive' && userActivity !== 'inactive') return false;
+            }
             
             return true;
         }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-    }, [users, activeFilters, hasActiveFilters, orgStructure]);
+    }, [users, activeFilters, hasActiveFilters, orgStructure, activityFilter, activityMap]);
 
     if (isLoading) {
         return <LoadingScreen message="Loading page data..." />;
@@ -1128,6 +1224,25 @@ const UserManagement: React.FC = () => {
                         </div>
                     </div>
 
+                    {/* Activity Status Filter — client-side, instant, no Apply needed */}
+                    <div className="col-span-1">
+                        <label className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Activity</label>
+                        <div className="relative">
+                            <select
+                                className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg pl-3 pr-10 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-emerald-500 outline-none appearance-none shadow-sm transition-all"
+                                value={activityFilter}
+                                onChange={e => setActivityFilter(e.target.value as 'all' | 'active' | 'inactive')}
+                            >
+                                <option value="all">All Activity</option>
+                                <option value="active">🟢 Active (14d)</option>
+                                <option value="inactive">🔴 Inactive (14d+)</option>
+                            </select>
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                                <Filter className="h-3.5 w-3.5 opacity-50" />
+                            </div>
+                        </div>
+                    </div>
+
                     <div className="col-span-2 md:col-span-1 xl:col-span-1">
                         <button
                             onClick={handleApplyFilters}
@@ -1179,6 +1294,8 @@ const UserManagement: React.FC = () => {
                                     handleResetPasscode={handleResetPasscode}
                                     handleDelete={handleDelete}
                                     handleToggleBlock={handleToggleBlock}
+                                    handleImpersonate={handleImpersonate}
+                                    activityStatus={activityMap[user.id]}
                                 />
                             ))}
                             {filteredUsers.length === 0 && (
@@ -1244,6 +1361,8 @@ const UserManagement: React.FC = () => {
                                         handleResetPasscode={handleResetPasscode}
                                         handleDelete={handleDelete}
                                         handleToggleBlock={handleToggleBlock}
+                                        handleImpersonate={handleImpersonate}
+                                        activityStatus={activityMap[user.id]}
                                     />
                                 ))}
                             </tbody>
@@ -1325,6 +1444,68 @@ const UserManagement: React.FC = () => {
                         </div>
                         <span>Clear Selection</span>
                     </button>
+                </div>
+            )}
+            {/* ── Impersonation Confirmation Modal ── */}
+            {isImpersonateModalOpen && impersonateTarget && (
+                <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                    <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md p-6 flex flex-col gap-5 border border-slate-200 dark:border-slate-700">
+                        {/* Header */}
+                        <div className="flex items-start gap-3">
+                            <div className="p-2.5 rounded-xl bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 flex-shrink-0">
+                                <LogIn className="h-5 w-5" />
+                            </div>
+                            <div>
+                                <h2 className="font-black text-slate-900 dark:text-white text-base">Login As User</h2>
+                                <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+                                    You will view the app as <strong className="text-slate-700 dark:text-slate-200">{impersonateTarget.name}</strong>. This session will be fully audit-logged.
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Warning badge */}
+                        <div className="flex items-center gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl px-3 py-2.5">
+                            <span className="text-amber-600 text-lg">⚠️</span>
+                            <p className="text-xs text-amber-800 dark:text-amber-300 font-medium">
+                                All support actions will be recorded under <strong>{adminUser?.name}</strong>'s admin account.
+                            </p>
+                        </div>
+
+                        {/* Reason input */}
+                        <div className="flex flex-col gap-1.5">
+                            <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
+                                Reason for Impersonation <span className="text-red-500">*</span>
+                            </label>
+                            <textarea
+                                rows={3}
+                                value={impersonateReason}
+                                onChange={e => setImpersonateReason(e.target.value)}
+                                placeholder="e.g. User reported leave balance mismatch. Investigating on their behalf."
+                                className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-200 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                            />
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex items-center gap-3 pt-1">
+                            <button
+                                onClick={() => setIsImpersonateModalOpen(false)}
+                                className="flex-1 py-2.5 px-4 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleConfirmImpersonation}
+                                disabled={isStartingImpersonation || !impersonateReason.trim()}
+                                className="flex-1 py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold transition-all flex items-center justify-center gap-2"
+                            >
+                                {isStartingImpersonation ? (
+                                    <><span className="animate-spin border-2 border-white border-t-transparent rounded-full w-4 h-4" />Starting...</>
+                                ) : (
+                                    <><LogIn className="h-4 w-4" />Login As {impersonateTarget.name.split(' ')[0]}</>
+                                )}
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>
