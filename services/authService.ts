@@ -121,6 +121,8 @@ export const getAppUserProfile = async (supabaseUser: SupabaseUser): Promise<App
             salaryHold: data.salary_hold,
             salaryHoldReason: data.salary_hold_reason,
             salaryHoldDate: data.salary_hold_date,
+            joiningDate: data.joining_date,
+            createdAt: data.created_at,
             homeLatitude: data.home_latitude != null ? Number(data.home_latitude) : null,
             homeLongitude: data.home_longitude != null ? Number(data.home_longitude) : null,
             homeAddress: data.home_address,

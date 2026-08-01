@@ -160,6 +160,21 @@ const getLeaveValidationSchema = (threshold: number) => yup.object({
 // --- Main Dashboard ---
 const LeaveDashboard: React.FC = () => {
     const { user, isCheckedIn, dailyPunchCount } = useAuthStore();
+    const isProbation = useMemo(() => {
+        if (!user) return false;
+        const joinDateStr = user.joiningDate || user.createdAt;
+        if (!joinDateStr) return false;
+        
+        const joinDate = new Date(joinDateStr.split('T')[0].replace(/-/g, '/'));
+        const probationEnd = new Date(joinDate);
+        probationEnd.setMonth(probationEnd.getMonth() + 3);
+        
+        const now = new Date();
+        const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        
+        return todayMidnight < probationEnd;
+    }, [user]);
+
     const [balanceDataState, setBalance] = useState<LeaveBalance | null>(null);
     const [requests, setRequests] = useState<LeaveRequest[]>([]);
     const [compOffLogs, setCompOffLogs] = useState<CompOffLog[]>([]);
@@ -803,6 +818,7 @@ const LeaveDashboard: React.FC = () => {
             description: `Total: ${parseFloat(balanceDataState.earnedTotal.toFixed(1))}d. Available: ${parseFloat((balanceDataState.earnedTotal - balanceDataState.earnedUsed - (balanceDataState.earnedPending || 0)).toFixed(1))}d.${(balanceDataState.earnedPending || 0) > 0 ? ` (Pending: ${balanceDataState.earnedPending}d)` : ''}`,
             icon: Briefcase,
             isExpired: balanceDataState.expiryStates?.earned,
+            isHidden: isProbation,
             infoMessage: "Earned Leave can only be taken after it is accrued. Cannot be taken in advance."
         },
         { 
@@ -837,6 +853,7 @@ const LeaveDashboard: React.FC = () => {
                 value: `${parseFloat((balanceDataState.childCareTotal - balanceDataState.childCareUsed - (balanceDataState.childCarePending || 0)).toFixed(1))} / ${parseFloat(balanceDataState.childCareTotal.toFixed(1))}`,
                 description: `Available: ${parseFloat((balanceDataState.childCareTotal - balanceDataState.childCareUsed - (balanceDataState.childCarePending || 0)).toFixed(1))} days for child care.${(balanceDataState.childCarePending || 0) > 0 ? ` (Pending: ${balanceDataState.childCarePending}d)` : ''}`,
                 icon: Baby,
+                isHidden: isProbation,
                 infoMessage: "Subject to approval and relevant age limits for the child. Cannot be taken in advance."
             }] : [])
         ] : []),
@@ -846,7 +863,7 @@ const LeaveDashboard: React.FC = () => {
             description: `Max Capacity: 4d. Available: ${parseFloat((balanceDataState.compOffTotal - balanceDataState.compOffUsed - (balanceDataState.compOffPending || 0)).toFixed(1))}d.${(balanceDataState.compOffPending || 0) > 0 ? ` (Pending: ${balanceDataState.compOffPending}d)` : ''}`,
             icon: CalendarClock,
             isExpired: balanceDataState.expiryStates?.compOff,
-            isHidden: isTechnicalRole(user?.role),
+            isHidden: isTechnicalRole(user?.role) || isProbation,
             infoMessage: "As per policy, it's restricted for only 4 max limit, even if you have earned more."
         },
         {
@@ -902,10 +919,10 @@ const LeaveDashboard: React.FC = () => {
             isExpired: false
         }] : [])
     ].filter(card => !card.isExpired && !card.isHidden) : [
-        { title: 'Earned Leave', value: '0 / 0', icon: Briefcase, isLoading: true },
-        { title: 'Blue Leave', value: '0 / 0', icon: Plane, isLoading: true },
+        ...(!isProbation ? [{ title: 'Earned Leave', value: '0 / 0', icon: Briefcase, isLoading: true }] : []),
+        ...(!isFemale ? [{ title: 'Blue Leave', value: '0 / 0', icon: Plane, isLoading: true }] : []),
         ...(isFemale ? [{ title: 'Pink Leave', value: '0 / 0', icon: Heart, isLoading: true }] : []),
-        ...(isTechnicalRole(user?.role) ? [] : [{ title: 'Compensatory Off', value: '0 / 0', icon: CalendarClock, isLoading: true }]),
+        ...(isTechnicalRole(user?.role) || isProbation ? [] : [{ title: 'Compensatory Off', value: '0 / 0', icon: CalendarClock, isLoading: true }]),
         { title: 'Monthly Pay Days', value: '-', icon: Calculator, isLoading: true },
         { title: 'Monthly Travel KM', value: '-', icon: MapPin, isLoading: true }
     ];

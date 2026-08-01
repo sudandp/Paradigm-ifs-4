@@ -528,10 +528,17 @@ const ApplyLeave: React.FC = () => {
         return duration > sickLeaveCertificateThreshold;
     }, [watchLeaveType, watchStartDate, watchEndDate, sickLeaveCertificateThreshold]);
 
-    // Auto-fetch attendance logs for Correction type
+    // Auto-fetch attendance logs for Correction type and Loss of Pay today
     React.useEffect(() => {
         const fetchLogs = async () => {
-            if (!['Correction', 'Permission'].includes(watchLeaveType) || !watchStartDate || !user || isInitialLoading) return;
+            const isToday = watchStartDate ? isSameDay(new Date(watchStartDate.replace(/-/g, '/')), new Date()) : false;
+            const shouldFetch = ['Correction', 'Permission'].includes(watchLeaveType) || (watchLeaveType === 'Loss of Pay' && isToday);
+            
+            if (!shouldFetch) {
+                setDayEvents([]);
+                return;
+            }
+            if (!watchStartDate || !user || isInitialLoading) return;
             
             setIsFetchingLogs(true);
             try {
@@ -542,160 +549,165 @@ const ApplyLeave: React.FC = () => {
                 
                 if (events && events.length > 0) {
                     setDayEvents(events);
-                    const punchInEvents = events.filter(e => e.type === 'punch-in' || (e as any).type === 'punch_in');
-                    const punchOutEvents = events.filter(e => e.type === 'punch-out' || (e as any).type === 'punch_out');
-                    const breakInEvents = events.filter(e => e.type === 'break-in' || (e as any).type === 'break_in');
-                    const breakOutEvents = events.filter(e => e.type === 'break-out' || (e as any).type === 'break_out');
-                    const siteOtInEvents = events.filter(e => e.type === 'site-ot-in' || (e as any).type === 'site_ot_in');
-                    const siteOtOutEvents = events.filter(e => e.type === 'site-ot-out' || (e as any).type === 'site_ot_out');
-                    const siteInEvents = events.filter(e => e.type === 'site-in' || (e as any).type === 'site_in');
-                    const siteOutEvents = events.filter(e => e.type === 'site-out' || (e as any).type === 'site_out');
+                    
+                    if (['Correction', 'Permission'].includes(watchLeaveType)) {
+                        const punchInEvents = events.filter(e => e.type === 'punch-in' || (e as any).type === 'punch_in');
+                        const punchOutEvents = events.filter(e => e.type === 'punch-out' || (e as any).type === 'punch_out');
+                        const breakInEvents = events.filter(e => e.type === 'break-in' || (e as any).type === 'break_in');
+                        const breakOutEvents = events.filter(e => e.type === 'break-out' || (e as any).type === 'break_out');
+                        const siteOtInEvents = events.filter(e => e.type === 'site-ot-in' || (e as any).type === 'site_ot_in');
+                        const siteOtOutEvents = events.filter(e => e.type === 'site-ot-out' || (e as any).type === 'site_ot_out');
+                        const siteInEvents = events.filter(e => e.type === 'site-in' || (e as any).type === 'site_in');
+                        const siteOutEvents = events.filter(e => e.type === 'site-out' || (e as any).type === 'site_out');
 
-                    // Punch In: Earliest
-                    if (punchInEvents.length > 0) {
-                        const earliestIn = punchInEvents.reduce((prev, curr) => 
-                            new Date(curr.timestamp) < new Date(prev.timestamp) ? curr : prev
-                        );
-                        const formattedIn = format(new Date(earliestIn.timestamp), 'HH:mm');
-                        if (watchLeaveType !== 'Permission') {
-                            setValue('punchIn', formattedIn, { shouldValidate: true });
-                        } else {
-                            setValue('punchIn', '', { shouldValidate: true });
-                        }
-                        setBasePunchInTime(formattedIn);
-                        setHasPunchInLog(true);
-                        if (earliestIn.locationName) setValue('locationName', earliestIn.locationName);
-                    } else {
-                        setHasPunchInLog(false);
-                    }
-
-                    // Punch Out: Latest
-                    if (punchOutEvents.length > 0) {
-                        const latestOut = punchOutEvents.reduce((prev, curr) => 
-                            new Date(curr.timestamp) > new Date(prev.timestamp) ? curr : prev
-                        );
-                        const formattedOut = format(new Date(latestOut.timestamp), 'HH:mm');
-                        if (watchLeaveType !== 'Permission') {
-                            setValue('punchOut', formattedOut, { shouldValidate: true });
-                        } else {
-                            setValue('punchOut', '', { shouldValidate: true });
-                        }
-                        setBasePunchOutTime(formattedOut);
-                        // If no punch-in location, try punch-out location
-                        if (!punchInEvents[0]?.locationName && latestOut.locationName) {
-                            setValue('locationName', latestOut.locationName);
-                        }
-                    } else {
-                        const isToday = isSameDay(new Date(watchStartDate.replace(/-/g, '/')), new Date());
-                        if (isToday) {
-                            const nowTime = format(new Date(), 'HH:mm');
+                        // Punch In: Earliest
+                        if (punchInEvents.length > 0) {
+                            const earliestIn = punchInEvents.reduce((prev, curr) => 
+                                new Date(curr.timestamp) < new Date(prev.timestamp) ? curr : prev
+                            );
+                            const formattedIn = format(new Date(earliestIn.timestamp), 'HH:mm');
                             if (watchLeaveType !== 'Permission') {
-                                setValue('punchOut', nowTime, { shouldValidate: true });
+                                setValue('punchIn', formattedIn, { shouldValidate: true });
+                            } else {
+                                setValue('punchIn', '', { shouldValidate: true });
+                            }
+                            setBasePunchInTime(formattedIn);
+                            setHasPunchInLog(true);
+                            if (earliestIn.locationName) setValue('locationName', earliestIn.locationName);
+                        } else {
+                            setHasPunchInLog(false);
+                        }
+
+                        // Punch Out: Latest
+                        if (punchOutEvents.length > 0) {
+                            const latestOut = punchOutEvents.reduce((prev, curr) => 
+                                new Date(curr.timestamp) > new Date(prev.timestamp) ? curr : prev
+                            );
+                            const formattedOut = format(new Date(latestOut.timestamp), 'HH:mm');
+                            if (watchLeaveType !== 'Permission') {
+                                setValue('punchOut', formattedOut, { shouldValidate: true });
                             } else {
                                 setValue('punchOut', '', { shouldValidate: true });
                             }
-                            setBasePunchOutTime(nowTime);
-                        }
-                    }
-
-                    // Breaks: Earliest Break-in and Latest Break-out
-                    if (breakInEvents.length > 0 || breakOutEvents.length > 0) {
-                        setValue('includeBreak', true);
-                        if (breakInEvents.length > 0) {
-                            const earliestBIn = breakInEvents.reduce((prev, curr) => 
-                                new Date(curr.timestamp) < new Date(prev.timestamp) ? curr : prev
-                            );
-                            setValue('breakIn', format(new Date(earliestBIn.timestamp), 'HH:mm'), { shouldValidate: true });
-                        }
-
-                        if (breakOutEvents.length > 0) {
-                            const latestBOut = breakOutEvents.reduce((prev, curr) => 
-                                new Date(curr.timestamp) > new Date(prev.timestamp) ? curr : prev
-                            );
-                            setValue('breakOut', format(new Date(latestBOut.timestamp), 'HH:mm'), { shouldValidate: true });
-                        }
-                    }
-
-                    // Site OT: Earliest OT-in and Latest OT-out
-                    if (siteOtInEvents.length > 0 || siteOtOutEvents.length > 0) {
-                        setValue('includeSiteOt', true);
-                        if (siteOtInEvents.length > 0) {
-                            const earliestOTIn = siteOtInEvents.reduce((prev, curr) => 
-                                new Date(curr.timestamp) < new Date(prev.timestamp) ? curr : prev
-                            );
-                            setValue('siteOtIn', format(new Date(earliestOTIn.timestamp), 'HH:mm'), { shouldValidate: true });
+                            setBasePunchOutTime(formattedOut);
+                            // If no punch-in location, try punch-out location
+                            if (!punchInEvents[0]?.locationName && latestOut.locationName) {
+                                setValue('locationName', latestOut.locationName);
+                            }
+                        } else {
+                            const isToday = isSameDay(new Date(watchStartDate.replace(/-/g, '/')), new Date());
+                            if (isToday) {
+                                const nowTime = format(new Date(), 'HH:mm');
+                                if (watchLeaveType !== 'Permission') {
+                                    setValue('punchOut', nowTime, { shouldValidate: true });
+                                } else {
+                                    setValue('punchOut', '', { shouldValidate: true });
+                                }
+                                setBasePunchOutTime(nowTime);
+                            }
                         }
 
-                        if (siteOtOutEvents.length > 0) {
-                            const latestOTOut = siteOtOutEvents.reduce((prev, curr) => 
-                                new Date(curr.timestamp) > new Date(prev.timestamp) ? curr : prev
-                            );
-                            setValue('siteOtOut', format(new Date(latestOTOut.timestamp), 'HH:mm'), { shouldValidate: true });
-                        }
-                    }
+                        // Breaks: Earliest Break-in and Latest Break-out
+                        if (breakInEvents.length > 0 || breakOutEvents.length > 0) {
+                            setValue('includeBreak', true);
+                            if (breakInEvents.length > 0) {
+                                const earliestBIn = breakInEvents.reduce((prev, curr) => 
+                                    new Date(curr.timestamp) < new Date(prev.timestamp) ? curr : prev
+                                );
+                                setValue('breakIn', format(new Date(earliestBIn.timestamp), 'HH:mm'), { shouldValidate: true });
+                            }
 
-                    // Site In/Out: Map into pairs
-                    if (siteInEvents.length > 0 || siteOutEvents.length > 0) {
-                        setValue('includeSite', true);
-                        const visits = [];
-                        // Sort events by timestamp
-                        const sortedIn = [...siteInEvents].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-                        const sortedOut = [...siteOutEvents].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-                        
-                        const maxLen = Math.max(sortedIn.length, sortedOut.length, 1);
-                        for (let i = 0; i < maxLen; i++) {
-                            visits.push({
-                                in: sortedIn[i] ? format(new Date(sortedIn[i].timestamp), 'HH:mm') : '10:00',
-                                out: sortedOut[i] ? format(new Date(sortedOut[i].timestamp), 'HH:mm') : '17:00'
-                            });
+                            if (breakOutEvents.length > 0) {
+                                const latestBOut = breakOutEvents.reduce((prev, curr) => 
+                                    new Date(curr.timestamp) > new Date(prev.timestamp) ? curr : prev
+                                );
+                                setValue('breakOut', format(new Date(latestBOut.timestamp), 'HH:mm'), { shouldValidate: true });
+                            }
                         }
-                        setValue('siteVisits', visits, { shouldValidate: true });
+
+                        // Site OT: Earliest OT-in and Latest OT-out
+                        if (siteOtInEvents.length > 0 || siteOtOutEvents.length > 0) {
+                            setValue('includeSiteOt', true);
+                            if (siteOtInEvents.length > 0) {
+                                const earliestOTIn = siteOtInEvents.reduce((prev, curr) => 
+                                    new Date(curr.timestamp) < new Date(prev.timestamp) ? curr : prev
+                                );
+                                setValue('siteOtIn', format(new Date(earliestOTIn.timestamp), 'HH:mm'), { shouldValidate: true });
+                            }
+
+                            if (siteOtOutEvents.length > 0) {
+                                const latestOTOut = siteOtOutEvents.reduce((prev, curr) => 
+                                    new Date(curr.timestamp) > new Date(prev.timestamp) ? curr : prev
+                                );
+                                setValue('siteOtOut', format(new Date(latestOTOut.timestamp), 'HH:mm'), { shouldValidate: true });
+                            }
+                        }
+
+                        // Site In/Out: Map into pairs
+                        if (siteInEvents.length > 0 || siteOutEvents.length > 0) {
+                            setValue('includeSite', true);
+                            const visits = [];
+                            // Sort events by timestamp
+                            const sortedIn = [...siteInEvents].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                            const sortedOut = [...siteOutEvents].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                            
+                            const maxLen = Math.max(sortedIn.length, sortedOut.length, 1);
+                            for (let i = 0; i < maxLen; i++) {
+                                visits.push({
+                                    in: sortedIn[i] ? format(new Date(sortedIn[i].timestamp), 'HH:mm') : '10:00',
+                                    out: sortedOut[i] ? format(new Date(sortedOut[i].timestamp), 'HH:mm') : '17:00'
+                                });
+                            }
+                            setValue('siteVisits', visits, { shouldValidate: true });
+                        }
                     }
                 } else {
                     setDayEvents([]);
-                    // FALLBACK: If no events found, pre-fill with configured office hours from rules
-                    if (rules?.fixedOfficeHours) {
-                        if (watchLeaveType !== 'Permission') {
-                            setValue('punchIn', rules.fixedOfficeHours.checkInTime, { shouldValidate: true });
-                        } else {
-                            setValue('punchIn', '', { shouldValidate: true });
-                        }
-                        const isToday = isSameDay(new Date(watchStartDate.replace(/-/g, '/')), new Date());
-                        if (isToday) {
-                            const nowTime = format(new Date(), 'HH:mm');
+                    if (['Correction', 'Permission'].includes(watchLeaveType)) {
+                        // FALLBACK: If no events found, pre-fill with configured office hours from rules
+                        if (rules?.fixedOfficeHours) {
                             if (watchLeaveType !== 'Permission') {
-                                setValue('punchOut', nowTime, { shouldValidate: true });
+                                setValue('punchIn', rules.fixedOfficeHours.checkInTime, { shouldValidate: true });
                             } else {
-                                setValue('punchOut', '', { shouldValidate: true });
+                                setValue('punchIn', '', { shouldValidate: true });
                             }
-                            setBasePunchOutTime(nowTime);
-                        } else {
-                            if (watchLeaveType !== 'Permission') {
-                                setValue('punchOut', rules.fixedOfficeHours.checkOutTime, { shouldValidate: true });
+                            const isToday = isSameDay(new Date(watchStartDate.replace(/-/g, '/')), new Date());
+                            if (isToday) {
+                                const nowTime = format(new Date(), 'HH:mm');
+                                if (watchLeaveType !== 'Permission') {
+                                    setValue('punchOut', nowTime, { shouldValidate: true });
+                                } else {
+                                    setValue('punchOut', '', { shouldValidate: true });
+                                }
+                                setBasePunchOutTime(nowTime);
                             } else {
-                                setValue('punchOut', '', { shouldValidate: true });
+                                if (watchLeaveType !== 'Permission') {
+                                    setValue('punchOut', rules.fixedOfficeHours.checkOutTime, { shouldValidate: true });
+                                } else {
+                                    setValue('punchOut', '', { shouldValidate: true });
+                                }
+                                setBasePunchOutTime(rules.fixedOfficeHours.checkOutTime);
                             }
-                            setBasePunchOutTime(rules.fixedOfficeHours.checkOutTime);
-                        }
-                        
-                        // Fill Breaks if configured
-                        if (rules.fixedOfficeHours.breakInTime) {
-                            setValue('includeBreak', true);
-                            setValue('breakIn', rules.fixedOfficeHours.breakInTime, { shouldValidate: true });
-                        }
-                        if (rules.fixedOfficeHours.breakOutTime) {
-                            setValue('includeBreak', true);
-                            setValue('breakOut', rules.fixedOfficeHours.breakOutTime, { shouldValidate: true });
-                        }
+                            
+                            // Fill Breaks if configured
+                            if (rules.fixedOfficeHours.breakInTime) {
+                                setValue('includeBreak', true);
+                                setValue('breakIn', rules.fixedOfficeHours.breakInTime, { shouldValidate: true });
+                            }
+                            if (rules.fixedOfficeHours.breakOutTime) {
+                                setValue('includeBreak', true);
+                                setValue('breakOut', rules.fixedOfficeHours.breakOutTime, { shouldValidate: true });
+                            }
 
-                        // Fill OT if configured
-                        if (rules.fixedOfficeHours.siteOtInTime) {
-                            setValue('includeSiteOt', true);
-                            setValue('siteOtIn', rules.fixedOfficeHours.siteOtInTime, { shouldValidate: true });
-                        }
-                        if (rules.fixedOfficeHours.siteOtOutTime) {
-                            setValue('includeSiteOt', true);
-                            setValue('siteOtOut', rules.fixedOfficeHours.siteOtOutTime, { shouldValidate: true });
+                            // Fill OT if configured
+                            if (rules.fixedOfficeHours.siteOtInTime) {
+                                setValue('includeSiteOt', true);
+                                setValue('siteOtIn', rules.fixedOfficeHours.siteOtInTime, { shouldValidate: true });
+                            }
+                            if (rules.fixedOfficeHours.siteOtOutTime) {
+                                setValue('includeSiteOt', true);
+                                setValue('siteOtOut', rules.fixedOfficeHours.siteOtOutTime, { shouldValidate: true });
+                            }
                         }
                     }
                 }
@@ -709,7 +721,7 @@ const ApplyLeave: React.FC = () => {
         };
 
         fetchLogs();
-    }, [watchStartDate, watchLeaveType, user, setValue, isInitialLoading]);
+    }, [watchStartDate, watchLeaveType, user, setValue, isInitialLoading, rules]);
 
     React.useEffect(() => {
         const fetchRequest = async () => {
@@ -874,10 +886,10 @@ const ApplyLeave: React.FC = () => {
             const duration = formData.dayOption === 'half' ? 0.5 : differenceInCalendarDays(endDateObj, startDateObj) + 1;
 
             // Strict time check: 
-            // 1. Sick Leave, Comp Off, Correction, Permission, Pink Leave, and WFH can be applied for any date (past/present/future).
+            // 1. Sick Leave, Comp Off, Correction, Permission, Pink Leave, WFH, and Loss of Pay can be applied for any date (past/present/future).
             // 2. Earned Leave can be applied for the same day IF applied before 9:00 AM. Otherwise, at least 1 day in advance.
             // 3. All other leaves must be applied at least one day in advance (no past or present days).
-            if (!['Correction', 'Permission', 'Sick', 'Comp Off', 'Pink Leave', 'WFH'].includes(formData.leaveType)) {
+            if (!['Correction', 'Permission', 'Sick', 'Comp Off', 'Pink Leave', 'WFH', 'Loss of Pay'].includes(formData.leaveType)) {
                 const now = new Date();
                 const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
@@ -1443,14 +1455,14 @@ const ApplyLeave: React.FC = () => {
                                             className={isMobile ? 'pro-select pro-select-arrow' : ''}
                                         >
                                             {!isProbation && <option value="Earned">Earned</option>}
-                                            <option value="Sick">Sick</option>
+                                            {!isProbation && <option value="Sick">Sick</option>}
                                             <option value={isFemale ? "Pink Leave" : "Floating"}>{isFemale ? "Pink Leave" : "Blue Leave"}</option>
                                             {user?.role !== 'technical_reliever' && !isFemale && <option value="Blue Leave Work">Work on Blue Leave</option>}
                                             {user?.role !== 'technical_reliever' && <option value="Comp Off">Comp Off</option>}
                                             <option value="Loss of Pay">Loss of Pay</option>
                                             {(!isProbation && isFemale && (userChildren.length > 0 || (fullBalance && fullBalance.childCareTotal > 0))) && <option value="Child Care">Child Care</option>}
                                             {/* Maternity Leave is temporarily hidden for all users */}
-                                            {user?.role !== 'technical_reliever' && <option value="WFH">Work From Home (WFH)</option>}
+                                            {!isProbation && userCategory === 'office' && <option value="WFH">Work From Home (WFH)</option>}
                                             <option value="Correction">Request for Correction (RC)</option>
                                             {(rules?.enablePermission || rules?.enablePermission === undefined) && (
                                                 <option value="Permission">Request for Permission (RP)</option>
@@ -1510,6 +1522,53 @@ const ApplyLeave: React.FC = () => {
                                     </div>
                                 </div>
                             )}
+
+                            {watchLeaveType === 'Loss of Pay' && (() => {
+                                const isToday = watchStartDate ? isSameDay(new Date(watchStartDate.replace(/-/g, '/')), new Date()) : false;
+                                if (!isToday || dayEvents.length === 0) return null;
+
+                                const hoursData = calculateWorkingHours(dayEvents);
+                                const workedHoursVal = hoursData.workingHours;
+                                const formattedWorkedVal = `${Math.floor(workedHoursVal)}h ${Math.round((workedHoursVal % 1) * 60)}m`;
+
+                                // Check punch out status
+                                const punchOutEvents = dayEvents.filter(e => e.type === 'punch-out' || (e as any).type === 'punch_out');
+                                const hasPunchedOut = punchOutEvents.length > 0;
+                                const dayOptionVal = watch('dayOption');
+
+                                return (
+                                    <div className="p-4 rounded-xl border bg-amber-500/5 border-amber-500/20 text-amber-600 space-y-2">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <Clock className="w-5 h-5 text-amber-500" />
+                                            <h4 className="font-bold text-sm">Loss of Pay Today Guidelines</h4>
+                                        </div>
+                                        <div className="text-xs opacity-95 leading-relaxed space-y-1.5">
+                                            <p>
+                                                • You have worked <strong>{formattedWorkedVal}</strong> today.
+                                            </p>
+                                            {!hasPunchedOut && (
+                                                <p className="text-rose-500 font-semibold">
+                                                    ⚠️ You have not punched out yet today. Please punch out first to ensure your worked hours are accurately counted.
+                                                </p>
+                                            )}
+                                            {workedHoursVal >= 4 ? (
+                                                <p className="text-emerald-600">
+                                                    ✓ You have worked {formattedWorkedVal} (4 hours or more), so you can apply for a <strong>Half Day</strong> leave.
+                                                </p>
+                                            ) : (
+                                                <p className="text-rose-500 font-semibold">
+                                                    ⚠️ You have worked {formattedWorkedVal} (less than 4 hours). You need to apply for a <strong>Full Day</strong> leave.
+                                                </p>
+                                            )}
+                                            {workedHoursVal < 4 && dayOptionVal === 'half' && (
+                                                <p className="text-rose-600 font-bold bg-rose-500/10 p-2 rounded-lg">
+                                                    Warning: You have selected "Half Day", but your worked hours today are less than 4 hours. You should apply for a Full Day instead.
+                                                </p>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })()}
 
                             {watchLeaveType === 'Permission' && permissionUsage.enabled && (() => {
                                 const usedH = Math.floor(permissionUsage.usedMins / 60);

@@ -8,13 +8,13 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 async function main() {
     const { data: users, error } = await supabase
         .from('users')
-        .select('id, name, email, role_id')
-        .ilike('name', '%Chandana%');
+        .select('*')
+        .ilike('name', '%Chethana%');
         
     if (error) {
         console.error("Error fetching users:", error);
     } else {
-        console.log("Found users matching Chandana:");
+        console.log("Found users matching Chethana:");
         console.log(JSON.stringify(users, null, 2));
     }
 }
