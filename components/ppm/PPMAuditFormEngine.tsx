@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Check, HelpCircle, Plus, Layers, ArrowLeft } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Check, HelpCircle, Plus, Minus, Pencil, Layers, ArrowLeft } from 'lucide-react';
 import { 
   PPMCategoryTemplate, 
   PPMSectionTemplate, 
@@ -37,6 +37,11 @@ export const PPMAuditFormEngine: React.FC<PPMAuditFormEngineProps> = ({
 }) => {
   const [activeSectionKey, setActiveSectionKey] = useState<string>(template.sections[0]?.id || '');
   
+  // ─── Stage Duplication State ───────────────────────────────────────────────
+  const [duplicatedStages, setDuplicatedStages] = useState<Record<string, { id: string; label: string }[]>>({});
+  const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
+  const [editingTitleValue, setEditingTitleValue] = useState('');
+  const titleInputRef = useRef<HTMLInputElement>(null);
   // Dynamic sub-equipment instances: { [sectionId]: [{ id: string, name: string }] }
   const [instancesMap, setInstancesMap] = useState<Record<string, { id: string; name: string }[]>>(() => {
     const initial: Record<string, { id: string; name: string }[]> = {};
@@ -66,7 +71,54 @@ export const PPMAuditFormEngine: React.FC<PPMAuditFormEngineProps> = ({
     } else if (customStages.length > 0) {
       setActiveSectionKey(customStages[0].key);
     }
+    setDuplicatedStages({});
+    setEditingTitleId(null);
   }, [template]);
+
+  const handleDuplicateStage = (originalKey: string, originalTitle: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const existing = duplicatedStages[originalKey] || [];
+    const newId = `dup_${originalKey}_${Date.now()}`;
+    const newLabel = `${originalTitle} (Copy ${existing.length + 1})`;
+    const updated = { ...duplicatedStages, [originalKey]: [...existing, { id: newId, label: newLabel }] };
+    setDuplicatedStages(updated);
+    setActiveSectionKey(newId);
+    setEditingTitleId(newId);
+    setEditingTitleValue(newLabel);
+    setTimeout(() => titleInputRef.current?.focus(), 50);
+  };
+
+  const handleRemoveDuplicate = (originalKey: string, dupId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const existing = duplicatedStages[originalKey] || [];
+    const updated = { ...duplicatedStages, [originalKey]: existing.filter(d => d.id !== dupId) };
+    setDuplicatedStages(updated);
+    if (activeSectionKey === dupId) setActiveSectionKey(originalKey);
+    if (editingTitleId === dupId) setEditingTitleId(null);
+  };
+
+  const handleTitleChange = (newVal: string, originalKey: string, dupId: string) => {
+    setEditingTitleValue(newVal);
+    setDuplicatedStages(prev => ({
+      ...prev,
+      [originalKey]: (prev[originalKey] || []).map(d => d.id === dupId ? { ...d, label: newVal } : d)
+    }));
+  };
+
+  const handleTitleBlur = () => {
+    setDuplicatedStages(prev => {
+      const updated = { ...prev };
+      Object.keys(updated).forEach(origKey => {
+        updated[origKey] = updated[origKey].map(d =>
+          d.id === editingTitleId && !d.label.trim()
+            ? { ...d, label: 'Untitled Stage' }
+            : d
+        );
+      });
+      return updated;
+    });
+    setEditingTitleId(null);
+  };
 
   const addInstance = (sectionId: string, subName: string) => {
     setInstancesMap(prev => {
@@ -116,37 +168,76 @@ export const PPMAuditFormEngine: React.FC<PPMAuditFormEngineProps> = ({
     return { completed, total, isDone: total > 0 && completed === total };
   };
 
-  // Build flattened stage list
-  const allStages = [
-    ...template.sections.map(s => {
-      let count = 0;
-      if (s.repeatable && s.subEquipmentType) {
-        count = s.subEquipmentType.defaultCheckPoints.reduce((acc, cp) => acc + cp.criteria.length, 0);
-      } else {
-        count = s.checkPoints.reduce((acc, cp) => acc + cp.criteria.length, 0);
-      }
-      return {
-        key: s.id,
-        title: s.title,
-        type: 'template' as const,
+  // Build flattened stage list with interleaved duplicates
+  const allStages: Array<{
+    key: string;
+    title: string;
+    type: 'template' | 'template_dup' | 'custom' | 'custom_dup';
+    section?: typeof template.sections[0];
+    content?: React.ReactNode;
+    subtitle: string;
+    isDone: boolean;
+    originalKey?: string;
+    isDuplicate?: boolean;
+  }> = [];
+
+  template.sections.forEach(s => {
+    let count = 0;
+    if (s.repeatable && s.subEquipmentType) {
+      count = s.subEquipmentType.defaultCheckPoints.reduce((acc, cp) => acc + cp.criteria.length, 0);
+    } else {
+      count = s.checkPoints.reduce((acc, cp) => acc + cp.criteria.length, 0);
+    }
+    allStages.push({
+      key: s.id,
+      title: s.title,
+      type: 'template',
+      section: s,
+      subtitle: `${count} checklist points`,
+      isDone: getSectionProgress(s.id).isDone
+    });
+    (duplicatedStages[s.id] || []).forEach(dup => {
+      allStages.push({
+        key: dup.id,
+        title: dup.label,
+        type: 'template_dup',
         section: s,
-        subtitle: `${count} checklist points`,
-        isDone: getSectionProgress(s.id).isDone
-      };
-    }),
-    ...customStages.map(cs => ({
+        subtitle: `${count} checklist points (copy)`,
+        isDone: false,
+        originalKey: s.id,
+        isDuplicate: true
+      });
+    });
+  });
+
+  customStages.forEach(cs => {
+    allStages.push({
       key: cs.key,
       title: cs.title,
-      type: 'custom' as const,
+      type: 'custom',
       content: cs.content,
       subtitle: cs.subtitle || 'Custom stage',
       isDone: cs.isDone || false
-    }))
-  ];
+    });
+    (duplicatedStages[cs.key] || []).forEach(dup => {
+      allStages.push({
+        key: dup.id,
+        title: dup.label,
+        type: 'custom_dup',
+        content: cs.content,
+        subtitle: `${cs.subtitle || 'Custom stage'} (copy)`,
+        isDone: false,
+        originalKey: cs.key,
+        isDuplicate: true
+      });
+    });
+  });
 
   const activeStageIndex = allStages.findIndex(s => s.key === activeSectionKey);
   const activeStage = allStages[activeStageIndex];
-  const activeSection = activeStage?.type === 'template' ? activeStage.section : null;
+  const activeSection = (activeStage?.type === 'template' || activeStage?.type === 'template_dup')
+    ? activeStage.section ?? null
+    : null;
 
   const handleNextSection = () => {
     if (activeStageIndex < allStages.length - 1) {
@@ -241,38 +332,67 @@ export const PPMAuditFormEngine: React.FC<PPMAuditFormEngineProps> = ({
             {/* Vertical connecting line */}
             <div className="absolute left-[15px] top-4 bottom-8 w-0.5 bg-slate-200 dark:bg-slate-700 hidden md:block" />
 
-            <div className="space-y-6">
+            <div className="space-y-4">
               {allStages.map((stage, idx) => {
                 const isActive = stage.key === activeSectionKey;
                 const isDone = stage.isDone;
 
                 return (
-                  <button
-                    key={stage.key}
-                    onClick={() => setActiveSectionKey(stage.key)}
-                    className="flex items-start gap-4 w-full text-left relative z-10 group min-h-[4rem]"
-                  >
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 border-2 transition-colors ${
-                      isActive 
-                        ? 'bg-emerald-600 border-emerald-600 text-white' 
-                        : isDone 
-                          ? 'bg-emerald-50 border-emerald-500 text-emerald-600 dark:bg-emerald-900/40 dark:border-emerald-500'
-                          : 'bg-white border-slate-300 text-slate-500 dark:bg-slate-800 dark:border-slate-600'
-                    }`}>
-                      {isDone && !isActive ? <Check className="w-4 h-4" /> : <span className="text-sm font-bold">{idx + 1}</span>}
-                    </div>
-
-                    <div className="flex flex-col pt-1">
-                      <span className={`text-sm font-bold transition-colors ${
-                        isActive ? 'text-slate-900 dark:text-white' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                  <div key={stage.key} className="flex items-start gap-2 relative z-10 group">
+                    <button
+                      onClick={() => setActiveSectionKey(stage.key)}
+                      className="flex items-start gap-3 flex-1 text-left min-w-0"
+                    >
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 border-2 transition-colors mt-0.5 ${
+                        isActive 
+                          ? 'bg-emerald-600 border-emerald-600 text-white' 
+                          : isDone 
+                            ? 'bg-emerald-50 border-emerald-500 text-emerald-600 dark:bg-emerald-900/40 dark:border-emerald-500'
+                            : stage.isDuplicate
+                              ? 'bg-slate-100 border-dashed border-slate-400 text-slate-400 dark:bg-slate-800 dark:border-slate-600'
+                              : 'bg-white border-slate-300 text-slate-500 dark:bg-slate-800 dark:border-slate-600'
                       }`}>
-                        {stage.title}
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-medium">
-                        {stage.subtitle}
-                      </span>
+                        {isDone && !isActive ? <Check className="w-3.5 h-3.5" /> : <span className="text-xs font-bold">{idx + 1}</span>}
+                      </div>
+
+                      <div className="flex flex-col pt-0.5 min-w-0">
+                        <span className={`text-sm font-bold transition-colors truncate ${
+                          isActive ? 'text-slate-900 dark:text-white' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                        }`}>
+                          {stage.title}
+                          {stage.isDuplicate && (
+                            <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wider text-emerald-500 dark:text-emerald-400">copy</span>
+                          )}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-medium">
+                          {stage.subtitle}
+                        </span>
+                      </div>
+                    </button>
+
+                    {/* Action buttons (+ for original, - for duplicate) */}
+                    <div className="flex flex-col items-center gap-1 shrink-0 pt-0.5">
+                      {!stage.isDuplicate && (
+                        <button
+                          onClick={e => handleDuplicateStage(stage.key, stage.title, e)}
+                          className="w-5 h-5 rounded-full bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:hover:bg-emerald-800/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center transition-colors"
+                          title="Duplicate this stage"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      )}
+
+                      {stage.isDuplicate && (
+                        <button
+                          onClick={e => handleRemoveDuplicate(stage.originalKey!, stage.key, e)}
+                          className="w-5 h-5 rounded-full bg-rose-100 hover:bg-rose-200 dark:bg-rose-900/40 dark:hover:bg-rose-800/60 text-rose-500 dark:text-rose-400 flex items-center justify-center transition-colors"
+                          title="Remove duplicate stage"
+                        >
+                          <Minus className="w-3 h-3" />
+                        </button>
+                      )}
                     </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -283,16 +403,45 @@ export const PPMAuditFormEngine: React.FC<PPMAuditFormEngineProps> = ({
         <div className="flex-1 flex flex-col bg-white dark:bg-slate-900">
           {activeStage ? (
             <div className="p-6 md:p-8 flex-1 flex flex-col">
-              <div className="mb-6 border-b border-slate-100 dark:border-slate-800 pb-4">
-                <h2 className="text-xl font-extrabold text-slate-800 dark:text-slate-100 uppercase tracking-wide">
-                  STAGE {activeStageIndex + 1}: {activeStage.title}
-                </h2>
+              {/* Header Title with inline edit for duplicates */}
+              <div className="mb-6 border-b border-slate-100 dark:border-slate-800 pb-4 flex items-center gap-3">
+                {activeStage.isDuplicate && editingTitleId === activeStage.key ? (
+                  <input
+                    ref={titleInputRef}
+                    type="text"
+                    value={editingTitleValue}
+                    onChange={e => handleTitleChange(e.target.value, activeStage.originalKey!, activeStage.key)}
+                    onBlur={handleTitleBlur}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' || e.key === 'Escape') (e.target as HTMLInputElement).blur();
+                    }}
+                    className="flex-1 text-xl font-extrabold text-slate-800 dark:text-slate-100 uppercase tracking-wide bg-transparent border-b-2 border-emerald-500 outline-none pb-0.5 min-w-0"
+                  />
+                ) : (
+                  <h2 className="text-xl font-extrabold text-slate-800 dark:text-slate-100 uppercase tracking-wide flex-1">
+                    STAGE {activeStageIndex + 1}: {activeStage.title}
+                  </h2>
+                )}
+                {activeStage.isDuplicate && editingTitleId !== activeStage.key && (
+                  <button
+                    onClick={() => {
+                      setEditingTitleId(activeStage.key);
+                      setEditingTitleValue(activeStage.title);
+                      setTimeout(() => titleInputRef.current?.focus(), 30);
+                    }}
+                    className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-emerald-600 transition-colors shrink-0"
+                    title="Rename stage"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                )}
               </div>
 
-              {activeStage.type === 'template' ? (
+              {(activeStage.type === 'template' || activeStage.type === 'template_dup') ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                   {activeCriteriaList.map(({ crit, checkPointLabel, instancePrefix }, itemIdx) => {
-                    const obsKey = instancePrefix ? `${instancePrefix}:${crit.id}` : crit.id;
+                    const baseObsKey = instancePrefix ? `${instancePrefix}:${crit.id}` : crit.id;
+                    const obsKey = activeStage.isDuplicate ? `${activeStage.key}_${baseObsKey}` : baseObsKey;
                     const obs: Partial<PPMObservation> = observations[obsKey] || {};
                     const isNA = obs.severity === 'NA';
 
@@ -432,7 +581,7 @@ export const PPMAuditFormEngine: React.FC<PPMAuditFormEngineProps> = ({
                     );
                   })}
                 </div>
-              ) : activeStage.type === 'custom' ? (
+              ) : (activeStage.type === 'custom' || activeStage.type === 'custom_dup') ? (
                 <div className="w-full">
                   {activeStage.content}
                 </div>

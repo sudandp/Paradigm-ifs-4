@@ -96,6 +96,7 @@ const OperationsDashboard = lazyWithRetry(() => import('./pages/operations/Opera
 const PPMDashboard = lazyWithRetry(() => import('./pages/operations/PPMDashboard').then(m => ({ default: m.PPMDashboard })));
 const PPMExecution = lazyWithRetry(() => import('./pages/operations/PPMExecution').then(m => ({ default: m.PPMExecution })));
 const HTYardAuditDashboard = lazyWithRetry(() => import('./pages/operations/HTYardAuditDashboard.tsx').then(m => ({ default: m.HTYardAuditDashboard })));
+const HTYardAuditLogsPage = lazyWithRetry(() => import('./pages/operations/HTYardAuditLogsPage.tsx').then(m => ({ default: m.HTYardAuditLogsPage })));
 const HTMasterDataAdmin = lazyWithRetry(() => import('./pages/admin/HTMasterDataAdmin.tsx').then(m => ({ default: m.HTMasterDataAdmin })));
 const TeamActivity = lazyWithRetry(() => import('./pages/operations/TeamActivity'));
 const SiteDashboard = lazyWithRetry(() => import('./pages/site/OrganizationDashboard'));
@@ -1802,6 +1803,9 @@ const App: React.FC = () => {
           </Route>
           <Route element={<ProtectedRoute requiredPermission="view_ht_yard_audits" />}>
             <Route path="operations/ht-yard-audits" element={<HTYardAuditDashboard />} />
+          </Route>
+          <Route element={<ProtectedRoute requiredPermission="view_audit_change_log" />}>
+            <Route path="operations/ht-yard-audit-logs" element={<HTYardAuditLogsPage />} />
           </Route>
           <Route element={<ProtectedRoute requiredPermission="view_ppm_audits" />}>
             <Route path="operations/ppm-audits" element={<PPMDashboard />} />

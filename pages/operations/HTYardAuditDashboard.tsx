@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { 
   Plus, FileSpreadsheet, FileText, Zap, Layers, AlertTriangle, 
   CheckCircle2, Clock, Activity, Cpu, ShieldCheck, Search, Filter, 
   ArrowUpRight, Sparkles, SlidersHorizontal, Save, ChevronDown, Check, Trash2,
-  RefreshCw, Bug, Play, RotateCcw, X
+  RefreshCw, Bug, Play, RotateCcw, X, History, User, UserCheck
 } from 'lucide-react';
-import { HTAuditHeader, HTEquipmentInstance, HTAuditResponse, HTSnagItem, HTEquipmentModuleType } from '../../types/htYard';
+import { HTAuditHeader, HTEquipmentInstance, HTAuditResponse, HTSnagItem, HTEquipmentModuleType, HTAuditLogEntry } from '../../types/htYard';
+import { useAuthStore } from '../../store/authStore';
 import { HT_YARD_FIELD_SPECS } from '../../config/htYardFieldSpecs';
 import { HTAuditFormEngine } from '../../components/ht-yard/HTAuditFormEngine';
 import { HTFeederRepeater } from '../../components/ht-yard/HTFeederRepeater';
@@ -234,7 +235,9 @@ const SyncDebugModal: React.FC<SyncDebugModalProps> = ({ isOpen, onClose, onRefr
 
 export const HTYardAuditDashboard: React.FC = () => {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const selectedAuditId = searchParams.get('auditId');
+  const currentUser = useAuthStore(state => state.user);
 
   const [activeAudit, setActiveAudit] = useState<HTAuditHeader | null>(null);
   const [equipmentInstances, setEquipmentInstances] = useState<HTEquipmentInstance[]>([]);
@@ -244,6 +247,25 @@ export const HTYardAuditDashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [allAudits, setAllAudits] = useState<any[]>([]);
   const [showSiteDropdown, setShowSiteDropdown] = useState<boolean>(false);
+
+  // ─── Change Audit Logging State ──────────────────────────────────────────
+  const [auditLogs, setAuditLogs] = useState<HTAuditLogEntry[]>([]);
+  const [showLogModal, setShowLogModal] = useState<boolean>(false);
+  const [logSearchQuery, setLogSearchQuery] = useState<string>('');
+  const [logActionFilter, setLogActionFilter] = useState<string>('ALL');
+
+  const addAuditLog = React.useCallback((entry: { actionType: 'CREATE' | 'EDIT' | 'DELETE' | 'DUPLICATE' | 'SAVE'; target: string; details: string; userName?: string; userRole?: string }) => {
+    const newLog: HTAuditLogEntry = {
+      id: `log-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) + ', ' + new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }),
+      userName: entry.userName || currentUser?.name || 'Sudhan M',
+      userRole: entry.userRole || currentUser?.role || 'Admin',
+      actionType: entry.actionType,
+      target: entry.target,
+      details: entry.details,
+    };
+    setAuditLogs(prev => [newLog, ...prev]);
+  }, [currentUser]);
   
   // Modal for new audit
   const [showNewAuditModal, setShowNewAuditModal] = useState(false);
@@ -291,6 +313,7 @@ export const HTYardAuditDashboard: React.FC = () => {
         setEquipmentInstances(selected.equipmentInstances || []);
         setResponses(selected.responses || {});
         setSnagItems(selected.snagItems || []);
+        setAuditLogs(selected.activeAudit?.auditLogs || []);
       }
     } catch (err) {
       console.warn('[HTYardAudit] Error loading audits:', err);
@@ -340,6 +363,7 @@ export const HTYardAuditDashboard: React.FC = () => {
     setEquipmentInstances(item.equipmentInstances || []);
     setResponses(item.responses || {});
     setSnagItems(item.snagItems || []);
+    setAuditLogs(item.activeAudit?.auditLogs || []);
     setActiveInstanceId('site_common');
     setShowSiteDropdown(false);
     toast.success(`Switched to ${item.activeAudit.siteName}`);
@@ -356,6 +380,7 @@ export const HTYardAuditDashboard: React.FC = () => {
     const targetId = auditToDelete.id;
     toast.loading('Deleting audit...', { id: 'delete-ht-audit' });
     try {
+      addAuditLog({ actionType: 'DELETE', target: auditToDelete.siteName, details: `Deleted audit session for "${auditToDelete.siteName}"` });
       await api.deleteHTYardAudit(targetId);
       const updatedList = allAudits.filter(a => a.activeAudit?.id !== targetId);
       setAllAudits(updatedList);
@@ -382,16 +407,30 @@ export const HTYardAuditDashboard: React.FC = () => {
     }
   };
 
+  const handleDuplicatedStagesChange = React.useCallback((updatedStages: Record<string, { id: string; label: string }[]>) => {
+    if (!activeAudit) return;
+    const updatedHeader = { ...activeAudit, duplicatedStages: updatedStages };
+    setActiveAudit(updatedHeader);
+    api.saveHTYardAudit({
+      activeAudit: updatedHeader,
+      equipmentInstances,
+      responses,
+      snagItems
+    });
+  }, [activeAudit, equipmentInstances, responses, snagItems]);
+
   const handleSaveAuditToDatabase = async () => {
     if (!activeAudit) return;
     toast.loading('Saving audit data to database...', { id: 'save-ht-audit' });
     try {
+      const updatedAudit = { ...activeAudit, auditLogs };
       await api.saveHTYardAudit({
-        activeAudit,
+        activeAudit: updatedAudit,
         equipmentInstances,
         responses,
         snagItems
       });
+      addAuditLog({ actionType: 'SAVE', target: activeAudit.siteName, details: `Saved audit data to database successfully` });
       toast.success('HT Yard audit saved to database successfully!', { id: 'save-ht-audit' });
     } catch (err) {
       toast.error('Failed to save audit to database.', { id: 'save-ht-audit' });
@@ -421,7 +460,8 @@ export const HTYardAuditDashboard: React.FC = () => {
       auditDate: new Date().toISOString().split('T')[0],
       clientDivision: division.trim() || 'BESCOM East Division',
       status: 'Draft',
-      auditorName: 'Field Engineer'
+      auditorName: currentUser?.name || 'Sudhan M',
+      auditLogs: []
     };
 
     const defaultInstances: HTEquipmentInstance[] = [
@@ -441,8 +481,10 @@ export const HTYardAuditDashboard: React.FC = () => {
     setEquipmentInstances(defaultInstances);
     setResponses({});
     setSnagItems([]);
+    setAuditLogs([]);
     setActiveInstanceId('site_common');
     setShowNewAuditModal(false);
+    addAuditLog({ actionType: 'CREATE', target: trimmedSite, details: `Created new HT Yard audit draft for "${trimmedSite}"` });
     api.saveHTYardAudit(initialAuditData).then(() => {
       loadAudits();
     });
@@ -462,6 +504,7 @@ export const HTYardAuditDashboard: React.FC = () => {
     };
     setEquipmentInstances([...equipmentInstances, newInst]);
     setActiveInstanceId(newInst.id);
+    addAuditLog({ actionType: 'CREATE', target: moduleType, details: `Added new equipment unit "${newInst.instanceName}"` });
     toast.success(`Added ${newInst.instanceName}`);
   };
 
@@ -856,6 +899,9 @@ export const HTYardAuditDashboard: React.FC = () => {
             equipmentInstanceId="site_common"
             responses={responses}
             onChangeResponse={handleResponseChange}
+            onLogAction={addAuditLog}
+            duplicatedStages={activeAudit?.duplicatedStages}
+            onDuplicatedStagesChange={handleDuplicatedStagesChange}
             customStages={[
               {
                 key: 'earth_pit_log',
@@ -890,6 +936,9 @@ export const HTYardAuditDashboard: React.FC = () => {
             equipmentInstanceId={activeInstance.id}
             responses={responses}
             onChangeResponse={handleResponseChange}
+            onLogAction={addAuditLog}
+            duplicatedStages={activeAudit?.duplicatedStages}
+            onDuplicatedStagesChange={handleDuplicatedStagesChange}
             customStages={[
               ...((activeInstance.moduleType === 'RMU' || activeInstance.moduleType === 'VCB' || activeInstance.moduleType === 'LT_Kiosk')
                 ? [
@@ -1032,6 +1081,140 @@ export const HTYardAuditDashboard: React.FC = () => {
         onClose={() => setShowDebugModal(false)}
         onRefreshList={loadAudits}
       />
+
+      {/* ─── Audit Log Details Modal ────────────────────────────────────────── */}
+      {showLogModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-5 bg-gradient-to-r from-slate-900 to-slate-800 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-emerald-500 text-white flex items-center justify-center font-bold">
+                  <History size={18} />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base tracking-tight">Audit Activity & Change Log</h3>
+                  <p className="text-xs text-slate-300">Detailed track log of user actions (Add, Edit, Delete, Duplicate)</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowLogModal(false)}
+                className="p-1.5 hover:bg-white/10 rounded-xl transition-colors text-slate-300 hover:text-white"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Modal Filters */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Filter by user, target or action..."
+                  value={logSearchQuery}
+                  onChange={(e) => setLogSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl text-xs focus:ring-2 focus:ring-emerald-500/20"
+                />
+              </div>
+
+              <div className="flex items-center gap-1.5 text-xs font-semibold overflow-x-auto pb-1 sm:pb-0">
+                {['ALL', 'CREATE', 'EDIT', 'DELETE', 'DUPLICATE', 'SAVE'].map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => setLogActionFilter(type)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold uppercase transition-all ${
+                      logActionFilter === type
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700'
+                    }`}
+                  >
+                    {type}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Modal Log List */}
+            <div className="p-5 overflow-y-auto flex-1 space-y-3">
+              {(() => {
+                const filtered = auditLogs.filter(log => {
+                  const matchesFilter = logActionFilter === 'ALL' || log.actionType === logActionFilter;
+                  const query = logSearchQuery.toLowerCase();
+                  const matchesSearch = !query ||
+                    log.userName.toLowerCase().includes(query) ||
+                    log.userRole.toLowerCase().includes(query) ||
+                    log.target.toLowerCase().includes(query) ||
+                    log.details.toLowerCase().includes(query);
+                  return matchesFilter && matchesSearch;
+                });
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="text-center py-12 text-slate-400">
+                      <History size={40} className="mx-auto mb-2 text-slate-300 dark:text-slate-700" />
+                      <p className="font-bold text-slate-600 dark:text-slate-400 text-sm">No activity logs found</p>
+                      <p className="text-xs mt-1">Actions performed (add, edit, delete, duplicate) will automatically record here.</p>
+                    </div>
+                  );
+                }
+
+                return filtered.map((log) => (
+                  <div
+                    key={log.id}
+                    className="p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900/60 shadow-2xs hover:shadow-xs transition-all space-y-1.5"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wide ${
+                          log.actionType === 'CREATE' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' :
+                          log.actionType === 'EDIT' ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300' :
+                          log.actionType === 'DELETE' ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300' :
+                          log.actionType === 'DUPLICATE' ? 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300' :
+                          'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                        }`}>
+                          {log.actionType}
+                        </span>
+                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                          {log.target}
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-mono font-medium text-slate-400">
+                        {log.timestamp}
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed font-medium">
+                      {log.details}
+                    </p>
+
+                    <div className="pt-1 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                      <div className="flex items-center gap-1.5">
+                        <User size={12} className="text-slate-400" />
+                        <span className="font-bold text-slate-800 dark:text-slate-200">{log.userName}</span>
+                        <span className="px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-[9px] font-extrabold uppercase text-emerald-700 dark:text-emerald-400">
+                          {log.userRole}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ));
+              })()}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500">
+              <span>Total recorded: <strong>{auditLogs.length} entries</strong></span>
+              <button
+                onClick={() => setShowLogModal(false)}
+                className="px-4 py-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 rounded-xl font-bold hover:opacity-90 transition-opacity"
+              >
+                Close Log
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

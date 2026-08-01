@@ -60,11 +60,21 @@ const AddEmployee: React.FC = () => {
     
     const isMobile = useMediaQuery('(max-width: 767px)');
     
-    // DPDP Consent Gate State
+    // DPDP Consent Gate State - Persisted so user only accepts once per application/session
     const [hasConsented, setHasConsented] = useState(() => {
-        // Assume consented if there's an existing ID from search params (editing draft or viewing submitted)
-        return !!searchParams.get('id');
+        if (searchParams.get('id')) return true;
+        if (data.personal?.firstName || data.personal?.mobile) return true;
+        const sessionConsent = sessionStorage.getItem('dpdp_consent') || (data.id ? localStorage.getItem(`dpdp_consent_${data.id}`) : null);
+        return sessionConsent === 'true';
     });
+
+    const handleAcceptConsent = useCallback(() => {
+        sessionStorage.setItem('dpdp_consent', 'true');
+        if (data.id) {
+            localStorage.setItem(`dpdp_consent_${data.id}`, 'true');
+        }
+        setHasConsented(true);
+    }, [data.id]);
 
     const navigationTargetRef = useRef<OnboardingStep | null>(null);
     const currentStepKey = location.pathname.split('/').pop() as OnboardingStep;
@@ -90,15 +100,8 @@ const AddEmployee: React.FC = () => {
             sessionStorage.setItem(`onboarding_progress_${data.id}`, String(currentStepIndex));
         }
     }, [data, currentStepIndex]);
-    
-    if (!hasConsented) {
-        return (
-            <ConsentGate 
-                onAccept={() => setHasConsented(true)} 
-                onDecline={() => navigate('/onboarding')} 
-            />
-        );
-    }
+
+    // ── All hooks must be declared before any conditional return ──
 
     const steps = useMemo((): Step[] => {
       return stepDefinitions.map((step, index) => ({
@@ -115,6 +118,7 @@ const AddEmployee: React.FC = () => {
                 const submissionData = await api.getOnboardingDataById(id);
                 if (submissionData) {
                     setData(submissionData);
+                    lastSavedDataRef.current = JSON.stringify(submissionData);
                     setSaveStatus('saved'); // Data is loaded and saved
                 } else {
                     setToast({ message: "Could not find submission data.", type: 'error' });
@@ -136,15 +140,26 @@ const AddEmployee: React.FC = () => {
         }
     }, [searchParams, setData, reset]);
 
+    const lastSavedDataRef = useRef<string>('');
+
+    // Synchronize lastSavedDataRef when initial data is loaded
+    useEffect(() => {
+        if (!isLoadingData && data) {
+            if (!lastSavedDataRef.current) {
+                lastSavedDataRef.current = JSON.stringify(data);
+            }
+        }
+    }, [isLoadingData, data]);
+
     const handleSaveDraft = useCallback(async () => {
         setSaveStatus('saving');
         try {
             const { draftId } = await api.saveDraft(data);
-            // After the first save the real UUID comes back — update the store
-            // so all subsequent auto-saves upsert the same row (not new records).
+            const updatedData = draftId !== data.id ? { ...data, id: draftId } : data;
             if (draftId !== data.id) {
-                setData({ ...data, id: draftId });
+                setData(updatedData);
             }
+            lastSavedDataRef.current = JSON.stringify(updatedData);
             setSaveStatus('saved');
             setLastSavedAt(new Date());
         } catch (error: any) {
@@ -161,8 +176,13 @@ const AddEmployee: React.FC = () => {
     
     useEffect(() => {
         const isDraft = !data.id || data.id.startsWith('draft_') || data.status === 'draft';
-        if (isDraft && !isLoadingData) {
-            if (saveStatus !== 'saving') {
+        if (!isDraft || isLoadingData) return;
+
+        const currentDataStr = JSON.stringify(data);
+
+        // Only trigger auto-save if data has actually changed from what was saved/loaded
+        if (lastSavedDataRef.current && currentDataStr !== lastSavedDataRef.current) {
+            if (saveStatus !== 'saving' && saveStatus !== 'dirty') {
                 setSaveStatus('dirty');
             }
 
@@ -180,6 +200,17 @@ const AddEmployee: React.FC = () => {
             }
         };
     }, [data, isLoadingData, handleSaveDraft, saveStatus]);
+
+    // ── Conditional renders (after all hooks) ──
+
+    if (!hasConsented) {
+        return (
+            <ConsentGate 
+                onAccept={handleAcceptConsent} 
+                onDecline={() => navigate('/onboarding')} 
+            />
+        );
+    }
 
 
     const onValidated = async () => {
@@ -275,6 +306,8 @@ const AddEmployee: React.FC = () => {
 
     const handleConfirmClear = () => {
         sessionStorage.removeItem(`onboarding_progress_${data.id}`);
+        sessionStorage.removeItem('dpdp_consent');
+        if (data.id) localStorage.removeItem(`dpdp_consent_${data.id}`);
         reset();
         setIsClearModalOpen(false);
         navigate('/onboarding/add/personal', { replace: true });

@@ -117,10 +117,11 @@ export const allNavLinks: NavLinkConfig[] = [
     { to: '/admin/ht-master-data', label: 'Master Data', icon: Settings, permission: 'view_ht_master_data', category: 'Audit & Snag Reports' },
     { to: '/operations/ppm-audits', label: 'PPM Audits', icon: ShieldCheck, permission: 'view_ppm_audits', category: 'Audit & Snag Reports' },
     { to: '/operations/ht-yard-audits', label: 'Site Audit', icon: Zap, permission: 'view_ht_yard_audits', category: 'Audit & Snag Reports' },
+    { to: '/operations/ht-yard-audit-logs', label: 'Audit Change Log', icon: History, permission: 'view_audit_change_log', category: 'Audit & Snag Reports' },
     { to: '/operations/snag-audit', label: 'Snag Audit', icon: ClipboardCheck, permission: 'view_snag_audit', category: 'Audit & Snag Reports' },
-    { to: '/operations/snag-report?tab=site', label: 'Site Audit Report', icon: Zap, permission: 'view_snag_report', category: 'Audit & Snag Reports' },
+    { to: '/operations/snag-report?tab=site', label: 'Site Audit Report', icon: Zap, permission: 'view_site_audit_report', category: 'Audit & Snag Reports' },
     { to: '/operations/snag-report?tab=snag', label: 'Snag Report', icon: FileSpreadsheet, permission: 'view_snag_report', category: 'Audit & Snag Reports' },
-    { to: '/operations/snag-report?tab=ppm', label: 'PPM Audit Report', icon: ShieldCheck, permission: 'view_snag_report', category: 'Audit & Snag Reports' },
+    { to: '/operations/snag-report?tab=ppm', label: 'PPM Audit Report', icon: ShieldCheck, permission: 'view_ppm_audit_report', category: 'Audit & Snag Reports' },
 
     // Biometric Devices
     { to: '/admin/device-approvals', label: 'Device Approvals', icon: ShieldCheck, permission: 'manage_device_approvals', category: 'Biometric Devices' },

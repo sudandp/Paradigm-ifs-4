@@ -24,7 +24,7 @@ const defaultPermissions: Record<UserRole, Permission[]> = {
   ],
   admin: [
     'view_all_submissions', 'manage_users', 'manage_sites', 'view_entity_management', 'view_templates_hub',
-    'view_ht_master_data', 'view_ht_yard_audits', 'view_ppm_audits', 'view_snag_audit', 'view_snag_report',
+    'view_ht_master_data', 'view_ht_yard_audits', 'view_ppm_audits', 'view_audit_change_log', 'view_snag_audit', 'view_site_audit_report', 'view_snag_report', 'view_ppm_audit_report',
     'view_helpdesk_tickets', 'view_preventive_maintenance', 'view_contract_manager',
     'view_profitability', 'view_payment_tracker', 'view_audit_trail', 'manage_family_verification',
     'view_attendance_bulk_feed', 'view_monthly_attendance_feed', 'manage_user_vehicles',
@@ -46,7 +46,7 @@ const defaultPermissions: Record<UserRole, Permission[]> = {
   ],
   hr: [
     'view_all_submissions', 'manage_users', 'manage_sites', 'view_entity_management', 'view_templates_hub',
-    'view_ht_master_data', 'view_ht_yard_audits', 'view_ppm_audits', 'view_snag_audit', 'view_snag_report',
+    'view_ht_master_data', 'view_ht_yard_audits', 'view_ppm_audits', 'view_audit_change_log', 'view_snag_audit', 'view_site_audit_report', 'view_snag_report', 'view_ppm_audit_report',
     'manage_family_verification', 'view_attendance_bulk_feed', 'view_monthly_attendance_feed',
     'manage_attendance_rules', 'view_all_attendance', 'view_own_attendance',
     'apply_for_leave', 'manage_leave_requests', 'download_attendance_report',
@@ -66,7 +66,7 @@ const defaultPermissions: Record<UserRole, Permission[]> = {
   ],
   developer: [
     'view_all_submissions', 'manage_users', 'manage_sites', 'view_entity_management', 'view_templates_hub',
-    'view_ht_master_data', 'view_ht_yard_audits', 'view_ppm_audits', 'view_snag_audit', 'view_snag_report',
+    'view_ht_master_data', 'view_ht_yard_audits', 'view_ppm_audits', 'view_audit_change_log', 'view_snag_audit', 'view_site_audit_report', 'view_snag_report', 'view_ppm_audit_report',
     'view_helpdesk_tickets', 'view_preventive_maintenance', 'view_contract_manager',
     'view_profitability', 'view_payment_tracker', 'view_audit_trail', 'manage_family_verification',
     'view_attendance_bulk_feed', 'view_monthly_attendance_feed', 'manage_user_vehicles',
@@ -87,7 +87,7 @@ const defaultPermissions: Record<UserRole, Permission[]> = {
     'view_mobile_nav_home', 'view_mobile_nav_tasks', 'view_mobile_nav_profile'
   ],
   operation_manager: [
-    'view_operations_dashboard', 'view_ht_yard_audits', 'view_ppm_audits', 'view_snag_audit', 'view_snag_report',
+    'view_operations_dashboard', 'view_ht_yard_audits', 'view_ppm_audits', 'view_audit_change_log', 'view_snag_audit', 'view_site_audit_report', 'view_snag_report', 'view_ppm_audit_report',
     'view_helpdesk_tickets', 'view_preventive_maintenance', 'view_contract_manager',
     'view_all_attendance', 'view_own_attendance',
     'apply_for_leave', 'manage_leave_requests', 'access_support_desk',
@@ -105,7 +105,7 @@ const defaultPermissions: Record<UserRole, Permission[]> = {
   ],
   management: [
     'view_all_submissions', 'manage_users', 'manage_sites', 'view_entity_management', 'view_templates_hub',
-    'view_ht_master_data', 'view_ht_yard_audits', 'view_ppm_audits', 'view_snag_audit', 'view_snag_report',
+    'view_ht_master_data', 'view_ht_yard_audits', 'view_ppm_audits', 'view_audit_change_log', 'view_snag_audit', 'view_site_audit_report', 'view_snag_report', 'view_ppm_audit_report',
     'view_helpdesk_tickets', 'view_preventive_maintenance', 'view_contract_manager',
     'view_profitability', 'view_payment_tracker', 'view_audit_trail', 'manage_family_verification',
     'view_attendance_bulk_feed', 'view_monthly_attendance_feed', 'manage_user_vehicles',

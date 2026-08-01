@@ -100,9 +100,12 @@ export const allPermissions: { key: Permission; name: string; description: strin
     // Audit & Snag Reports
     { key: 'view_ht_master_data', name: 'View Master Data', description: 'Manage master data equipment and options.', category: 'Audit & Snag Reports' },
     { key: 'view_ppm_audits', name: 'View PPM Audits', description: 'Access preventive maintenance audits and schedules.', category: 'Audit & Snag Reports' },
-    { key: 'view_snag_report', name: 'View Snag Report', description: 'Access snag audit reports and summary exports.', category: 'Audit & Snag Reports' },
     { key: 'view_ht_yard_audits', name: 'View Site Audit', description: 'Access site audit checklists and logs.', category: 'Audit & Snag Reports' },
+    { key: 'view_audit_change_log', name: 'View Audit Change Log', description: 'Track modification logs and user activity across all audits.', category: 'Audit & Snag Reports' },
     { key: 'view_snag_audit', name: 'View Snag Audit', description: 'View and manage site snag inspections and defects.', category: 'Audit & Snag Reports' },
+    { key: 'view_site_audit_report', name: 'View Site Audit Report', description: 'Access site audit summary and compliance reports.', category: 'Audit & Snag Reports' },
+    { key: 'view_snag_report', name: 'View Snag Report', description: 'Access snag audit reports and summary exports.', category: 'Audit & Snag Reports' },
+    { key: 'view_ppm_audit_report', name: 'View PPM Audit Report', description: 'Access preventive maintenance compliance reports.', category: 'Audit & Snag Reports' },
 
     // Biometric Devices
     { key: 'manage_device_approvals', name: 'Device Approvals', description: 'Manage and approve device linking requests.', category: 'Biometric Devices' },

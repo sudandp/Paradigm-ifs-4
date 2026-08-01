@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useSearchParams, useNavigate, useParams } from 'react-router-dom';
 import { PPM_FIELD_SPECS } from '../../config/ppmFieldSpecs';
 import { PPMAuditFormEngine } from '../../components/ppm/PPMAuditFormEngine';
 import { PPMSummaryRollup } from '../../components/ppm/PPMSummaryRollup';
@@ -11,10 +11,25 @@ import toast from 'react-hot-toast';
 
 export const PPMExecution: React.FC = () => {
   const { categoryId } = useParams<{ categoryId: string }>();
+  const [searchParams] = useSearchParams();
+  const customTitle = searchParams.get('title');
   const navigate = useNavigate();
   
-  const template = categoryId ? PPM_FIELD_SPECS[categoryId] : null;
+  // Resolve base category template if categoryId is a duplicate ID like "dup_fac_ELECTRICAL_PANEL_17000"
+  let baseCategoryId = categoryId || 'ELECTRICAL_PANEL';
+  if (baseCategoryId.startsWith('dup_fac_')) {
+    const parts = baseCategoryId.split('_');
+    baseCategoryId = parts.slice(2, -1).join('_') || parts[2];
+  }
   
+  let template = PPM_FIELD_SPECS[baseCategoryId] || (categoryId ? PPM_FIELD_SPECS[categoryId] : null);
+  if (template && customTitle) {
+    template = {
+      ...template,
+      name: customTitle
+    };
+  }
+
   const [observations, setObservations] = useState<Record<string, PPMObservation>>({});
 
   if (!template) {

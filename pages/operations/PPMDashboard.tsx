@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Settings, FileText, Plus, Search, Filter, ShieldCheck, Zap, Droplet, Check, ChevronRight, RefreshCw, Bug, Play, RotateCcw, X, AlertTriangle, CheckCircle2, Trash2 } from 'lucide-react';
-import { PPMCategory } from '../../types/ppm';
+import { Settings, FileText, Plus, Minus, Pencil, Search, Filter, ShieldCheck, Zap, Droplet, Check, ChevronRight, RefreshCw, Bug, Play, RotateCcw, X, AlertTriangle, CheckCircle2, Trash2, History } from 'lucide-react';
+import { PPMCategory, PPMExecutionRecord } from '../../types/ppm';
+import { getCachedPpmExecutions, deletePpmExecutionFromCache } from '../../services/offline/cache';
 import { syncEngine } from '../../services/offline/syncEngine';
 import * as outbox from '../../services/offline/outbox';
 import { getDb } from '../../services/offline/db';
@@ -196,10 +197,49 @@ const SyncDebugModal: React.FC<SyncDebugModalProps> = ({ isOpen, onClose, onRefr
 // A mock dashboard for the PPM Module Phase 1
 export const PPMDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const [activeCategory, setActiveCategory] = useState<PPMCategory>('ELECTRICAL_PANEL');
+  const [activeCategory, setActiveCategory] = useState<string>('ELECTRICAL_PANEL');
   const [pendingOrFailedCount, setPendingOrFailedCount] = useState(0);
   const [isSyncing, setIsSyncing] = useState(false);
   const [showDebugModal, setShowDebugModal] = useState(false);
+
+  // ─── Facility Stepper Duplication State with LocalStorage Persistence ─────
+  const [duplicatedFacilities, setDuplicatedFacilities] = useState<Record<string, { id: string; name: string; originalCategoryId: string; count: number }[]>>(() => {
+    try {
+      const saved = localStorage.getItem('paradigm_ppm_duplicated_facilities');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const saveDuplicatedFacilities = (newMap: Record<string, { id: string; name: string; originalCategoryId: string; count: number }[]>) => {
+    setDuplicatedFacilities(newMap);
+    try {
+      localStorage.setItem('paradigm_ppm_duplicated_facilities', JSON.stringify(newMap));
+    } catch (e) {
+      console.warn('[PPMDashboard] Failed to save duplicated facilities:', e);
+    }
+  };
+
+  const [editingFacilityId, setEditingFacilityId] = useState<string | null>(null);
+  const [editingFacilityValue, setEditingFacilityValue] = useState('');
+  const facilityInputRef = useRef<HTMLInputElement>(null);
+
+  // ─── Audit Runs State ──────────────────────────────────────────────────────
+  const [savedRuns, setSavedRuns] = useState<PPMExecutionRecord[]>([]);
+
+  const loadSavedRuns = React.useCallback(async () => {
+    try {
+      const runs = await getCachedPpmExecutions();
+      setSavedRuns(runs || []);
+    } catch (err) {
+      console.warn('[PPMDashboard] Failed to load saved PPM runs:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSavedRuns();
+  }, [loadSavedRuns]);
 
   const updateOutboxCount = React.useCallback(async () => {
     try {
@@ -246,16 +286,90 @@ export const PPMDashboard: React.FC = () => {
     }
   }, [updateOutboxCount]);
   
-  const categories = [
-    { id: 'ELECTRICAL_PANEL', step: 1, name: 'Electrical Panel', icon: <Zap className="w-4 h-4" />, count: 12 },
-    { id: 'BOOSTER_PUMPS', step: 2, name: 'Booster Pumps', icon: <Settings className="w-4 h-4" />, count: 4 },
-    { id: 'SP', step: 3, name: 'Swimming Pool & WB', icon: <Droplet className="w-4 h-4" />, count: 6 },
-    { id: 'RO', step: 4, name: 'RO Plant', icon: <Droplet className="w-4 h-4" />, count: 9 },
-    { id: 'STP', step: 5, name: 'STP', icon: <Droplet className="w-4 h-4" />, count: 15 },
-    { id: 'HT_YARD', step: 6, name: 'HT Yard', icon: <ShieldCheck className="w-4 h-4" />, count: 5 },
-    { id: 'GENERATOR', step: 7, name: 'Generator', icon: <Settings className="w-4 h-4" />, count: 8 },
-    { id: 'WTP', step: 8, name: 'WTP', icon: <Droplet className="w-4 h-4" />, count: 2 }
+  const baseCategories = [
+    { id: 'ELECTRICAL_PANEL', name: 'Electrical Panel', icon: <Zap className="w-4 h-4" />, count: 12 },
+    { id: 'BOOSTER_PUMPS', name: 'Booster Pumps', icon: <Settings className="w-4 h-4" />, count: 4 },
+    { id: 'SP', name: 'Swimming Pool & WB', icon: <Droplet className="w-4 h-4" />, count: 6 },
+    { id: 'RO', name: 'RO Plant', icon: <Droplet className="w-4 h-4" />, count: 9 },
+    { id: 'STP', name: 'STP', icon: <Droplet className="w-4 h-4" />, count: 15 },
+    { id: 'HT_YARD', name: 'HT Yard', icon: <ShieldCheck className="w-4 h-4" />, count: 5 },
+    { id: 'GENERATOR', name: 'Generator', icon: <Settings className="w-4 h-4" />, count: 8 },
+    { id: 'WTP', name: 'WTP', icon: <Droplet className="w-4 h-4" />, count: 2 }
   ];
+
+  // Flatten categories with duplicates interleaved
+  const categories: Array<{
+    id: string;
+    name: string;
+    icon: React.ReactNode;
+    count: number;
+    isDuplicate?: boolean;
+    originalCategoryId?: string;
+  }> = [];
+
+  baseCategories.forEach(cat => {
+    categories.push(cat);
+    (duplicatedFacilities[cat.id] || []).forEach(dup => {
+      categories.push({
+        id: dup.id,
+        name: dup.name,
+        icon: cat.icon,
+        count: cat.count,
+        isDuplicate: true,
+        originalCategoryId: cat.id
+      });
+    });
+  });
+
+  const handleDuplicateFacility = (catId: string, catName: string, count: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const existing = duplicatedFacilities[catId] || [];
+    const newId = `dup_fac_${catId}_${Date.now()}`;
+    const newName = `${catName} (Copy ${existing.length + 1})`;
+    const updated = {
+      ...duplicatedFacilities,
+      [catId]: [...existing, { id: newId, name: newName, originalCategoryId: catId, count }]
+    };
+    saveDuplicatedFacilities(updated);
+    setActiveCategory(newId);
+    setEditingFacilityId(newId);
+    setEditingFacilityValue(newName);
+    setTimeout(() => facilityInputRef.current?.focus(), 50);
+  };
+
+  const handleRemoveFacility = (origCatId: string, dupId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const existing = duplicatedFacilities[origCatId] || [];
+    const updated = existing.filter(d => d.id !== dupId);
+    const newMap = { ...duplicatedFacilities, [origCatId]: updated };
+    saveDuplicatedFacilities(newMap);
+    if (activeCategory === dupId) setActiveCategory(origCatId);
+    if (editingFacilityId === dupId) setEditingFacilityId(null);
+  };
+
+  const handleFacilityTitleChange = (newVal: string, origCatId: string, dupId: string) => {
+    setEditingFacilityValue(newVal);
+    const updated = {
+      ...duplicatedFacilities,
+      [origCatId]: (duplicatedFacilities[origCatId] || []).map(d => d.id === dupId ? { ...d, name: newVal } : d)
+    };
+    saveDuplicatedFacilities(updated);
+  };
+
+  const handleFacilityTitleBlur = () => {
+    setDuplicatedFacilities(prev => {
+      const updated = { ...prev };
+      Object.keys(updated).forEach(origKey => {
+        updated[origKey] = updated[origKey].map(d =>
+          d.id === editingFacilityId && !d.name.trim()
+            ? { ...d, name: 'Untitled Facility' }
+            : d
+        );
+      });
+      return updated;
+    });
+    setEditingFacilityId(null);
+  };
 
   const activeIndex = categories.findIndex(c => c.id === activeCategory);
   const activeCategoryObj = categories[activeIndex] || categories[0];
@@ -297,7 +411,11 @@ export const PPMDashboard: React.FC = () => {
             <Bug className="w-4 h-4 text-amber-500" /> Debug
           </button>
           <button 
-            onClick={() => navigate(`/operations/ppm-audits/${activeCategory}`)}
+            onClick={() => {
+              const catId = activeCategoryObj.originalCategoryId || activeCategoryObj.id;
+              const titleParam = activeCategoryObj.isDuplicate ? `?title=${encodeURIComponent(activeCategoryObj.name)}` : '';
+              navigate(`/operations/ppm-audits/${catId}${titleParam}`);
+            }}
             className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm hover:shadow transition-all flex items-center gap-2"
           >
             <Plus className="w-4 h-4" /> Start New Audit
@@ -330,10 +448,10 @@ export const PPMDashboard: React.FC = () => {
                 const isPassed = index < activeIndex;
                 
                 return (
-                  <button
+                  <div
                     key={cat.id}
-                    onClick={() => setActiveCategory(cat.id as PPMCategory)}
-                    className={`w-full relative z-10 flex items-center justify-between p-2.5 rounded-xl text-xs font-bold transition-all text-left group ${
+                    onClick={() => setActiveCategory(cat.id)}
+                    className={`w-full relative z-10 flex items-center justify-between p-2.5 rounded-xl text-xs font-bold transition-all text-left cursor-pointer group ${
                       isActive
                         ? 'bg-emerald-50/90 dark:bg-emerald-950/60 text-emerald-900 dark:text-emerald-200 border border-emerald-200/80 dark:border-emerald-800/80 shadow-xs'
                         : isPassed
@@ -341,37 +459,89 @@ export const PPMDashboard: React.FC = () => {
                         : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50'
                     }`}
                   >
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
                       {/* Step Badge Node */}
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all flex-shrink-0 ${
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all shrink-0 ${
                         isActive
-                          ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30 ring-4 ring-emerald-100 dark:ring-emerald-950'
+                          ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30 ring-2 ring-emerald-100 dark:ring-emerald-950'
                           : isPassed
                           ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-800'
+                          : cat.isDuplicate
+                          ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border border-dashed border-slate-400'
                           : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700'
                       }`}>
-                        {isPassed ? (
-                          <Check className="w-4 h-4 stroke-[3]" />
+                        {isPassed && !cat.isDuplicate ? (
+                          <Check className="w-3.5 h-3.5 stroke-[3]" />
                         ) : (
-                          <span>{cat.step}</span>
+                          <span>{index + 1}</span>
                         )}
                       </div>
 
-                      {/* Step Name & Info */}
-                      <div>
-                        <div className={isActive ? 'font-black text-emerald-900 dark:text-emerald-100' : 'font-semibold'}>
-                          {cat.name}
-                        </div>
+                      {/* Step Name & Info / Inline Rename */}
+                      <div className="flex-1 min-w-0">
+                        {cat.isDuplicate && editingFacilityId === cat.id ? (
+                          <input
+                            ref={facilityInputRef}
+                            type="text"
+                            value={editingFacilityValue}
+                            onChange={e => handleFacilityTitleChange(e.target.value, cat.originalCategoryId!, cat.id)}
+                            onBlur={handleFacilityTitleBlur}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter' || e.key === 'Escape') (e.target as HTMLInputElement).blur();
+                            }}
+                            className="w-full text-xs font-extrabold bg-transparent border-b border-emerald-500 outline-none text-slate-900 dark:text-white"
+                          />
+                        ) : (
+                          <div className={`truncate ${isActive ? 'font-black text-emerald-900 dark:text-emerald-100' : 'font-semibold'}`}>
+                            {cat.name}
+                            {cat.isDuplicate && (
+                              <span className="ml-1 text-[9px] font-bold uppercase tracking-wider text-emerald-500 dark:text-emerald-400">copy</span>
+                            )}
+                          </div>
+                        )}
                         <span className="text-[10px] font-normal text-slate-400 dark:text-slate-500 block mt-0.5">
                           {cat.count} points
                         </span>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1">
-                      {isActive && <ChevronRight className="w-4 h-4 text-emerald-600 dark:text-emerald-400 animate-pulse" />}
+                    {/* Action Buttons (+ for original, - for duplicate) */}
+                    <div className="flex items-center gap-1 shrink-0 ml-2">
+                      {!cat.isDuplicate && (
+                        <button
+                          onClick={e => handleDuplicateFacility(cat.id, cat.name, cat.count, e)}
+                          className="w-5 h-5 rounded-full bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:hover:bg-emerald-800/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center transition-colors"
+                          title="Duplicate this facility"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      )}
+
+                      {cat.isDuplicate && (
+                        <>
+                          <button
+                            onClick={e => {
+                              e.stopPropagation();
+                              setEditingFacilityId(cat.id);
+                              setEditingFacilityValue(cat.name);
+                              setTimeout(() => facilityInputRef.current?.focus(), 30);
+                            }}
+                            className="w-5 h-5 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-700/60 dark:hover:bg-slate-600 text-slate-500 flex items-center justify-center transition-colors"
+                            title="Rename facility"
+                          >
+                            <Pencil className="w-2.5 h-2.5" />
+                          </button>
+                          <button
+                            onClick={e => handleRemoveFacility(cat.originalCategoryId!, cat.id, e)}
+                            className="w-5 h-5 rounded-full bg-rose-100 hover:bg-rose-200 dark:bg-rose-900/40 dark:hover:bg-rose-800/60 text-rose-500 dark:text-rose-400 flex items-center justify-center transition-colors"
+                            title="Remove duplicate facility"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </button>
+                        </>
+                      )}
                     </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -395,26 +565,111 @@ export const PPMDashboard: React.FC = () => {
           </div>
 
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 overflow-hidden shadow-xs">
-            <div className="p-12 text-center">
-              <div className="w-16 h-16 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-emerald-100 dark:border-emerald-900/40">
-                {activeCategoryObj.icon}
-              </div>
-              <div className="inline-block px-3 py-1 bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 text-xs font-bold rounded-full mb-3">
-                Step {activeCategoryObj.step} of 8 • {activeCategoryObj.count} Auditable Points
-              </div>
-              <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">No audits for {activeCategoryObj.name}</h3>
-              <p className="text-slate-500 text-sm max-w-sm mx-auto mb-6">
-                Start a new technical audit to begin inspecting the system and capturing observations.
-              </p>
-              <button 
-                onClick={() => {
-                  navigate(`/operations/ppm-audits/${activeCategory}`);
-                }}
-                className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold shadow-lg shadow-emerald-600/20 transition-all inline-flex items-center gap-2"
-              >
-                <Plus className="w-4 h-4" /> Start {activeCategoryObj.name} Audit
-              </button>
-            </div>
+            {/* Audit Runs Card List */}
+            {(() => {
+              const matchingCategoryKey = activeCategoryObj.originalCategoryId || activeCategoryObj.id;
+              const facilityRuns = savedRuns.filter(r => r.category_id === matchingCategoryKey || r.category_id === activeCategoryObj.id);
+
+              if (facilityRuns.length > 0) {
+                return (
+                  <div className="space-y-3 p-6">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                        Audit Runs for {activeCategoryObj.name} ({facilityRuns.length})
+                      </h3>
+                      <button
+                        onClick={() => {
+                          const catId = activeCategoryObj.originalCategoryId || activeCategoryObj.id;
+                          const titleParam = activeCategoryObj.isDuplicate ? `?title=${encodeURIComponent(activeCategoryObj.name)}` : '';
+                          navigate(`/operations/ppm-audits/${catId}${titleParam}`);
+                        }}
+                        className="px-3 py-1.5 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 transition-all flex items-center gap-1.5"
+                      >
+                        <Plus size={14} /> New Audit Run
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {facilityRuns.map((run) => (
+                        <div
+                          key={run.id}
+                          className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-4 rounded-2xl shadow-xs space-y-3 hover:border-emerald-500/50 transition-all"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-extrabold text-sm text-slate-900 dark:text-white">
+                              {run.site_name || activeCategoryObj.name}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300">
+                              {run.status || 'SUBMITTED'}
+                            </span>
+                          </div>
+
+                          <div className="text-xs text-slate-500 space-y-1 font-medium">
+                            <p>Ref: <strong className="font-mono text-slate-700 dark:text-slate-300">{run.reference_number}</strong></p>
+                            <p>Date: <strong className="text-slate-700 dark:text-slate-300">{run.audit_date}</strong> • Auditor: <strong className="text-slate-700 dark:text-slate-300">{run.auditor_name || 'Auditor'}</strong></p>
+                            <p>Observations Logged: <strong className="text-emerald-600">{Object.keys(run.observations || {}).length} points</strong></p>
+                          </div>
+
+                          <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                            <button
+                              onClick={() => {
+                                const catId = activeCategoryObj.originalCategoryId || activeCategoryObj.id;
+                                const titleParam = activeCategoryObj.isDuplicate ? `&title=${encodeURIComponent(activeCategoryObj.name)}` : '';
+                                navigate(`/operations/ppm-audits/${catId}?execId=${run.id}${titleParam}`);
+                              }}
+                              className="text-xs font-bold text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 hover:underline"
+                            >
+                              View Audit Checklist →
+                            </button>
+                            <button
+                              onClick={async () => {
+                                if (!confirm(`Delete audit record ${run.reference_number}?`)) return;
+                                await deletePpmExecutionFromCache(run.id);
+                                toast.success('Deleted audit run');
+                                loadSavedRuns();
+                              }}
+                              className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors"
+                              title="Delete audit run"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="p-12 text-center space-y-4">
+                  <div className="w-16 h-16 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 flex items-center justify-center mx-auto shadow-inner">
+                    <Zap className="w-8 h-8" />
+                  </div>
+                  <div className="max-w-md mx-auto">
+                    <span className="inline-block text-[11px] font-extrabold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/80 mb-2">
+                      Step {activeIndex + 1} of {categories.length} • {activeCategoryObj.count} Auditable Points
+                    </span>
+                    <h3 className="text-xl font-bold text-slate-900 dark:text-white">
+                      No audits for {activeCategoryObj.name}
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      Start a new technical audit to begin inspecting the system and capturing observations.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const catId = activeCategoryObj.originalCategoryId || activeCategoryObj.id;
+                      const titleParam = activeCategoryObj.isDuplicate ? `?title=${encodeURIComponent(activeCategoryObj.name)}` : '';
+                      navigate(`/operations/ppm-audits/${catId}${titleParam}`);
+                    }}
+                    className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md hover:shadow-lg transition-all inline-flex items-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" /> Start {activeCategoryObj.name} Audit
+                  </button>
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>

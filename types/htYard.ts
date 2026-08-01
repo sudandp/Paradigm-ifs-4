@@ -27,8 +27,19 @@ export interface HTAuditHeader {
   status: HTAuditStatus;
   hiraChecklist?: HTHIRAPoint[];
   htYardCommonPoints?: Record<string, any>;
+  auditLogs?: HTAuditLogEntry[];
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface HTAuditLogEntry {
+  id: string;
+  timestamp: string;
+  userName: string;
+  userRole: string;
+  actionType: 'CREATE' | 'EDIT' | 'DELETE' | 'DUPLICATE' | 'SAVE';
+  target: string;
+  details: string;
 }
 
 export interface HTEquipmentInstance {

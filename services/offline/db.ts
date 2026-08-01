@@ -11,8 +11,8 @@
  *   - outbox           : pending mutations to be synced to Supabase
  *   - photos           : photo Blobs linked to outbox items
  *
- * Schema version: 1
- * Never mutate v1 stores — bump DB_VERSION and add an `upgrade` branch instead.
+ * Schema version: 2 (added ppm_executions + onboarding_submissions stores)
+ * Never mutate existing stores — bump DB_VERSION and add an `upgrade` branch instead.
  */
 
 import { openDB, type IDBPDatabase } from 'idb';
@@ -58,7 +58,7 @@ export interface StoredPhoto {
 // ─── Schema ──────────────────────────────────────────────────────────────────
 
 const DB_NAME = 'paradigmOfflineDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export interface ParadigmDB {
   snag_audits: {
@@ -152,7 +152,7 @@ export function getDb(): Promise<IDBPDatabase<ParadigmDB>> {
           if (granted) {
             console.info('[OfflineDB] Durable storage granted — IDB is eviction-safe.');
           } else {
-            console.warn('[OfflineDB] Durable storage denied — IDB data may be evicted under OS pressure.');
+            console.debug('[OfflineDB] Durable storage not granted — IDB is best-effort (expected on localhost/non-PWA).');
           }
         });
       } else {
