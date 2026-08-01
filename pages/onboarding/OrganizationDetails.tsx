@@ -166,7 +166,7 @@ const OrganizationDetails = () => {
             <form onSubmit={handleSubmit(onSubmit)} id="organization-form">
                  <div className="space-y-6">
                     <p className="text-sm text-gray-400">Provide the employment details for the new employee within the organization.</p>
-                    <select {...register('organizationId')} className="pro-select pro-select-arrow" disabled={isOrgPreselected && !isBangalore}>
+                    <select {...register('organizationId')} className="pro-select pro-select-arrow">
                         <option value="">Select Organization</option>
                         {dropdownOptions.map(org => <option key={org.id} value={org.id}>{org.name}</option>)}
                     </select>
@@ -198,7 +198,7 @@ const OrganizationDetails = () => {
             <FormHeader title="Organization Details" subtitle="Your employment details within the organization." />
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <Select label="Organization / Client" id="organizationId" error={errors.organizationId?.message} registration={register('organizationId')} disabled={isOrgPreselected && !isBangalore}>
+                <Select label="Organization / Client" id="organizationId" error={errors.organizationId?.message} registration={register('organizationId')}>
                     <option value="">Select Organization</option>
                     {dropdownOptions.map(org => <option key={org.id} value={org.id}>{org.name}</option>)}
                 </Select>
