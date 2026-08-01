@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 // Fix: Use inline type import for SubmitHandler
 import { useForm, Controller, type SubmitHandler, type Resolver } from 'react-hook-form';
 import { useOutletContext } from 'react-router-dom';

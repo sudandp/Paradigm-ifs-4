@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 // Fix: Use inline type import for SubmitHandler
 import { useForm, Controller, type SubmitHandler, type Resolver } from 'react-hook-form';
 // The named import from react-router-dom is correct. No changes were needed.
