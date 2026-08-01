@@ -58,10 +58,15 @@ const BankDetails = () => {
         defaultValues: data.bank,
     });
     
+    const loadedRecordIdRef = useRef<string | null>(null);
+
     useEffect(() => {
-        // Sync form with global store data, which might have been pre-filled
-        reset(data.bank);
-    }, [data.bank, reset]);
+        const currentRecordId = data.id || 'new';
+        if (loadedRecordIdRef.current !== currentRecordId) {
+            loadedRecordIdRef.current = currentRecordId;
+            reset(data.bank);
+        }
+    }, [data.id, data.bank, reset]);
     
     // This effect syncs the form state back to the Zustand store on change, with a debounce.
     useEffect(() => {

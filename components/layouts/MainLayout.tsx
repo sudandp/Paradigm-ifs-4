@@ -185,12 +185,18 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
         const roleId = user.roleId?.toLowerCase() || '';
         const roleName = user.role?.toLowerCase() || '';
         const roleNameUnderscore = roleName.replace(/\s+/g, '_');
+        const roleNameHyphen = roleName.replace(/\s+/g, '-');
+        const directPerms = (user as any).permissions || [];
 
-        return permissions[roleId] || 
+        const found = permissions[user.roleId] || 
+               permissions[roleId] || 
+               permissions[user.role] || 
                permissions[roleName] || 
                permissions[roleNameUnderscore] || 
-               permissions[user.role] || 
+               permissions[roleNameHyphen] || 
                [];
+
+        return [...new Set([...found, ...directPerms])];
     }, [user, permissions]);
 
     const availableNavLinks = useMemo(() => {

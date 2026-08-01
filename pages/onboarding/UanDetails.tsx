@@ -58,14 +58,19 @@ const UanDetails = () => {
         defaultValues: data.uan
     });
     
+    const loadedRecordIdRef = useRef<string | null>(null);
+
     useEffect(() => {
-        // Sync form with global store data, which might have been pre-filled
-        const uanData = { ...data.uan };
-        if (uanData.uanNumber && !uanData.hasPreviousPf) {
-            uanData.hasPreviousPf = true;
+        const currentRecordId = data.id || 'new';
+        if (loadedRecordIdRef.current !== currentRecordId) {
+            loadedRecordIdRef.current = currentRecordId;
+            const uanData = { ...data.uan };
+            if (uanData.uanNumber && !uanData.hasPreviousPf) {
+                uanData.hasPreviousPf = true;
+            }
+            reset(uanData);
         }
-        reset(uanData);
-    }, [data.uan, reset]);
+    }, [data.id, data.uan, reset]);
 
     // This effect syncs the form state back to the Zustand store on change, with a debounce.
     useEffect(() => {

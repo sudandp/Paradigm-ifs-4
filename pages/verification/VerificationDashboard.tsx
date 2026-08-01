@@ -268,7 +268,35 @@ const VerificationChecks: React.FC<{ submission: OnboardingData; isSyncing: bool
 };
 
 
+import { useAuthStore } from '@/store/authStore';
+import { usePermissionsStore } from '@/store/permissionsStore';
+import { isAdmin } from '@/utils/auth';
+import { ShieldAlert } from 'lucide-react';
+
 const VerificationDashboard: React.FC = () => {
+    const { user } = useAuthStore();
+    const { permissions } = usePermissionsStore();
+
+    const hasAccess = useMemo(() => {
+        if (!user) return false;
+        if (isAdmin(user.role)) return true;
+        const roleId = user.roleId?.toLowerCase() || '';
+        const roleName = user.role?.toLowerCase() || '';
+        const roleNameUnderscore = roleName.replace(/\s+/g, '_');
+        const roleNameHyphen = roleName.replace(/\s+/g, '-');
+        const directPerms = (user as any).permissions || [];
+
+        const userPerms = permissions[user.roleId] || 
+               permissions[roleId] || 
+               permissions[user.role] || 
+               permissions[roleName] || 
+               permissions[roleNameUnderscore] || 
+               permissions[roleNameHyphen] || 
+               [];
+        const combined = [...new Set([...userPerms, ...directPerms])];
+        return combined.includes('view_all_submissions');
+    }, [user, permissions]);
+
     const [submissions, setSubmissions] = useState<OnboardingData[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState('all');
@@ -434,6 +462,26 @@ const VerificationDashboard: React.FC = () => {
             rejected: submissions.filter(s => s.status === 'rejected').length
         };
     }, [submissions]);
+
+    if (!hasAccess) {
+        return (
+            <div className="p-8 flex-1 flex flex-col items-center justify-center min-h-[60vh] text-center">
+                <div className="w-16 h-16 rounded-2xl bg-rose-100 dark:bg-rose-950/60 text-rose-600 flex items-center justify-center mb-4 border border-rose-200 shadow-sm">
+                    <ShieldAlert className="w-8 h-8" />
+                </div>
+                <h2 className="text-2xl font-black text-slate-900 dark:text-white">Access Restricted</h2>
+                <p className="text-slate-500 max-w-md mt-2 text-sm">
+                    You do not have permission to view Onboarding Forms & Submissions. Please request the <strong className="text-slate-700 font-bold">View All Submissions</strong> permission from your administrator.
+                </p>
+                <button
+                    onClick={() => navigate('/')}
+                    className="mt-6 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md transition-all"
+                >
+                    Return to Home
+                </button>
+            </div>
+        );
+    }
 
     return (
         <div className="p-3 md:p-4 flex-1 flex flex-col bg-[#041b0f] md:bg-transparent min-h-screen md:min-h-0">

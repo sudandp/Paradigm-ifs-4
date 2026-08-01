@@ -92,8 +92,17 @@ const AddressDetails = () => {
         if (updated) {
             updateAddress(addressData);
         }
-        reset(addressData);
-    }, [data.address, reset, updateAddress]);
+    }, [data.address, updateAddress]);
+
+    const loadedRecordIdRef = useRef<string | null>(null);
+
+    useEffect(() => {
+        const currentRecordId = data.id || 'new';
+        if (loadedRecordIdRef.current !== currentRecordId) {
+            loadedRecordIdRef.current = currentRecordId;
+            reset(data.address);
+        }
+    }, [data.id, data.address, reset]);
 
     // This effect syncs the form state back to the Zustand store on change, with a debounce.
     useEffect(() => {

@@ -47,7 +47,7 @@ const validationSchema = yup.object({
     bloodGroup: yup.string().oneOf(['', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']).required('Blood group is required'),
     mobile: yup.string().required('Mobile number is required').matches(/^[6-9][0-9]{9}$/, 'Must be a valid 10-digit Indian mobile number'),
     alternateMobile: yup.string().optional().nullable(),
-    email: yup.string().email('Must be a valid email').required('Email is required'),
+    email: yup.string().transform((v, orig) => orig === '' ? undefined : v).email('Must be a valid email').optional().nullable(),
     idProofType: yup.string().oneOf(['Aadhaar', 'PAN', 'Voter ID', '']).optional(),
     idProofNumber: yup.string().optional(),
     photo: yup.mixed().optional().nullable(),
@@ -205,9 +205,15 @@ const PersonalDetails = () => {
         }
     }, [data.family, personalData.emergencyContactId, personalData.emergencyContactName, personalData.emergencyContactNumber, personalData.relationship, setValue]);
 
+    const loadedRecordIdRef = useRef<string | null>(null);
+
     useEffect(() => {
-        reset(initialPersonal);
-    }, [initialPersonal, reset]);
+        const currentRecordId = data.id || data.personal?.employeeId || 'new';
+        if (loadedRecordIdRef.current !== currentRecordId) {
+            loadedRecordIdRef.current = currentRecordId;
+            reset(initialPersonal);
+        }
+    }, [data.id, data.personal?.employeeId, initialPersonal, reset]);
 
     // This effect syncs the form state back to the Zustand store on change, with a debounce.
     useEffect(() => {
@@ -353,7 +359,7 @@ const PersonalDetails = () => {
 
                     <Input label="Mobile Number" id="mobile" type="tel" registration={register('mobile')} error={errors.mobile?.message} description="Onboarding updates and alerts will be sent to this number via WhatsApp." />
                     <Input label="Alternate Mobile (Optional)" id="alternateMobile" type="tel" registration={register('alternateMobile')} />
-                    <Input label="Email Address" id="email" type="email" registration={register('email')} error={errors.email?.message} />
+                    <Input label="Email Address (Optional)" id="email" type="email" registration={register('email')} error={errors.email?.message} />
                     <div>
                         <Input label="Monthly Salary (Gross)" id="salary" type="number" registration={register('salary')} error={errors.salary?.message} />
                         {typeof salaryVal === 'number' && (

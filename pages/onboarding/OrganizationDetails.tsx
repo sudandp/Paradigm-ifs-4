@@ -81,10 +81,15 @@ const OrganizationDetails = () => {
         api.getOrganizationStructure().then(setStructure);
     }, []);
 
+    const loadedRecordIdRef = useRef<string | null>(null);
+
     useEffect(() => {
-        // Sync form with global store data, which might have been pre-filled
-        reset(data.organization);
-    }, [data.organization, reset]);
+        const currentRecordId = data.id || 'new';
+        if (loadedRecordIdRef.current !== currentRecordId) {
+            loadedRecordIdRef.current = currentRecordId;
+            reset(data.organization);
+        }
+    }, [data.id, data.organization, reset]);
 
     // This effect syncs the form state back to the Zustand store on change, with a debounce.
     useEffect(() => {

@@ -31,23 +31,29 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ requiredPermission, chi
     const roleId = user.roleId?.toLowerCase() || '';
     const roleName = user.role?.toLowerCase() || '';
     const roleNameUnderscore = roleName.replace(/\s+/g, '_');
+    const roleNameHyphen = roleName.replace(/\s+/g, '-');
+    const directPerms = (user as any).permissions || [];
 
     // Get permissions from store based on various possible keys
-    const foundPermissions = permissions[roleId] || 
+    const foundPermissions = permissions[user.roleId] || 
+           permissions[roleId] || 
+           permissions[user.role] || 
            permissions[roleName] || 
            permissions[roleNameUnderscore] || 
-           permissions[user.role] || 
+           permissions[roleNameHyphen] || 
            [];
+
+    const combined = [...new Set([...foundPermissions, ...directPerms])];
 
     // ROBUSTNESS FALLBACK: 
     // If we are authenticated but have no permissions loaded yet, 
     // provide essential base permissions to avoid premature lockout.
-    if (foundPermissions.length === 0 && user.id && user.role !== 'unverified') {
+    if (combined.length === 0 && user.id && user.role !== 'unverified') {
         const basePermissions: Permission[] = ['view_profile', 'view_own_attendance', 'view_mobile_nav_home', 'view_mobile_nav_profile'];
         return basePermissions;
     }
 
-    return foundPermissions;
+    return combined;
   };
 
   const userPermissions = getPermissions();
