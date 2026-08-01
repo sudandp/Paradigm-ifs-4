@@ -63,18 +63,31 @@ const OrganizationDetails = () => {
     }, [structure, groupId, companyId, isBangalore]);
 
     const dropdownOptions = useMemo(() => {
+        let baseOptions: { id: string; name: string }[] = [];
         if (isBangalore) {
-            return filteredEntities.map(entity => ({
+            baseOptions = filteredEntities.map(entity => ({
                 id: entity.organizationId || entity.id,
                 name: entity.name
             }));
         } else {
-            return organizations.map(org => ({
+            baseOptions = organizations.map(org => ({
                 id: org.id,
-                name: org.shortName
+                name: org.shortName || org.fullName
             }));
         }
-    }, [isBangalore, filteredEntities, organizations]);
+
+        if (data.organization?.organizationId) {
+            const exists = baseOptions.some(o => o.id === data.organization.organizationId);
+            if (!exists) {
+                baseOptions.unshift({
+                    id: data.organization.organizationId,
+                    name: data.organization.organizationName || data.organization.site || 'Selected Client/Site'
+                });
+            }
+        }
+
+        return baseOptions;
+    }, [isBangalore, filteredEntities, organizations, data.organization]);
 
     useEffect(() => {
         api.getOrganizations().then(setOrganizations);
@@ -88,8 +101,13 @@ const OrganizationDetails = () => {
         if (loadedRecordIdRef.current !== currentRecordId) {
             loadedRecordIdRef.current = currentRecordId;
             reset(data.organization);
+        } else if (data.organization?.organizationId) {
+            setValue('organizationId', data.organization.organizationId);
+            if (data.organization.organizationName) {
+                setValue('organizationName', data.organization.organizationName);
+            }
         }
-    }, [data.id, data.organization, reset]);
+    }, [data.id, data.organization, reset, setValue]);
 
     // This effect syncs the form state back to the Zustand store on change, with a debounce.
     useEffect(() => {
