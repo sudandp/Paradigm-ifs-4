@@ -1018,22 +1018,49 @@ const SnagAuditPage: React.FC = () => {
     }
   }, [fetchEntries]);
 
+  const logSnagActivity = (actionType: 'CREATE' | 'EDIT' | 'DELETE', target: string, details: string) => {
+    try {
+      const newLog = {
+        id: `log-snag-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) + ', ' + new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }),
+        userName: user?.name || user?.email || 'Sudhan M',
+        userRole: user?.role || 'Admin',
+        actionType,
+        target,
+        details,
+        moduleType: 'SNAG_AUDIT',
+        siteName: target
+      };
+      const raw = localStorage.getItem('paradigm_snag_audit_logs');
+      const existing = raw ? JSON.parse(raw) : [];
+      localStorage.setItem('paradigm_snag_audit_logs', JSON.stringify([newLog, ...existing]));
+    } catch (e) {
+      console.warn('[SnagAuditPage] Failed to save log entry:', e);
+    }
+  };
+
   const handleDelete = useCallback(async (id: string) => {
     if (!confirm('Delete this snag entry?')) return;
+    const targetEntry = entries.find(e => e.id === id);
+    const site = targetEntry?.nameOfSite || 'Snag Entry';
+    const desc = targetEntry?.snagDescription || id;
+
     if (id.startsWith('sample-')) {
       setEntries(prev => prev.filter(e => e.id !== id));
+      logSnagActivity('DELETE', site, `Deleted snag entry "${desc}"`);
       toast.success('Mock entry deleted locally');
       return;
     }
     try {
       await opsApi.deleteSnagEntry(id);
+      logSnagActivity('DELETE', site, `Deleted snag entry "${desc}"`);
       toast.success('Entry deleted');
       fetchEntries();
     } catch (err) {
       console.error('Failed to delete snag:', err);
       toast.error('Failed to delete snag from database.');
     }
-  }, [fetchEntries]);
+  }, [entries, fetchEntries, user]);
 
   const exportCSV = () => {
     const headers = ['Timestamp', 'Email', 'Site Name', 'Purpose of Visit', 'Department', 'Snag Picture', 'Criticality', 'Snag Description', 'Action To Be Taken', 'Remarks', 'Status', 'Submitted By'];

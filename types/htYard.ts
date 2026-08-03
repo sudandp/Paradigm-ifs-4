@@ -27,6 +27,7 @@ export interface HTAuditHeader {
   status: HTAuditStatus;
   hiraChecklist?: HTHIRAPoint[];
   htYardCommonPoints?: Record<string, any>;
+  duplicatedStages?: Record<string, { id: string; label: string }[]>;
   auditLogs?: HTAuditLogEntry[];
   createdAt?: string;
   updatedAt?: string;

@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search, Edit2, Trash2, Box, RefreshCw, RotateCcw, Plus, Eye, X, Layers, List, Check, Tag, ChevronDown, ChevronUp, Maximize2, Minimize2, Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle2, FileText, HelpCircle, BookOpen } from 'lucide-react';
+import { Search, Edit2, Trash2, Box, RefreshCw, RotateCcw, Plus, Eye, X, Layers, List, Check, Tag, ChevronDown, ChevronUp, Maximize2, Minimize2, Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle2, FileText, HelpCircle, BookOpen, Lock } from 'lucide-react';
 import { HTMasterOption, HTMasterCategory } from '../../types/htYard';
 import { htYardMasterDataService } from '../../services/htYardMasterDataService';
+import { useAuthStore } from '../../store/authStore';
+import { supabase } from '../../services/supabase';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
@@ -130,6 +132,24 @@ export const HTMasterDataAdmin: React.FC = () => {
   // Accordion state
   const [expandedKeys, setExpandedKeys] = useState<Record<string, boolean>>({});
   const [quickAddInputs, setQuickAddInputs] = useState<Record<string, string>>({});
+
+  const { user: currentUser } = useAuthStore();
+
+  // Delete Password Modal state
+  const [deletePasswordModal, setDeletePasswordModal] = useState<{
+    isOpen: boolean;
+    type: 'CATEGORY' | 'OPTION' | 'FIELD';
+    targetName: string;
+    targetId?: string;
+    passwordInput: string;
+    isVerifying: boolean;
+  }>({
+    isOpen: false,
+    type: 'OPTION',
+    targetName: '',
+    passwordInput: '',
+    isVerifying: false
+  });
 
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
@@ -545,6 +565,27 @@ export const HTMasterDataAdmin: React.FC = () => {
     }
   };
 
+  const logMasterDataActivity = (actionType: 'CREATE' | 'EDIT' | 'DELETE', target: string, details: string) => {
+    try {
+      const newLog = {
+        id: `log-md-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) + ', ' + new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }),
+        userName: currentUser?.name || 'Sudhan M',
+        userRole: currentUser?.role || 'Admin',
+        actionType,
+        target,
+        details,
+        moduleType: 'MASTER_DATA',
+        siteName: 'HT Master Data'
+      };
+      const raw = localStorage.getItem('paradigm_master_data_audit_logs');
+      const existing = raw ? JSON.parse(raw) : [];
+      localStorage.setItem('paradigm_master_data_audit_logs', JSON.stringify([newLog, ...existing]));
+    } catch (e) {
+      console.warn('[HTMasterDataAdmin] Failed to save log entry:', e);
+    }
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingOption.optionValue?.trim()) {
@@ -557,6 +598,7 @@ export const HTMasterDataAdmin: React.FC = () => {
         ...editingOption,
         category: activeTab
       });
+      logMasterDataActivity('CREATE', editingOption.optionValue.trim(), `Added choice "${editingOption.optionValue.trim()}" for field "${editingOption.fieldKey}" in category "${activeTab}"`);
       toast.success('Option saved successfully');
       setShowAddModal(false);
       loadOptions();
@@ -573,6 +615,7 @@ export const HTMasterDataAdmin: React.FC = () => {
         fieldKey: fieldKey,
         optionValue: quickAddValue.trim()
       });
+      logMasterDataActivity('CREATE', quickAddValue.trim(), `Added choice "${quickAddValue.trim()}" for field "${fieldKey}" in category "${activeTab}"`);
       toast.success(`Added "${quickAddValue.trim()}"`);
       setQuickAddValue('');
       loadOptions();
@@ -588,6 +631,7 @@ export const HTMasterDataAdmin: React.FC = () => {
         ...item,
         optionValue: inlineEditingValue.trim()
       });
+      logMasterDataActivity('EDIT', inlineEditingValue.trim(), `Updated choice value from "${item.optionValue}" to "${inlineEditingValue.trim()}" in category "${activeTab}"`);
       toast.success('Choice updated');
       setInlineEditingId(null);
       loadOptions();
@@ -614,6 +658,7 @@ export const HTMasterDataAdmin: React.FC = () => {
       localStorage.setItem('ht_custom_categories', JSON.stringify(customOnly));
     } catch (e) {}
 
+    logMasterDataActivity('CREATE', catName, `Created new Master Data Category "${catName}"`);
     setActiveTab(catName);
     toast.success(`Category "${catName}" created!`);
     setShowAddCategoryModal(false);
@@ -621,6 +666,28 @@ export const HTMasterDataAdmin: React.FC = () => {
 
     // Automatically prompt to add the first target field for this category
     setShowAddTargetModal(true);
+  };
+
+  const promptDeleteCategory = (catName: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setDeletePasswordModal({
+      isOpen: true,
+      type: 'CATEGORY',
+      targetName: catName,
+      passwordInput: '',
+      isVerifying: false
+    });
+  };
+
+  const promptDeleteOption = (id: string, optionValue: string) => {
+    setDeletePasswordModal({
+      isOpen: true,
+      type: 'OPTION',
+      targetName: optionValue,
+      targetId: id,
+      passwordInput: '',
+      isVerifying: false
+    });
   };
 
   const handleCreateNewTargetField = (e: React.FormEvent) => {
@@ -650,6 +717,7 @@ export const HTMasterDataAdmin: React.FC = () => {
       return updated;
     });
 
+    logMasterDataActivity('CREATE', label, `Created new target field "${label}" (${cleanKey}) for category "${activeTab}"`);
     toast.success(`Target field "${cleanKey}" created!`);
     setShowAddTargetModal(false);
     setNewTargetLabel('');
@@ -666,14 +734,74 @@ export const HTMasterDataAdmin: React.FC = () => {
     setShowAddModal(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this option?')) return;
+  const handleDelete = (id: string) => {
+    const opt = options.find(o => o.id === id);
+    promptDeleteOption(id, opt?.optionValue || 'Option');
+  };
+
+  const handleConfirmPasswordDelete = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!deletePasswordModal.passwordInput.trim()) {
+      toast.error('Password is required');
+      return;
+    }
+
+    setDeletePasswordModal(prev => ({ ...prev, isVerifying: true }));
     try {
-      await htYardMasterDataService.deleteMasterOption(id, activeTab);
-      toast.success('Option removed');
-      loadOptions();
-    } catch (error) {
-      toast.error('Failed to delete option');
+      const email = currentUser?.email;
+      if (!email) {
+        toast.error('User email not found. Please log in again.');
+        setDeletePasswordModal(prev => ({ ...prev, isVerifying: false }));
+        return;
+      }
+
+      // Verify user password against Supabase auth
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email,
+        password: deletePasswordModal.passwordInput
+      });
+
+      if (error) {
+        toast.error('Incorrect password! Verification failed.');
+        setDeletePasswordModal(prev => ({ ...prev, isVerifying: false }));
+        return;
+      }
+
+      // Password matched! Execute actual deletion
+      if (deletePasswordModal.type === 'CATEGORY') {
+        const catName = deletePasswordModal.targetName;
+        const categoryOptions = await htYardMasterDataService.getMasterOptions(catName);
+        for (const opt of categoryOptions) {
+          await htYardMasterDataService.deleteMasterOption(opt.id, catName);
+        }
+        const updated = categories.filter(c => c !== catName);
+        setCategories(updated);
+        const customOnly = updated.filter(c => !defaultCategories.includes(c));
+        try {
+          localStorage.setItem('ht_custom_categories', JSON.stringify(customOnly));
+        } catch (err) {}
+        if (activeTab === catName) {
+          setActiveTab(updated[0] || 'RMUMD');
+        }
+        logMasterDataActivity('DELETE', catName, `Deleted Master Data Category "${catName}" and all associated options`);
+        toast.success(`Category "${catName}" deleted successfully!`);
+      } else if (deletePasswordModal.type === 'OPTION' && deletePasswordModal.targetId) {
+        await htYardMasterDataService.deleteMasterOption(deletePasswordModal.targetId, activeTab);
+        logMasterDataActivity('DELETE', deletePasswordModal.targetName, `Deleted choice option "${deletePasswordModal.targetName}" from category "${activeTab}"`);
+        toast.success(`Option "${deletePasswordModal.targetName}" deleted successfully!`);
+        loadOptions();
+      }
+
+      setDeletePasswordModal({
+        isOpen: false,
+        type: 'OPTION',
+        targetName: '',
+        passwordInput: '',
+        isVerifying: false
+      });
+    } catch (err) {
+      toast.error('Failed to verify password and delete item');
+      setDeletePasswordModal(prev => ({ ...prev, isVerifying: false }));
     }
   };
 
@@ -845,9 +973,17 @@ export const HTMasterDataAdmin: React.FC = () => {
 
             <button
               onClick={() => setShowAddCategoryModal(true)}
-              className="px-3.5 py-2 rounded-2xl text-xs font-bold border border-dashed border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors whitespace-nowrap flex items-center gap-1.5"
+              className="px-3.5 py-2 rounded-2xl text-xs font-bold border border-dashed border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors whitespace-nowrap flex items-center gap-1.5 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" /> + New Category
+            </button>
+
+            <button
+              onClick={(e) => promptDeleteCategory(activeTab, e)}
+              className="px-3 py-2 rounded-2xl text-xs font-bold border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 bg-rose-50/60 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 transition-colors whitespace-nowrap flex items-center gap-1.5 cursor-pointer"
+              title={`Delete Category "${activeTab}"`}
+            >
+              <Trash2 className="w-3.5 h-3.5" /> Delete Category
             </button>
           </div>
 
@@ -1125,8 +1261,8 @@ export const HTMasterDataAdmin: React.FC = () => {
                                         <Edit2 className="w-3.5 h-3.5" />
                                       </button>
                                       <button
-                                        onClick={() => handleDelete(opt.id)}
-                                        className="p-1 text-slate-400 hover:text-red-600 dark:hover:text-red-400 rounded-lg transition-colors"
+                                        onClick={() => promptDeleteOption(opt.id, opt.optionValue)}
+                                        className="p-1 text-slate-400 hover:text-red-600 dark:hover:text-red-400 rounded-lg transition-colors cursor-pointer"
                                         title="Delete Option"
                                       >
                                         <Trash2 className="w-3.5 h-3.5" />
@@ -1349,8 +1485,8 @@ export const HTMasterDataAdmin: React.FC = () => {
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
                           <button
-                            onClick={() => handleDelete(item.id)}
-                            className="p-1.5 text-slate-400 hover:text-red-600 dark:hover:text-red-400 rounded-lg hover:bg-white dark:hover:bg-slate-700 transition-colors"
+                            onClick={() => promptDeleteOption(item.id, item.optionValue)}
+                            className="p-1.5 text-slate-400 hover:text-red-600 dark:hover:text-red-400 rounded-lg hover:bg-white dark:hover:bg-slate-700 transition-colors cursor-pointer"
                             title="Remove choice"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -1973,6 +2109,85 @@ export const HTMasterDataAdmin: React.FC = () => {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Password Verification Modal for Deletion */}
+      {deletePasswordModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
+                  <Lock className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                    Confirm Password to Delete
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Security check required for deletion
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setDeletePasswordModal(prev => ({ ...prev, isOpen: false }))}
+                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-3.5 bg-rose-50/80 dark:bg-rose-950/40 rounded-2xl border border-rose-200/80 dark:border-rose-900/60 text-xs text-rose-800 dark:text-rose-300 space-y-1">
+              <p className="font-extrabold">
+                ⚠️ You are deleting {deletePasswordModal.type === 'CATEGORY' ? 'Category' : 'Option'}: "{deletePasswordModal.targetName}"
+              </p>
+              <p className="text-[11px] opacity-90">
+                Please enter your account password to confirm and authorize this deletion.
+              </p>
+            </div>
+
+            <form onSubmit={handleConfirmPasswordDelete} className="space-y-4 pt-1">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  Your Account Password ({currentUser?.email || 'User'})
+                </label>
+                <input
+                  type="password"
+                  required
+                  placeholder="Enter your password..."
+                  value={deletePasswordModal.passwordInput}
+                  onChange={(e) => setDeletePasswordModal(prev => ({ ...prev, passwordInput: e.target.value }))}
+                  className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-900 dark:text-white focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 outline-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setDeletePasswordModal(prev => ({ ...prev, isOpen: false }))}
+                  className="px-4 py-2.5 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={deletePasswordModal.isVerifying}
+                  className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
+                >
+                  {deletePasswordModal.isVerifying ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Verifying...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-3.5 h-3.5" /> Confirm & Delete
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -321,6 +321,29 @@ export const PPMDashboard: React.FC = () => {
     });
   });
 
+  const addPpmLog = (entry: { actionType: 'CREATE' | 'EDIT' | 'DELETE' | 'DUPLICATE' | 'SAVE'; target: string; details: string }) => {
+    try {
+      const newLog = {
+        id: `log-ppm-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) + ', ' + new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }),
+        userName: 'Sudhan M',
+        userRole: 'Admin',
+        actionType: entry.actionType,
+        target: entry.target,
+        details: entry.details,
+        moduleType: 'PPM_AUDIT',
+        siteName: 'PPM Audits'
+      };
+      const raw = localStorage.getItem('paradigm_ppm_audit_logs');
+      const existing = raw ? JSON.parse(raw) : [];
+      const updated = [newLog, ...existing];
+      localStorage.setItem('paradigm_ppm_audit_logs', JSON.stringify(updated));
+      console.log('[addPpmLog] Saved log entry:', newLog, 'Total entries:', updated.length);
+    } catch (e) {
+      console.warn('[PPMDashboard] Failed to save log entry:', e);
+    }
+  };
+
   const handleDuplicateFacility = (catId: string, catName: string, count: number, e: React.MouseEvent) => {
     e.stopPropagation();
     const existing = duplicatedFacilities[catId] || [];
@@ -331,6 +354,7 @@ export const PPMDashboard: React.FC = () => {
       [catId]: [...existing, { id: newId, name: newName, originalCategoryId: catId, count }]
     };
     saveDuplicatedFacilities(updated);
+    addPpmLog({ actionType: 'DUPLICATE', target: catName, details: `Duplicated facility stage to create "${newName}"` });
     setActiveCategory(newId);
     setEditingFacilityId(newId);
     setEditingFacilityValue(newName);
@@ -340,9 +364,11 @@ export const PPMDashboard: React.FC = () => {
   const handleRemoveFacility = (origCatId: string, dupId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     const existing = duplicatedFacilities[origCatId] || [];
+    const targetFacility = existing.find(d => d.id === dupId);
     const updated = existing.filter(d => d.id !== dupId);
     const newMap = { ...duplicatedFacilities, [origCatId]: updated };
     saveDuplicatedFacilities(newMap);
+    addPpmLog({ actionType: 'DELETE', target: targetFacility?.name || 'Duplicated Facility', details: `Removed duplicated facility stage "${targetFacility?.name || dupId}"` });
     if (activeCategory === dupId) setActiveCategory(origCatId);
     if (editingFacilityId === dupId) setEditingFacilityId(null);
   };
@@ -357,17 +383,24 @@ export const PPMDashboard: React.FC = () => {
   };
 
   const handleFacilityTitleBlur = () => {
+    let renamedTarget = '';
     setDuplicatedFacilities(prev => {
       const updated = { ...prev };
       Object.keys(updated).forEach(origKey => {
-        updated[origKey] = updated[origKey].map(d =>
-          d.id === editingFacilityId && !d.name.trim()
-            ? { ...d, name: 'Untitled Facility' }
-            : d
-        );
+        updated[origKey] = updated[origKey].map(d => {
+          if (d.id === editingFacilityId) {
+            const finalName = d.name.trim() ? d.name : 'Untitled Facility';
+            renamedTarget = finalName;
+            return { ...d, name: finalName };
+          }
+          return d;
+        });
       });
       return updated;
     });
+    if (editingFacilityId && renamedTarget) {
+      addPpmLog({ actionType: 'EDIT', target: renamedTarget, details: `Renamed facility stage to "${renamedTarget}"` });
+    }
     setEditingFacilityId(null);
   };
 

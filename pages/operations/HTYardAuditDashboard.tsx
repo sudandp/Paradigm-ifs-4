@@ -265,6 +265,21 @@ export const HTYardAuditDashboard: React.FC = () => {
       details: entry.details,
     };
     setAuditLogs(prev => [newLog, ...prev]);
+
+    // Also persist to global audit logs store for central Audit Change Log view
+    try {
+      const globalLog = {
+        ...newLog,
+        moduleType: 'SITE_AUDIT',
+        siteName: entry.target,
+        auditId: 'ht-global'
+      };
+      const raw = localStorage.getItem('paradigm_ht_audit_global_logs');
+      const existing = raw ? JSON.parse(raw) : [];
+      localStorage.setItem('paradigm_ht_audit_global_logs', JSON.stringify([globalLog, ...existing]));
+    } catch (e) {
+      console.warn('[HTYardAuditDashboard] Failed to save global audit log:', e);
+    }
   }, [currentUser]);
   
   // Modal for new audit

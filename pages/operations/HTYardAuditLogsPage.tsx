@@ -11,6 +11,7 @@ import { HTAuditLogEntry } from '../../types/htYard';
 import toast from 'react-hot-toast';
 
 export interface UnifiedAuditLogEntry extends HTAuditLogEntry {
+  auditId?: string;
   moduleType: 'SITE_AUDIT' | 'PPM_AUDIT' | 'SNAG_AUDIT' | 'MASTER_DATA' | 'AUDIT_REPORT';
   siteName: string;
   auditRef?: string;
@@ -63,6 +64,19 @@ export const HTYardAuditLogsPage: React.FC = () => {
             }
           }
         });
+        // 1b. Load HT Yard explicit global activity logs
+        const rawHtLogs = localStorage.getItem('paradigm_ht_audit_global_logs');
+        if (rawHtLogs) {
+          const parsedHtLogs = JSON.parse(rawHtLogs);
+          (parsedHtLogs || []).forEach((l: any) => {
+            combinedLogs.push({
+              ...l,
+              auditId: l.auditId || 'ht-global',
+              moduleType: 'SITE_AUDIT',
+              siteName: l.siteName || 'Site Audit'
+            });
+          });
+        }
       } catch (e) {
         console.warn('[HTYardAuditLogsPage] Error loading HT Yard audits:', e);
       }
@@ -105,12 +119,59 @@ export const HTYardAuditLogsPage: React.FC = () => {
             });
           }
         });
+
+        // 2b. Load PPM explicit facility action logs (duplicate / remove / rename events)
+        const rawPpmLogs = localStorage.getItem('paradigm_ppm_audit_logs');
+        if (rawPpmLogs) {
+          const parsedPpmLogs = JSON.parse(rawPpmLogs);
+          (parsedPpmLogs || []).forEach((l: any) => {
+            combinedLogs.push({
+              ...l,
+              auditId: l.auditId || 'ppm-global',
+              moduleType: 'PPM_AUDIT',
+              siteName: l.siteName || 'PPM Audits'
+            });
+          });
+        }
+
+        // 3. Load Master Data Activity Logs
+        const rawMdLogs = localStorage.getItem('paradigm_master_data_audit_logs');
+        if (rawMdLogs) {
+          const parsedMdLogs = JSON.parse(rawMdLogs);
+          (parsedMdLogs || []).forEach((l: any) => {
+            combinedLogs.push({
+              ...l,
+              auditId: l.auditId || 'md-global',
+              moduleType: 'MASTER_DATA',
+              siteName: l.siteName || 'HT Master Data'
+            });
+          });
+        }
+        // 4. Load Snag Audit Activity Logs
+        const rawSnagLogs = localStorage.getItem('paradigm_snag_audit_logs');
+        if (rawSnagLogs) {
+          const parsedSnagLogs = JSON.parse(rawSnagLogs);
+          (parsedSnagLogs || []).forEach((l: any) => {
+            combinedLogs.push({
+              ...l,
+              auditId: l.auditId || 'snag-global',
+              moduleType: 'SNAG_AUDIT',
+              siteName: l.siteName || 'Snag Audit'
+            });
+          });
+        }
       } catch (e) {
-        console.warn('[HTYardAuditLogsPage] Error loading PPM audits:', e);
+        console.warn('[HTYardAuditLogsPage] Error loading PPM/Master Data/Snag audits:', e);
       }
 
       // Sort combined logs descending by ID / timestamp
       combinedLogs.sort((a, b) => b.id.localeCompare(a.id));
+
+      console.log('[HTYardAuditLogsLoaded]', {
+        count: combinedLogs.length,
+        logs: combinedLogs,
+        sites: sitesList
+      });
 
       setAllLogs(combinedLogs);
       setAllAuditSites(sitesList);
@@ -158,8 +219,8 @@ export const HTYardAuditLogsPage: React.FC = () => {
   // Filtered logs calculation
   const filteredLogs = allLogs.filter(log => {
     const matchesModule = moduleFilter === 'ALL' || log.moduleType === moduleFilter;
-    const matchesSite = selectedSiteId === 'ALL' || log.auditId === selectedSiteId;
-    const matchesAction = actionFilter === 'ALL' || log.actionType === actionFilter;
+    const matchesSite = selectedSiteId === 'ALL' || !log.auditId || log.auditId === 'ppm-global' || log.auditId === 'md-global' || log.auditId === 'ht-global' || log.auditId === 'snag-global' || log.auditId === selectedSiteId;
+    const matchesAction = actionFilter === 'ALL' || (log.actionType && log.actionType.toUpperCase() === actionFilter.toUpperCase());
     const query = searchQuery.toLowerCase().trim();
     const matchesSearch = !query ||
       log.userName.toLowerCase().includes(query) ||
