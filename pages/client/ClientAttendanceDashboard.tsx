@@ -4,7 +4,7 @@ import {
   Users, UserCheck, UserX, Clock, RefreshCw, Database,
   AlertTriangle, TrendingUp, Search, ChevronUp, ChevronDown,
   Calendar, WifiOff, Wifi, BarChart3, Building2, Shield, Radio, Bug, CheckCircle2,
-  Settings, Plus, Trash2, Edit3, Sliders, Save, RotateCcw,
+  Settings, Plus, Trash2, Edit3, Copy, Sliders, Save, RotateCcw,
   Lock, ShieldCheck, CheckSquare, Square, UserPlus, FileText, Camera, AlertOctagon, MessageSquare, Eye, X, Video, Moon
 } from 'lucide-react';
 import { supabase } from '../../services/supabase';
@@ -69,6 +69,7 @@ interface EmployeeRow {
   designation: string;
   inTime: string | null;
   outTime: string | null;
+  isNextDayOut?: boolean;
   workingHours: string;
   shiftName?: string;
   shiftCode?: string;
@@ -77,6 +78,8 @@ interface EmployeeRow {
   otHours?: string;
   status: 'Present' | 'Absent' | 'Late' | 'Half Day' | 'Not Joined Yet' | 'Discontinued / Left' | string;
   shiftCompleted?: boolean;
+  isMissedPunchIn?: boolean;
+  isMissedPunchOut?: boolean;
   lateMinutes: number;
   isActiveEmployee?: boolean;
   daysSinceLastPunch?: number;
@@ -131,11 +134,14 @@ interface AttendanceData {
 const StatusBadge: React.FC<{
   status: string;
   shiftCompleted?: boolean;
+  inTime?: string | null;
   outTime?: string | null;
   shiftType?: 'single' | 'double' | 'triple';
   selectedDate?: string;
   lifecycleStatus?: string;
-}> = ({ status, shiftCompleted, outTime, shiftType, selectedDate, lifecycleStatus }) => {
+  isMissedPunchIn?: boolean;
+  isMissedPunchOut?: boolean;
+}> = ({ status, shiftCompleted, inTime, outTime, shiftType, selectedDate, lifecycleStatus, isMissedPunchIn, isMissedPunchOut }) => {
   const todayStr = new Date().toISOString().slice(0, 10);
   const isToday = !selectedDate || selectedDate === todayStr;
 
@@ -153,6 +159,25 @@ const StatusBadge: React.FC<{
       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-rose-100 text-rose-800 border border-rose-200 dark:bg-rose-950/60 dark:text-rose-400 dark:border-rose-900">
         <UserX size={11} className="text-rose-600 shrink-0" />
         Discontinued / Left
+      </span>
+    );
+  }
+
+  // ── Smart Analyser: Explicit Missed Punch IN / OUT Badges ──
+  if (status === 'Missed Punch IN' || isMissedPunchIn || (!inTime && outTime)) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-950/80 dark:text-amber-300 dark:border-amber-800 shadow-xs">
+        <AlertTriangle size={11} className="text-amber-600 dark:text-amber-400 shrink-0" />
+        Missed Punch IN
+      </span>
+    );
+  }
+
+  if (status === 'Missed Punch OUT' || isMissedPunchOut || (!isToday && inTime && !outTime && !shiftCompleted)) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-950/80 dark:text-amber-300 dark:border-amber-800 shadow-xs">
+        <AlertTriangle size={11} className="text-amber-600 dark:text-amber-400 shrink-0" />
+        Missed Punch OUT
       </span>
     );
   }
@@ -210,11 +235,20 @@ const StatusBadge: React.FC<{
     );
   }
 
-  // Active on duty (In time present, out time not yet punched)
+  // Active on duty (ONLY if selected date is TODAY)
+  if (isToday) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800">
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+        On Duty
+      </span>
+    );
+  }
+
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800">
-      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-      On Duty
+    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-950/80 dark:text-amber-300 dark:border-amber-800 shadow-xs">
+      <AlertTriangle size={11} className="text-amber-600 dark:text-amber-400 shrink-0" />
+      Single Punch
     </span>
   );
 };
@@ -1067,6 +1101,26 @@ const ClientAttendanceDashboard: React.FC = () => {
     setCodePrefixInput(rule.codePrefix || '');
   };
 
+  const handleDuplicateRule = (rule: ShiftRuleConfig) => {
+    const duplicatedRule: ShiftRuleConfig = {
+      id: `rule-${Date.now()}`,
+      groupName: `${rule.groupName} (Copy)`,
+      shiftCode: `${rule.shiftCode}_COPY`,
+      startTimeSlots: rule.startTimeSlots,
+      displayTiming: rule.displayTiming,
+      expectedHours: rule.expectedHours,
+      minCompletedHours: rule.minCompletedHours,
+      siteName: rule.siteName,
+      codePrefix: rule.codePrefix,
+    };
+    const updated = [...shiftRules, duplicatedRule];
+    saveShiftRulesToStorage(updated);
+    saveShiftRuleToSupabase(duplicatedRule);
+
+    // Automatically load duplicated rule into the form for editing
+    handleEditRule(duplicatedRule);
+  };
+
   const handleDeleteRule = (id: string) => {
     const updated = shiftRules.filter(r => r.id !== id);
     saveShiftRulesToStorage(updated);
@@ -1329,7 +1383,12 @@ function evaluateEmployeeShiftAndLate(emp: EmployeeRow, rules: ShiftRuleConfig[]
     if (!processedEmployees.length) return [];
     const set = new Set<string>();
     processedEmployees.forEach(e => {
-      if (e.department) set.add(e.department);
+      if (e.department) {
+        const clean = e.department.trim();
+        const lower = clean.toLowerCase();
+        const norm = (lower.includes('purva') && lower.includes('venezia')) ? 'Purva Venezia' : clean;
+        set.add(norm);
+      }
     });
     return Array.from(set).sort();
   }, [processedEmployees]);
@@ -1340,7 +1399,10 @@ function evaluateEmployeeShiftAndLate(emp: EmployeeRow, rules: ShiftRuleConfig[]
     const deptMap = new Map<string, { total: number; present: number }>();
 
     processedEmployees.forEach(e => {
-      const site = e.department || 'General';
+      let site = e.department || 'General';
+      if (site.toLowerCase().includes('purva') && site.toLowerCase().includes('venezia')) {
+        site = 'Purva Venezia';
+      }
       if (!deptMap.has(site)) {
         deptMap.set(site, { total: 0, present: 0 });
       }
@@ -1406,7 +1468,9 @@ function evaluateEmployeeShiftAndLate(emp: EmployeeRow, rules: ShiftRuleConfig[]
                 : statusFilter === 'Late'
                   ? e.lateMinutes > 0 || e.status === 'Late'
                   : e.status === statusFilter;
-        const matchDept = departmentFilter === 'all' || e.department === departmentFilter;
+        const matchDept = departmentFilter === 'all' || 
+          e.department === departmentFilter ||
+          e.department.toLowerCase().trim() === departmentFilter.toLowerCase().trim();
         const matchShift = shiftFilter === 'all'
           ? true
           : shiftFilter === 'DoubleTriple'
@@ -1427,7 +1491,10 @@ function evaluateEmployeeShiftAndLate(emp: EmployeeRow, rules: ShiftRuleConfig[]
 
     const targetEmps = departmentFilter === 'all'
       ? processedEmployees
-      : processedEmployees.filter(e => e.department === departmentFilter);
+      : processedEmployees.filter(e => 
+          e.department === departmentFilter || 
+          e.department.toLowerCase().trim() === departmentFilter.toLowerCase().trim()
+        );
 
     const totalHeadcount = targetEmps.length;
     
@@ -2367,15 +2434,22 @@ function evaluateEmployeeShiftAndLate(emp: EmployeeRow, rules: ShiftRuleConfig[]
 
                       <div className="flex items-center gap-1">
                         <button
+                          onClick={() => handleDuplicateRule(rule)}
+                          className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                          title="Duplicate / Clone Shift Rule"
+                        >
+                          <Copy size={14} />
+                        </button>
+                        <button
                           onClick={() => handleEditRule(rule)}
-                          className="p-1.5 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                          className="p-1.5 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                           title="Edit Rule"
                         >
                           <Edit3 size={14} />
                         </button>
                         <button
                           onClick={() => handleDeleteRule(rule.id)}
-                          className="p-1.5 text-slate-400 hover:text-red-600 dark:hover:text-red-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                          className="p-1.5 text-slate-400 hover:text-red-600 dark:hover:text-red-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                           title="Delete Rule"
                         >
                           <Trash2 size={14} />
@@ -2957,8 +3031,8 @@ function evaluateEmployeeShiftAndLate(emp: EmployeeRow, rules: ShiftRuleConfig[]
                             <span className="text-slate-700 dark:text-slate-300 font-semibold">{emp.outTime}</span>
                             <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">
                               {(() => {
-                                const isNightOvernight = (emp.shiftName || '').toLowerCase().includes('night') || (emp.inTime || '').toLowerCase().includes('pm');
-                                if (isNightOvernight) {
+                                const isNextDay = emp.isNextDayOut ?? ((emp.shiftName || '').toLowerCase().includes('night') && (emp.inTime || '').toLowerCase().includes('pm') && (emp.outTime || '').toLowerCase().includes('am'));
+                                if (isNextDay) {
                                   const d = new Date(selectedDate);
                                   d.setDate(d.getDate() + 1);
                                   return `${d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} (+1d)`;
@@ -2977,7 +3051,16 @@ function evaluateEmployeeShiftAndLate(emp: EmployeeRow, rules: ShiftRuleConfig[]
                       </td>
                       <td className="px-4 py-3 text-center">
                         <div className="flex flex-col items-center justify-center gap-1">
-                          <StatusBadge status={emp.status} shiftCompleted={emp.shiftCompleted} outTime={emp.outTime} shiftType={emp.shiftType} selectedDate={selectedDate} />
+                          <StatusBadge 
+                            status={emp.status} 
+                            shiftCompleted={emp.shiftCompleted} 
+                            inTime={emp.inTime}
+                            outTime={emp.outTime} 
+                            shiftType={emp.shiftType} 
+                            selectedDate={selectedDate} 
+                            isMissedPunchIn={emp.isMissedPunchIn}
+                            isMissedPunchOut={emp.isMissedPunchOut}
+                          />
                           {emp.lateMinutes > 0 && (
                             <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
                               <Clock size={10} className="shrink-0 text-amber-600" />

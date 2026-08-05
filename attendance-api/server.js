@@ -216,7 +216,7 @@ app.get('/attendance', requireApiKey, async (req, res) => {
       LEFT JOIN (
         SELECT 
           EmployeeCode,
-          MIN(CASE WHEN LogDate >= '${date} 05:30:00' AND LogDate <= '${date} 23:59:59' THEN LogDate END) AS FirstInPunchOnDate,
+          MIN(CASE WHEN LogDate >= '${date} 00:00:00' AND LogDate <= '${date} 23:59:59' THEN LogDate END) AS FirstInPunchOnDate,
           MIN(CASE WHEN LogDate >= '${date} 17:00:00' AND LogDate <= '${date} 23:59:59' THEN LogDate END) AS NightInPunchOnDate,
           MAX(CASE WHEN LogDate >= '${date} 00:00:00' AND LogDate <= '${date} 23:59:59' THEN LogDate END) AS LastOutPunchOnDate,
           MIN(CASE WHEN LogDate >= '${nextDateStr} 00:00:00' AND LogDate <= '${nextDateStr} 12:30:00' THEN LogDate END) AS NextMorningOutPunch,
@@ -244,6 +244,26 @@ app.get('/attendance', requireApiKey, async (req, res) => {
 
     const rows = queryResult.recordset || [];
 
+    // ── Site Name Normalizer ──────────────────────────────────────────────
+    const normalizeSiteName = (rawName) => {
+      if (!rawName) return 'Default';
+      const clean = String(rawName).trim();
+      const lower = clean.toLowerCase();
+
+      if (lower.includes('purva') && lower.includes('venezia')) return 'Purva Venezia';
+      if (lower.includes('purva') && lower.includes('palm')) return 'Purva Palm Beach';
+      if (lower.includes('brigade') || lower.includes('utopia')) return 'Brigade Cornerstone Utopia';
+      if (lower.includes('mahendra') || lower.includes('aarna')) return 'Mahendra Aarna';
+      if (lower.includes('nikoo') && lower.includes('home')) return 'Nikoo Homes';
+      if (lower.includes('nikoo') && lower.includes('paradigm')) return 'Nikoo Paradigm';
+      if (lower.includes('sobha') || lower.includes('silicon')) return 'Sobha Silicon Oasis';
+      if (lower.includes('eden') || lower.includes('dsr')) return 'Dsr Eden Greens';
+      if (lower.includes('sankalpa')) return 'Dr Sankalpa';
+      if (lower.includes('iskcon')) return 'Iskcon';
+
+      return clean.replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.substring(1).toLowerCase());
+    };
+
     // ── 5-Tier Smart Site Auto-Assignment Engine ────────────────────────
     const prefixSiteMap = new Map([
       ['17', 'Mahendra Aarna'],
@@ -260,20 +280,15 @@ app.get('/attendance', requireApiKey, async (req, res) => {
 
     const getSmartSite = (code, dbSite) => {
       const cleanCode = String(code || '').trim();
-
-      // Rule: 31xxx (MEP) and 32xxx (Security) series unconditionally map to Brigade Cornerstone Utopia
-      if (cleanCode.startsWith('31') || cleanCode.startsWith('32')) {
-        return { site: 'Brigade Cornerstone Utopia', isSmart: true };
-      }
-
       const siteStr = String(dbSite || '').trim();
+
+      // 1. Database-provided site name: Display directly without highlight (isSmart = false)
       if (siteStr && siteStr !== 'General' && siteStr !== 'Default') {
-        return { site: siteStr, isSmart: false };
+        return { site: normalizeSiteName(siteStr), isSmart: false };
       }
 
-      if (cleanCode.length >= 3 && prefixSiteMap.has(cleanCode.slice(0, 3))) {
-        return { site: prefixSiteMap.get(cleanCode.slice(0, 3)), isSmart: true };
-      }
+      // 2. Fallback / Unassigned site: Auto-assign smart site from Biometric Code Prefix (isSmart = true)
+      if (cleanCode.startsWith('31') || cleanCode.startsWith('32')) return { site: 'Brigade Cornerstone Utopia', isSmart: true };
       if (cleanCode.startsWith('17')) return { site: 'Mahendra Aarna', isSmart: true };
       if (cleanCode.startsWith('42')) return { site: 'Purva Venezia', isSmart: true };
       if (cleanCode.startsWith('77') || cleanCode.startsWith('78')) return { site: 'Nikoo Homes', isSmart: true };
@@ -281,12 +296,17 @@ app.get('/attendance', requireApiKey, async (req, res) => {
       if (cleanCode.startsWith('79') || cleanCode.startsWith('80')) return { site: 'Nikoo Paradigm', isSmart: true };
       if (cleanCode.startsWith('99')) return { site: 'Dsr Eden Greens', isSmart: true };
 
+      if (cleanCode.length >= 3 && prefixSiteMap.has(cleanCode.slice(0, 3))) {
+        return { site: prefixSiteMap.get(cleanCode.slice(0, 3)), isSmart: true };
+      }
+
       return { site: 'Default', isSmart: false };
     };
 
     const employees = rows.map(row => {
       let inTimeStr = null;
       let outTimeStr = null;
+      let isNextDayOut = false;
       let status = 'Absent';
       let workingHours = '—';
       let shiftCompleted = false;
@@ -315,8 +335,10 @@ app.get('/attendance', requireApiKey, async (req, res) => {
       const nextMorningOut = parseSqlStr(row.nextMorningOutPunchStr);
       const prevNightIn = parseSqlStr(row.prevNightInPunchStr);
 
-      // Determine effective IN punch: prioritize evening punch (for night shift) or valid day punch
-      const effectiveIn = nightIn || firstIn;
+      // Determine effective IN punch:
+      // Always use firstIn if present (earliest punch on date starting after 05:30 AM).
+      // Fallback to nightIn if firstIn is missing (e.g. for pure night shifts starting after 17:00 PM).
+      let effectiveIn = firstIn || nightIn;
 
       if (effectiveIn) {
         const inH = effectiveIn.hours;
@@ -329,6 +351,7 @@ app.get('/attendance', requireApiKey, async (req, res) => {
         let effectiveOut = null;
         if (inH >= 17 && nextMorningOut) {
           effectiveOut = nextMorningOut;
+          isNextDayOut = true;
         } else if (lastOut && lastOut.timestamp > effectiveIn.timestamp) {
           const diffMins = Math.floor((lastOut.timestamp - effectiveIn.timestamp) / 60000);
           if (diffMins > 5) {
@@ -354,10 +377,30 @@ app.get('/attendance', requireApiKey, async (req, res) => {
         }
 
         status = 'Present';
+
+        // ── Smart Analyser: Single Punch Missed IN / Missed OUT Detection Engine ──
+        if (!effectiveOut) {
+          const cleanEmpCode = String(row.empCode || '').trim();
+          const desigLower = String(row.designation || '').toLowerCase();
+          const isSecurityCode = cleanEmpCode.startsWith('32') || cleanEmpCode.startsWith('320');
+          const isSecurityStaff = isSecurityCode || desigLower.includes('security') || desigLower.includes('guard');
+          
+          // Single punch in late afternoon / evening (>= 16:30 / 04:30 PM, e.g. 19:41 / 07:41 PM)
+          // If not a dedicated security night guard with overnight/previous night punch, this punch was actually the OUT punch (Missed IN punch)!
+          if (effectiveIn.hours >= 16 && !nextMorningOut && !row.prevNightInPunch && (!isSecurityStaff || cleanEmpCode.startsWith('31'))) {
+            isMissedPunchIn = true;
+            outTimeStr = inTimeStr; // Assign evening punch as OUT time
+            inTimeStr = null;       // Missed IN punch
+            status = 'Missed Punch IN';
+          } else if (date < new Date().toISOString().slice(0, 10)) {
+            // Single morning/afternoon punch on a past date without OUT punch -> Missed Punch OUT!
+            isMissedPunchOut = true;
+            status = 'Missed Punch OUT';
+          }
+        }
       }
 
       const smartSiteInfo = getSmartSite(row.empCode, row.department);
-
       const daysSince = row.daysSinceLastPunch !== undefined && row.daysSinceLastPunch !== null ? Number(row.daysSinceLastPunch) : 9999;
       const firstEverDateStr = row.firstEverPunchDateStr ? String(row.firstEverPunchDateStr).slice(0, 10) : null;
 
@@ -369,13 +412,6 @@ app.get('/attendance', requireApiKey, async (req, res) => {
         lifecycleStatus = 'New Joinee';
       }
 
-      if (status === 'Absent' && daysSince > 14 && daysSince < 9000) {
-        status = 'Discontinued / Left';
-        lifecycleStatus = 'Discontinued';
-      }
-
-      const isActiveEmployee = status === 'Present' || (row.lastPunchDate && daysSince <= 25 && status !== 'Not Joined Yet' && status !== 'Discontinued / Left');
-
       return {
         empCode: String(row.empCode || ''),
         empName: String(row.empName || 'Employee'),
@@ -383,41 +419,35 @@ app.get('/attendance', requireApiKey, async (req, res) => {
         designation: String(row.designation || 'Staff'),
         inTime: inTimeStr,
         outTime: outTimeStr,
+        isNextDayOut,
         workingHours,
         status,
         shiftCompleted,
+        isMissedPunchIn,
+        isMissedPunchOut,
         lateMinutes: 0,
         hadPrevNightShift: Boolean(row.prevNightInPunch),
         lifecycleStatus,
         firstEverPunchDate: firstEverDateStr,
         isSmartSite: smartSiteInfo.isSmart,
-        isActiveEmployee,
+        isActiveEmployee: status !== 'Not Joined Yet',
         daysSinceLastPunch: daysSince,
       };
     });
 
-    // Query raw distinct device punches for today to reflect full device scan count
-    const presentRawCountRes = await p.request().query(`
-      SELECT COUNT(DISTINCT UserId) AS rawPresentCount 
-      FROM dbo.[${logTable}] WITH (NOLOCK) 
-      WHERE LogDate >= '${date} 00:00:00' AND LogDate <= '${date} 23:59:59'
-    `).catch(() => ({ recordset: [] }));
-
-    const rawPresentCount = (presentRawCountRes.recordset && presentRawCountRes.recordset[0]) 
-      ? Number(presentRawCountRes.recordset[0].rawPresentCount || 0) 
-      : 0;
+    const activeEmployees = employees.filter(e => e.status !== 'Not Joined Yet');
+    const presentEmployees = activeEmployees.filter(e => e.status === 'Present');
+    const absentEmployees = activeEmployees.filter(e => e.status === 'Absent');
 
     const totalEmployees = employees.length;
-    const activeEmployees = employees.filter(e => e.isActiveEmployee !== false);
     const activeTotal = activeEmployees.length;
     const inactiveTotal = totalEmployees - activeTotal;
+    const present = presentEmployees.length;
+    const absent = absentEmployees.length;
 
-    const present = Math.max(rawPresentCount, employees.filter(e => e.status === 'Present').length);
-    const absent = Math.max(0, activeTotal - present);
-
-    // Site Breakdown
+    // Site Breakdown (Strict 1:1 match with table records)
     const deptMap = new Map();
-    employees.forEach(e => {
+    activeEmployees.forEach(e => {
       const site = e.department || 'General';
       if (!deptMap.has(site)) {
         deptMap.set(site, { total: 0, present: 0 });
