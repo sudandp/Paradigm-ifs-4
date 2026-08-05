@@ -34,7 +34,7 @@ const ImpersonationBanner: React.FC = () => {
   return (
     <div
       role="alert"
-      className="fixed top-0 left-0 right-0 z-[9999] flex items-center justify-between gap-3 px-4 py-2.5 bg-amber-500 text-white shadow-lg"
+      className="fixed top-0 left-0 right-0 h-10 z-[9999] flex items-center justify-between gap-3 px-4 bg-amber-500 text-white shadow-md"
       style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
     >
       {/* Left: Warning icon + info text */}

@@ -18,6 +18,7 @@ import BreakTrackingMonitor from '../attendance/BreakTrackingMonitor';
 import { useSettingsStore } from '../../store/settingsStore';
 import { PingAlarmOverlay } from '../notifications/PingAlarmOverlay';
 import ReferralModal from '../modals/ReferralModal';
+import { useImpersonationStore } from '../../store/impersonationStore';
 
 export interface NavLinkConfig {
     to: string;
@@ -42,6 +43,7 @@ export const allNavLinks: NavLinkConfig[] = [
 
     // Dashboards
     { to: '/client/dashboard', label: 'Client Dashboard', icon: BarChart3, permission: 'view_client_dashboard', category: 'Dashboards' },
+    { to: '/client/site-attendance', label: 'Site Attendance', icon: ClipboardCheck, permission: 'view_site_attendance', category: 'Dashboards' },
     { to: '/site/dashboard', label: 'Site Dashboard', icon: Home, permission: 'view_site_dashboard', category: 'Dashboards' },
     { to: '/operations/dashboard', label: 'Operations', icon: BriefcaseBusiness, permission: 'view_operations_dashboard', category: 'Dashboards' },
     { to: '/management/dashboard', label: 'Management Dashboard', icon: LayoutDashboard, permission: 'view_management_dashboard', category: 'Dashboards' },
@@ -618,8 +620,10 @@ const MainLayout: React.FC = () => {
         return <Navigate to="/auth/login" replace />;
     }
 
+    const { isImpersonating } = useImpersonationStore();
+
     return (
-        <div className={`flex h-screen overflow-hidden ${isMobile ? 'bg-[#041b0f]' : 'bg-page'}`}>
+        <div className={`flex overflow-hidden ${isImpersonating ? 'h-[calc(100vh-40px)] mt-[40px]' : 'h-screen'} ${isMobile ? 'bg-[#041b0f]' : 'bg-page'}`}>
 
             {isMobile && !isSidebarExpanded && (
                 <div
@@ -638,7 +642,7 @@ const MainLayout: React.FC = () => {
             <aside 
                 onMouseEnter={handleMouseEnter}
                 onMouseLeave={handleMouseLeave}
-                className={`flex flex-col flex-shrink-0 transition-[width] duration-300 cubic-bezier(0.4,0,0.2,1) will-change-[width] ${isMobile ? (!isSidebarExpanded ? 'w-[56px]' : 'w-[243px]') : (isTablet ? (!isSidebarExpanded ? 'w-[56px]' : 'w-[210px]') : (!isSidebarExpanded ? 'w-[56px]' : 'w-[227px]'))} ${isMobile ? 'bg-[#041b0f]' : 'bg-white border-r border-gray-200/60'} ${isMobile ? 'fixed left-0 top-0 bottom-0 z-50' : 'desktop-scaled'}`}
+                className={`flex flex-col flex-shrink-0 transition-[width] duration-300 cubic-bezier(0.4,0,0.2,1) will-change-[width] ${isMobile ? (!isSidebarExpanded ? 'w-[56px]' : 'w-[243px]') : (isTablet ? (!isSidebarExpanded ? 'w-[56px]' : 'w-[210px]') : (!isSidebarExpanded ? 'w-[56px]' : 'w-[227px]'))} ${isMobile ? 'bg-[#041b0f]' : 'bg-white border-r border-gray-200/60'} ${isMobile ? `fixed left-0 ${isImpersonating ? 'top-[40px]' : 'top-0'} bottom-0 z-50` : 'desktop-scaled'}`}
             >
                 <div className="flex-1 overflow-y-auto overflow-x-hidden">
                     <SidebarContent
@@ -697,14 +701,14 @@ const MainLayout: React.FC = () => {
                         className="fixed inset-0 bg-black/50 z-[95] transition-opacity duration-300"
                         onClick={() => setIsPanelOpen(false)}
                     />
-                    <aside className="fixed inset-y-0 right-0 z-[100] w-[400px] flex-shrink-0 bg-white shadow-xl animate-slide-in-right desktop-scaled">
+                    <aside className={`fixed ${isImpersonating ? 'top-[40px] bottom-0' : 'inset-y-0'} right-0 z-[100] w-[400px] flex-shrink-0 bg-white shadow-xl animate-slide-in-right desktop-scaled`}>
                         <NotificationPanel isOpen={isPanelOpen} onClose={() => setIsPanelOpen(false)} isMobile={false} />
                     </aside>
                 </>
             )}
 
             {(isMobile || isTablet) && isPanelOpen && (
-                <div className={`fixed inset-y-0 right-0 z-[100] animate-slide-in-right ${isMobile ? 'w-full' : 'w-[400px]'}`}>
+                <div className={`fixed ${isImpersonating ? 'top-[40px] bottom-0' : 'inset-y-0'} right-0 z-[100] animate-slide-in-right ${isMobile ? 'w-full' : 'w-[400px]'}`}>
                     <NotificationPanel isOpen={isPanelOpen} onClose={() => setIsPanelOpen(false)} isMobile={isMobile} />
                 </div>
             )}

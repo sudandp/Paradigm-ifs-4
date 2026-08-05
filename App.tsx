@@ -1,6 +1,6 @@
 // Trigger Rebuild: 2026-01-08 18:25
 // App.tsx
-import React, { useEffect, useState, useCallback, lazy, Suspense } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, lazy, Suspense } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
 import { secureSet, secureRemove, secureGet } from './utils/secureStorage';
@@ -55,11 +55,12 @@ import OfflineScreen from './components/ui/OfflineScreen';
 import { APP_VERSION } from './src/config/appVersion';
 import { Network } from '@capacitor/network';
 import ImpersonationBanner from './components/admin/ImpersonationBanner';
+import { useImpersonationStore } from './store/impersonationStore';
 
 
 
 // Layouts
-import MainLayout from './components/layouts/MainLayout';
+import MainLayout, { allNavLinks } from './components/layouts/MainLayout';
 import MobileLayout from './components/layouts/MobileLayout';
 import AuthLayout from './components/layouts/AuthLayout';
 import SecurityWrapper from './components/SecurityWrapper';
@@ -101,6 +102,7 @@ const HTMasterDataAdmin = lazyWithRetry(() => import('./pages/admin/HTMasterData
 const TeamActivity = lazyWithRetry(() => import('./pages/operations/TeamActivity'));
 const SiteDashboard = lazyWithRetry(() => import('./pages/site/OrganizationDashboard'));
 const ClientDashboard = lazyWithRetry(() => import('./pages/client/ClientDashboard'));
+const ClientAttendanceDashboard = lazyWithRetry(() => import('./pages/client/ClientAttendanceDashboard'));
 const ManagementDashboard = lazyWithRetry(() => import('./pages/management/ManagementDashboard'));
 const ProfilePage = lazyWithRetry(() => import('./pages/profile/ProfilePage'));
 const AttendanceDashboard = lazyWithRetry(() => import('./pages/attendance/AttendanceDashboard'));
@@ -337,6 +339,48 @@ const shouldStorePath = (path: string) => {
   return !IGNORED_PATH_PREFIXES.some(prefix => path.startsWith(prefix));
 };
 
+const DefaultRouteRedirector: React.FC = () => {
+  const user = useAuthStore(state => state.user);
+  const permissions = usePermissionsStore(state => state.permissions);
+
+  const userPermissions = useMemo(() => {
+    if (!user) return [];
+    const roleKey = user.role || (user as any).roleId || 'client_panel';
+    const rolePerms = permissions[roleKey] || permissions['client_panel'] || permissions['client'] || [];
+    const directPerms = (user as any).permissions || [];
+    return Array.from(new Set([...rolePerms, ...directPerms]));
+  }, [user, permissions]);
+
+  if (!user) return <Navigate to="/auth/login" replace />;
+
+  if (userPermissions.includes('view_site_attendance')) {
+    return <Navigate to="/client/site-attendance" replace />;
+  }
+  if (userPermissions.includes('view_client_dashboard')) {
+    return <Navigate to="/client/dashboard" replace />;
+  }
+  if (userPermissions.includes('view_site_dashboard')) {
+    return <Navigate to="/site/dashboard" replace />;
+  }
+  if (userPermissions.includes('view_operations_dashboard')) {
+    return <Navigate to="/operations/dashboard" replace />;
+  }
+  if (userPermissions.includes('view_all_submissions')) {
+    return <Navigate to="/verification/dashboard" replace />;
+  }
+  if (userPermissions.includes('view_profile')) {
+    return <Navigate to="/profile" replace />;
+  }
+
+  // Fallback to first available authorized link from allNavLinks
+  const firstNav = allNavLinks.find(link => userPermissions.includes(link.permission));
+  if (firstNav) {
+    return <Navigate to={firstNav.to} replace />;
+  }
+
+  return <Navigate to="/client/site-attendance" replace />;
+};
+
 // This wrapper component protects all main application routes
 const MainLayoutWrapper: React.FC = () => {
   const user = useAuthStore(state => state.user);
@@ -400,6 +444,7 @@ const MainLayoutWrapper: React.FC = () => {
 };
 
 const App: React.FC = () => {
+  const isImpersonating = useImpersonationStore(s => s.isImpersonating);
   const user = useAuthStore(state => state.user);
   const isInitialized = useAuthStore(state => state.isInitialized);
   const setUser = useAuthStore(state => state.setUser);
@@ -1706,7 +1751,7 @@ const App: React.FC = () => {
           </SecurityWrapper>
         }>
           {/* Default route for authenticated users */}
-          <Route index element={<Navigate to="/profile" replace />} />
+          <Route index element={<DefaultRouteRedirector />} />
 
           <Route element={<ProtectedRoute requiredPermission="view_profile" />}>
             <Route path="profile" element={<ProfilePage />} />
@@ -1833,6 +1878,10 @@ const App: React.FC = () => {
           </Route>
           <Route element={<ProtectedRoute requiredPermission="view_client_dashboard" />}>
             <Route path="client/dashboard" element={<ClientDashboard />} />
+          </Route>
+          <Route element={<ProtectedRoute requiredPermission="view_site_attendance" />}>
+            {/* Client Attendance Dashboard — live data from MS SQL 2014 (eTimeTrack) */}
+            <Route path="client/site-attendance" element={<ClientAttendanceDashboard />} />
           </Route>
           <Route element={<ProtectedRoute requiredPermission="view_management_dashboard" />}>
             <Route path="management/dashboard" element={<ManagementDashboard />} />
@@ -1978,7 +2027,7 @@ const App: React.FC = () => {
         reverseOrder={false} 
         gutter={8}
         containerStyle={{
-          top: 16,
+          top: isImpersonating ? 52 : 16,
           right: 16,
         }}
         toastOptions={{

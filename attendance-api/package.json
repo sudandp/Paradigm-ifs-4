@@ -1,0 +1,16 @@
+{
+  "name": "paradigm-attendance-api",
+  "version": "1.0.0",
+  "description": "Local attendance API proxy for Paradigm FMS — connects to eTimeTrack MS SQL and exposes secure HTTPS endpoints via Cloudflare Tunnel",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.0.0",
+    "express": "^4.18.2",
+    "mssql": "^11.0.0"
+  }
+}

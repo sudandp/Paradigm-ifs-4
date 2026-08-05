@@ -21,6 +21,8 @@ import FormData from 'form-data';
 
 import fetch from 'node-fetch';
 import { normalizePhoneNumber } from '../services/phoneUtils.js';
+import { getAttendanceData, getDeviceData, debugMssqlConnection, closeMssqlPool } from './api/controllers/mssql.controller.js';
+
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
 // [SECURITY FIX C7] Service Role Key MUST come from a non-VITE_ env var only.
@@ -658,6 +660,70 @@ app.get('/', (req: Request, res: Response) => {
     res.send('Server is running.');
 });
 
+// ── MS SQL Attendance Route ────────────────────────────────────────────────────
+/**
+ * GET /api/mssql-attendance
+ * Query params:
+ *   date    : YYYY-MM-DD  (default: today)
+ *   siteId  : string      (default: 'all')
+ *
+ * Returns: { summary, employees[], trend[], departments[], lastUpdated, connectionStatus }
+ */
+app.get('/api/mssql-attendance', authMiddleware, async (req: Request, res: Response) => {
+    const date = (req.query.date as string) || new Date().toISOString().slice(0, 10);
+    const siteId = (req.query.siteId as string) || 'all';
+
+    console.log(`[MSSQL Route] GET /api/mssql-attendance date=${date} siteId=${siteId}`);
+
+    try {
+        const data = await getAttendanceData(date, siteId);
+        res.setHeader('Cache-Control', 'no-store');
+        return res.status(200).json(data);
+    } catch (err: any) {
+        console.error('[MSSQL Route] Unexpected error:', err.message);
+        return res.status(500).json({
+            summary: { date, totalEmployees: 0, present: 0, absent: 0, late: 0, onTime: 0, attendanceRate: 0 },
+            employees: [],
+            trend: [],
+            departments: [],
+            lastUpdated: new Date().toISOString(),
+            connectionStatus: 'error',
+            errorMessage: err.message,
+        });
+    }
+});
+
+/**
+ * GET /api/mssql-devices
+ * Returns biometric device list with online/offline status
+ */
+app.get('/api/mssql-devices', authMiddleware, async (req: Request, res: Response) => {
+    console.log('[MSSQL Route] GET /api/mssql-devices');
+    try {
+        const data = await getDeviceData();
+        res.setHeader('Cache-Control', 'no-store, max-age=0');
+        return res.status(200).json(data);
+    } catch (err: any) {
+        console.error('[MSSQL Route] Device fetch error:', err.message);
+        return res.status(500).json({ devices: [], online: 0, offline: 0, total: 0, note: err.message });
+    }
+});
+/**
+ * GET /api/mssql-debug
+ * Runs diagnostic tests against Cloudflare Tunnel proxy endpoints
+ */
+app.get('/api/mssql-debug', authMiddleware, async (req: Request, res: Response) => {
+    console.log('[MSSQL Route] GET /api/mssql-debug');
+    try {
+        const result = await debugMssqlConnection();
+        res.setHeader('Cache-Control', 'no-store, max-age=0');
+        return res.status(200).json(result);
+    } catch (err: any) {
+        console.error('[MSSQL Route] Debug error:', err.message);
+        return res.status(500).json({ error: err.message });
+    }
+});
+
 // Error Handler Middleware
 app.use(errorMiddleware);
 
@@ -673,3 +739,7 @@ app.listen(PORT, () => {
         runHrmAutomation().catch(err => console.error('[Server] Failed to run scheduled HRM automation:', err));
     }, 1000 * 60 * 60 * 6);
 });
+
+// Graceful shutdown — close MS SQL pool
+process.on('SIGTERM', () => closeMssqlPool());
+process.on('SIGINT', () => closeMssqlPool());

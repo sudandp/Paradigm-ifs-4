@@ -41,6 +41,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ requiredPermission, chi
            permissions[roleName] || 
            permissions[roleNameUnderscore] || 
            permissions[roleNameHyphen] || 
+           (roleName.includes('client') ? (permissions['client_panel'] || permissions['client']) : undefined) ||
            [];
 
     const combined = [...new Set([...foundPermissions, ...directPerms])];
@@ -49,7 +50,9 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ requiredPermission, chi
     // If we are authenticated but have no permissions loaded yet, 
     // provide essential base permissions to avoid premature lockout.
     if (combined.length === 0 && user.id && user.role !== 'unverified') {
-        const basePermissions: Permission[] = ['view_profile', 'view_own_attendance', 'view_mobile_nav_home', 'view_mobile_nav_profile'];
+        const basePermissions: Permission[] = roleName.includes('client')
+            ? ['view_site_attendance', 'view_client_dashboard']
+            : ['view_profile', 'view_own_attendance', 'view_mobile_nav_home', 'view_mobile_nav_profile'];
         return basePermissions;
     }
 

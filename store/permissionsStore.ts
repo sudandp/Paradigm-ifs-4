@@ -19,8 +19,10 @@ const defaultPermissions: Record<UserRole, Permission[]> = {
   // Unverified users have no permissions - they should be redirected to pending approval page
   unverified: [],
   client: [
-    'view_client_dashboard', 'view_own_attendance', 'view_profile',
-    'view_mobile_nav_home', 'view_mobile_nav_profile'
+    'view_site_attendance'
+  ],
+  client_panel: [
+    'view_site_attendance'
   ],
   admin: [
     'view_all_submissions', 'manage_users', 'manage_sites', 'view_entity_management', 'view_templates_hub',
@@ -41,6 +43,7 @@ const defaultPermissions: Record<UserRole, Permission[]> = {
     'manage_geo_locations', 'view_my_locations', 'view_profile',
     'view_referrals',
     'view_client_dashboard',
+    'view_site_attendance',
     'view_management_dashboard',
     'view_mobile_nav_home', 'view_mobile_nav_tasks', 'view_mobile_nav_profile'
   ],
@@ -53,7 +56,7 @@ const defaultPermissions: Record<UserRole, Permission[]> = {
     'manage_policies', 'manage_insurance', 'manage_enrollment_rules',
     'manage_uniforms', 'view_invoice_summary', 'view_verification_costing', 'access_support_desk',
     'view_profile', 'view_referrals', 'manage_device_approvals', 'manage_gate_registration', 'view_gate_logs', 'manage_gate_kiosk',
-    'view_management_dashboard',
+    'view_management_dashboard', 'view_site_attendance',
     'view_mobile_nav_home', 'view_mobile_nav_tasks', 'view_mobile_nav_profile'
   ],
   finance: [
@@ -83,11 +86,12 @@ const defaultPermissions: Record<UserRole, Permission[]> = {
     'manage_geo_locations', 'view_my_locations', 'view_profile',
     'view_referrals',
     'view_client_dashboard',
+    'view_site_attendance',
     'view_management_dashboard',
     'view_mobile_nav_home', 'view_mobile_nav_tasks', 'view_mobile_nav_profile'
   ],
   operation_manager: [
-    'view_operations_dashboard', 'view_ht_yard_audits', 'view_ppm_audits', 'view_audit_change_log', 'view_snag_audit', 'view_site_audit_report', 'view_snag_report', 'view_ppm_audit_report',
+    'view_operations_dashboard', 'view_site_attendance', 'view_ht_yard_audits', 'view_ppm_audits', 'view_audit_change_log', 'view_snag_audit', 'view_site_audit_report', 'view_snag_report', 'view_ppm_audit_report',
     'view_helpdesk_tickets', 'view_preventive_maintenance', 'view_contract_manager',
     'view_all_attendance', 'view_own_attendance',
     'apply_for_leave', 'manage_leave_requests', 'access_support_desk',
@@ -96,7 +100,7 @@ const defaultPermissions: Record<UserRole, Permission[]> = {
     'download_attendance_report',
     'view_mobile_nav_home', 'view_mobile_nav_profile'
   ],
-  site_manager: ['view_site_dashboard', 'create_enrollment', 'view_my_team', 'view_own_attendance', 'apply_for_leave', 'manage_leave_requests', 'access_support_desk', 'view_profile',
+  site_manager: ['view_site_dashboard', 'view_site_attendance', 'create_enrollment', 'view_my_team', 'view_own_attendance', 'apply_for_leave', 'manage_leave_requests', 'access_support_desk', 'view_profile',
     'view_client_dashboard',
     'view_mobile_nav_home', 'view_mobile_nav_tasks', 'view_mobile_nav_profile'
   ],

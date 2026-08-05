@@ -15,6 +15,8 @@ import LoadingScreen from '../../components/ui/LoadingScreen';
 import ToggleSwitch from '../../components/ui/ToggleSwitch';
 import Input from '../../components/ui/Input';
 
+import { allNavLinks } from '../../components/layouts/MainLayout';
+
 export const allPermissions: { key: Permission; name: string; description: string; category: string }[] = [
     // CRM & Sales
     { key: 'view_crm_pipeline', name: 'Access CRM Pipeline', description: 'View and manage the sales pipeline and leads.', category: 'CRM & Sales' },
@@ -28,6 +30,7 @@ export const allPermissions: { key: Permission; name: string; description: strin
 
     // Dashboards
     { key: 'view_client_dashboard', name: 'Client Dashboard', description: 'View the client dashboard summary and analytics.', category: 'Dashboards' },
+    { key: 'view_site_attendance', name: 'Site Attendance', description: 'Real-time site attendance overview & employee tracking.', category: 'Dashboards' },
     { key: 'view_site_dashboard', name: 'Site Dashboard', description: 'View the dashboard for a specific site/organization.', category: 'Dashboards' },
     { key: 'view_operations_dashboard', name: 'Operations Dashboard', description: 'View the operations management dashboard.', category: 'Dashboards' },
     { key: 'view_management_dashboard', name: 'Management Dashboard', description: 'View the dashboard for head office/back office management.', category: 'Dashboards' },
@@ -136,8 +139,27 @@ export const allPermissions: { key: Permission; name: string; description: strin
     { key: 'view_mobile_nav_home', name: 'Mobile Nav: Home', description: 'Show Home tab in mobile navigation.', category: 'Support & Profile' },
     { key: 'view_mobile_nav_attendance', name: 'Mobile Nav: Attendance', description: 'Show Attendance tab in mobile navigation.', category: 'Support & Profile' },
     { key: 'view_mobile_nav_tasks', name: 'Mobile Nav: Tasks', description: 'Show Tasks tab in mobile navigation.', category: 'Support & Profile' },
-    { key: 'view_mobile_nav_profile', name: 'Mobile Nav: Profile', description: 'Show Profile tab in mobile navigation.', category: 'Support & Profile' },
 ];
+
+// Dynamic Auto-Discovery: Scans allNavLinks from MainLayout to automatically pull in any future navigation items!
+const existingKeys = new Set(allPermissions.map(p => p.key));
+allNavLinks.forEach(nav => {
+    if (nav.permission && !existingKeys.has(nav.permission)) {
+        existingKeys.add(nav.permission);
+        allPermissions.push({
+            key: nav.permission,
+            name: nav.label,
+            description: `Access and view ${nav.label} module.`,
+            category: nav.category || 'Dashboards',
+        });
+    }
+});
+
+const sortRolesAtoZ = (roleList: Role[]): Role[] => {
+    return [...roleList].sort((a, b) =>
+        a.displayName.trim().localeCompare(b.displayName.trim(), undefined, { sensitivity: 'base', numeric: true })
+    );
+};
 
 const RoleManagement: React.FC = () => {
     const { user } = useAuthStore();
@@ -173,9 +195,7 @@ const RoleManagement: React.FC = () => {
             try {
                 const [fetchedRoles, fetchedTaskGroups] = await Promise.all([api.getRoles(), api.getTaskGroups()]);
                 
-                const sortedRoles = fetchedRoles.sort((a, b) => {
-                    return a.displayName.localeCompare(b.displayName);
-                });
+                const sortedRoles = sortRolesAtoZ(fetchedRoles);
 
                 setRoles(sortedRoles);
                 if (sortedRoles.length > 0) setSelectedRoleId(sortedRoles[0].id);
@@ -220,9 +240,9 @@ const RoleManagement: React.FC = () => {
         setRolePermissions(roleId, newPermissions);
 
         try {
-            const updatedRoles = roles.map(r => 
+            const updatedRoles = sortRolesAtoZ(roles.map(r => 
                 r.id === roleId ? { ...r, permissions: newPermissions } : r
-            );
+            ));
             await api.saveRoles(updatedRoles);
             setRoles(updatedRoles);
         } catch (error) {
@@ -250,7 +270,7 @@ const RoleManagement: React.FC = () => {
 
         setRolePermissions(roleId, newPermissions);
         try {
-            const updatedRoles = roles.map(r => r.id === roleId ? { ...r, permissions: newPermissions } : r);
+            const updatedRoles = sortRolesAtoZ(roles.map(r => r.id === roleId ? { ...r, permissions: newPermissions } : r));
             await api.saveRoles(updatedRoles);
             setRoles(updatedRoles);
         } catch (error) {
@@ -271,7 +291,7 @@ const RoleManagement: React.FC = () => {
             }
             const sourcePerms = permissions[roleToClone.id] || [];
             const newRole: Role = { id: newId, displayName: newName, permissions: sourcePerms };
-            const updatedRoles = [...roles, newRole];
+            const updatedRoles = sortRolesAtoZ([...roles, newRole]);
             
             await api.saveRoles(updatedRoles);
             setRoles(updatedRoles);
@@ -289,7 +309,7 @@ const RoleManagement: React.FC = () => {
                 setToast({ message: `A role with ID '${newId}' already exists.`, type: 'error' });
                 return;
             }
-            const updatedRoles = roles.map(r => r.id === currentRole.id ? { ...r, displayName: newName, id: newId } : r);
+            const updatedRoles = sortRolesAtoZ(roles.map(r => r.id === currentRole.id ? { ...r, displayName: newName, id: newId } : r));
             await api.saveRoles(updatedRoles);
             setRoles(updatedRoles);
             renameRolePermissionEntry(currentRole.id, newId);
@@ -301,7 +321,7 @@ const RoleManagement: React.FC = () => {
                 return;
             }
             const newRole: Role = { id: newId, displayName: newName, permissions: [] };
-            const updatedRoles = [...roles, newRole];
+            const updatedRoles = sortRolesAtoZ([...roles, newRole]);
             await api.saveRoles(updatedRoles);
             setRoles(updatedRoles);
             addRolePermissionEntry(newRole);
@@ -316,7 +336,7 @@ const RoleManagement: React.FC = () => {
             setIsDeleteModalOpen(false);
             return;
         }
-        const updatedRoles = roles.filter(r => r.id !== currentRole.id);
+        const updatedRoles = sortRolesAtoZ(roles.filter(r => r.id !== currentRole.id));
         await api.saveRoles(updatedRoles);
         setRoles(updatedRoles);
         removeRolePermissionEntry(currentRole.id);
@@ -340,8 +360,10 @@ const RoleManagement: React.FC = () => {
     }, [taskGroups]);
     
     const filteredRoles = useMemo(() => {
-        if (!roleSearchQuery) return roles;
-        return roles.filter(r => r.displayName.toLowerCase().includes(roleSearchQuery.toLowerCase()));
+        const list = roleSearchQuery
+            ? roles.filter(r => r.displayName.toLowerCase().includes(roleSearchQuery.toLowerCase()))
+            : roles;
+        return sortRolesAtoZ(list);
     }, [roles, roleSearchQuery]);
 
     const groupedPermissions = useMemo(() => {

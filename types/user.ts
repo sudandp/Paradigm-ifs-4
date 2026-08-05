@@ -9,6 +9,7 @@ export interface Role {
 }
 
 export type Permission =
+  | 'view_site_attendance'
   | 'view_all_submissions'
   | 'manage_users'
   | 'manage_sites'
