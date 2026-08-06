@@ -279,9 +279,8 @@ const FireworksBackground: React.FC = () => {
         let tick = 0;
 
         const loop = () => {
-            // White background clear with light opacity to create a clean ghosting tail fade
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
-            ctx.fillRect(0, 0, width, height);
+            // Clear canvas cleanly so underlying background remains pure white
+            ctx.clearRect(0, 0, width, height);
 
             tick++;
 
@@ -358,7 +357,6 @@ const FireworksBackground: React.FC = () => {
         <canvas
             ref={canvasRef}
             className="absolute inset-0 w-full h-full pointer-events-none z-0"
-            style={{ mixBlendMode: 'multiply' }}
         />
     );
 };

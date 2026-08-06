@@ -301,6 +301,11 @@ const STORAGE_WARN_KEY = 'paradigm_storage_warn_shown';
  * Keeps the toast layer (syncEngine) separate from the data layer (db.ts).
  */
 function showStorageDenialToastIfNeeded(): void {
+  // Do not display storage denial warning banner in local development or localhost testing
+  if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    return;
+  }
+
   const state = getStoragePersistenceState();
   if (state !== false) return; // granted, or API unavailable — no toast needed
 

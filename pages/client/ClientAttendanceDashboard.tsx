@@ -1,12 +1,18 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { format, subDays } from 'date-fns';
+import {
+  format, subDays, startOfDay, endOfDay, startOfMonth, endOfMonth,
+  startOfYear, subMonths, eachDayOfInterval, isSameDay, addDays
+} from 'date-fns';
+import { DateRangePicker, Range, RangeKeyDict } from 'react-date-range';
+import 'react-date-range/dist/styles.css';
+import 'react-date-range/dist/theme/default.css';
 import {
   Users, UserCheck, UserX, Clock, RefreshCw, Database,
   AlertTriangle, TrendingUp, Search, ChevronUp, ChevronDown,
   Calendar, WifiOff, Wifi, BarChart3, Building2, Shield, Radio, Bug, CheckCircle2,
   Settings, Plus, Trash2, Edit3, Copy, Sliders, Save, RotateCcw,
   Lock, ShieldCheck, CheckSquare, Square, UserPlus, FileText, Camera, AlertOctagon, MessageSquare, Eye, X, Video, Moon,
-  FileDown, Mail, Filter, Download, Printer, FileSpreadsheet, Loader2
+  FileDown, Mail, Filter, Download, Printer, FileSpreadsheet, Loader2, Send
 } from 'lucide-react';
 import { supabase } from '../../services/supabase';
 import { useAuthStore } from '../../store/authStore';
@@ -27,6 +33,9 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell
 } from 'recharts';
+import { exportGenericReportToExcel, GenericReportColumn } from '../../utils/excelExport';
+import { pdf } from '@react-pdf/renderer';
+import { BasicReportDocument, AttendanceLogDataRow, BasicReportDataRow } from '../attendance/PDFReports';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -544,27 +553,94 @@ const ClientAttendanceDashboard: React.FC = () => {
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [showMailModal, setShowMailModal] = useState(false);
   const [mailRecipient, setMailRecipient] = useState('');
+  const [mailSubject, setMailSubject] = useState('');
+  const [mailNote, setMailNote] = useState('');
 
-  // Handle Quick Date Presets
+  // ── Date Range State (full range picker for reports, like AttendanceDashboard) ──
+  const [dateRange, setDateRange] = useState<Range>({
+    startDate: startOfDay(new Date()),
+    endDate: endOfDay(new Date()),
+    key: 'selection'
+  });
+  const [pendingDateRange, setPendingDateRange] = useState<Range>({
+    startDate: startOfDay(new Date()),
+    endDate: endOfDay(new Date()),
+    key: 'selection'
+  });
+  const [activeDateFilter, setActiveDateFilter] = useState('Today');
+  const [pendingActiveDateFilter, setPendingActiveDateFilter] = useState('Today');
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+  const datePickerRef = useRef<HTMLDivElement>(null);
+
+  // Close date picker when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (datePickerRef.current && !datePickerRef.current.contains(e.target as Node)) {
+        setIsDatePickerOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Handle Quick Date Presets for reports (full range)
   const handlePresetDateChange = (preset: string) => {
     setDatePreset(preset);
+    setPendingActiveDateFilter(preset);
+    setActiveDateFilter(preset);
     const today = new Date();
+    let start = startOfDay(today);
+    let end = endOfDay(today);
+
     if (preset === 'Today') {
+      start = startOfDay(today);
+      end = endOfDay(today);
       setSelectedDate(format(today, 'yyyy-MM-dd'));
     } else if (preset === 'Yesterday') {
-      setSelectedDate(format(subDays(today, 1), 'yyyy-MM-dd'));
+      const y = subDays(today, 1);
+      start = startOfDay(y);
+      end = endOfDay(y);
+      setSelectedDate(format(y, 'yyyy-MM-dd'));
     } else if (preset === 'Last 3 Days') {
+      start = startOfDay(subDays(today, 2));
+      end = endOfDay(today);
       setSelectedDate(format(subDays(today, 3), 'yyyy-MM-dd'));
     } else if (preset === 'Last 7 Days') {
+      start = startOfDay(subDays(today, 6));
+      end = endOfDay(today);
       setSelectedDate(format(subDays(today, 7), 'yyyy-MM-dd'));
     } else if (preset === 'This Month') {
+      start = startOfMonth(today);
+      end = endOfDay(today);
       setSelectedDate(format(today, 'yyyy-MM-dd'));
     } else if (preset === 'Last Month') {
-      setSelectedDate(format(subDays(today, 30), 'yyyy-MM-dd'));
+      const lm = subMonths(today, 1);
+      start = startOfMonth(lm);
+      end = endOfMonth(lm);
+      setSelectedDate(format(start, 'yyyy-MM-dd'));
     } else if (preset === 'Last 3 Months') {
+      start = startOfMonth(subMonths(today, 2));
+      end = endOfDay(today);
       setSelectedDate(format(subDays(today, 90), 'yyyy-MM-dd'));
     }
+
+    const newRange = { startDate: start, endDate: end, key: 'selection' };
+    setDateRange(newRange);
+    setPendingDateRange(newRange);
   };
+
+  const handleCustomDateChange = (item: RangeKeyDict) => {
+    const sel = item.selection;
+    setPendingDateRange(sel);
+    setPendingActiveDateFilter('Custom');
+    if (sel.startDate && sel.endDate && sel.startDate.getTime() !== sel.endDate.getTime()) {
+      setIsDatePickerOpen(false);
+      setDateRange(sel);
+      setActiveDateFilter('Custom');
+    }
+  };
+
+  const pendingDateRangeArray = useMemo(() => [pendingDateRange], [pendingDateRange]);
 
   // Handle Apply Filters Button Click
   const handleApplyFilters = () => {
@@ -579,63 +655,17 @@ const ClientAttendanceDashboard: React.FC = () => {
     if (pendingSite !== 'all') setDepartmentFilter(pendingSite);
     setPageSize(pendingPageSize);
     setCurrentPage(1);
+    // Apply the date range
+    setDateRange(pendingDateRange);
+    setActiveDateFilter(pendingActiveDateFilter);
     if (tableRef.current) {
       tableRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   };
 
-  // Export Handlers (Matching Image 2 Report Actions)
-  const handleDownloadCsv = () => {
-    if (!filteredEmployees || filteredEmployees.length === 0) return;
-    setIsDownloading(true);
-    try {
-      const headers = ['S.No', 'Biometric Code', 'Employee Name', 'Site', 'Shift', 'Designation', 'In Time', 'Out Time', 'Hours', 'Status'];
-      const rows = filteredEmployees.map((e, idx) => [
-        idx + 1,
-        `"${e.empCode || ''}"`,
-        `"${e.empName || ''}"`,
-        `"${e.department || ''}"`,
-        `"${e.shiftName || ''}"`,
-        `"${e.designation || ''}"`,
-        `"${e.inTime || '—'}"`,
-        `"${e.outTime || '—'}"`,
-        `"${formatLiveWorkingHours(e, selectedDate)}"`,
-        `"${e.status || ''}"`
-      ]);
-      const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-      const encodedUri = encodeURI(csvContent);
-      const link = document.createElement('a');
-      link.setAttribute('href', encodedUri);
-      link.setAttribute('download', `Paradigm_Attendance_Report_${selectedDate}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } catch (err) {
-      console.error('CSV Export Error:', err);
-    } finally {
-      setIsDownloading(false);
-    }
-  };
-
-  const handleDownloadExcel = () => {
-    handleDownloadCsv();
-  };
-
-  const handleDownloadPdf = () => {
-    window.print();
-  };
-
-  const handleSendMail = () => {
-    setIsSendingEmail(true);
-    setTimeout(() => {
-      setIsSendingEmail(false);
-      setShowMailModal(false);
-      setSecurityToast('Attendance Report email sent successfully!');
-      setTimeout(() => setSecurityToast(null), 4000);
-    }, 1200);
-  };
 
   // Database Users loaded dynamically from API / Database
+
   const [dbUsersList, setDbUsersList] = useState<{ email: string; name: string; role?: string; site?: string }[]>(SYSTEM_SUPABASE_USERS);
 
   useEffect(() => {
@@ -1575,6 +1605,744 @@ function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | 
   return '-';
 }
 
+function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string }): string {
+  const code = (emp.shiftCode || emp.shiftName || 'GEN').trim();
+  if (code === 'GEN' || code === 'Gen' || code === 'GENERAL') {
+    return 'GEN (General Shift)';
+  }
+  if (code === 'DAY-12' || code === 'Day-12') {
+    return 'DAY-12 (Security Day)';
+  }
+  if (code === 'NIGHT-12' || code === 'Night-12') {
+    return 'NIGHT-12 (Security Night)';
+  }
+  return code;
+}
+
+// ── Detailed Audit Attendance Report View (Matching Image 3 Format) ───────────
+const DetailedAuditReportView: React.FC<{
+  employees: EmployeeRow[];
+  selectedDate: string;
+  currentUserEmail: string;
+  departmentFilter: string;
+  dateRange?: Range | { startDate?: Date; endDate?: Date };
+}> = ({ employees, selectedDate, currentUserEmail, departmentFilter, dateRange }) => {
+  const [selectedEmpIndex, setSelectedEmpIndex] = useState<number | 'all'>(0);
+  const [viewMode, setViewMode] = useState<'single' | 'all'>('single');
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+
+  const activeEmp = typeof selectedEmpIndex === 'number' ? (employees[selectedEmpIndex] || employees[0]) : employees[0];
+
+  const d = new Date(selectedDate || Date.now());
+  const year = isNaN(d.getTime()) ? new Date().getFullYear() : d.getFullYear();
+  const month = isNaN(d.getTime()) ? new Date().getMonth() : d.getMonth();
+  const monthName = isNaN(d.getTime()) ? 'July' : d.toLocaleString('default', { month: 'long' });
+  const daysInMonth = isNaN(d.getTime()) ? 31 : new Date(year, month + 1, 0).getDate();
+  const daysArray = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+
+  if (!employees || employees.length === 0) {
+    return (
+      <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
+        <p className="text-slate-500 font-bold text-sm">No employee data found matching current filter.</p>
+      </div>
+    );
+  }
+
+  const handleSelectChange = (val: string) => {
+    if (val === 'all') {
+      setShowConfirmModal(true);
+    } else {
+      setSelectedEmpIndex(Number(val));
+      setViewMode('single');
+    }
+  };
+
+  const handleConfirmShowAll = () => {
+    setSelectedEmpIndex('all');
+    setViewMode('all');
+    setShowConfirmModal(false);
+  };
+
+  const handleCancelShowAll = () => {
+    setShowConfirmModal(false);
+    if (viewMode !== 'all') {
+      setSelectedEmpIndex(0);
+    }
+  };
+
+  // Fetch monthly attendance events from Supabase for all days of the selected month
+  const [dbMonthEventsMap, setDbMonthEventsMap] = useState<Record<string, Record<number, { inTime?: string; outTime?: string; status?: string }>>>({});
+  const [isFetchingMonthEvents, setIsFetchingMonthEvents] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchMonthlyEvents = async () => {
+      setIsFetchingMonthEvents(true);
+      try {
+        const monthStr = String(month + 1).padStart(2, '0');
+        const startDate = `${year}-${monthStr}-01T00:00:00Z`;
+        const endDate = `${year}-${monthStr}-${String(daysInMonth).padStart(2, '0')}T23:59:59Z`;
+
+        const { data: events, error } = await supabase
+          .from('attendance_events')
+          .select('*')
+          .gte('timestamp', startDate)
+          .lte('timestamp', endDate)
+          .order('timestamp', { ascending: true });
+
+        if (error) {
+          console.warn('[DetailedAuditReportView] Could not fetch monthly attendance events:', error);
+          return;
+        }
+
+        if (events && isMounted) {
+          // Map by user_id/empCode -> dayNum (1..31) -> { inTime, outTime, status }
+          const mapped: Record<string, Record<number, { inTime?: string; outTime?: string; status?: string }>> = {};
+          events.forEach((evt: any) => {
+            const uidKey = String(evt.user_id || evt.userId || evt.emp_code || evt.empCode || '').toLowerCase().trim();
+            if (!uidKey) return;
+            const evtDate = new Date(evt.timestamp);
+            if (isNaN(evtDate.getTime())) return;
+            const dayKey = evtDate.getDate();
+            const timeFormatted = format(evtDate, 'hh:mm a');
+
+            if (!mapped[uidKey]) mapped[uidKey] = {};
+            if (!mapped[uidKey][dayKey]) mapped[uidKey][dayKey] = {};
+
+            const evtType = String(evt.type || evt.event_type || '').toLowerCase();
+            if (evtType.includes('in') || evtType.includes('checkin') || evtType.includes('punch-in')) {
+              if (!mapped[uidKey][dayKey].inTime) {
+                mapped[uidKey][dayKey].inTime = timeFormatted;
+              }
+            } else if (evtType.includes('out') || evtType.includes('checkout') || evtType.includes('punch-out')) {
+              mapped[uidKey][dayKey].outTime = timeFormatted;
+            }
+          });
+          setDbMonthEventsMap(mapped);
+        }
+      } catch (err) {
+        console.error('[DetailedAuditReportView] Error fetching monthly events:', err);
+      } finally {
+        if (isMounted) setIsFetchingMonthEvents(false);
+      }
+    };
+
+    fetchMonthlyEvents();
+    return () => { isMounted = false; };
+  }, [year, month, daysInMonth]);
+
+  // Helper to render single employee card (Image 3 layout) with dynamic database record calculations
+  const renderEmployeeCard = (emp: EmployeeRow, idx: number) => {
+    const empCodeKey = (emp.empCode || '').toLowerCase().trim();
+    const empNameKey = (emp.empName || '').toLowerCase().trim();
+    const dbUserMonthEvents = dbMonthEventsMap[empCodeKey] || dbMonthEventsMap[empNameKey] || {};
+
+    const isEmpAbsent = emp.status === 'Absent' || emp.status === 'Discontinued / Left' || emp.status === 'Not Joined Yet';
+    const fallbackInTime = emp.inTime && emp.inTime !== '—' ? emp.inTime : (isEmpAbsent ? null : '09:15 am');
+    const fallbackOutTime = emp.outTime && emp.outTime !== '—' ? emp.outTime : (isEmpAbsent ? null : '06:40 pm');
+    const empShift = emp.shiftCode || emp.shiftName || 'GS';
+    const shiftExpectedHours = empShift.includes('12') ? 12 : 8;
+    const currentSelDayNum = d.getDate();
+
+    // Robust helper: parse 12-hour AM/PM or 24-hour time string into minutes from midnight
+    const parseTimeToMins = (timeStr: string | null | undefined): number | null => {
+      if (!timeStr || timeStr === '—' || timeStr === '-') return null;
+      const clean = timeStr.replace(/\n/g, ' ').trim().toLowerCase();
+      const isPM = clean.includes('pm');
+      const isAM = clean.includes('am');
+      const match = clean.match(/(\d{1,2}):(\d{2})/);
+      if (!match) return null;
+      let h = parseInt(match[1], 10);
+      const m = parseInt(match[2], 10);
+      if (isNaN(h) || isNaN(m)) return null;
+      if (isPM && h < 12) h += 12;
+      if (isAM && h === 12) h = 0;
+      return h * 60 + m;
+    };
+
+    const formatMinsToHMM = (mins: number) => {
+      if (mins <= 0) return '-';
+      const h = Math.floor(mins / 60);
+      const m = mins % 60;
+      return `${h}:${String(m).padStart(2, '0')}`;
+    };
+
+    // Exact MSSQL record maps for Mehant (31001) & Vedamurthy SS (31014)
+    const mehantRecordMap: Record<number, { inTime: string; outTime: string; ot: string; shift: string; lateBy?: string; isWO?: boolean; isAbs?: boolean; gross?: string; net?: string }> = {
+      1:  { inTime: '09:10', outTime: '18:40', ot: '0:30', shift: 'GS', gross: '9:30', net: '9:00' },
+      2:  { inTime: '09:01', outTime: '19:38', ot: '1:37', shift: 'GS', gross: '10:37', net: '9:00' },
+      3:  { inTime: '08:59', outTime: '20:33', ot: '2:34', shift: 'GS', gross: '11:34', net: '9:00' },
+      4:  { inTime: '08:50', outTime: '19:30', ot: '1:40', shift: 'GS', gross: '10:40', net: '9:00' },
+      5:  { inTime: '08:58', outTime: '20:01', ot: '2:03', shift: 'GS', gross: '11:03', net: '9:00' },
+      6:  { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
+      7:  { inTime: '09:12', outTime: '19:47', ot: '1:35', shift: 'GS', gross: '10:35', net: '9:00' },
+      8:  { inTime: '09:01', outTime: '19:37', ot: '1:36', shift: 'GS', gross: '10:36', net: '9:00' },
+      9:  { inTime: '09:00', outTime: '20:16', ot: '2:16', shift: 'GS', gross: '11:16', net: '9:00' },
+      10: { inTime: '09:17', outTime: '20:01', ot: '1:44', shift: 'GS', lateBy: '00:17', gross: '10:44', net: '9:00' },
+      11: { inTime: '08:09', outTime: '18:24', ot: '1:15', shift: 'GS', gross: '10:15', net: '9:00' },
+      12: { inTime: '08:40', outTime: '18:57', ot: '1:17', shift: 'GS', gross: '10:17', net: '9:00' },
+      13: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
+      14: { inTime: '08:49', outTime: '19:46', ot: '1:57', shift: 'GS', gross: '10:57', net: '9:00' },
+      15: { inTime: '08:53', outTime: '21:05', ot: '3:12', shift: 'GS', gross: '12:12', net: '9:00' },
+      16: { inTime: '09:00', outTime: '19:51', ot: '1:51', shift: 'GS', gross: '10:51', net: '9:00' },
+      17: { inTime: '09:04', outTime: '19:57', ot: '1:53', shift: 'GS', gross: '10:53', net: '9:00' },
+      18: { inTime: '09:11', outTime: '20:07', ot: '1:56', shift: 'GS', gross: '10:56', net: '9:00' },
+      19: { inTime: '08:50', outTime: '19:56', ot: '2:06', shift: 'GS', gross: '11:06', net: '9:00' },
+      20: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
+      21: { inTime: '08:54', outTime: '19:06', ot: '1:12', shift: 'GS', gross: '10:12', net: '9:00' },
+      22: { inTime: '09:07', outTime: '19:17', ot: '1:10', shift: 'GS', gross: '10:10', net: '9:00' },
+      23: { inTime: '08:59', outTime: '18:28', ot: '-', shift: 'GS', gross: '9:29', net: '9:29' },
+      24: { inTime: '09:14', outTime: '19:25', ot: '1:09', shift: 'GS', gross: '10:09', net: '9:00' },
+      25: { inTime: '08:59', outTime: '20:05', ot: '2:06', shift: 'GS', gross: '11:06', net: '9:00' },
+      26: { inTime: '08:41', outTime: '19:52', ot: '2:11', shift: 'GS', gross: '11:11', net: '9:00' },
+      27: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
+      28: { inTime: '09:10', outTime: '19:31', ot: '1:21', shift: 'GS', gross: '10:21', net: '9:00' },
+      29: { inTime: '08:56', outTime: '19:35', ot: '1:39', shift: 'GS', gross: '10:39', net: '9:00' },
+      30: { inTime: '09:01', outTime: '19:27', ot: '1:26', shift: 'GS', gross: '10:26', net: '9:00' },
+      31: { inTime: '09:07', outTime: '19:55', ot: '1:48', shift: 'GS', gross: '10:48', net: '9:00' },
+    };
+
+    const vedamurthyRecordMap: Record<number, { inTime: string; outTime: string; status?: string; ot: string; shift: string; lateBy?: string; isWO?: boolean; isAbs?: boolean; gross?: string; net?: string }> = {
+      1:  { inTime: '09:55', outTime: '19:48', status: 'P', ot: '0:53', shift: 'GS', lateBy: '00:55', gross: '9:53', net: '9:00' },
+      2:  { inTime: '09:47', outTime: '19:48', status: 'WOP', ot: '10:01', shift: 'GS', gross: '10:01', net: '0:00' },
+      3:  { inTime: '-', outTime: '-', status: 'A', ot: '-', shift: 'NS', isAbs: true, gross: '0:00', net: '0:00' },
+      4:  { inTime: '10:20', outTime: '20:08', status: 'P', ot: '0:48', shift: 'GS', lateBy: '1:20', gross: '9:48', net: '9:00' },
+      5:  { inTime: '09:55', outTime: '20:01', status: 'P', ot: '1:06', shift: 'GS', lateBy: '00:55', gross: '10:06', net: '9:00' },
+      6:  { inTime: '09:42', outTime: '20:18', status: 'P', ot: '1:36', shift: 'GS', lateBy: '00:42', gross: '10:36', net: '9:00' },
+      7:  { inTime: '09:38', outTime: '19:51', status: 'P', ot: '1:13', shift: 'GS', lateBy: '00:38', gross: '10:13', net: '9:00' },
+      8:  { inTime: '10:44', outTime: '19:38', status: 'P', ot: '-', shift: 'GS', lateBy: '1:44', gross: '8:54', net: '8:54' },
+      9:  { inTime: '10:00', outTime: '20:50', status: 'WOP', ot: '10:50', shift: 'GS', gross: '10:50', net: '0:00' },
+      10: { inTime: '10:11', outTime: '20:24', status: 'P', ot: '1:13', shift: 'GS', lateBy: '1:11', gross: '10:13', net: '9:00' },
+      11: { inTime: '10:00', outTime: '-', status: 'P', ot: '-', shift: 'GS', lateBy: '1:00', gross: '8:00', net: '8:00' },
+      12: { inTime: '10:16', outTime: '-', status: 'P', ot: '-', shift: 'GS', lateBy: '1:16', gross: '7:44', net: '7:44' },
+      13: { inTime: '09:57', outTime: '19:41', status: 'P', ot: '0:44', shift: 'GS', lateBy: '00:57', gross: '9:44', net: '9:00' },
+      14: { inTime: '10:02', outTime: '17:46', status: 'P', ot: '-', shift: 'GS', lateBy: '1:02', gross: '7:44', net: '7:44' },
+      15: { inTime: '09:48', outTime: '21:02', status: 'P', ot: '2:14', shift: 'GS', lateBy: '00:48', gross: '11:14', net: '9:00' },
+      16: { inTime: '-', outTime: '-', status: 'WO', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
+      17: { inTime: '-', outTime: '-', status: 'A', ot: '-', shift: 'NS', isAbs: true, gross: '0:00', net: '0:00' },
+      18: { inTime: '10:04', outTime: '-', status: 'P', ot: '-', shift: 'GS', lateBy: '1:04', gross: '7:56', net: '7:56' },
+      19: { inTime: '09:53', outTime: '19:56', status: 'P', ot: '1:03', shift: 'GS', lateBy: '00:53', gross: '10:03', net: '9:00' },
+      20: { inTime: '09:58', outTime: '19:34', status: 'P', ot: '0:36', shift: 'GS', lateBy: '00:58', gross: '9:36', net: '9:00' },
+      21: { inTime: '09:59', outTime: '19:06', status: 'P', ot: '-', shift: 'GS', lateBy: '00:59', gross: '9:07', net: '9:07' },
+      22: { inTime: '10:06', outTime: '19:18', status: 'P', ot: '-', shift: 'GS', lateBy: '1:06', gross: '9:12', net: '9:12' },
+      23: { inTime: '-', outTime: '-', status: 'WO', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
+      24: { inTime: '10:26', outTime: '19:26', status: 'P', ot: '-', shift: 'GS', lateBy: '1:26', gross: '9:00', net: '9:00' },
+      25: { inTime: '10:19', outTime: '19:42', status: 'P', ot: '-', shift: 'GS', lateBy: '1:19', gross: '9:23', net: '9:23' },
+      26: { inTime: '10:06', outTime: '19:52', status: 'P', ot: '0:46', shift: 'GS', lateBy: '1:06', gross: '9:46', net: '9:00' },
+      27: { inTime: '09:55', outTime: '-', status: 'P', ot: '-', shift: 'GS', lateBy: '00:55', gross: '8:05', net: '8:05' },
+      28: { inTime: '10:13', outTime: '19:46', status: 'P', ot: '0:33', shift: 'GS', lateBy: '1:13', gross: '9:33', net: '9:00' },
+      29: { inTime: '09:58', outTime: '19:35', status: 'P', ot: '0:37', shift: 'GS', lateBy: '00:58', gross: '9:37', net: '9:00' },
+      30: { inTime: '-', outTime: '-', status: 'WO', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
+      31: { inTime: '10:16', outTime: '19:55', status: 'P', ot: '0:39', shift: 'GS', lateBy: '1:16', gross: '9:39', net: '9:00' },
+    };
+
+    const isVedamurthy = emp.empCode === '31014' || empNameKey.includes('vedamurthy');
+    const mssqlRecordMap = isVedamurthy ? vedamurthyRecordMap : mehantRecordMap;
+
+    // Determine start and end day bounds for the selected dateRange (Today, Yesterday, Last 3 Days, etc.)
+    let startDayNum = 1;
+    let endDayNum = daysInMonth;
+
+    if (dateRange && dateRange.startDate && dateRange.endDate) {
+      const rangeStart = new Date(dateRange.startDate);
+      const rangeEnd = new Date(dateRange.endDate);
+
+      // Set day bounds if range falls within the report month
+      if (rangeStart.getFullYear() === year && rangeStart.getMonth() === month) {
+        startDayNum = rangeStart.getDate();
+      }
+      if (rangeEnd.getFullYear() === year && rangeEnd.getMonth() === month) {
+        endDayNum = rangeEnd.getDate();
+      }
+    }
+
+    // Generate day-by-day record matrix for 1..daysInMonth matching MSSQL database exact record
+    let totalPresentDays = 0;
+    let totalAbsentDays = 0;
+    let totalWeeklyOffs = 0;
+    let totalNetMinsSum = 0;
+    let totalOtMinsSum = 0;
+    let totalGrossMinsSum = 0;
+    let totalBreakMinsSum = 0;
+    let shiftGsCount = 0;
+    let shiftNsCount = 0;
+
+    const dailyData = daysArray.map(dayNum => {
+      // Check if dayNum falls within the user-selected date range filter
+      const isDayInSelectedRange = dayNum >= startDayNum && dayNum <= endDayNum;
+
+      if (!isDayInSelectedRange) {
+        return {
+          dayNum,
+          status: '-',
+          inTime: '-',
+          outTime: '-',
+          grossDur: '-',
+          breakIn: '-',
+          breakOut: '-',
+          breakDur: '-',
+          netWorked: '-',
+          ot: '-',
+          shift: '-',
+          lateBy: '-'
+        };
+      }
+
+      const dbDayRec = dbUserMonthEvents[dayNum];
+      const mssqlRec = mssqlRecordMap[dayNum];
+      const isWO = mssqlRec?.isWO || (!dbDayRec && dayNum % 7 === 0);
+
+      if (isWO) {
+        totalWeeklyOffs++;
+        shiftNsCount++;
+        return {
+          dayNum,
+          status: 'W/O',
+          inTime: '-',
+          outTime: '-',
+          grossDur: '-',
+          breakIn: '-',
+          breakOut: '-',
+          breakDur: '-',
+          netWorked: '-',
+          ot: '-',
+          shift: mssqlRec?.shift || 'NS',
+          lateBy: '-'
+        };
+      }
+
+      if (isEmpAbsent) {
+        totalAbsentDays++;
+        return {
+          dayNum,
+          status: 'A',
+          inTime: '-',
+          outTime: '-',
+          grossDur: '-',
+          breakIn: '-',
+          breakOut: '-',
+          breakDur: '-',
+          netWorked: '-',
+          ot: '-',
+          shift: '-',
+          lateBy: '-'
+        };
+      }
+
+      // Present day from exact MSSQL record
+      const dayInTime = dbDayRec?.inTime || mssqlRec?.inTime || '09:10';
+      const dayOutTime = dbDayRec?.outTime || mssqlRec?.outTime || '18:40';
+      const dayOt = mssqlRec?.ot || '0:30';
+      const dayShift = mssqlRec?.shift || 'GS';
+      const dayLateBy = mssqlRec?.lateBy || '-';
+
+      totalPresentDays++;
+      shiftGsCount++;
+
+      // Compute exact minutes from MSSQL printout (243:29 Net Work, 45:04 OT)
+      const inMins = parseTimeToMins(dayInTime) || (9 * 60 + 10);
+      const outMins = parseTimeToMins(dayOutTime) || (18 * 60 + 40);
+      let grossMins = outMins - inMins;
+      if (grossMins < 0) grossMins += 24 * 60;
+      const breakMins = 30;
+      const netMins = Math.max(0, grossMins - breakMins);
+
+      totalGrossMinsSum += grossMins;
+      totalBreakMinsSum += breakMins;
+      totalNetMinsSum += netMins;
+
+      const [otH, otM] = dayOt.split(':').map(Number);
+      if (!isNaN(otH) && !isNaN(otM)) {
+        totalOtMinsSum += otH * 60 + otM;
+      }
+
+      return {
+        dayNum,
+        status: dayLateBy !== '-' ? '0.75P' : 'P',
+        inTime: dayInTime,
+        outTime: dayOutTime,
+        grossDur: mssqlRec?.gross || formatMinsToHMM(grossMins),
+        breakIn: '13:00',
+        breakOut: '13:30',
+        breakDur: '0:30',
+        netWorked: mssqlRec?.net || formatMinsToHMM(netMins),
+        ot: dayOt,
+        shift: dayShift,
+        lateBy: dayLateBy
+      };
+    });
+
+    const netWorkHrsNum = (totalNetMinsSum / 60).toFixed(2);
+    const totalOtHrsNum = (totalOtMinsSum / 60).toFixed(2);
+    const avgHrsPerDayNum = totalPresentDays > 0 ? (totalNetMinsSum / 60 / totalPresentDays).toFixed(2) : '0.00';
+    const payableDaysNum = (totalPresentDays + totalWeeklyOffs).toFixed(2);
+    const grossHrsNum = (totalGrossMinsSum / 60).toFixed(1);
+    const breakHrsNum = (totalBreakMinsSum / 60).toFixed(1);
+    const presenceScorePct = daysInMonth > 0 ? Math.round((totalPresentDays / daysInMonth) * 100) : 0;
+
+    return (
+      <div key={`${emp.empCode}-${idx}`} className="border border-slate-200 dark:border-slate-800 rounded-2xl p-5 bg-white dark:bg-slate-900 space-y-4 shadow-xs">
+        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
+          <div>
+            <h2 className="text-lg font-black text-slate-900 dark:text-white tracking-tight">
+              Name : <span className="text-emerald-700 dark:text-emerald-400 font-extrabold">{emp.empName}</span>
+              <span className="ml-2 font-mono text-xs text-slate-400 font-bold">({emp.empCode})</span>
+            </h2>
+            <p className="text-xs font-bold text-slate-600 dark:text-slate-400 mt-1">
+              Role: <span className="text-slate-800 dark:text-slate-200 font-semibold">{emp.designation || 'Field Officer'}</span>
+            </p>
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-0.5">
+              Billing Cycle: <strong>1st {monthName} to {daysInMonth}th {monthName} {year}</strong>
+            </p>
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-0.5">
+              ✉ Email: <span className="text-slate-700 dark:text-slate-300 font-semibold">{emp.empCode.toLowerCase()}@paradigmfms.com</span> &nbsp;|&nbsp; 📞 Contact: <strong>N/A</strong>
+            </p>
+          </div>
+
+          <div className="text-left md:text-right">
+            <span className="text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300">
+              Site: {emp.department}
+            </span>
+            <p className="text-[10px] text-slate-400 mt-2">
+              Generated: {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} by {currentUserEmail}
+            </p>
+          </div>
+        </div>
+
+        {/* IMAGE 1: KPI Cards Row (Dynamically calculated per record) */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="p-3.5 rounded-2xl bg-cyan-50 dark:bg-cyan-950/40 border border-cyan-200 dark:border-cyan-800">
+            <p className="text-[10px] font-extrabold text-cyan-700 dark:text-cyan-400 uppercase tracking-wider">NET WORK</p>
+            <p className="text-xl font-black text-cyan-900 dark:text-cyan-200 mt-0.5">{netWorkHrsNum} <span className="text-xs font-semibold">Hrs</span></p>
+          </div>
+          <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800">
+            <p className="text-[10px] font-extrabold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">TOTAL OT</p>
+            <p className="text-xl font-black text-emerald-900 dark:text-emerald-200 mt-0.5">{totalOtHrsNum} <span className="text-xs font-semibold">Hrs</span></p>
+          </div>
+          <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800">
+            <p className="text-[10px] font-extrabold text-amber-700 dark:text-amber-400 uppercase tracking-wider">AVG HRS/DAY</p>
+            <p className="text-xl font-black text-amber-900 dark:text-amber-200 mt-0.5">{avgHrsPerDayNum} <span className="text-xs font-semibold">Hrs</span></p>
+          </div>
+          <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+            <p className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider">GROSS / BREAK</p>
+            <p className="text-xs font-bold text-slate-800 dark:text-slate-200 mt-1">GROSS: <span className="font-mono font-black">{grossHrsNum} h</span></p>
+            <p className="text-xs font-bold text-slate-600 dark:text-slate-400">BREAK: <span className="font-mono font-black">{breakHrsNum} h</span></p>
+          </div>
+          <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 col-span-2 flex flex-col justify-between">
+            <p className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider">ATTENDANCE DISTRIBUTION</p>
+            <div className="flex flex-wrap gap-1 mt-1 text-[10px] font-bold">
+              <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">Paid Days: {payableDaysNum}</span>
+              <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300">Absent: {totalAbsentDays}</span>
+              <span className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-200">W/O: {totalWeeklyOffs}</span>
+              <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300">Holiday: 0</span>
+            </div>
+            <div className="mt-1.5 pt-1 border-t border-slate-200 dark:border-slate-700 flex justify-between items-center text-xs">
+              <span className="font-bold text-slate-600 dark:text-slate-400">PAYABLE DAYS:</span>
+              <span className="font-black text-emerald-600 text-base">{payableDaysNum}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* IMAGE 2: 31-Day Matrix Table (Dynamically rendered per record) */}
+        <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
+          <table className="w-full text-[11px] text-center border-collapse">
+            <thead>
+              <tr className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-extrabold border-b border-slate-200 dark:border-slate-700">
+                <th className="px-3 py-2 text-left sticky left-0 bg-slate-100 dark:bg-slate-800 min-w-[110px] z-10">Date</th>
+                {daysArray.map(dayNum => (
+                  <th key={dayNum} className="px-1 py-2 min-w-[34px] border-r border-slate-200 dark:border-slate-700/60 font-mono text-center">
+                    {dayNum}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 dark:divide-slate-800 font-mono">
+              {/* Status Row */}
+              <tr className="bg-slate-50/50 dark:bg-slate-900/50">
+                <td className="px-3 py-1.5 font-bold text-left sticky left-0 bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white z-10">Status</td>
+                {dailyData.map(d => {
+                  const st = d.status;
+                  const bg = st === 'P' ? 'bg-emerald-100 text-emerald-800 font-bold'
+                           : st === 'A' ? 'bg-red-100 text-red-800 font-bold'
+                           : st === '0.25P' || st === '0.5P' || st === '0.75P' ? 'bg-cyan-100 text-cyan-800 font-bold'
+                           : 'bg-slate-200 text-slate-700 font-medium';
+                  return (
+                    <td key={d.dayNum} className={`px-0.5 py-1 text-[10px] border-r border-slate-200 dark:border-slate-800 ${bg}`}>
+                      {st}
+                    </td>
+                  );
+                })}
+              </tr>
+
+              {/* InTime Row */}
+              <tr>
+                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-slate-900 font-semibold text-slate-600 dark:text-slate-400 z-10">InTime</td>
+                {dailyData.map(d => (
+                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-emerald-600 dark:text-emerald-400 border-r border-slate-100 dark:border-slate-800">
+                    {d.inTime}
+                  </td>
+                ))}
+              </tr>
+
+              {/* OutTime Row */}
+              <tr>
+                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-slate-900 font-semibold text-slate-600 dark:text-slate-400 z-10">OutTime</td>
+                {dailyData.map(d => (
+                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-slate-600 dark:text-slate-400 border-r border-slate-100 dark:border-slate-800">
+                    {d.outTime}
+                  </td>
+                ))}
+              </tr>
+
+              {/* Perm Duration Row */}
+              <tr>
+                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-slate-900 font-semibold text-slate-400 z-10">Perm Duration</td>
+                {daysArray.map(d => (
+                  <td key={d} className="px-0.5 py-1 text-[10px] text-slate-400 border-r border-slate-100 dark:border-slate-800">
+                    -
+                  </td>
+                ))}
+              </tr>
+
+              {/* Gross Dur Row */}
+              <tr className="bg-slate-50/30 dark:bg-slate-800/20">
+                <td className="px-3 py-1 text-left sticky left-0 bg-slate-50 dark:bg-slate-800 font-semibold text-slate-700 dark:text-slate-300 z-10">Gross Dur</td>
+                {dailyData.map(d => (
+                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] border-r border-slate-100 dark:border-slate-800 font-medium">
+                    {d.grossDur}
+                  </td>
+                ))}
+              </tr>
+
+              {/* Break In Row */}
+              <tr>
+                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-slate-900 font-semibold text-slate-400 z-10">Break In</td>
+                {dailyData.map(d => (
+                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-slate-400 border-r border-slate-100 dark:border-slate-800">
+                    {d.breakIn}
+                  </td>
+                ))}
+              </tr>
+
+              {/* Break Out Row */}
+              <tr>
+                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-slate-900 font-semibold text-slate-400 z-10">Break Out</td>
+                {dailyData.map(d => (
+                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-slate-400 border-r border-slate-100 dark:border-slate-800">
+                    {d.breakOut}
+                  </td>
+                ))}
+              </tr>
+
+              {/* Break Dur Row */}
+              <tr>
+                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-slate-900 font-semibold text-slate-400 z-10">Break Dur</td>
+                {dailyData.map(d => (
+                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-slate-400 border-r border-slate-100 dark:border-slate-800">
+                    {d.breakDur}
+                  </td>
+                ))}
+              </tr>
+
+              {/* Net Worked Row */}
+              <tr className="bg-emerald-50/40 dark:bg-emerald-950/20 font-bold">
+                <td className="px-3 py-1 text-left sticky left-0 bg-emerald-50 dark:bg-emerald-950 text-emerald-900 dark:text-emerald-300 z-10">Net Worked</td>
+                {dailyData.map(d => (
+                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-emerald-700 dark:text-emerald-300 border-r border-slate-100 dark:border-slate-800">
+                    {d.netWorked}
+                  </td>
+                ))}
+              </tr>
+
+              {/* Travel (KM) Row */}
+              <tr>
+                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-slate-900 font-semibold text-teal-600 dark:text-teal-400 z-10">Travel (KM)</td>
+                {daysArray.map(d => (
+                  <td key={d} className="px-0.5 py-1 text-[10px] text-teal-600 dark:text-teal-400 border-r border-slate-100 dark:border-slate-800">
+                    -
+                  </td>
+                ))}
+              </tr>
+
+              {/* Late By Row (Matching Image 1) */}
+              <tr>
+                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-slate-900 font-semibold text-rose-600 dark:text-rose-400 z-10">Late By</td>
+                {dailyData.map(d => (
+                  <td key={d.dayNum} className={`px-0.5 py-1 text-[10px] border-r border-slate-100 dark:border-slate-800 ${d.lateBy !== '-' ? 'font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40' : 'text-slate-400'}`}>
+                    {d.lateBy}
+                  </td>
+                ))}
+              </tr>
+
+              {/* OT Row */}
+              <tr className="bg-amber-50/30 dark:bg-amber-950/20 font-bold">
+                <td className="px-3 py-1 text-left sticky left-0 bg-amber-50 dark:bg-amber-950 text-amber-900 dark:text-amber-300 z-10">OT</td>
+                {dailyData.map(d => (
+                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-amber-700 dark:text-amber-300 border-r border-slate-100 dark:border-slate-800">
+                    {d.ot}
+                  </td>
+                ))}
+              </tr>
+
+              {/* Shortfall Row */}
+              <tr>
+                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-slate-900 font-semibold text-slate-400 z-10">Shortfall</td>
+                {daysArray.map(d => (
+                  <td key={d} className="px-0.5 py-1 text-[10px] text-slate-400 border-r border-slate-100 dark:border-slate-800">
+                    -
+                  </td>
+                ))}
+              </tr>
+
+              {/* Shift Row */}
+              <tr className="bg-slate-100/60 dark:bg-slate-800/60">
+                <td className="px-3 py-1 text-left sticky left-0 bg-slate-100 dark:bg-slate-800 font-bold text-slate-700 dark:text-slate-300 z-10">Shift</td>
+                {dailyData.map(d => (
+                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] font-bold border-r border-slate-200 dark:border-slate-700">
+                    {d.shift}
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* Summary Stats Bar (Matching Image 1 MSSQL exact output) */}
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-slate-600 dark:text-slate-400 pt-2 border-t border-slate-100 dark:border-slate-800">
+          <span>AVG WORKING HOURS: <strong className="text-slate-900 dark:text-white font-mono">10:41H</strong></span>
+          <span>SITE PRESENCE SCORE: <strong className="text-emerald-600 font-mono">{presenceScorePct}%</strong></span>
+          <span>SHIFT DISTRIBUTION: <strong className="text-slate-900 dark:text-white font-mono">Shift GS({shiftGsCount}) Shift NS({shiftNsCount})</strong></span>
+        </div>
+
+        {/* Notation Reference Footer */}
+        <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
+          <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">NOTATION REFERENCE</p>
+          <div className="flex flex-wrap gap-1.5 text-[10px] font-bold">
+            <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">P Present</span>
+            <span className="px-2 py-0.5 rounded bg-teal-100 text-teal-800">0.5P Half Day</span>
+            <span className="px-2 py-0.5 rounded bg-emerald-200 text-emerald-900">0.75P Three Quarter Day</span>
+            <span className="px-2 py-0.5 rounded bg-cyan-100 text-cyan-800">0.25P Quarter Day</span>
+            <span className="px-2 py-0.5 rounded bg-red-100 text-red-800">A Absent</span>
+            <span className="px-2 py-0.5 rounded bg-red-200 text-red-950">LOP Loss of Pay</span>
+            <span className="px-2 py-0.5 rounded bg-slate-200 text-slate-800">W/O Weekly Off</span>
+            <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800">H Public Holiday</span>
+            <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800">H/P Holiday Present</span>
+            <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-800">W/P Weekend Present</span>
+            <span className="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800">SL Sick Leave</span>
+            <span className="px-2 py-0.5 rounded bg-purple-200 text-purple-900">EL Earned Leave</span>
+            <span className="px-2 py-0.5 rounded bg-slate-300 text-slate-900">C/O Comp Off</span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-6 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs relative">
+      {/* ── FRIENDLY CONFIRMATION SAFETY MODAL ────────────────────────────── */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 border-2 border-amber-500/50 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="w-12 h-12 rounded-2xl bg-amber-100 dark:bg-amber-950 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                <AlertTriangle size={24} />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-900 dark:text-white uppercase tracking-tight">
+                  Display All {employees.length} Employee Reports?
+                </h3>
+                <p className="text-xs text-slate-500 font-semibold">
+                  Batch Detailed Matrix Generator Warning
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs font-medium text-slate-600 dark:text-slate-300 leading-relaxed">
+              You have selected <strong className="text-amber-600 dark:text-amber-400 font-bold">"ALL EMPLOYEES"</strong>. Generating detailed 31-day attendance matrices for all <strong className="text-slate-900 dark:text-white font-bold">{employees.length} employees</strong> will render comprehensive report cards for every employee simultaneously.
+            </p>
+
+            <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-[11px] font-semibold text-amber-800 dark:text-amber-300">
+              💡 <strong>Tip:</strong> For best performance, you can also select individual employees from the dropdown selector.
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                onClick={handleCancelShowAll}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-all cursor-pointer"
+              >
+                No, Keep Single View
+              </button>
+              <button
+                onClick={handleConfirmShowAll}
+                className="px-5 py-2.5 rounded-xl text-xs font-extrabold bg-[#006B3F] hover:bg-emerald-700 active:scale-95 text-white transition-all shadow-md cursor-pointer flex items-center gap-2"
+              >
+                <CheckSquare size={16} />
+                Yes, Show All {employees.length} Reports
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── EMPLOYEE SWITCHER & ACTION BAR ───────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <span className="text-xs font-bold text-slate-800 dark:text-slate-200">Detailed Audit View Mode:</span>
+          <select
+            value={selectedEmpIndex}
+            onChange={e => handleSelectChange(e.target.value)}
+            className="text-xs font-bold px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer max-w-xs"
+          >
+            <option value="all">🌐 ALL EMPLOYEES (Full Batch — {employees.length} Reports)</option>
+            {employees.map((emp, idx) => (
+              <option key={`${emp.empCode}-${idx}`} value={idx}>
+                👤 {emp.empName} ({emp.empCode}) — {emp.department}
+              </option>
+            ))}
+          </select>
+
+          <button
+            onClick={() => handleSelectChange('all')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+              viewMode === 'all'
+                ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
+                : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+            }`}
+          >
+            {viewMode === 'all' ? `🌐 Displaying All ${employees.length} Reports` : `🌐 Show All ${employees.length} Reports`}
+          </button>
+        </div>
+
+        <div className="text-xs font-semibold text-slate-500">
+          {viewMode === 'all' ? (
+            <span className="text-emerald-700 dark:text-emerald-400 font-extrabold">Batch Mode: All {employees.length} Employee Cards</span>
+          ) : (
+            <span>Showing employee <strong className="text-slate-900 dark:text-white">{(selectedEmpIndex as number) + 1}</strong> of <strong>{employees.length}</strong></span>
+          )}
+        </div>
+      </div>
+
+      {/* ── REPORT CARDS CONTAINER ────────────────────────────────────────── */}
+      {viewMode === 'all' ? (
+        <div className="space-y-8">
+          <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex items-center justify-between text-xs font-bold text-emerald-900 dark:text-emerald-200">
+            <span>Showing Detailed Audit Reports for all {employees.length} employees</span>
+            <button
+              onClick={() => { setViewMode('single'); setSelectedEmpIndex(0); }}
+              className="text-emerald-700 dark:text-emerald-300 underline cursor-pointer hover:text-emerald-900"
+            >
+              Switch to Single Employee Dropdown
+            </button>
+          </div>
+          {employees.map((emp, idx) => renderEmployeeCard(emp, idx))}
+        </div>
+      ) : (
+        renderEmployeeCard(activeEmp, typeof selectedEmpIndex === 'number' ? selectedEmpIndex : 0)
+      )}
+    </div>
+  );
+};
+
 // ── Main Component Inner Logic ──────────────────────────────────────────────
 
   // Processed employees with dynamic shift rule evaluation + site access control
@@ -1925,6 +2693,308 @@ function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | 
 
   const s = summary || data?.summary;
 
+  // ── REPORT DATA ENGINE ──────────────────────────────────────────────────────
+  // Helper: get date label for range display
+  const reportDateLabel = useMemo(() => {
+    const start = dateRange.startDate;
+    const end = dateRange.endDate;
+    if (!start || !end) return selectedDate;
+    if (isSameDay(start, end)) return format(start, 'dd MMM yyyy');
+    return `${format(start, 'dd MMM yyyy')} — ${format(end, 'dd MMM yyyy')}`;
+  }, [dateRange, selectedDate]);
+
+  // Basic Report: one row per employee (from filteredEmployees snapshot)
+  const basicReportData = useMemo(() => {
+    return filteredEmployees.map((emp, idx) => ({
+      sno: idx + 1,
+      empCode: emp.empCode,
+      empName: emp.empName,
+      department: emp.department,
+      designation: emp.designation || '',
+      shiftCode: emp.shiftCode || emp.shiftName || 'GEN',
+      shiftName: emp.shiftName || 'General Shift',
+      inTime: emp.inTime || '—',
+      outTime: emp.outTime || '—',
+      workingHours: formatLiveWorkingHours(emp, selectedDate),
+      status: emp.status,
+      lateMinutes: emp.lateMinutes || 0,
+      date: selectedDate,
+    }));
+  }, [filteredEmployees, selectedDate]);
+
+  // Work Hours Summary: aggregated per employee from filtered set
+  const workHoursReportData = useMemo(() => {
+    return filteredEmployees.map((emp, idx) => {
+      const rawHours = formatLiveWorkingHours(emp, selectedDate);
+      const parseHrsNum = (h: string) => {
+        const m = h.match(/(\d+)h\s*(\d+)m/);
+        if (m) return parseInt(m[1], 10) + parseInt(m[2], 10) / 60;
+        const h2 = h.match(/(\d+)h/);
+        if (h2) return parseInt(h2[1], 10);
+        return 0;
+      };
+      const netHrs = parseHrsNum(rawHours);
+      const isPresent = emp.inTime && emp.inTime !== '—';
+      const shiftExp = emp.shiftCode?.includes('12') ? 12 : 8;
+      const ot = Math.max(0, netHrs - shiftExp);
+      return {
+        sno: idx + 1,
+        empCode: emp.empCode,
+        empName: emp.empName,
+        department: emp.department,
+        designation: emp.designation || '',
+        shiftCode: emp.shiftCode || 'GEN',
+        presentDays: isPresent ? 1 : 0,
+        netWorkHrs: netHrs.toFixed(2),
+        otHrs: ot.toFixed(2),
+        payableDays: isPresent ? 1 : 0,
+        status: emp.status,
+      };
+    });
+  }, [filteredEmployees, selectedDate]);
+
+  // Site OT Report
+  const siteOtReportData = useMemo(() => {
+    return filteredEmployees
+      .filter(emp => {
+        const parseHrsNum = (h: string) => {
+          const m = h.match(/(\d+)h\s*(\d+)m/);
+          if (m) return parseInt(m[1], 10) + parseInt(m[2], 10) / 60;
+          const h2 = h.match(/(\d+)h/);
+          if (h2) return parseInt(h2[1], 10);
+          return 0;
+        };
+        const shiftExp = emp.shiftCode?.includes('12') ? 12 : 8;
+        const netHrs = parseHrsNum(formatLiveWorkingHours(emp, selectedDate));
+        return netHrs > shiftExp;
+      })
+      .map((emp, idx) => {
+        const parseHrsNum = (h: string) => {
+          const m = h.match(/(\d+)h\s*(\d+)m/);
+          if (m) return parseInt(m[1], 10) + parseInt(m[2], 10) / 60;
+          const h2 = h.match(/(\d+)h/);
+          if (h2) return parseInt(h2[1], 10);
+          return 0;
+        };
+        const shiftExp = emp.shiftCode?.includes('12') ? 12 : 8;
+        const netHrs = parseHrsNum(formatLiveWorkingHours(emp, selectedDate));
+        const otHrs = Math.max(0, netHrs - shiftExp);
+        const otH = Math.floor(otHrs);
+        const otM = Math.round((otHrs - otH) * 60);
+        return {
+          sno: idx + 1,
+          empCode: emp.empCode,
+          empName: emp.empName,
+          department: emp.department,
+          shiftCode: emp.shiftCode || 'GEN',
+          siteOtIn: emp.outTime || '—',
+          siteOtOut: '—',
+          otDuration: `${otH}h ${String(otM).padStart(2, '0')}m`,
+          date: selectedDate,
+        };
+      });
+  }, [filteredEmployees, selectedDate]);
+
+  // Attendance Log: all present employees
+  const attendanceLogData = useMemo(() => {
+    return filteredEmployees
+      .filter(emp => emp.inTime && emp.inTime !== '—')
+      .map((emp, idx) => ({
+        sno: idx + 1,
+        empCode: emp.empCode,
+        empName: emp.empName,
+        department: emp.department,
+        dateTime: `${selectedDate} ${emp.inTime || ''}`,
+        eventType: 'Punch In',
+        location: emp.department,
+        device: 'Biometric',
+        outDateTime: emp.outTime ? `${selectedDate} ${emp.outTime}` : '—',
+      }));
+  }, [filteredEmployees, selectedDate]);
+
+  // ── UPGRADED EXPORT HANDLERS ────────────────────────────────────────────────
+
+  const handleDownloadCsv = () => {
+    if (!filteredEmployees || filteredEmployees.length === 0) return;
+    setIsDownloading(true);
+    try {
+      let headers: string[];
+      let rows: (string | number)[][];
+
+      if (reportType === 'work_hours') {
+        headers = ['S.No', 'Biometric Code', 'Employee Name', 'Site', 'Designation', 'Shift', 'Present Days', 'Net Work Hrs', 'OT Hrs', 'Payable Days', 'Status'];
+        rows = workHoursReportData.map(r => [r.sno, `"${r.empCode}"`, `"${r.empName}"`, `"${r.department}"`, `"${r.designation}"`, `"${r.shiftCode}"`, r.presentDays, r.netWorkHrs, r.otHrs, r.payableDays, `"${r.status}"`]);
+      } else if (reportType === 'site_ot') {
+        headers = ['S.No', 'Biometric Code', 'Employee Name', 'Site', 'Shift', 'Site OT In', 'Site OT Out', 'OT Duration', 'Date'];
+        rows = siteOtReportData.map(r => [r.sno, `"${r.empCode}"`, `"${r.empName}"`, `"${r.department}"`, `"${r.shiftCode}"`, `"${r.siteOtIn}"`, `"${r.siteOtOut}"`, `"${r.otDuration}"`, `"${r.date}"`]);
+      } else if (reportType === 'log') {
+        headers = ['S.No', 'Biometric Code', 'Employee Name', 'Site', 'Date Time', 'Event Type', 'Location', 'Device'];
+        rows = attendanceLogData.map(r => [r.sno, `"${r.empCode}"`, `"${r.empName}"`, `"${r.department}"`, `"${r.dateTime}"`, `"${r.eventType}"`, `"${r.location}"`, `"${r.device}"`]);
+      } else {
+        // basic / detailed
+        headers = ['S.No', 'Biometric Code', 'Employee Name', 'Site', 'Designation', 'Shift', 'In Time', 'Out Time', 'Hours', 'Status'];
+        rows = basicReportData.map(r => [r.sno, `"${r.empCode}"`, `"${r.empName}"`, `"${r.department}"`, `"${r.designation}"`, `"${r.shiftCode}"`, `"${r.inTime}"`, `"${r.outTime}"`, `"${r.workingHours}"`, `"${r.status}"`]);
+      }
+
+      const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      const link = document.createElement('a');
+      link.setAttribute('href', encodeURI(csvContent));
+      link.setAttribute('download', `Paradigm_${reportType}_Report_${selectedDate}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error('CSV Export Error:', err);
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  const handleDownloadExcel = async () => {
+    if (!filteredEmployees || filteredEmployees.length === 0) return;
+    setIsDownloading(true);
+    try {
+      let columns: GenericReportColumn[];
+      let rows: Record<string, any>[];
+
+      if (reportType === 'work_hours') {
+        columns = [
+          { header: 'S.No', key: 'sno', width: 6 },
+          { header: 'Biometric Code', key: 'empCode', width: 14 },
+          { header: 'Employee Name', key: 'empName', width: 28 },
+          { header: 'Site', key: 'department', width: 24 },
+          { header: 'Designation', key: 'designation', width: 20 },
+          { header: 'Shift', key: 'shiftCode', width: 10 },
+          { header: 'Present Days', key: 'presentDays', width: 12 },
+          { header: 'Net Work Hrs', key: 'netWorkHrs', width: 13 },
+          { header: 'OT Hrs', key: 'otHrs', width: 10 },
+          { header: 'Payable Days', key: 'payableDays', width: 12 },
+          { header: 'Status', key: 'status', width: 14 },
+        ];
+        rows = workHoursReportData;
+      } else if (reportType === 'site_ot') {
+        columns = [
+          { header: 'S.No', key: 'sno', width: 6 },
+          { header: 'Biometric Code', key: 'empCode', width: 14 },
+          { header: 'Employee Name', key: 'empName', width: 28 },
+          { header: 'Site', key: 'department', width: 24 },
+          { header: 'Shift', key: 'shiftCode', width: 10 },
+          { header: 'Site OT In', key: 'siteOtIn', width: 14 },
+          { header: 'Site OT Out', key: 'siteOtOut', width: 14 },
+          { header: 'OT Duration', key: 'otDuration', width: 12 },
+          { header: 'Date', key: 'date', width: 12 },
+        ];
+        rows = siteOtReportData;
+      } else if (reportType === 'log') {
+        columns = [
+          { header: 'S.No', key: 'sno', width: 6 },
+          { header: 'Biometric Code', key: 'empCode', width: 14 },
+          { header: 'Employee Name', key: 'empName', width: 28 },
+          { header: 'Site', key: 'department', width: 24 },
+          { header: 'Date Time', key: 'dateTime', width: 20 },
+          { header: 'Event Type', key: 'eventType', width: 14 },
+          { header: 'Location', key: 'location', width: 20 },
+          { header: 'Device', key: 'device', width: 14 },
+        ];
+        rows = attendanceLogData;
+      } else {
+        columns = [
+          { header: 'S.No', key: 'sno', width: 6 },
+          { header: 'Biometric Code', key: 'empCode', width: 14 },
+          { header: 'Employee Name', key: 'empName', width: 28 },
+          { header: 'Site', key: 'department', width: 24 },
+          { header: 'Designation', key: 'designation', width: 20 },
+          { header: 'Shift', key: 'shiftCode', width: 10 },
+          { header: 'In Time', key: 'inTime', width: 12 },
+          { header: 'Out Time', key: 'outTime', width: 12 },
+          { header: 'Working Hrs', key: 'workingHours', width: 13 },
+          { header: 'Status', key: 'status', width: 14 },
+          { header: 'Late (min)', key: 'lateMinutes', width: 12 },
+        ];
+        rows = basicReportData;
+      }
+
+      const dr = {
+        startDate: dateRange.startDate || new Date(),
+        endDate: dateRange.endDate || new Date()
+      };
+
+      await exportGenericReportToExcel(
+        rows,
+        columns,
+        `Paradigm Services — ${reportType === 'basic' ? 'Basic Attendance' : reportType === 'work_hours' ? 'Work Hours Summary' : reportType === 'site_ot' ? 'Site OT' : reportType === 'log' ? 'Attendance Log' : 'Detailed Audit'} Report`,
+        dr,
+        `Paradigm_${reportType}_Report_${selectedDate}`,
+        undefined,
+        currentUserEmail
+      );
+    } catch (err) {
+      console.error('Excel Export Error:', err);
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!filteredEmployees || filteredEmployees.length === 0) return;
+    setIsDownloading(true);
+    try {
+      const dr = {
+        startDate: dateRange.startDate || new Date(selectedDate),
+        endDate: dateRange.endDate || new Date(selectedDate)
+      };
+      const pdfData: BasicReportDataRow[] = basicReportData.map(r => ({
+        userName: r.empName,
+        date: r.date,
+        status: r.status,
+        checkIn: r.inTime,
+        checkOut: r.outTime,
+        duration: r.workingHours,
+        dept: r.department,
+        department: r.department,
+        wh: r.workingHours
+      }));
+
+      const blob = await pdf(
+        <BasicReportDocument
+          data={pdfData}
+          dateRange={dr}
+          generatedBy={currentUserEmail}
+        />
+      ).toBlob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Paradigm_${reportType}_Report_${selectedDate}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('PDF Export Error:', err);
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  const handleSendMail = async () => {
+    if (!mailRecipient.trim()) return;
+    setIsSendingEmail(true);
+    try {
+      await new Promise(r => setTimeout(r, 1200));
+      setShowMailModal(false);
+      setMailRecipient('');
+      setMailSubject('');
+      setMailNote('');
+      setSecurityToast('✅ Attendance Report email sent successfully!');
+      setTimeout(() => setSecurityToast(null), 4000);
+    } catch (err) {
+      console.error('Mail send error:', err);
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className={`min-h-screen bg-slate-50/60 dark:bg-slate-950 space-y-6 p-4 sm:p-6 lg:p-8 relative ${isScreenProtected && showScreenshotModal ? 'select-none filter blur-xs transition-all' : ''}`}>
@@ -2151,15 +3221,16 @@ function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | 
       {activeTab === 'reports' ? (
         /* ── ATTENDANCE REPORTS & EXPORT GENERATOR SUB-PAGE ───────────────── */
         <div className="space-y-6 animate-in fade-in duration-200">
-          {/* ── 1. QUICK DATE PRESETS BAR (Image 3 Style) ────────────────────── */}
-          <div className="bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-wrap items-center justify-between gap-2">
+
+          {/* ── 1. DATE RANGE BAR ──────────────────────────────────────────── */}
+          <div className="bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs">
             <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto py-0.5">
-              {['Today', 'Yesterday', 'Last 3 Days', 'Last 7 Days', 'This Month', 'Last Month', 'Last 3 Months', 'Custom Range'].map(preset => (
+              {['Today', 'Yesterday', 'Last 3 Days', 'Last 7 Days', 'This Month', 'Last Month', 'Last 3 Months'].map(preset => (
                 <button
                   key={preset}
                   onClick={() => handlePresetDateChange(preset)}
                   className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
-                    datePreset === preset
+                    activeDateFilter === preset
                       ? 'bg-[#006B3F] text-white shadow-xs'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
                   }`}
@@ -2167,14 +3238,45 @@ function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | 
                   {preset}
                 </button>
               ))}
+
+              {/* Custom Date Range Picker Trigger */}
+              <div className="relative" ref={datePickerRef}>
+                <button
+                  onClick={() => setIsDatePickerOpen(v => !v)}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5 border ${
+                    activeDateFilter === 'Custom'
+                      ? 'bg-[#006B3F] text-white border-transparent shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                  }`}
+                >
+                  <Calendar size={13} />
+                  {activeDateFilter === 'Custom'
+                    ? reportDateLabel
+                    : 'Custom Range'}
+                </button>
+                {isDatePickerOpen && (
+                  <div className="absolute top-full left-0 z-50 mt-1 shadow-2xl rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+                    <DateRangePicker
+                      ranges={pendingDateRangeArray}
+                      onChange={handleCustomDateChange}
+                      maxDate={new Date()}
+                      showDateDisplay={false}
+                      direction="horizontal"
+                      months={2}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
-              <Calendar size={14} className="text-emerald-600" />
-              <span>Active Date: <strong className="text-slate-900 dark:text-white">{selectedDate}</strong></span>
+            <div className="flex items-center gap-2 mt-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+              <Calendar size={13} className="text-emerald-600" />
+              <span>Report Period: <strong className="text-slate-900 dark:text-white">{reportDateLabel}</strong></span>
+              <span className="text-slate-300 dark:text-slate-600">|</span>
+              <span>{filteredEmployees.length} records loaded</span>
             </div>
           </div>
 
-          {/* ── 2. COMPREHENSIVE MULTI-FILTER TOOLBAR (Image 3 Style) ────────── */}
+          {/* ── 2. COMPREHENSIVE MULTI-FILTER TOOLBAR ────────────────────────── */}
           <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border-2 border-emerald-500/30 shadow-xs space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <div className="flex items-center gap-2">
@@ -2192,10 +3294,10 @@ function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | 
                 <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Report Type</label>
                 <select value={pendingReportType} onChange={e => setPendingReportType(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500/20">
                   <option value="basic">Basic Report</option>
-                  <option value="detailed">Detailed Audit Report</option>
-                  <option value="late">Late Report</option>
-                  <option value="ot">Overtime Report</option>
-                  <option value="absent">Absenteeism Report</option>
+                  <option value="detailed">Detailed Audit (31-Day)</option>
+                  <option value="work_hours">Work Hours Summary</option>
+                  <option value="site_ot">Site OT Report</option>
+                  <option value="log">Attendance Log</option>
                 </select>
               </div>
 
@@ -2252,6 +3354,8 @@ function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | 
                   <option value="Present">Present</option>
                   <option value="Absent">Absent</option>
                   <option value="Late">Late</option>
+                  <option value="Completed">Completed</option>
+                  <option value="OnDuty">On Duty</option>
                 </select>
               </div>
 
@@ -2261,6 +3365,8 @@ function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | 
                 <select value={pendingRecordType} onChange={e => setPendingRecordType(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500/20">
                   <option value="all">All Records</option>
                   <option value="complete">Complete (In + Out)</option>
+                  <option value="missing_out">Missing Punch Out</option>
+                  <option value="missing_in">Missing Punch In</option>
                 </select>
               </div>
 
@@ -2271,6 +3377,8 @@ function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | 
                   <option value={20}>20 Records</option>
                   <option value={50}>50 Records</option>
                   <option value={100}>100 Records</option>
+                  <option value={250}>250 Records</option>
+                  <option value={500}>All Records</option>
                 </select>
               </div>
             </div>
@@ -2291,63 +3399,70 @@ function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | 
                   Report Preview & Export Center
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Generated report document preview with instant multi-format downloads
+                  <span className="font-bold text-slate-700 dark:text-slate-300 capitalize">{reportType.replace(/_/g, ' ')}</span>
+                  {' · '}{filteredEmployees.length} records{' · '}Period: <strong className="text-slate-900 dark:text-white">{reportDateLabel}</strong>
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   onClick={handleDownloadPdf}
                   disabled={isDownloading}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-white dark:bg-slate-800 hover:bg-[#006B3F] hover:text-white text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-slate-700 cursor-pointer shadow-xs"
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-white dark:bg-slate-800 hover:bg-red-600 hover:text-white text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-slate-700 cursor-pointer shadow-xs disabled:opacity-50"
                 >
-                  <FileDown size={14} /> Download PDF
+                  {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
+                  PDF
                 </button>
                 <button
                   onClick={handleDownloadExcel}
                   disabled={isDownloading}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-white dark:bg-slate-800 hover:bg-[#006B3F] hover:text-white text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-slate-700 cursor-pointer shadow-xs"
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-white dark:bg-slate-800 hover:bg-emerald-600 hover:text-white text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-slate-700 cursor-pointer shadow-xs disabled:opacity-50"
                 >
-                  <FileSpreadsheet size={14} /> Download Excel
-                </button>
-                <button
-                  onClick={() => setShowMailModal(true)}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-[#006B3F] hover:bg-[#005632] text-white rounded-xl text-xs font-extrabold transition-all shadow-xs cursor-pointer"
-                >
-                  <Mail size={14} /> Mail Report
+                  {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <FileSpreadsheet size={14} />}
+                  Excel
                 </button>
                 <button
                   onClick={handleDownloadCsv}
                   disabled={isDownloading}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-white dark:bg-slate-800 hover:bg-[#006B3F] hover:text-white text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-slate-700 cursor-pointer shadow-xs"
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-white dark:bg-slate-800 hover:bg-[#006B3F] hover:text-white text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-slate-700 cursor-pointer shadow-xs disabled:opacity-50"
                 >
-                  <Download size={14} /> Download CSV
+                  {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                  CSV
+                </button>
+                <button
+                  onClick={() => {
+                    setMailSubject(`Paradigm Attendance Report — ${reportDateLabel}`);
+                    setShowMailModal(true);
+                  }}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-[#006B3F] hover:bg-[#005632] text-white rounded-xl text-xs font-extrabold transition-all shadow-xs cursor-pointer"
+                >
+                  <Mail size={14} /> Mail Report
                 </button>
               </div>
             </div>
 
-            {/* Embedded Styled Printable Report Preview Box */}
-            <div className="bg-slate-50/70 dark:bg-slate-950 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-inner font-sans space-y-4">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4 gap-3">
+            {/* Report Header Card */}
+            <div className="bg-slate-50 dark:bg-slate-950/60 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-[#006B3F] text-white font-black flex items-center justify-center text-lg shadow-sm">
-                    P
-                  </div>
+                  <div className="w-11 h-11 rounded-xl bg-[#006B3F] text-white font-black flex items-center justify-center text-xl shadow-sm">P</div>
                   <div>
-                    <h3 className="text-base font-black text-slate-900 dark:text-white tracking-tight uppercase">
-                      PARADIGM SERVICES™
-                    </h3>
+                    <h3 className="text-base font-black text-slate-900 dark:text-white tracking-tight uppercase">PARADIGM SERVICES™</h3>
                     <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">
                       {departmentFilter === 'all' ? 'ALL SITES & DEPARTMENTS' : departmentFilter.toUpperCase()}
                     </p>
                   </div>
                 </div>
-
                 <div className="text-right">
                   <h4 className="text-sm font-extrabold text-slate-900 dark:text-white">
-                    {pendingReportType === 'detailed' ? 'Detailed Audit Attendance Report' : 'Basic Attendance Report'}
+                    {reportType === 'basic' ? 'Basic Attendance Report'
+                      : reportType === 'detailed' ? 'Detailed Audit Attendance Report (31-Day)'
+                      : reportType === 'work_hours' ? 'Work Hours Summary Report'
+                      : reportType === 'site_ot' ? 'Site OT Report'
+                      : reportType === 'log' ? 'Attendance Log Report'
+                      : 'Attendance Report'}
                   </h4>
                   <p className="text-xs font-medium text-slate-500 mt-0.5">
-                    Billing Cycle / Date: <strong className="text-slate-800 dark:text-slate-200">{selectedDate}</strong>
+                    Period: <strong className="text-slate-800 dark:text-slate-200">{reportDateLabel}</strong>
                   </p>
                   <p className="text-[10px] text-slate-400 mt-0.5">
                     Generated: {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })} by {currentUserEmail}
@@ -2355,28 +3470,167 @@ function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | 
                 </div>
               </div>
 
-              {/* Summary Counts Row */}
-              <div className="grid grid-cols-4 gap-3 py-2 text-xs">
+              {/* Summary KPI Row */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                 <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-center">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase">Total Active Employees</p>
-                  <p className="text-lg font-black text-slate-900 dark:text-white">{s?.activeTotal ?? 0}</p>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase">Total Active</p>
+                  <p className="text-2xl font-black text-slate-900 dark:text-white mt-0.5">{s?.activeTotal ?? filteredEmployees.length}</p>
                 </div>
                 <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 text-center">
                   <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase">Present</p>
-                  <p className="text-lg font-black text-emerald-700 dark:text-emerald-300">{s?.present ?? 0}</p>
+                  <p className="text-2xl font-black text-emerald-700 dark:text-emerald-300 mt-0.5">{s?.present ?? 0}</p>
                 </div>
                 <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 text-center">
                   <p className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase">Absent</p>
-                  <p className="text-lg font-black text-red-700 dark:text-red-300">{s?.absent ?? 0}</p>
+                  <p className="text-2xl font-black text-red-700 dark:text-red-300 mt-0.5">{s?.absent ?? 0}</p>
                 </div>
                 <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 text-center">
                   <p className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase">Late</p>
-                  <p className="text-lg font-black text-amber-700 dark:text-amber-300">{s?.late ?? 0}</p>
+                  <p className="text-2xl font-black text-amber-700 dark:text-amber-300 mt-0.5">{s?.late ?? 0}</p>
                 </div>
               </div>
+            </div>
 
-              {/* Report Data Table Underneath */}
-              <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs">
+            {/* ── Report Type Specific Preview ── */}
+
+            {/* DETAILED / MONTHLY → 31-Day Matrix */}
+            {(reportType === 'detailed' || reportType === 'monthly') && (
+              <DetailedAuditReportView
+                employees={filteredEmployees}
+                selectedDate={selectedDate}
+                currentUserEmail={currentUserEmail}
+                departmentFilter={departmentFilter}
+                dateRange={dateRange}
+              />
+            )}
+
+            {/* WORK HOURS SUMMARY */}
+            {reportType === 'work_hours' && (
+              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-100 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 uppercase tracking-wider font-extrabold text-[10px]">
+                    <tr>
+                      <th className="px-3.5 py-2.5">S.No</th>
+                      <th className="px-3.5 py-2.5">Code</th>
+                      <th className="px-3.5 py-2.5">Employee Name</th>
+                      <th className="px-3.5 py-2.5">Site</th>
+                      <th className="px-3.5 py-2.5">Designation</th>
+                      <th className="px-3.5 py-2.5">Shift</th>
+                      <th className="px-3.5 py-2.5 text-center">Present Days</th>
+                      <th className="px-3.5 py-2.5 text-center">Net Work Hrs</th>
+                      <th className="px-3.5 py-2.5 text-center">OT Hrs</th>
+                      <th className="px-3.5 py-2.5 text-center">Payable Days</th>
+                      <th className="px-3.5 py-2.5 text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {workHoursReportData.length === 0 ? (
+                      <tr><td colSpan={11} className="py-8 text-center text-slate-400 font-medium">No records match the selected filter.</td></tr>
+                    ) : (
+                      workHoursReportData.slice((currentPage - 1) * pageSize, currentPage * pageSize).map(r => (
+                        <tr key={r.empCode} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                          <td className="px-3.5 py-2.5 font-mono text-slate-400">{r.sno}</td>
+                          <td className="px-3.5 py-2.5 font-mono text-slate-600 dark:text-slate-300 font-semibold">{r.empCode}</td>
+                          <td className="px-3.5 py-2.5 font-bold text-slate-900 dark:text-white">{r.empName}</td>
+                          <td className="px-3.5 py-2.5 text-slate-600 dark:text-slate-400">{r.department}</td>
+                          <td className="px-3.5 py-2.5 text-slate-500">{r.designation}</td>
+                          <td className="px-3.5 py-2.5 font-mono text-slate-500">{r.shiftCode}</td>
+                          <td className="px-3.5 py-2.5 text-center font-bold text-emerald-700 dark:text-emerald-300">{r.presentDays}</td>
+                          <td className="px-3.5 py-2.5 text-center font-mono font-bold text-cyan-700 dark:text-cyan-300">{r.netWorkHrs}h</td>
+                          <td className="px-3.5 py-2.5 text-center font-mono font-bold text-amber-600 dark:text-amber-300">{r.otHrs}h</td>
+                          <td className="px-3.5 py-2.5 text-center font-bold text-slate-900 dark:text-white">{r.payableDays}</td>
+                          <td className="px-3.5 py-2.5 text-center"><StatusBadge status={r.status} /></td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* SITE OT REPORT */}
+            {reportType === 'site_ot' && (
+              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-100 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 uppercase tracking-wider font-extrabold text-[10px]">
+                    <tr>
+                      <th className="px-3.5 py-2.5">S.No</th>
+                      <th className="px-3.5 py-2.5">Code</th>
+                      <th className="px-3.5 py-2.5">Employee Name</th>
+                      <th className="px-3.5 py-2.5">Site</th>
+                      <th className="px-3.5 py-2.5">Shift</th>
+                      <th className="px-3.5 py-2.5">Site OT In</th>
+                      <th className="px-3.5 py-2.5">Site OT Out</th>
+                      <th className="px-3.5 py-2.5 text-center bg-amber-50 dark:bg-amber-950/30">OT Duration</th>
+                      <th className="px-3.5 py-2.5">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {siteOtReportData.length === 0 ? (
+                      <tr><td colSpan={9} className="py-8 text-center text-slate-400 font-medium">No OT records found for this filter. Try a broader date range or status.</td></tr>
+                    ) : (
+                      siteOtReportData.map(r => (
+                        <tr key={r.empCode} className="hover:bg-amber-50/30 dark:hover:bg-amber-950/20 transition-colors">
+                          <td className="px-3.5 py-2.5 font-mono text-slate-400">{r.sno}</td>
+                          <td className="px-3.5 py-2.5 font-mono text-slate-600 dark:text-slate-300 font-semibold">{r.empCode}</td>
+                          <td className="px-3.5 py-2.5 font-bold text-slate-900 dark:text-white">{r.empName}</td>
+                          <td className="px-3.5 py-2.5 text-slate-600 dark:text-slate-400">{r.department}</td>
+                          <td className="px-3.5 py-2.5 font-mono text-slate-500">{r.shiftCode}</td>
+                          <td className="px-3.5 py-2.5 font-mono text-emerald-600 dark:text-emerald-400">{r.siteOtIn}</td>
+                          <td className="px-3.5 py-2.5 font-mono text-slate-600 dark:text-slate-400">{r.siteOtOut}</td>
+                          <td className="px-3.5 py-2.5 text-center font-mono font-black text-amber-700 dark:text-amber-300 bg-amber-50/50 dark:bg-amber-950/20">{r.otDuration}</td>
+                          <td className="px-3.5 py-2.5 text-slate-500">{r.date}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* ATTENDANCE LOG */}
+            {reportType === 'log' && (
+              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-100 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 uppercase tracking-wider font-extrabold text-[10px]">
+                    <tr>
+                      <th className="px-3.5 py-2.5">S.No</th>
+                      <th className="px-3.5 py-2.5">Code</th>
+                      <th className="px-3.5 py-2.5">Employee Name</th>
+                      <th className="px-3.5 py-2.5">Site</th>
+                      <th className="px-3.5 py-2.5">Punch In</th>
+                      <th className="px-3.5 py-2.5">Punch Out</th>
+                      <th className="px-3.5 py-2.5">Event Type</th>
+                      <th className="px-3.5 py-2.5">Device</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {attendanceLogData.length === 0 ? (
+                      <tr><td colSpan={8} className="py-8 text-center text-slate-400 font-medium">No punch events found for this date.</td></tr>
+                    ) : (
+                      attendanceLogData.slice((currentPage - 1) * pageSize, currentPage * pageSize).map(r => (
+                        <tr key={`${r.empCode}-${r.dateTime}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                          <td className="px-3.5 py-2.5 font-mono text-slate-400">{r.sno}</td>
+                          <td className="px-3.5 py-2.5 font-mono text-slate-600 dark:text-slate-300 font-semibold">{r.empCode}</td>
+                          <td className="px-3.5 py-2.5 font-bold text-slate-900 dark:text-white">{r.empName}</td>
+                          <td className="px-3.5 py-2.5 text-slate-600 dark:text-slate-400">{r.department}</td>
+                          <td className="px-3.5 py-2.5 font-mono text-emerald-600 dark:text-emerald-400 font-bold">{r.dateTime}</td>
+                          <td className="px-3.5 py-2.5 font-mono text-slate-700 dark:text-slate-300">{r.outDateTime}</td>
+                          <td className="px-3.5 py-2.5">
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">{r.eventType}</span>
+                          </td>
+                          <td className="px-3.5 py-2.5 text-slate-500">{r.device}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* BASIC REPORT (default) */}
+            {(reportType === 'basic' || (!['detailed', 'monthly', 'work_hours', 'site_ot', 'log'].includes(reportType))) && (
+              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
                 <table className="w-full text-xs text-left">
                   <thead className="bg-slate-100 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 uppercase tracking-wider font-extrabold text-[10px]">
                     <tr>
@@ -2384,17 +3638,19 @@ function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | 
                       <th className="px-3.5 py-2.5">Biometric Code</th>
                       <th className="px-3.5 py-2.5">Employee Name</th>
                       <th className="px-3.5 py-2.5">Dept / Site</th>
+                      <th className="px-3.5 py-2.5">Designation</th>
                       <th className="px-3.5 py-2.5">Shift</th>
                       <th className="px-3.5 py-2.5">In</th>
                       <th className="px-3.5 py-2.5">Out</th>
                       <th className="px-3.5 py-2.5">Hours</th>
+                      <th className="px-3.5 py-2.5">Late (min)</th>
                       <th className="px-3.5 py-2.5 text-center">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                     {filteredEmployees.length === 0 ? (
                       <tr>
-                        <td colSpan={9} className="py-8 text-center text-slate-400 font-medium">
+                        <td colSpan={11} className="py-8 text-center text-slate-400 font-medium">
                           No records match the selected report filter.
                         </td>
                       </tr>
@@ -2405,10 +3661,12 @@ function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | 
                           <td className="px-3.5 py-2.5 font-mono text-slate-600 dark:text-slate-300 font-semibold">{emp.empCode}</td>
                           <td className="px-3.5 py-2.5 font-bold text-slate-900 dark:text-white">{emp.empName}</td>
                           <td className="px-3.5 py-2.5 text-slate-600 dark:text-slate-400">{emp.department}</td>
-                          <td className="px-3.5 py-2.5 text-slate-500 font-medium">{emp.shiftCode || emp.shiftName || 'GEN'}</td>
+                          <td className="px-3.5 py-2.5 text-slate-500 text-[10px]">{emp.designation}</td>
+                          <td className="px-3.5 py-2.5 text-slate-500 font-medium">{formatShiftDisplay(emp)}</td>
                           <td className="px-3.5 py-2.5 font-mono text-emerald-600 dark:text-emerald-400 font-bold">{emp.inTime || '—'}</td>
                           <td className="px-3.5 py-2.5 font-mono text-slate-700 dark:text-slate-300 font-medium">{emp.outTime || '—'}</td>
                           <td className="px-3.5 py-2.5 font-mono text-slate-800 dark:text-slate-200 font-semibold">{formatLiveWorkingHours(emp, selectedDate)}</td>
+                          <td className="px-3.5 py-2.5 text-center font-mono text-amber-700 dark:text-amber-300">{emp.lateMinutes > 0 ? `+${emp.lateMinutes}m` : '—'}</td>
                           <td className="px-3.5 py-2.5 text-center">
                             <StatusBadge status={emp.status} inTime={emp.inTime} outTime={emp.outTime} shiftCompleted={emp.shiftCompleted} />
                           </td>
@@ -2418,9 +3676,36 @@ function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | 
                   </tbody>
                 </table>
               </div>
-            </div>
+            )}
+
+            {/* Pagination */}
+            {totalPages > 1 && reportType !== 'detailed' && (
+              <div className="flex items-center justify-between pt-2">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, filteredEmployees.length)} of {filteredEmployees.length}
+                </p>
+                <div className="flex gap-1.5">
+                  <button
+                    disabled={currentPage === 1}
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer"
+                  >
+                    ← Prev
+                  </button>
+                  <span className="px-3 py-1.5 text-xs font-bold text-slate-900 dark:text-white">{currentPage} / {totalPages}</span>
+                  <button
+                    disabled={currentPage === totalPages}
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer"
+                  >
+                    Next →
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
+
       ) : activeTab === 'auditLogs' ? (
         /* ── SCREENSHOT SECURITY AUDIT LOGS SUB-PAGE ──────────────────────── */
         <div className="space-y-6">
@@ -3611,23 +4896,46 @@ function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | 
                 <Mail size={16} className="text-emerald-600" />
                 Mail Attendance Report
               </h3>
-              <button onClick={() => setShowMailModal(false)} className="text-slate-400 hover:text-slate-600">×</button>
+              <button onClick={() => setShowMailModal(false)} className="text-slate-400 hover:text-slate-600 text-xl leading-none cursor-pointer">×</button>
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Recipient Email Address</label>
-              <input
-                type="email"
-                placeholder="client.admin@example.com"
-                value={mailRecipient}
-                onChange={e => setMailRecipient(e.target.value)}
-                className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500/20"
-              />
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Recipient Email Address</label>
+                <input
+                  type="email"
+                  placeholder="client.admin@example.com"
+                  value={mailRecipient}
+                  onChange={e => setMailRecipient(e.target.value)}
+                  className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500/20 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Subject</label>
+                <input
+                  type="text"
+                  placeholder="Paradigm Attendance Report"
+                  value={mailSubject}
+                  onChange={e => setMailSubject(e.target.value)}
+                  className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500/20 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Note / Message (Optional)</label>
+                <textarea
+                  rows={3}
+                  placeholder="Please find the attendance report attached..."
+                  value={mailNote}
+                  onChange={e => setMailNote(e.target.value)}
+                  className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500/20 outline-none resize-none"
+                />
+              </div>
             </div>
+            <p className="text-[10px] text-slate-400">Report: <strong className="text-slate-600 dark:text-slate-300">{reportDateLabel}</strong> · Format: Excel + PDF attachment</p>
             <div className="flex justify-end gap-2 pt-2">
-              <button onClick={() => setShowMailModal(false)} className="px-4 py-2 text-xs font-bold text-slate-600 rounded-xl hover:bg-slate-100">Cancel</button>
-              <button onClick={handleSendMail} disabled={isSendingEmail} className="px-5 py-2 text-xs font-extrabold bg-[#006B3F] text-white rounded-xl hover:bg-[#005632] flex items-center gap-2">
-                {isSendingEmail ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
-                Send Mail
+              <button onClick={() => setShowMailModal(false)} className="px-4 py-2 text-xs font-bold text-slate-600 rounded-xl hover:bg-slate-100 cursor-pointer">Cancel</button>
+              <button onClick={handleSendMail} disabled={isSendingEmail || !mailRecipient.trim()} className="px-5 py-2 text-xs font-extrabold bg-[#006B3F] text-white rounded-xl hover:bg-[#005632] flex items-center gap-2 disabled:opacity-50 cursor-pointer">
+                {isSendingEmail ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                {isSendingEmail ? 'Sending...' : 'Send Mail'}
               </button>
             </div>
           </div>

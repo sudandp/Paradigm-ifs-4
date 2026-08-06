@@ -22,7 +22,7 @@ const AuthLayout: React.FC = () => {
 
     if (isMobile) {
         return (
-            <div className="min-h-screen min-h-[100dvh] font-sans flex flex-col justify-between pt-10 pt-[calc(1rem+env(safe-area-inset-top))] pb-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))] px-4 px-[calc(1rem+env(safe-area-inset-left))] px-[calc(1rem+env(safe-area-inset-right))] relative overflow-y-auto bg-white">
+            <div className="min-h-screen min-h-[100dvh] font-sans flex flex-col justify-between pt-10 pt-[calc(1rem+env(safe-area-inset-top))] pb-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))] px-4 px-[calc(1rem+env(safe-area-inset-left))] px-[calc(1rem+env(safe-area-inset-right))] relative overflow-y-auto bg-white" style={{ backgroundColor: '#ffffff' }}>
                 {/* Background for Mobile - clean gradient screen with a subtle green glow */}
                 <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-72 h-72 bg-emerald-500/5 rounded-full blur-[80px] pointer-events-none" style={{ zIndex: 0 }}></div>
 

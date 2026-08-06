@@ -16,6 +16,7 @@ import { useSettingsStore } from './store/settingsStore';
 import { useMediaQuery } from './hooks/useMediaQuery';
 import { useDevice } from './hooks/useDevice';
 import { supabase } from './services/supabase';
+import type { Session } from '@supabase/supabase-js';
 import { authService } from './services/authService';
 import { GOOGLE_CONFIG } from './config/authConfig';
 // Import the API client under an alias to avoid name collisions.  Renaming
@@ -1247,7 +1248,75 @@ const App: React.FC = () => {
       };
 
       try {
+        console.log('[Auth Debug] initializeApp starting...');
+        console.log('[Auth Debug] URL href:', window.location.href);
+        console.log('[Auth Debug] URL search (query params):', window.location.search);
+        console.log('[Auth Debug] URL hash:', window.location.hash);
+
+        let sessionFromOAuth: Session | null = null;
+        const fullHash = window.location.hash || '';
+        const fullSearch = window.location.search || '';
+
+        // 1. [Implicit OAuth Callback Handler] Parse access_token & refresh_token from URL hash
+        if (fullHash.includes('access_token=') || fullHash.includes('refresh_token=')) {
+          console.log('[Auth Debug] 🔑 Detected implicit OAuth callback tokens in hash:', fullHash);
+          try {
+            const tokenQueryIndex = fullHash.indexOf('access_token=');
+            if (tokenQueryIndex !== -1) {
+              const rawParams = fullHash.substring(tokenQueryIndex);
+              const params = new URLSearchParams(rawParams);
+              const accessToken = params.get('access_token');
+              const refreshToken = params.get('refresh_token');
+
+              if (accessToken && refreshToken) {
+                console.log('[Auth Debug] Setting Supabase session from OAuth tokens...');
+                const { data: setSessionData, error: setSessionErr } = await supabase.auth.setSession({
+                  access_token: accessToken,
+                  refresh_token: refreshToken,
+                });
+                if (setSessionData?.session) {
+                  console.log('[Auth Debug] ✅ Session established successfully via OAuth tokens!', setSessionData.session.user.email);
+                  sessionFromOAuth = setSessionData.session;
+                  const cleanUrl = window.location.origin + window.location.pathname + '#/profile';
+                  window.history.replaceState(null, '', cleanUrl);
+                } else if (setSessionErr) {
+                  console.warn('[Auth Debug] setSession error from OAuth hash:', setSessionErr.message);
+                }
+              }
+            }
+          } catch (oauthParseErr) {
+            console.error('[Auth Debug] OAuth hash parsing error:', oauthParseErr);
+          }
+        }
+
+        // 2. [OAuth PKCE Callback Handler] Fallback: handle ?code=... if present
+        if (!sessionFromOAuth && fullSearch.includes('code=')) {
+          const urlParams = new URLSearchParams(fullSearch);
+          const pkceCode = urlParams.get('code');
+
+          if (pkceCode) {
+            console.log('[Auth Debug] 🔑 Detected PKCE authorization code in URL query string:', pkceCode);
+            try {
+              const { data: exchangeData, error: exchangeErr } = await supabase.auth.exchangeCodeForSession(pkceCode);
+              if (exchangeData?.session) {
+                console.log('[Auth Debug] ✅ Successfully exchanged OAuth code for session!', exchangeData.session.user.email);
+                sessionFromOAuth = exchangeData.session;
+                const cleanUrl = window.location.origin + window.location.pathname + '#/profile';
+                window.history.replaceState(null, '', cleanUrl);
+              } else if (exchangeErr) {
+                console.warn('[Auth Debug] exchangeCodeForSession notice:', exchangeErr.message);
+              }
+            } catch (codeEx: any) {
+              console.warn('[Auth Debug] PKCE code exchange exception:', codeEx?.message || codeEx);
+            }
+          }
+        }
+
         let { data: { session }, error } = await supabase.auth.getSession();
+        if (sessionFromOAuth) {
+          session = sessionFromOAuth;
+        }
+        console.log('[Auth Debug] Initial session check complete. Active user:', session?.user?.email || 'None');
         // If getSession returned an error, log it but continue.
         if (error) {
           console.error('Error fetching initial session:', error.message);
@@ -2027,8 +2096,9 @@ const App: React.FC = () => {
         reverseOrder={false} 
         gutter={8}
         containerStyle={{
-          top: isImpersonating ? 52 : 16,
+          top: isImpersonating ? 116 : 76,
           right: 16,
+          zIndex: 99999,
         }}
         toastOptions={{
           style: {

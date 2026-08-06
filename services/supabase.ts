@@ -60,17 +60,51 @@ const CapacitorStorage = {
   },
 };
 
+// Safe localStorage wrapper to handle browser quota limits (QuotaExceededError)
+const SafeLocalStorage = {
+  getItem: (key: string): string | null => {
+    try {
+      return window.localStorage.getItem(key);
+    } catch {
+      return memStorage[key] || null;
+    }
+  },
+  setItem: (key: string, value: string): void => {
+    try {
+      window.localStorage.setItem(key, value);
+    } catch (e: any) {
+      console.warn('[Storage Warning] localStorage quota exceeded or unavailable, falling back to memory/sessionStorage:', e?.message);
+      memStorage[key] = value;
+      try {
+        window.sessionStorage.setItem(key, value);
+      } catch {}
+    }
+  },
+  removeItem: (key: string): void => {
+    try {
+      window.localStorage.removeItem(key);
+    } catch {}
+    delete memStorage[key];
+    try {
+      window.sessionStorage.removeItem(key);
+    } catch {}
+  },
+};
+
+const isNativePlatform = isBrowser && !!(window as any).Capacitor?.isNativePlatform();
+const authStorage = isNativePlatform ? CapacitorStorage : (isBrowser ? SafeLocalStorage : CapacitorStorage);
+
 // Main client for all requests
 export const supabase = createClient(resolvedUrl, resolvedAnonKey, {
     auth: {
         // Persist the session across reloads and tabs.
         persistSession: true,
-        // Use Capacitor Preferences for reliable storage on mobile and web
-        storage: CapacitorStorage, 
+        // Use synchronous localStorage on Web, CapacitorStorage on Native Mobile
+        storage: authStorage, 
         autoRefreshToken: true,
         detectSessionInUrl: true,
-        // PKCE flow is recommended for mobile apps
-        flowType: 'pkce',
+        // Use 'implicit' flow on Web (avoids PKCE code verifier storage issues on web redirects)
+        flowType: isNativePlatform ? 'pkce' : 'implicit',
         // Bypass navigator.locks to prevent orphaned lock warnings (5000ms timeouts)
         // during React re-renders, visibility changes, and concurrent getSession calls.
         lock: async (_name, _acquireTimeout, fn) => await fn(),

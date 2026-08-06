@@ -63,8 +63,13 @@ const Login: React.FC = () => {
     }, [user, isNewDevice, previousDevice, deviceAlertSent, deviceInfo]);
 
     useEffect(() => {
+        if (user) {
+            console.log('[Login Debug] Authenticated user state detected:', user.email, '| role:', user.role, '| animationPending:', isLoginAnimationPending);
+        }
         if (user && !isLoginAnimationPending) {
-            navigate(getHomeRoute(user), { replace: true });
+            const targetRoute = getHomeRoute(user);
+            console.log('[Login Debug] 🚀 Navigating authenticated user to:', targetRoute);
+            navigate(targetRoute, { replace: true });
         }
     }, [user, navigate, isLoginAnimationPending]);
 
