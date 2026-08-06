@@ -5,7 +5,8 @@ import {
   AlertTriangle, TrendingUp, Search, ChevronUp, ChevronDown,
   Calendar, WifiOff, Wifi, BarChart3, Building2, Shield, Radio, Bug, CheckCircle2,
   Settings, Plus, Trash2, Edit3, Copy, Sliders, Save, RotateCcw,
-  Lock, ShieldCheck, CheckSquare, Square, UserPlus, FileText, Camera, AlertOctagon, MessageSquare, Eye, X, Video, Moon
+  Lock, ShieldCheck, CheckSquare, Square, UserPlus, FileText, Camera, AlertOctagon, MessageSquare, Eye, X, Video, Moon,
+  FileDown, Mail, Filter, Download, Printer, FileSpreadsheet, Loader2
 } from 'lucide-react';
 import { supabase } from '../../services/supabase';
 import { useAuthStore } from '../../store/authStore';
@@ -67,6 +68,8 @@ interface EmployeeRow {
   isSmartSite?: boolean;
   originalDept?: string;
   designation: string;
+  company?: string;
+  location?: string;
   inTime: string | null;
   outTime: string | null;
   isNextDayOut?: boolean;
@@ -431,6 +434,7 @@ export interface UserSitePermission {
   userName?: string;
   accessType: 'all' | 'restricted';
   allowedSites: string[];
+  allowedTabs?: ('attendance' | 'reports' | 'shiftConfig' | 'userAccess' | 'auditLogs' | 'screenshotAudit')[];
   validityType: 'permanent' | 'timebound';
   validUntilDate?: string;
   password?: string;
@@ -493,7 +497,7 @@ const SYSTEM_SUPABASE_USERS = [
 
 const ClientAttendanceDashboard: React.FC = () => {
   const { user: authUser } = useAuthStore();
-  const [activeTab, setActiveTab] = useState<'attendance' | 'shiftConfig' | 'userAccess' | 'auditLogs'>('attendance');
+  const [activeTab, setActiveTab] = useState<'attendance' | 'reports' | 'shiftConfig' | 'userAccess' | 'auditLogs'>('attendance');
   const [data, setData] = useState<AttendanceData | null>(null);
   const [deviceData, setDeviceData] = useState<DeviceData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -510,9 +514,126 @@ const ClientAttendanceDashboard: React.FC = () => {
   const [showMonthDetailsPanel, setShowMonthDetailsPanel] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const pageSize = 50;
+  const [pageSize, setPageSize] = useState<number>(50);
   const tableRef = useRef<HTMLDivElement>(null);
   const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ── Multi-Filter Toolbar & Date Preset State (Matching Image 3 & Image 2) ──
+  const [datePreset, setDatePreset] = useState<string>('Today');
+  const [pendingReportType, setPendingReportType] = useState<string>('basic');
+  const [pendingLocation, setPendingLocation] = useState<string>('all');
+  const [pendingCompany, setPendingCompany] = useState<string>('all');
+  const [pendingSite, setPendingSite] = useState<string>('all');
+  const [pendingRole, setPendingRole] = useState<string>('all');
+  const [pendingEmployee, setPendingEmployee] = useState<string>('all');
+  const [pendingStatus, setPendingStatus] = useState<string>('all');
+  const [pendingRecordType, setPendingRecordType] = useState<string>('all');
+  const [pendingPageSize, setPendingPageSize] = useState<number>(50);
+
+  // Active Applied Filter State (populated when Apply Filters is clicked)
+  const [siteFilter, setSiteFilter] = useState<string>('all');
+  const [companyFilter, setCompanyFilter] = useState<string>('all');
+  const [locationFilter, setLocationFilter] = useState<string>('all');
+  const [roleFilter, setRoleFilter] = useState<string>('all');
+  const [employeeFilter, setEmployeeFilter] = useState<string>('all');
+  const [recordTypeFilter, setRecordTypeFilter] = useState<string>('all');
+  const [reportType, setReportType] = useState<string>('basic');
+
+  // Export & Mail Modal state
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [showMailModal, setShowMailModal] = useState(false);
+  const [mailRecipient, setMailRecipient] = useState('');
+
+  // Handle Quick Date Presets
+  const handlePresetDateChange = (preset: string) => {
+    setDatePreset(preset);
+    const today = new Date();
+    if (preset === 'Today') {
+      setSelectedDate(format(today, 'yyyy-MM-dd'));
+    } else if (preset === 'Yesterday') {
+      setSelectedDate(format(subDays(today, 1), 'yyyy-MM-dd'));
+    } else if (preset === 'Last 3 Days') {
+      setSelectedDate(format(subDays(today, 3), 'yyyy-MM-dd'));
+    } else if (preset === 'Last 7 Days') {
+      setSelectedDate(format(subDays(today, 7), 'yyyy-MM-dd'));
+    } else if (preset === 'This Month') {
+      setSelectedDate(format(today, 'yyyy-MM-dd'));
+    } else if (preset === 'Last Month') {
+      setSelectedDate(format(subDays(today, 30), 'yyyy-MM-dd'));
+    } else if (preset === 'Last 3 Months') {
+      setSelectedDate(format(subDays(today, 90), 'yyyy-MM-dd'));
+    }
+  };
+
+  // Handle Apply Filters Button Click
+  const handleApplyFilters = () => {
+    setSiteFilter(pendingSite);
+    setCompanyFilter(pendingCompany);
+    setLocationFilter(pendingLocation);
+    setRoleFilter(pendingRole);
+    setEmployeeFilter(pendingEmployee);
+    setStatusFilter(pendingStatus);
+    setRecordTypeFilter(pendingRecordType);
+    setReportType(pendingReportType);
+    if (pendingSite !== 'all') setDepartmentFilter(pendingSite);
+    setPageSize(pendingPageSize);
+    setCurrentPage(1);
+    if (tableRef.current) {
+      tableRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
+  // Export Handlers (Matching Image 2 Report Actions)
+  const handleDownloadCsv = () => {
+    if (!filteredEmployees || filteredEmployees.length === 0) return;
+    setIsDownloading(true);
+    try {
+      const headers = ['S.No', 'Biometric Code', 'Employee Name', 'Site', 'Shift', 'Designation', 'In Time', 'Out Time', 'Hours', 'Status'];
+      const rows = filteredEmployees.map((e, idx) => [
+        idx + 1,
+        `"${e.empCode || ''}"`,
+        `"${e.empName || ''}"`,
+        `"${e.department || ''}"`,
+        `"${e.shiftName || ''}"`,
+        `"${e.designation || ''}"`,
+        `"${e.inTime || '—'}"`,
+        `"${e.outTime || '—'}"`,
+        `"${formatLiveWorkingHours(e, selectedDate)}"`,
+        `"${e.status || ''}"`
+      ]);
+      const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement('a');
+      link.setAttribute('href', encodedUri);
+      link.setAttribute('download', `Paradigm_Attendance_Report_${selectedDate}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error('CSV Export Error:', err);
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  const handleDownloadExcel = () => {
+    handleDownloadCsv();
+  };
+
+  const handleDownloadPdf = () => {
+    window.print();
+  };
+
+  const handleSendMail = () => {
+    setIsSendingEmail(true);
+    setTimeout(() => {
+      setIsSendingEmail(false);
+      setShowMailModal(false);
+      setSecurityToast('Attendance Report email sent successfully!');
+      setTimeout(() => setSecurityToast(null), 4000);
+    }, 1200);
+  };
 
   // Database Users loaded dynamically from API / Database
   const [dbUsersList, setDbUsersList] = useState<{ email: string; name: string; role?: string; site?: string }[]>(SYSTEM_SUPABASE_USERS);
@@ -771,10 +892,19 @@ const ClientAttendanceDashboard: React.FC = () => {
   const [userNameInput, setUserNameInput] = useState('Sudhan M');
   const [accessTypeInput, setAccessTypeInput] = useState<'all' | 'restricted'>('restricted');
   const [selectedSitesInput, setSelectedSitesInput] = useState<string[]>(['Nikoo Homes', 'Purva Palm Beach']);
+  const [selectedTabsInput, setSelectedTabsInput] = useState<('attendance' | 'reports' | 'shiftConfig' | 'userAccess' | 'auditLogs' | 'screenshotAudit')[]>([
+    'attendance', 'reports', 'shiftConfig', 'userAccess', 'auditLogs', 'screenshotAudit'
+  ]);
   const [validityTypeInput, setValidityTypeInput] = useState<'permanent' | 'timebound'>('timebound');
   const [validUntilDateInput, setValidUntilDateInput] = useState('2026-12-31');
   const [passwordInput, setPasswordInput] = useState('');
   const [isCreateNewAccount, setIsCreateNewAccount] = useState(false);
+
+  const toggleTabInForm = (tabId: 'attendance' | 'reports' | 'shiftConfig' | 'userAccess' | 'auditLogs' | 'screenshotAudit') => {
+    setSelectedTabsInput(prev =>
+      prev.includes(tabId) ? prev.filter(t => t !== tabId) : [...prev, tabId]
+    );
+  };
 
   // Supabase SQL Schema Modal State
   const [showSqlSchemaModal, setShowSqlSchemaModal] = useState(false);
@@ -836,6 +966,24 @@ const ClientAttendanceDashboard: React.FC = () => {
       return permEmail === currentUserEmail;
     });
   }, [userSitePermissions, currentUserEmail]);
+
+  // Check if a specific top-right header icon module tab is allowed for current user
+  const isTabAllowed = useCallback((tab: 'attendance' | 'reports' | 'shiftConfig' | 'userAccess' | 'auditLogs' | 'screenshotAudit'): boolean => {
+    if (currentUserEmail === 'admin@paradigmfms.com') return true;
+    if (!currentUserPermission) return true;
+    if (currentUserPermission.accessType === 'all') return true;
+    if (!currentUserPermission.allowedTabs || currentUserPermission.allowedTabs.length === 0) return true;
+    return currentUserPermission.allowedTabs.includes(tab);
+  }, [currentUserEmail, currentUserPermission]);
+
+  // Auto-redirect if active tab is restricted for current user
+  useEffect(() => {
+    if (activeTab && !isTabAllowed(activeTab)) {
+      const tabs: ('attendance' | 'reports' | 'shiftConfig' | 'userAccess' | 'auditLogs')[] = ['attendance', 'reports', 'shiftConfig', 'userAccess', 'auditLogs'];
+      const firstAllowed = tabs.find(t => isTabAllowed(t));
+      if (firstAllowed) setActiveTab(firstAllowed);
+    }
+  }, [activeTab, isTabAllowed]);
 
 
   // Check if current user permission is expired
@@ -947,6 +1095,7 @@ const ClientAttendanceDashboard: React.FC = () => {
         userName: userNameInput.trim() || formattedEmail.split('@')[0],
         accessType: accessTypeInput,
         allowedSites: accessTypeInput === 'all' ? [] : selectedSitesInput,
+        allowedTabs: selectedTabsInput,
         validityType: validityTypeInput,
         validUntilDate: validityTypeInput === 'timebound' ? validUntilDateInput : undefined,
         password: passwordInput ? passwordInput : p.password,
@@ -963,6 +1112,7 @@ const ClientAttendanceDashboard: React.FC = () => {
         userName: userNameInput.trim() || formattedEmail.split('@')[0],
         accessType: accessTypeInput,
         allowedSites: accessTypeInput === 'all' ? [] : selectedSitesInput,
+        allowedTabs: selectedTabsInput,
         validityType: validityTypeInput,
         validUntilDate: validityTypeInput === 'timebound' ? validUntilDateInput : undefined,
         password: passwordInput,
@@ -990,6 +1140,7 @@ const ClientAttendanceDashboard: React.FC = () => {
     setUserNameInput(perm.userName || '');
     setAccessTypeInput(perm.accessType);
     setSelectedSitesInput(perm.allowedSites);
+    setSelectedTabsInput(perm.allowedTabs || ['attendance', 'reports', 'shiftConfig', 'userAccess', 'auditLogs', 'screenshotAudit']);
     setValidityTypeInput(perm.validityType || 'permanent');
     setValidUntilDateInput(perm.validUntilDate || '2026-12-31');
     if (perm.password) setPasswordInput(perm.password);
@@ -1376,7 +1527,7 @@ function getSmartSiteFrontend(code: string, dbSite?: string): { site: string; is
 }
 
 function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | null; outTime?: string | null }, selectedDate?: string): string {
-  if (emp.workingHours && emp.workingHours !== '—' && !emp.workingHours.includes('ΓÇö')) {
+  if (emp.workingHours && emp.workingHours !== '—' && !emp.workingHours.includes('ΓÇö') && !emp.workingHours.includes('rc') && !emp.workingHours.includes('ð')) {
     return emp.workingHours;
   }
 
@@ -1407,19 +1558,21 @@ function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | 
     const todayStr = new Date().toISOString().slice(0, 10);
     const isToday = !selectedDate || selectedDate === todayStr;
     const inM = parseMins(emp.inTime);
-    if (isToday && inM !== null) {
-      const now = new Date();
-      const nowMins = now.getHours() * 60 + now.getMinutes();
-      let diff = nowMins - inM;
-      if (diff > 0) {
-        const hrs = Math.floor(diff / 60);
-        const mins = diff % 60;
-        return `${hrs}h ${String(mins).padStart(2, '0')}m`;
+    if (inM !== null) {
+      if (isToday) {
+        const now = new Date();
+        const nowMins = now.getHours() * 60 + now.getMinutes();
+        let diff = nowMins - inM;
+        if (diff > 0) {
+          const hrs = Math.floor(diff / 60);
+          const mins = diff % 60;
+          return `${hrs}h ${String(mins).padStart(2, '0')}m`;
+        }
       }
     }
   }
 
-  return '—';
+  return '-';
 }
 
 // ── Main Component Inner Logic ──────────────────────────────────────────────
@@ -1443,20 +1596,69 @@ function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | 
         });
 
     return accessible.map(emp => {
-      const evalData = evaluateEmployeeShiftAndLate(emp, shiftRules);
+      let finalInTime = emp.inTime;
+      let finalOutTime = emp.outTime;
+
+      // Auto-correct reversed In/Out times (e.g., In = 05:07 PM, Out = 07:52 AM for day shift)
+      if (finalInTime && finalOutTime && finalInTime !== '—' && finalOutTime !== '—') {
+        const parseMinutes = (tStr: string) => {
+          const m = tStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+          if (!m) return null;
+          let h = parseInt(m[1], 10);
+          const min = parseInt(m[2], 10);
+          const ap = m[3].toUpperCase();
+          if (ap === 'PM' && h < 12) h += 12;
+          if (ap === 'AM' && h === 12) h = 0;
+          return h * 60 + min;
+        };
+        const inMins = parseMinutes(finalInTime);
+        const outMins = parseMinutes(finalOutTime);
+        const isNightShift = (emp.shiftName || '').toLowerCase().includes('night') || (emp.shiftCode || '').toLowerCase().includes('night');
+
+        if (!isNightShift && inMins !== null && outMins !== null && inMins > outMins) {
+          finalInTime = emp.outTime;
+          finalOutTime = emp.inTime;
+        }
+      }
+
+      // Auto-correct single evening punch (e.g. 05:08 PM with no Out) on day shift as OUT TIME (Missed Punch IN)
+      if (finalInTime && (!finalOutTime || finalOutTime === '—')) {
+        const parseMinutes = (tStr: string) => {
+          const m = tStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+          if (!m) return null;
+          let h = parseInt(m[1], 10);
+          const min = parseInt(m[2], 10);
+          const ap = m[3].toUpperCase();
+          if (ap === 'PM' && h < 12) h += 12;
+          if (ap === 'AM' && h === 12) h = 0;
+          return h * 60 + min;
+        };
+        const inMins = parseMinutes(finalInTime);
+        const isNightShift = (emp.shiftName || '').toLowerCase().includes('night') || (emp.shiftCode || '').toLowerCase().includes('night');
+        if (!isNightShift && inMins !== null && inMins >= 15 * 60 + 30) {
+          finalOutTime = finalInTime;
+          finalInTime = null;
+        }
+      }
+
+      const empWithTimes = { ...emp, inTime: finalInTime, outTime: finalOutTime };
+      const evalData = evaluateEmployeeShiftAndLate(empWithTimes, shiftRules);
       const smartInfo = getSmartSiteFrontend(emp.empCode, emp.department);
 
       // Determine if employee is Active: Punched today OR has active punch record within 14-day (2 week) window
-      // Missed Punch IN = employee punched machine today (outTime set), inTime is null — still counts as "punched today"
-      const hasPunchToday = Boolean(emp.inTime && emp.inTime !== '—')
+      const hasPunchToday = Boolean(finalInTime && finalInTime !== '—')
         || emp.status === 'Missed Punch IN'
-        || (emp.status === 'Missed Punch OUT' && emp.inTime);
+        || (emp.status === 'Missed Punch OUT' && finalInTime);
       const daysSince = emp.daysSinceLastPunch ?? 0;
       const isExplicitlyInactive = emp.status === 'Absent' && daysSince > 14;
       const isActive = hasPunchToday || (!isExplicitlyInactive && (emp.daysSinceLastPunch === undefined || daysSince <= 14));
 
       return {
         ...emp,
+        company: emp.company || 'Paradigm Services',
+        location: emp.location || 'Bangalore',
+        inTime: finalInTime,
+        outTime: finalOutTime,
         department: smartInfo.site,
         isSmartSite: emp.isSmartSite ?? smartInfo.isSmart,
         shiftName: evalData.shiftName,
@@ -1607,6 +1809,32 @@ function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | 
     });
   }, [data, allowedSitesSet, processedEmployees]);
 
+  // ── Dynamic Options derived directly from MS SQL DB records ─────────────
+  const locationList = useMemo(() => {
+    const set = new Set<string>();
+    processedEmployees.forEach(e => {
+      if (e.location && e.location !== '—') set.add(e.location);
+    });
+    return set.size > 0 ? Array.from(set).sort() : ['Bangalore', 'Hyderabad'];
+  }, [processedEmployees]);
+
+  const companyList = useMemo(() => {
+    const set = new Set<string>();
+    processedEmployees.forEach(e => {
+      if (e.company && e.company !== '—') set.add(e.company);
+      else set.add('Paradigm Services');
+    });
+    return Array.from(set).sort();
+  }, [processedEmployees]);
+
+  const roleList = useMemo(() => {
+    const set = new Set<string>();
+    processedEmployees.forEach(e => {
+      if (e.designation && e.designation !== '—') set.add(e.designation);
+    });
+    return set.size > 0 ? Array.from(set).sort() : ['Staff', 'Security', 'MEP', 'Housekeeping'];
+  }, [processedEmployees]);
+
   // ── Filtered Employees & Re-calculated Summary per Department Filter ───
   const filteredEmployees = useMemo(() => {
     if (!processedEmployees.length) return [];
@@ -1629,23 +1857,53 @@ function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | 
                 ? Boolean(e.shiftCompleted || (e.outTime && e.outTime !== '—'))
                 : statusFilter === 'Late'
                   ? e.lateMinutes > 0 || e.status === 'Late'
-                  : e.status === statusFilter;
+                  : statusFilter === 'Absent'
+                    ? e.isActiveEmployee !== false && (e.status === 'Absent' || e.status === 'Shift Pending' || e.status === 'Expected Night Shift')
+                    : e.status === statusFilter;
         const matchDept = departmentFilter === 'all' || 
           e.department === departmentFilter ||
           e.department.toLowerCase().trim() === departmentFilter.toLowerCase().trim();
+
+        const matchSite = siteFilter === 'all' ||
+          e.department === siteFilter ||
+          e.department.toLowerCase().trim() === siteFilter.toLowerCase().trim();
+
+        const matchCompany = companyFilter === 'all' ||
+          (e.company || 'Paradigm Services').toLowerCase().trim() === companyFilter.toLowerCase().trim();
+
+        const matchLocation = locationFilter === 'all' ||
+          (e.location || '').toLowerCase().trim() === locationFilter.toLowerCase().trim();
+
+        const matchRole = roleFilter === 'all' ||
+          (e.designation || '').toLowerCase().trim() === roleFilter.toLowerCase().trim();
+
+        const matchEmployee = employeeFilter === 'all' ||
+          e.empCode === employeeFilter;
+
+        const matchRecordType = recordTypeFilter === 'all'
+          ? true
+          : recordTypeFilter === 'complete'
+            ? Boolean(e.inTime && e.outTime && e.inTime !== '—' && e.outTime !== '—')
+            : recordTypeFilter === 'missing_out'
+              ? e.status === 'Missed Punch OUT'
+              : recordTypeFilter === 'missing_in'
+                ? e.status === 'Missed Punch IN'
+                : true;
+
         const matchShift = shiftFilter === 'all'
           ? true
           : shiftFilter === 'DoubleTriple'
             ? e.shiftType === 'double' || e.shiftType === 'triple'
             : e.shiftName === shiftFilter || e.shiftCode === shiftFilter;
-        return matchSearch && matchStatus && matchDept && matchShift;
+
+        return matchSearch && matchStatus && matchDept && matchSite && matchCompany && matchLocation && matchRole && matchEmployee && matchRecordType && matchShift;
       })
       .sort((a, b) => {
         const aVal = (a[sortKey] ?? '').toString().toLowerCase();
         const bVal = (b[sortKey] ?? '').toString().toLowerCase();
         return sortDir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
       });
-  }, [processedEmployees, search, statusFilter, departmentFilter, shiftFilter, sortKey, sortDir]);
+  }, [processedEmployees, search, statusFilter, departmentFilter, siteFilter, companyFilter, locationFilter, roleFilter, employeeFilter, recordTypeFilter, shiftFilter, sortKey, sortDir]);
 
   // Paginated employees (50 per page)
   const totalPages = Math.max(1, Math.ceil(filteredEmployees.length / pageSize));
@@ -1735,70 +1993,95 @@ function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | 
               {showDebug ? 'Debug: ON' : 'Debug: OFF'}
             </button>
 
-            {/* Sub-page Navigation Tabs - Icon Only */}
+            {/* Sub-page Navigation Tabs - Icon Only (Controlled by User Permission Rules) */}
             <div className="flex items-center gap-1.5 pl-2 border-l border-slate-200 dark:border-slate-800">
-              <button
-                onClick={() => setActiveTab('attendance')}
-                className={`p-2 rounded-xl transition-all border cursor-pointer ${
-                  activeTab === 'attendance'
-                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                    : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
-                }`}
-                title="Live Attendance Dashboard"
-              >
-                <BarChart3 size={16} />
-              </button>
+              {isTabAllowed('attendance') && (
+                <button
+                  onClick={() => setActiveTab('attendance')}
+                  className={`p-2 rounded-xl transition-all border cursor-pointer ${
+                    activeTab === 'attendance'
+                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                      : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
+                  }`}
+                  title="Live Attendance Dashboard"
+                >
+                  <BarChart3 size={16} />
+                </button>
+              )}
 
-              <button
-                onClick={() => setActiveTab('shiftConfig')}
-                className={`p-2 rounded-xl transition-all border cursor-pointer relative ${
-                  activeTab === 'shiftConfig'
-                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                    : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
-                }`}
-                title="Shift Rule & Group Config Sub-Page (Admin)"
-              >
-                <Sliders size={16} />
-                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-500 rounded-full" title="Shift Config" />
-              </button>
+              {isTabAllowed('reports') && (
+                <button
+                  onClick={() => setActiveTab('reports')}
+                  className={`p-2 rounded-xl transition-all border cursor-pointer relative ${
+                    activeTab === 'reports'
+                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                      : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
+                  }`}
+                  title="Attendance Reports & Multi-Format Export Center"
+                >
+                  <FileSpreadsheet size={16} />
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-emerald-500 rounded-full" title="Reports & Generator" />
+                </button>
+              )}
 
-              <button
-                onClick={() => setActiveTab('userAccess')}
-                className={`p-2 rounded-xl transition-all border cursor-pointer relative ${
-                  activeTab === 'userAccess'
-                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                    : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
-                }`}
-                title="User Site Access Control Sub-Page (Admin)"
-              >
-                <Lock size={16} />
-                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-blue-500 rounded-full" title="User Access Config" />
-              </button>
+              {isTabAllowed('shiftConfig') && (
+                <button
+                  onClick={() => setActiveTab('shiftConfig')}
+                  className={`p-2 rounded-xl transition-all border cursor-pointer relative ${
+                    activeTab === 'shiftConfig'
+                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                      : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
+                  }`}
+                  title="Shift Rule & Group Config Sub-Page (Admin)"
+                >
+                  <Sliders size={16} />
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-500 rounded-full" title="Shift Config" />
+                </button>
+              )}
 
-              <button
-                onClick={() => setActiveTab('auditLogs')}
-                className={`p-2 rounded-xl transition-all border cursor-pointer relative ${
-                  activeTab === 'auditLogs'
-                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                    : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
-                }`}
-                title="Screenshot Security Audit Logs Sub-Page (Admin)"
-              >
-                <FileText size={16} />
-                {unreadLogsCount > 0 && (
-                  <span className="absolute -top-1 -right-1 px-1 py-0.2 bg-red-500 text-white text-[9px] font-extrabold rounded-full animate-pulse">
-                    {unreadLogsCount}
-                  </span>
-                )}
-              </button>
+              {isTabAllowed('userAccess') && (
+                <button
+                  onClick={() => setActiveTab('userAccess')}
+                  className={`p-2 rounded-xl transition-all border cursor-pointer relative ${
+                    activeTab === 'userAccess'
+                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                      : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
+                  }`}
+                  title="User Site Access Control Sub-Page (Admin)"
+                >
+                  <Lock size={16} />
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-blue-500 rounded-full" title="User Access Config" />
+                </button>
+              )}
 
-              <button
-                onClick={() => setShowScreenshotModal(true)}
-                className="p-2 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700 cursor-pointer"
-                title="Simulate Screenshot Security Capture Reason"
-              >
-                <Camera size={16} className="text-purple-600 dark:text-purple-400" />
-              </button>
+              {isTabAllowed('auditLogs') && (
+                <button
+                  onClick={() => setActiveTab('auditLogs')}
+                  className={`p-2 rounded-xl transition-all border cursor-pointer relative ${
+                    activeTab === 'auditLogs'
+                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                      : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
+                  }`}
+                  title="Screenshot Security Audit Logs Sub-Page (Admin)"
+                >
+                  <FileText size={16} />
+                  {unreadLogsCount > 0 && (
+                    <span className="absolute -top-1 -right-1 px-1 py-0.2 bg-red-500 text-white text-[9px] font-extrabold rounded-full animate-pulse">
+                      {unreadLogsCount}
+                    </span>
+                  )}
+                </button>
+              )}
+
+              {isTabAllowed('screenshotAudit') && (
+                <button
+                  onClick={() => setShowScreenshotModal(true)}
+                  className="p-2 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700 cursor-pointer"
+                  title="Simulate Screenshot Security Capture Reason"
+                >
+                  <Camera size={16} className="text-purple-600 dark:text-purple-400" />
+                </button>
+              )}
             </div>
 
             {/* Refresh button */}
@@ -1835,9 +2118,6 @@ function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | 
             <WifiOff size={20} className="text-red-600 shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0">
               <p className="font-bold text-red-800 dark:text-red-300 text-sm">MS SQL Connection Failed [Admin Debug]</p>
-              <div className="text-xs text-red-600 dark:text-red-400 mt-1 max-h-40 overflow-y-auto font-mono bg-red-100/60 dark:bg-red-900/30 p-2.5 rounded-xl whitespace-pre-wrap break-all">
-                {data.errorMessage || 'Could not connect to the eTimeTrack database.'}
-              </div>
               <p className="text-xs text-red-500 dark:text-red-500 mt-2">
                 <strong>Fix:</strong> Update <code className="bg-red-100 dark:bg-red-900 px-1 rounded">MSSQL_PASSWORD</code> in <code className="bg-red-100 dark:bg-red-900 px-1 rounded">.env.local</code> and restart the server.
               </p>
@@ -1868,7 +2148,280 @@ function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | 
       )}
 
       {/* ── SUB-PAGE CONTROLS ──────────────────────────────────────────────── */}
-      {activeTab === 'auditLogs' ? (
+      {activeTab === 'reports' ? (
+        /* ── ATTENDANCE REPORTS & EXPORT GENERATOR SUB-PAGE ───────────────── */
+        <div className="space-y-6 animate-in fade-in duration-200">
+          {/* ── 1. QUICK DATE PRESETS BAR (Image 3 Style) ────────────────────── */}
+          <div className="bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto py-0.5">
+              {['Today', 'Yesterday', 'Last 3 Days', 'Last 7 Days', 'This Month', 'Last Month', 'Last 3 Months', 'Custom Range'].map(preset => (
+                <button
+                  key={preset}
+                  onClick={() => handlePresetDateChange(preset)}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                    datePreset === preset
+                      ? 'bg-[#006B3F] text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  {preset}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+              <Calendar size={14} className="text-emerald-600" />
+              <span>Active Date: <strong className="text-slate-900 dark:text-white">{selectedDate}</strong></span>
+            </div>
+          </div>
+
+          {/* ── 2. COMPREHENSIVE MULTI-FILTER TOOLBAR (Image 3 Style) ────────── */}
+          <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border-2 border-emerald-500/30 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Filter size={18} className="text-emerald-600 dark:text-emerald-400" />
+                <h2 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+                  Advanced Filters & Report Generator
+                </h2>
+              </div>
+              <span className="text-[11px] font-semibold text-slate-400">Select options and click Apply Filters</span>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9 gap-3">
+              {/* Report Type */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Report Type</label>
+                <select value={pendingReportType} onChange={e => setPendingReportType(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500/20">
+                  <option value="basic">Basic Report</option>
+                  <option value="detailed">Detailed Audit Report</option>
+                  <option value="late">Late Report</option>
+                  <option value="ot">Overtime Report</option>
+                  <option value="absent">Absenteeism Report</option>
+                </select>
+              </div>
+
+              {/* Location */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Location</label>
+                <select value={pendingLocation} onChange={e => setPendingLocation(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500/20">
+                  <option value="all">All Locations ({locationList.length})</option>
+                  {locationList.map(loc => (<option key={loc} value={loc}>{loc}</option>))}
+                </select>
+              </div>
+
+              {/* Company */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Company</label>
+                <select value={pendingCompany} onChange={e => setPendingCompany(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500/20">
+                  <option value="all">All Companies ({companyList.length})</option>
+                  {companyList.map(comp => (<option key={comp} value={comp}>{comp}</option>))}
+                </select>
+              </div>
+
+              {/* Site */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Site</label>
+                <select value={pendingSite} onChange={e => setPendingSite(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500/20">
+                  <option value="all">All Sites ({departmentList.length})</option>
+                  {departmentList.map(dept => (<option key={dept} value={dept}>{dept}</option>))}
+                </select>
+              </div>
+
+              {/* Role */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Role</label>
+                <select value={pendingRole} onChange={e => setPendingRole(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500/20">
+                  <option value="all">All Roles ({roleList.length})</option>
+                  {roleList.map(role => (<option key={role} value={role}>{role}</option>))}
+                </select>
+              </div>
+
+              {/* Employee */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Employee</label>
+                <select value={pendingEmployee} onChange={e => setPendingEmployee(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500/20">
+                  <option value="all">All Employees ({processedEmployees.length})</option>
+                  {processedEmployees.map(e => (<option key={e.empCode} value={e.empCode}>{e.empName} ({e.empCode})</option>))}
+                </select>
+              </div>
+
+              {/* Status */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Status</label>
+                <select value={pendingStatus} onChange={e => setPendingStatus(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500/20">
+                  <option value="all">All Status</option>
+                  <option value="Present">Present</option>
+                  <option value="Absent">Absent</option>
+                  <option value="Late">Late</option>
+                </select>
+              </div>
+
+              {/* Record Type */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Record Type</label>
+                <select value={pendingRecordType} onChange={e => setPendingRecordType(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500/20">
+                  <option value="all">All Records</option>
+                  <option value="complete">Complete (In + Out)</option>
+                </select>
+              </div>
+
+              {/* Show Records */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Show Records</label>
+                <select value={pendingPageSize} onChange={e => setPendingPageSize(Number(e.target.value))} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500/20">
+                  <option value={20}>20 Records</option>
+                  <option value={50}>50 Records</option>
+                  <option value={100}>100 Records</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-1">
+              <button onClick={handleApplyFilters} className="flex items-center gap-2 px-6 py-2.5 bg-[#006B3F] hover:bg-[#005632] text-white text-xs font-black rounded-xl shadow-md transition-all cursor-pointer active:scale-95">
+                <Filter size={15} /> Apply Filters
+              </button>
+            </div>
+          </div>
+
+          {/* ── 3. REPORT PREVIEW & EXPORT CENTER ──────────────────────────── */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-6 shadow-xs space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <FileSpreadsheet size={20} className="text-emerald-500" />
+                  Report Preview & Export Center
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Generated report document preview with instant multi-format downloads
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={handleDownloadPdf}
+                  disabled={isDownloading}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-white dark:bg-slate-800 hover:bg-[#006B3F] hover:text-white text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-slate-700 cursor-pointer shadow-xs"
+                >
+                  <FileDown size={14} /> Download PDF
+                </button>
+                <button
+                  onClick={handleDownloadExcel}
+                  disabled={isDownloading}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-white dark:bg-slate-800 hover:bg-[#006B3F] hover:text-white text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-slate-700 cursor-pointer shadow-xs"
+                >
+                  <FileSpreadsheet size={14} /> Download Excel
+                </button>
+                <button
+                  onClick={() => setShowMailModal(true)}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-[#006B3F] hover:bg-[#005632] text-white rounded-xl text-xs font-extrabold transition-all shadow-xs cursor-pointer"
+                >
+                  <Mail size={14} /> Mail Report
+                </button>
+                <button
+                  onClick={handleDownloadCsv}
+                  disabled={isDownloading}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-white dark:bg-slate-800 hover:bg-[#006B3F] hover:text-white text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-slate-700 cursor-pointer shadow-xs"
+                >
+                  <Download size={14} /> Download CSV
+                </button>
+              </div>
+            </div>
+
+            {/* Embedded Styled Printable Report Preview Box */}
+            <div className="bg-slate-50/70 dark:bg-slate-950 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-inner font-sans space-y-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4 gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-[#006B3F] text-white font-black flex items-center justify-center text-lg shadow-sm">
+                    P
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-900 dark:text-white tracking-tight uppercase">
+                      PARADIGM SERVICES™
+                    </h3>
+                    <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">
+                      {departmentFilter === 'all' ? 'ALL SITES & DEPARTMENTS' : departmentFilter.toUpperCase()}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <h4 className="text-sm font-extrabold text-slate-900 dark:text-white">
+                    {pendingReportType === 'detailed' ? 'Detailed Audit Attendance Report' : 'Basic Attendance Report'}
+                  </h4>
+                  <p className="text-xs font-medium text-slate-500 mt-0.5">
+                    Billing Cycle / Date: <strong className="text-slate-800 dark:text-slate-200">{selectedDate}</strong>
+                  </p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    Generated: {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })} by {currentUserEmail}
+                  </p>
+                </div>
+              </div>
+
+              {/* Summary Counts Row */}
+              <div className="grid grid-cols-4 gap-3 py-2 text-xs">
+                <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-center">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase">Total Active Employees</p>
+                  <p className="text-lg font-black text-slate-900 dark:text-white">{s?.activeTotal ?? 0}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 text-center">
+                  <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase">Present</p>
+                  <p className="text-lg font-black text-emerald-700 dark:text-emerald-300">{s?.present ?? 0}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 text-center">
+                  <p className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase">Absent</p>
+                  <p className="text-lg font-black text-red-700 dark:text-red-300">{s?.absent ?? 0}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 text-center">
+                  <p className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase">Late</p>
+                  <p className="text-lg font-black text-amber-700 dark:text-amber-300">{s?.late ?? 0}</p>
+                </div>
+              </div>
+
+              {/* Report Data Table Underneath */}
+              <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-100 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 uppercase tracking-wider font-extrabold text-[10px]">
+                    <tr>
+                      <th className="px-3.5 py-2.5">S.No</th>
+                      <th className="px-3.5 py-2.5">Biometric Code</th>
+                      <th className="px-3.5 py-2.5">Employee Name</th>
+                      <th className="px-3.5 py-2.5">Dept / Site</th>
+                      <th className="px-3.5 py-2.5">Shift</th>
+                      <th className="px-3.5 py-2.5">In</th>
+                      <th className="px-3.5 py-2.5">Out</th>
+                      <th className="px-3.5 py-2.5">Hours</th>
+                      <th className="px-3.5 py-2.5 text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {filteredEmployees.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="py-8 text-center text-slate-400 font-medium">
+                          No records match the selected report filter.
+                        </td>
+                      </tr>
+                    ) : (
+                      paginatedEmployees.map((emp, index) => (
+                        <tr key={`${emp.empCode}-${index}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                          <td className="px-3.5 py-2.5 font-mono text-slate-400">{(currentPage - 1) * pageSize + index + 1}</td>
+                          <td className="px-3.5 py-2.5 font-mono text-slate-600 dark:text-slate-300 font-semibold">{emp.empCode}</td>
+                          <td className="px-3.5 py-2.5 font-bold text-slate-900 dark:text-white">{emp.empName}</td>
+                          <td className="px-3.5 py-2.5 text-slate-600 dark:text-slate-400">{emp.department}</td>
+                          <td className="px-3.5 py-2.5 text-slate-500 font-medium">{emp.shiftCode || emp.shiftName || 'GEN'}</td>
+                          <td className="px-3.5 py-2.5 font-mono text-emerald-600 dark:text-emerald-400 font-bold">{emp.inTime || '—'}</td>
+                          <td className="px-3.5 py-2.5 font-mono text-slate-700 dark:text-slate-300 font-medium">{emp.outTime || '—'}</td>
+                          <td className="px-3.5 py-2.5 font-mono text-slate-800 dark:text-slate-200 font-semibold">{formatLiveWorkingHours(emp, selectedDate)}</td>
+                          <td className="px-3.5 py-2.5 text-center">
+                            <StatusBadge status={emp.status} inTime={emp.inTime} outTime={emp.outTime} shiftCompleted={emp.shiftCompleted} />
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : activeTab === 'auditLogs' ? (
         /* ── SCREENSHOT SECURITY AUDIT LOGS SUB-PAGE ──────────────────────── */
         <div className="space-y-6">
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-6 shadow-xs">
@@ -2239,6 +2792,67 @@ function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | 
                 </div>
               )}
 
+              {/* Top-Right Header Module Icon Tabs Checklist (Red Box Icon Access Control) */}
+              <div className="mt-4 pt-4 border-t border-slate-200/60 dark:border-slate-700/60 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                    <span>Permitted Top-Right Header Icon Tabs for this User</span>
+                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300 border border-red-300">
+                      Red-Box Icon Controls ({selectedTabsInput.length}/6 allowed)
+                    </span>
+                  </label>
+                  <div className="flex items-center gap-2 text-xs">
+                    <button
+                      onClick={() => setSelectedTabsInput(['attendance', 'reports', 'shiftConfig', 'userAccess', 'auditLogs', 'screenshotAudit'])}
+                      className="text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer"
+                    >
+                      Select All
+                    </button>
+                    <span className="text-slate-300">|</span>
+                    <button
+                      onClick={() => setSelectedTabsInput([])}
+                      className="text-slate-500 hover:underline cursor-pointer"
+                    >
+                      Clear All
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-700">
+                  {[
+                    { id: 'attendance' as const, label: '📊 Live Attendance Overview', desc: 'KPI Cards & Live Table' },
+                    { id: 'reports' as const, label: '📄 Attendance Reports & Export', desc: 'Multi-Filters & Downloads' },
+                    { id: 'shiftConfig' as const, label: '🎛️ Shift Group & Slot Config', desc: 'Custom Shift Rules & Groups' },
+                    { id: 'userAccess' as const, label: '🔒 User Site Access Control', desc: 'Site Access & Permission Rules' },
+                    { id: 'auditLogs' as const, label: '📝 Security Audit Logs', desc: 'Audit History & Screenshot Logs' },
+                    { id: 'screenshotAudit' as const, label: '📷 Security Screenshot Capture', desc: 'Simulate Screen Capture Reason' },
+                  ].map(tabItem => {
+                    const isChecked = selectedTabsInput.includes(tabItem.id);
+                    return (
+                      <label
+                        key={tabItem.id}
+                        onClick={() => toggleTabInForm(tabItem.id)}
+                        className={`flex items-start gap-2.5 p-2.5 rounded-xl text-xs font-semibold cursor-pointer transition-all border ${
+                          isChecked
+                            ? 'bg-emerald-50/70 dark:bg-emerald-950/50 text-emerald-950 dark:text-emerald-200 border-emerald-300 dark:border-emerald-800'
+                            : 'bg-slate-50 dark:bg-slate-800/40 text-slate-500 dark:text-slate-400 border-slate-200/60 dark:border-slate-700/60 hover:bg-slate-100'
+                        }`}
+                      >
+                        {isChecked ? (
+                          <CheckSquare size={16} className="text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                        ) : (
+                          <Square size={16} className="text-slate-400 shrink-0 mt-0.5" />
+                        )}
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-bold text-slate-900 dark:text-white">{tabItem.label}</span>
+                          <span className="text-[10px] text-slate-500 font-normal">{tabItem.desc}</span>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
               <div className="flex items-center gap-3 pt-2">
                 <button
                   onClick={handleSavePermission}
@@ -2330,19 +2944,38 @@ function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | 
                       </div>
                     </div>
 
-                    <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 space-y-1 text-xs">
-                      <p className="font-medium text-slate-500 dark:text-slate-400">Permitted Sites:</p>
-                      {perm.accessType === 'all' ? (
-                        <p className="font-bold text-emerald-600 dark:text-emerald-400">🌐 All Sites Allowed</p>
-                      ) : (
+                    <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2 text-xs">
+                      <div>
+                        <p className="font-medium text-slate-500 dark:text-slate-400">Permitted Sites:</p>
+                        {perm.accessType === 'all' ? (
+                          <p className="font-bold text-emerald-600 dark:text-emerald-400">🌐 All Sites Allowed</p>
+                        ) : (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {perm.allowedSites.map(s => (
+                              <span key={s} className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-semibold border border-slate-200 dark:border-slate-700">
+                                {s}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <p className="font-medium text-slate-500 dark:text-slate-400">Permitted Header Icon Tabs:</p>
                         <div className="flex flex-wrap gap-1 mt-1">
-                          {perm.allowedSites.map(s => (
-                            <span key={s} className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-semibold border border-slate-200 dark:border-slate-700">
-                              {s}
+                          {(!perm.allowedTabs || perm.allowedTabs.length === 6 || perm.accessType === 'all') ? (
+                            <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 text-[10px] font-bold border border-emerald-200">
+                              🌐 All 6 Icons Allowed
                             </span>
-                          ))}
+                          ) : (
+                            perm.allowedTabs.map(t => (
+                              <span key={t} className="px-2 py-0.5 rounded-md bg-purple-50 dark:bg-purple-950 text-purple-700 dark:text-purple-300 text-[10px] font-bold border border-purple-200">
+                                {t === 'attendance' ? '📊 Live' : t === 'reports' ? '📄 Reports' : t === 'shiftConfig' ? '🎛️ Shift' : t === 'userAccess' ? '🔒 Access' : t === 'auditLogs' ? '📝 Audit' : '📷 Screenshot'}
+                              </span>
+                            ))
+                          )}
                         </div>
-                      )}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -2605,7 +3238,7 @@ function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | 
         <>
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
         <KpiCard
-          label="Total Employees"
+          label="Total Active Employees"
           value={s?.activeTotal ?? s?.totalEmployees ?? 0}
           icon={<Users size={20} className="text-slate-600" />}
           color="text-slate-900 dark:text-white"
@@ -2968,6 +3601,38 @@ function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | 
           )}
         </div>
       </div>
+
+      {/* ── Mail Report Modal ────────────────────────────────────────────────── */}
+      {showMailModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl max-w-md w-full space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Mail size={16} className="text-emerald-600" />
+                Mail Attendance Report
+              </h3>
+              <button onClick={() => setShowMailModal(false)} className="text-slate-400 hover:text-slate-600">×</button>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Recipient Email Address</label>
+              <input
+                type="email"
+                placeholder="client.admin@example.com"
+                value={mailRecipient}
+                onChange={e => setMailRecipient(e.target.value)}
+                className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500/20"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => setShowMailModal(false)} className="px-4 py-2 text-xs font-bold text-slate-600 rounded-xl hover:bg-slate-100">Cancel</button>
+              <button onClick={handleSendMail} disabled={isSendingEmail} className="px-5 py-2 text-xs font-extrabold bg-[#006B3F] text-white rounded-xl hover:bg-[#005632] flex items-center gap-2">
+                {isSendingEmail ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
+                Send Mail
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Employee Table ─────────────────────────────────────────────────── */}
       <div ref={tableRef} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">

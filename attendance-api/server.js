@@ -312,25 +312,58 @@ app.get('/attendance', requireApiKey, async (req, res) => {
       const nextMorningOut = parseSqlStr(row.nextMorningOutPunchStr);
       const prevNightIn = parseSqlStr(row.prevNightInPunchStr);
 
-      // Determine effective IN punch: prioritize evening punch (for night shift) or valid day punch
-      const effectiveIn = nightIn || firstIn;
+      // Determine effective IN and OUT punches cleanly
+      let effectiveIn = null;
+      let effectiveOut = null;
 
-      if (effectiveIn) {
-        const inH = effectiveIn.hours;
-        const inM = effectiveIn.minutes;
-        const inAmpm = inH >= 12 ? 'pm' : 'am';
-        const displayInH = inH % 12 === 0 ? 12 : inH % 12;
-        inTimeStr = `${String(displayInH).padStart(2, '0')}:${String(inM).padStart(2, '0')} ${inAmpm}`;
-
-        // Check for OUT punch: either next-day morning OUT (for night shift) or same-day OUT
-        let effectiveOut = null;
-        if (inH >= 17 && nextMorningOut) {
-          effectiveOut = nextMorningOut;
-        } else if (lastOut && lastOut.timestamp > effectiveIn.timestamp) {
-          const diffMins = Math.floor((lastOut.timestamp - effectiveIn.timestamp) / 60000);
-          if (diffMins > 5) {
-            effectiveOut = lastOut;
+      if (firstIn) {
+        if (firstIn.hours < 15 || (firstIn.hours < 17 && lastOut && lastOut.timestamp > firstIn.timestamp && Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000) > 5)) {
+          // Standard Morning / Day Punch IN
+          effectiveIn = firstIn;
+          if (lastOut && lastOut.timestamp > firstIn.timestamp) {
+            const diffMins = Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000);
+            if (diffMins > 5) {
+              effectiveOut = lastOut;
+            }
           }
+        } else if (firstIn.hours >= 15) {
+          // Evening Punch (>= 15:30 / 3:30 PM)
+          if (nextMorningOut) {
+            // Night shift starting today
+            effectiveIn = firstIn;
+            effectiveOut = nextMorningOut;
+          } else if (lastOut && lastOut.timestamp > firstIn.timestamp) {
+            const diffMins = Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000);
+            if (diffMins > 5) {
+              effectiveIn = firstIn;
+              effectiveOut = lastOut;
+            } else {
+              // Single evening punch without morning punch -> Missed Punch IN (this punch is OUT time)
+              effectiveOut = firstIn;
+            }
+          } else {
+            // Single evening punch without morning punch -> Missed Punch IN (this punch is OUT time)
+            effectiveOut = firstIn;
+          }
+        } else {
+          effectiveIn = firstIn;
+        }
+      } else if (nightIn) {
+        if (nextMorningOut) {
+          effectiveIn = nightIn;
+          effectiveOut = nextMorningOut;
+        } else {
+          effectiveOut = nightIn;
+        }
+      }
+
+      if (effectiveIn || effectiveOut) {
+        if (effectiveIn) {
+          const inH = effectiveIn.hours;
+          const inM = effectiveIn.minutes;
+          const inAmpm = inH >= 12 ? 'pm' : 'am';
+          const displayInH = inH % 12 === 0 ? 12 : inH % 12;
+          inTimeStr = `${String(displayInH).padStart(2, '0')}:${String(inM).padStart(2, '0')} ${inAmpm}`;
         }
 
         if (effectiveOut) {
@@ -339,7 +372,9 @@ app.get('/attendance', requireApiKey, async (req, res) => {
           const outAmpm = outH >= 12 ? 'pm' : 'am';
           const displayOutH = outH % 12 === 0 ? 12 : outH % 12;
           outTimeStr = `${String(displayOutH).padStart(2, '0')}:${String(outM).padStart(2, '0')} ${outAmpm}`;
+        }
 
+        if (effectiveIn && effectiveOut) {
           const diffMs = effectiveOut.timestamp - effectiveIn.timestamp;
           if (diffMs > 0) {
             const totalMins = Math.floor(diffMs / 60000);
@@ -348,9 +383,12 @@ app.get('/attendance', requireApiKey, async (req, res) => {
             workingHours = `${h}h ${String(m).padStart(2, '0')}m`;
             if (totalMins >= 360) shiftCompleted = true;
           }
+          status = 'Present';
+        } else if (effectiveIn && !effectiveOut) {
+          status = 'Present';
+        } else if (!effectiveIn && effectiveOut) {
+          status = 'Missed Punch IN';
         }
-
-        status = 'Present';
       }
 
       const smartSiteInfo = getSmartSite(row.empCode, row.department);

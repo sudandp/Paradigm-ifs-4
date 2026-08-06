@@ -6,6 +6,7 @@ export interface UserSitePermissionDB {
   user_name?: string;
   access_type: 'all' | 'restricted';
   allowed_sites: string[];
+  allowed_tabs?: string[];
   validity_type: 'permanent' | 'timebound';
   valid_until_date?: string;
   password?: string;
@@ -38,6 +39,7 @@ CREATE TABLE IF NOT EXISTS public.user_site_permissions (
     user_name TEXT,
     access_type TEXT NOT NULL DEFAULT 'restricted',
     allowed_sites JSONB NOT NULL DEFAULT '[]'::jsonb,
+    allowed_tabs JSONB NOT NULL DEFAULT '["attendance","reports","shiftConfig","userAccess","auditLogs","screenshotAudit"]'::jsonb,
     validity_type TEXT NOT NULL DEFAULT 'permanent',
     valid_until_date TEXT,
     password TEXT,
@@ -45,6 +47,9 @@ CREATE TABLE IF NOT EXISTS public.user_site_permissions (
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Ensure allowed_tabs column exists on existing Supabase deployments
+ALTER TABLE public.user_site_permissions ADD COLUMN IF NOT EXISTS allowed_tabs JSONB DEFAULT '["attendance","reports","shiftConfig","userAccess","auditLogs","screenshotAudit"]'::jsonb;
 
 -- 2. Create screenshot_audit_logs table
 CREATE TABLE IF NOT EXISTS public.screenshot_audit_logs (
@@ -60,7 +65,9 @@ CREATE TABLE IF NOT EXISTS public.screenshot_audit_logs (
     viewed_at TIMESTAMPTZ,
     page_context TEXT DEFAULT 'Site Attendance Dashboard',
     created_at TIMESTAMPTZ DEFAULT NOW()
-// 3. Create shift_rule_configs table
+);
+
+-- 3. Create shift_rule_configs table
 CREATE TABLE IF NOT EXISTS public.shift_rule_configs (
     id TEXT PRIMARY KEY,
     group_name TEXT NOT NULL,
@@ -110,6 +117,7 @@ export async function fetchPermissionsFromSupabase() {
         userName: row.user_name || row.user_email.split('@')[0],
         accessType: row.access_type || 'restricted',
         allowedSites: Array.isArray(row.allowed_sites) ? row.allowed_sites : [],
+        allowedTabs: Array.isArray(row.allowed_tabs) ? row.allowed_tabs : ['attendance', 'reports', 'shiftConfig', 'userAccess', 'auditLogs', 'screenshotAudit'],
         validityType: row.validity_type || 'permanent',
         validUntilDate: row.valid_until_date || undefined,
         password: row.password || undefined,
@@ -130,6 +138,7 @@ export async function savePermissionToSupabase(perm: {
   userName?: string;
   accessType: 'all' | 'restricted';
   allowedSites: string[];
+  allowedTabs?: string[];
   validityType: 'permanent' | 'timebound';
   validUntilDate?: string;
   password?: string;
@@ -142,6 +151,7 @@ export async function savePermissionToSupabase(perm: {
       user_name: perm.userName || perm.userEmail.split('@')[0],
       access_type: perm.accessType,
       allowed_sites: perm.allowedSites,
+      allowed_tabs: perm.allowedTabs || ['attendance', 'reports', 'shiftConfig', 'userAccess', 'auditLogs', 'screenshotAudit'],
       validity_type: perm.validityType,
       valid_until_date: perm.validUntilDate || null,
       password: perm.password || null,
