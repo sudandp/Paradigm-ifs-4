@@ -81,7 +81,7 @@ interface EmployeeRow {
   isMissedPunchIn?: boolean;
   isMissedPunchOut?: boolean;
   lateMinutes: number;
-  isActiveEmployee?: boolean;
+  isActiveEmployee?: boolean | string;
   daysSinceLastPunch?: number;
   lifecycleStatus?: string;
   firstEverPunchDate?: string | null;
@@ -829,23 +829,14 @@ const ClientAttendanceDashboard: React.FC = () => {
     setIsUserDropdownOpen(false);
   };
 
-  // Current logged in user site access rule (with email prefix & name fallback)
+  // Current logged in user site access rule — exact email match only (prefix matching is too broad and causes false matches)
   const currentUserPermission = useMemo(() => {
-    const currentPrefix = currentUserEmail.split('@')[0].toLowerCase();
-    const currentName = (authUser?.name || '').toLowerCase().trim();
-
     return userSitePermissions.find(p => {
       const permEmail = (p.userEmail || '').toLowerCase().trim();
-      const permPrefix = permEmail.split('@')[0];
-      const permName = (p.userName || '').toLowerCase().trim();
-
-      return (
-        permEmail === currentUserEmail ||
-        (currentPrefix && permPrefix === currentPrefix) ||
-        (currentName && permName && (currentName.includes(permName) || permName.includes(currentName)))
-      );
+      return permEmail === currentUserEmail;
     });
-  }, [userSitePermissions, currentUserEmail, authUser]);
+  }, [userSitePermissions, currentUserEmail]);
+
 
   // Check if current user permission is expired
   const isPermissionExpired = useMemo(() => {
@@ -858,9 +849,14 @@ const ClientAttendanceDashboard: React.FC = () => {
 
   // Set of allowed sites for current user (null if super admin / full access)
   const allowedSitesSet = useMemo(() => {
+    // Super admin by email
     if (currentUserEmail === 'admin@paradigmfms.com') {
       return null; // Super Admin Full Access
     }
+
+    // Internal staff (@paradigmfms.com domain) who are not explicit client roles get full access
+    const isInternalStaff = currentUserEmail.endsWith('@paradigmfms.com') || currentUserEmail.endsWith('@paradigm.com');
+    const isClientRole = authUser?.role === 'client' || authUser?.role === 'client_panel' || (authUser as any)?.roleId === 'client_panel';
 
     if (currentUserPermission) {
       if (currentUserPermission.accessType === 'all') {
@@ -869,11 +865,14 @@ const ClientAttendanceDashboard: React.FC = () => {
       if (isPermissionExpired) {
         return new Set<string>(); // Expired = 0 sites allowed
       }
-      return new Set(currentUserPermission.allowedSites || []);
+      // Only apply restricted access to non-internal (client) users
+      if (!isInternalStaff || isClientRole) {
+        return new Set(currentUserPermission.allowedSites || []);
+      }
     }
 
     // Default restricted access for non-admin client roles if no explicit entry found
-    if (authUser?.role === 'client' || authUser?.role === 'client_panel' || (authUser as any)?.roleId === 'client_panel') {
+    if (isClientRole) {
       const userSite = (authUser as any)?.site;
       if (userSite) {
         return new Set([userSite]);
@@ -883,6 +882,7 @@ const ClientAttendanceDashboard: React.FC = () => {
 
     return null; // Default to full access for internal admin staff
   }, [currentUserPermission, currentUserEmail, isPermissionExpired, authUser]);
+
 
   // Save permissions to localStorage
   const saveUserPermissionsToStorage = (perms: UserSitePermission[]) => {
@@ -1337,6 +1337,91 @@ function evaluateEmployeeShiftAndLate(emp: EmployeeRow, rules: ShiftRuleConfig[]
   };
 }
 
+const prefixSiteMapFrontend = new Map([
+  ['17', 'Mahendra Aarna'],
+  ['31', 'Brigade Cornerstone Utopia'],
+  ['32', 'Brigade Cornerstone Utopia'],
+  ['42', 'Purva Venezia'],
+  ['77', 'Nikoo Homes'],
+  ['78', 'Nikoo Homes'],
+  ['70', 'Sobha Silicon Oasis'],
+  ['79', 'Nikoo Paradigm'],
+  ['80', 'Nikoo Paradigm'],
+  ['99', 'Dsr Eden Greens'],
+]);
+
+function getSmartSiteFrontend(code: string, dbSite?: string): { site: string; isSmart: boolean } {
+  const siteStr = String(dbSite || '').trim();
+  // 1. Allocated Site: If server/DB provided a valid site name, use it!
+  if (siteStr && siteStr !== 'General' && siteStr !== 'Default' && siteStr !== '—' && !siteStr.includes('ΓÇö')) {
+    return { site: siteStr, isSmart: false };
+  }
+
+  // 2. Unallocated Site: Auto-map based on employee code prefix
+  const cleanCode = String(code || '').trim();
+  if (cleanCode.startsWith('31') || cleanCode.startsWith('32')) {
+    return { site: 'Brigade Cornerstone Utopia', isSmart: true };
+  }
+  if (cleanCode.startsWith('17')) return { site: 'Mahendra Aarna', isSmart: true };
+  if (cleanCode.startsWith('42')) return { site: 'Purva Venezia', isSmart: true };
+  if (cleanCode.startsWith('77') || cleanCode.startsWith('78')) return { site: 'Nikoo Homes', isSmart: true };
+  if (cleanCode.startsWith('70')) return { site: 'Sobha Silicon Oasis', isSmart: true };
+  if (cleanCode.startsWith('79') || cleanCode.startsWith('80')) return { site: 'Nikoo Paradigm', isSmart: true };
+  if (cleanCode.startsWith('99')) return { site: 'Dsr Eden Greens', isSmart: true };
+  if (cleanCode.length >= 3 && prefixSiteMapFrontend.has(cleanCode.slice(0, 3))) {
+    return { site: prefixSiteMapFrontend.get(cleanCode.slice(0, 3))!, isSmart: true };
+  }
+
+  return { site: 'Default', isSmart: false };
+}
+
+function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | null; outTime?: string | null }, selectedDate?: string): string {
+  if (emp.workingHours && emp.workingHours !== '—' && !emp.workingHours.includes('ΓÇö')) {
+    return emp.workingHours;
+  }
+
+  const parseMins = (tStr: string) => {
+    const m = tStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+    if (!m) return null;
+    let h = parseInt(m[1], 10);
+    const min = parseInt(m[2], 10);
+    const ap = m[3].toUpperCase();
+    if (ap === 'PM' && h < 12) h += 12;
+    if (ap === 'AM' && h === 12) h = 0;
+    return h * 60 + min;
+  };
+
+  if (emp.inTime && emp.inTime !== '—' && emp.outTime && emp.outTime !== '—') {
+    const inM = parseMins(emp.inTime);
+    const outM = parseMins(emp.outTime);
+    if (inM !== null && outM !== null) {
+      let diff = outM - inM;
+      if (diff < 0) diff += 24 * 60;
+      const hrs = Math.floor(diff / 60);
+      const mins = diff % 60;
+      return `${hrs}h ${String(mins).padStart(2, '0')}m`;
+    }
+  }
+
+  if (emp.inTime && emp.inTime !== '—' && (!emp.outTime || emp.outTime === '—')) {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const isToday = !selectedDate || selectedDate === todayStr;
+    const inM = parseMins(emp.inTime);
+    if (isToday && inM !== null) {
+      const now = new Date();
+      const nowMins = now.getHours() * 60 + now.getMinutes();
+      let diff = nowMins - inM;
+      if (diff > 0) {
+        const hrs = Math.floor(diff / 60);
+        const mins = diff % 60;
+        return `${hrs}h ${String(mins).padStart(2, '0')}m`;
+      }
+    }
+  }
+
+  return '—';
+}
+
 // ── Main Component Inner Logic ──────────────────────────────────────────────
 
   // Processed employees with dynamic shift rule evaluation + site access control
@@ -1359,15 +1444,21 @@ function evaluateEmployeeShiftAndLate(emp: EmployeeRow, rules: ShiftRuleConfig[]
 
     return accessible.map(emp => {
       const evalData = evaluateEmployeeShiftAndLate(emp, shiftRules);
+      const smartInfo = getSmartSiteFrontend(emp.empCode, emp.department);
 
       // Determine if employee is Active: Punched today OR has active punch record within 14-day (2 week) window
-      const hasPunchToday = Boolean(emp.inTime && emp.inTime !== '—');
+      // Missed Punch IN = employee punched machine today (outTime set), inTime is null — still counts as "punched today"
+      const hasPunchToday = Boolean(emp.inTime && emp.inTime !== '—')
+        || emp.status === 'Missed Punch IN'
+        || (emp.status === 'Missed Punch OUT' && emp.inTime);
       const daysSince = emp.daysSinceLastPunch ?? 0;
       const isExplicitlyInactive = emp.status === 'Absent' && daysSince > 14;
       const isActive = hasPunchToday || (!isExplicitlyInactive && (emp.daysSinceLastPunch === undefined || daysSince <= 14));
 
       return {
         ...emp,
+        department: smartInfo.site,
+        isSmartSite: emp.isSmartSite ?? smartInfo.isSmart,
         shiftName: evalData.shiftName,
         shiftCode: evalData.shiftCode,
         shiftTiming: evalData.shiftTiming,
@@ -1378,20 +1469,65 @@ function evaluateEmployeeShiftAndLate(emp: EmployeeRow, rules: ShiftRuleConfig[]
     });
   }, [data, shiftRules, allowedSitesSet]);
 
-  // Extract department list dynamically
-  const departmentList = useMemo(() => {
-    if (!processedEmployees.length) return [];
-    const set = new Set<string>();
-    processedEmployees.forEach(e => {
-      if (e.department) {
-        const clean = e.department.trim();
-        const lower = clean.toLowerCase();
-        const norm = (lower.includes('purva') && lower.includes('venezia')) ? 'Purva Venezia' : clean;
-        set.add(norm);
-      }
-    });
-    return Array.from(set).sort();
-  }, [processedEmployees]);
+  // Computed summary reacting to department filter, site access control, and 14-day active workforce filtering
+  const summary = useMemo(() => {
+    if (!processedEmployees.length) return null;
+
+    const targetEmps = departmentFilter === 'all'
+      ? processedEmployees
+      : processedEmployees.filter(e => 
+          e.department === departmentFilter || 
+          e.department.toLowerCase().trim() === departmentFilter.toLowerCase().trim()
+        );
+
+    const totalHeadcount = targetEmps.length;
+    
+    // Active Employees: Employees active in the 2-week window (or punched today)
+    const activeEmps = targetEmps.filter(e => e.isActiveEmployee !== false);
+    const activeTotal = activeEmps.length || totalHeadcount;
+    const inactiveTotal = Math.max(0, totalHeadcount - activeTotal);
+
+    const late = targetEmps.filter(e => (e.lateMinutes > 0 || e.status === 'Late') && e.inTime && e.inTime !== '—').length;
+    // Count as present: employees with inTime set, OR Missed Punch OUT (inTime set, no out),
+    // OR Missed Punch IN (single evening punch — they did show up, just wrong punch direction)
+    const calcPresent = targetEmps.filter(e =>
+      (e.inTime !== null && e.inTime !== '—') ||
+      e.status === 'Missed Punch IN' ||
+      e.status === 'Missed Punch OUT'
+    ).length;
+
+    // Find matching present count from 7-day trend (real raw DeviceLogs punch counts)
+    const selDay = (selectedDate || '').split('-')[2] || '';
+    const trendItem = data?.trend?.find(t => t.date && (t.date.startsWith(selDay) || t.date.includes(selDay)))
+      || (data?.trend && data.trend.length > 0 ? data.trend[data.trend.length - 1] : null);
+    const trendPresent = trendItem ? (trendItem.present || 0) : 0;
+
+    const rawServerPresent = data?.summary?.present || 0;
+    const basePresent = Math.max(rawServerPresent, calcPresent, trendPresent);
+
+    const present = departmentFilter === 'all'
+      ? basePresent
+      : (calcPresent > 0 ? calcPresent : Math.round(basePresent * (targetEmps.length / (processedEmployees.length || 1))));
+    
+    // Accurate Absent Count = Active Employees Total - Present Count (subtracting inactive employees!)
+    const accurateAbsent = Math.max(0, activeTotal - present);
+
+    // Accurate Attendance Rate = (Present / Active Employees) * 100
+    const attendanceRate = activeTotal > 0 ? Math.round((present / activeTotal) * 100) : 0;
+
+    return {
+      date: selectedDate,
+      totalEmployees: activeTotal,
+      totalHeadcount,
+      activeTotal,
+      inactiveTotal,
+      present,
+      absent: accurateAbsent,
+      late,
+      onTime: Math.max(0, present - late),
+      attendanceRate,
+    };
+  }, [processedEmployees, departmentFilter, selectedDate, data]);
 
   // Computed site breakdown reacting to site access control
   const accessibleDepartments = useMemo(() => {
@@ -1413,13 +1549,37 @@ function evaluateEmployeeShiftAndLate(emp: EmployeeRow, rules: ShiftRuleConfig[]
       }
     });
 
+    const totalCalcPresent = Array.from(deptMap.values()).reduce((sum, d) => sum + d.present, 0);
+    const overallPresent = summary?.present || 0;
+
     return Array.from(deptMap.entries())
-      .map(([name, stat]) => ({
-        name,
-        total: stat.total,
-        present: stat.present,
-      }))
+      .map(([name, stat]) => {
+        let displayPresent = stat.present;
+        if (totalCalcPresent === 0 && overallPresent > 0 && processedEmployees.length > 0) {
+          displayPresent = Math.round((stat.total / processedEmployees.length) * overallPresent);
+        }
+        return {
+          name,
+          total: stat.total,
+          present: displayPresent,
+        };
+      })
       .sort((a, b) => b.total - a.total);
+  }, [processedEmployees, summary]);
+
+  // Extract department list dynamically
+  const departmentList = useMemo(() => {
+    if (!processedEmployees.length) return [];
+    const set = new Set<string>();
+    processedEmployees.forEach(e => {
+      if (e.department) {
+        const clean = e.department.trim();
+        const lower = clean.toLowerCase();
+        const norm = (lower.includes('purva') && lower.includes('venezia')) ? 'Purva Venezia' : clean;
+        set.add(norm);
+      }
+    });
+    return Array.from(set).sort();
   }, [processedEmployees]);
 
   // Reset page when filters/search/date change
@@ -1460,7 +1620,9 @@ function evaluateEmployeeShiftAndLate(emp: EmployeeRow, rules: ShiftRuleConfig[]
         const matchStatus = isSearching || statusFilter === 'all'
           ? true
           : statusFilter === 'Present'
-            ? e.status === 'Present' || e.status === 'Late' || e.status === 'Half Day' || Boolean(e.shiftCompleted)
+            ? e.status === 'Present' || e.status === 'Late' || e.status === 'Half Day'
+                || e.status === 'Missed Punch OUT' || e.status === 'Missed Punch IN'
+                || Boolean(e.shiftCompleted)
             : statusFilter === 'OnDuty'
               ? (e.status === 'Present' || e.status === 'Late') && (!e.outTime || e.outTime === '—') && !e.shiftCompleted
               : statusFilter === 'Completed'
@@ -1484,53 +1646,6 @@ function evaluateEmployeeShiftAndLate(emp: EmployeeRow, rules: ShiftRuleConfig[]
         return sortDir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
       });
   }, [processedEmployees, search, statusFilter, departmentFilter, shiftFilter, sortKey, sortDir]);
-
-  // Computed summary reacting to department filter, site access control, and 14-day active workforce filtering
-  const summary = useMemo(() => {
-    if (!processedEmployees.length) return null;
-
-    const targetEmps = departmentFilter === 'all'
-      ? processedEmployees
-      : processedEmployees.filter(e => 
-          e.department === departmentFilter || 
-          e.department.toLowerCase().trim() === departmentFilter.toLowerCase().trim()
-        );
-
-    const totalHeadcount = targetEmps.length;
-    
-    // Active Employees: Employees active in the 2-week window (or punched today)
-    const activeEmps = targetEmps.filter(e => e.isActiveEmployee !== false);
-    const activeTotal = activeEmps.length || totalHeadcount;
-    const inactiveTotal = Math.max(0, totalHeadcount - activeTotal);
-
-    const late = targetEmps.filter(e => (e.lateMinutes > 0 || e.status === 'Late') && e.inTime && e.inTime !== '—').length;
-    const calcPresent = targetEmps.filter(e => e.inTime !== null && e.inTime !== '—').length;
-    const present = (departmentFilter === 'all' && data?.summary?.present) ? Math.max(data.summary.present, calcPresent) : calcPresent;
-    
-    // Accurate Absent Count = Active Employees Total - Present Count (subtracting inactive employees!)
-    const accurateAbsent = Math.max(0, activeTotal - present);
-
-    // Accurate Attendance Rate = (Present / Active Employees) * 100
-    const attendanceRate = activeTotal > 0 ? Math.round((present / activeTotal) * 100) : 0;
-
-    return {
-      date: selectedDate,
-      totalEmployees: activeTotal,
-      totalHeadcount,
-      activeTotal,
-      inactiveTotal,
-      present,
-      absent: accurateAbsent,
-      late,
-      onTime: Math.max(0, present - late),
-      attendanceRate,
-    };
-  }, [processedEmployees, departmentFilter, selectedDate]);
-
-  // Reset page when filters/search/date change
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [search, statusFilter, departmentFilter, shiftFilter, sortKey, sortDir, selectedDate]);
 
   // Paginated employees (50 per page)
   const totalPages = Math.max(1, Math.ceil(filteredEmployees.length / pageSize));
@@ -3021,6 +3136,13 @@ function evaluateEmployeeShiftAndLate(emp: EmployeeRow, rules: ShiftRuleConfig[]
                               {new Date(selectedDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
                             </span>
                           </div>
+                        ) : emp.isMissedPunchIn ? (
+                          <div className="flex flex-col">
+                            <span className="text-amber-600 dark:text-amber-400 font-bold text-xs">Missed IN</span>
+                            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
+                              {new Date(selectedDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                            </span>
+                          </div>
                         ) : (
                           <span className="text-slate-300 dark:text-slate-600">—</span>
                         )}
@@ -3041,11 +3163,18 @@ function evaluateEmployeeShiftAndLate(emp: EmployeeRow, rules: ShiftRuleConfig[]
                               })()}
                             </span>
                           </div>
+                        ) : emp.isMissedPunchOut ? (
+                          <div className="flex flex-col">
+                            <span className="text-amber-600 dark:text-amber-400 font-bold text-xs">Missed OUT</span>
+                            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
+                              {new Date(selectedDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                            </span>
+                          </div>
                         ) : (
                           <span className="text-slate-300 dark:text-slate-600">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 font-mono text-slate-600 dark:text-slate-400">{emp.workingHours}</td>
+                      <td className="px-4 py-3 font-mono text-slate-600 dark:text-slate-400 font-semibold">{formatLiveWorkingHours(emp, selectedDate)}</td>
                       <td className="px-4 py-3 font-mono text-amber-600 dark:text-amber-400 font-semibold">
                         {emp.otHours || '0h 00m'}
                       </td>

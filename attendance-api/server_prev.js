@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
  *  Paradigm FMS ΓÇö Attendance API Proxy
  *  Runs ON: WIN-0T8N581GN63 (the SQL Server machine)
@@ -259,15 +259,18 @@ app.get('/attendance', requireApiKey, async (req, res) => {
     ]);
 
     const getSmartSite = (code, dbSite) => {
-      const siteStr = String(dbSite || '').trim();
-      if (siteStr && siteStr !== 'General' && siteStr !== 'Default' && siteStr !== '—') {
-        return { site: siteStr, isSmart: false };
-      }
-
       const cleanCode = String(code || '').trim();
+
+      // Rule: 31xxx (MEP) and 32xxx (Security) series unconditionally map to Brigade Cornerstone Utopia
       if (cleanCode.startsWith('31') || cleanCode.startsWith('32')) {
         return { site: 'Brigade Cornerstone Utopia', isSmart: true };
       }
+
+      const siteStr = String(dbSite || '').trim();
+      if (siteStr && siteStr !== 'General' && siteStr !== 'Default') {
+        return { site: siteStr, isSmart: false };
+      }
+
       if (cleanCode.length >= 3 && prefixSiteMap.has(cleanCode.slice(0, 3))) {
         return { site: prefixSiteMap.get(cleanCode.slice(0, 3)), isSmart: true };
       }
