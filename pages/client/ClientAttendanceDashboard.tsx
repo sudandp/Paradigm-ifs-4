@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   format, subDays, startOfDay, endOfDay, startOfMonth, endOfMonth,
   startOfYear, subMonths, eachDayOfInterval, isSameDay, addDays
@@ -5997,8 +5998,8 @@ const DetailedAuditReportView: React.FC<{
       {editingEmpCode && (() => {
         const editingEmp = paginatedEmployees.find(e => e.empCode === editingEmpCode);
         if (!editingEmp) return null;
-        return (
-          <div className="fixed inset-0 z-50 bg-slate-950/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+        return createPortal(
+          <div className="fixed inset-0 z-[999999] bg-slate-950/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
             <div ref={editModalRef} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl max-w-md w-full p-6 space-y-5">
               {/* Header */}
               <div className="flex items-start justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
@@ -6142,7 +6143,8 @@ const DetailedAuditReportView: React.FC<{
                 </button>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         );
       })()}
 
@@ -6200,10 +6202,9 @@ MSSQL_PORT=1433`}
       )}
 
       {/* ── SCREENSHOT SECURITY AUDIT MODAL ─────────────────────────────── */}
-      {showScreenshotModal && (
+      {showScreenshotModal && createPortal(
         <div
-          style={{ zoom: 1 }}
-          className="fixed inset-0 bg-slate-950/70 backdrop-blur-md flex items-center justify-center p-4 z-[9999] animate-in fade-in duration-200"
+          className="fixed inset-0 bg-slate-950/75 backdrop-blur-md flex items-center justify-center p-4 z-[999999] animate-in fade-in duration-200"
         >
           <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 p-6 sm:p-7 max-w-lg w-full shadow-2xl space-y-5 relative overflow-hidden text-slate-900 dark:text-white">
             {/* Top Decorative Subtle Glow */}
@@ -6295,14 +6296,14 @@ MSSQL_PORT=1433`}
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── SUPABASE DB MIGRATION SQL MODAL ─────────────────────────────── */}
-      {showSqlSchemaModal && (
+      {showSqlSchemaModal && createPortal(
         <div
-          style={{ zoom: 1 }}
-          className="fixed inset-0 bg-slate-950/70 backdrop-blur-md flex items-center justify-center p-4 z-[9999] animate-in fade-in duration-200"
+          className="fixed inset-0 bg-slate-950/75 backdrop-blur-md flex items-center justify-center p-4 z-[999999] animate-in fade-in duration-200"
         >
           <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 sm:p-7 max-w-2xl w-full shadow-2xl space-y-4 text-slate-900 dark:text-white relative overflow-hidden">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
@@ -6345,7 +6346,8 @@ MSSQL_PORT=1433`}
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
