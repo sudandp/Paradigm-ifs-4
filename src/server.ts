@@ -21,7 +21,7 @@ import FormData from 'form-data';
 
 import fetch from 'node-fetch';
 import { normalizePhoneNumber } from '../services/phoneUtils.js';
-import { getAttendanceData, getDeviceData, debugMssqlConnection, closeMssqlPool } from './api/controllers/mssql.controller.js';
+import { getAttendanceData, getDeviceData, debugMssqlConnection, closeMssqlPool, updateMssqlEmployeeDetails } from './api/controllers/mssql.controller.js';
 
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
@@ -706,6 +706,23 @@ app.get('/api/mssql-devices', authMiddleware, async (req: Request, res: Response
     } catch (err: any) {
         console.error('[MSSQL Route] Device fetch error:', err.message);
         return res.status(500).json({ devices: [], online: 0, offline: 0, total: 0, note: err.message });
+    }
+});
+
+/**
+ * POST /api/mssql-update-employee
+ * Updates employee details (site, designation) in local MS SQL database via proxy
+ */
+app.post('/api/mssql-update-employee', authMiddleware, async (req: Request, res: Response) => {
+    const { empCode, empName, siteName, designation } = req.body || {};
+    if (!empCode) {
+        return res.status(400).json({ success: false, error: 'empCode is required' });
+    }
+    try {
+        const result = await updateMssqlEmployeeDetails(empCode, empName, siteName, designation);
+        return res.status(result.success ? 200 : 500).json(result);
+    } catch (err: any) {
+        return res.status(500).json({ success: false, error: err.message });
     }
 });
 /**

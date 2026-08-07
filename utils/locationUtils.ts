@@ -154,7 +154,8 @@ export async function resolveLocationName(
     for (const loc of userLocations) {
       if (loc.latitude != null && loc.longitude != null) {
         const dist = calculateDistanceMeters(lat, lon, Number(loc.latitude), Number(loc.longitude));
-        const radius = loc.radius || 200;
+        // Use site radius or default to 500m threshold for accurate site recognition
+        const radius = Math.max(Number(loc.radius) || 300, 500);
         if (dist <= radius) {
           return loc.name || homeLocName;
         }
@@ -162,21 +163,25 @@ export async function resolveLocationName(
     }
   }
 
-  // 3. Resolve address via Reverse Geocoding if lat/lon exist
-  // Check if rawAddress is missing, a coordinate string ("12.9596, 77.6456"), or generic fallback
+  // 3. Check if rawAddress is a specific site/location name (e.g., "PIFS Bangalore")
   const isCoordString = !!(rawAddress && /^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(rawAddress.trim()));
-  const isGeneric = !rawAddress || isCoordString || rawAddress.includes('GPS') || rawAddress.includes('Location');
+  const isGeneric = !rawAddress || isCoordString || rawAddress.includes('GPS') || rawAddress === 'Auto Check-out';
 
+  if (rawAddress && !isGeneric && !rawAddress.toLowerCase().includes('location')) {
+    return rawAddress;
+  }
+
+  // 4. Resolve address via Reverse Geocoding if lat/lon exist
   let geocodedAddress: string | null = null;
-  if (lat != null && lon != null && isGeneric) {
+  if (lat != null && lon != null && (isGeneric || !rawAddress)) {
     geocodedAddress = await reverseGeocode(lat, lon);
   }
 
   const isGeocodedCoord = !!(geocodedAddress && /^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(geocodedAddress.trim()));
 
-  const addressToCheck = (geocodedAddress && !isGeocodedCoord)
-    ? geocodedAddress
-    : (!isCoordString && rawAddress ? rawAddress : (geocodedAddress || rawAddress));
+  const addressToCheck = (!isCoordString && rawAddress && !isGeneric)
+    ? rawAddress
+    : (geocodedAddress && !isGeocodedCoord ? geocodedAddress : (rawAddress || geocodedAddress));
 
   if (addressToCheck) {
     if (user?.homeAddress) {

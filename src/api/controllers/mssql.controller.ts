@@ -259,3 +259,43 @@ export async function debugMssqlConnection(): Promise<{
 /** No-op — pool lives in the proxy server, not here */
 export async function closeMssqlPool(): Promise<void> {}
 
+// ─── Update Employee details in MS SQL via Proxy ─────────────────
+
+export async function updateMssqlEmployeeDetails(
+  empCode: string,
+  empName?: string,
+  siteName?: string,
+  designation?: string
+): Promise<{ success: boolean; rowsAffected?: number; error?: string }> {
+  const proxy = getProxyConfig();
+  if (!proxy) {
+    return { success: false, error: 'MSSQL_PROXY_URL is not configured.' };
+  }
+
+  const endpoint = `${proxy.url}/update-employee`;
+  console.log(`[MSSQL Controller] Updating employee ${empCode} via proxy: ${endpoint}`);
+
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'x-api-key': proxy.secret,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ empCode, empName, siteName, designation }),
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Proxy returned ${res.status}: ${body}`);
+    }
+
+    const data = await res.json();
+    return { success: true, rowsAffected: data.rowsAffected };
+  } catch (err: any) {
+    console.error('[MSSQL Controller] Employee update failed:', err.message);
+    return { success: false, error: err.message };
+  }
+}
+

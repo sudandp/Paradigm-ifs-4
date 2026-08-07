@@ -95,6 +95,25 @@ CREATE POLICY "Allow public read/write screenshot_audit_logs" ON public.screensh
 
 DROP POLICY IF EXISTS "Allow public read/write shift_rule_configs" ON public.shift_rule_configs;
 CREATE POLICY "Allow public read/write shift_rule_configs" ON public.shift_rule_configs FOR ALL USING (true) WITH CHECK (true);
+
+-- 4. Create attendance_corrections table
+CREATE TABLE IF NOT EXISTS public.attendance_corrections (
+    id TEXT PRIMARY KEY,
+    emp_code TEXT NOT NULL,
+    emp_name TEXT,
+    attendance_date TEXT NOT NULL,
+    site TEXT,
+    shift_name TEXT,
+    designation TEXT,
+    corrected_by TEXT NOT NULL,
+    corrected_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (emp_code, attendance_date)
+);
+
+ALTER TABLE public.attendance_corrections ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow public read/write attendance_corrections" ON public.attendance_corrections;
+CREATE POLICY "Allow public read/write attendance_corrections" ON public.attendance_corrections FOR ALL USING (true) WITH CHECK (true);
 `;
 
 // ─── USER SITE PERMISSIONS SUPABASE API ───────────────────────────────────────
@@ -362,5 +381,119 @@ export async function deleteShiftRuleFromSupabase(ruleId: string) {
     }
   } catch (err) {
     console.warn('Could not delete shift rule from Supabase:', err);
+  }
+}
+
+// ─── ATTENDANCE CORRECTIONS SUPABASE API ─────────────────────────────────────
+
+export interface AttendanceCorrectionDB {
+  id: string;
+  empCode: string;
+  empName?: string;
+  attendanceDate: string;
+  site?: string;
+  shiftName?: string;
+  designation?: string;
+  correctedBy: string;
+  correctedAt: string;
+}
+
+export async function fetchCorrectionsFromSupabase(attendanceDate: string): Promise<AttendanceCorrectionDB[] | null> {
+  try {
+    const { data, error } = await supabase
+      .from('attendance_corrections')
+      .select('*')
+      .eq('attendance_date', attendanceDate)
+      .order('corrected_at', { ascending: false });
+
+    if (error) {
+      console.warn('Supabase attendance_corrections fetch warning:', error.message);
+      return null;
+    }
+
+    if (data && Array.isArray(data)) {
+      return data.map((row: any) => ({
+        id: row.id,
+        empCode: row.emp_code,
+        empName: row.emp_name || undefined,
+        attendanceDate: row.attendance_date,
+        site: row.site || undefined,
+        shiftName: row.shift_name || undefined,
+        designation: row.designation || undefined,
+        correctedBy: row.corrected_by,
+        correctedAt: row.corrected_at || new Date().toISOString(),
+      }));
+    }
+    return null;
+  } catch (err) {
+    console.warn('Could not query Supabase attendance_corrections:', err);
+    return null;
+  }
+}
+
+export async function saveCorrectionToSupabase(correction: AttendanceCorrectionDB): Promise<boolean> {
+  try {
+    const payload = {
+      id: correction.id,
+      emp_code: correction.empCode,
+      emp_name: correction.empName || null,
+      attendance_date: correction.attendanceDate,
+      site: correction.site || null,
+      shift_name: correction.shiftName || null,
+      designation: correction.designation || null,
+      corrected_by: correction.correctedBy,
+      corrected_at: correction.correctedAt,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase
+      .from('attendance_corrections')
+      .upsert(payload, { onConflict: 'emp_code,attendance_date' });
+
+    if (error) {
+      console.warn('Supabase upsert attendance_corrections error:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('Could not save attendance correction to Supabase:', err);
+    return false;
+  }
+}
+
+export async function deleteCorrectionFromSupabase(empCode: string, attendanceDate: string): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('attendance_corrections')
+      .delete()
+      .eq('emp_code', empCode)
+      .eq('attendance_date', attendanceDate);
+
+    if (error) {
+      console.warn('Supabase delete attendance_corrections error:', error.message);
+    }
+  } catch (err) {
+    console.warn('Could not delete attendance correction from Supabase:', err);
+  }
+}
+
+export async function updateMssqlEmployeeDirectly(
+  empCode: string,
+  empName?: string,
+  siteName?: string,
+  designation?: string
+): Promise<boolean> {
+  try {
+    const res = await fetch('/api/mssql-update-employee', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ empCode, empName, siteName, designation })
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    return Boolean(data.success);
+  } catch (err) {
+    console.warn('Could not update MS SQL employee:', err);
+    return false;
   }
 }

@@ -11,7 +11,7 @@ import { reverseGeocode, resolveLocationName, findRegisteredSiteDistance } from 
 import { buildAttendanceDayKeyByEventId } from '../../utils/attendanceDayGrouping';
 import { isAdmin } from '../../utils/auth';
 
-const AddressResolver: React.FC<{ lat?: number; lng?: number; fallback?: string | null }> = ({ lat, lng, fallback }) => {
+const AddressResolver: React.FC<{ lat?: number; lng?: number; fallback?: string | null; userLocations?: any[] }> = ({ lat, lng, fallback, userLocations }) => {
     const [resolvedAddress, setResolvedAddress] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const { user } = useAuthStore();
@@ -20,7 +20,7 @@ const AddressResolver: React.FC<{ lat?: number; lng?: number; fallback?: string 
         const resolve = async () => {
             try {
                 setLoading(true);
-                const name = await resolveLocationName(lat, lng, fallback, user);
+                const name = await resolveLocationName(lat, lng, fallback, user, userLocations);
                 setResolvedAddress(name);
             } catch (err) {
                 setResolvedAddress(fallback || (lat && lng ? `${lat.toFixed(4)}, ${lng.toFixed(4)}` : null));
@@ -29,7 +29,7 @@ const AddressResolver: React.FC<{ lat?: number; lng?: number; fallback?: string 
             }
         };
         resolve();
-    }, [lat, lng, fallback, user]);
+    }, [lat, lng, fallback, user, userLocations]);
 
     if (loading) return <span className="animate-pulse text-indigo-400 font-medium">Resolving address...</span>;
     return <span>{resolvedAddress || fallback || (lat && lng ? `${lat.toFixed(4)}, ${lng.toFixed(4)}` : '')}</span>;
@@ -64,14 +64,15 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
 
     useEffect(() => {
         if (!user?.id) return;
-        api.getUserLocations(user.id).then(locs => {
-            if (locs && locs.length > 0) {
-                setUserLocations(locs);
-            } else {
-                api.getLocations().then(all => setUserLocations(all || [])).catch(() => {});
-            }
-        }).catch(() => {
-            api.getLocations().then(all => setUserLocations(all || [])).catch(() => {});
+        Promise.all([
+            api.getUserLocations(user.id).catch(() => []),
+            api.getLocations().catch(() => [])
+        ]).then(([userLocs, allLocs]) => {
+            const combined = [...(userLocs || []), ...(allLocs || [])];
+            const unique = combined.filter((loc, index, self) => 
+                index === self.findIndex(l => l.id === loc.id || (l.latitude === loc.latitude && l.longitude === loc.longitude))
+            );
+            setUserLocations(unique);
         });
     }, [user?.id]);
 
@@ -469,11 +470,15 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                                                             }`}>
                                                                 {format(new Date(event.timestamp), 'hh:mm a')}
                                                             </div>
-                                                            {event.checkoutNote && (
+                                                            {(event.checkoutNote || event.source === 'auto_system') && (
                                                                 <div className="text-[11px] font-medium text-slate-500 italic mt-0.5 max-w-[200px] leading-tight">
-                                                                    Note: "{event.checkoutNote.replace(/\[SessionDate:\s*[^\]]+\]/g, '').trim()}"
+                                                                    Note: "{
+                                                                        event.source === 'auto_system' || (event.checkoutNote && event.checkoutNote.toLowerCase().includes('auto punch-out'))
+                                                                            ? 'User was working - Auto punched out by AI as per work hour policy'
+                                                                            : event.checkoutNote ? event.checkoutNote.replace(/\[SessionDate:\s*[^\]]+\]/g, '').trim() : ''
+                                                                    }"
                                                                 </div>
-                                                            )}
+                                                             )}
                                                         </div>
                                                     </div>
 
@@ -514,7 +519,7 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                                                         <div className="flex items-center gap-1.5 bg-rose-50 max-md:bg-[#2c0e15] px-3 py-1.5 rounded-lg border border-rose-200 max-md:border-rose-900/50 w-fit max-w-full">
                                                             <Clock className="h-3.5 w-3.5 text-rose-400 max-md:text-rose-500 md:text-rose-600 flex-shrink-0" />
                                                             <span className="text-xs text-rose-700 max-md:text-rose-300 font-medium">
-                                                                Auto punched out By Paradigm AI Agent
+                                                                User working - Auto punched out by AI (Work hour policy)
                                                             </span>
                                                         </div>
                                                     )}
@@ -523,17 +528,19 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                                                 {/* Row 3 (Mobile) / Col 3 (Desktop): Full Address Tag */}
                                                 <div className="flex items-center gap-2 justify-start md:justify-end flex-shrink-0 md:w-[220px]">
                                                     {(() => {
-                                                        // Determine what to show in the location column:
-                                                        // 1. Has real GPS → resolve to address
-                                                        // 2. Has location name text only → show that text
-                                                        // 3. Auto system punch-out with no location → show "Auto Check-out" fallback
                                                         const hasCoords = event.latitude && event.longitude;
                                                         const hasLocationText = !!event.locationName;
                                                         const isAutoOut = event.source === 'auto_system' && (event.type === 'punch-out' || event.type === 'site-ot-out');
                                                         const displayLocation = hasCoords || hasLocationText || isAutoOut;
                                                         const isCoordLoc = !!(event.locationName && /^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(event.locationName.trim()));
                                                         const cleanLocationName = isCoordLoc ? undefined : event.locationName;
-                                                        const locationFallback = cleanLocationName || (isAutoOut ? 'Auto Check-out' : undefined);
+
+                                                        const shiftPunchInEvent = group.events.find(e => 
+                                                            (e.type === 'punch-in' || e.type === 'site-in') && e.locationName && !/^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(e.locationName.trim())
+                                                        );
+                                                        const shiftSiteName = shiftPunchInEvent?.locationName || distInfo.targetSiteName;
+
+                                                        const locationFallback = cleanLocationName || shiftSiteName || (isAutoOut ? 'Auto Check-out' : undefined);
 
                                                         return displayLocation ? (
                                                             <div className="flex items-start gap-1.5 bg-white max-md:bg-[#041b0f] px-3 py-1.5 rounded-lg border border-gray-200 max-md:border-white/10 w-full md:max-w-[210px]">
@@ -544,6 +551,7 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                                                                             lat={event.latitude!}
                                                                             lng={event.longitude!}
                                                                             fallback={locationFallback}
+                                                                            userLocations={userLocations}
                                                                         />
                                                                     ) : (
                                                                         locationFallback

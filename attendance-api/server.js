@@ -774,6 +774,43 @@ app.get('/columns/:table', requireApiKey, async (req, res) => {
 });
 
 // ΓöÇΓöÇΓöÇ Start ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─── POST /update-employee — Update employee details in MS SQL ───────
+app.post('/update-employee', requireApiKey, async (req, res) => {
+  const { empCode, empName, siteName, designation } = req.body;
+  if (!empCode) {
+    return res.status(400).json({ error: 'empCode is required' });
+  }
+
+  try {
+    const p = await getPool();
+    const r = p.request();
+    r.input('empCode', sql.VarChar, String(empCode).trim());
+    r.input('empName', sql.VarChar, String(empName || '').trim());
+    r.input('siteName', sql.VarChar, String(siteName || '').trim());
+    r.input('desig', sql.VarChar, String(designation || '').trim());
+
+    const query = `
+      UPDATE e
+      SET 
+        e.EmployeeName = CASE WHEN @empName <> '' THEN @empName ELSE e.EmployeeName END,
+        e.Designation = CASE WHEN @desig <> '' THEN @desig ELSE e.Designation END,
+        e.DepartmentId = ISNULL(
+          (SELECT TOP 1 DepartmentId FROM dbo.Departments WHERE DepartmentFName = @siteName OR DepartmentSName = @siteName),
+          e.DepartmentId
+        )
+      FROM dbo.Employees e
+      WHERE LTRIM(RTRIM(CAST(e.EmployeeCode AS VARCHAR(50)))) = @empCode;
+    `;
+
+    const result = await r.query(query);
+    console.log(`[API] Updated employee ${empCode} in MS SQL. Rows affected:`, result.rowsAffected);
+    res.json({ success: true, empCode, rowsAffected: result.rowsAffected[0] || 0 });
+  } catch (err) {
+    console.error('[API] Failed to update MS SQL employee:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log('');
   console.log('ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ');
