@@ -17,18 +17,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const apiSecret = process.env.MSSQL_API_SECRET || 'paradigm-attendance-secret-2024';
 
   const endpoints = [
-    `${tunnelUrl}/devices`,
-    `${tunnelUrl}/api/devices`
+    `${tunnelUrl}/update-employee`,
+    `${tunnelUrl}/api/update-employee`,
+    `${tunnelUrl}/api/mssql-update-employee`
   ];
 
   for (const targetUrl of endpoints) {
     try {
       const response = await fetch(targetUrl, {
+        method: 'POST',
         headers: {
           'x-api-secret': apiSecret,
           'x-api-key': apiSecret,
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify(req.body)
       });
 
       if (response.ok) {
@@ -38,5 +41,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } catch (_) {}
   }
 
-  return res.status(200).json({ devices: [], total: 0, online: 0, offline: 0 });
+  return res.status(500).json({ success: false, error: 'Could not connect to MS SQL update proxy endpoint' });
 }

@@ -13,47 +13,49 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).end();
   }
 
-  const tunnelUrl = process.env.MSSQL_PROXY_URL || 'https://reliance-dinner-url-consumers.trycloudflare.com';
+  const tunnelUrl = (process.env.MSSQL_PROXY_URL || 'https://reliance-dinner-url-consumers.trycloudflare.com').replace(/\/$/, '');
   const apiSecret = process.env.MSSQL_API_SECRET || 'paradigm-attendance-secret-2024';
 
-  const date = req.query.date || '';
+  const date = req.query.date || new Date().toISOString().slice(0, 10);
   const siteId = req.query.siteId || 'all';
 
-  try {
-    const targetUrl = `${tunnelUrl.replace(/\/$/, '')}/api/attendance?date=${encodeURIComponent(String(date))}&siteId=${encodeURIComponent(String(siteId))}`;
-    
-    const response = await fetch(targetUrl, {
-      headers: {
-        'x-api-secret': apiSecret,
-        'Content-Type': 'application/json',
-      },
-    });
+  // Try both /attendance and /api/attendance to support all local server setups
+  const endpoints = [
+    `${tunnelUrl}/attendance?date=${encodeURIComponent(String(date))}&siteId=${encodeURIComponent(String(siteId))}`,
+    `${tunnelUrl}/api/attendance?date=${encodeURIComponent(String(date))}&siteId=${encodeURIComponent(String(siteId))}`
+  ];
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      return res.status(response.status).json({
-        summary: { date, totalEmployees: 0, present: 0, absent: 0, late: 0, onTime: 0, attendanceRate: 0 },
-        employees: [],
-        trend: [],
-        departments: [],
-        lastUpdated: new Date().toISOString(),
-        connectionStatus: 'error',
-        errorMessage: `Upstream attendance API returned HTTP ${response.status}: ${errorText.slice(0, 100)}`,
+  let lastError = '';
+
+  for (const targetUrl of endpoints) {
+    try {
+      const response = await fetch(targetUrl, {
+        headers: {
+          'x-api-secret': apiSecret,
+          'x-api-key': apiSecret,
+          'Content-Type': 'application/json',
+        },
       });
-    }
 
-    const data = await response.json();
-    return res.status(200).json(data);
-  } catch (err: any) {
-    console.error('MSSQL Attendance Proxy Error:', err);
-    return res.status(500).json({
-      summary: { date, totalEmployees: 0, present: 0, absent: 0, late: 0, onTime: 0, attendanceRate: 0 },
-      employees: [],
-      trend: [],
-      departments: [],
-      lastUpdated: new Date().toISOString(),
-      connectionStatus: 'error',
-      errorMessage: `Could not connect to local Cloudflare Tunnel server: ${err.message}`,
-    });
+      if (response.ok) {
+        const data = await response.json();
+        return res.status(200).json(data);
+      } else {
+        const errorText = await response.text();
+        lastError = `[${targetUrl}] HTTP ${response.status}: ${errorText.slice(0, 150)}`;
+      }
+    } catch (err: any) {
+      lastError = `[${targetUrl}] Fetch failed: ${err.message}`;
+    }
   }
+
+  return res.status(500).json({
+    summary: { date, totalEmployees: 0, present: 0, absent: 0, late: 0, onTime: 0, attendanceRate: 0 },
+    employees: [],
+    trend: [],
+    departments: [],
+    lastUpdated: new Date().toISOString(),
+    connectionStatus: 'error',
+    errorMessage: lastError || `Could not connect to Cloudflare Tunnel (${tunnelUrl})`,
+  });
 }

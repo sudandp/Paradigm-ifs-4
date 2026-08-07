@@ -3736,9 +3736,12 @@ const DetailedAuditReportView: React.FC<{
           <div className="flex items-start gap-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-2xl p-4">
             <WifiOff size={20} className="text-red-600 shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0">
-              <p className="font-bold text-red-800 dark:text-red-300 text-sm">MS SQL Connection Failed [Admin Debug]</p>
-              <p className="text-xs text-red-500 dark:text-red-500 mt-2">
-                <strong>Fix:</strong> Update <code className="bg-red-100 dark:bg-red-900 px-1 rounded">MSSQL_PASSWORD</code> in <code className="bg-red-100 dark:bg-red-900 px-1 rounded">.env.local</code> and restart the server.
+              <p className="font-bold text-red-800 dark:text-red-300 text-sm">MS SQL Proxy Connection Error [Admin Debug]</p>
+              <p className="text-xs text-red-600 dark:text-red-400 font-mono mt-1 leading-relaxed bg-red-100/60 dark:bg-red-900/40 p-2.5 rounded-xl border border-red-200 dark:border-red-800 break-all">
+                {data?.errorMessage || cleanErrorMessage}
+              </p>
+              <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-2 font-medium">
+                💡 <strong>Troubleshooting:</strong> Ensure <code className="bg-red-100 dark:bg-red-900 px-1 rounded">node attendance-api/server.js</code> is running on local port 4000 and <code className="bg-red-100 dark:bg-red-900 px-1 rounded">MSSQL_PROXY_URL</code> in Vercel matches your Cloudflare Tunnel URL.
               </p>
             </div>
           </div>
