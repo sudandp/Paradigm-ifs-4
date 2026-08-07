@@ -1515,7 +1515,11 @@ const ClientAttendanceDashboard: React.FC = () => {
         }),
       ]);
 
-      if (!attRes.ok) throw new Error(`Server returned ${attRes.status}`);
+      if (!attRes.ok) {
+        const errorJson = await attRes.json().catch(() => null);
+        const msg = errorJson?.errorMessage || `Server returned ${attRes.status}`;
+        throw new Error(msg);
+      }
       const json: AttendanceData = await attRes.json();
       setData(json);
 

@@ -1,5 +1,8 @@
 {
   "rewrites": [
+    { "source": "/api/mssql-attendance", "destination": "/api/mssql-attendance" },
+    { "source": "/api/mssql-devices", "destination": "/api/mssql-devices" },
+    { "source": "/api/mssql-update-employee", "destination": "/api/mssql-update-employee" },
     { "source": "/api/view-file/(.*)", "destination": "/api/view-file?path=$1" },
     { "source": "/api/hrm/(.*)", "destination": "/api/hrm" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
