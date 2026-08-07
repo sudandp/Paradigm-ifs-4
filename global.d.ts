@@ -40,6 +40,7 @@ interface ImportMetaEnv {
     readonly VITE_AGENT_DOWNLOAD_MAC: string;
     /** Offline-first layer feature flag. Set to 'true' to enable. */
     readonly VITE_OFFLINE_ENABLED: string;
+    readonly VITE_API_URL?: string;
   }
 
   

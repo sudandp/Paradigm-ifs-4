@@ -1505,11 +1505,12 @@ const ClientAttendanceDashboard: React.FC = () => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token || '';
 
+      const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
       const [attRes, deviceRes] = await Promise.all([
-        fetch(`/api/mssql-attendance?date=${selectedDate}&siteId=all`, {
+        fetch(`${apiBaseUrl}/api/mssql-attendance?date=${selectedDate}&siteId=all`, {
           headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
         }),
-        fetch('/api/mssql-devices', {
+        fetch(`${apiBaseUrl}/api/mssql-devices`, {
           headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
         }),
       ]);

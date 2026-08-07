@@ -484,7 +484,8 @@ export async function updateMssqlEmployeeDirectly(
   designation?: string
 ): Promise<boolean> {
   try {
-    const res = await fetch('/api/mssql-update-employee', {
+    const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+    const res = await fetch(`${apiBaseUrl}/api/mssql-update-employee`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ empCode, empName, siteName, designation })
