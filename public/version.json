@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 104,
-  "latestVersionName": "19.4.0",
+  "latestVersionCode": 105,
+  "latestVersionName": "19.5.0",
   "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
   "apkDownloadUrl": "https://app.paradigmfms.com",
-  "releaseNotes": "feat: implement HT yard master data service and admin management interface with offline support\nfeat: implement auth management, field tracking, and missed-checkout automation\nfeat: implement leave application form with dynamic validation and correction workflows\nfeat: add onboarding module, offline synchronization services, and operational dashboard pages\nfeat: implement offline-first architecture for operations module with sync engine, network monitoring, and persistent caching",
+  "releaseNotes": "feat: add ClientAttendanceDashboard component for real-time attendance monitoring and shift analysis\nfeat: add ClientAttendanceDashboard component for real-time attendance monitoring and update vercel configuration\nfeat: add MSSQL proxy endpoints and implement ClientAttendanceDashboard UI\nfeat: implement client attendance dashboard and Supabase access control service\nfeat: implement secure local dev server with CORS policies, rate limiting, and Supabase storage proxying",
   "isMandatory": true
 }
