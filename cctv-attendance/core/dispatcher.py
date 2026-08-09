@@ -78,6 +78,52 @@ class EventDispatcher:
             self._cloud_available = False
             return False
 
+    @staticmethod
+    def _get_local_ip() -> str:
+        """Auto-detect the machine's LAN IP address."""
+        import socket
+        try:
+            # Connect to an external host to discover the outbound LAN interface
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.connect(('8.8.8.8', 80))
+                return s.getsockname()[0]
+        except Exception:
+            return '127.0.0.1'
+
+    async def send_heartbeat(self, cameras: list[dict]) -> bool:
+        """Send device heartbeat to Supabase cctv_devices table via UPSERT."""
+        if not self._session or not self.config.cloud_enabled:
+            return False
+        try:
+            url = f"{self.config.supabase_url}/rest/v1/cctv_devices?on_conflict=edge_device_id"
+            payload = {
+                'edge_device_id': self.config.edge_device_id,
+                'site_name': 'Main Gate Site',
+                'location_name': 'Main Entrance',
+                'status': 'online',
+                'last_seen': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+                'cameras': cameras,
+                'match_threshold': self.config.match_threshold,
+                'cooldown_seconds': self.config.cooldown_seconds,
+                'is_active': True,
+                'server_host': self._get_local_ip(),
+                'admin_port': 4100,
+            }
+            headers = {
+                'Prefer': 'resolution=merge-duplicates,return=representation'
+            }
+            async with self._session.post(url, json=payload, headers=headers) as resp:
+                if resp.status < 400:
+                    logger.info(f"[Dispatcher] 🟢 Heartbeat sent — device online in cloud ({self.config.edge_device_id})")
+                    return True
+                else:
+                    body = await resp.text()
+                    logger.warning(f"[Dispatcher] Heartbeat POST failed ({resp.status}): {body}")
+                    return False
+        except Exception as e:
+            logger.warning(f"[Dispatcher] Heartbeat update failed: {e}")
+            return False
+
     async def push_attendance_event(
         self,
         user_id: str,

@@ -9,7 +9,11 @@ Pillow>=10.0.0              # Image processing
 
 # --- Face Recognition ---
 insightface>=0.7.3          # ArcFace face detection + recognition (512-dim)
-onnxruntime>=1.16.0         # ONNX model inference (CPU-only)
+onnxruntime>=1.16.0         # ONNX model inference (CPU mode)
+# For GPU Server (NVIDIA CUDA Acceleration):
+# Replace `onnxruntime` with `onnxruntime-gpu` via:
+#   pip uninstall -y onnxruntime
+#   pip install onnxruntime-gpu
 
 # --- Web Server & API ---
 fastapi>=0.104.0            # Local admin API + monitoring

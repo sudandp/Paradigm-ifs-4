@@ -21,9 +21,21 @@ CREATE TABLE IF NOT EXISTS public.cctv_devices (
     match_threshold     FLOAT DEFAULT 0.45,
     cooldown_seconds    INTEGER DEFAULT 300,
     is_active           BOOLEAN DEFAULT TRUE,
+    server_host         TEXT,                        -- Auto-detected LAN IP of edge server
+    admin_port          INTEGER DEFAULT 4100,        -- Admin HTTP port for camera frames
     created_at          TIMESTAMPTZ DEFAULT now(),
     updated_at          TIMESTAMPTZ DEFAULT now()
 );
+
+-- Add columns to existing table if upgrading
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='cctv_devices' AND column_name='server_host' AND table_schema='public') THEN
+        ALTER TABLE public.cctv_devices ADD COLUMN server_host TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='cctv_devices' AND column_name='admin_port' AND table_schema='public') THEN
+        ALTER TABLE public.cctv_devices ADD COLUMN admin_port INTEGER DEFAULT 4100;
+    END IF;
+END $$;
 
 -- ─── 2. cctv_attendance_logs ─────────────────────────────────────────────────
 -- Raw CCTV detection log (separate from attendance_events for audit).
@@ -96,41 +108,29 @@ ALTER TABLE public.cctv_devices ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cctv_attendance_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cctv_enrollment_queue ENABLE ROW LEVEL SECURITY;
 
--- Admins can see all; users see only their own logs
-CREATE POLICY "cctv_devices_admin_only" ON public.cctv_devices
-    FOR ALL USING (
-        EXISTS (
-            SELECT 1 FROM public.users u
-            WHERE u.id = auth.uid()
-            AND u.role_id IN ('admin', 'super_admin')
-        )
-    );
+-- RLS Policies: Allow public access for web app & edge servers
+DROP POLICY IF EXISTS "cctv_devices_admin_only" ON public.cctv_devices;
+DROP POLICY IF EXISTS "cctv_devices_public_select" ON public.cctv_devices;
+DROP POLICY IF EXISTS "cctv_devices_public_insert" ON public.cctv_devices;
+DROP POLICY IF EXISTS "cctv_devices_public_update" ON public.cctv_devices;
+DROP POLICY IF EXISTS "cctv_devices_public_delete" ON public.cctv_devices;
 
-CREATE POLICY "cctv_logs_admin_and_self" ON public.cctv_attendance_logs
-    FOR SELECT USING (
-        user_id = auth.uid()
-        OR EXISTS (
-            SELECT 1 FROM public.users u
-            WHERE u.id = auth.uid()
-            AND u.role_id IN ('admin', 'super_admin', 'management')
-        )
-    );
+CREATE POLICY "cctv_devices_public_select" ON public.cctv_devices FOR SELECT USING (true);
+CREATE POLICY "cctv_devices_public_insert" ON public.cctv_devices FOR INSERT WITH CHECK (true);
+CREATE POLICY "cctv_devices_public_update" ON public.cctv_devices FOR UPDATE USING (true) WITH CHECK (true);
+CREATE POLICY "cctv_devices_public_delete" ON public.cctv_devices FOR DELETE USING (true);
 
-CREATE POLICY "cctv_enroll_queue_admin" ON public.cctv_enrollment_queue
-    FOR ALL USING (
-        EXISTS (
-            SELECT 1 FROM public.users u
-            WHERE u.id = auth.uid()
-            AND u.role_id IN ('admin', 'super_admin')
-        )
-    );
+DROP POLICY IF EXISTS "cctv_logs_admin_and_self" ON public.cctv_attendance_logs;
+DROP POLICY IF EXISTS "cctv_logs_public_insert" ON public.cctv_attendance_logs;
+DROP POLICY IF EXISTS "cctv_logs_public_select" ON public.cctv_attendance_logs;
 
--- Service role bypasses RLS (used by edge server)
-CREATE POLICY "cctv_logs_service_role" ON public.cctv_attendance_logs
-    FOR INSERT WITH CHECK (true);
+CREATE POLICY "cctv_logs_public_insert" ON public.cctv_attendance_logs FOR INSERT WITH CHECK (true);
+CREATE POLICY "cctv_logs_public_select" ON public.cctv_attendance_logs FOR SELECT USING (true);
 
-CREATE POLICY "cctv_enroll_service_insert" ON public.cctv_enrollment_queue
-    FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "cctv_enroll_queue_admin" ON public.cctv_enrollment_queue;
+DROP POLICY IF EXISTS "cctv_enroll_queue_public" ON public.cctv_enrollment_queue;
+
+CREATE POLICY "cctv_enroll_queue_public" ON public.cctv_enrollment_queue FOR ALL USING (true);
 
 -- ─── 7. Updated_at trigger ───────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.update_updated_at()

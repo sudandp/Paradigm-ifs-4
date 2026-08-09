@@ -86,14 +86,19 @@ class AttendancePipeline:
         # 5. Load enrolled embeddings into memory
         self._refresh_enrolled_cache()
 
-        # 6. Start cameras
+        # 6. Send initial heartbeat to Supabase
+        if self.config.cloud_enabled:
+            cams_meta = [{'name': cam.name, 'direction': cam.direction} for cam in self.config.cameras]
+            await self.dispatcher.send_heartbeat(cams_meta)
+
+        # 7. Start cameras
         cam_status = self.grabber.start_all()
         connected = sum(1 for v in cam_status.values() if v)
         if connected == 0:
             logger.error("[Pipeline] No cameras connected!")
             return False
 
-        # 7. Ensure directories exist
+        # 8. Ensure directories exist
         if self.config.save_snapshots:
             self.config.snapshot_dir.mkdir(parents=True, exist_ok=True)
 
@@ -132,9 +137,15 @@ class AttendancePipeline:
                         await self.dispatcher.sync_embeddings()
                         self._refresh_enrolled_cache()
 
-                # 4. Periodically drain offline queue
+                # 4. Periodically drain offline queue & send heartbeat
                 if time.time() - last_queue_drain > queue_drain_interval:
                     await self.dispatcher.drain_queue()
+                    if self.config.cloud_enabled:
+                        cams_meta = [
+                            {'name': cam.name, 'direction': cam.direction}
+                            for cam in self.config.cameras
+                        ]
+                        await self.dispatcher.send_heartbeat(cams_meta)
                     last_queue_drain = time.time()
 
                 # 5. Periodically clean expired cooldowns

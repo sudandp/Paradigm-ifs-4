@@ -63,6 +63,7 @@ async def run_admin_server(config: AppConfig, pipeline: AttendancePipeline) -> N
         config=config,
         db=pipeline.db,
         face_engine=pipeline.face_engine,
+        pipeline=pipeline,
     )
 
     server_config = uvicorn.Config(

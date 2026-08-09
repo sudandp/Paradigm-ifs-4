@@ -33,8 +33,8 @@ if not exist "venv" (
 :: Activate venv and install dependencies
 echo  [SETUP] Installing dependencies (this may take 2-5 minutes)...
 call venv\Scripts\activate.bat
-pip install --upgrade pip --quiet
-pip install -r requirements.txt --quiet
+python -m pip install --upgrade setuptools wheel --quiet
+python -m pip install -r requirements.txt
 
 if %errorlevel% neq 0 (
     echo  [ERROR] Dependency installation failed!

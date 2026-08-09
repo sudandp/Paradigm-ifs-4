@@ -18,14 +18,73 @@ interface CctvDevice {
   siteName: string;
   locationName: string;
   organizationId: string;
-  cameras: { name: string; direction: 'entry' | 'exit' }[];
+  cameras: any[];
   status: 'online' | 'offline' | 'error';
   lastSeen: string | null;
   matchThreshold: number;
   cooldownSeconds: number;
   isActive: boolean;
   createdAt: string;
+  serverHost: string | null;   // Auto-detected LAN IP from edge server
+  adminPort: number;           // Admin HTTP port (default 4100)
 }
+
+const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; adminPort: number }> = ({ camera, serverHost, adminPort }) => {
+  const [tick, setTick] = useState(Date.now());
+  const [hasError, setHasError] = useState(false);
+
+  const camName = typeof camera === 'string' ? camera : camera?.name || 'main_gate_entry';
+  // Use host from Supabase (reported by edge server). Fall back to localhost if missing.
+  const streamUrl = `http://${serverHost || 'localhost'}:${adminPort}/camera/frame/${camName}?t=${tick}`;
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTick(Date.now());
+    }, 1500);
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <div className="w-full h-full relative group">
+      {!hasError ? (
+        <img
+          src={streamUrl}
+          alt={camName}
+          className="w-full h-full object-cover"
+          onError={(e) => {
+            setHasError(true);
+          }}
+          onLoad={() => {
+            setHasError(false);
+          }}
+        />
+      ) : (
+        <div className="flex flex-col items-center justify-center h-full p-2 text-center bg-slate-950 text-slate-200 text-[10px]">
+          <Camera className="h-5 w-5 text-amber-400 mb-1 animate-pulse" />
+          <span className="font-bold text-amber-300">Feed Offline / Connecting</span>
+          
+          <div className="flex gap-1 items-center mt-2">
+            <button
+              onClick={() => { setHasError(false); setTick(Date.now()); }}
+              className="px-2 py-0.5 bg-slate-700 hover:bg-slate-600 text-white rounded text-[9px]"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Overlay badges */}
+      <div className="absolute top-2 left-2 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/70 backdrop-blur-md border border-white/10 text-[9px] font-bold text-red-400 uppercase tracking-wider pointer-events-none">
+        <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-ping" /> LIVE
+      </div>
+      <div className="absolute bottom-2 left-2 right-2 text-[9px] font-medium text-white/90 bg-black/70 backdrop-blur-md px-2 py-0.5 rounded-lg truncate border border-white/10 pointer-events-none flex justify-between">
+        <span>📷 {camName}</span>
+        <span className="font-mono text-[8px] text-slate-400">{serverHost}:4100</span>
+      </div>
+    </div>
+  );
+};
 
 interface NewDeviceForm {
   edgeDeviceId: string;
@@ -85,6 +144,8 @@ const ManageCctvDevices: React.FC = () => {
           cooldownSeconds: d.cooldown_seconds || 300,
           isActive: d.is_active,
           createdAt: d.created_at,
+          serverHost: d.server_host || null,
+          adminPort: d.admin_port || 4100,
         }))
       );
       setOrganizations((orgsData || []).map((o: any) => ({ id: o.id, shortName: o.short_name })));
@@ -128,17 +189,18 @@ const ManageCctvDevices: React.FC = () => {
     }
   };
 
-  const handleDeactivate = async (deviceId: string) => {
-    if (!confirm('Deactivate this CCTV device?')) return;
-    const { error } = await supabase
-      .from('cctv_devices')
-      .update({ is_active: false })
-      .eq('id', deviceId);
-    if (error) {
-      setToast({ message: 'Failed to deactivate', type: 'error' });
-    } else {
-      setToast({ message: 'Device deactivated', type: 'success' });
-      fetchData();
+  const handleDelete = async (deviceId: string) => {
+    if (!confirm('Permanently delete this CCTV device?')) return;
+    try {
+      const { error } = await supabase
+        .from('cctv_devices')
+        .delete()
+        .eq('id', deviceId);
+      if (error) throw error;
+      setDevices(prev => prev.filter(d => d.id !== deviceId));
+      setToast({ message: 'Device deleted successfully', type: 'success' });
+    } catch (err: any) {
+      setToast({ message: err.message || 'Failed to delete device', type: 'error' });
     }
   };
 
@@ -212,86 +274,109 @@ const ManageCctvDevices: React.FC = () => {
               className={`bg-card rounded-2xl shadow-sm border border-border hover:border-accent hover:shadow-md transition-all relative overflow-hidden group ${!device.isActive ? 'opacity-60' : ''}`}
             >
               <div className="p-6">
-                {/* Top row */}
-                <div className="flex justify-between items-start mb-5">
-                  <div className={`p-3 rounded-2xl ${device.status === 'online' ? 'bg-emerald-500/10' : 'bg-gray-100'}`}>
-                    {device.status === 'online'
-                      ? <Wifi className="h-6 w-6 text-emerald-500" />
-                      : <WifiOff className="h-6 w-6 text-gray-400" />
-                    }
-                  </div>
-                  <div className="flex gap-1">
-                    {!device.isActive && (
-                      <span className="text-[10px] font-bold uppercase tracking-widest bg-gray-100 text-gray-500 px-2 py-1 rounded-lg">
-                        Inactive
-                      </span>
+                <div className="flex flex-col md:flex-row justify-between gap-6 items-start">
+                  {/* Left Column: Info */}
+                  <div className="flex-1 min-w-0">
+                    {/* Top row */}
+                    <div className="flex justify-between items-start mb-4">
+                      <div className={`p-3 rounded-2xl ${device.status === 'online' ? 'bg-emerald-500/10' : 'bg-gray-100'}`}>
+                        {device.status === 'online'
+                          ? <Wifi className="h-6 w-6 text-emerald-500" />
+                          : <WifiOff className="h-6 w-6 text-gray-400" />
+                        }
+                      </div>
+                      <div className="flex items-center gap-1 md:hidden">
+                        <button
+                          onClick={() => handleDelete(device.id)}
+                          className="p-2 text-muted hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                          title="Permanently delete device"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Name + ID */}
+                    <div className="mb-4">
+                      <h3 className="text-lg font-bold text-primary-text tracking-tight mb-1">{device.siteName}</h3>
+                      <div className="flex items-center gap-2 text-xs font-mono text-muted bg-gray-50 px-2.5 py-1 rounded-lg w-fit">
+                        {device.edgeDeviceId}
+                      </div>
+                    </div>
+
+                    {/* Camera badges */}
+                    {device.cameras.length > 0 && (
+                      <div className="flex gap-1.5 flex-wrap mb-4">
+                        {device.cameras.map((cam, i) => (
+                          <span key={i} className={`text-xs px-2.5 py-1 rounded-full font-medium flex items-center gap-1 ${
+                            cam.direction === 'entry' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'
+                          }`}>
+                            <Camera className="h-3 w-3" /> {cam.name}
+                          </span>
+                        ))}
+                      </div>
                     )}
-                    {device.isActive && (
+
+                    {/* Meta */}
+                    <div className="space-y-2 pt-3 border-t border-gray-100">
+                      {device.locationName && (
+                        <div className="flex items-center gap-2 text-sm text-primary-text/80">
+                          <div className="h-7 w-7 rounded-lg bg-gray-50 flex items-center justify-center">
+                            <MapPin className="h-3.5 w-3.5 text-muted" />
+                          </div>
+                          <span className="font-medium">{device.locationName}</span>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2 text-sm text-primary-text/80">
+                        <div className="h-7 w-7 rounded-lg bg-gray-50 flex items-center justify-center">
+                          <RefreshCw className="h-3.5 w-3.5 text-muted" />
+                        </div>
+                        <span className="text-xs text-muted">Last seen: {getLastSeenText(device.lastSeen)}</span>
+                      </div>
+                    </div>
+
+                    {/* Status pill */}
+                    <div className="mt-4 flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-50 w-fit">
+                      <span className={`h-2 w-2 rounded-full animate-pulse ${
+                        device.status === 'online' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-gray-400'
+                      }`} />
+                      <span className={`text-[10px] font-bold uppercase tracking-widest ${
+                        device.status === 'online' ? 'text-emerald-600' : 'text-gray-500'
+                      }`}>
+                        {device.status}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Right Column: Live Camera Video Preview Window */}
+                  <div className="w-full md:w-64 flex flex-col gap-2 items-end flex-shrink-0">
+                    <div className="hidden md:flex justify-end w-full mb-1">
                       <button
-                        onClick={() => handleDeactivate(device.id)}
-                        className="p-2 text-muted hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
-                        title="Deactivate device"
+                        onClick={() => handleDelete(device.id)}
+                        className="p-1.5 text-muted hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                        title="Permanently delete device"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Name + ID */}
-                <div className="mb-5">
-                  <h3 className="text-lg font-bold text-primary-text tracking-tight mb-1">{device.siteName}</h3>
-                  <div className="flex items-center gap-2 text-xs font-mono text-muted bg-gray-50 px-2 py-1 rounded-lg w-fit">
-                    {device.edgeDeviceId}
-                  </div>
-                </div>
-
-                {/* Camera badges */}
-                {device.cameras.length > 0 && (
-                  <div className="flex gap-1.5 flex-wrap mb-4">
-                    {device.cameras.map((cam, i) => (
-                      <span key={i} className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                        cam.direction === 'entry' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
-                      }`}>
-                        🎥 {cam.name}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                {/* Meta */}
-                <div className="space-y-2 pt-4 border-t border-gray-50">
-                  {device.locationName && (
-                    <div className="flex items-center gap-2 text-sm text-primary-text/80">
-                      <div className="h-7 w-7 rounded-lg bg-gray-50 flex items-center justify-center">
-                        <MapPin className="h-3.5 w-3.5 text-muted" />
-                      </div>
-                      <span className="font-medium">{device.locationName}</span>
                     </div>
-                  )}
-                  <div className="flex items-center gap-2 text-sm text-primary-text/80">
-                    <div className="h-7 w-7 rounded-lg bg-gray-50 flex items-center justify-center">
-                      <RefreshCw className="h-3.5 w-3.5 text-muted" />
-                    </div>
-                    <span className="text-xs text-muted">Last seen: {getLastSeenText(device.lastSeen)}</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-xs text-muted pt-1">
-                    <span>Threshold: {device.matchThreshold}</span>
-                    <span>·</span>
-                    <span>Cooldown: {device.cooldownSeconds}s</span>
-                  </div>
-                </div>
 
-                {/* Status pill */}
-                <div className="mt-4 flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-50 w-fit">
-                  <span className={`h-2 w-2 rounded-full animate-pulse ${
-                    device.status === 'online' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-gray-400'
-                  }`} />
-                  <span className={`text-[10px] font-bold uppercase tracking-widest ${
-                    device.status === 'online' ? 'text-emerald-600' : 'text-gray-500'
-                  }`}>
-                    {device.status}
-                  </span>
+                    <div className="w-full aspect-video rounded-xl bg-slate-900 border border-slate-800 relative overflow-hidden shadow-inner flex items-center justify-center group/cam">
+                      {device.status === 'online' && device.cameras.length > 0 ? (
+                        <CameraLivePreview
+                          camera={device.cameras[0]}
+                          serverHost={device.serverHost}
+                          adminPort={device.adminPort}
+                        />
+                      ) : (
+                        <div className="text-center p-4">
+                          <Camera className="h-6 w-6 text-slate-600 mx-auto mb-1" />
+                          <span className="text-[11px] text-slate-500 font-medium block">
+                            {device.status === 'online' ? 'No Camera Configured' : 'Camera Offline'}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

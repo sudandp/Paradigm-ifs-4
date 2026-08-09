@@ -87,21 +87,35 @@ class FaceEngine:
 
             self.models_dir.mkdir(parents=True, exist_ok=True)
 
-            # Initialize FaceAnalysis with buffalo_l model pack
-            # This includes: detection (RetinaFace) + recognition (ArcFace)
+            # Auto-detect CUDA GPU availability in ONNX Runtime
+            import onnxruntime as ort
+            available_providers = ort.get_available_providers()
+            
+            providers = ['CPUExecutionProvider']
+            ctx_id = -1  # CPU mode
+            
+            if 'CUDAExecutionProvider' in available_providers:
+                providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+                ctx_id = 0  # GPU 0
+                logger.info("[FaceEngine] 🚀 NVIDIA CUDA GPU detected! Enabling GPU acceleration.")
+            elif 'TensorRTExecutionProvider' in available_providers:
+                providers = ['TensorRTExecutionProvider', 'CUDAExecutionProvider', 'CPUExecutionProvider']
+                ctx_id = 0  # GPU 0
+                logger.info("[FaceEngine] 🚀 NVIDIA TensorRT detected! Enabling TensorRT acceleration.")
+
+            # Initialize FaceAnalysis with model pack
             self._app = FaceAnalysis(
                 name='buffalo_l',
                 root=str(self.models_dir),
-                providers=['CPUExecutionProvider'],  # CPU-only
+                providers=providers,
             )
 
-            # Prepare with detection size
-            # Smaller det_size = faster but may miss small faces
-            # 640x640 is a good balance for gate cameras
-            self._app.prepare(ctx_id=-1, det_size=self.det_size)
+            # Prepare with detection size (det_size) and context ID (0 for GPU, -1 for CPU)
+            self._app.prepare(ctx_id=ctx_id, det_size=self.det_size)
 
             elapsed = time.time() - start
-            logger.info(f"[FaceEngine] Models loaded in {elapsed:.1f}s (CPU mode)")
+            mode_str = "GPU (CUDA) mode" if ctx_id == 0 else "CPU mode"
+            logger.info(f"[FaceEngine] Models loaded in {elapsed:.1f}s ({mode_str})")
             self._initialized = True
             return True
 
