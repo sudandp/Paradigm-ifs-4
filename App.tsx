@@ -89,6 +89,8 @@ const SiteManagement = lazyWithRetry(() => import('./pages/admin/OrganizationMan
 const RoleManagement = lazyWithRetry(() => import('./pages/admin/RoleManagement'));
 const ModuleManagement = lazyWithRetry(() => import('./pages/admin/ModuleManagement'));
 const ManageDevices = lazyWithRetry(() => import('./pages/admin/ManageDevices'));
+const ManageCctvDevices = lazyWithRetry(() => import('./pages/admin/ManageCctvDevices'));
+const CctvDashboard = lazyWithRetry(() => import('./pages/admin/CctvDashboard'));
 const DeviceApprovals = lazyWithRetry(() => import('./pages/admin/DeviceApprovals'));
 const KioskManagement = lazyWithRetry(() => import('./pages/admin/KioskManagement'));
 const AdvancedNotificationSettings = lazyWithRetry(() => import('./pages/admin/AdvancedNotificationSettings'));
@@ -1884,6 +1886,8 @@ const App: React.FC = () => {
             <Route path="admin/devices" element={<ManageDevices />} />
             <Route path="admin/device-approvals" element={<DeviceApprovals />} />
             <Route path="admin/kiosks" element={<KioskManagement />} />
+            <Route path="admin/cctv-devices" element={<ManageCctvDevices />} />
+            <Route path="admin/cctv-dashboard" element={<CctvDashboard />} />
           </Route>
           <Route element={<ProtectedRoute requiredPermission="manage_sites" />}>
             <Route path="admin/sites" element={<SiteManagement />} />

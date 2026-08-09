@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Outlet, NavLink, Navigate, useLocation } from 'react-router-dom';
-import { Bell, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, ChevronRight, ShieldCheck, ClipboardCheck, Map as MapIcon, ClipboardList, User, Briefcase, ListTodo, Building, Users, Shirt, Settings, GitBranch, Calendar, CalendarCheck2, ShieldHalf, FileDigit, GitPullRequest, Home, BriefcaseBusiness, UserPlus, IndianRupee, PackagePlus, LifeBuoy, MapPin, ArrowLeft, Navigation, Cpu, FileText, Smartphone, Baby, Grid3X3, LayoutDashboard, Target, Ticket, Wrench, FileSignature, Wallet, LineChart, History, CheckCircle2, Calculator, Badge, HeartPulse, Archive, CalendarDays, BarChart, BarChart3, Mail, UserX, LayoutTemplate, FileSpreadsheet, Sun, Phone, Car, Zap } from 'lucide-react';
+import { Bell, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, ChevronRight, ShieldCheck, ClipboardCheck, Map as MapIcon, ClipboardList, User, Briefcase, ListTodo, Building, Users, Shirt, Settings, GitBranch, Calendar, CalendarCheck2, ShieldHalf, FileDigit, GitPullRequest, Home, BriefcaseBusiness, UserPlus, IndianRupee, PackagePlus, LifeBuoy, MapPin, ArrowLeft, Navigation, Cpu, FileText, Smartphone, Baby, Grid3X3, LayoutDashboard, Target, Ticket, Wrench, FileSignature, Wallet, LineChart, History, CheckCircle2, Calculator, Badge, HeartPulse, Archive, CalendarDays, BarChart, BarChart3, Mail, UserX, LayoutTemplate, FileSpreadsheet, Sun, Phone, Car, Zap, Camera, Activity } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
 import { usePermissionsStore } from '../../store/permissionsStore';
@@ -130,6 +130,8 @@ export const allNavLinks: NavLinkConfig[] = [
     { to: '/admin/devices', label: 'Biometric Devices', icon: Cpu, permission: 'manage_biometric_devices', category: 'Biometric Devices' },
     { to: '/admin/kiosks', label: 'Kiosk Monitoring', icon: Smartphone, permission: 'view_kiosk_monitoring', category: 'Biometric Devices' },
     { to: '/settings/devices', label: 'Linked Devices', icon: Smartphone, permission: 'manage_linked_devices', category: 'Biometric Devices' },
+    { to: '/admin/cctv-devices', label: 'CCTV Devices', icon: Camera, permission: 'manage_biometric_devices', category: 'Biometric Devices' },
+    { to: '/admin/cctv-dashboard', label: 'CCTV Dashboard', icon: Activity, permission: 'manage_biometric_devices', category: 'Biometric Devices' },
 
     // Gate Attendance
     { to: '/gate/register', label: 'Gate Registration', icon: UserPlus, permission: 'manage_gate_registration', category: 'Gate Attendance' },

@@ -1,0 +1,30 @@
+# CCTV Attendance Edge Server — Python Dependencies
+# Install: pip install -r requirements.txt
+
+# --- Core ---
+opencv-python>=4.8.0        # RTSP frame capture
+numpy>=1.24.0               # Array/vector math
+scipy>=1.11.0               # Cosine similarity for face matching
+Pillow>=10.0.0              # Image processing
+
+# --- Face Recognition ---
+insightface>=0.7.3          # ArcFace face detection + recognition (512-dim)
+onnxruntime>=1.16.0         # ONNX model inference (CPU-only)
+
+# --- Web Server & API ---
+fastapi>=0.104.0            # Local admin API + monitoring
+uvicorn[standard]>=0.24.0   # ASGI server for FastAPI
+jinja2>=3.1.2               # HTML templates for admin UI
+python-multipart>=0.0.6     # File uploads for face enrollment
+
+# --- HTTP Client ---
+aiohttp>=3.9.0              # Async HTTP for pushing events to Supabase
+requests>=2.31.0            # Sync HTTP for initial setup/sync
+
+# --- Configuration ---
+python-dotenv>=1.0.0        # .env file loading
+pydantic>=2.5.0             # Config validation
+pydantic-settings>=2.1.0    # Settings management
+
+# --- Logging ---
+loguru>=0.7.0               # Better logging with rotation

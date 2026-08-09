@@ -1,0 +1,15 @@
+[Unit]
+Description=Paradigm CCTV Attendance Edge Server
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/opt/cctv-attendance
+ExecStart=/opt/cctv-attendance/venv/bin/python main.py
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
