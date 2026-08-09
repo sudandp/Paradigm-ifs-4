@@ -8,6 +8,7 @@ import Button from './ui/Button';
 import CameraCaptureModal from './CameraCaptureModal';
 import { useAuthStore } from '../store/authStore';
 import ImagePreviewModal from './modals/ImagePreviewModal';
+import Modal from './ui/Modal';
 import { useOnboardingStore } from '../store/onboardingStore';
 
 interface UploadDocumentProps {
@@ -50,6 +51,8 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
     const [uploadError, setUploadError] = useState('');
     const [isCameraOpen, setIsCameraOpen] = useState(false);
     const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+    const [extractedInfo, setExtractedInfo] = useState<any>(null);
+    const [showExtractedModal, setShowExtractedModal] = useState(false);
     const { logVerificationUsage } = useOnboardingStore.getState();
 
     const handleViewFullSize = () => {
@@ -121,7 +124,13 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
             if (onOcrComplete && ocrSchema && setToast) {
                 try {
                     const extractedData = await api.extractDataFromImage(base64, selectedFile.type, ocrSchema, docType);
+                    setExtractedInfo(extractedData);
                     onOcrComplete(extractedData);
+                    // Let the caller's onOcrComplete toast handle success in online mode.
+                    // In offline mode show a distinct info toast.
+                    if (extractedData?._offlineFallback) {
+                        setToast({ message: '📵 Offline mode — some fields extracted via on-device OCR. Please verify and complete any missing fields manually.', type: 'error' });
+                    }
                 } catch (ocrError: any) {
                     console.error("OCR failed:", ocrError);
                     setToast({ message: `AI extraction failed. Please check the document.`, type: 'error' });
@@ -335,7 +344,12 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                         </div>
 
                         {!isLoading && (
-                            <div className="mt-3 relative z-10 flex items-center justify-center gap-4 border-t border-border/30 pt-3">
+                            <div className="mt-3 relative z-10 flex items-center justify-center gap-3 flex-wrap border-t border-border/30 pt-3">
+                                {extractedInfo && (
+                                    <button type="button" onClick={() => setShowExtractedModal(true)} className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 transition-colors">
+                                        <BadgeInfo className="h-3.5 w-3.5" /> Inspect Extracted Data
+                                    </button>
+                                )}
                                 {!file.type.startsWith('image/') && (
                                     <button type="button" onClick={handleViewFullSize} className="text-xs font-semibold text-blue-500 hover:text-blue-600 flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 transition-colors">
                                         <Eye className="h-3.5 w-3.5" /> View Document
@@ -389,6 +403,43 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
             <div className="text-center mt-1 min-h-[16px]">
                 {displayError && <p className="text-xs text-red-500">{displayError}</p>}
             </div>
+
+            {/* Extracted OCR Inspection Modal */}
+            {showExtractedModal && extractedInfo && (
+                <Modal isOpen={showExtractedModal} onClose={() => setShowExtractedModal(false)} title={`Extracted Data Inspection — ${label}`}>
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 border border-gray-200">
+                            <span className="text-xs font-bold text-gray-700">OCR Engine Used:</span>
+                            <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${extractedInfo._offlineFallback ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                                {extractedInfo._offlineFallback ? '📵 On-Device Tesseract.js (Offline)' : '⚡ Gemini 2.5 Flash AI (Online)'}
+                            </span>
+                        </div>
+
+                        <div>
+                            <h4 className="text-xs font-bold uppercase text-gray-500 tracking-wider mb-2">Structured Form Fields Extracted:</h4>
+                            <div className="bg-gray-900 text-emerald-400 p-4 rounded-xl font-mono text-xs overflow-x-auto max-h-60">
+                                <pre>{JSON.stringify(
+                                    Object.fromEntries(Object.entries(extractedInfo).filter(([k]) => !k.startsWith('_'))), 
+                                    null, 2
+                                )}</pre>
+                            </div>
+                        </div>
+
+                        {extractedInfo._rawText && (
+                            <div>
+                                <h4 className="text-xs font-bold uppercase text-gray-500 tracking-wider mb-2">Raw Recognized OCR Text:</h4>
+                                <div className="bg-gray-100 text-gray-800 p-3 rounded-xl font-mono text-xs overflow-y-auto max-h-40 whitespace-pre-wrap border border-gray-200">
+                                    {extractedInfo._rawText}
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="flex justify-end pt-2">
+                            <Button type="button" size="sm" onClick={() => setShowExtractedModal(false)}>Close</Button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
         </div>
     );
 };

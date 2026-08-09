@@ -50,6 +50,7 @@ const offlineDb = {
 import { isOfflineEnabled } from './offline/featureFlag';
 import { isOnline as _isOfflineOnline } from './offline/networkStatus';
 import { enqueue as _offlineEnqueue, getAll as _offlineGetOutboxAll } from './offline/outbox';
+import { getDb } from './offline/db';
 import {
   cacheHtYardAudit,
   getCachedHtYardAudits,
@@ -1481,9 +1482,19 @@ export const api = {
         console.warn('Failed to fetch onboarding data from cloud, falling back to cache');
       }
     }
-    const idbCached = await getCachedOnboardingSubmissions().then(items => items.find(i => i.id === id) || null);
-    if (idbCached) return idbCached;
-    return processUrlsForDisplay(await offlineDb.getCache(`onboarding_${id}`));
+    try {
+      const allOutbox = await _offlineGetOutboxAll().catch(() => []);
+      const outboxMatch = allOutbox.find((item: any) => item.id === id || item.payload?.id === id);
+      if (outboxMatch && outboxMatch.payload) {
+        return processUrlsForDisplay(toCamelCase(outboxMatch.payload));
+      }
+      const idbCached = await getCachedOnboardingSubmissions().then(items => items.find(i => i.id === id) || null);
+      if (idbCached) return idbCached;
+      const cached = await offlineDb.getCache(`onboarding_${id}`);
+      return cached ? processUrlsForDisplay(cached) : null;
+    } catch {
+      return null;
+    }
   },
 
   _saveSubmission: async (data: OnboardingData, asDraft: boolean): Promise<{ draftId: string }> => {
@@ -1530,6 +1541,12 @@ export const api = {
     delete dbData.file;
     delete dbData.confirm_account_number;
     delete (dbData as any).is_qr_verified; 
+    // submission_mode and verification tracking columns are stored separately after migration
+    delete (dbData as any).submission_mode;
+    delete (dbData as any).verified_by;
+    delete (dbData as any).verified_by_photo;
+    delete (dbData as any).verified_at;
+    delete (dbData as any).verification_mode;
 
     try {
       const { data: savedData, error } = await supabase.from('onboarding_submissions').upsert(dbData, { onConflict: 'id' }).select('id').single();
@@ -1700,19 +1717,40 @@ export const api = {
     return updatedData;
   },
 
-  verifySubmission: async (id: string): Promise<void> => {
-    const { error } = await supabase.from('onboarding_submissions').update({ status: 'verified', portal_sync_status: 'pending_sync' }).eq('id', id);
+  verifySubmission: async (id: string, mode: 'auto' | 'manual' = 'manual'): Promise<void> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    const verifierName = mode === 'auto' 
+      ? 'Paradigm AI Agent' 
+      : ((user as any)?.user_metadata?.full_name || (user as any)?.user_metadata?.name || user?.email?.split('@')[0] || 'HR Admin');
+    const verifierPhoto = mode === 'auto'
+      ? null
+      : ((user as any)?.user_metadata?.avatar_url || (user as any)?.user_metadata?.picture || null);
+
+    // Core status update — always required
+    const { error } = await supabase.from('onboarding_submissions').update({ 
+      status: 'verified', 
+      portal_sync_status: 'pending_sync',
+    }).eq('id', id);
     if (error) throw error;
+
+    // Tracking columns — optional, only work if columns exist in DB
+    supabase.from('onboarding_submissions').update({ 
+      verified_by: verifierName,
+      verified_by_photo: verifierPhoto,
+      verified_at: new Date().toISOString(),
+      verification_mode: mode
+    }).eq('id', id).then(({ error: trackErr }) => {
+      if (trackErr) console.warn('[verifySubmission] Tracking columns not yet in DB. Run the SQL migration:', trackErr.message);
+    });
     
     // Trigger notification
     const submission = await api.getOnboardingDataById(id);
-    const { data: { user } } = await supabase.auth.getUser();
     if (submission && user) {
         dispatchNotificationFromRules('onboarding_verified', {
             actorName: 'Enrollment for ' + (submission.personal as any).firstName,
             actionText: 'has been verified',
             locString: '',
-            actor: { id: user.id, name: user.email || 'Admin', role: 'admin' }
+            actor: { id: user.id, name: verifierName, role: 'admin' }
         });
     }
   },
@@ -1735,8 +1773,19 @@ export const api = {
   },
 
   deleteOnboardingSubmission: async (id: string): Promise<void> => {
-    const { error } = await supabase.from('onboarding_submissions').delete().eq('id', id);
-    if (error) throw error;
+    try {
+      const db = await getDb();
+      await db.delete('outbox', id).catch(() => {});
+      await deleteOnboardingSubmissionFromCache(id).catch(() => {});
+      await offlineDb.removeCache(`onboarding_${id}`).catch(() => {});
+    } catch (e) {
+      console.warn('[API] Offline cleanup on delete error:', e);
+    }
+    const status = await Network.getStatus();
+    if (status.connected) {
+      const { error } = await supabase.from('onboarding_submissions').delete().eq('id', id);
+      if (error && error.code !== 'PGRST116') throw error;
+    }
   },
 
   syncPortals: async (id: string): Promise<OnboardingData> => {
@@ -7681,48 +7730,204 @@ export const api = {
     return { success, message: success ? 'UAN found and linked.' : 'UAN not found in EPFO database.', verifiedFields: { name: null, dob: null, aadhaar: null, bank: null, uan: success, esi: null } };
   },
   extractDataFromImage: async (base64: string, mimeType: string, schema: any, docType?: string): Promise<any> => {
-    if (keyPool.length === 0) {
-      console.warn('AI disabled: no API keys configured.');
-      return {};
+    // ── Offline-first: if no network, fall back to on-device Tesseract OCR ──
+    const { isOnline } = await import('./offline/networkStatus');
+    if (!isOnline()) {
+      console.info('[OCR] Offline detected — using on-device Tesseract fallback.');
+      return api.extractDataFromImageLocal(base64, docType);
     }
-    return callWithFallback(client => client.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: {
-        parts: [
-          { text: `Extract the structured data from this document image. It is a ${docType || 'document'}.` },
-          { inlineData: { data: base64, mimeType } }
-        ]
-      },
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: schema,
-      },
-    }).then(r => JSON.parse(r.text.trim())));
+    if (keyPool.length === 0) {
+      console.warn('AI disabled: no API keys configured. Falling back to Tesseract.');
+      return api.extractDataFromImageLocal(base64, docType);
+    }
+    try {
+      return await callWithFallback(client => client.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: {
+          parts: [
+            { text: `Extract the structured data from this document image. It is a ${docType || 'document'}.` },
+            { inlineData: { data: base64, mimeType } }
+          ]
+        },
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: schema,
+        },
+      }).then(r => JSON.parse(r.text.trim())));
+    } catch (geminiErr) {
+      console.warn('[OCR] Gemini API failed — falling back to Tesseract:', geminiErr);
+      return api.extractDataFromImageLocal(base64, docType);
+    }
   },
   extractDataFromImageLocal: async (base64: string, docType?: string): Promise<any> => {
     const { createWorker } = await import('tesseract.js');
+    // Use the image as-is (support both png and jpeg base64)
+    const mimePrefix = base64.startsWith('/9j') ? 'image/jpeg' : 'image/png';
+    const dataUrl = base64.startsWith('data:') ? base64 : `data:${mimePrefix};base64,${base64}`;
     const worker = await createWorker('eng');
     try {
-        const { data: { text } } = await worker.recognize(`data:image/png;base64,${base64}`);
-        const result: any = {};
-        const normalizedText = text.replace(/\n/g, ' ');
+        const { data: { text } } = await worker.recognize(dataUrl);
+        const result: any = { _offlineFallback: true, _rawText: text };
 
-        if (docType === 'PAN') {
-            const panMatch = normalizedText.match(/[A-Z]{5}[0-9]{4}[A-Z]{1}/);
-            if (panMatch) result.panNumber = panMatch[0];
-            // Name extraction is very hard with raw OCR without keys
-        } else if (docType === 'Aadhaar') {
-            const aadhaarMatch = normalizedText.match(/\d{4}\s\d{4}\s\d{4}/);
-            if (aadhaarMatch) result.aadhaarNumber = aadhaarMatch[0].replace(/\s/g, '');
-        } else if (docType === 'Bank' || docType === 'Cheque') {
-            const ifscMatch = normalizedText.match(/[A-Z]{4}0[A-Z0-9]{6}/);
-            if (ifscMatch) result.ifscCode = ifscMatch[0];
-            const acMatch = normalizedText.match(/\d{9,18}/);
-            if (acMatch) result.accountNumber = acMatch[0];
-        } else if (docType === 'Salary' || docType === 'UAN') {
-            const uanMatch = normalizedText.match(/\d{12}/);
-            if (uanMatch) result.uanNumber = uanMatch[0];
+        // ── Normalise whitespace for regex matching ───────────────────────────
+        const raw = text;
+        const flat = text.replace(/\n/g, ' ').replace(/\s{2,}/g, ' ');
+        const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+
+        // ── Shared helper: extract a value that follows a label keyword ───────
+        const afterLabel = (label: RegExp): string | null => {
+            const m = flat.match(new RegExp(label.source + '[:\\s]+([A-Za-z ./-]{3,60})', 'i'));
+            return m ? m[1].trim() : null;
+        };
+
+        // ── DOB: common formats DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD ──────────
+        const extractDob = (): string | null => {
+            const m =
+                flat.match(/(?:DOB|Date\s*of\s*Birth|D\.O\.B)[:\s]+([0-9]{2}[\/-][0-9]{2}[\/-][0-9]{4})/i) ||
+                flat.match(/([0-9]{2}[\/-][0-9]{2}[\/-][0-9]{4})/) ||
+                flat.match(/([0-9]{4}-[0-9]{2}-[0-9]{2})/);
+            if (!m) return null;
+            const raw = m[1];
+            // Normalise to YYYY-MM-DD
+            if (/^\d{4}-/.test(raw)) return raw;
+            const parts = raw.split(/[\/-]/);
+            if (parts.length !== 3) return null;
+            const [d, mo, y] = parts;
+            return `${y}-${mo.padStart(2,'0')}-${d.padStart(2,'0')}`;
+        };
+
+        // ── Phone: 10-digit Indian mobile ──────────────────────────────────
+        const extractPhone = (): string | null => {
+            const m = flat.match(/(?:Mobile|Phone|Mob|Ph)[:\s]+([6-9][0-9]{9})/i) ||
+                       flat.match(/\b([6-9][0-9]{9})\b/);
+            return m ? m[1] : null;
+        };
+
+        // ── Name: heuristic — first ALL-CAPS or Title-Case line near the top
+        const extractName = (): string | null => {
+            // Try after explicit 'Name:' label first
+            const labelled = afterLabel(/Name/);
+            if (labelled && labelled.split(' ').length >= 2) return labelled;
+            // Fallback: first line with 2+ words that is all letters
+            for (const line of lines.slice(0, 10)) {
+                if (/^[A-Z][a-zA-Z .]{4,}$/.test(line) && line.split(' ').length >= 2) return line;
+            }
+            return null;
+        };
+
+        // ── Gender ──────────────────────────────────────────────────────────
+        const extractGender = (): string | null => {
+            if (/\bMale\b/i.test(flat) && !/Female/i.test(flat)) return 'Male';
+            if (/\bFemale\b/i.test(flat)) return 'Female';
+            if (/\bTransgender\b/i.test(flat)) return 'Other';
+            return null;
+        };
+
+        // ╔══════════════════════════════════════════════════════════════════╗
+        // ║  Document-specific extraction                                    ║
+        // ╚══════════════════════════════════════════════════════════════════╝
+
+        if (docType === 'Aadhaar' || docType === 'idFront' || docType === 'Aadhaar Front') {
+            // Aadhaar number: 12 digits (may appear as XXXX XXXX XXXX)
+            const aM = flat.match(/\d{4}\s\d{4}\s\d{4}/) || flat.match(/\d{12}/);
+            if (aM) result.aadhaarNumber = aM[0].replace(/\s/g, '');
+            // Virtual ID (VID): 16 digits
+            const vidM = flat.match(/(?:VID|Virtual\s*ID)[:\s]*([0-9]{4}\s*[0-9]{4}\s*[0-9]{4}\s*[0-9]{4})/i) ||
+                         flat.match(/\b([0-9]{4}\s[0-9]{4}\s[0-9]{4}\s[0-9]{4})\b/);
+            if (vidM) result.virtualId = vidM[1].replace(/\s/g, '');
+            // Enrolment Number: e.g. 0000/00527/91433
+            const enrM = flat.match(/(?:Enrolment|Enrollment)\s*(?:No|Number)?[:\s]*([0-9]{4}\/[0-9]{5}\/[0-9]{5})/i);
+            if (enrM) result.enrolmentNumber = enrM[1];
+            const name = extractName();
+            if (name) result.name = name;
+            const dob = extractDob();
+            if (dob) result.dob = dob;
+            const gender = extractGender();
+            if (gender) result.gender = gender;
+            const phone = extractPhone();
+            if (phone) result.phone = phone;
+            // Full e-Aadhaar sheet address extraction
+            const pinM = flat.match(/\b([1-9][0-9]{5})\b/);
+            if (pinM) {
+                const pin = pinM[1];
+                const statePatterns = ['Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh','Goa','Gujarat','Haryana','Himachal Pradesh','Jharkhand','Karnataka','Kerala','Madhya Pradesh','Maharashtra','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Punjab','Rajasthan','Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal','Delhi','Jammu','Ladakh','Puducherry'];
+                const state = statePatterns.find(s => flat.toLowerCase().includes(s.toLowerCase())) || '';
+                const cityM = flat.match(/(?:VTC|District|DIST|City)[:\s]*([A-Za-z ]{3,30})/i);
+                const city = cityM ? cityM[1].trim() : '';
+                const addrStart = flat.search(/(?:To|Address|S\/O|C\/O|W\/O|D\/O|H\.No|House|Flat|Plot|Cross|Layout|Street|Near|Behind)/i);
+                const addrEnd = flat.indexOf(pin);
+                const line1 = addrStart >= 0 && addrEnd > addrStart ? flat.slice(addrStart, addrEnd).trim() : '';
+                if (line1 || city || pin) {
+                    result.address = { line1, city, state, pincode: pin };
+                }
+            }
+
+        } else if (docType === 'idBack' || docType === 'Aadhaar Back') {
+            // Address from Aadhaar back — S/O, C/O, W/O lines
+            const pinM = flat.match(/\b([1-9][0-9]{5})\b/);
+            const pin = pinM ? pinM[1] : '';
+            // State: last line before pincode
+            const statePatterns = ['Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh','Goa','Gujarat','Haryana','Himachal Pradesh','Jharkhand','Karnataka','Kerala','Madhya Pradesh','Maharashtra','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Punjab','Rajasthan','Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal','Delhi','Jammu','Ladakh','Puducherry'];
+            const state = statePatterns.find(s => flat.toLowerCase().includes(s.toLowerCase())) || '';
+            // Line1: everything up to the city/state block
+            const cityM = flat.match(/(?:,\s*)([A-Za-z ]{3,30})(?:,\s*(?:[A-Za-z ]+))?(?:,\s*[0-9]{6})/);
+            const city = cityM ? cityM[1].trim() : '';
+            // Gather remaining text as line1
+            const addrStart = flat.search(/(?:S\/O|C\/O|W\/O|D\/O|H\.No|House|Flat|Plot|Street|Near|Behind)/i);
+            const addrEnd = pin ? flat.indexOf(pin) : flat.length;
+            const line1 = addrStart >= 0 ? flat.slice(addrStart, addrEnd > addrStart ? addrEnd : flat.length).trim() : '';
+            result.address = { line1, city, state, pincode: pin };
+            const phone = extractPhone();
+            if (phone) result.phone = phone;
+
+        } else if (docType === 'PAN') {
+            const panM = flat.match(/[A-Z]{5}[0-9]{4}[A-Z]{1}/);
+            if (panM) result.panNumber = panM[0];
+            const name = extractName();
+            if (name) result.name = name;
+            const dob = extractDob();
+            if (dob) result.dob = dob;
+            const phone = extractPhone();
+            if (phone) result.phone = phone;
+
+        } else if (docType === 'Bank' || docType === 'Cheque' || docType === 'bank') {
+            const ifscM = flat.match(/[A-Z]{4}0[A-Z0-9]{6}/);
+            if (ifscM) result.ifscCode = ifscM[0];
+            // Account number: 9–18 digit sequence not matching a phone or Aadhaar
+            const acM = flat.match(/(?:A\/C|Account\s*No|Acc\s*No)[:\s.]*([0-9]{9,18})/i) ||
+                         flat.match(/\b([0-9]{11,18})\b/);
+            if (acM) { result.accountNumber = acM[1]; result.confirmAccountNumber = acM[1]; }
+            const nameM = afterLabel(/(?:Account\s*Holder|Name|A\/C\s*Holder)/);
+            if (nameM) result.accountHolderName = nameM;
+            const bankM = flat.match(/(?:Bank\s*Name|Bank)[:\s]+([A-Za-z ]{3,50})/i);
+            if (bankM) result.bankName = bankM[1].trim();
+            const branchM = afterLabel(/Branch/);
+            if (branchM) result.branchName = branchM;
+            const phone = extractPhone();
+            if (phone) result.phone = phone;
+            // Address from bank document
+            const pinM = flat.match(/\b([1-9][0-9]{5})\b/);
+            if (pinM) result.pincode = pinM[1];
+
+        } else if (docType === 'Salary' || docType === 'salary' || docType === 'UAN' || docType === 'uan') {
+            // UAN: 12 digits
+            const uanM = flat.match(/(?:UAN|Universal\s*Account)[:\s]*([0-9]{12})/i) ||
+                          flat.match(/\b([0-9]{12})\b/);
+            if (uanM) result.uanNumber = uanM[1];
+            // PF number: AA/AAA/000000/000 format
+            const pfM = flat.match(/[A-Z]{2}\/[A-Z]{3}\/[0-9]{6}\/[0-9]{3}/);
+            if (pfM) result.pfNumber = pfM[0];
+            // ESI: 10 or 17 digits
+            const esiM = flat.match(/(?:ESI|ESIC)[:\s]*([0-9]{10,17})/i);
+            if (esiM) result.esiNumber = esiM[1];
+            // Gross salary
+            const salaryM = flat.match(/(?:Gross|Total\s*Earnings)[:\s₹,]*([0-9,]{3,10})/i);
+            if (salaryM) result.grossSalary = salaryM[1].replace(/,/g, '');
+            // Employee name
+            const empM = afterLabel(/(?:Employee\s*Name|Emp\s*Name|Name)/);
+            if (empM) result.employeeName = empM;
         }
+
         return result;
     } finally {
         await worker.terminate();

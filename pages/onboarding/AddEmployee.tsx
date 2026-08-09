@@ -29,7 +29,6 @@ const stepDefinitions: Omit<Step, 'status'>[] = [
   { key: 'gmc', label: 'GMC', icon: HeartPulse },
   { key: 'uniform', label: 'Uniform', icon: Shirt },
   { key: 'documents', label: 'Documents', icon: Files },
-  { key: 'biometrics', label: 'Biometrics', icon: Fingerprint },
   { key: 'review', label: 'Review', icon: FileCheck },
 ];
 
@@ -113,6 +112,12 @@ const AddEmployee: React.FC = () => {
     useEffect(() => {
         const submissionId = searchParams.get('id');
         const fetchAndSetData = async (id: string) => {
+            // If store already has this exact ID loaded, don't overwrite with empty
+            if (data.id === id && data.personal?.firstName) {
+                setIsLoadingData(false);
+                return;
+            }
+
             setIsLoadingData(true);
             try {
                 const submissionData = await api.getOnboardingDataById(id);
@@ -121,13 +126,15 @@ const AddEmployee: React.FC = () => {
                     lastSavedDataRef.current = JSON.stringify(submissionData);
                     setSaveStatus('saved'); // Data is loaded and saved
                 } else {
-                    setToast({ message: "Could not find submission data.", type: 'error' });
-                    reset();
+                    if (data.id !== id) {
+                        setToast({ message: "Could not find requested submission data.", type: 'error' });
+                    }
                 }
             } catch (error) {
                 console.error("Failed to fetch submission data", error);
-                setToast({ message: "Failed to load submission data.", type: 'error' });
-                reset();
+                if (data.id !== id) {
+                    setToast({ message: "Failed to load submission data.", type: 'error' });
+                }
             } finally {
                 setIsLoadingData(false);
             }
@@ -138,7 +145,7 @@ const AddEmployee: React.FC = () => {
         } else {
             setIsLoadingData(false);
         }
-    }, [searchParams, setData, reset]);
+    }, [searchParams, data.id, data.personal?.firstName, setData]);
 
     const lastSavedDataRef = useRef<string>('');
 

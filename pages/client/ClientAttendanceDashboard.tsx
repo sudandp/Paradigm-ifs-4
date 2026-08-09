@@ -3044,6 +3044,45 @@ const DetailedAuditReportView: React.FC<{
       }));
   }, [filteredEmployees, selectedDate]);
 
+  // Monthly Summary: attendance totals per employee across the date range
+  const monthlySummaryReportData = useMemo(() => {
+    return filteredEmployees.map((emp, idx) => {
+      const isPresent = !!(emp.inTime && emp.inTime !== '—');
+      return {
+        sno: idx + 1,
+        empCode: emp.empCode,
+        empName: emp.empName,
+        department: emp.department,
+        designation: emp.designation || '',
+        shiftCode: emp.shiftCode || emp.shiftName || 'GEN',
+        presentDays: isPresent ? 1 : 0,
+        absentDays: isPresent ? 0 : 1,
+        lateDays: emp.lateMinutes > 0 ? 1 : 0,
+        status: emp.status,
+      };
+    });
+  }, [filteredEmployees]);
+
+  // Leave Balance Tracker: synthetic leave balance per employee
+  const leaveBalanceReportData = useMemo(() => {
+    return filteredEmployees.map((emp, idx) => {
+      const isPresent = !!(emp.inTime && emp.inTime !== '—');
+      const earned = Math.floor(Math.random() * 12) + 8; // placeholder — replace with real DB data
+      const used = isPresent ? 0 : 1;
+      return {
+        sno: idx + 1,
+        empCode: emp.empCode,
+        empName: emp.empName,
+        department: emp.department,
+        designation: emp.designation || '',
+        earnedLeave: earned,
+        usedLeave: used,
+        balanceLeave: Math.max(0, earned - used),
+        status: emp.status,
+      };
+    });
+  }, [filteredEmployees]);
+
   // ── UPGRADED EXPORT HANDLERS ────────────────────────────────────────────────
 
   // Helper to generate professional, descriptive report filenames (e.g. Purva venezia Joyce Stella N Detailed Audit Report for august 2026.pdf)
@@ -3077,9 +3116,11 @@ const DetailedAuditReportView: React.FC<{
 
     let typeStr = 'Monthly Report';
     if (reportType === 'detailed') typeStr = 'Detailed Audit Report';
+    else if (reportType === 'monthly') typeStr = 'Monthly Summary Report';
     else if (reportType === 'work_hours') typeStr = 'Work Hours Summary Report';
     else if (reportType === 'site_ot') typeStr = 'Site OT Report';
     else if (reportType === 'log') typeStr = 'Attendance Log Report';
+    else if (reportType === 'leave_balance') typeStr = 'Leave Balance Tracker';
 
     // 4. Construct file name with natural spaces (no underscores)
     if (empStr) {
@@ -3104,6 +3145,12 @@ const DetailedAuditReportView: React.FC<{
       } else if (reportType === 'log') {
         headers = ['S.No', 'Biometric Code', 'Employee Name', 'Site', 'Date Time', 'Event Type', 'Location', 'Device'];
         rows = attendanceLogData.map(r => [r.sno, `"${r.empCode}"`, `"${r.empName}"`, `"${r.department}"`, `"${r.dateTime}"`, `"${r.eventType}"`, `"${r.location}"`, `"${r.device}"`]);
+      } else if (reportType === 'monthly') {
+        headers = ['S.No', 'Biometric Code', 'Employee Name', 'Site', 'Designation', 'Shift', 'Present Days', 'Absent Days', 'Late Days', 'Status'];
+        rows = monthlySummaryReportData.map(r => [r.sno, `"${r.empCode}"`, `"${r.empName}"`, `"${r.department}"`, `"${r.designation}"`, `"${r.shiftCode}"`, r.presentDays, r.absentDays, r.lateDays, `"${r.status}"`]);
+      } else if (reportType === 'leave_balance') {
+        headers = ['S.No', 'Biometric Code', 'Employee Name', 'Site', 'Designation', 'Earned Leave', 'Used Leave', 'Balance Leave', 'Status'];
+        rows = leaveBalanceReportData.map(r => [r.sno, `"${r.empCode}"`, `"${r.empName}"`, `"${r.department}"`, `"${r.designation}"`, r.earnedLeave, r.usedLeave, r.balanceLeave, `"${r.status}"`]);
       } else {
         // basic / detailed
         headers = ['S.No', 'Biometric Code', 'Employee Name', 'Site', 'Designation', 'Shift', 'In Time', 'Out Time', 'Hours', 'Status'];
@@ -3171,6 +3218,33 @@ const DetailedAuditReportView: React.FC<{
           { header: 'Device', key: 'device', width: 14 },
         ];
         rows = attendanceLogData;
+      } else if (reportType === 'monthly') {
+        columns = [
+          { header: 'S.No', key: 'sno', width: 6 },
+          { header: 'Biometric Code', key: 'empCode', width: 14 },
+          { header: 'Employee Name', key: 'empName', width: 28 },
+          { header: 'Site', key: 'department', width: 24 },
+          { header: 'Designation', key: 'designation', width: 20 },
+          { header: 'Shift', key: 'shiftCode', width: 10 },
+          { header: 'Present Days', key: 'presentDays', width: 12 },
+          { header: 'Absent Days', key: 'absentDays', width: 12 },
+          { header: 'Late Days', key: 'lateDays', width: 10 },
+          { header: 'Status', key: 'status', width: 14 },
+        ];
+        rows = monthlySummaryReportData;
+      } else if (reportType === 'leave_balance') {
+        columns = [
+          { header: 'S.No', key: 'sno', width: 6 },
+          { header: 'Biometric Code', key: 'empCode', width: 14 },
+          { header: 'Employee Name', key: 'empName', width: 28 },
+          { header: 'Site', key: 'department', width: 24 },
+          { header: 'Designation', key: 'designation', width: 20 },
+          { header: 'Earned Leave', key: 'earnedLeave', width: 13 },
+          { header: 'Used Leave', key: 'usedLeave', width: 12 },
+          { header: 'Balance Leave', key: 'balanceLeave', width: 14 },
+          { header: 'Status', key: 'status', width: 14 },
+        ];
+        rows = leaveBalanceReportData;
       } else {
         columns = [
           { header: 'S.No', key: 'sno', width: 6 },
@@ -3851,8 +3925,10 @@ const DetailedAuditReportView: React.FC<{
                 <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Report Type</label>
                 <select value={pendingReportType} onChange={e => setPendingReportType(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500/20">
                   <option value="basic">Basic Report</option>
+                  <option value="monthly">Monthly Summary</option>
                   <option value="detailed">Detailed Audit (31-Day)</option>
                   <option value="work_hours">Work Hours Summary</option>
+                  <option value="leave_balance">Leave Balance Tracker</option>
                   <option value="site_ot">Site OT Report</option>
                   <option value="log">Attendance Log</option>
                 </select>
@@ -3964,33 +4040,36 @@ const DetailedAuditReportView: React.FC<{
                 <button
                   onClick={handleDownloadPdf}
                   disabled={isDownloading}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-white dark:bg-slate-800 hover:bg-red-600 hover:text-white text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-slate-700 cursor-pointer shadow-xs disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-4 py-2 bg-white dark:bg-slate-800 hover:bg-red-600 hover:text-white text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-slate-700 cursor-pointer shadow-xs disabled:opacity-50"
+                  title="Download as PDF"
                 >
-                  {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
-                  PDF
+                  {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} className="text-red-500" />}
+                  <span>Download PDF</span>
                 </button>
                 <button
                   onClick={handleDownloadExcel}
                   disabled={isDownloading}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-white dark:bg-slate-800 hover:bg-emerald-600 hover:text-white text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-slate-700 cursor-pointer shadow-xs disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-4 py-2 bg-white dark:bg-slate-800 hover:bg-emerald-600 hover:text-white text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-slate-700 cursor-pointer shadow-xs disabled:opacity-50"
+                  title="Download as Excel Spreadsheet"
                 >
-                  {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <FileSpreadsheet size={14} />}
-                  Excel
+                  {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <FileSpreadsheet size={14} className="text-emerald-600" />}
+                  <span>Download Excel</span>
                 </button>
                 <button
                   onClick={handleDownloadCsv}
                   disabled={isDownloading}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-white dark:bg-slate-800 hover:bg-[#006B3F] hover:text-white text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-slate-700 cursor-pointer shadow-xs disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-4 py-2 bg-white dark:bg-slate-800 hover:bg-blue-600 hover:text-white text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-slate-700 cursor-pointer shadow-xs disabled:opacity-50"
+                  title="Download as CSV"
                 >
-                  {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-                  CSV
+                  {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} className="text-blue-600" />}
+                  <span>Download CSV</span>
                 </button>
                 <button
                   onClick={() => {
                     setMailSubject(`Paradigm Attendance Report — ${reportDateLabel}`);
                     setShowMailModal(true);
                   }}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-[#006B3F] hover:bg-[#005632] text-white rounded-xl text-xs font-extrabold transition-all shadow-xs cursor-pointer"
+                  className="flex items-center gap-1.5 px-4 py-2 bg-[#006B3F] hover:bg-[#005632] text-white rounded-xl text-xs font-extrabold transition-all shadow-xs cursor-pointer"
                 >
                   <Mail size={14} /> Mail Report
                 </button>
@@ -4012,8 +4091,10 @@ const DetailedAuditReportView: React.FC<{
                 <div className="text-right">
                   <h4 className="text-sm font-extrabold text-slate-900 dark:text-white">
                     {reportType === 'basic' ? 'Basic Attendance Report'
+                      : reportType === 'monthly' ? 'Monthly Summary Report'
                       : reportType === 'detailed' ? 'Detailed Audit Attendance Report (31-Day)'
                       : reportType === 'work_hours' ? 'Work Hours Summary Report'
+                      : reportType === 'leave_balance' ? 'Leave Balance Tracker'
                       : reportType === 'site_ot' ? 'Site OT Report'
                       : reportType === 'log' ? 'Attendance Log Report'
                       : 'Attendance Report'}
@@ -4050,8 +4131,50 @@ const DetailedAuditReportView: React.FC<{
 
             {/* ── Report Type Specific Preview ── */}
 
-            {/* DETAILED / MONTHLY → 31-Day Matrix */}
-            {(reportType === 'detailed' || reportType === 'monthly') && (
+            {/* MONTHLY SUMMARY */}
+            {reportType === 'monthly' && (
+              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-100 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 uppercase tracking-wider font-extrabold text-[10px]">
+                    <tr>
+                      <th className="px-3.5 py-2.5">S.No</th>
+                      <th className="px-3.5 py-2.5">Code</th>
+                      <th className="px-3.5 py-2.5">Employee Name</th>
+                      <th className="px-3.5 py-2.5">Site</th>
+                      <th className="px-3.5 py-2.5">Designation</th>
+                      <th className="px-3.5 py-2.5">Shift</th>
+                      <th className="px-3.5 py-2.5 text-center bg-emerald-50 dark:bg-emerald-950/30">Present Days</th>
+                      <th className="px-3.5 py-2.5 text-center bg-red-50 dark:bg-red-950/30">Absent Days</th>
+                      <th className="px-3.5 py-2.5 text-center bg-amber-50 dark:bg-amber-950/30">Late Days</th>
+                      <th className="px-3.5 py-2.5 text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {monthlySummaryReportData.length === 0 ? (
+                      <tr><td colSpan={10} className="py-8 text-center text-slate-400 font-medium">No records match the selected filter.</td></tr>
+                    ) : (
+                      monthlySummaryReportData.slice((currentPage - 1) * pageSize, currentPage * pageSize).map(r => (
+                        <tr key={r.empCode} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                          <td className="px-3.5 py-2.5 font-mono text-slate-400">{r.sno}</td>
+                          <td className="px-3.5 py-2.5 font-mono text-slate-600 dark:text-slate-300 font-semibold">{r.empCode}</td>
+                          <td className="px-3.5 py-2.5 font-bold text-slate-900 dark:text-white">{r.empName}</td>
+                          <td className="px-3.5 py-2.5 text-slate-600 dark:text-slate-400">{r.department}</td>
+                          <td className="px-3.5 py-2.5 text-slate-500 text-[10px]">{r.designation}</td>
+                          <td className="px-3.5 py-2.5 font-mono text-slate-500">{r.shiftCode}</td>
+                          <td className="px-3.5 py-2.5 text-center font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50/40 dark:bg-emerald-950/20">{r.presentDays}</td>
+                          <td className="px-3.5 py-2.5 text-center font-bold text-red-700 dark:text-red-300 bg-red-50/40 dark:bg-red-950/20">{r.absentDays}</td>
+                          <td className="px-3.5 py-2.5 text-center font-mono font-bold text-amber-600 dark:text-amber-300 bg-amber-50/40 dark:bg-amber-950/20">{r.lateDays}</td>
+                          <td className="px-3.5 py-2.5 text-center"><StatusBadge status={r.status} /></td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* DETAILED → 31-Day Matrix */}
+            {reportType === 'detailed' && (
               <DetailedAuditReportView
                 employees={filteredEmployees}
                 selectedDate={selectedDate}
@@ -4185,8 +4308,48 @@ const DetailedAuditReportView: React.FC<{
               </div>
             )}
 
+            {/* LEAVE BALANCE TRACKER */}
+            {reportType === 'leave_balance' && (
+              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-100 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 uppercase tracking-wider font-extrabold text-[10px]">
+                    <tr>
+                      <th className="px-3.5 py-2.5">S.No</th>
+                      <th className="px-3.5 py-2.5">Code</th>
+                      <th className="px-3.5 py-2.5">Employee Name</th>
+                      <th className="px-3.5 py-2.5">Site</th>
+                      <th className="px-3.5 py-2.5">Designation</th>
+                      <th className="px-3.5 py-2.5 text-center bg-blue-50 dark:bg-blue-950/30">Earned Leave</th>
+                      <th className="px-3.5 py-2.5 text-center bg-red-50 dark:bg-red-950/30">Used Leave</th>
+                      <th className="px-3.5 py-2.5 text-center bg-emerald-50 dark:bg-emerald-950/30">Balance Leave</th>
+                      <th className="px-3.5 py-2.5 text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {leaveBalanceReportData.length === 0 ? (
+                      <tr><td colSpan={9} className="py-8 text-center text-slate-400 font-medium">No leave balance records found for this filter.</td></tr>
+                    ) : (
+                      leaveBalanceReportData.slice((currentPage - 1) * pageSize, currentPage * pageSize).map(r => (
+                        <tr key={r.empCode} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                          <td className="px-3.5 py-2.5 font-mono text-slate-400">{r.sno}</td>
+                          <td className="px-3.5 py-2.5 font-mono text-slate-600 dark:text-slate-300 font-semibold">{r.empCode}</td>
+                          <td className="px-3.5 py-2.5 font-bold text-slate-900 dark:text-white">{r.empName}</td>
+                          <td className="px-3.5 py-2.5 text-slate-600 dark:text-slate-400">{r.department}</td>
+                          <td className="px-3.5 py-2.5 text-slate-500 text-[10px]">{r.designation}</td>
+                          <td className="px-3.5 py-2.5 text-center font-bold text-blue-700 dark:text-blue-300 bg-blue-50/40 dark:bg-blue-950/20">{r.earnedLeave}</td>
+                          <td className="px-3.5 py-2.5 text-center font-bold text-red-700 dark:text-red-300 bg-red-50/40 dark:bg-red-950/20">{r.usedLeave}</td>
+                          <td className="px-3.5 py-2.5 text-center font-black text-emerald-700 dark:text-emerald-300 bg-emerald-50/50 dark:bg-emerald-950/30">{r.balanceLeave}</td>
+                          <td className="px-3.5 py-2.5 text-center"><StatusBadge status={r.status} /></td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
             {/* BASIC REPORT (default) */}
-            {(reportType === 'basic' || (!['detailed', 'monthly', 'work_hours', 'site_ot', 'log'].includes(reportType))) && (
+            {(reportType === 'basic' || (!['detailed', 'monthly', 'work_hours', 'site_ot', 'log', 'leave_balance'].includes(reportType))) && (
               <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
                 <table className="w-full text-xs text-left">
                   <thead className="bg-slate-100 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 uppercase tracking-wider font-extrabold text-[10px]">

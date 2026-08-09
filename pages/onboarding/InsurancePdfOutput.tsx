@@ -24,16 +24,14 @@ const InsurancePdfOutput: React.FC = () => {
 
     useEffect(() => {
         const fetchData = async () => {
+            setIsLoading(true);
             if (id && !id.startsWith('draft_')) {
-                setIsLoading(true);
                 const data = await api.getOnboardingDataById(id);
-                setEmployeeData(data || null);
-                setIsLoading(false);
+                setEmployeeData(data || storeData);
             } else {
-                // Use data from the store for drafts
                 setEmployeeData(storeData);
-                setIsLoading(false);
             }
+            setIsLoading(false);
         };
         fetchData();
     }, [id, storeData]);

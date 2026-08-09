@@ -353,6 +353,17 @@ const Review = () => {
             )}
 
             <div className="mt-8 pt-6 border-t">
+                {!canSubmit && (
+                    <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400">
+                        <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                        <span>
+                            To submit application: 
+                            {!data.formsGenerated && ' 1. Click "Generate & Review Forms" above.'}
+                            {data.formsGenerated && !esignDocUrl && ' 2. Complete the Digital Signature below.'}
+                            {perfiosApi.enabled && verificationState !== 'success' && ' 3. Complete Third-Party Verification.'}
+                        </span>
+                    </div>
+                )}
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                     <div className="flex flex-col gap-1">
                         <DraftSaveIndicator
@@ -368,7 +379,6 @@ const Review = () => {
                             variant="outline"
                             onClick={handleSaveAsDraft}
                             isLoading={draftSaveStatus === 'saving'}
-                            disabled={!canSubmit}
                         >
                             <Save className="mr-2 h-4 w-4" />
                             Save as Draft

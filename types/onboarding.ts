@@ -17,6 +17,8 @@ import type { VerificationUsageItem } from './index';
 
 export interface OnboardingData {
   id?: string;
+  createdAt?: string;
+  created_at?: string;
   status: 'draft' | 'pending' | 'verified' | 'rejected';
   portalSyncStatus?: 'pending_sync' | 'synced' | 'failed';
   organizationId?: string;
@@ -37,9 +39,15 @@ export interface OnboardingData {
   requiresManualVerification?: boolean;
   formsGenerated?: boolean;
   verificationUsage?: VerificationUsageItem[];
+  verifiedBy?: string | null;
+  verifiedByPhoto?: string | null;
+  verifiedAt?: string | null;
+  verificationMode?: 'auto' | 'manual' | null;
+  submissionMode?: 'manual' | 'auto_ai' | null;
 }
 
 export type OnboardingStep = 'personal' | 'address' | 'organization' | 'family' | 'education' | 'bank' | 'uan' | 'esi' | 'gmc' | 'uniform' | 'biometrics' | 'documents' | 'review';
+
 
 export interface DocumentRules {
   aadhaar: boolean;

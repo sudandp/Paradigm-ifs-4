@@ -302,7 +302,7 @@ public class TrackingService extends Service implements SensorEventListener {
                         ? supabaseUrl + "functions/v1/record-tracking-ping"
                         : supabaseUrl + "/functions/v1/record-tracking-ping";
 
-                String requestId = "bg-ping-" + java.util.UUID.randomUUID().toString();
+                String requestId = java.util.UUID.randomUUID().toString();
 
                 JSONObject body = new JSONObject();
                 body.put("requestId",  requestId);

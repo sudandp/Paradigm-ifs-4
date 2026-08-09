@@ -8,6 +8,9 @@ import { pdf } from '@react-pdf/renderer';
 import { InsuranceSummaryDocument } from './attendance/PDFReports';
 
 
+import { useOnboardingStore } from '../store/onboardingStore';
+
+
 const PdfExportButton: React.FC<{ employeeData: OnboardingData }> = ({ employeeData }) => {
     const [isGenerating, setIsGenerating] = useState(false);
 
@@ -40,23 +43,24 @@ const PdfExportButton: React.FC<{ employeeData: OnboardingData }> = ({ employeeD
 };
 
 const InsurancePdfView: React.FC = () => {
-    const { id } = useParams();
+    const { id } = useParams<{ id: string }>();
     const [employeeData, setEmployeeData] = useState<OnboardingData | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const { data: storeData } = useOnboardingStore();
 
     useEffect(() => {
         const fetchData = async () => {
+            setIsLoading(true);
             if (id) {
-                setIsLoading(true);
                 const data = await api.getOnboardingDataById(id);
-                if (data) {
-                    setEmployeeData(data);
-                }
-                setIsLoading(false);
+                setEmployeeData(data || storeData);
+            } else {
+                setEmployeeData(storeData);
             }
+            setIsLoading(false);
         };
         fetchData();
-    }, [id]);
+    }, [id, storeData]);
 
     if (isLoading) {
         return <div className="text-center p-10">Loading employee data...</div>;

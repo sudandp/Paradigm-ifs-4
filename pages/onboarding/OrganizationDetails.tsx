@@ -19,23 +19,24 @@ import Checkbox from '../../components/ui/Checkbox';
 export const organizationDetailsSchema = yup.object({
     designation: yup.string().required('Designation is required'),
     department: yup.string().required('Department is required'),
-    reportingManager: yup.string().optional(),
+    reportingManager: yup.string().nullable().optional(),
     organizationId: yup.string().required('Organization is required'),
-    organizationName: yup.string().required(),
+    organizationName: yup.string().nullable().optional(),
     joiningDate: yup.string().required('Joining date is required'),
     workType: yup.string().oneOf(['Full-time', 'Part-time', 'Contract', '']).required('Work type is required'),
-    site: yup.string().optional(),
+    site: yup.string().nullable().optional(),
     defaultSalary: yup.number().nullable().optional(),
-    oshFitness: yup.object().optional(),
-    compensationPackage: yup.mixed().optional(),
+    oshFitness: yup.object().nullable().optional(),
+    compensationPackage: yup.mixed().nullable().optional(),
 }).defined();
 
 interface OutletContext {
   onValidated: () => Promise<void>;
+  setToast?: (toast: { message: string; type: 'success' | 'error' } | null) => void;
 }
 
 const OrganizationDetails = () => {
-    const { onValidated } = useOutletContext<OutletContext>();
+    const { onValidated, setToast } = useOutletContext<OutletContext>();
     const { user } = useAuthStore();
     const { data, updateOrganization } = useOnboardingStore();
     const [organizations, setOrganizations] = useState<Organization[]>([]);
@@ -157,13 +158,26 @@ const OrganizationDetails = () => {
 
 
     const onSubmit: SubmitHandler<OrganizationDetails> = async (formData) => {
-        updateOrganization(formData);
+        const selectedOrg = dropdownOptions.find(o => o.id === formData.organizationId);
+        const finalData = {
+            ...formData,
+            organizationName: formData.organizationName || selectedOrg?.name || data.organization.organizationName || data.organization.site || 'Selected Client/Site'
+        };
+        updateOrganization(finalData);
         await onValidated();
+    };
+
+    const onInvalid = (errors: any) => {
+        console.error("OrganizationDetails Validation Errors:", errors);
+        const firstErr = Object.values(errors)[0] as any;
+        if (firstErr?.message && setToast) {
+            setToast({ message: `Please fix: ${firstErr.message}`, type: 'error' });
+        }
     };
 
     if (isMobile) {
         return (
-            <form onSubmit={handleSubmit(onSubmit)} id="organization-form">
+            <form onSubmit={handleSubmit(onSubmit, onInvalid)} id="organization-form">
                  <div className="space-y-6">
                     <p className="text-sm text-gray-400">Provide the employment details for the new employee within the organization.</p>
                     <select {...register('organizationId')} className="pro-select pro-select-arrow">
@@ -194,7 +208,7 @@ const OrganizationDetails = () => {
     }
 
     return (
-        <form onSubmit={handleSubmit(onSubmit)} id="organization-form">
+        <form onSubmit={handleSubmit(onSubmit, onInvalid)} id="organization-form">
             <FormHeader title="Organization Details" subtitle="Your employment details within the organization." />
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">

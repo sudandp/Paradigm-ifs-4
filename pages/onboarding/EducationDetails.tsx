@@ -117,6 +117,13 @@ const EducationDetails = () => {
         await onValidated();
     };
 
+    const onInvalid = (errors: any) => {
+        console.error("EducationDetails Validation Errors:", errors);
+        if (setToast) {
+            setToast({ message: 'Please complete required education fields.', type: 'error' });
+        }
+    };
+
     const handleOcrComplete = (index: number) => (extractedData: any) => {
         const recordId = fields[index].id;
         const update: Partial<EducationRecord> = {};
@@ -153,7 +160,7 @@ const EducationDetails = () => {
     
     if (isMobile) {
         return (
-            <form onSubmit={handleSubmit(onSubmit)} id="education-form">
+            <form onSubmit={handleSubmit(onSubmit, onInvalid)} id="education-form">
                 <p className="text-sm text-gray-400 mb-6">List educational qualifications, starting with the most recent.</p>
                 <div className="space-y-4">
                     {fields.map((field, index) => (
@@ -163,7 +170,10 @@ const EducationDetails = () => {
                             </button>
                             <Controller name={`education.${index}.degree`} control={control} render={({ field }) => <input placeholder="Degree / Certificate" {...field} className="form-input"/>} />
                             <Controller name={`education.${index}.institution`} control={control} render={({ field }) => <input placeholder="Institution / University" {...field} className="form-input"/>} />
-                            <Controller name={`education.${index}.endYear`} control={control} render={({ field }) => <input placeholder="Year of Completion" type="text" maxLength={4} {...field} className="form-input"/>} />
+                            <div className="grid grid-cols-2 gap-3">
+                                <Controller name={`education.${index}.startYear`} control={control} render={({ field }) => <input placeholder="Start Year (YYYY)" type="text" maxLength={4} {...field} className="form-input"/>} />
+                                <Controller name={`education.${index}.endYear`} control={control} render={({ field }) => <input placeholder="End Year (YYYY)" type="text" maxLength={4} {...field} className="form-input"/>} />
+                            </div>
                             <Controller name={`education.${index}.document`} control={control} render={({ field, fieldState }) => (
                                 <UploadDocument label={`Certificate ${isAdminOrManager ? '(Mandatory)' : '(Optional)'}`} file={field.value} onFileChange={field.onChange} error={fieldState.error?.message} allowCapture />
                             )} />
@@ -178,7 +188,7 @@ const EducationDetails = () => {
     }
 
     return (
-        <form onSubmit={handleSubmit(onSubmit)} id="education-form">
+        <form onSubmit={handleSubmit(onSubmit, onInvalid)} id="education-form">
             <Modal 
               isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onConfirm={handleConfirmRemove}
               title="Confirm Deletion"

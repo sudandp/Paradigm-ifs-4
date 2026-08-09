@@ -64,10 +64,10 @@ const FamilyDetails = () => {
     // Fix: Removed generic type arguments from yup calls
     const familyMemberSchema = yup.object({
         id: yup.string().required(),
-        relation: yup.string().oneOf(['Spouse', 'Child', 'Father', 'Mother', '']).required("Relation is required"),
+        relation: yup.string().oneOf(['Spouse', 'Wife', 'Husband', 'Child', 'Father', 'Mother'], 'Relation is required').required("Relation is required"),
         name: yup.string().required("Name is required"),
         dob: yup.string().required("Date of birth is required"),
-        gender: yup.string().oneOf(['Male', 'Female', 'Other', '']).required("Gender is required"),
+        gender: yup.string().oneOf(['Male', 'Female', 'Other'], 'Gender is required').required("Gender is required"),
         occupation: yup.string().optional(),
         dependent: yup.boolean().required(),
         phone: yup.string()
@@ -151,22 +151,44 @@ const FamilyDetails = () => {
         setValue(`family.${index}.relation`, relation, { shouldValidate: true });
 
         // Infer gender from relation
-        if (relation === 'Father') {
-            setValue(`family.${index}.gender`, 'Male', { shouldValidate: false });
-        } else if (relation === 'Mother') {
-            setValue(`family.${index}.gender`, 'Female', { shouldValidate: false });
+        if (relation === 'Father' || relation === 'Husband') {
+            setValue(`family.${index}.gender`, 'Male', { shouldValidate: true });
+        } else if (relation === 'Mother' || relation === 'Wife') {
+            setValue(`family.${index}.gender`, 'Female', { shouldValidate: true });
         } else if (relation === 'Spouse') {
             // Spouse gender is opposite of the employee's gender
             const empGender = onboardingData.personal.gender;
-            const spouseGender = empGender === 'Male' ? 'Female' : empGender === 'Female' ? 'Male' : '';
-            if (spouseGender) setValue(`family.${index}.gender`, spouseGender, { shouldValidate: false });
+            const spouseGender = empGender === 'Male' ? 'Female' : empGender === 'Female' ? 'Male' : 'Female';
+            setValue(`family.${index}.gender`, spouseGender, { shouldValidate: true });
         }
 
         // Auto-mark as dependent for all common relations
-        if (['Spouse', 'Child', 'Father', 'Mother'].includes(relation)) {
+        if (['Spouse', 'Wife', 'Husband', 'Child', 'Father', 'Mother'].includes(relation)) {
             setValue(`family.${index}.dependent`, true, { shouldValidate: false });
         }
     };
+
+    // Auto-sync gender when relation is prefilled or changed
+    const familyWatchList = watch('family');
+    useEffect(() => {
+        if (!familyWatchList || familyWatchList.length === 0) return;
+        familyWatchList.forEach((member, index) => {
+            if (!member) return;
+            const rel = member.relation as string;
+            const currentGender = member.gender;
+            if (rel && !currentGender) {
+                if (rel === 'Mother' || rel === 'Wife') {
+                    setValue(`family.${index}.gender`, 'Female', { shouldValidate: true });
+                } else if (rel === 'Father' || rel === 'Husband') {
+                    setValue(`family.${index}.gender`, 'Male', { shouldValidate: true });
+                } else if (rel === 'Spouse') {
+                    const empGender = onboardingData.personal.gender;
+                    const spouseGender = empGender === 'Male' ? 'Female' : empGender === 'Female' ? 'Male' : 'Female';
+                    setValue(`family.${index}.gender`, spouseGender, { shouldValidate: true });
+                }
+            }
+        });
+    }, [familyWatchList, setValue, onboardingData.personal.gender]);
 
 
     const handleOcrComplete = (index: number) => (extractedData: any) => {
@@ -200,11 +222,11 @@ const FamilyDetails = () => {
         }
         if (extractedData.gender) {
             const genderLower = extractedData.gender.toLowerCase().trim();
-            if (genderLower.includes('male') || genderLower.includes('purush') || genderLower === 'm') {
-                setValue(`family.${index}.gender`, 'Male', { shouldValidate: true });
-                updated = true;
-            } else if (genderLower.includes('female') || genderLower.includes('mahila') || genderLower === 'f') {
+            if (genderLower.includes('female') || genderLower.includes('mahila') || genderLower.startsWith('fem') || genderLower === 'f') {
                 setValue(`family.${index}.gender`, 'Female', { shouldValidate: true });
+                updated = true;
+            } else if (genderLower.includes('male') || genderLower.includes('purush') || genderLower === 'm') {
+                setValue(`family.${index}.gender`, 'Male', { shouldValidate: true });
                 updated = true;
             }
         }
@@ -243,10 +265,17 @@ const FamilyDetails = () => {
         updateFamily(formData.family);
         await onValidated();
     };
+
+    const onInvalid = (errors: any) => {
+        console.error("FamilyDetails Validation Errors:", errors);
+        if (setToast) {
+            setToast({ message: `Please complete all required family member details.`, type: 'error' });
+        }
+    };
     
     if (isMobile) {
         return (
-            <form onSubmit={handleSubmit(onSubmit)} id="family-form">
+            <form onSubmit={handleSubmit(onSubmit, onInvalid)} id="family-form">
                 <p className="text-sm text-gray-400 mb-6">List your immediate family members.</p>
                 <div className="space-y-4">
                     {fields.map((field, index) => {
@@ -274,7 +303,7 @@ const FamilyDetails = () => {
                                         onChange={(e) => handleRelationChange(index, e.target.value)}
                                     >
                                         <option value="">Select Relation</option>
-                                        <option>Spouse</option><option>Child</option><option>Father</option><option>Mother</option>
+                                        <option>Spouse</option><option>Wife</option><option>Husband</option><option>Child</option><option>Father</option><option>Mother</option>
                                     </select>
                                 )} />
                                  <Controller name={`family.${index}.name`} control={control} render={({ field }) => <input placeholder="Full Name" {...field} className="form-input"/>} />
@@ -329,7 +358,7 @@ const FamilyDetails = () => {
     }
 
     return (
-        <form onSubmit={handleSubmit(onSubmit)} id="family-form">
+        <form onSubmit={handleSubmit(onSubmit, onInvalid)} id="family-form">
             <Modal
               isOpen={isModalOpen}
               onClose={() => setIsModalOpen(false)}
@@ -370,7 +399,7 @@ const FamilyDetails = () => {
                                         onChange={(e) => handleRelationChange(index, e.target.value)}
                                     >
                                         <option value="">Select</option>
-                                        <option>Spouse</option><option>Child</option><option>Father</option><option>Mother</option>
+                                        <option>Spouse</option><option>Wife</option><option>Husband</option><option>Child</option><option>Father</option><option>Mother</option>
                                     </Select>
                                 } />
                                 <Controller name={`family.${index}.name`} control={control} render={({ field }) => <Input label="Full Name" id={field.name} error={errors.family?.[index]?.name?.message} {...field}/>} />

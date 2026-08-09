@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { format } from 'date-fns';
 import { api } from '../../services/api';
 import type { OnboardingData } from '../../types';
 import StatusChip from '../../components/ui/StatusChip';
@@ -24,6 +25,24 @@ import PendingLeavesPanel from '../../components/dashboard/PendingLeavesPanel';
 import SiteTrendPanel from '../../components/dashboard/SiteTrendPanel';
 import { BarChart3 } from 'lucide-react';
 
+
+const formatCreatedDate = (dateStr?: string) => {
+    if (!dateStr) return '-';
+    try {
+        const date = new Date(dateStr);
+        if (isNaN(date.getTime())) return dateStr;
+        return date.toLocaleString('en-IN', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+        });
+    } catch {
+        return dateStr;
+    }
+};
 
 const SiteDashboard: React.FC = () => {
     const navigate = useNavigate();
@@ -234,14 +253,15 @@ const SiteDashboard: React.FC = () => {
                                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Employee</th>
                                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Status</th>
                                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Portal Sync</th>
+                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Created Date/Time</th>
                                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {submissionsLoading ? (
-                                    <tr><td colSpan={4} className="text-center py-10 text-muted">Loading submissions...</td></tr>
+                                    <tr><td colSpan={5} className="text-center py-10 text-muted">Loading submissions...</td></tr>
                                 ) : filteredSubmissions.length === 0 ? (
-                                    <tr><td colSpan={4} className="text-center py-10 text-muted">No submissions found.</td></tr>
+                                    <tr><td colSpan={5} className="text-center py-10 text-muted">No submissions found.</td></tr>
                                 ) : (
                                     filteredSubmissions.map((s) => (
                                         <tr key={s.id}>
@@ -254,6 +274,9 @@ const SiteDashboard: React.FC = () => {
                                             </td>
                                             <td data-label="Portal Sync" className="px-6 py-4 whitespace-nowrap">
                                                 <PortalSyncStatusChip status={s.portalSyncStatus} />
+                                            </td>
+                                            <td data-label="Created Date/Time" className="px-6 py-4 whitespace-nowrap text-sm text-primary-text">
+                                                {formatCreatedDate(s.createdAt || s.created_at || s.enrollmentDate)}
                                             </td>
                                             <td data-label="Actions" className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                                 <div className="flex items-center gap-2 md:justify-start justify-end">

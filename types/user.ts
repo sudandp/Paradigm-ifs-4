@@ -199,13 +199,14 @@ export interface PersonalDetails {
   emergencyContactName: string;
   emergencyContactNumber: string;
   emergencyContactId?: string;
-  relationship: 'Spouse' | 'Child' | 'Father' | 'Mother' | 'Sibling' | 'Other' | '';
+  relationship: 'Spouse' | 'Wife' | 'Husband' | 'Child' | 'Father' | 'Mother' | 'Sibling' | 'Other' | '';
   salary: number | null;
   verifiedStatus?: {
     name?: boolean | null;
     dob?: boolean | null;
     idProofNumber?: boolean | null;
     email?: boolean | null;
+    panCard?: boolean | null;
   };
   isQrVerified?: boolean;
   spokenLanguages?: string[];
@@ -247,7 +248,7 @@ export interface AddressDetails {
 
 export interface FamilyMember {
   id: string;
-  relation: 'Spouse' | 'Child' | 'Father' | 'Mother' | '';
+  relation: 'Spouse' | 'Wife' | 'Husband' | 'Child' | 'Father' | 'Mother' | '';
   name: string;
   dob: string;
   gender: 'Male' | 'Female' | 'Other' | '';

@@ -35,10 +35,11 @@ export const addressDetailsSchema = yup.object({
 
 interface OutletContext {
   onValidated: () => Promise<void>;
+  setToast?: (toast: { message: string; type: 'success' | 'error' } | null) => void;
 }
 
 const AddressDetails = () => {
-    const { onValidated } = useOutletContext<OutletContext>();
+    const { onValidated, setToast } = useOutletContext<OutletContext>();
     const { data, updateAddress, setAddressVerifiedStatus } = useOnboardingStore();
     const { address: addressSettings } = useSettingsStore();
     const [isPincodeLoading, setIsPincodeLoading] = useState(false);
@@ -192,8 +193,16 @@ const AddressDetails = () => {
         await onValidated();
     };
 
+    const onInvalid = (errors: any) => {
+        console.error("AddressDetails Validation Errors:", errors);
+        const firstErr = Object.values(errors)[0] as any;
+        if (firstErr?.message && setToast) {
+            setToast({ message: `Please fix: ${firstErr.message}`, type: 'error' });
+        }
+    };
+
     return (
-        <form onSubmit={handleSubmit(onSubmit)} id="address-form">
+        <form onSubmit={handleSubmit(onSubmit, onInvalid)} id="address-form">
             <FormHeader title="Address Details" subtitle="Your communication and permanent address." />
             
             <div className="space-y-8">

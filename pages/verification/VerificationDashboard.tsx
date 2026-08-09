@@ -5,7 +5,7 @@ import type { OnboardingData } from '@/types';
 import StatusChip from '@/components/ui/StatusChip';
 import Button from '@/components/ui/Button';
 import { useNavigate } from 'react-router-dom';
-import { Search, Eye, FileText, Send, RefreshCw, AlertTriangle, Loader2, CheckSquare, XSquare, Square, Edit2, Trash2, Bug, Play, RotateCcw, X, CheckCircle2 } from 'lucide-react';
+import { Search, Eye, FileText, Send, RefreshCw, AlertTriangle, Loader2, CheckSquare, XSquare, Square, Edit2, Trash2, Bug, Play, RotateCcw, X, CheckCircle2, Users, Clock, XCircle, MapPin, Briefcase, Calendar, Bot, Sparkles, UserCheck } from 'lucide-react';
 import Toast from '@/components/ui/Toast';
 import TableSkeleton from '@/components/skeletons/TableSkeleton';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -223,6 +223,173 @@ const SyncDebugModal: React.FC<SyncDebugModalProps> = ({ isOpen, onClose, onRefr
 };
 
 
+export const checkIsAllDocsVerified = (submission: OnboardingData): boolean => {
+    const isPanVerified = Boolean(
+        submission.personal?.verifiedStatus?.panCard ||
+        (submission.personal?.idProofType === 'PAN' && submission.personal?.verifiedStatus?.idProofNumber) ||
+        submission.personal?.panCard ||
+        (submission.personal?.idProofType === 'PAN' && submission.personal?.idProofNumber)
+    );
+
+    const isAadhaarVerified = Boolean(
+        submission.personal?.isQrVerified ||
+        (submission.personal?.idProofType === 'Aadhaar' && submission.personal?.verifiedStatus?.idProofNumber) ||
+        (submission.personal?.idProofFront && submission.personal?.idProofBack) ||
+        (submission.personal?.idProofType === 'Aadhaar' && submission.personal?.idProofNumber)
+    );
+
+    const isUanApplicable = submission.uan?.hasPreviousPf;
+    const isUanVerified = !isUanApplicable || Boolean(
+        submission.uan?.verifiedStatus?.uanNumber ||
+        submission.uan?.uanNumber ||
+        submission.uan?.document ||
+        submission.uan?.salarySlip
+    );
+
+    const isBankVerified = Boolean(
+        submission.bank?.verifiedStatus?.accountNumber ||
+        (submission.bank?.accountNumber && (submission.bank?.bankProof || submission.bank?.ifscCode))
+    );
+
+    const isAddressVerified = Boolean(
+        (submission.address?.present?.verifiedStatus?.line1 || submission.address?.present?.line1) &&
+        (submission.address?.permanent?.verifiedStatus?.line1 || submission.address?.permanent?.line1 || submission.address?.sameAsPresent)
+    );
+
+    return isPanVerified && isAadhaarVerified && isUanVerified && isBankVerified && isAddressVerified;
+};
+
+interface DocumentVerificationBadgesProps {
+    submission: OnboardingData;
+    onToggleDoc?: (docType: string) => void;
+    hideLabels?: boolean;
+}
+
+const DocumentVerificationBadges: React.FC<DocumentVerificationBadgesProps> = ({ submission, onToggleDoc, hideLabels }) => {
+    // 1. PAN Verification Status
+    const isPanVerified = Boolean(
+        submission.personal?.verifiedStatus?.panCard ||
+        (submission.personal?.idProofType === 'PAN' && submission.personal?.verifiedStatus?.idProofNumber) ||
+        submission.personal?.panCard ||
+        (submission.personal?.idProofType === 'PAN' && submission.personal?.idProofNumber)
+    );
+
+    // 2. Aadhaar Verification Status
+    const isAadhaarVerified = Boolean(
+        submission.personal?.isQrVerified ||
+        (submission.personal?.idProofType === 'Aadhaar' && submission.personal?.verifiedStatus?.idProofNumber) ||
+        (submission.personal?.idProofFront && submission.personal?.idProofBack) ||
+        (submission.personal?.idProofType === 'Aadhaar' && submission.personal?.idProofNumber)
+    );
+
+    // 3. UAN Verification Status
+    const isUanApplicable = submission.uan?.hasPreviousPf;
+    const isUanVerified = isUanApplicable ? Boolean(
+        submission.uan?.verifiedStatus?.uanNumber ||
+        submission.uan?.uanNumber ||
+        submission.uan?.document ||
+        submission.uan?.salarySlip
+    ) : null;
+
+    // 4. Bank Account Verification Status
+    const isBankVerified = Boolean(
+        submission.bank?.verifiedStatus?.accountNumber ||
+        (submission.bank?.accountNumber && (submission.bank?.bankProof || submission.bank?.ifscCode))
+    );
+
+    // 5. Address Verification Status
+    const isAddressVerified = Boolean(
+        (submission.address?.present?.verifiedStatus?.line1 || submission.address?.present?.line1) &&
+        (submission.address?.permanent?.verifiedStatus?.line1 || submission.address?.permanent?.line1 || submission.address?.sameAsPresent)
+    );
+
+    const docList = [
+        { 
+            key: 'pan', 
+            label: 'PAN', 
+            verified: isPanVerified,
+            activeColor: 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100',
+            iconColor: 'text-blue-600'
+        },
+        { 
+            key: 'aadhaar', 
+            label: 'Aadhaar', 
+            verified: isAadhaarVerified,
+            activeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100',
+            iconColor: 'text-emerald-600'
+        },
+        { 
+            key: 'uan', 
+            label: 'UAN', 
+            verified: isUanVerified, 
+            applicable: isUanApplicable,
+            activeColor: 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100',
+            iconColor: 'text-amber-600'
+        },
+        { 
+            key: 'bank', 
+            label: 'Bank', 
+            verified: isBankVerified,
+            activeColor: 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100',
+            iconColor: 'text-indigo-600'
+        },
+        { 
+            key: 'address', 
+            label: 'Address', 
+            verified: isAddressVerified,
+            activeColor: 'bg-teal-50 text-teal-700 border-teal-200 hover:bg-teal-100',
+            iconColor: 'text-teal-600'
+        },
+    ];
+
+    return (
+        <div className={`flex items-center gap-2 ${hideLabels ? 'justify-center' : 'flex-wrap'}`}>
+            {docList.map(doc => {
+                if (doc.applicable === false) {
+                    return (
+                        <span 
+                            key={doc.key} 
+                            className={`inline-flex items-center justify-center gap-1 rounded-md text-[10px] font-bold bg-slate-100 text-slate-400 border border-slate-200 ${
+                                hideLabels ? 'w-7 h-7 p-0' : 'px-2 py-0.5'
+                            }`}
+                            title={`${doc.label}: Not Applicable`}
+                        >
+                            <Square className="w-3.5 h-3.5 text-slate-300" />
+                            {!hideLabels && <span>{doc.label} (N/A)</span>}
+                        </span>
+                    );
+                }
+                const isVerified = doc.verified === true;
+                return (
+                    <button
+                        key={doc.key}
+                        type="button"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleDoc?.(doc.key);
+                        }}
+                        className={`inline-flex items-center justify-center gap-1 rounded-md text-[10px] font-bold transition-all duration-150 shadow-2xs ${
+                            hideLabels ? 'w-7 h-7 p-0' : 'px-2 py-0.5'
+                        } ${
+                            isVerified 
+                                ? doc.activeColor 
+                                : 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
+                        }`}
+                        title={`${doc.label}: ${isVerified ? 'Verified (Click to toggle)' : 'Not Verified (Click to toggle)'}`}
+                    >
+                        {isVerified ? (
+                            <CheckSquare className={`w-3.5 h-3.5 ${doc.iconColor} flex-shrink-0`} />
+                        ) : (
+                            <XSquare className="w-3.5 h-3.5 text-rose-600 flex-shrink-0" />
+                        )}
+                        {!hideLabels && <span>{doc.label}</span>}
+                    </button>
+                );
+            })}
+        </div>
+    );
+};
+
 const VerificationChecks: React.FC<{ submission: OnboardingData; isSyncing: boolean }> = ({ submission, isSyncing }) => {
     if (submission.status !== 'verified' || !submission.portalSyncStatus) {
         return <span className="text-sm font-medium text-gray-500 md:text-muted">-</span>;
@@ -265,6 +432,24 @@ const VerificationChecks: React.FC<{ submission: OnboardingData; isSyncing: bool
             ))}
         </div>
     );
+};
+
+const formatCreatedDate = (dateStr?: string) => {
+    if (!dateStr) return '-';
+    try {
+        const date = new Date(dateStr);
+        if (isNaN(date.getTime())) return dateStr;
+        return date.toLocaleString('en-IN', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+        });
+    } catch {
+        return dateStr;
+    }
 };
 
 
@@ -329,6 +514,17 @@ const VerificationDashboard: React.FC = () => {
         if (showSkeleton) setIsLoading(true);
         try {
             const data = await api.getVerificationSubmissions(statusFilter === 'all' ? undefined : statusFilter);
+            for (const s of data) {
+                const isAutoAiFlow = s.submissionMode === 'auto_ai' || (s.submissionMode !== 'manual' && !s.requiresManualVerification);
+                if (s.status === 'pending' && isAutoAiFlow && checkIsAllDocsVerified(s) && s.id) {
+                    s.status = 'verified';
+                    s.portalSyncStatus = 'pending_sync';
+                    s.verificationMode = 'auto';
+                    s.verifiedBy = 'Paradigm AI Agent';
+                    s.verifiedAt = new Date().toISOString();
+                    api.verifySubmission(s.id, 'auto').catch(() => {});
+                }
+            }
             setSubmissions(data);
         } catch (error) {
             console.error("Failed to fetch submissions", error);
@@ -404,12 +600,23 @@ const VerificationDashboard: React.FC = () => {
     }, [submissions, searchTerm]);
 
     const handleAction = async (action: 'approve' | 'reject', id: string) => {
+        const verifierName = (user as any)?.user_metadata?.full_name || (user as any)?.user_metadata?.name || user?.email?.split('@')[0] || 'HR Admin';
+        const verifierPhoto = (user as any)?.user_metadata?.avatar_url || (user as any)?.user_metadata?.picture || null;
+
         // Optimistic update for UI responsiveness
-        setSubmissions(prev => prev.map(s => s.id === id ? { ...s, status: action === 'approve' ? 'verified' : 'rejected', portalSyncStatus: action === 'approve' ? 'pending_sync' : undefined } : s));
+        setSubmissions(prev => prev.map(s => s.id === id ? { 
+            ...s, 
+            status: action === 'approve' ? 'verified' : 'rejected', 
+            portalSyncStatus: action === 'approve' ? 'pending_sync' : undefined,
+            verificationMode: action === 'approve' ? 'manual' : s.verificationMode,
+            verifiedBy: action === 'approve' ? verifierName : s.verifiedBy,
+            verifiedByPhoto: action === 'approve' ? verifierPhoto : s.verifiedByPhoto,
+            verifiedAt: action === 'approve' ? new Date().toISOString() : s.verifiedAt
+        } : s));
 
         try {
             if (action === 'approve') {
-                await api.verifySubmission(id);
+                await api.verifySubmission(id, 'manual');
             } else {
                 await api.requestChanges(id, 'Changes requested by admin.');
             }
@@ -450,8 +657,115 @@ const VerificationDashboard: React.FC = () => {
         }
     };
 
+    const handleToggleDocVerification = async (submissionId: string, docKey: string) => {
+        const target = submissions.find(s => s.id === submissionId);
+        if (!target) return;
+
+        const updated = { ...target };
+        if (docKey === 'pan') {
+            const current = Boolean(updated.personal?.verifiedStatus?.panCard || (updated.personal?.idProofType === 'PAN' && updated.personal?.verifiedStatus?.idProofNumber));
+            updated.personal = {
+                ...updated.personal,
+                verifiedStatus: {
+                    ...updated.personal?.verifiedStatus,
+                    panCard: !current,
+                    idProofNumber: updated.personal?.idProofType === 'PAN' ? !current : updated.personal?.verifiedStatus?.idProofNumber
+                }
+            };
+        } else if (docKey === 'aadhaar') {
+            const current = Boolean(updated.personal?.isQrVerified || (updated.personal?.idProofType === 'Aadhaar' && updated.personal?.verifiedStatus?.idProofNumber));
+            updated.personal = {
+                ...updated.personal,
+                verifiedStatus: {
+                    ...updated.personal?.verifiedStatus,
+                    idProofNumber: !current
+                },
+                isQrVerified: !current
+            };
+        } else if (docKey === 'uan') {
+            const current = Boolean(updated.uan?.verifiedStatus?.uanNumber);
+            updated.uan = {
+                ...updated.uan,
+                verifiedStatus: {
+                    ...updated.uan?.verifiedStatus,
+                    uanNumber: !current
+                }
+            };
+        } else if (docKey === 'bank') {
+            const current = Boolean(updated.bank?.verifiedStatus?.accountNumber);
+            updated.bank = {
+                ...updated.bank,
+                verifiedStatus: {
+                    ...updated.bank?.verifiedStatus,
+                    accountNumber: !current,
+                    accountHolderName: !current,
+                    ifscCode: !current
+                }
+            };
+        } else if (docKey === 'address') {
+            const current = Boolean(updated.address?.present?.verifiedStatus?.line1);
+            updated.address = {
+                ...updated.address,
+                present: {
+                    ...updated.address?.present,
+                    verifiedStatus: {
+                        ...updated.address?.present?.verifiedStatus,
+                        line1: !current,
+                        city: !current,
+                        state: !current,
+                        pincode: !current
+                    }
+                },
+                permanent: {
+                    ...updated.address?.permanent,
+                    verifiedStatus: {
+                        ...updated.address?.permanent?.verifiedStatus,
+                        line1: !current,
+                        city: !current,
+                        state: !current,
+                        pincode: !current
+                    }
+                }
+            };
+        }
+
+        const isAutoAiFlow = updated.submissionMode === 'auto_ai' || (updated.submissionMode !== 'manual' && !updated.requiresManualVerification);
+        const isAllVerifiedNow = checkIsAllDocsVerified(updated);
+        if (isAllVerifiedNow && isAutoAiFlow && updated.status !== 'verified') {
+            updated.status = 'verified';
+            updated.portalSyncStatus = 'pending_sync';
+            updated.verificationMode = 'auto';
+            updated.verifiedBy = 'Paradigm AI Agent';
+            updated.verifiedAt = new Date().toISOString();
+            hotToast.success(`🎉 All documents verified by AI! Moved ${updated.personal?.firstName || 'employee'} to Verified category.`);
+            api.verifySubmission(submissionId, 'auto').catch(err => console.warn('[AutoVerify] error:', err));
+        } else {
+            hotToast.success(`Updated ${docKey.toUpperCase()} verification status`);
+        }
+
+        setSubmissions(prev => prev.map(s => s.id === submissionId ? updated : s));
+
+        try {
+            const { error } = await supabase
+                .from('onboarding_submissions')
+                .update({
+                    personal: updated.personal,
+                    address: updated.address,
+                    bank: updated.bank,
+                    uan: updated.uan,
+                    status: updated.status,
+                    portal_sync_status: updated.portalSyncStatus,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', submissionId);
+            if (error) console.warn('[VerificationDashboard] Supabase doc update error:', error);
+        } catch (e) {
+            console.warn('[VerificationDashboard] Doc update catch:', e);
+        }
+    };
+
     const filterTabs = ['all', 'pending', 'verified', 'rejected'];
-    const colSpan = statusFilter === 'verified' ? 4 : 5;
+    const colSpan = statusFilter === 'verified' ? 7 : 8;
 
     // Calculate counts for each status
     const counts = useMemo(() => {
@@ -484,55 +798,130 @@ const VerificationDashboard: React.FC = () => {
     }
 
     return (
-        <div className="p-3 md:p-4 flex-1 flex flex-col bg-[#041b0f] md:bg-transparent min-h-screen md:min-h-0">
+        <div className="p-3 md:p-6 flex-1 flex flex-col bg-slate-50/50 min-h-screen md:min-h-0 space-y-5">
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
             
-            <div className="mb-4 flex-shrink-0 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            {/* Header section */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h2 className="text-2xl font-bold text-white md:text-gray-900 tracking-tight mb-0.5">Onboarding Forms</h2>
-                    <p className="text-gray-400 md:text-gray-500 text-sm">Manage and verify employee onboarding submissions across organizations</p>
+                    <div className="flex items-center gap-2">
+                        <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">Onboarding Forms</h2>
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            {submissions.length} Total
+                        </span>
+                    </div>
+                    <p className="text-slate-500 text-sm mt-0.5">Manage, review, and verify employee onboarding applications across sites</p>
                 </div>
                 <div className="flex items-center gap-2.5">
                     <button
                       onClick={handleManualSync}
                       disabled={isSyncing}
-                      className={`px-4 py-2 rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-2 ${
+                      className={`px-4 py-2.5 rounded-xl text-xs font-bold shadow-xs transition-all duration-200 flex items-center gap-2 border ${
                         pendingOrFailedCount > 0
-                          ? 'bg-amber-600 hover:bg-amber-700 text-white'
-                          : 'bg-white hover:bg-gray-100 text-gray-800 border border-gray-200'
+                          ? 'bg-amber-600 hover:bg-amber-700 text-white border-amber-500 shadow-amber-500/20'
+                          : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200 hover:border-slate-300'
                       }`}
                       title="Trigger immediate sync of all offline records"
                     >
-                      <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                      <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
                       {isSyncing ? 'Syncing...' : `Sync Now${pendingOrFailedCount > 0 ? ` (${pendingOrFailedCount})` : ''}`}
                     </button>
                     <button
                       onClick={() => setShowDebugModal(true)}
-                      className="px-3.5 py-2 bg-white hover:bg-gray-100 text-gray-800 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border border-gray-200"
+                      className="px-3.5 py-2.5 bg-white hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-1.5 border border-slate-200 hover:border-slate-300 shadow-xs"
                       title="View sync diagnostics and error tracebacks"
                     >
-                      <Bug className="w-4 h-4 text-amber-500" /> Debug
+                      <Bug className="w-3.5 h-3.5 text-amber-500" /> Debug
                     </button>
                 </div>
             </div>
 
-            <div className="bg-gradient-to-br from-[#0c2a1b] to-[#06180f] md:bg-none md:bg-white rounded-[16px] md:rounded-xl shadow-sm border border-[#1d422f] md:border-gray-100 overflow-hidden flex-1 flex flex-col">
-                <div className="p-4 border-b border-[#1d422f] md:border-gray-100 bg-[#0b291a]/50 md:bg-gray-50/30 flex-shrink-0">
+            {/* Metric KPI Cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+                <div 
+                    onClick={() => setStatusFilter('all')}
+                    className={`cursor-pointer bg-white p-4 rounded-2xl border transition-all duration-200 shadow-xs hover:shadow-md ${
+                        statusFilter === 'all' ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-slate-200/80 hover:border-slate-300'
+                    }`}
+                >
+                    <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Submissions</span>
+                        <div className="p-2 bg-emerald-50 rounded-xl text-emerald-600">
+                            <Users className="w-4 h-4" />
+                        </div>
+                    </div>
+                    <div className="text-2xl font-black text-slate-900 mt-2">{counts.all}</div>
+                </div>
+
+                <div 
+                    onClick={() => setStatusFilter('pending')}
+                    className={`cursor-pointer bg-white p-4 rounded-2xl border transition-all duration-200 shadow-xs hover:shadow-md ${
+                        statusFilter === 'pending' ? 'border-amber-500 ring-2 ring-amber-500/20' : 'border-slate-200/80 hover:border-slate-300'
+                    }`}
+                >
+                    <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Pending Review</span>
+                        <div className="p-2 bg-amber-50 rounded-xl text-amber-600">
+                            <Clock className="w-4 h-4" />
+                        </div>
+                    </div>
+                    <div className="flex items-baseline justify-between mt-2">
+                        <span className="text-2xl font-black text-slate-900">{counts.pending}</span>
+                        {counts.pending > 0 && (
+                            <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full animate-pulse">Action Needed</span>
+                        )}
+                    </div>
+                </div>
+
+                <div 
+                    onClick={() => setStatusFilter('verified')}
+                    className={`cursor-pointer bg-white p-4 rounded-2xl border transition-all duration-200 shadow-xs hover:shadow-md ${
+                        statusFilter === 'verified' ? 'border-teal-500 ring-2 ring-teal-500/20' : 'border-slate-200/80 hover:border-slate-300'
+                    }`}
+                >
+                    <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Verified</span>
+                        <div className="p-2 bg-teal-50 rounded-xl text-teal-600">
+                            <CheckCircle2 className="w-4 h-4" />
+                        </div>
+                    </div>
+                    <div className="text-2xl font-black text-slate-900 mt-2">{counts.verified}</div>
+                </div>
+
+                <div 
+                    onClick={() => setStatusFilter('rejected')}
+                    className={`cursor-pointer bg-white p-4 rounded-2xl border transition-all duration-200 shadow-xs hover:shadow-md ${
+                        statusFilter === 'rejected' ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-slate-200/80 hover:border-slate-300'
+                    }`}
+                >
+                    <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Rejected</span>
+                        <div className="p-2 bg-rose-50 rounded-xl text-rose-600">
+                            <XCircle className="w-4 h-4" />
+                        </div>
+                    </div>
+                    <div className="text-2xl font-black text-slate-900 mt-2">{counts.rejected}</div>
+                </div>
+            </div>
+
+            {/* Main Table Card */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden flex-1 flex flex-col">
+                <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex-shrink-0">
                     <div className="flex flex-col lg:flex-row justify-between items-center gap-4">
-                        <div className="bg-[#041b0f] md:bg-gray-100/80 p-1 rounded-[12px] md:rounded-xl w-full lg:w-auto self-start border border-[#1d422f] md:border-0">
+                        <div className="bg-slate-200/60 p-1 rounded-xl w-full lg:w-auto self-start">
                             <nav className="flex space-x-1" aria-label="Tabs">
                                 {filterTabs.map(tab => (
                                     <button
                                         key={tab}
                                         onClick={() => setStatusFilter(tab)}
                                         className={`${statusFilter === tab
-                                            ? 'bg-[#22c55e]/20 md:bg-white text-[#22c55e] md:text-emerald-700 shadow-sm border border-[#22c55e]/30 md:border-transparent'
-                                            : 'text-gray-400 md:text-gray-500 hover:text-gray-200 md:hover:text-gray-700 hover:bg-[#1d422f] md:hover:bg-gray-200/50 border border-transparent'
-                                            } whitespace-nowrap py-1.5 px-3 rounded-[10px] md:rounded-lg font-semibold text-[13px] capitalize transition-all duration-200 flex items-center gap-2`}
+                                            ? 'bg-white text-emerald-800 shadow-xs font-bold'
+                                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-300/40'
+                                            } whitespace-nowrap py-1.5 px-3.5 rounded-lg text-xs capitalize transition-all duration-200 flex items-center gap-2`}
                                     >
                                         {tab}
-                                        <span className={`px-2 py-0.5 rounded-full text-[10px] ${
-                                            statusFilter === tab ? 'bg-[#22c55e]/30 text-emerald-300 md:bg-emerald-50 md:text-emerald-700' : 'bg-[#1d422f] text-gray-400 md:bg-gray-200 md:text-gray-600'
+                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                            statusFilter === tab ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-300/60 text-slate-600'
                                         }`}>
                                             {counts[tab as keyof typeof counts]}
                                         </span>
@@ -542,7 +931,7 @@ const VerificationDashboard: React.FC = () => {
                         </div>
                         <div className="relative w-full lg:max-w-md">
                             <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                                <Search className="h-4.5 w-4.5 text-gray-500 md:text-gray-400" />
+                                <Search className="h-4 w-4 text-slate-400" />
                             </div>
                             <input
                                 id="onboarding-search"
@@ -552,7 +941,7 @@ const VerificationDashboard: React.FC = () => {
                                 aria-label="Search onboarding forms"
                                 value={searchTerm}
                                 onChange={e => setSearchTerm(e.target.value)}
-                                className="block w-full bg-[#041b0f] md:bg-white border border-[#1d422f] md:border-gray-200 rounded-[12px] md:rounded-xl py-2 pl-10 pr-4 text-[13px] placeholder-gray-500 md:placeholder-gray-400 text-white md:text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#22c55e]/40 md:focus:ring-emerald-500/20 focus:border-[#22c55e] md:focus:border-emerald-500 transition-all shadow-sm"
+                                className="block w-full bg-white border border-slate-200 rounded-xl py-2 pl-10 pr-4 text-xs placeholder-slate-400 text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-xs"
                             />
                         </div>
                     </div>
@@ -563,37 +952,37 @@ const VerificationDashboard: React.FC = () => {
                     <div className="flex flex-col gap-3 px-1 mt-2">
                         {isLoading ? (
                             Array.from({ length: 4 }).map((_, i) => (
-                                <div key={i} className="h-40 bg-gradient-to-br from-[#0c2a1b] to-[#06180f] rounded-[20px] border border-[#1d422f] animate-pulse"></div>
+                                <div key={i} className="h-40 bg-slate-100 rounded-2xl border border-slate-200 animate-pulse"></div>
                             ))
                         ) : filteredSubmissions.length === 0 ? (
-                            <div className="text-center py-16 bg-[#0c2a1b]/30 rounded-[20px] border border-[#1d422f]/50">
-                                <div className="flex flex-col items-center justify-center text-gray-500">
-                                    <Search className="h-10 w-10 mb-3 opacity-30 text-[#22c55e]" />
-                                    <p className="text-sm font-medium text-gray-300">No submissions found.</p>
-                                    <p className="text-xs text-gray-500 mt-1">Try adjusting your search or filters</p>
+                            <div className="text-center py-16 bg-slate-50/50 rounded-2xl border border-slate-200/80">
+                                <div className="flex flex-col items-center justify-center text-slate-400">
+                                    <Search className="h-10 w-10 mb-3 opacity-30 text-emerald-600" />
+                                    <p className="text-sm font-semibold text-slate-600">No submissions found</p>
+                                    <p className="text-xs text-slate-400 mt-1">Try adjusting your search or filters</p>
                                 </div>
                             </div>
                         ) : (
                             filteredSubmissions.map((s) => (
-                                <div key={s.id} className={`bg-gradient-to-br from-[#0c2a1b] to-[#081e13] border ${s.requiresManualVerification ? 'border-orange-500/50' : 'border-[#1d422f]/80'} rounded-[20px] p-4 shadow-lg shadow-black/20 flex flex-col gap-3 relative overflow-hidden transition-all duration-300`}>
+                                <div key={s.id} className={`bg-white border ${s.requiresManualVerification ? 'border-amber-300 bg-amber-50/30' : 'border-slate-200/80'} rounded-2xl p-4 shadow-xs flex flex-col gap-3 relative overflow-hidden transition-all duration-300 hover:shadow-md`}>
                                     {s.requiresManualVerification && (
-                                        <div className="absolute top-0 left-0 w-1.5 h-full bg-gradient-to-b from-orange-400 to-orange-600"></div>
+                                        <div className="absolute top-0 left-0 w-1.5 h-full bg-amber-500"></div>
                                     )}
                                     <div className="flex justify-between items-start">
                                         <div className="flex items-center gap-3">
-                                            <div className="h-11 w-11 rounded-[14px] bg-gradient-to-br from-[#123824] to-[#0a2014] flex items-center justify-center text-[#22c55e] font-bold text-sm border border-[#1d422f] shadow-inner">
+                                            <div className="h-11 w-11 rounded-full bg-gradient-to-br from-emerald-500 to-teal-700 text-white flex items-center justify-center font-black text-sm shadow-xs border-2 border-white">
                                                 {s.personal.firstName?.[0]}{s.personal.lastName?.[0]}
                                             </div>
                                             <div className="flex flex-col">
                                                 <div className="flex items-center gap-2">
-                                                    <span className="text-[15px] font-bold tracking-wide capitalize text-white">
+                                                    <span className="text-sm font-bold text-slate-900 capitalize">
                                                         {s.personal.firstName} {s.personal.lastName}
                                                     </span>
                                                     {s.requiresManualVerification && (
-                                                        <AlertTriangle className="h-3.5 w-3.5 text-orange-400" />
+                                                        <AlertTriangle className="h-4 w-4 text-amber-500" />
                                                     )}
                                                 </div>
-                                                <div className="text-xs font-medium text-gray-400 mt-0.5">{s.personal.employeeId}</div>
+                                                <div className="font-mono text-xs text-slate-500 mt-0.5">{s.personal.employeeId}</div>
                                             </div>
                                         </div>
                                         {statusFilter !== 'verified' && (
@@ -601,45 +990,78 @@ const VerificationDashboard: React.FC = () => {
                                         )}
                                     </div>
                                     
-                                    <div className="flex flex-col gap-2.5 bg-black/20 rounded-[14px] p-3 border border-[#1d422f]/30 mt-1">
+                                    <div className="flex flex-col gap-2.5 bg-slate-50/80 rounded-xl p-3 border border-slate-200/60 mt-1">
                                         <div className="flex items-center justify-between">
-                                            <span className="text-[11px] text-gray-400 font-semibold uppercase tracking-wider">Designation</span>
-                                            <span className="text-xs text-gray-200 font-medium">{s.organization?.designation || '-'}</span>
+                                            <span className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">Designation</span>
+                                            <span className="text-xs text-slate-800 font-semibold">{s.organization?.designation || '-'}</span>
                                         </div>
-                                        <div className="w-full h-px bg-[#1d422f]/30"></div>
+                                        <div className="w-full h-px bg-slate-200/60"></div>
                                         <div className="flex items-center justify-between">
-                                            <span className="text-[11px] text-gray-400 font-semibold uppercase tracking-wider">Site Location</span>
-                                            <span className="text-xs text-gray-200 font-medium">{s.organizationName || s.organization?.organizationName || '-'}</span>
+                                            <span className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">Site Location</span>
+                                            <span className="text-xs text-slate-800 font-semibold">{s.organizationName || s.organization?.organizationName || '-'}</span>
+                                        </div>
+                                        <div className="w-full h-px bg-slate-200/60"></div>
+                                        <div className="flex flex-col gap-1.5">
+                                            <span className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">Verified Documents</span>
+                                            <DocumentVerificationBadges submission={s} onToggleDoc={(key) => handleToggleDocVerification(s.id!, key)} />
+                                        </div>
+                                        <div className="w-full h-px bg-slate-200/60"></div>
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">Created Date/Time</span>
+                                            <span className="text-xs text-slate-800 font-semibold">{formatCreatedDate(s.createdAt || s.created_at || s.enrollmentDate)}</span>
                                         </div>
                                         {s.status === 'verified' && (
                                             <>
-                                                <div className="w-full h-px bg-[#1d422f]/30"></div>
+                                                <div className="w-full h-px bg-slate-200/60"></div>
                                                 <div className="flex items-center justify-between">
-                                                    <span className="text-[11px] text-gray-400 font-semibold uppercase tracking-wider">Verifications</span>
-                                                    <VerificationChecks submission={s} isSyncing={syncingId === s.id} />
+                                                    <span className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">Approved By</span>
+                                                    {s.verificationMode === 'auto' || s.verifiedBy === 'Paradigm AI Agent' ? (
+                                                        <span className="inline-flex items-center gap-1 text-xs font-bold text-violet-800 bg-violet-50 px-2 py-0.5 rounded-md border border-violet-200">
+                                                            <Bot className="h-3.5 w-3.5 text-violet-600" />
+                                                            Verified by Paradigm AI Agent
+                                                        </span>
+                                                    ) : (
+                                                        <div className="flex items-center gap-1.5">
+                                                            {s.verifiedByPhoto ? (
+                                                                <img src={s.verifiedByPhoto} alt={s.verifiedBy || 'HR'} className="h-5 w-5 rounded-full object-cover border border-emerald-500" />
+                                                            ) : (
+                                                                <div className="h-5 w-5 rounded-full bg-emerald-600 text-white font-bold text-[9px] flex items-center justify-center">
+                                                                    {s.verifiedBy ? s.verifiedBy.split(' ').map(n => n[0]).join('').slice(0, 2) : 'HR'}
+                                                                </div>
+                                                            )}
+                                                            <span className="text-xs font-bold text-slate-800">{s.verifiedBy || 'HR Admin'}</span>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </>
                                         )}
                                     </div>
 
-                                    <div className="flex items-center justify-end gap-2 mt-1 pt-3 border-t border-[#1d422f]/40">
+                                    <div className="flex items-center justify-end gap-2 mt-1 pt-3 border-t border-slate-100 flex-wrap">
                                         <button 
-                                            onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)}
-                                            className="px-4 py-2.5 text-gray-300 hover:text-white bg-[#123824] hover:bg-[#1a4a30] rounded-[12px] text-xs font-bold transition-all duration-200 flex items-center gap-1.5 border border-[#1d422f]"
+                                            onClick={() => navigate(`/onboarding/add/review?id=${s.id}`)}
+                                            className="px-3 py-1.5 text-slate-600 hover:text-emerald-700 bg-slate-100 hover:bg-emerald-50 rounded-lg text-xs font-bold transition-all duration-200 flex items-center gap-1 border border-slate-200 hover:border-emerald-200"
                                             title="View Details"
                                         >
                                             <Eye className="h-3.5 w-3.5" /> View
                                         </button>
                                         <button 
                                             onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)}
-                                            className="px-4 py-2.5 text-gray-300 hover:text-white bg-[#123824] hover:bg-[#1a4a30] rounded-[12px] text-xs font-bold transition-all duration-200 flex items-center gap-1.5 border border-[#1d422f]"
+                                            className="px-3 py-1.5 text-slate-600 hover:text-blue-700 bg-slate-100 hover:bg-blue-50 rounded-lg text-xs font-bold transition-all duration-200 flex items-center gap-1 border border-slate-200 hover:border-blue-200"
                                             title="Edit Submission"
                                         >
                                             <Edit2 className="h-3.5 w-3.5" /> Edit
                                         </button>
                                         <button 
+                                            onClick={() => navigate(`/onboarding/pdf/${s.id}`)}
+                                            className="px-3 py-1.5 text-slate-600 hover:text-teal-700 bg-slate-100 hover:bg-teal-50 rounded-lg text-xs font-bold transition-all duration-200 flex items-center gap-1 border border-slate-200 hover:border-teal-200"
+                                            title="Download Forms"
+                                        >
+                                            <FileText className="h-3.5 w-3.5" /> Forms
+                                        </button>
+                                        <button 
                                             onClick={() => handleDelete(s.id!)}
-                                            className="px-4 py-2.5 text-red-400 bg-red-400/10 hover:bg-red-400/20 rounded-[12px] text-xs font-bold transition-all duration-200 border border-red-400/30 flex items-center gap-1.5"
+                                            className="px-3 py-1.5 text-slate-600 hover:text-rose-700 bg-slate-100 hover:bg-rose-50 rounded-lg text-xs font-bold transition-all duration-200 border border-slate-200 hover:border-rose-200 flex items-center gap-1"
                                             title="Delete Submission"
                                         >
                                             <Trash2 className="h-3.5 w-3.5" /> Delete
@@ -649,13 +1071,13 @@ const VerificationDashboard: React.FC = () => {
                                             <>
                                                 <button 
                                                     onClick={() => handleAction('approve', s.id!)}
-                                                    className="px-4 py-2.5 text-[#22c55e] bg-[#22c55e]/10 hover:bg-[#22c55e]/20 rounded-[12px] text-xs font-bold transition-all duration-200 border border-[#22c55e]/30 flex items-center gap-1.5"
+                                                    className="px-3 py-1.5 text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg text-xs font-bold transition-all duration-200 shadow-xs flex items-center gap-1"
                                                 >
                                                     <CheckSquare className="h-3.5 w-3.5" /> Approve
                                                 </button>
                                                 <button 
                                                     onClick={() => handleAction('reject', s.id!)}
-                                                    className="px-4 py-2.5 text-red-400 bg-red-400/10 hover:bg-red-400/20 rounded-[12px] text-xs font-bold transition-all duration-200 border border-red-400/30 flex items-center gap-1.5"
+                                                    className="px-3 py-1.5 text-rose-600 bg-white hover:bg-rose-50 border border-rose-200 rounded-lg text-xs font-bold transition-all duration-200 flex items-center gap-1"
                                                 >
                                                     <XSquare className="h-3.5 w-3.5" /> Reject
                                                 </button>
@@ -667,9 +1089,9 @@ const VerificationDashboard: React.FC = () => {
                                                 size="sm" 
                                                 onClick={() => handleSync(s.id!)} 
                                                 isLoading={syncingId === s.id}
-                                                className="!rounded-[12px] border-[#22c55e]/30 text-[#22c55e] bg-[#22c55e]/10 hover:bg-[#22c55e]/20 h-[34px]"
+                                                className="!rounded-lg border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 h-8 text-xs font-bold"
                                             >
-                                                {syncingId !== s.id && <Send className="h-3.5 w-3.5 mr-1.5" />}
+                                                {syncingId !== s.id && <Send className="h-3.5 w-3.5 mr-1" />}
                                                 Sync
                                             </Button>
                                         )}
@@ -679,128 +1101,219 @@ const VerificationDashboard: React.FC = () => {
                         )}
                     </div>
                 ) : (
-                    <table className="min-w-full border-separate border-spacing-0 responsive-table">
+                    <table className="min-w-full border-separate border-spacing-0">
                         <thead>
-                            <tr className="bg-[#0b291a]/50 md:bg-gray-50/50">
-                                <th scope="col" className="px-5 py-3 text-left text-[10px] font-bold text-gray-400 md:text-gray-500 uppercase tracking-wider border-b border-[#1d422f] md:border-gray-100">Employee</th>
-                                <th scope="col" className="px-5 py-3 text-left text-[10px] font-bold text-gray-400 md:text-gray-500 uppercase tracking-wider border-b border-[#1d422f] md:border-gray-100">Site</th>
+                            <tr className="bg-slate-50/80 border-b border-slate-100">
+                                <th scope="col" className="px-5 py-3.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80">Employee</th>
+                                <th scope="col" className="px-5 py-3.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80">Site Location</th>
                                 {statusFilter !== 'verified' && (
-                                    <th scope="col" className="px-5 py-3 text-left text-[10px] font-bold text-gray-400 md:text-gray-500 uppercase tracking-wider border-b border-[#1d422f] md:border-gray-100">Status</th>
+                                    <th scope="col" className="px-5 py-3.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80">Status</th>
                                 )}
-                                <th scope="col" className="px-5 py-3 text-left text-[10px] font-bold text-gray-400 md:text-gray-500 uppercase tracking-wider border-b border-[#1d422f] md:border-gray-100">Designation</th>
-                                <th scope="col" className="px-5 py-3 text-right text-[10px] font-bold text-gray-400 md:text-gray-500 uppercase tracking-wider border-b border-[#1d422f] md:border-gray-100">Actions</th>
+                                <th scope="col" className="px-5 py-3.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80">Designation</th>
+                                <th scope="col" className="px-5 py-3 text-center border-b border-slate-200/80">
+                                    <div className="flex flex-col items-center gap-1">
+                                        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Verified Documents</span>
+                                        <div className="flex items-center gap-2 mt-0.5">
+                                            <span className="px-1.5 py-0.5 text-[9px] font-extrabold rounded bg-blue-50 text-blue-700 border border-blue-200/80 shadow-2xs">PAN</span>
+                                            <span className="px-1.5 py-0.5 text-[9px] font-extrabold rounded bg-emerald-50 text-emerald-700 border border-emerald-200/80 shadow-2xs">AADHAAR</span>
+                                            <span className="px-1.5 py-0.5 text-[9px] font-extrabold rounded bg-amber-50 text-amber-700 border border-amber-200/80 shadow-2xs">UAN</span>
+                                            <span className="px-1.5 py-0.5 text-[9px] font-extrabold rounded bg-indigo-50 text-indigo-700 border border-indigo-200/80 shadow-2xs">BANK</span>
+                                            <span className="px-1.5 py-0.5 text-[9px] font-extrabold rounded bg-teal-50 text-teal-700 border border-teal-200/80 shadow-2xs">ADDRESS</span>
+                                        </div>
+                                    </div>
+                                </th>
+                                <th scope="col" className="px-5 py-3.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80">Approved By</th>
+                                <th scope="col" className="px-5 py-3.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80">Created Date/Time</th>
+                                <th scope="col" className="px-5 py-3.5 text-center text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-[#1d422f] md:divide-gray-50">
+                        <tbody className="divide-y divide-slate-100 bg-white">
                             {isLoading ? (
                                 <TableSkeleton rows={5} cols={colSpan} />
                             ) : filteredSubmissions.length === 0 ? (
                                 <tr><td colSpan={colSpan} className="text-center py-16">
-                                    <div className="flex flex-col items-center justify-center text-gray-500 md:text-gray-400">
-                                        <Search className="h-10 w-10 mb-3 opacity-30 md:opacity-20" />
-                                        <p className="text-sm font-medium text-gray-300 md:text-gray-400">No submissions found.</p>
-                                        <p className="text-xs text-gray-500 md:text-gray-400">Try adjusting your search or filters</p>
+                                    <div className="flex flex-col items-center justify-center text-slate-400">
+                                        <Search className="h-10 w-10 mb-3 opacity-30 text-emerald-600" />
+                                        <p className="text-sm font-semibold text-slate-600">No onboarding submissions found</p>
+                                        <p className="text-xs text-slate-400 mt-1">Try adjusting your search terms or filter tabs</p>
                                     </div>
                                 </td></tr>
                             ) : (
                                 filteredSubmissions.map((s) => (
-                                    <tr key={s.id} className={`group hover:bg-[#1d422f]/40 md:hover:bg-emerald-50/30 transition-colors duration-150 ${s.requiresManualVerification ? 'bg-orange-900/20 md:bg-orange-50/50' : ''}`}>
-                                        <td data-label="Employee" className="px-5 py-3 whitespace-nowrap">
+                                    <tr key={s.id} className={`group hover:bg-emerald-50/40 transition-colors duration-150 ${s.requiresManualVerification ? 'bg-amber-50/60' : ''}`}>
+                                        {/* Employee */}
+                                        <td className="px-5 py-3.5 whitespace-nowrap">
                                             <div className="flex items-center gap-3">
-                                                <div className="h-9 w-9 rounded-full bg-[#1d422f] md:bg-emerald-100 flex items-center justify-center text-[#22c55e] md:text-emerald-700 font-bold text-sm border-2 border-[#0b291a] md:border-white shadow-sm flex-shrink-0">
+                                                <div className="h-10 w-10 rounded-full bg-gradient-to-br from-emerald-500 to-teal-700 text-white font-black text-xs flex items-center justify-center shadow-xs border-2 border-white flex-shrink-0">
                                                     {s.personal.firstName?.[0]}{s.personal.lastName?.[0]}
                                                 </div>
                                                 <div className="flex flex-col">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-sm font-semibold tracking-wide capitalize text-white md:text-gray-900">
-                                                            {s.personal.firstName} {s.personal.lastName}</span>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="text-sm font-bold text-slate-900 hover:text-emerald-700 transition-colors capitalize">
+                                                            {s.personal.firstName} {s.personal.lastName}
+                                                        </span>
                                                         {s.requiresManualVerification && (
                                                             <span title="Manual verification required">
-                                                                <AlertTriangle className="h-3.5 w-3.5 text-orange-500" />
+                                                                <AlertTriangle className="h-4 w-4 text-amber-500" />
                                                             </span>
                                                         )}
                                                     </div>
-                                                     <div className="text-sm font-bold text-gray-400 md:text-gray-900 flex items-center gap-2">
-                                                        <span>{s.personal.employeeId}</span>
+                                                    <div className="flex items-center gap-2 mt-0.5">
+                                                        <span className="font-mono text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200/60">
+                                                            {s.personal.employeeId}
+                                                        </span>
                                                         <SyncStatusBadge pending={(s as any).pending} failed={(s as any).failed} />
-                                                     </div>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </td>
-                                        <td data-label="Site" className="px-5 py-3 whitespace-nowrap">
-                                            <div className="text-sm font-medium text-gray-300 md:text-gray-700">{s.organizationName || s.organization?.organizationName || '-'}</div>
+
+                                        {/* Site */}
+                                        <td className="px-5 py-3.5 whitespace-nowrap">
+                                            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                                                <MapPin className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
+                                                <span>{s.organizationName || s.organization?.organizationName || '-'}</span>
+                                            </div>
                                         </td>
+
+                                        {/* Status */}
                                         {statusFilter !== 'verified' && (
-                                            <td data-label="Status" className="px-5 py-3 whitespace-nowrap">
+                                            <td className="px-5 py-3.5 whitespace-nowrap">
                                                 <StatusChip status={s.status} />
                                             </td>
                                         )}
-                                        <td data-label="Designation" className="px-5 py-3 whitespace-nowrap">
-                                            <div className="text-sm font-medium text-gray-300 md:text-gray-700">{s.organization?.designation || '-'}</div>
-                                            {s.status === 'verified' && (
-                                                <div className="mt-1">
-                                                    <VerificationChecks submission={s} isSyncing={syncingId === s.id} />
-                                                </div>
+
+                                        {/* Designation */}
+                                        <td className="px-5 py-3.5 whitespace-nowrap">
+                                            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                                                <Briefcase className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
+                                                <span>{s.organization?.designation || '-'}</span>
+                                            </div>
+                                        </td>
+
+                                        {/* Verified Documents */}
+                                        <td className="px-5 py-3.5 whitespace-nowrap text-center">
+                                            <DocumentVerificationBadges submission={s} onToggleDoc={(key) => handleToggleDocVerification(s.id!, key)} hideLabels />
+                                        </td>
+
+                                        {/* Approved By */}
+                                        <td className="px-5 py-3.5 whitespace-nowrap">
+                                            {s.status === 'verified' ? (
+                                                s.verificationMode === 'auto' || s.verifiedBy === 'Paradigm AI Agent' ? (
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="h-7 w-7 rounded-full bg-gradient-to-tr from-violet-600 to-indigo-600 text-white flex items-center justify-center shadow-2xs flex-shrink-0 border border-violet-300">
+                                                            <Bot className="h-4 w-4 text-white" />
+                                                        </div>
+                                                        <div className="flex flex-col">
+                                                            <span className="text-xs font-bold text-violet-950 flex items-center gap-1">
+                                                                Verified by Paradigm AI Agent
+                                                                <Sparkles className="h-3 w-3 text-amber-500 fill-amber-400 flex-shrink-0" />
+                                                            </span>
+                                                            {s.verifiedAt && (
+                                                                <span className="text-[10px] text-slate-400 font-medium">
+                                                                    {formatCreatedDate(s.verifiedAt)}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex items-center gap-2">
+                                                        {s.verifiedByPhoto ? (
+                                                            <img src={s.verifiedByPhoto} alt={s.verifiedBy || 'HR'} className="h-7 w-7 rounded-full object-cover border-2 border-emerald-500 shadow-2xs flex-shrink-0" />
+                                                        ) : (
+                                                            <div className="h-7 w-7 rounded-full bg-gradient-to-br from-emerald-500 to-teal-700 text-white font-black text-xs flex items-center justify-center shadow-2xs border border-emerald-400 flex-shrink-0 uppercase">
+                                                                {s.verifiedBy ? s.verifiedBy.split(' ').map(n => n[0]).join('').slice(0, 2) : 'HR'}
+                                                            </div>
+                                                        )}
+                                                        <div className="flex flex-col">
+                                                            <div className="flex items-center gap-1">
+                                                                <span className="text-xs font-bold text-slate-800 capitalize">
+                                                                    {s.verifiedBy || 'HR Admin'}
+                                                                </span>
+                                                                <UserCheck className="h-3.5 w-3.5 text-emerald-600 flex-shrink-0" />
+                                                            </div>
+                                                            {s.verifiedAt && (
+                                                                <span className="text-[10px] text-slate-400 font-medium">
+                                                                    {formatCreatedDate(s.verifiedAt)}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )
+                                            ) : (
+                                                <span className="text-[11px] text-slate-400 italic">—</span>
                                             )}
                                         </td>
-                                        <td data-label="Actions" className="px-5 py-3 whitespace-nowrap text-right">
-                                            <div className="flex items-center justify-end gap-1">
+
+                                        {/* Created Date/Time */}
+                                        <td className="px-5 py-3.5 whitespace-nowrap">
+                                            <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+                                                <Calendar className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
+                                                <span>{formatCreatedDate(s.createdAt || s.created_at || s.enrollmentDate)}</span>
+                                            </div>
+                                        </td>
+
+                                        {/* Actions */}
+                                        <td className="px-5 py-3.5 whitespace-nowrap text-center">
+                                            <div className="flex items-center justify-center gap-1">
                                                 <button 
-                                                    onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)}
-                                                    className="p-2 text-gray-400 hover:text-[#22c55e] md:hover:text-emerald-600 hover:bg-[#1d422f] md:hover:bg-emerald-50 rounded-lg transition-all duration-200"
-                                                    title="View Details"
+                                                    onClick={() => navigate(`/onboarding/add/review?id=${s.id}`)}
+                                                    className="p-2 text-slate-500 hover:text-emerald-700 bg-slate-100/80 hover:bg-emerald-50 rounded-lg transition-all duration-200 border border-slate-200/60 hover:border-emerald-200"
+                                                    title="View Summary Details"
                                                 >
-                                                    <Eye className="h-4.5 w-4.5" />
+                                                    <Eye className="h-4 w-4" />
                                                 </button>
                                                 <button 
                                                     onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)}
-                                                    className="p-2 text-gray-400 hover:text-[#22c55e] md:hover:text-emerald-600 hover:bg-[#1d422f] md:hover:bg-emerald-50 rounded-lg transition-all duration-200"
-                                                    title="Edit Submission"
+                                                    className="p-2 text-slate-500 hover:text-blue-700 bg-slate-100/80 hover:bg-blue-50 rounded-lg transition-all duration-200 border border-slate-200/60 hover:border-blue-200"
+                                                    title="Edit Application"
                                                 >
-                                                    <Edit2 className="h-4.5 w-4.5" />
+                                                    <Edit2 className="h-4 w-4" />
                                                 </button>
                                                 <button 
                                                     onClick={() => navigate(`/onboarding/pdf/${s.id}`)}
-                                                    className="p-2 text-gray-400 hover:text-[#22c55e] md:hover:text-emerald-600 hover:bg-[#1d422f] md:hover:bg-emerald-50 rounded-lg transition-all duration-200"
-                                                    title="Download Forms"
+                                                    className="p-2 text-slate-500 hover:text-teal-700 bg-slate-100/80 hover:bg-teal-50 rounded-lg transition-all duration-200 border border-slate-200/60 hover:border-teal-200"
+                                                    title="Download Official Forms"
                                                 >
-                                                    <FileText className="h-4.5 w-4.5" />
+                                                    <FileText className="h-4 w-4" />
                                                 </button>
                                                 <button 
                                                     onClick={() => handleDelete(s.id!)}
-                                                    className="p-2 text-gray-400 hover:text-red-500 md:hover:text-red-600 hover:bg-[#1d422f] md:hover:bg-red-50 rounded-lg transition-all duration-200"
-                                                    title="Delete Submission"
+                                                    className="p-2 text-slate-500 hover:text-rose-700 bg-slate-100/80 hover:bg-rose-50 rounded-lg transition-all duration-200 border border-slate-200/60 hover:border-rose-200"
+                                                    title="Delete Application"
                                                 >
-                                                    <Trash2 className="h-4.5 w-4.5" />
+                                                    <Trash2 className="h-4 w-4" />
                                                 </button>
+
                                                 {s.status === 'pending' && (
-                                                    <div className="flex items-center gap-1 border-l border-[#1d422f] md:border-gray-100 ml-1 pl-1">
+                                                    <div className="flex items-center gap-1 border-l border-slate-200 ml-1 pl-1.5">
                                                         <button 
                                                             onClick={() => handleAction('approve', s.id!)}
-                                                            className="p-2 text-gray-400 hover:text-green-500 md:hover:text-green-600 hover:bg-[#1d422f] md:hover:bg-green-50 rounded-lg transition-all duration-200"
-                                                            title="Verify"
+                                                            className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs transition-all duration-200 flex items-center gap-1"
+                                                            title="Verify & Approve"
                                                         >
-                                                            <CheckSquare className="h-4.5 w-4.5" />
+                                                            <CheckSquare className="h-3.5 w-3.5" /> Approve
                                                         </button>
                                                         <button 
                                                             onClick={() => handleAction('reject', s.id!)}
-                                                            className="p-2 text-gray-400 hover:text-red-500 md:hover:text-red-600 hover:bg-[#1d422f] md:hover:bg-red-50 rounded-lg transition-all duration-200"
-                                                            title="Request Changes"
+                                                            className="px-2.5 py-1.5 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 rounded-lg text-xs font-bold transition-all duration-200 flex items-center gap-1"
+                                                            title="Reject & Request Changes"
                                                         >
-                                                            <XSquare className="h-4.5 w-4.5" />
+                                                            <XSquare className="h-3.5 w-3.5" /> Reject
                                                         </button>
                                                     </div>
                                                 )}
+
                                                 {s.status === 'verified' && (s.portalSyncStatus === 'pending_sync' || s.portalSyncStatus === 'failed') && (
                                                     <Button 
                                                         variant="outline" 
                                                         size="sm" 
                                                         onClick={() => handleSync(s.id!)} 
                                                         isLoading={syncingId === s.id}
-                                                        className="ml-2 !rounded-lg border-[#1d422f] md:border-gray-200 text-gray-300 md:text-gray-600 hover:text-[#22c55e] md:hover:text-emerald-700 hover:border-[#22c55e]/50 md:hover:border-emerald-200 hover:bg-[#1d422f] md:hover:bg-emerald-50"
+                                                        className="ml-1.5 !rounded-lg border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 h-8 text-xs font-bold"
                                                     >
-                                                        {syncingId !== s.id && <Send className="h-3.5 w-3.5 mr-1.5" />}
-                                                        Sync Portals
+                                                        {syncingId !== s.id && <Send className="h-3.5 w-3.5 mr-1" />}
+                                                        Sync
                                                     </Button>
                                                 )}
                                             </div>

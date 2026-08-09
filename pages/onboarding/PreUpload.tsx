@@ -193,6 +193,15 @@ const PreUpload = () => {
     // AI Mode Toggle
     const [isManualMode, setIsManualMode] = useState(true);
 
+    // Live OCR Debug Inspection Logs
+    const [ocrDebugLogs, setOcrDebugLogs] = useState<Array<{
+        docName: string;
+        timestamp: string;
+        isOffline: boolean;
+        extractedFields: Record<string, any>;
+        rawText?: string;
+    }>>([]);
+
     // Draft auto-save state
     const [saveStatus, setSaveStatus] = useState<DraftSaveStatus>('idle');
     const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
@@ -282,14 +291,22 @@ const PreUpload = () => {
 
     // Schemas for Gemini OCR extraction
     const idFrontSchema = useMemo(() => ({ type: Type.OBJECT, properties: {
-        name: { type: Type.STRING, description: "The person's full name as written on the card." },
-        dob: { type: Type.STRING, description: "Date of birth in YYYY-MM-DD format. If only year available, return YYYY-01-01." },
+        name: { type: Type.STRING, description: "The person's full name as written on the card (e.g. 'Sudhan M')." },
+        dob: { type: Type.STRING, description: "Date of birth in YYYY-MM-DD format (e.g. '1995-10-16'). If only year available, return YYYY-01-01." },
         gender: { type: Type.STRING, description: "Gender: 'Male', 'Female', or 'Other'." },
-        aadhaarNumber: { type: Type.STRING, description: "The 12-digit Aadhaar number, if present." },
+        aadhaarNumber: { type: Type.STRING, description: "The 12-digit Aadhaar number, if present (e.g. '485215873813')." },
+        virtualId: { type: Type.STRING, description: "The 16-digit Virtual ID (VID) number, if present (e.g. '9173670624019530')." },
+        enrolmentNumber: { type: Type.STRING, description: "The Enrolment number, if present (e.g. '0000/00527/91433')." },
         panNumber: { type: Type.STRING, description: "The 10-character PAN number, if present." },
         voterIdNumber: { type: Type.STRING, description: "The Voter ID number (EPIC number)." },
         email: { type: Type.STRING, description: "The person's email address if printed on the document." },
-        phone: { type: Type.STRING, description: "The person's phone or mobile number if printed on the front of the card." },
+        phone: { type: Type.STRING, description: "The person's phone or mobile number if printed on the document (e.g. '9008885355')." },
+        address: { type: Type.OBJECT, description: "Full address if present on this document (e.g. full e-Aadhaar letter sheet).", properties: {
+            line1: { type: Type.STRING, description: "Address line 1 excluding city/state/pincode." },
+            city: { type: Type.STRING, description: "City or District (e.g. 'Bengaluru')." },
+            state: { type: Type.STRING, description: "State (e.g. 'Karnataka')." },
+            pincode: { type: Type.STRING, description: "6-digit pincode (e.g. '560016')." },
+        }},
     }}), []);
 
     const addressSchema = useMemo(() => ({ type: Type.OBJECT, properties: {
@@ -375,7 +392,29 @@ const PreUpload = () => {
                         ? 'PAN Card'
                         : docType === 'bank'
                             ? 'Bank Proof'
-                            : 'document';
+                            : docType === 'salary'
+                                ? 'Salary Slip'
+                                : docType === 'uan'
+                                    ? 'UAN Document'
+                                    : docType === 'familyAadhaar'
+                                        ? `Family Aadhaar (#${(index ?? 0) + 1})`
+                                        : docType === 'education'
+                                            ? `Education Certificate (#${(index ?? 0) + 1})`
+                                            : 'Document';
+
+            if (extractedData) {
+                const { _offlineFallback, _rawText, ...cleanFields } = extractedData;
+                setOcrDebugLogs(prev => [
+                    {
+                        docName,
+                        timestamp: new Date().toLocaleTimeString(),
+                        isOffline: !!_offlineFallback,
+                        extractedFields: cleanFields,
+                        rawText: _rawText,
+                    },
+                    ...prev.filter(l => l.docName !== docName)
+                ]);
+            }
 
             const handleExtractedPhone = (extractedPhone: string | undefined | null, sourceName: string) => {
                 if (!extractedPhone) return;
@@ -410,9 +449,9 @@ const PreUpload = () => {
                 if (idData.dob) { try { personalUpdate.dob = format(new Date(idData.dob.replace(/[-./]/g, '/')), 'yyyy-MM-dd'); personalVerified.dob = true; } catch (e) { } }
                 if (idData.gender) {
                     const genderLower = idData.gender.toLowerCase().trim();
-                    if (genderLower.includes('male') || genderLower.includes('purush') || genderLower === 'm') personalUpdate.gender = 'Male';
-                    else if (genderLower.includes('female') || genderLower.includes('mahila') || genderLower === 'f') personalUpdate.gender = 'Female';
-                    else if (genderLower.includes('transgender')) personalUpdate.gender = 'Other';
+                    if (genderLower.includes('female') || genderLower.includes('mahila') || genderLower.startsWith('fem') || genderLower === 'f') personalUpdate.gender = 'Female';
+                    else if (genderLower.includes('male') || genderLower.includes('purush') || genderLower === 'm') personalUpdate.gender = 'Male';
+                    else if (genderLower.includes('trans')) personalUpdate.gender = 'Other';
                 }
                 if (idData.aadhaarNumber || idData.panNumber || idData.voterIdNumber) {
                     personalUpdate.idProofNumber = (idData.aadhaarNumber || idData.panNumber || idData.voterIdNumber).replace(/\s/g, '');
@@ -423,6 +462,28 @@ const PreUpload = () => {
                 }
                 if (idData.phone) {
                     handleExtractedPhone(idData.phone, docName);
+                }
+                // Handle full e-Aadhaar sheets that contain address on the front/top page
+                if (idData.address && (idData.address.pincode || idData.address.line1)) {
+                    const newAddress = {
+                        line1: idData.address.line1 || '',
+                        line2: idData.address.line2 || '',
+                        city: idData.address.city || '',
+                        state: idData.address.state || '',
+                        country: 'India',
+                        pincode: idData.address.pincode || '',
+                        source: 'Aadhaar Front'
+                    };
+                    const updatedList = [
+                        ...(currentData.address.extractedAddresses || []).filter((a: any) => a.source !== 'Aadhaar Front'),
+                        newAddress
+                    ];
+                    addressUpdate = {
+                        present: { ...idData.address, country: 'India', verifiedStatus: { line1: true, city: true, state: true, pincode: true, country: true } },
+                        permanent: { ...idData.address, country: 'India' },
+                        sameAsPresent: true,
+                        extractedAddresses: updatedList
+                    };
                 }
                 setToast({ message: 'ID Proof details extracted and saved.', type: 'success' });
             } else if (docType === 'idBack') {
@@ -764,7 +825,8 @@ const PreUpload = () => {
                     };
                     return { ...currentEdu, degree: e.degree || currentEdu.degree, institution: e.institution || currentEdu.institution, endYear: e.endYear || currentEdu.endYear, document: e.document };
                 }),
-                requiresManualVerification: isOverridden,
+                requiresManualVerification: isManualMode || isOverridden,
+                submissionMode: (isManualMode ? 'manual' : 'auto_ai') as 'manual' | 'auto_ai',
             };
             store.setData(nextData);
 
@@ -877,6 +939,8 @@ const PreUpload = () => {
                     ]
                 }
                 : currentData.address,
+            requiresManualVerification: isManualMode,
+            submissionMode: (isManualMode ? 'manual' : 'auto_ai') as 'manual' | 'auto_ai',
         });
 
         setIsZipReviewOpen(false);
@@ -905,14 +969,67 @@ const PreUpload = () => {
                             <h1 className="text-xl font-bold text-white md:text-primary-text">Document Collection</h1>
                             <p className="text-sm text-white/50 md:text-muted mt-0.5">Upload documents to auto-fill the application.</p>
                         </div>
-                        <div className="flex items-center gap-3 px-4 py-2 rounded-2xl bg-white/5 border border-white/10 md:bg-gray-100 md:border-gray-200">
-                            <span className={`text-sm font-bold ${isManualMode ? 'text-accent' : 'text-white/40 md:text-muted'}`}>Manual</span>
-                            <button type="button" onClick={() => setIsManualMode(!isManualMode)} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${!isManualMode ? 'bg-accent' : 'bg-white/10 md:bg-gray-200'}`}>
-                                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${!isManualMode ? 'translate-x-6' : 'translate-x-1'}`} />
-                            </button>
-                            <span className={`text-sm font-bold ${!isManualMode ? 'text-accent' : 'text-white/40 md:text-muted'}`}>Auto AI</span>
+                        <div className="flex items-center gap-3">
+                            <Button 
+                                type="button" 
+                                variant="outline" 
+                                size="sm" 
+                                onClick={() => processAndNavigate(getValues(), true)}
+                                className="text-xs !py-1.5"
+                            >
+                                Skip & Fill Manually <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                            </Button>
+                            <div className="flex items-center gap-3 px-4 py-2 rounded-2xl bg-white/5 border border-white/10 md:bg-gray-100 md:border-gray-200">
+                                <span className={`text-sm font-bold ${isManualMode ? 'text-accent' : 'text-white/40 md:text-muted'}`}>Manual</span>
+                                <button type="button" onClick={() => {
+                                    const nextManual = !isManualMode;
+                                    setIsManualMode(nextManual);
+                                    store.setData({ ...store.data, submissionMode: (nextManual ? 'manual' : 'auto_ai') as 'manual' | 'auto_ai', requiresManualVerification: nextManual });
+                                }} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${!isManualMode ? 'bg-accent' : 'bg-white/10 md:bg-gray-200'}`}>
+                                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${!isManualMode ? 'translate-x-6' : 'translate-x-1'}`} />
+                                </button>
+                                <span className={`text-sm font-bold ${!isManualMode ? 'text-accent' : 'text-white/40 md:text-muted'}`}>Auto AI</span>
+                            </div>
                         </div>
                     </div>
+
+                    {/* Live OCR Debug & Extracted Inspection Console */}
+                    {ocrDebugLogs.length > 0 && (
+                        <div className="mb-6 p-4 rounded-2xl bg-slate-900 border border-slate-700 text-slate-100 shadow-xl">
+                            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></div>
+                                    <h3 className="text-sm font-bold text-emerald-400">Live OCR Extracted Debug Console</h3>
+                                    <span className="text-xs text-slate-400">({ocrDebugLogs.length} document{ocrDebugLogs.length > 1 ? 's' : ''} extracted)</span>
+                                </div>
+                                <button type="button" onClick={() => setOcrDebugLogs([])} className="text-xs text-slate-400 hover:text-white underline">Clear Console</button>
+                            </div>
+                            <div className="mt-3 space-y-3 max-h-72 overflow-y-auto pr-1">
+                                {ocrDebugLogs.map((log) => (
+                                    <div key={log.docName} className="p-3 rounded-xl bg-slate-800/80 border border-slate-700/60 font-mono text-xs">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className="font-bold text-yellow-300">{log.docName}</span>
+                                            <div className="flex items-center gap-2">
+                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${log.isOffline ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'}`}>
+                                                    {log.isOffline ? '📵 Tesseract (Offline)' : '⚡ Gemini AI (Online)'}
+                                                </span>
+                                                <span className="text-[10px] text-slate-400">{log.timestamp}</span>
+                                            </div>
+                                        </div>
+                                        <div className="text-emerald-400 bg-slate-950 p-2.5 rounded-lg mb-2 overflow-x-auto">
+                                            <pre>{JSON.stringify(log.extractedFields, null, 2)}</pre>
+                                        </div>
+                                        {log.rawText && (
+                                            <details className="mt-1">
+                                                <summary className="text-[11px] text-slate-400 hover:text-slate-200 cursor-pointer select-none">Show Raw Tesseract OCR Text</summary>
+                                                <pre className="mt-1.5 p-2 bg-slate-950/60 text-slate-300 rounded text-[11px] whitespace-pre-wrap max-h-28 overflow-y-auto">{log.rawText}</pre>
+                                            </details>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     <div className="space-y-0">
 
@@ -946,11 +1063,11 @@ const PreUpload = () => {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                                 <div className="flex flex-col gap-2">
                                     <MandatoryToggle fieldKey="idProofFront" label="Aadhaar Front" checked={mandatoryFields.idProofFront} onChange={handleMandatoryToggle} />
-                                    <Controller name="idProofFront" control={control} render={({ field }) => <UploadDocument label={`Aadhaar (Front Side)${mandatoryFields.idProofFront ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.idProofFront?.message as string} allowCapture verificationStatus={store.data.personal.verifiedStatus?.idProofNumber} ocrSchema={!isManualMode ? idFrontSchema : undefined} onOcrComplete={(data) => handleImmediateOcr('idFront', data)} docType={idProofType} setToast={setToast} />} />
+                                    <Controller name="idProofFront" control={control} render={({ field }) => <UploadDocument label={`Aadhaar (Front Side)${mandatoryFields.idProofFront ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.idProofFront?.message as string} allowCapture verificationStatus={store.data.personal.verifiedStatus?.idProofNumber} ocrSchema={idFrontSchema} onOcrComplete={(data) => handleImmediateOcr('idFront', data)} docType={idProofType} setToast={setToast} />} />
                                 </div>
                                 <div className="flex flex-col gap-2">
                                     <MandatoryToggle fieldKey="idProofBack" label="Aadhaar Back" checked={mandatoryFields.idProofBack} onChange={handleMandatoryToggle} />
-                                    <Controller name="idProofBack" control={control} render={({ field }) => <UploadDocument label={`Aadhaar (Back Side)${mandatoryFields.idProofBack ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.idProofBack?.message as string} allowCapture verificationStatus={store.data.personal.verifiedStatus?.idProofNumber} ocrSchema={!isManualMode ? addressSchema : undefined} onOcrComplete={(data) => handleImmediateOcr('idBack', data)} docType={idProofType} setToast={setToast} />} />
+                                    <Controller name="idProofBack" control={control} render={({ field }) => <UploadDocument label={`Aadhaar (Back Side)${mandatoryFields.idProofBack ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.idProofBack?.message as string} allowCapture verificationStatus={store.data.personal.verifiedStatus?.idProofNumber} ocrSchema={addressSchema} onOcrComplete={(data) => handleImmediateOcr('idBack', data)} docType={idProofType} setToast={setToast} />} />
                                 </div>
                             </div>
                         </div>
@@ -963,22 +1080,22 @@ const PreUpload = () => {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                                 <div className="flex flex-col gap-2">
                                     <MandatoryToggle fieldKey="bankProof" label="Bank Proof" checked={mandatoryFields.bankProof} onChange={handleMandatoryToggle} />
-                                    <Controller name="bankProof" control={control} render={({ field }) => <UploadDocument label={`Bank Proof (Passbook/Cancelled Cheque)${mandatoryFields.bankProof ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.bankProof?.message as string} allowCapture verificationStatus={store.data.bank.verifiedStatus?.accountNumber} ocrSchema={!isManualMode ? bankProofSchema : undefined} onOcrComplete={(data) => handleImmediateOcr('bank', data)} docType="Bank" setToast={setToast} />} />
+                                    <Controller name="bankProof" control={control} render={({ field }) => <UploadDocument label={`Bank Proof (Passbook/Cancelled Cheque)${mandatoryFields.bankProof ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.bankProof?.message as string} allowCapture verificationStatus={store.data.bank.verifiedStatus?.accountNumber} ocrSchema={bankProofSchema} onOcrComplete={(data) => handleImmediateOcr('bank', data)} docType="Bank" setToast={setToast} />} />
                                 </div>
                                 <div className="flex flex-col gap-2">
                                     <MandatoryToggle fieldKey="uanProof" label="UAN Proof" checked={mandatoryFields.uanProof} onChange={handleMandatoryToggle} />
-                                    <Controller name="uanProof" control={control} render={({ field }) => <UploadDocument label={`UAN Proof Document${mandatoryFields.uanProof ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.uanProof?.message as string} allowCapture verificationStatus={store.data.uan.verifiedStatus?.uanNumber} ocrSchema={!isManualMode ? uanProofSchema : undefined} onOcrComplete={(data) => handleImmediateOcr('uan', data)} docType="UAN" setToast={setToast} />} />
+                                    <Controller name="uanProof" control={control} render={({ field }) => <UploadDocument label={`UAN Proof Document${mandatoryFields.uanProof ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.uanProof?.message as string} allowCapture verificationStatus={store.data.uan.verifiedStatus?.uanNumber} ocrSchema={uanProofSchema} onOcrComplete={(data) => handleImmediateOcr('uan', data)} docType="UAN" setToast={setToast} />} />
                                 </div>
                                 {currentRules.documents.pan && (
                                     <div className="flex flex-col gap-2">
                                         <MandatoryToggle fieldKey="panCard" label="PAN Card" checked={mandatoryFields.panCard} onChange={handleMandatoryToggle} />
-                                        <Controller name="panCard" control={control} render={({ field }) => <UploadDocument label={`PAN Card${mandatoryFields.panCard ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.panCard?.message as string} allowCapture ocrSchema={!isManualMode ? panSchema : undefined} onOcrComplete={(data) => handleImmediateOcr('pan', data)} docType="PAN" setToast={setToast} />} />
+                                        <Controller name="panCard" control={control} render={({ field }) => <UploadDocument label={`PAN Card${mandatoryFields.panCard ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.panCard?.message as string} allowCapture ocrSchema={panSchema} onOcrComplete={(data) => handleImmediateOcr('pan', data)} docType="PAN" setToast={setToast} />} />
                                     </div>
                                 )}
                                 {currentRules.documents.salarySlip && (
                                     <div className="flex flex-col gap-2">
                                         <MandatoryToggle fieldKey="salarySlip" label="Salary Slip" checked={mandatoryFields.salarySlip} onChange={handleMandatoryToggle} />
-                                        <Controller name="salarySlip" control={control} render={({ field }) => <UploadDocument label={`Latest Salary Slip${mandatoryFields.salarySlip ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.salarySlip?.message as string} allowCapture ocrSchema={!isManualMode ? salarySlipSchema : undefined} onOcrComplete={(data) => handleImmediateOcr('salary', data)} docType="Salary" setToast={setToast} />} />
+                                        <Controller name="salarySlip" control={control} render={({ field }) => <UploadDocument label={`Latest Salary Slip${mandatoryFields.salarySlip ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.salarySlip?.message as string} allowCapture ocrSchema={salarySlipSchema} onOcrComplete={(data) => handleImmediateOcr('salary', data)} docType="Salary" setToast={setToast} />} />
                                     </div>
                                 )}
                             </div>
@@ -1014,7 +1131,7 @@ const PreUpload = () => {
                                                 )} />
                                                 <div className="md:col-span-3">
                                                     <Controller name={`education.${index}.document`} control={control} render={({ field: controllerField, fieldState }) => (
-                                                        <UploadDocument label="Upload Certificate" file={controllerField.value} onFileChange={controllerField.onChange} error={fieldState.error?.message} allowCapture ocrSchema={!isManualMode ? educationSchema : undefined} onOcrComplete={(data) => handleImmediateOcr('education', data, index)} docType="Education" setToast={setToast} />
+                                                        <UploadDocument label="Upload Certificate" file={controllerField.value} onFileChange={controllerField.onChange} error={fieldState.error?.message} allowCapture ocrSchema={educationSchema} onOcrComplete={(data) => handleImmediateOcr('education', data, index)} docType="Education" setToast={setToast} />
                                                     )} />
                                                 </div>
                                             </div>
@@ -1047,7 +1164,7 @@ const PreUpload = () => {
                                                     <Controller name={`family.${index}.relation`} control={control} render={({ field, fieldState }) => (<Select label="Relation" error={fieldState.error?.message} {...field}> <option value="">Select</option><option>Spouse</option><option>Child</option><option>Father</option><option>Mother</option> </Select>)} />
                                                     <Controller name={`family.${index}.phone`} control={control} render={({ field, fieldState }) => (<Input label={`Phone Number${isChild ? ' (Optional)' : ''}`} type="tel" {...field} error={fieldState.error?.message} />)} />
                                                     <div className="md:col-span-2">
-                                                        <Controller name={`family.${index}.idProof`} control={control} render={({ field, fieldState }) => (<UploadDocument label="Aadhaar Card" file={field.value} onFileChange={field.onChange} error={fieldState.error?.message} allowCapture ocrSchema={!isManualMode ? familyAadhaarSchema : undefined} onOcrComplete={(data) => handleImmediateOcr('familyAadhaar', data, index)} docType="Aadhaar" setToast={setToast} />)} />
+                                                        <Controller name={`family.${index}.idProof`} control={control} render={({ field, fieldState }) => (<UploadDocument label="Aadhaar Card" file={field.value} onFileChange={field.onChange} error={fieldState.error?.message} allowCapture ocrSchema={familyAadhaarSchema} onOcrComplete={(data) => handleImmediateOcr('familyAadhaar', data, index)} docType="Aadhaar" setToast={setToast} />)} />
                                                     </div>
                                                 </div>
                                                 <Button type="button" variant="icon" size="sm" onClick={() => removeFamily(index)} className="!absolute top-3 right-3"><Trash2 className="h-4 w-4 text-red-500" /></Button>
@@ -1064,11 +1181,18 @@ const PreUpload = () => {
 
                     {/* Footer Actions */}
                     <div className="pt-6 border-t border-white/10 md:border-border">
-                        <div className="flex justify-between items-center gap-4">
+                        <div className="flex justify-between items-center gap-4 flex-wrap">
                             <Button type="button" variant="secondary" onClick={() => navigate(-1)}>
                                 <ArrowLeft className="mr-2 h-4 w-4" /> Back
                             </Button>
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-3 flex-wrap">
+                                <Button 
+                                    type="button" 
+                                    variant="outline" 
+                                    onClick={() => processAndNavigate(getValues(), true)}
+                                >
+                                    Skip & Fill Manually <ArrowRight className="ml-2 h-4 w-4" />
+                                </Button>
                                 <DraftSaveIndicator status={saveStatus} lastSavedAt={lastSavedAt} onManualSave={handlePreUploadDraft} />
                                 {saveStatus === 'dirty' && (
                                     <Button type="button" variant="outline" size="sm" onClick={handlePreUploadDraft} className="flex items-center gap-1 text-sm">

@@ -42,9 +42,9 @@ const validationSchema = yup.object({
     preferredName: yup.string().optional(),
     badgeName: yup.string().max(18, 'Badge name must be 18 characters or less').optional(),
     dob: yup.string().required('Date of birth is required'),
-    gender: yup.string().oneOf(['Male', 'Female', 'Other', '']).required('Gender is required'),
-    maritalStatus: yup.string().oneOf(['Single', 'Married', 'Divorced', 'Widowed', '']).required('Marital status is required'),
-    bloodGroup: yup.string().oneOf(['', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']).required('Blood group is required'),
+    gender: yup.string().oneOf(['Male', 'Female', 'Other'], 'Gender is required').required('Gender is required'),
+    maritalStatus: yup.string().oneOf(['Single', 'Married', 'Divorced', 'Widowed'], 'Marital status is required').required('Marital status is required'),
+    bloodGroup: yup.string().oneOf(['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'], 'Blood group is required').required('Blood group is required'),
     mobile: yup.string().required('Mobile number is required').matches(/^[6-9][0-9]{9}$/, 'Must be a valid 10-digit Indian mobile number'),
     alternateMobile: yup.string().optional().nullable(),
     email: yup.string().transform((v, orig) => orig === '' ? undefined : v).email('Must be a valid email').optional().nullable(),
@@ -56,7 +56,7 @@ const validationSchema = yup.object({
     emergencyContactName: yup.string().required('Emergency contact name is required'),
     emergencyContactNumber: yup.string().required('Emergency contact number is required').matches(/^[6-9][0-9]{9}$/, 'Must be a valid 10-digit number'),
     emergencyContactId: yup.string().optional().nullable(),
-    relationship: yup.string().oneOf(['Spouse', 'Child', 'Father', 'Mother', 'Sibling', 'Other', '']).required('Relationship is required'),
+    relationship: yup.string().oneOf(['Spouse', 'Wife', 'Husband', 'Child', 'Father', 'Mother', 'Sibling', 'Other'], 'Relationship is required').required('Relationship is required'),
     salary: yup.number().typeError('Salary must be a number').min(0).required('Salary is required').nullable(),
     spokenLanguages: yup.array().of(yup.string().required()).optional(),
     writtenLanguages: yup.array().of(yup.string().required()).optional(),
@@ -66,10 +66,11 @@ const validationSchema = yup.object({
 
 interface OutletContext {
     onValidated: () => Promise<void>;
+    setToast?: (toast: { message: string; type: 'success' | 'error' } | null) => void;
 }
 
 const PersonalDetails = () => {
-    const { onValidated } = useOutletContext<OutletContext>();
+    const { onValidated, setToast } = useOutletContext<OutletContext>();
     const { data, updatePersonal, addOrUpdateEmergencyContactAsFamilyMember, setPersonalVerifiedStatus } = useOnboardingStore();
     const { esiCtcThreshold } = useEnrollmentRulesStore();
 
@@ -130,6 +131,11 @@ const PersonalDetails = () => {
     
     const salaryVal = personalData.salary;
     const isEsiEligible = typeof salaryVal === 'number' && salaryVal <= esiCtcThreshold;
+
+    // Sync store data (e.g. from OCR or PreUpload) into react-hook-form state
+    useEffect(() => {
+        reset(initialPersonal);
+    }, [initialPersonal, reset]);
 
     // L-08: Auto-sync preferredName = firstName (stops if user edits preferredName)
     useEffect(() => {
@@ -257,8 +263,16 @@ const PersonalDetails = () => {
         await onValidated();
     };
 
+    const onInvalid = (errors: any) => {
+        console.error("PersonalDetails Validation Errors:", errors);
+        const firstErr = Object.values(errors)[0] as any;
+        if (firstErr?.message && setToast) {
+            setToast({ message: `Please fix: ${firstErr.message}`, type: 'error' });
+        }
+    };
+
     return (
-        <form onSubmit={handleSubmit(onSubmit)} id="personal-form">
+        <form onSubmit={handleSubmit(onSubmit, onInvalid)} id="personal-form">
             <div className="text-left">
                 <FormHeader title="Personal Details" subtitle="Please provide your personal information as per your official documents." />
             </div>
@@ -405,7 +419,7 @@ const PersonalDetails = () => {
                             <Input label="Contact Number" id="emergencyContactNumber" type="tel" registration={register('emergencyContactNumber')} error={errors.emergencyContactNumber?.message} />
                             <Select label="Relationship" id="relationship" registration={register('relationship')} error={errors.relationship?.message}>
                                 <option value="">Select Relationship</option>
-                                <option>Spouse</option><option>Child</option><option>Father</option><option>Mother</option><option>Sibling</option><option>Other</option>
+                                <option>Spouse</option><option>Wife</option><option>Husband</option><option>Child</option><option>Father</option><option>Mother</option><option>Sibling</option><option>Other</option>
                             </Select>
                          </div>
                     </div>
