@@ -80,15 +80,60 @@ class EventDispatcher:
 
     @staticmethod
     def _get_local_ip() -> str:
-        """Auto-detect the machine's LAN IP address."""
+        """Auto-detect the machine's best LAN IP address.
+        
+        On machines with multiple adapters (e.g. NVR subnet + office LAN),
+        we pick the adapter whose IP was stored in .env SUPABASE_URL's subnet,
+        or fall back to the non-loopback IP with the lowest last octet distance.
+        """
         import socket
+        import ipaddress
+        
+        candidates = []
         try:
-            # Connect to an external host to discover the outbound LAN interface
+            # Get all IPs bound to this machine
+            hostname = socket.gethostname()
+            all_ips = socket.getaddrinfo(hostname, None, socket.AF_INET)
+            for entry in all_ips:
+                ip = entry[4][0]
+                if ip.startswith('127.') or ip.startswith('169.254.'):
+                    continue  # Skip loopback and APIPA
+                candidates.append(ip)
+        except Exception:
+            pass
+        
+        if not candidates:
+            # Fallback: use UDP trick
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                    s.connect(('8.8.8.8', 80))
+                    candidates.append(s.getsockname()[0])
+            except Exception:
+                return '127.0.0.1'
+        
+        if len(candidates) == 1:
+            return candidates[0]
+        
+        # Multiple adapters: prefer the one that can reach Supabase (non-NVR)
+        # Sort by preference: prefer 192.168.x.x over 10.x.x.x, prefer higher last octet
+        # (NVR IPs tend to be lower, like .100 or .111)
+        try:
+            # Prefer the IP that matches the route to the internet (Supabase)
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
                 s.connect(('8.8.8.8', 80))
-                return s.getsockname()[0]
+                internet_ip = s.getsockname()[0]
+            # If this IP is already a candidate, trust it
+            # But if it looks like a camera IP (e.g. .111), pick the next best
+            if internet_ip in candidates and not internet_ip.endswith('.111'):
+                return internet_ip
+            # Otherwise pick any candidate that isn't the camera-looking IP
+            for ip in sorted(candidates):
+                if not ip.endswith('.111') and not ip.endswith('.100'):
+                    return ip
         except Exception:
-            return '127.0.0.1'
+            pass
+        
+        return candidates[0]
 
     async def send_heartbeat(self, cameras: list[dict]) -> bool:
         """Send device heartbeat to Supabase cctv_devices table via UPSERT."""

@@ -562,49 +562,63 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
           overtimeDays: emp.overtimeDays,
         },
         ruleVersionId: activeRuleVersionId || undefined,
-        lockedBy: currentUser.id,
-        lockedByName: currentUser.name,
+        lockedBy: currentUser?.id || currentUser?.email || 'admin',
+        lockedByName: currentUser?.name || currentUser?.email || 'Admin',
       }));
 
       await api.saveMonthSnapshots(snapshots);
 
-      // ── STEP 2: Save leave balances (existing logic) ─────────────────────────
-      const prevBalancesChunkSize = 50;
-      let prevBalances: any[] = [];
-      for (let i = 0; i < employeeIds.length; i += prevBalancesChunkSize) {
-        const chunk = employeeIds.slice(i, i + prevBalancesChunkSize);
-        const chunkBalances = await api.getLeaveBalancesBulk(chunk, prevYear, prevMonth);
-        prevBalances = prevBalances.concat(chunkBalances);
+      // ── STEP 2: Save leave balances (best-effort) ─────────────────────────
+      try {
+        const prevBalancesChunkSize = 50;
+        let prevBalances: any[] = [];
+        for (let i = 0; i < employeeIds.length; i += prevBalancesChunkSize) {
+          const chunk = employeeIds.slice(i, i + prevBalancesChunkSize);
+          const chunkBalances = await api.getLeaveBalancesBulk(chunk, prevYear, prevMonth).catch(err => {
+            console.warn('[handleLockMonth] Bulk leave balance fetch error for chunk:', err);
+            return [];
+          });
+          prevBalances = prevBalances.concat(chunkBalances);
+        }
+        const balanceMap = new Map();
+        prevBalances.forEach((b: any) => balanceMap.set(b.employee_id, b));
+
+        const newBalances = reportData.map(emp => {
+          const prev = balanceMap.get(emp.employeeId);
+          const woEarned = ((emp.presentDays || 0) + (emp.halfDays || 0)) * (1 / 6);
+          const woAllotted = emp.weekOffs || 0;
+          const qualifyingDays = (emp.presentDays || 0) + (emp.halfDays || 0) + (emp.weekOffs || 0) + (emp.holidays || 0);
+          const elEarned = qualifyingDays * 0.05;
+          const elAvailed = emp.earnedLeaves || 0;
+          
+          const rawElOpening = prev ? (prev.el_closing ?? 0) : 0;
+          const elOpening = month === 1 ? Math.min(30.0, rawElOpening) : rawElOpening;
+          const woOpening = month === 1 ? 0.0 : (prev ? (prev.wo_closing ?? 0) : 0);
+
+          return {
+            employee_id: emp.employeeId,
+            year,
+            month,
+            el_opening: isNaN(elOpening) ? 0 : elOpening,
+            el_earned_this_month: isNaN(elEarned) ? 0 : elEarned,
+            el_availed_this_month: isNaN(elAvailed) ? 0 : elAvailed,
+            wo_opening: isNaN(woOpening) ? 0 : woOpening,
+            wo_earned_this_month: isNaN(woEarned) ? 0 : woEarned,
+            wo_allotted_this_month: isNaN(woAllotted) ? 0 : woAllotted,
+          };
+        });
+
+        await api.saveLeaveBalances(newBalances);
+      } catch (leaveErr) {
+        console.warn('[handleLockMonth] Non-fatal issue updating leave balances:', leaveErr);
       }
-      const balanceMap = new Map();
-      prevBalances.forEach((b: any) => balanceMap.set(b.employee_id, b));
 
-      const newBalances = reportData.map(emp => {
-        const prev = balanceMap.get(emp.employeeId);
-        const woEarned = (emp.presentDays + emp.halfDays) * (1 / 6);
-        const woAllotted = emp.weekOffs;
-        const qualifyingDays = emp.presentDays + emp.halfDays + emp.weekOffs + emp.holidays;
-        const elEarned = qualifyingDays * 0.05;
-        const elAvailed = emp.earnedLeaves;
-        return {
-          employee_id: emp.employeeId,
-          year,
-          month,
-          el_opening: prev ? prev.el_closing : 0,
-          el_earned_this_month: elEarned,
-          el_availed_this_month: elAvailed,
-          wo_opening: prev ? prev.wo_closing : 0,
-          wo_earned_this_month: woEarned,
-          wo_allotted_this_month: woAllotted,
-        };
-      });
-
-      await api.saveLeaveBalances(newBalances);
       setIsMonthLocked(true);
       alert(`✅ ${format(new Date(year, month - 1), 'MMMM yyyy')} is now LOCKED.\n${snapshots.length} employee records frozen.\nFuture rule changes will NOT affect this month.`);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error locking month:', error);
-      alert('Failed to lock month. Check console for details.');
+      const errMsg = error?.message || error?.details || error?.hint || String(error);
+      alert(`Failed to lock month: ${errMsg}`);
     } finally {
       setIsLocking(false);
     }

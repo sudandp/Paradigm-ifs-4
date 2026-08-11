@@ -9,7 +9,7 @@ import Toast from '../../components/ui/Toast';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 import {
   Camera, Plus, Trash2, Wifi, WifiOff, RefreshCw,
-  Activity, Shield, AlertCircle, MapPin
+  Activity, Shield, AlertCircle, MapPin, UserPlus, Upload, X, CheckCircle
 } from 'lucide-react';
 
 interface CctvDevice {
@@ -30,47 +30,59 @@ interface CctvDevice {
 }
 
 const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; adminPort: number }> = ({ camera, serverHost, adminPort }) => {
-  const [tick, setTick] = useState(Date.now());
   const [hasError, setHasError] = useState(false);
+  const imgRef = React.useRef<HTMLImageElement>(null);
+  const activeHost = '192.168.51.123';
 
   const camName = typeof camera === 'string' ? camera : camera?.name || 'main_gate_entry';
-  // Use host from Supabase (reported by edge server). Fall back to localhost if missing.
-  const streamUrl = `http://${serverHost || 'localhost'}:${adminPort}/camera/frame/${camName}?t=${tick}`;
+
+  const effectiveHost = (serverHost && serverHost !== '192.168.51.111' && serverHost !== 'localhost' && serverHost !== '127.0.0.1')
+    ? serverHost
+    : activeHost;
+
+  const baseUrl = `http://${effectiveHost}:${adminPort || 4100}/camera/frame/${camName}`;
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setTick(Date.now());
-    }, 1500);
-    return () => clearInterval(timer);
-  }, []);
+    let isMounted = true;
+
+    const fetchNextFrame = () => {
+      const nextUrl = `${baseUrl}?t=${Date.now()}`;
+      const preloadImg = new Image();
+      preloadImg.onload = () => {
+        if (isMounted) {
+          if (imgRef.current) imgRef.current.src = nextUrl;
+          setHasError(false);
+        }
+      };
+      preloadImg.onerror = () => {
+        if (isMounted && (!imgRef.current || !imgRef.current.src)) {
+          setHasError(true);
+        }
+      };
+      preloadImg.src = nextUrl;
+    };
+
+    fetchNextFrame();
+    const timer = setInterval(fetchNextFrame, 1500);
+
+    return () => {
+      isMounted = false;
+      clearInterval(timer);
+    };
+  }, [baseUrl]);
 
   return (
-    <div className="w-full h-full relative group">
-      {!hasError ? (
-        <img
-          src={streamUrl}
-          alt={camName}
-          className="w-full h-full object-cover"
-          onError={(e) => {
-            setHasError(true);
-          }}
-          onLoad={() => {
-            setHasError(false);
-          }}
-        />
-      ) : (
-        <div className="flex flex-col items-center justify-center h-full p-2 text-center bg-slate-950 text-slate-200 text-[10px]">
+    <div className="w-full h-full relative group bg-slate-950">
+      <img
+        ref={imgRef}
+        alt={camName}
+        className={`w-full h-full object-cover ${hasError ? 'hidden' : 'block'}`}
+        onError={() => setHasError(true)}
+      />
+      {hasError && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center p-2 text-center bg-slate-950 text-slate-200 text-[10px]">
           <Camera className="h-5 w-5 text-amber-400 mb-1 animate-pulse" />
           <span className="font-bold text-amber-300">Feed Offline / Connecting</span>
-          
-          <div className="flex gap-1 items-center mt-2">
-            <button
-              onClick={() => { setHasError(false); setTick(Date.now()); }}
-              className="px-2 py-0.5 bg-slate-700 hover:bg-slate-600 text-white rounded text-[9px]"
-            >
-              Retry
-            </button>
-          </div>
         </div>
       )}
 
@@ -80,7 +92,7 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
       </div>
       <div className="absolute bottom-2 left-2 right-2 text-[9px] font-medium text-white/90 bg-black/70 backdrop-blur-md px-2 py-0.5 rounded-lg truncate border border-white/10 pointer-events-none flex justify-between">
         <span>📷 {camName}</span>
-        <span className="font-mono text-[8px] text-slate-400">{serverHost}:4100</span>
+        <span className="font-mono text-[8px] text-slate-400">{effectiveHost}:{adminPort || 4100}</span>
       </div>
     </div>
   );
@@ -115,6 +127,15 @@ const ManageCctvDevices: React.FC = () => {
   const [form, setForm] = useState<NewDeviceForm>(DEFAULT_FORM);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  // Proactive enrollment state
+  const [enrollUsers, setEnrollUsers] = useState<{ id: string; name: string; biometricId: string | null; department: string | null }[]>([]);
+  const [enrollUserId, setEnrollUserId] = useState('');
+  const [enrollPhoto, setEnrollPhoto] = useState<File | null>(null);
+  const [enrollPhotoPreview, setEnrollPhotoPreview] = useState<string | null>(null);
+  const [isEnrolling, setIsEnrolling] = useState(false);
+  const [enrollResult, setEnrollResult] = useState<{ success: boolean; message: string } | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
@@ -156,7 +177,19 @@ const ManageCctvDevices: React.FC = () => {
     }
   }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    fetchData();
+    // Fetch employees for proactive enrollment
+    supabase.from('users').select('id, name, biometric_id, department').order('name').limit(300)
+      .then(({ data }) => {
+        if (data) setEnrollUsers(data.map((u: any) => ({
+          id: u.id,
+          name: u.name || 'Unnamed',
+          biometricId: u.biometric_id || null,
+          department: u.department || null,
+        })));
+      });
+  }, [fetchData]);
 
   const handleSave = async () => {
     if (!form.edgeDeviceId.trim() || !form.siteName.trim()) {
@@ -201,6 +234,65 @@ const ManageCctvDevices: React.FC = () => {
       setToast({ message: 'Device deleted successfully', type: 'success' });
     } catch (err: any) {
       setToast({ message: err.message || 'Failed to delete device', type: 'error' });
+    }
+  };
+
+  const handlePhotoSelect = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      setToast({ message: 'Please select a valid image file (JPG, PNG)', type: 'error' });
+      return;
+    }
+    setEnrollPhoto(file);
+    setEnrollResult(null);
+    const reader = new FileReader();
+    reader.onload = (e) => setEnrollPhotoPreview(e.target?.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const handleEnrollFace = async () => {
+    if (!enrollUserId) { setToast({ message: 'Select an employee first', type: 'error' }); return; }
+    if (!enrollPhoto) { setToast({ message: 'Upload a face photo first', type: 'error' }); return; }
+
+    // Find online device to get edge server URL
+    const onlineDevice = devices.find(d => d.status === 'online' && d.serverHost);
+    if (!onlineDevice) {
+      setToast({ message: 'No online edge server found. Make sure the server is running.', type: 'error' });
+      return;
+    }
+    const edgeUrl = `http://${onlineDevice.serverHost}:${onlineDevice.adminPort || 4100}`;
+    const selectedUser = enrollUsers.find(u => u.id === enrollUserId);
+
+    setIsEnrolling(true);
+    setEnrollResult(null);
+    try {
+      const formData = new FormData();
+      formData.append('user_id', enrollUserId);
+      formData.append('user_name', selectedUser?.name || 'Employee');
+      formData.append('biometric_id', selectedUser?.biometricId || '');
+      formData.append('department', selectedUser?.department || 'General');
+      formData.append('organization_id', user?.organizationId || '');
+      formData.append('photo', enrollPhoto);
+
+      const res = await fetch(`${edgeUrl}/enroll`, {
+        method: 'POST',
+        body: formData,
+        signal: AbortSignal.timeout(20000),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || `Server error ${res.status}`);
+      }
+
+      const data = await res.json();
+      setEnrollResult({ success: true, message: `✅ ${selectedUser?.name} enrolled! ${data.embedding_dims || 512}D embedding stored on edge server.` });
+      setEnrollUserId('');
+      setEnrollPhoto(null);
+      setEnrollPhotoPreview(null);
+    } catch (err: any) {
+      setEnrollResult({ success: false, message: `❌ Enrollment failed: ${err.message}` });
+    } finally {
+      setIsEnrolling(false);
     }
   };
 
@@ -383,6 +475,157 @@ const ManageCctvDevices: React.FC = () => {
           ))}
         </div>
       )}
+
+      {/* ─── Proactive Face Enrollment Section ─── */}
+      <div className="mt-10">
+        <div className="flex items-center gap-3 mb-5 pb-4 border-b border-border">
+          <div className="h-9 w-9 rounded-xl bg-accent/10 flex items-center justify-center">
+            <UserPlus className="h-5 w-5 text-accent" />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-primary-text">Enroll Employee Face</h2>
+            <p className="text-xs text-muted mt-0.5">Pre-register employees so the CCTV recognizes them from day one — no unknown face queue needed.</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+          {/* Left: Form */}
+          <div className="bg-card rounded-2xl border border-border p-6 space-y-5">
+
+            {/* Employee select */}
+            <div>
+              <label className="block text-xs font-bold text-primary-text mb-2 uppercase tracking-wider">Select Employee *</label>
+              <select
+                value={enrollUserId}
+                onChange={e => { setEnrollUserId(e.target.value); setEnrollResult(null); }}
+                disabled={isEnrolling}
+                className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
+              >
+                <option value="">-- Search and select employee --</option>
+                {enrollUsers.map(u => (
+                  <option key={u.id} value={u.id}>
+                    {u.name} {u.biometricId ? `• ID: ${u.biometricId}` : ''} {u.department ? `• ${u.department}` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Photo upload */}
+            <div>
+              <label className="block text-xs font-bold text-primary-text mb-2 uppercase tracking-wider">Face Photo *</label>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/jpg,image/png,image/webp"
+                className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) handlePhotoSelect(f); }}
+              />
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                onDragOver={e => e.preventDefault()}
+                onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) handlePhotoSelect(f); }}
+                className="border-2 border-dashed border-border rounded-xl p-6 text-center cursor-pointer hover:border-accent hover:bg-accent/5 transition-all group"
+              >
+                <Upload className="h-7 w-7 text-muted group-hover:text-accent mx-auto mb-2 transition-colors" />
+                <p className="text-sm font-semibold text-primary-text">Click or drag to upload photo</p>
+                <p className="text-xs text-muted mt-1">Clear front-facing photo — JPG, PNG, WebP supported</p>
+              </div>
+            </div>
+
+            {/* Tips */}
+            <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+              <p className="text-xs font-bold text-blue-800 mb-1.5">📸 Photo Tips for Best Results</p>
+              <ul className="text-xs text-blue-700 space-y-1 list-disc list-inside">
+                <li>Use a clear, well-lit front-facing photo</li>
+                <li>Face must be clearly visible — no sunglasses or masks</li>
+                <li>Avoid group photos — one face only</li>
+                <li>Higher resolution = more accurate recognition</li>
+              </ul>
+            </div>
+
+            {/* Enroll button */}
+            <Button
+              onClick={handleEnrollFace}
+              disabled={!enrollUserId || !enrollPhoto || isEnrolling}
+              className="w-full flex items-center justify-center gap-2 h-11"
+            >
+              {isEnrolling ? (
+                <><span className="h-4 w-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Enrolling Face...</>
+              ) : (
+                <><UserPlus className="h-4 w-4" /> Enroll on Edge Server</>
+              )}
+            </Button>
+
+            {/* Result */}
+            {enrollResult && (
+              <div className={`flex items-start gap-3 p-3 rounded-xl border text-sm font-medium ${
+                enrollResult.success
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                  : 'bg-red-50 border-red-200 text-red-800'
+              }`}>
+                {enrollResult.success
+                  ? <CheckCircle className="h-5 w-5 flex-shrink-0 mt-0.5 text-emerald-600" />
+                  : <X className="h-5 w-5 flex-shrink-0 mt-0.5 text-red-600" />
+                }
+                <span>{enrollResult.message}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Right: Preview + Info */}
+          <div className="space-y-4">
+
+            {/* Photo preview */}
+            <div className="bg-card rounded-2xl border border-border overflow-hidden">
+              <div className="px-4 py-3 border-b border-border">
+                <p className="text-xs font-bold text-primary-text uppercase tracking-wider">Face Preview</p>
+              </div>
+              <div className="aspect-square bg-gray-50 flex items-center justify-center relative">
+                {enrollPhotoPreview ? (
+                  <>
+                    <img src={enrollPhotoPreview} alt="Face preview" className="h-full w-full object-cover" />
+                    <button
+                      onClick={() => { setEnrollPhoto(null); setEnrollPhotoPreview(null); }}
+                      className="absolute top-2 right-2 p-1.5 bg-black/60 hover:bg-black/80 text-white rounded-full transition-all"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </>
+                ) : (
+                  <div className="text-center">
+                    <Camera className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                    <p className="text-sm text-muted">Photo preview will appear here</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Edge server info */}
+            <div className="bg-card rounded-2xl border border-border p-4">
+              <p className="text-xs font-bold text-primary-text uppercase tracking-wider mb-3">Target Edge Server</p>
+              {devices.filter(d => d.status === 'online').length > 0 ? (
+                <div className="space-y-2">
+                  {devices.filter(d => d.status === 'online').map(d => (
+                    <div key={d.id} className="flex items-center gap-3 p-2.5 bg-emerald-50 border border-emerald-100 rounded-xl">
+                      <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse flex-shrink-0" />
+                      <div>
+                        <p className="text-xs font-bold text-emerald-800">{d.siteName}</p>
+                        <p className="text-[11px] font-mono text-emerald-600">{d.serverHost}:{d.adminPort || 4100}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-100 rounded-xl">
+                  <WifiOff className="h-4 w-4 text-amber-500 flex-shrink-0" />
+                  <p className="text-xs text-amber-700">No online edge servers detected. Start the server and refresh.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Register Modal */}
       <Modal

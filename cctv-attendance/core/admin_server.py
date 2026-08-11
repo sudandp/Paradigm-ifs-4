@@ -49,12 +49,8 @@ def create_admin_app(
     # Allow requests from the Paradigm IFS app (local only)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "http://localhost:3000",
-            "http://localhost:5173",
-            "https://paradigm-ifs-4.vercel.app",
-            f"http://localhost:{config.admin_port}",
-        ],
+        allow_origins=["*"],
+        allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -259,153 +255,309 @@ def create_admin_app(
 
     @app.get("/", response_class=HTMLResponse)
     async def dashboard():
-        """HTML admin dashboard with live camera feed previews."""
+        """HTML admin dashboard — Paradigm Services branded CCTV monitor."""
         enrolled_count = db.get_embedding_count()
         queue_stats = db.get_queue_stats()
         recent = db.get_recent_detections(limit=10)
 
-        # Camera Cards HTML
+        # Build camera cards
         camera_cards_html = ""
         for cam in config.cameras:
             is_connected = False
             frame_cnt = 0
-            if pipeline and hasattr(pipeline, 'grabber') and cam.name in pipeline.grabber.streams:
+            if pipeline and hasattr(pipeline, "grabber") and cam.name in pipeline.grabber.streams:
                 st = pipeline.grabber.streams[cam.name]
                 is_connected = st.is_connected
                 frame_cnt = st.frame_count
 
-            status_pill = (
-                '<span class="badge online">🟢 Connected</span>'
+            status_badge = (
+                '<span class="badge badge-online">&#9679; Connected</span>'
                 if is_connected else
-                '<span class="badge offline">🔴 Reconnecting</span>'
+                '<span class="badge badge-offline">&#9679; Reconnecting</span>'
             )
-            direction_pill = (
-                '<span class="badge entry">Entry Gate</span>'
-                if cam.direction == 'entry' else
-                '<span class="badge exit">Exit Gate</span>'
+            direction_badge = (
+                '<span class="badge badge-entry">&#8593; Entry Gate</span>'
+                if cam.direction == "entry" else
+                '<span class="badge badge-exit">&#8595; Exit Gate</span>'
             )
+            rec_overlay = '<div class="cam-overlay"><span class="dot"></span> REC</div>' if is_connected else ""
+            live_status = "&#128994; Live" if is_connected else "&#128308; Offline"
+            safe_id = cam.name.replace("-", "_").replace(".", "_")
 
             camera_cards_html += f"""
             <div class="cam-card">
                 <div class="cam-header">
                     <div>
-                        <div class="cam-title">🎥 {cam.name}</div>
-                        <div style="margin-top:4px">{direction_pill} {status_pill}</div>
+                        <div class="cam-name">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11l-4 4z"/>
+                            </svg>
+                            {cam.name}
+                        </div>
+                        <div class="cam-badges">{direction_badge} {status_badge}</div>
                     </div>
-                    <div style="font-size:0.75rem;color:#64748b">Frames: {frame_cnt}</div>
+                    <div class="cam-frames">{frame_cnt} frames</div>
                 </div>
                 <div class="cam-preview">
-                    <img id="img-{cam.name}" src="/camera/frame/{cam.name}" alt="{cam.name} preview" 
-                         onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'320\' height=\'180\' viewBox=\'0 0 320 180\'><rect width=\'320\' height=\'180\' fill=\'%230f172a\'/><text x=\'50%\' y=\'50%\' dominant-baseline=\'middle\' text-anchor=\'middle\' fill=\'%2364748b\' font-family=\'sans-serif\' font-size=\'14\'>Connecting camera stream...</text></svg>'" />
+                    <img id="img-{safe_id}" src="/camera/frame/{cam.name}" alt="{cam.name}" />
+                    {rec_overlay}
+                </div>
+                <div class="cam-footer">
+                    <span>{cam.name}</span>
+                    <span>{live_status}</span>
                 </div>
             </div>"""
 
+        # Build detection rows
         recent_rows = ""
         for log in recent:
-            ts = time.strftime('%H:%M:%S', time.localtime(log.get('timestamp', 0)))
-            user = log.get('user_name') or '❓ Unknown'
-            camera = log.get('camera_name', '-')
-            direction = log.get('direction', '-')
-            conf = log.get('confidence', 0)
+            ts = time.strftime("%H:%M:%S", time.localtime(log.get("timestamp", 0)))
+            user_name = log.get("user_name") or "Unknown"
+            is_known = bool(log.get("user_id"))
+            camera = log.get("camera_name", "-")
+            direction = log.get("direction", "-")
+            conf = log.get("confidence", 0)
+            conf_pct = int(conf * 100)
+            person_cls = "person-known" if is_known else "person-unknown"
+            person_icon = "&#10003;" if is_known else "?"
+            dir_badge = (
+                '<span class="badge badge-entry">&#8593; Entry</span>'
+                if direction == "entry" else
+                '<span class="badge badge-exit">&#8595; Exit</span>'
+            )
             recent_rows += f"""
             <tr>
-                <td>{ts}</td>
-                <td>{'✅ ' + user if log.get('user_id') else '❓ Unknown'}</td>
-                <td>{camera}</td>
-                <td>{'🟢 Entry' if direction == 'entry' else '🔴 Exit'}</td>
-                <td>{conf:.2f}</td>
+                <td class="mono">{ts}</td>
+                <td><span class="{person_cls}">{person_icon} {user_name}</span></td>
+                <td class="muted">{camera}</td>
+                <td>{dir_badge}</td>
+                <td>
+                    <div class="conf-bar">
+                        <div class="conf-track"><div class="conf-fill" style="width:{conf_pct}%"></div></div>
+                        <span class="conf-num">{conf:.2f}</span>
+                    </div>
+                </td>
             </tr>"""
+
+        # Build JS refresh calls
+        js_refresh = "; ".join([
+            f"var e_{cam.name.replace('-','_').replace('.','_')}=document.getElementById('img-{cam.name.replace('-','_').replace(chr(46),chr(95))}'); if(e_{cam.name.replace('-','_').replace('.','_')}) e_{cam.name.replace('-','_').replace('.','_')}.src='/camera/frame/{cam.name}?t='+Date.now();"
+            for cam in config.cameras
+        ])
+
+        queue_pending = queue_stats.get("pending") or 0
+        queue_failed  = queue_stats.get("failed")  or 0
+        pending_color = "#f97316" if queue_pending > 0 else "var(--brand-green)"
+        failed_color  = "#ff4f4f" if queue_failed  > 0 else "var(--brand-green)"
+        cloud_color   = "var(--online)" if config.cloud_enabled else "var(--text-dim)"
+        cloud_label   = "Active" if config.cloud_enabled else "Disabled"
 
         return HTMLResponse(content=f"""<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CCTV Attendance Admin — {config.edge_device_id}</title>
-    <style>
-        * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-                background: #0f172a; color: #e2e8f0; padding: 24px; }}
-        h1 {{ font-size: 1.5rem; color: #38bdf8; margin-bottom: 8px; }}
-        .sub {{ color: #64748b; font-size: 0.875rem; margin-bottom: 24px; }}
-        .cards {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }}
-        .card {{ background: #1e293b; border-radius: 12px; padding: 20px; border: 1px solid #334155; }}
-        .card .label {{ font-size: 0.75rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }}
-        .card .value {{ font-size: 2rem; font-weight: 700; color: #38bdf8; margin-top: 4px; }}
-        
-        .cam-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-bottom: 24px; }}
-        .cam-card {{ background: #1e293b; border-radius: 12px; border: 1px solid #334155; overflow: hidden; }}
-        .cam-header {{ padding: 12px 16px; background: #0f172a; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }}
-        .cam-title {{ font-weight: 700; color: #e2e8f0; font-size: 0.9rem; }}
-        .cam-preview {{ aspect-ratio: 16/9; background: #000; position: relative; overflow: hidden; }}
-        .cam-preview img {{ width: 100%; height: 100%; object-fit: cover; display: block; }}
-        
-        table {{ width: 100%; border-collapse: collapse; background: #1e293b; border-radius: 12px; overflow: hidden; }}
-        th {{ background: #0f172a; padding: 12px 16px; text-align: left; font-size: 0.75rem; color: #64748b; text-transform: uppercase; }}
-        td {{ padding: 12px 16px; border-top: 1px solid #334155; font-size: 0.875rem; }}
-        h2 {{ font-size: 1rem; color: #94a3b8; margin-bottom: 12px; margin-top: 24px; }}
-        .badge {{ display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 0.7rem; font-weight: 600; }}
-        .online {{ background: #064e3b; color: #34d399; }}
-        .offline {{ background: #450a0a; color: #f87171; }}
-        .entry {{ background: #0284c7; color: #e0f2fe; }}
-        .exit {{ background: #7c3aed; color: #f3e8ff; }}
-    </style>
-    <script>
-        // Auto-refresh camera preview images every 1.5s
-        setInterval(() => {{
-            {"; ".join([f"const i_{cam.name} = document.getElementById('img-{cam.name}'); if(i_{cam.name}) i_{cam.name}.src = '/camera/frame/{cam.name}?t=' + Date.now();" for cam in config.cameras])}
-        }}, 1500);
-        
-        // Auto-refresh page data every 15s
-        setTimeout(() => location.reload(), 15000);
-    </script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Paradigm Services &mdash; CCTV Surveillance Monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {{
+  --brand-green:  #006B3F;
+  --brand-gdim:   rgba(0,107,63,0.12);
+  --brand-gold:   #C5A84E;
+  --bg-base:      #050e1a;
+  --bg-panel:     #0b1929;
+  --bg-card:      #0f2035;
+  --border:       rgba(0,107,63,0.22);
+  --border-s:     rgba(255,255,255,0.06);
+  --txt:          #e8f4ee;
+  --muted:        #6b8fa8;
+  --dim:          #3d5a73;
+  --online:       #00c97a;
+  --offline:      #ff4f4f;
+  --entry:        #38bdf8;
+  --exit:         #f97316;
+}}
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{
+  font-family:'Manrope',-apple-system,sans-serif;
+  background:var(--bg-base);color:var(--txt);min-height:100vh;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -20%,rgba(0,107,63,0.15) 0%,transparent 70%),
+    repeating-linear-gradient(0deg,transparent,transparent 39px,rgba(255,255,255,0.015) 40px),
+    repeating-linear-gradient(90deg,transparent,transparent 39px,rgba(255,255,255,0.015) 40px);
+}}
+/* NAV */
+.nav{{display:flex;align-items:center;justify-content:space-between;padding:13px 28px;background:rgba(5,14,26,0.92);border-bottom:1px solid var(--border);backdrop-filter:blur(12px);position:sticky;top:0;z-index:100}}
+.brand{{display:flex;align-items:center;gap:13px}}
+.brand-name{{font-size:.95rem;font-weight:800;color:var(--txt);letter-spacing:.08em;text-transform:uppercase}}
+.brand-sub{{font-size:.62rem;color:var(--brand-gold);letter-spacing:.12em;text-transform:uppercase;font-weight:600}}
+.nav-right{{display:flex;align-items:center;gap:18px}}
+.dev-badge{{display:flex;align-items:center;gap:6px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:5px 11px;font-size:.7rem;color:var(--muted)}}
+.dev-badge .dot{{width:7px;height:7px;border-radius:50%;background:var(--online);box-shadow:0 0 8px var(--online);animation:pulse 2s infinite}}
+.rec-pill{{display:flex;align-items:center;gap:5px;background:rgba(255,79,79,.12);border:1px solid rgba(255,79,79,.3);border-radius:6px;padding:4px 10px;font-size:.68rem;font-weight:700;color:#ff6b6b;letter-spacing:.08em}}
+.rec-dot{{width:6px;height:6px;border-radius:50%;background:#ff4f4f;animation:pulse 1.2s infinite}}
+@keyframes pulse{{0%,100%{{opacity:1}}50%{{opacity:.4}}}}
+/* LAYOUT */
+.main{{padding:22px 28px;max-width:1600px;margin:0 auto}}
+.sec-title{{display:flex;align-items:center;gap:10px;font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.12em;margin-bottom:13px}}
+.sec-title::after{{content:'';flex:1;height:1px;background:var(--border)}}
+/* KPI */
+.kpi-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:13px;margin-bottom:26px}}
+.kpi{{background:var(--bg-card);border:1px solid var(--border-s);border-radius:12px;padding:17px 19px;position:relative;overflow:hidden}}
+.kpi::before{{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--brand-green),transparent)}}
+.kpi-ico{{font-size:1.3rem;margin-bottom:9px}}
+.kpi-val{{font-size:2.1rem;font-weight:800;line-height:1;margin-bottom:3px}}
+.kpi-lbl{{font-size:.66rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.1em}}
+/* SYS */
+.sys-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:11px;margin-bottom:26px}}
+.sys-item{{background:var(--bg-card);border:1px solid var(--border-s);border-radius:10px;padding:13px 15px;display:flex;align-items:center;gap:11px}}
+.sys-ico{{font-size:1rem;width:32px;height:32px;border-radius:8px;background:var(--brand-gdim);display:flex;align-items:center;justify-content:center;flex-shrink:0}}
+.sys-lbl{{font-size:.64rem;color:var(--dim);text-transform:uppercase;letter-spacing:.08em}}
+.sys-val{{font-size:.8rem;font-weight:700;color:var(--txt);margin-top:1px;word-break:break-all}}
+/* CAMERAS */
+.cam-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));gap:15px;margin-bottom:26px}}
+.cam-card{{background:var(--bg-card);border:1px solid var(--border-s);border-radius:13px;overflow:hidden;transition:box-shadow .2s}}
+.cam-card:hover{{box-shadow:0 0 0 1px var(--border),0 8px 28px rgba(0,107,63,.12)}}
+.cam-header{{padding:11px 15px;background:var(--bg-panel);border-bottom:1px solid var(--border-s);display:flex;justify-content:space-between;align-items:flex-start}}
+.cam-name{{font-size:.8rem;font-weight:700;color:var(--txt);display:flex;align-items:center;gap:6px}}
+.cam-name svg{{color:var(--brand-green)}}
+.cam-badges{{display:flex;align-items:center;gap:5px;margin-top:4px}}
+.cam-frames{{font-size:.64rem;color:var(--dim)}}
+.cam-preview{{aspect-ratio:16/9;background:#000;position:relative;overflow:hidden}}
+.cam-preview img{{width:100%;height:100%;object-fit:cover;display:block}}
+.cam-overlay{{position:absolute;top:9px;left:9px;display:flex;align-items:center;gap:4px;background:rgba(5,14,26,.75);border:1px solid rgba(255,79,79,.4);border-radius:5px;padding:3px 7px;font-size:.62rem;font-weight:700;color:#ff6b6b;letter-spacing:.08em;backdrop-filter:blur(4px)}}
+.cam-overlay .dot{{width:5px;height:5px;border-radius:50%;background:#ff4f4f;animation:pulse 1.2s infinite}}
+.cam-footer{{padding:7px 15px;background:var(--bg-panel);border-top:1px solid var(--border-s);font-size:.64rem;color:var(--dim);display:flex;justify-content:space-between}}
+/* BADGES */
+.badge{{display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border-radius:5px;font-size:.63rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase}}
+.badge-online {{background:rgba(0,201,122,.12);color:var(--online);border:1px solid rgba(0,201,122,.25)}}
+.badge-offline{{background:rgba(255,79,79,.1);color:var(--offline);border:1px solid rgba(255,79,79,.2)}}
+.badge-entry  {{background:rgba(56,189,248,.1);color:var(--entry);border:1px solid rgba(56,189,248,.2)}}
+.badge-exit   {{background:rgba(249,115,22,.1);color:var(--exit);border:1px solid rgba(249,115,22,.2)}}
+/* TABLE */
+.tbl-wrap{{background:var(--bg-card);border:1px solid var(--border-s);border-radius:13px;overflow:hidden;margin-bottom:26px}}
+table{{width:100%;border-collapse:collapse}}
+thead tr{{background:var(--bg-panel)}}
+th{{padding:10px 15px;text-align:left;font-size:.64rem;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.1em;border-bottom:1px solid var(--border-s)}}
+td{{padding:9px 15px;font-size:.78rem;border-top:1px solid var(--border-s);color:var(--txt)}}
+tbody tr:hover{{background:rgba(0,107,63,.04)}}
+.person-known{{color:var(--online);font-weight:600}}
+.person-unknown{{color:var(--brand-gold);font-weight:600}}
+.conf-bar{{display:flex;align-items:center;gap:7px}}
+.conf-track{{flex:1;height:3px;background:var(--border-s);border-radius:99px;overflow:hidden;max-width:72px}}
+.conf-fill{{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--brand-green),#00e87a)}}
+.conf-num{{font-size:.68rem;color:var(--muted)}}
+.mono{{font-family:monospace;color:var(--muted)}}
+.muted{{color:var(--muted)}}
+/* FOOTER */
+.footer{{display:flex;align-items:center;justify-content:space-between;padding:13px 28px;border-top:1px solid var(--border-s);font-size:.66rem;color:var(--dim)}}
+.footer a{{color:var(--brand-green);text-decoration:none;font-weight:600}}
+.footer a:hover{{color:var(--brand-gold)}}
+.footer-links{{display:flex;gap:18px}}
+</style>
+<script>
+setInterval(function(){{ {js_refresh} }}, 1500);
+function tick(){{var e=document.getElementById('clk');if(e)e.textContent=new Date().toLocaleTimeString('en-IN',{{hour12:false}});}}
+setInterval(tick,1000);tick();
+setTimeout(function(){{location.reload();}},15000);
+</script>
 </head>
 <body>
-    <h1>🎥 CCTV Attendance Admin</h1>
-    <div class="sub">Device: {config.edge_device_id} &nbsp;|&nbsp; Live Feeds & Status</div>
-    
-    <div class="cards">
-        <div class="card">
-            <div class="label">Enrolled Faces</div>
-            <div class="value">{enrolled_count}</div>
-        </div>
-        <div class="card">
-            <div class="label">Queue Pending</div>
-            <div class="value">{queue_stats.get('pending') or 0}</div>
-        </div>
-        <div class="card">
-            <div class="label">Queue Failed</div>
-            <div class="value">{queue_stats.get('failed') or 0}</div>
-        </div>
-        <div class="card">
-            <div class="label">Cameras</div>
-            <div class="value">{len(config.cameras)}</div>
-        </div>
-    </div>
 
-    <h2>🎥 Live Camera Feeds</h2>
-    <div class="cam-grid">
-        {camera_cards_html if camera_cards_html else '<div style="color:#64748b">No cameras configured</div>'}
+<nav class="nav">
+  <div class="brand">
+    <svg width="34" height="34" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="18" cy="18" r="5.5" fill="#006B3F"/>
+      <circle cx="18" cy="6.5" r="3"   fill="#006B3F"/>
+      <circle cx="18" cy="29.5" r="3"  fill="#006B3F"/>
+      <circle cx="6.5" cy="18" r="3"   fill="#006B3F"/>
+      <circle cx="29.5" cy="18" r="3"  fill="#006B3F"/>
+      <circle cx="10" cy="10" r="2.5"  fill="#006B3F"/>
+      <circle cx="26" cy="26" r="2.5"  fill="#006B3F"/>
+      <circle cx="10" cy="26" r="2.5"  fill="#006B3F"/>
+      <circle cx="26" cy="10" r="2.5"  fill="#006B3F"/>
+      <circle cx="18" cy="6.5" r="1.3" fill="#C5A84E"/>
+      <circle cx="10" cy="10" r="1.1"  fill="#C5A84E"/>
+      <circle cx="26" cy="10" r="1.1"  fill="#C5A84E"/>
+    </svg>
+    <div>
+      <div class="brand-name">Paradigm Services</div>
+      <div class="brand-sub">CCTV Surveillance Monitor</div>
     </div>
+  </div>
+  <div class="nav-right">
+    <div class="dev-badge"><span class="dot"></span><span>{config.edge_device_id}</span></div>
+    <div class="rec-pill"><span class="rec-dot"></span>REC</div>
+    <span id="clk" style="font-size:.73rem;color:var(--muted);font-weight:600;min-width:62px;text-align:right">--:--:--</span>
+  </div>
+</nav>
 
-    <h2>📋 Recent Detections</h2>
+<div class="main">
+
+  <div class="sec-title">System Overview</div>
+  <div class="kpi-grid">
+    <div class="kpi">
+      <div class="kpi-ico">&#128100;</div>
+      <div class="kpi-val" style="color:var(--brand-green)">{enrolled_count}</div>
+      <div class="kpi-lbl">Enrolled Faces</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-ico">&#128247;</div>
+      <div class="kpi-val" style="color:var(--brand-green)">{len(config.cameras)}</div>
+      <div class="kpi-lbl">Active Cameras</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-ico">&#9203;</div>
+      <div class="kpi-val" style="color:{pending_color}">{queue_pending}</div>
+      <div class="kpi-lbl">Queue Pending</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-ico">&#10060;</div>
+      <div class="kpi-val" style="color:{failed_color}">{queue_failed}</div>
+      <div class="kpi-lbl">Queue Failed</div>
+    </div>
+  </div>
+
+  <div class="sec-title">Device Configuration</div>
+  <div class="sys-grid">
+    <div class="sys-item"><div class="sys-ico">&#128187;</div><div><div class="sys-lbl">Edge Device</div><div class="sys-val">{config.edge_device_id}</div></div></div>
+    <div class="sys-item"><div class="sys-ico">&#127919;</div><div><div class="sys-lbl">Match Threshold</div><div class="sys-val">{config.match_threshold:.0%}</div></div></div>
+    <div class="sys-item"><div class="sys-ico">&#9203;</div><div><div class="sys-lbl">Cooldown Period</div><div class="sys-val">{config.cooldown_seconds}s</div></div></div>
+    <div class="sys-item"><div class="sys-ico">&#128640;</div><div><div class="sys-lbl">Processing FPS</div><div class="sys-val">{config.processing_fps} fps</div></div></div>
+    <div class="sys-item"><div class="sys-ico">&#9729;</div><div><div class="sys-lbl">Cloud Sync</div><div class="sys-val" style="color:{cloud_color}">{cloud_label}</div></div></div>
+  </div>
+
+  <div class="sec-title">Live Camera Feeds</div>
+  <div class="cam-grid">
+    {camera_cards_html if camera_cards_html else '<div style="color:var(--dim);padding:32px;background:var(--bg-card);border-radius:12px;border:1px solid var(--border-s);text-align:center">No cameras configured</div>'}
+  </div>
+
+  <div class="sec-title">Recent Detections</div>
+  <div class="tbl-wrap">
     <table>
-        <thead>
-            <tr><th>Time</th><th>Person</th><th>Camera</th><th>Direction</th><th>Confidence</th></tr>
-        </thead>
-        <tbody>
-            {recent_rows if recent_rows else '<tr><td colspan="5" style="color:#64748b;text-align:center">No detections yet</td></tr>'}
-        </tbody>
+      <thead><tr><th>Time</th><th>Person</th><th>Camera</th><th>Direction</th><th>Confidence</th></tr></thead>
+      <tbody>
+        {recent_rows if recent_rows else '<tr><td colspan="5" style="color:var(--dim);text-align:center;padding:26px">No detections recorded yet</td></tr>'}
+      </tbody>
     </table>
-    
-    <div style="margin-top:24px;color:#334155;font-size:0.75rem">
-        API Endpoints: 
-        <a href="/docs" style="color:#38bdf8">/docs</a> &nbsp;|&nbsp;
-        <a href="/health" style="color:#38bdf8">/health</a> &nbsp;|&nbsp;
-        <a href="/stats" style="color:#38bdf8">/stats</a> &nbsp;|&nbsp;
-        <a href="/cameras" style="color:#38bdf8">/cameras</a>
-    </div>
+  </div>
+
+</div>
+
+<div class="footer">
+  <span>&copy; 2026 Paradigm Services&trade; &nbsp;&middot;&nbsp; CCTV Attendance Edge v1.0</span>
+  <div class="footer-links">
+    <a href="/docs">API Docs</a>
+    <a href="/health">Health</a>
+    <a href="/stats">Stats</a>
+    <a href="/cameras">Cameras</a>
+    <a href="/enrolled">Enrolled</a>
+  </div>
+</div>
+
 </body>
 </html>""")
 
     return app
+

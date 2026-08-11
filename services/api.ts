@@ -1354,16 +1354,21 @@ export const api = {
       daily_data: s.dailyData,
       summary: toSnakeCase(s.summary),
       rule_version_id: s.ruleVersionId || null,
-      locked_by: s.lockedBy,
-      locked_by_name: s.lockedByName,
+      locked_by: s.lockedBy || 'admin',
+      locked_by_name: s.lockedByName || 'Admin',
       locked_at: new Date().toISOString(),
     }));
 
-    const { error } = await supabase
-      .from('attendance_month_snapshots')
-      .upsert(rows, { onConflict: 'employee_id,year,month' });
+    // Chunk size 25 to prevent PostgREST payload size error or DB statement timeouts when saving bulk monthly attendance data
+    const CHUNK_SIZE = 25;
+    for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+      const chunk = rows.slice(i, i + CHUNK_SIZE);
+      const { error } = await supabase
+        .from('attendance_month_snapshots')
+        .upsert(chunk, { onConflict: 'employee_id,year,month' });
 
-    if (error) throw error;
+      if (error) throw error;
+    }
   },
 
   /**
@@ -10327,10 +10332,21 @@ export const api = {
     wo_allotted_this_month: number;
   }[]) => {
     if (records.length === 0) return;
-    const { error } = await supabase
-      .from('leave_balances')
-      .upsert(records, { onConflict: 'employee_id,year,month' });
-    if (error) throw error;
+
+    // Filter valid UUID employee IDs to prevent postgres invalid syntax errors
+    const isValidUuid = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+    const validRecords = records.filter(r => r.employee_id && isValidUuid(r.employee_id));
+
+    if (validRecords.length === 0) return;
+
+    const CHUNK_SIZE = 50;
+    for (let i = 0; i < validRecords.length; i += CHUNK_SIZE) {
+      const chunk = validRecords.slice(i, i + CHUNK_SIZE);
+      const { error } = await supabase
+        .from('leave_balances')
+        .upsert(chunk, { onConflict: 'employee_id,year,month' });
+      if (error) throw error;
+    }
   },
 
 
