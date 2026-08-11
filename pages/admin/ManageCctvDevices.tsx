@@ -32,15 +32,14 @@ interface CctvDevice {
 const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; adminPort: number }> = ({ camera, serverHost, adminPort }) => {
   const [hasError, setHasError] = useState(false);
   const imgRef = React.useRef<HTMLImageElement>(null);
-  const activeHost = '192.168.51.123';
 
   const camName = typeof camera === 'string' ? camera : camera?.name || 'main_gate_entry';
 
-  const effectiveHost = (serverHost && serverHost !== '192.168.51.111' && serverHost !== 'localhost' && serverHost !== '127.0.0.1')
-    ? serverHost
-    : activeHost;
+  // Route camera frames through the existing ngrok tunnel (port 4000 proxy → localhost:4100)
+  // This eliminates the need for a separate tunnel and works from any network.
+  const NGROK_PROXY = 'https://tassel-estranged-prism.ngrok-free.dev';
+  const baseUrl = `${NGROK_PROXY}/camera/frame/${camName}`;
 
-  const baseUrl = `http://${effectiveHost}:${adminPort || 4100}/camera/frame/${camName}`;
 
   useEffect(() => {
     let isMounted = true;
@@ -92,7 +91,7 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
       </div>
       <div className="absolute bottom-2 left-2 right-2 text-[9px] font-medium text-white/90 bg-black/70 backdrop-blur-md px-2 py-0.5 rounded-lg truncate border border-white/10 pointer-events-none flex justify-between">
         <span>📷 {camName}</span>
-        <span className="font-mono text-[8px] text-slate-400">{effectiveHost}:{adminPort || 4100}</span>
+        <span className="font-mono text-[8px] text-slate-400">via ngrok</span>
       </div>
     </div>
   );

@@ -110,7 +110,65 @@ app.get(['/', '/health'], (req, res) => {
   });
 });
 
-// ΓöÇΓöÇΓöÇ GET /attendance ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─── CCTV Camera Proxy ─────────────────────────────────────────────────────
+// Proxies camera frame/snapshot requests from the cctv-attendance Python
+// service on localhost:4100 through this server (port 4000) via ngrok tunnel.
+// This allows remote browsers to view live camera feeds without a separate tunnel.
+const CCTV_PORT = process.env.CCTV_PORT || 4100;
+const CCTV_BASE = `http://127.0.0.1:${CCTV_PORT}`;
+
+// GET /camera/frame/:cameraName  — live MJPEG / JPEG frame polling
+app.get('/camera/frame/:cameraName', async (req, res) => {
+  const camName = req.params.cameraName;
+  const targetUrl = `${CCTV_BASE}/camera/frame/${encodeURIComponent(camName)}?${new URLSearchParams(req.query).toString()}`;
+  try {
+    const http = require('http');
+    const proxyReq = http.get(targetUrl, (proxyRes) => {
+      res.writeHead(proxyRes.statusCode, proxyRes.headers);
+      proxyRes.pipe(res);
+    });
+    proxyReq.on('error', (err) => {
+      console.warn(`[CCTV Proxy] Frame fetch error for ${camName}:`, err.message);
+      res.status(502).json({ error: 'CCTV service unreachable', details: err.message });
+    });
+    req.on('close', () => proxyReq.destroy());
+  } catch (err) {
+    res.status(500).json({ error: 'Camera proxy error', details: err.message });
+  }
+});
+
+// GET /camera/snapshot/:cameraName  — single snapshot
+app.get('/camera/snapshot/:cameraName', async (req, res) => {
+  const camName = req.params.cameraName;
+  const targetUrl = `${CCTV_BASE}/camera/snapshot/${encodeURIComponent(camName)}`;
+  try {
+    const http = require('http');
+    const proxyReq = http.get(targetUrl, (proxyRes) => {
+      res.writeHead(proxyRes.statusCode, proxyRes.headers);
+      proxyRes.pipe(res);
+    });
+    proxyReq.on('error', (err) => {
+      res.status(502).json({ error: 'CCTV service unreachable', details: err.message });
+    });
+    req.on('close', () => proxyReq.destroy());
+  } catch (err) {
+    res.status(500).json({ error: 'Camera proxy error', details: err.message });
+  }
+});
+
+// GET /camera/status  — list all cameras + health from CCTV service
+app.get('/camera/status', requireApiKey, async (req, res) => {
+  try {
+    const response = await fetch(`${CCTV_BASE}/status`);
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    res.status(502).json({ error: 'CCTV service unreachable', message: err.message });
+  }
+});
+
+// ─── GET /attendance ──────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 app.get('/attendance', requireApiKey, async (req, res) => {
   const date = (req.query.date || '').match(/^\d{4}-\d{2}-\d{2}$/)
     ? req.query.date
