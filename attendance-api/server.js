@@ -156,16 +156,25 @@ app.get('/camera/snapshot/:cameraName', async (req, res) => {
   }
 });
 
-// GET /camera/status  — list all cameras + health from CCTV service
-app.get('/camera/status', requireApiKey, async (req, res) => {
-  try {
-    const response = await fetch(`${CCTV_BASE}/status`);
-    const data = await response.json();
-    res.json(data);
-  } catch (err) {
-    res.status(502).json({ error: 'CCTV service unreachable', message: err.message });
-  }
+// POST /camera/enroll — forwards face enrollment to CCTV edge service
+app.post('/camera/enroll', (req, res) => {
+  const http = require('http');
+  const targetUrl = new URL(`${CCTV_BASE}/enroll`);
+  const proxyReq = http.request(targetUrl, {
+    method: 'POST',
+    headers: req.headers,
+  }, (proxyRes) => {
+    res.writeHead(proxyRes.statusCode, proxyRes.headers);
+    proxyRes.pipe(res);
+  });
+  proxyReq.on('error', (err) => {
+    console.warn('[CCTV Proxy] Enrollment forwarding error:', err.message);
+    res.status(502).json({ error: 'CCTV service unreachable', details: err.message });
+  });
+  req.pipe(proxyReq);
 });
+
+
 
 // ─── GET /attendance ──────────────────────────────────────────────────────
 // ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../services/supabase';
+import { api } from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
@@ -210,16 +211,38 @@ const ManageCctvDevices: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-    // Fetch employees for proactive enrollment
-    supabase.from('users').select('id, name, biometric_id, department').order('name').limit(300)
-      .then(({ data }) => {
-        if (data) setEnrollUsers(data.map((u: any) => ({
-          id: u.id,
-          name: u.name || 'Unnamed',
-          biometricId: u.biometric_id || null,
-          department: u.department || null,
-        })));
+
+    // Fetch employees for proactive enrollment using application API
+    const loadEmployees = async () => {
+      try {
+        const usersList: any = await api.getUsers({ fetchAll: true });
+        if (Array.isArray(usersList) && usersList.length > 0) {
+          setEnrollUsers(usersList.map((u: any) => ({
+            id: u.id,
+            name: u.name || `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email || 'Unnamed',
+            biometricId: u.biometricId || u.biometric_id || u.empCode || u.employeeId || null,
+            department: u.department || null,
+          })));
+          return;
+        }
+      } catch (err) {
+        console.warn('[CCTV] api.getUsers failed, falling back to direct query:', err);
+      }
+
+      // Direct fallback
+      supabase.from('users').select('*').limit(500).then(({ data }) => {
+        if (data && data.length > 0) {
+          setEnrollUsers(data.map((u: any) => ({
+            id: u.id,
+            name: u.name || `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email || 'Unnamed',
+            biometricId: u.biometric_id || u.emp_code || null,
+            department: u.department || null,
+          })));
+        }
       });
+    };
+
+    loadEmployees();
   }, [fetchData]);
 
   const handleSave = async () => {
@@ -284,14 +307,9 @@ const ManageCctvDevices: React.FC = () => {
     if (!enrollUserId) { setToast({ message: 'Select an employee first', type: 'error' }); return; }
     if (!enrollPhoto) { setToast({ message: 'Upload a face photo first', type: 'error' }); return; }
 
-    // Find online device to get edge server URL
-    const onlineDevice = devices.find(d => d.status === 'online' && d.serverHost);
-    if (!onlineDevice) {
-      setToast({ message: 'No online edge server found. Make sure the server is running.', type: 'error' });
-      return;
-    }
-    const edgeUrl = `http://${onlineDevice.serverHost}:${onlineDevice.adminPort || 4100}`;
     const selectedUser = enrollUsers.find(u => u.id === enrollUserId);
+    const NGROK_PROXY = 'https://tassel-estranged-prism.ngrok-free.dev';
+    const enrollUrl = `${NGROK_PROXY}/camera/enroll`;
 
     setIsEnrolling(true);
     setEnrollResult(null);
@@ -304,10 +322,14 @@ const ManageCctvDevices: React.FC = () => {
       formData.append('organization_id', user?.organizationId || '');
       formData.append('photo', enrollPhoto);
 
-      const res = await fetch(`${edgeUrl}/enroll`, {
+      const res = await fetch(enrollUrl, {
         method: 'POST',
+        headers: {
+          'ngrok-skip-browser-warning': '1',
+          'x-api-key': 'paradigm-attendance-secret-2024',
+        },
         body: formData,
-        signal: AbortSignal.timeout(20000),
+        signal: AbortSignal.timeout(25000),
       });
 
       if (!res.ok) {
