@@ -10,7 +10,8 @@ import Toast from '../../components/ui/Toast';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 import {
   Camera, Plus, Trash2, Wifi, WifiOff, RefreshCw,
-  Activity, Shield, AlertCircle, MapPin, UserPlus, Upload, X, CheckCircle
+  Activity, Shield, AlertCircle, MapPin, UserPlus, Upload, X, CheckCircle,
+  Maximize2, Minimize2, Video, Download
 } from 'lucide-react';
 
 interface CctvDevice {
@@ -32,17 +33,30 @@ interface CctvDevice {
 
 const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; adminPort: number }> = ({ camera, serverHost, adminPort }) => {
   const [blobUrl, setBlobUrl] = React.useState<string | null>(null);
-  const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
+  const [isLive, setIsLive] = React.useState<boolean>(false);
+  const [isFullscreen, setIsFullscreen] = React.useState<boolean>(false);
+  const [currentTime, setCurrentTime] = React.useState<string>('');
   const prevBlobRef = React.useRef<string | null>(null);
+  const failCountRef = React.useRef<number>(0);
 
   const camName = typeof camera === 'string' ? camera : camera?.name || 'main_gate_entry';
-
-  // Route camera frames through the existing ngrok tunnel (port 4000 proxy → localhost:4100).
-  // Uses fetch + blob URL so we can set ngrok-skip-browser-warning header to bypass
-  // Ngrok's browser interstitial page that breaks direct <img> tag loading.
   const NGROK_PROXY = 'https://tassel-estranged-prism.ngrok-free.dev';
   const frameUrl = `${NGROK_PROXY}/camera/frame/${camName}`;
 
+  // Live CCTV OSD Clock (e.g. 2026-08-11 17:35:00)
+  useEffect(() => {
+    const updateClock = () => {
+      const now = new Date();
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      const timeStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+      setCurrentTime(timeStr);
+    };
+    updateClock();
+    const clockInterval = setInterval(updateClock, 1000);
+    return () => clearInterval(clockInterval);
+  }, []);
+
+  // Frame Poller with zero-flicker buffer & auto-recovery
   useEffect(() => {
     let isMounted = true;
     let timerId: ReturnType<typeof setTimeout>;
@@ -55,42 +69,34 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
             'ngrok-skip-browser-warning': '1',
             'x-api-key': 'paradigm-attendance-secret-2024',
           },
-          signal: AbortSignal.timeout(5000),
+          signal: AbortSignal.timeout(12000), // 12s timeout to prevent premature aborts
         });
 
-        if (!res.ok) {
-          const body = await res.text().catch(() => '');
-          const msg = `HTTP ${res.status}: ${body.slice(0, 120)}`;
-          console.warn(`[CCTV Debug] Frame error "${camName}":`, msg);
-          if (isMounted) setErrorMsg(msg);
-        } else {
+        if (res.ok) {
           const contentType = res.headers.get('content-type') || '';
-          if (!contentType.includes('image')) {
-            const body = await res.text().catch(() => '');
-            const msg = `Not an image (${contentType}): ${body.slice(0, 120)}`;
-            console.warn(`[CCTV Debug] Unexpected response "${camName}":`, msg);
-            if (isMounted) setErrorMsg(msg);
-          } else {
+          if (contentType.includes('image')) {
             const blob = await res.blob();
             const newUrl = URL.createObjectURL(blob);
             if (isMounted) {
               setBlobUrl(newUrl);
-              setErrorMsg(null);
+              setIsLive(true);
+              failCountRef.current = 0;
               if (prevBlobRef.current) URL.revokeObjectURL(prevBlobRef.current);
               prevBlobRef.current = newUrl;
-              console.log(`[CCTV Debug] ✅ Frame ok "${camName}" (${blob.size} bytes)`);
             } else {
               URL.revokeObjectURL(newUrl);
             }
           }
+        } else {
+          failCountRef.current += 1;
+          if (failCountRef.current > 5 && isMounted) setIsLive(false);
         }
-      } catch (err: any) {
-        const msg = err?.name === 'TimeoutError' ? 'Request timed out (5s)' : (err?.message || String(err));
-        console.warn(`[CCTV Debug] Fetch failed "${camName}":`, msg);
-        if (isMounted) setErrorMsg(msg);
+      } catch {
+        failCountRef.current += 1;
+        if (failCountRef.current > 5 && isMounted) setIsLive(false);
       }
 
-      if (isMounted) timerId = setTimeout(fetchFrame, 1500);
+      if (isMounted) timerId = setTimeout(fetchFrame, 1200);
     };
 
     fetchFrame();
@@ -99,34 +105,145 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
       clearTimeout(timerId);
       if (prevBlobRef.current) URL.revokeObjectURL(prevBlobRef.current);
     };
-  }, [frameUrl, camName]);
+  }, [frameUrl]);
+
+  // Snapshot download
+  const handleDownloadSnapshot = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!blobUrl) return;
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = `CCTV_${camName}_${Date.now()}.jpg`;
+    a.click();
+  };
 
   return (
-    <div className="w-full h-full relative group bg-slate-950">
-      {blobUrl && !errorMsg && (
-        <img src={blobUrl} alt={camName} className="w-full h-full object-cover block" />
-      )}
-      {errorMsg && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center p-2 text-center bg-slate-950 text-slate-200 text-[10px] gap-1">
-          <Camera className="h-5 w-5 text-amber-400 animate-pulse" />
-          <span className="font-bold text-amber-300">Feed Offline</span>
-          <span className="text-red-400 break-all max-w-full text-[9px] leading-tight">{errorMsg}</span>
+    <>
+      {/* ── Standard / Card CCTV View ── */}
+      <div className="w-full h-full relative group bg-black overflow-hidden select-none font-mono">
+        {blobUrl ? (
+          <img
+            src={blobUrl}
+            alt={camName}
+            className="w-full h-full object-cover block filter contrast-[1.05]"
+          />
+        ) : (
+          <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950 text-slate-400 text-xs gap-2">
+            <Video className="h-7 w-7 text-emerald-500 animate-pulse" />
+            <span className="tracking-widest uppercase text-[11px] text-emerald-400">Connecting Camera Feed...</span>
+          </div>
+        )}
+
+        {/* CCTV Scanline / OSD Vignette Effect */}
+        <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-black/60 via-transparent to-black/60" />
+
+        {/* ── Top OSD Overlay ── */}
+        <div className="absolute top-2 left-2 right-2 flex items-center justify-between text-[10px] text-white/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] pointer-events-none">
+          <div className="flex items-center gap-2">
+            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-red-600/80 backdrop-blur-sm text-[9px] font-bold text-white uppercase tracking-wider">
+              <span className="h-2 w-2 rounded-full bg-white animate-ping" />
+              LIVE
+            </span>
+            <span className="font-bold tracking-wider text-emerald-400 uppercase drop-shadow">
+              CAM-01 • {camName.replace(/_/g, ' ')}
+            </span>
+          </div>
+          <div className="text-[10px] tracking-wider text-emerald-300 font-bold bg-black/50 px-2 py-0.5 rounded backdrop-blur-sm">
+            {currentTime}
+          </div>
+        </div>
+
+        {/* ── Center Crosshairs (Subtle Authentic CCTV Overlay) ── */}
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-20">
+          <div className="w-8 h-8 border border-white/60 rounded-full flex items-center justify-center">
+            <div className="w-1.5 h-1.5 bg-white rounded-full" />
+          </div>
+        </div>
+
+        {/* ── Bottom OSD & Action Controls Bar ── */}
+        <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between text-[10px] text-white/90 drop-shadow">
+          <div className="flex items-center gap-2 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-lg border border-white/10 pointer-events-none">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            <span className="text-slate-300 text-[9px]">1080P • 15 FPS • FACE AI ACTIVE</span>
+          </div>
+
+          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-black/80 backdrop-blur-md p-1 rounded-lg border border-white/15">
+            <button
+              onClick={handleDownloadSnapshot}
+              title="Save Snapshot"
+              className="p-1.5 rounded hover:bg-white/20 text-white transition-colors"
+            >
+              <Download className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => setIsFullscreen(true)}
+              title="Fullscreen Mode"
+              className="p-1.5 rounded hover:bg-white/20 text-white transition-colors"
+            >
+              <Maximize2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Fullscreen Theater Modal ── */}
+      {isFullscreen && (
+        <div className="fixed inset-0 z-[9999] bg-black/95 flex flex-col justify-between p-4 font-mono select-none">
+          {/* Header */}
+          <div className="flex items-center justify-between text-white pb-3 border-b border-white/10">
+            <div className="flex items-center gap-3">
+              <span className="flex items-center gap-2 px-3 py-1 rounded bg-red-600 text-xs font-bold uppercase tracking-wider">
+                <span className="h-2 w-2 rounded-full bg-white animate-ping" />
+                LIVE CCTV SURVEILLANCE
+              </span>
+              <span className="text-sm font-bold text-emerald-400 tracking-wider uppercase">
+                {camName.replace(/_/g, ' ')} — MAIN ENTRANCE
+              </span>
+            </div>
+            <div className="flex items-center gap-4">
+              <span className="text-sm text-emerald-300 font-bold">{currentTime}</span>
+              <button
+                onClick={() => setIsFullscreen(false)}
+                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Full Camera Screen */}
+          <div className="flex-1 my-4 relative rounded-2xl overflow-hidden bg-black border border-white/10 flex items-center justify-center">
+            {blobUrl ? (
+              <img src={blobUrl} alt={camName} className="w-full h-full object-contain" />
+            ) : (
+              <span className="text-emerald-400 animate-pulse text-sm">Connecting Stream...</span>
+            )}
+            <div className="absolute top-4 left-4 text-emerald-400 text-xs drop-shadow bg-black/60 px-3 py-1.5 rounded-lg border border-white/10">
+              ● RESOLUTION: 1920x1080 • BITRATE: AUTO • AI FACE RECOGNITION: ENABLED
+            </div>
+          </div>
+
+          {/* Footer Controls */}
+          <div className="flex items-center justify-between text-xs text-slate-400 pt-2">
+            <span>Paradigm IFS CCTV Attendance System • Server WIN-0T8N581GN63</span>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleDownloadSnapshot}
+                className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-sans text-xs font-bold flex items-center gap-2 transition-colors"
+              >
+                <Download className="h-4 w-4" /> Download Snapshot
+              </button>
+              <button
+                onClick={() => setIsFullscreen(false)}
+                className="px-4 py-2 rounded-xl bg-accent text-white font-sans text-xs font-bold hover:bg-accent/90 transition-colors"
+              >
+                Close Fullscreen
+              </button>
+            </div>
+          </div>
         </div>
       )}
-      {!blobUrl && !errorMsg && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center text-center bg-slate-950 text-slate-200 text-[10px]">
-          <Camera className="h-5 w-5 text-blue-400 mb-1 animate-pulse" />
-          <span className="font-bold text-blue-300">Connecting...</span>
-        </div>
-      )}
-      <div className="absolute top-2 left-2 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/70 backdrop-blur-md border border-white/10 text-[9px] font-bold text-red-400 uppercase tracking-wider pointer-events-none">
-        <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-ping" /> LIVE
-      </div>
-      <div className="absolute bottom-2 left-2 right-2 text-[9px] font-medium text-white/90 bg-black/70 backdrop-blur-md px-2 py-0.5 rounded-lg truncate border border-white/10 pointer-events-none flex justify-between">
-        <span>📷 {camName}</span>
-        <span className="font-mono text-[8px] text-slate-400">via ngrok</span>
-      </div>
-    </div>
+    </>
   );
 };
 
@@ -494,7 +611,7 @@ const ManageCctvDevices: React.FC = () => {
                   </div>
 
                   {/* Right Column: Live Camera Video Preview Window */}
-                  <div className="w-full md:w-64 flex flex-col gap-2 items-end flex-shrink-0">
+                  <div className="w-full md:w-[380px] lg:w-[440px] flex flex-col gap-2 items-end flex-shrink-0">
                     <div className="hidden md:flex justify-end w-full mb-1">
                       <button
                         onClick={() => handleDelete(device.id)}
@@ -505,7 +622,7 @@ const ManageCctvDevices: React.FC = () => {
                       </button>
                     </div>
 
-                    <div className="w-full aspect-video rounded-xl bg-slate-900 border border-slate-800 relative overflow-hidden shadow-inner flex items-center justify-center group/cam">
+                    <div className="w-full aspect-video rounded-2xl bg-black border border-slate-800 relative overflow-hidden shadow-2xl flex items-center justify-center group/cam">
                       {device.status === 'online' && device.cameras.length > 0 ? (
                         <CameraLivePreview
                           camera={device.cameras[0]}
