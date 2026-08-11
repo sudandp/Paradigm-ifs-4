@@ -30,62 +30,94 @@ interface CctvDevice {
 }
 
 const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; adminPort: number }> = ({ camera, serverHost, adminPort }) => {
-  const [hasError, setHasError] = useState(false);
-  const imgRef = React.useRef<HTMLImageElement>(null);
+  const [blobUrl, setBlobUrl] = React.useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
+  const prevBlobRef = React.useRef<string | null>(null);
 
   const camName = typeof camera === 'string' ? camera : camera?.name || 'main_gate_entry';
 
-  // Route camera frames through the existing ngrok tunnel (port 4000 proxy → localhost:4100)
-  // This eliminates the need for a separate tunnel and works from any network.
+  // Route camera frames through the existing ngrok tunnel (port 4000 proxy → localhost:4100).
+  // Uses fetch + blob URL so we can set ngrok-skip-browser-warning header to bypass
+  // Ngrok's browser interstitial page that breaks direct <img> tag loading.
   const NGROK_PROXY = 'https://tassel-estranged-prism.ngrok-free.dev';
-  const baseUrl = `${NGROK_PROXY}/camera/frame/${camName}`;
-
+  const frameUrl = `${NGROK_PROXY}/camera/frame/${camName}`;
 
   useEffect(() => {
     let isMounted = true;
+    let timerId: ReturnType<typeof setTimeout>;
 
-    const fetchNextFrame = () => {
-      const nextUrl = `${baseUrl}?t=${Date.now()}`;
-      const preloadImg = new Image();
-      preloadImg.onload = () => {
-        if (isMounted) {
-          if (imgRef.current) imgRef.current.src = nextUrl;
-          setHasError(false);
+    const fetchFrame = async () => {
+      const url = `${frameUrl}?t=${Date.now()}`;
+      try {
+        const res = await fetch(url, {
+          headers: {
+            'ngrok-skip-browser-warning': '1',
+            'x-api-key': 'paradigm-attendance-secret-2024',
+          },
+          signal: AbortSignal.timeout(5000),
+        });
+
+        if (!res.ok) {
+          const body = await res.text().catch(() => '');
+          const msg = `HTTP ${res.status}: ${body.slice(0, 120)}`;
+          console.warn(`[CCTV Debug] Frame error "${camName}":`, msg);
+          if (isMounted) setErrorMsg(msg);
+        } else {
+          const contentType = res.headers.get('content-type') || '';
+          if (!contentType.includes('image')) {
+            const body = await res.text().catch(() => '');
+            const msg = `Not an image (${contentType}): ${body.slice(0, 120)}`;
+            console.warn(`[CCTV Debug] Unexpected response "${camName}":`, msg);
+            if (isMounted) setErrorMsg(msg);
+          } else {
+            const blob = await res.blob();
+            const newUrl = URL.createObjectURL(blob);
+            if (isMounted) {
+              setBlobUrl(newUrl);
+              setErrorMsg(null);
+              if (prevBlobRef.current) URL.revokeObjectURL(prevBlobRef.current);
+              prevBlobRef.current = newUrl;
+              console.log(`[CCTV Debug] ✅ Frame ok "${camName}" (${blob.size} bytes)`);
+            } else {
+              URL.revokeObjectURL(newUrl);
+            }
+          }
         }
-      };
-      preloadImg.onerror = () => {
-        if (isMounted && (!imgRef.current || !imgRef.current.src)) {
-          setHasError(true);
-        }
-      };
-      preloadImg.src = nextUrl;
+      } catch (err: any) {
+        const msg = err?.name === 'TimeoutError' ? 'Request timed out (5s)' : (err?.message || String(err));
+        console.warn(`[CCTV Debug] Fetch failed "${camName}":`, msg);
+        if (isMounted) setErrorMsg(msg);
+      }
+
+      if (isMounted) timerId = setTimeout(fetchFrame, 1500);
     };
 
-    fetchNextFrame();
-    const timer = setInterval(fetchNextFrame, 1500);
-
+    fetchFrame();
     return () => {
       isMounted = false;
-      clearInterval(timer);
+      clearTimeout(timerId);
+      if (prevBlobRef.current) URL.revokeObjectURL(prevBlobRef.current);
     };
-  }, [baseUrl]);
+  }, [frameUrl, camName]);
 
   return (
     <div className="w-full h-full relative group bg-slate-950">
-      <img
-        ref={imgRef}
-        alt={camName}
-        className={`w-full h-full object-cover ${hasError ? 'hidden' : 'block'}`}
-        onError={() => setHasError(true)}
-      />
-      {hasError && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center p-2 text-center bg-slate-950 text-slate-200 text-[10px]">
-          <Camera className="h-5 w-5 text-amber-400 mb-1 animate-pulse" />
-          <span className="font-bold text-amber-300">Feed Offline / Connecting</span>
+      {blobUrl && !errorMsg && (
+        <img src={blobUrl} alt={camName} className="w-full h-full object-cover block" />
+      )}
+      {errorMsg && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center p-2 text-center bg-slate-950 text-slate-200 text-[10px] gap-1">
+          <Camera className="h-5 w-5 text-amber-400 animate-pulse" />
+          <span className="font-bold text-amber-300">Feed Offline</span>
+          <span className="text-red-400 break-all max-w-full text-[9px] leading-tight">{errorMsg}</span>
         </div>
       )}
-
-      {/* Overlay badges */}
+      {!blobUrl && !errorMsg && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-center bg-slate-950 text-slate-200 text-[10px]">
+          <Camera className="h-5 w-5 text-blue-400 mb-1 animate-pulse" />
+          <span className="font-bold text-blue-300">Connecting...</span>
+        </div>
+      )}
       <div className="absolute top-2 left-2 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/70 backdrop-blur-md border border-white/10 text-[9px] font-bold text-red-400 uppercase tracking-wider pointer-events-none">
         <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-ping" /> LIVE
       </div>
