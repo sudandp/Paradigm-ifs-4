@@ -1210,6 +1210,23 @@ const AttendanceDashboard: React.FC = () => {
                 .eq('module_name', 'ReportAccess')
                 .order('created_at', { ascending: false });
             if (error) throw error;
+
+            if (data && data.length > 0) {
+                const approverIds = Array.from(new Set(data.map((r: any) => r.approver_id).filter(Boolean)));
+                if (approverIds.length > 0) {
+                    const { data: approvers } = await supabase
+                        .from('users')
+                        .select('id, name')
+                        .in('id', approverIds);
+                    if (approvers) {
+                        const appMap: Record<string, string> = {};
+                        approvers.forEach((a: any) => { appMap[a.id] = a.name; });
+                        data.forEach((r: any) => {
+                            if (r.approver_id) r.approver_name = appMap[r.approver_id];
+                        });
+                    }
+                }
+            }
             setAccessRequests(data || []);
 
             // Auto-lock reports if the admin revoked (Rejected) the latest request
@@ -1449,7 +1466,13 @@ const AttendanceDashboard: React.FC = () => {
         };
 
         const targetUuid = reportUuids[reportType];
-        const latestRequest = accessRequests.find(r => r.record_id === targetUuid);
+        const rawLatestRequest = accessRequests.find(r => r.record_id === targetUuid);
+
+        // Expiration check: If an approved request was updated over 2 hours ago, expire it so the panel locks again
+        const isExpired = rawLatestRequest && rawLatestRequest.status === 'Approved' && rawLatestRequest.updated_at &&
+            (Date.now() - new Date(rawLatestRequest.updated_at).getTime() > 2 * 60 * 60 * 1000);
+
+        const latestRequest = isExpired ? null : rawLatestRequest;
         
         return (
             <div className="flex flex-col items-center justify-center p-8 text-center min-h-[350px] bg-white border border-gray-200 rounded-2xl shadow-sm max-w-lg mx-auto my-8 relative overflow-hidden">
@@ -1513,14 +1536,24 @@ const AttendanceDashboard: React.FC = () => {
                 ) : latestRequest.status === 'Approved' ? (
                     <div className="w-full space-y-6">
                         <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl">
-                            <p className="text-sm text-emerald-800 font-bold mb-1 flex items-center justify-center gap-2">
+                            <p className="text-sm text-emerald-800 font-bold mb-1.5 flex items-center justify-center gap-2">
                                 <CheckCircle2 className="w-5 h-5 text-emerald-600" /> Request Approved
                             </p>
-                            <p className="text-xs text-emerald-600 font-semibold mb-2">
+                            <p className="text-xs text-emerald-600 font-semibold mb-3">
                                 Passcode: <span className="font-mono bg-emerald-100 px-2 py-0.5 rounded text-sm text-emerald-800 font-black tracking-wider select-all">{extractPasscode(latestRequest.comments) || generateDeterministicPasscode(latestRequest.id)}</span>
                             </p>
+                            <div className="text-xs text-emerald-800 bg-emerald-100/70 p-3 rounded-xl space-y-1.5 mb-3 font-medium border border-emerald-200/60 text-left max-w-sm mx-auto">
+                                <p className="flex justify-between items-center">
+                                    <span className="text-emerald-700 font-semibold">Approved By:</span>
+                                    <span className="font-bold text-emerald-900">{latestRequest.approver_name || 'System Admin'}</span>
+                                </p>
+                                <p className="flex justify-between items-center">
+                                    <span className="text-emerald-700 font-semibold">Approved Date & Time:</span>
+                                    <span className="font-bold text-emerald-900">{latestRequest.updated_at ? new Date(latestRequest.updated_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : '-'}</span>
+                                </p>
+                            </div>
                             <p className="text-xs text-emerald-600 font-medium">
-                                Check your notifications or messages for the passcode or enter the code above to unlock.
+                                Enter the passcode above to unlock. Access valid for 2 hours from approval.
                             </p>
                         </div>
 
