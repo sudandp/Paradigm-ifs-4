@@ -9,7 +9,6 @@ if not exist "%~dp0ngrok.exe" (
 
 :: 2. Auto-update ngrok to 3.39+ if old version
 if exist "%~dp0ngrok.exe" (
-  "%~dp0ngrok.exe" update >nul 2>&1
   "%~dp0ngrok.exe" config add-authtoken 3HSqV1IUqDT64j36cV1MESjzb6P_WCVwkdXez4UoaUMKdtP >nul 2>&1
   
   echo [INFO] Launching Ngrok 24/7 Tunnel for tassel-estranged-prism.ngrok-free.dev ...

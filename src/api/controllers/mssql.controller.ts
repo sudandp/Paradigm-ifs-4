@@ -77,9 +77,11 @@ export interface DeviceResponse {
 // ─── Proxy Config ───────────────────────────────────────────────
 
 function getProxyConfig(): { url: string; secret: string } | null {
-  const url    = process.env.MSSQL_PROXY_URL?.trim();
-  const secret = process.env.MSSQL_API_SECRET?.trim() || '';
-  if (!url) return null;
+  let url = process.env.MSSQL_PROXY_URL?.trim();
+  if (!url || url.includes('trycloudflare.com')) {
+    url = 'https://tassel-estranged-prism.ngrok-free.dev';
+  }
+  const secret = process.env.MSSQL_API_SECRET?.trim() || 'paradigm-attendance-secret-2024';
   return { url, secret };
 }
 

@@ -13,7 +13,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).end();
   }
 
-  const tunnelUrl = (process.env.MSSQL_PROXY_URL || 'https://reliance-dinner-url-consumers.trycloudflare.com').replace(/\/$/, '');
+  let tunnelUrl = (process.env.MSSQL_PROXY_URL || '').replace(/\/$/, '');
+  if (!tunnelUrl || tunnelUrl.includes('trycloudflare.com')) {
+    tunnelUrl = 'https://tassel-estranged-prism.ngrok-free.dev';
+  }
   const apiSecret = process.env.MSSQL_API_SECRET || 'paradigm-attendance-secret-2024';
 
   const date = req.query.date || new Date().toISOString().slice(0, 10);
