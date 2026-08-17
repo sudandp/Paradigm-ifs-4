@@ -65,31 +65,52 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
     isMountedRef.current = true;
     let timerId: any = null;
 
+    const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+
     const fetchNextFrame = () => {
       if (!isMountedRef.current || isFetchingRef.current) return;
       isFetchingRef.current = true;
 
+      // Prefer Vercel /api/cctv-frame proxy (bypasses Ngrok interstitial on all devices), fallback to direct tunnel
+      const proxyUrl = apiBaseUrl
+        ? `${apiBaseUrl}/api/cctv-frame?camera=${encodeURIComponent(camName)}&_t=${Date.now()}`
+        : `/api/cctv-frame?camera=${encodeURIComponent(camName)}&_t=${Date.now()}`;
+
       const img = new Image();
-      const targetUrl = `${NGROK_PROXY}/camera/frame/${encodeURIComponent(camName)}?ngrok-skip-browser-warning=true&_t=${Date.now()}`;
       
       img.onload = () => {
         if (!isMountedRef.current) return;
-        setFrameSrc(targetUrl);
+        setFrameSrc(proxyUrl);
         setHasError(false);
         isFetchingRef.current = false;
         timerId = setTimeout(fetchNextFrame, 350); // ~3 FPS smooth live update
       };
 
       img.onerror = () => {
-        if (!isMountedRef.current) return;
-        setHasError(true);
-        setErrorCount(c => c + 1);
-        addLog(`❌ Frame error #${errorCount + 1}`);
-        isFetchingRef.current = false;
-        timerId = setTimeout(fetchNextFrame, 2000); // Retry in 2s
+        // Fallback to direct Ngrok URL
+        const fallbackUrl = `${NGROK_PROXY}/camera/frame/${encodeURIComponent(camName)}?ngrok-skip-browser-warning=true&_t=${Date.now()}`;
+        const fallbackImg = new Image();
+
+        fallbackImg.onload = () => {
+          if (!isMountedRef.current) return;
+          setFrameSrc(fallbackUrl);
+          setHasError(false);
+          isFetchingRef.current = false;
+          timerId = setTimeout(fetchNextFrame, 350);
+        };
+
+        fallbackImg.onerror = () => {
+          if (!isMountedRef.current) return;
+          setHasError(true);
+          setErrorCount(c => c + 1);
+          isFetchingRef.current = false;
+          timerId = setTimeout(fetchNextFrame, 2000); // Retry in 2s
+        };
+
+        fallbackImg.src = fallbackUrl;
       };
 
-      img.src = targetUrl;
+      img.src = proxyUrl;
     };
 
     fetchNextFrame();
@@ -103,7 +124,10 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
   const handleDownloadSnapshot = async (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      const url = `${NGROK_PROXY}/camera/frame/${camName}?ngrok-skip-browser-warning=true&_t=${Date.now()}`;
+      const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+      const url = apiBaseUrl
+        ? `${apiBaseUrl}/api/cctv-frame?camera=${encodeURIComponent(camName)}&_t=${Date.now()}`
+        : `/api/cctv-frame?camera=${encodeURIComponent(camName)}&_t=${Date.now()}`;
       const a = document.createElement('a');
       a.href = url;
       a.download = `CCTV_${camName}_${Date.now()}.jpg`;
