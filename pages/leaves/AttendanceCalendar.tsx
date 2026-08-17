@@ -550,23 +550,26 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                      if (diff < 0) diff += 24 * 60;
                                      permMins = diff;
                                  }
-                                 const totalEffectiveHrs = workingHours + (permMins / 60);
 
-                                 if (totalEffectiveHrs >= (shiftThreshold - 0.25)) {
+                                 if (workingHours > 0 && workingHours < shiftThreshold) {
+                                     const workedFraction = Math.round((workingHours / shiftThreshold) * 100) / 100;
+                                     const permFraction = Math.round((permMins / (shiftThreshold * 60)) * 100) / 100;
+                                     overlayText = `${workedFraction.toFixed(2)}P + ${permFraction.toFixed(2)}RP`;
+                                     const greenPct = Math.min(100, Math.max(0, Math.round(workedFraction * 100)));
+                                     customStyle = {
+                                         background: `linear-gradient(135deg, #10b981 ${greenPct}%, #2563eb ${greenPct}%)`,
+                                         borderColor: 'transparent'
+                                     };
+                                 } else if (workingHours >= shiftThreshold) {
                                      overlayText = 'P';
                                      customStyle = {
                                          background: '#10b981',
                                          borderColor: 'transparent'
                                      };
                                  } else {
-                                     const rawFraction = workingHours / shiftThreshold;
-                                     let worked_fraction = Math.round(rawFraction * 20) / 20;
-                                     worked_fraction = Math.min(1.0, Math.max(0, worked_fraction));
-                                     const permission_fraction = Math.round((1.0 - worked_fraction) * 100) / 100;
-                                     overlayText = `${worked_fraction.toFixed(2)}P+${permission_fraction.toFixed(2)}RP`;
-                                     const greenPct = Math.min(100, Math.max(0, Math.round(worked_fraction * 100)));
+                                     overlayText = 'RP';
                                      customStyle = {
-                                         background: `linear-gradient(135deg, #10b981 ${greenPct}%, #2563eb ${greenPct}%)`,
+                                         background: '#2563eb',
                                          borderColor: 'transparent'
                                      };
                                  }
@@ -692,7 +695,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                     {format(date, 'd')}
                                 </span>
                                  {overlayText && (
-                                    <span className={`font-black leading-none text-white drop-shadow-md ${overlayText.length > 5 ? 'text-[7px]' : 'text-[9px]'}`}>
+                                    <span className={`font-black leading-none text-white drop-shadow-md tracking-tighter whitespace-nowrap ${overlayText.length > 8 ? 'text-[6px]' : overlayText.length > 5 ? 'text-[7px]' : 'text-[9px]'}`}>
                                         {overlayText}
                                     </span>
                                 )}
@@ -750,6 +753,12 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                             });
                             const isCorrection = relevantLeave && String(relevantLeave.leaveType || '').toLowerCase().includes('correction');
                             if (isCorrection) { usedCodes.add('P'); return; }
+                            const isPermission = relevantLeave && String(relevantLeave.leaveType || '').toLowerCase().includes('permission');
+                            if (isPermission) {
+                                usedCodes.add('P');
+                                usedCodes.add('RP');
+                                return;
+                            }
                             if (relevantLeave?.dayOption === 'half') {
                                 usedCodes.add('0.5P');
                                 const code = getLeaveAbbreviation(relevantLeave.leaveType || (relevantLeave as any).leave_type);

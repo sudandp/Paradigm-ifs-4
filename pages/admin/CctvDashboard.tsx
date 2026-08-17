@@ -61,6 +61,10 @@ const NvrCameraStream: React.FC<{
   const lastFpsTimeRef = useRef(Date.now());
   const abortRef = useRef<AbortController | null>(null);
   const retryTimerRef = useRef<any>(null);
+  // Butter-smooth rendering
+  const latestBitmapRef = useRef<ImageBitmap | null>(null);
+  const pendingDecodeRef = useRef(0);
+  const rafRef = useRef<number>(0);
 
   // OSD clock
   useEffect(() => {
@@ -88,26 +92,41 @@ const NvrCameraStream: React.FC<{
     return () => clearInterval(id);
   }, []);
 
-  // Paint a JPEG blob to both inline canvas and fullscreen canvas
-  const paintFrame = (jpegBytes: Uint8Array) => {
-    const blob = new Blob([jpegBytes], { type: 'image/jpeg' });
-    const url = URL.createObjectURL(blob);
-    const img = new Image();
-    img.onload = () => {
-      [canvasRef.current, fsCanvasRef.current].forEach(canvas => {
-        if (!canvas) return;
-        if (canvas.width !== img.width) canvas.width = img.width;
-        if (canvas.height !== img.height) canvas.height = img.height;
-        canvas.getContext('2d')?.drawImage(img, 0, 0);
-      });
-      URL.revokeObjectURL(url);
-      fpsCounterRef.current += 1;
+
+  // RAF render loop — 60fps, always draws the LATEST decoded frame, decoupled from network
+  useEffect(() => {
+    const loop = () => {
+      const bmp = latestBitmapRef.current;
+      if (bmp) {
+        [canvasRef.current, fsCanvasRef.current].forEach(canvas => {
+          if (!canvas) return;
+          if (canvas.width !== bmp.width) canvas.width = bmp.width;
+          if (canvas.height !== bmp.height) canvas.height = bmp.height;
+          canvas.getContext('2d', { alpha: false })?.drawImage(bmp, 0, 0);
+        });
+      }
+      rafRef.current = requestAnimationFrame(loop);
+    };
+    rafRef.current = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, []);
+
+  // createImageBitmap: hardware-accelerated, off-main-thread JPEG decode
+  // Drop frames if 2+ are pending — stays live, never buffered
+  const paintFrame = useCallback(async (jpegBytes: Uint8Array) => {
+    if (pendingDecodeRef.current >= 2) return;
+    pendingDecodeRef.current++;
+    try {
+      const bitmap = await createImageBitmap(new Blob([jpegBytes], { type: 'image/jpeg' }));
+      latestBitmapRef.current?.close();
+      latestBitmapRef.current = bitmap;
+      fpsCounterRef.current++;
       if (!isConnected) setIsConnected(true);
       if (hasError) setHasError(false);
-    };
-    img.onerror = () => URL.revokeObjectURL(url);
-    img.src = url;
-  };
+    } catch { /* skip corrupted frame */ }
+    pendingDecodeRef.current--;
+  }, [isConnected, hasError]);
+
 
   // Core MJPEG reader — opens stream, reads binary, finds JPEG boundaries
   const startStream = useCallback(async () => {

@@ -50,6 +50,10 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
   const lastFpsTimeRef = useRef(Date.now());
   const abortRef = useRef<AbortController | null>(null);
   const retryTimerRef = useRef<any>(null);
+  // Butter-smooth rendering: RAF loop reads latest bitmap, decoupled from network
+  const latestBitmapRef = useRef<ImageBitmap | null>(null);
+  const pendingDecodeRef = useRef(0); // throttle concurrent decodes
+  const rafRef = useRef<number>(0);
 
   const camName = typeof camera === 'string' ? camera : camera?.name || 'main_gate_entry';
 
@@ -79,26 +83,43 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
     return () => clearInterval(id);
   }, []);
 
-  // Paint JPEG bytes to both inline and fullscreen canvas
-  const paintFrame = (jpegBytes: Uint8Array) => {
-    const blob = new Blob([jpegBytes], { type: 'image/jpeg' });
-    const url = URL.createObjectURL(blob);
-    const img = new Image();
-    img.onload = () => {
-      [canvasRef.current, fsCanvasRef.current].forEach(canvas => {
-        if (!canvas) return;
-        if (canvas.width !== img.width) canvas.width = img.width;
-        if (canvas.height !== img.height) canvas.height = img.height;
-        canvas.getContext('2d')?.drawImage(img, 0, 0);
-      });
-      URL.revokeObjectURL(url);
-      fpsCounterRef.current += 1;
+  // RAF render loop — runs at 60fps, always draws the LATEST decoded frame
+  // Completely decoupled from network speed: no lag even at 20fps stream
+  useEffect(() => {
+    const loop = () => {
+      const bmp = latestBitmapRef.current;
+      if (bmp) {
+        [canvasRef.current, fsCanvasRef.current].forEach(canvas => {
+          if (!canvas) return;
+          if (canvas.width !== bmp.width) canvas.width = bmp.width;
+          if (canvas.height !== bmp.height) canvas.height = bmp.height;
+          // alpha:false = 15-20% faster 2D context
+          canvas.getContext('2d', { alpha: false })?.drawImage(bmp, 0, 0);
+        });
+      }
+      rafRef.current = requestAnimationFrame(loop);
+    };
+    rafRef.current = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, []);
+
+  // Hardware-accelerated JPEG decode: createImageBitmap() runs off main thread
+  // Max 2 concurrent decodes — if backed up, drop old frames (stay real-time)
+  const paintFrame = useCallback(async (jpegBytes: Uint8Array) => {
+    if (pendingDecodeRef.current >= 2) return; // drop frame — stay live, not buffered
+    pendingDecodeRef.current++;
+    try {
+      const bitmap = await createImageBitmap(
+        new Blob([jpegBytes], { type: 'image/jpeg' })
+      );
+      latestBitmapRef.current?.close(); // free previous GPU texture
+      latestBitmapRef.current = bitmap;
+      fpsCounterRef.current++;
       if (!isConnected) setIsConnected(true);
       if (hasError) setHasError(false);
-    };
-    img.onerror = () => URL.revokeObjectURL(url);
-    img.src = url;
-  };
+    } catch { /* corrupted frame — skip */ }
+    pendingDecodeRef.current--;
+  }, [isConnected, hasError]);
 
   const startStream = useCallback(async () => {
     if (retryTimerRef.current) clearTimeout(retryTimerRef.current);

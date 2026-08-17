@@ -764,6 +764,45 @@ const LeaveDashboard: React.FC = () => {
         };
     }, [requests, user, attendanceSettings, events, yearlyData]);
 
+    const autoEarlyDepartureRequests: LeaveRequest[] = useMemo(() => {
+        return earlyDepartureDeductionsList.map(ed => {
+            const hasExisting = requests.some(r => {
+                const rType = String(r.leaveType || (r as any).leave_type || '').toLowerCase();
+                return r.startDate === ed.dateStr && rType.includes('permission');
+            });
+            if (hasExisting) return null;
+
+            const userName = user?.name || (user as any)?.fullName || 'Self';
+            return {
+                id: `early-dep-${ed.dateStr}`,
+                userId: user?.id || '',
+                userName,
+                userRole: user?.role || '',
+                leaveType: 'Request for Permission (RP)',
+                startDate: ed.dateStr,
+                endDate: ed.dateStr,
+                dayOption: 'full',
+                reason: `Early Departure Auto-Deduction (Worked ${ed.formattedWorked} → Corrected: ${ed.formattedCorrectedWorked})`,
+                status: 'approved',
+                createdAt: `${ed.dateStr}T${ed.punchOutTime || '17:00'}:00.000Z`,
+                correctionDetails: {
+                    punchIn: ed.punchOutTime,
+                    punchOut: ed.permissionEndTime,
+                    permissionMinutes: ed.earlyMins,
+                    reason: `Leaving work early (${ed.permissionTimeRange}) automatically deducted from monthly permission pool.`
+                },
+                isAutoDeducted: true
+            } as unknown as LeaveRequest;
+        }).filter(Boolean) as LeaveRequest[];
+    }, [earlyDepartureDeductionsList, requests, user]);
+
+    const allDisplayRequests = useMemo(() => {
+        const combined = [...requests, ...autoEarlyDepartureRequests];
+        combined.sort((a, b) => new Date(b.startDate.replace(/-/g, '/')).getTime() - new Date(a.startDate.replace(/-/g, '/')).getTime());
+        if (filter === 'all') return combined;
+        return combined.filter(r => r.status === filter);
+    }, [requests, autoEarlyDepartureRequests, filter]);
+
     // ── Smooth fade-in: double-rAF guarantees the opacity:0 frame is painted
     // before we flip to opacity:1, so CSS transition always fires cleanly.
     useEffect(() => {
@@ -1140,7 +1179,7 @@ const LeaveDashboard: React.FC = () => {
             {/* Attendance Calendar Section - Grid layout matching summary cards for uniform sizing */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
                 <AttendanceCalendar 
-                    leaveRequests={requests} 
+                    leaveRequests={[...requests, ...autoEarlyDepartureRequests]} 
                     userHolidays={userHolidays} 
                     currentDate={viewingDate}
                     setCurrentDate={setViewingDate}
@@ -1154,7 +1193,7 @@ const LeaveDashboard: React.FC = () => {
                 {!isTechnicalRole(user?.role) && (
                     <CompOffCalendar 
                         logs={compOffLogs} 
-                        leaveRequests={requests} 
+                        leaveRequests={[...requests, ...autoEarlyDepartureRequests]} 
                         userHolidays={userHolidays} 
                         isLoading={isLoading} 
                         viewingDate={viewingDate}
@@ -1233,13 +1272,14 @@ const LeaveDashboard: React.FC = () => {
                         <tbody className="divide-y divide-border md:bg-card md:divide-y-0">
                             {isLoading ? (
                                 <tr><td colSpan={5} className="text-center py-10 text-muted">Loading...</td></tr>
-                            ) : requests.length === 0 ? (
+                            ) : allDisplayRequests.length === 0 ? (
                                 <tr><td colSpan={5} className="text-center py-10 text-muted text-lg">No requests found.</td></tr>
                             ) : (
-                                requests.map(req => {
+                                allDisplayRequests.map(req => {
                                     const lType = String(req.leaveType || (req as any).leave_type || '').toLowerCase();
                                     const LeaveIcon = lType.includes('sick') ? HeartPulse : 
                                                      lType.includes('floating') ? Plane : 
+                                                     lType.includes('permission') ? Clock : 
                                                      lType.includes('comp') ? CalendarClock : Briefcase;
 
                                     // Row display helpers
@@ -1318,6 +1358,11 @@ const LeaveDashboard: React.FC = () => {
                                                         </div>
                                                     );
                                                 })()}
+                                                {(req as any).isAutoDeducted && (
+                                                    <div className="text-[10px] text-emerald-600 font-semibold mt-1 leading-tight">
+                                                        Auto-adjusted from Early Departure
+                                                    </div>
+                                                )}
                                             </td>
                                             <td data-label="Actions" className="px-6 py-4 text-right">
                                                 <div className="flex justify-end gap-1 flex-wrap items-center">
