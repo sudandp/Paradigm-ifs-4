@@ -64,53 +64,49 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
   useEffect(() => {
     isMountedRef.current = true;
     let timerId: any = null;
+    let currentObjectUrl = '';
 
-    const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+    const fetchNextFrame = async () => {
+      if (!isMountedRef.current) return;
 
-    const fetchNextFrame = () => {
-      if (!isMountedRef.current || isFetchingRef.current) return;
-      isFetchingRef.current = true;
+      try {
+        const res = await fetch(
+          `${NGROK_PROXY}/camera/frame/${encodeURIComponent(camName)}?_t=${Date.now()}`,
+          {
+            headers: {
+              'ngrok-skip-browser-warning': '1',
+            },
+          }
+        );
 
-      // Prefer Vercel /api/cctv-frame proxy (bypasses Ngrok interstitial on all devices), fallback to direct tunnel
-      const proxyUrl = apiBaseUrl
-        ? `${apiBaseUrl}/api/cctv-frame?camera=${encodeURIComponent(camName)}&_t=${Date.now()}`
-        : `/api/cctv-frame?camera=${encodeURIComponent(camName)}&_t=${Date.now()}`;
-
-      const img = new Image();
-      
-      img.onload = () => {
-        if (!isMountedRef.current) return;
-        setFrameSrc(proxyUrl);
-        setHasError(false);
-        isFetchingRef.current = false;
-        timerId = setTimeout(fetchNextFrame, 350); // ~3 FPS smooth live update
-      };
-
-      img.onerror = () => {
-        // Fallback to direct Ngrok URL
-        const fallbackUrl = `${NGROK_PROXY}/camera/frame/${encodeURIComponent(camName)}?ngrok-skip-browser-warning=true&_t=${Date.now()}`;
-        const fallbackImg = new Image();
-
-        fallbackImg.onload = () => {
-          if (!isMountedRef.current) return;
-          setFrameSrc(fallbackUrl);
-          setHasError(false);
-          isFetchingRef.current = false;
-          timerId = setTimeout(fetchNextFrame, 350);
-        };
-
-        fallbackImg.onerror = () => {
-          if (!isMountedRef.current) return;
+        if (res.ok) {
+          const blob = await res.blob();
+          if (blob.type.includes('image') || blob.size > 1000) {
+            const newUrl = URL.createObjectURL(blob);
+            if (isMountedRef.current) {
+              setFrameSrc(newUrl);
+              setHasError(false);
+              if (currentObjectUrl) {
+                URL.revokeObjectURL(currentObjectUrl);
+              }
+              currentObjectUrl = newUrl;
+            } else {
+              URL.revokeObjectURL(newUrl);
+            }
+            if (isMountedRef.current) {
+              timerId = setTimeout(fetchNextFrame, 350); // ~3 FPS smooth live stream
+            }
+            return;
+          }
+        }
+        throw new Error(`Invalid response: ${res.status}`);
+      } catch (err) {
+        if (isMountedRef.current) {
           setHasError(true);
           setErrorCount(c => c + 1);
-          isFetchingRef.current = false;
           timerId = setTimeout(fetchNextFrame, 2000); // Retry in 2s
-        };
-
-        fallbackImg.src = fallbackUrl;
-      };
-
-      img.src = proxyUrl;
+        }
+      }
     };
 
     fetchNextFrame();
@@ -118,6 +114,7 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
     return () => {
       isMountedRef.current = false;
       if (timerId) clearTimeout(timerId);
+      if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
     };
   }, [camName]);
 
