@@ -5,7 +5,7 @@ import { Camera } from '@capacitor/camera';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Filesystem } from '@capacitor/filesystem';
 import { App } from '@capacitor/app';
-import { stepCounterService } from '../../services/StepCounterService';
+import { stepCounterService } from '../../services/stepCounterService';
 
 // Define the interface for our custom plugin
 interface SecurityCheckPlugin {

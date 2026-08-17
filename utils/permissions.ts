@@ -1,7 +1,7 @@
 import { Geolocation } from '@capacitor/geolocation';
 import { Camera } from '@capacitor/camera';
 import { Capacitor } from '@capacitor/core';
-import { stepCounterService } from '../services/StepCounterService';
+import { stepCounterService } from '../services/stepCounterService';
 
 export type PermissionState = 'granted' | 'prompt' | 'denied' | 'limited';
 export type PermissionType = 

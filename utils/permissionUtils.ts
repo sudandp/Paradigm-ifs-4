@@ -5,7 +5,7 @@ import { Contacts } from '@capacitor-community/contacts';
 import { BleClient } from '@capacitor-community/bluetooth-le';
 import { Capacitor } from '@capacitor/core';
 import { pushNotificationService } from '../services/pushNotificationService';
-import { stepCounterService } from '../services/StepCounterService';
+import { stepCounterService } from '../services/stepCounterService';
 import { useAlertToneStore } from '../store/alertToneStore';
 import { scheduleBreakAlarm, cancelBreakAlarm } from '../plugins/breakAlarmPlugin';
 
