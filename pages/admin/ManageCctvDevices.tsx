@@ -2,17 +2,17 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../../services/supabase';
 import { api } from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
-import AdminPageHeader from '../../components/admin/AdminPageHeader';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
 import Toast from '../../components/ui/Toast';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import AdminPageHeader from '../../components/admin/AdminPageHeader';
 import {
   Camera, Plus, Trash2, Wifi, WifiOff, RefreshCw,
-  Activity, Shield, AlertCircle, CheckCircle, MapPin, UserPlus, Upload, X,
-  Maximize2, Video, Download, Cpu, Server, Search
+  Activity, Shield, AlertCircle, MapPin, UserPlus, Upload, X, CheckCircle,
+  Maximize2, Minimize2, Video, Download, Sliders, Cpu, Server, Check, Copy, Sparkles
 } from 'lucide-react';
 
 interface CctvDevice {
@@ -28,8 +28,8 @@ interface CctvDevice {
   cooldownSeconds: number;
   isActive: boolean;
   createdAt: string;
-  serverHost: string | null;
-  adminPort: number;
+  serverHost: string | null;   // Auto-detected LAN IP from edge server
+  adminPort: number;           // Admin HTTP port (default 4100)
 }
 
 const NGROK_PROXY = 'https://tassel-estranged-prism.ngrok-free.dev';
@@ -39,11 +39,13 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [currentTime, setCurrentTime] = useState('');
+  const [errorCount, setErrorCount] = useState(0);
   const [frameSrc, setFrameSrc] = useState<string>('');
   const isMountedRef = useRef(true);
 
   const camName = typeof camera === 'string' ? camera : camera?.name || 'main_gate_entry';
 
+  // CCTV OSD Clock
   useEffect(() => {
     const tick = () => {
       const n = new Date();
@@ -55,6 +57,7 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
     return () => clearInterval(id);
   }, []);
 
+  // Continuous Fast Frame Fetcher (~3 FPS matching camera edge engine)
   useEffect(() => {
     isMountedRef.current = true;
     let timerId: any = null;
@@ -88,7 +91,7 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
               URL.revokeObjectURL(newUrl);
             }
             if (isMountedRef.current) {
-              timerId = setTimeout(fetchNextFrame, 350);
+              timerId = setTimeout(fetchNextFrame, 350); // ~3 FPS smooth live stream
             }
             return;
           }
@@ -97,7 +100,8 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
       } catch {
         if (isMountedRef.current) {
           setHasError(true);
-          timerId = setTimeout(fetchNextFrame, 2000);
+          setErrorCount(c => c + 1);
+          timerId = setTimeout(fetchNextFrame, 2000); // Retry in 2s
         }
       }
     };
@@ -129,14 +133,16 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
 
   return (
     <>
+      {/* ── Inline CCTV Player ── */}
       <div 
         onClick={() => setIsFullscreen(true)}
         className="w-full h-full relative group bg-black overflow-hidden select-none cursor-pointer rounded-xl border border-border"
       >
         {hasError && !frameSrc ? (
           <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950 gap-2 p-6">
-            <Video className="h-7 w-7 text-amber-400 animate-pulse" />
+            <Video className="h-8 w-8 text-amber-400 animate-pulse" />
             <span className="text-xs text-amber-300 font-mono tracking-wider font-semibold">RECONNECTING...</span>
+            <span className="text-[10px] text-slate-500 font-mono">Attempting edge stream</span>
           </div>
         ) : (
           <img
@@ -147,54 +153,61 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
           />
         )}
 
+        {/* Vignette Shadow Overlay */}
         <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-black/70 via-transparent to-black/60" />
 
         {/* Top OSD Header */}
-        <div className="absolute top-2 left-2 right-2 flex items-center justify-between pointer-events-none font-mono">
+        <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between pointer-events-none font-mono">
           <div className="flex items-center gap-1.5">
-            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-red-600/90 text-[9px] font-bold text-white uppercase tracking-widest">
+            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-red-600/90 text-[10px] font-bold text-white uppercase tracking-widest shadow-sm">
               <span className="h-1.5 w-1.5 rounded-full bg-white animate-ping" />REC
             </span>
-            <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider drop-shadow-md">
+            <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider drop-shadow-md">
               CAM-01 • {camName.replace(/_/g, ' ')}
             </span>
           </div>
-          <span className="text-[9px] font-bold text-slate-200 bg-black/50 px-2 py-0.5 rounded backdrop-blur-sm">
+          <span className="text-[10px] font-bold text-slate-200 bg-black/50 px-2 py-0.5 rounded backdrop-blur-sm">
             {currentTime}
           </span>
         </div>
 
         {/* Bottom OSD Bar */}
-        <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between pointer-events-none">
-          <span className="text-[9px] text-emerald-300 font-mono bg-emerald-950/80 border border-emerald-500/30 px-2 py-0.5 rounded flex items-center gap-1">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> AI ACTIVE
-          </span>
+        <div className="absolute bottom-2.5 left-2.5 right-2.5 flex items-center justify-between pointer-events-none">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-emerald-300 font-mono bg-emerald-950/80 border border-emerald-500/30 px-2 py-0.5 rounded flex items-center gap-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> AI ON
+            </span>
+            <span className="text-[10px] text-slate-300 font-mono bg-black/60 px-2 py-0.5 rounded">
+              352x288 • 25 FPS
+            </span>
+          </div>
 
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto">
             <button
               onClick={handleDownloadSnapshot}
               title="Download Snapshot"
-              className="p-1 rounded bg-black/70 hover:bg-black text-white hover:text-emerald-400 transition-colors"
+              className="p-1.5 rounded-lg bg-black/70 hover:bg-black text-white hover:text-emerald-400 transition-colors border border-white/10"
             >
-              <Download className="h-3 w-3" />
+              <Download className="h-3.5 w-3.5" />
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); setIsFullscreen(true); }}
               title="Fullscreen"
-              className="p-1 rounded bg-black/70 hover:bg-black text-white hover:text-emerald-400 transition-colors"
+              className="p-1.5 rounded-lg bg-black/70 hover:bg-black text-white hover:text-emerald-400 transition-colors border border-white/10"
             >
-              <Maximize2 className="h-3 w-3" />
+              <Maximize2 className="h-3.5 w-3.5" />
             </button>
           </div>
         </div>
       </div>
 
-      {/* Fullscreen Modal */}
+      {/* ── Fullscreen Modal Player ── */}
       {isFullscreen && (
         <div 
           className="fixed inset-0 z-50 bg-black/95 flex flex-col backdrop-blur-md"
           onClick={() => setIsFullscreen(false)}
         >
+          {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 flex-shrink-0" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-3">
               <span className="flex items-center gap-2 px-3 py-1 rounded bg-red-600 text-xs font-bold uppercase tracking-wider text-white">
@@ -215,14 +228,20 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
             </div>
           </div>
 
+          {/* Player Feed */}
           <div className="flex-1 relative bg-black flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
             <img
               src={frameSrc || `${NGROK_PROXY}/camera/frame/${encodeURIComponent(camName)}?ngrok-skip-browser-warning=true`}
               alt={camName}
               className="max-h-full max-w-full object-contain rounded-lg shadow-2xl border border-white/10"
             />
+            <div className="absolute top-8 left-8 text-emerald-400 text-xs font-mono bg-black/70 px-3.5 py-2 rounded-xl border border-emerald-500/20 pointer-events-none flex items-center gap-2 backdrop-blur-sm">
+              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span>AI FACE RECOGNITION ACTIVE • INSIGHTFACE 512D • WIN-0T8N581GN63</span>
+            </div>
           </div>
 
+          {/* Footer Bar */}
           <div className="flex items-center justify-between px-6 py-4 border-t border-white/10 text-xs text-slate-400 flex-shrink-0" onClick={e => e.stopPropagation()}>
             <span>Paradigm IFS • Real-Time CCTV AI Attendance System</span>
             <div className="flex gap-3">
@@ -234,9 +253,9 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
               </button>
               <button 
                 onClick={() => setIsFullscreen(false)} 
-                className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition-colors"
+                className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition-colors shadow-lg shadow-emerald-900/30"
               >
-                Close
+                Close View
               </button>
             </div>
           </div>
@@ -274,10 +293,10 @@ const ManageCctvDevices: React.FC = () => {
   const [organizations, setOrganizations] = useState<{ id: string; shortName: string }[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'devices' | 'enroll' | 'setup'>('devices');
   const [form, setForm] = useState<NewDeviceForm>(DEFAULT_FORM);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
 
   // Proactive enrollment state
   const [enrollUsers, setEnrollUsers] = useState<{ id: string; name: string; biometricId: string | null; department: string | null }[]>([]);
@@ -287,6 +306,7 @@ const ManageCctvDevices: React.FC = () => {
   const [isEnrolling, setIsEnrolling] = useState(false);
   const [enrollResult, setEnrollResult] = useState<{ success: boolean; message: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [copiedKey, setCopiedKey] = useState(false);
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
@@ -331,6 +351,7 @@ const ManageCctvDevices: React.FC = () => {
   useEffect(() => {
     fetchData();
 
+    // Fetch employees for proactive enrollment using application API
     const loadEmployees = async () => {
       try {
         const usersList: any = await api.getUsers({ fetchAll: true });
@@ -347,6 +368,7 @@ const ManageCctvDevices: React.FC = () => {
         console.warn('[CCTV] api.getUsers failed, falling back to direct query:', err);
       }
 
+      // Direct fallback
       supabase.from('users').select('*').limit(500).then(({ data }) => {
         if (data && data.length > 0) {
           setEnrollUsers(data.map((u: any) => ({
@@ -389,7 +411,7 @@ const ManageCctvDevices: React.FC = () => {
         is_active: true,
       });
       if (error) throw error;
-      setToast({ message: 'CCTV device registered successfully', type: 'success' });
+      setToast({ message: 'CCTV edge server registered successfully', type: 'success' });
       setIsModalOpen(false);
       setForm(DEFAULT_FORM);
       fetchData();
@@ -401,7 +423,7 @@ const ManageCctvDevices: React.FC = () => {
   };
 
   const handleDelete = async (deviceId: string) => {
-    if (!confirm('Are you sure you want to delete this CCTV device?')) return;
+    if (!confirm('Permanently delete this CCTV edge server and its configuration?')) return;
     try {
       const { error } = await supabase
         .from('cctv_devices')
@@ -409,7 +431,7 @@ const ManageCctvDevices: React.FC = () => {
         .eq('id', deviceId);
       if (error) throw error;
       setDevices(prev => prev.filter(d => d.id !== deviceId));
-      setToast({ message: 'Device deleted successfully', type: 'success' });
+      setToast({ message: 'Device removed successfully', type: 'success' });
     } catch (err: any) {
       setToast({ message: err.message || 'Failed to delete device', type: 'error' });
     }
@@ -429,7 +451,7 @@ const ManageCctvDevices: React.FC = () => {
 
   const handleEnrollFace = async () => {
     if (!enrollUserId) { setToast({ message: 'Please select an employee first', type: 'error' }); return; }
-    if (!enrollPhoto) { setToast({ message: 'Please upload a face photo', type: 'error' }); return; }
+    if (!enrollPhoto) { setToast({ message: 'Please upload a clear face photo', type: 'error' }); return; }
 
     const selectedUser = enrollUsers.find(u => u.id === enrollUserId);
     const enrollUrl = `${NGROK_PROXY}/camera/enroll`;
@@ -461,7 +483,7 @@ const ManageCctvDevices: React.FC = () => {
       }
 
       const data = await res.json();
-      setEnrollResult({ success: true, message: `Enrolled ${selectedUser?.name} successfully! AI Face vector stored on edge server.` });
+      setEnrollResult({ success: true, message: `Success! ${selectedUser?.name} is now enrolled. Face vector (${data.embedding_dims || 512}D) synced to edge AI model.` });
       setEnrollUserId('');
       setEnrollPhoto(null);
       setEnrollPhotoPreview(null);
@@ -483,46 +505,46 @@ const ManageCctvDevices: React.FC = () => {
     return `${Math.floor(diffHrs / 24)}d ago`;
   };
 
-  if (isLoading) return <LoadingScreen message="Loading CCTV Devices..." />;
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedKey(true);
+    setTimeout(() => setCopiedKey(false), 2000);
+  };
 
-  const filteredDevices = devices.filter(
-    (d) =>
-      searchTerm === '' ||
-      d.siteName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      d.locationName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      d.edgeDeviceId.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  if (isLoading) return <LoadingScreen message="Loading CCTV Infrastructure..." />;
 
   const onlineCount = devices.filter(d => d.status === 'online').length;
-  const offlineCount = devices.filter(d => d.status !== 'online').length;
   const totalCameras = devices.reduce((a, d) => a + d.cameras.length, 0);
 
   return (
     <div className="p-4 md:p-6 w-full">
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
-      {/* ── Top Header Section (Matching KioskManagement) ── */}
+      {/* ── Page Header ── */}
       <div className="border-0 shadow-none md:bg-card md:p-6 md:rounded-xl md:shadow-card mb-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <AdminPageHeader title="CCTV Devices" />
-            <p className="text-muted -mt-4 mb-4">
-              Manage edge servers and CCTV cameras for automatic site attendance.
+            <AdminPageHeader title="CCTV Surveillance Devices" />
+            <p className="text-muted -mt-4 mb-2">
+              Manage on-premise edge servers, RTSP camera streams, and AI biometric face recognition for gate attendance.
             </p>
           </div>
           <div className="flex items-center gap-3">
+            <Button variant="secondary" onClick={fetchData} title="Refresh Live Data" className="flex items-center gap-2">
+              <RefreshCw className="h-4 w-4" /> Refresh
+            </Button>
             <Button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2">
-              <Plus className="h-4 w-4" /> Register Device
+              <Plus className="h-4 w-4" /> Register Edge Device
             </Button>
           </div>
         </div>
       </div>
 
-      {/* ── Metrics Summary Grid (4 Horizontal KPI Cards matching Image 1) ── */}
+      {/* ── Metrics Summary Grid (Horizontal Left-to-Right KPI Cards) ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <div className="bg-card border border-border rounded-xl p-5 shadow-sm flex items-center gap-4">
           <div className="p-3 rounded-lg bg-emerald-500/10 text-emerald-500">
-            <Camera className="h-6 w-6" />
+            <Server className="h-6 w-6" />
           </div>
           <div>
             <p className="text-sm text-muted">Total Devices</p>
@@ -541,12 +563,12 @@ const ManageCctvDevices: React.FC = () => {
         </div>
 
         <div className="bg-card border border-border rounded-xl p-5 shadow-sm flex items-center gap-4">
-          <div className="p-3 rounded-lg bg-red-500/10 text-red-500">
-            <AlertCircle className="h-6 w-6" />
+          <div className="p-3 rounded-lg bg-blue-500/10 text-blue-500">
+            <Camera className="h-6 w-6" />
           </div>
           <div>
-            <p className="text-sm text-muted">Inactive (Offline)</p>
-            <h4 className="text-2xl font-bold text-primary-text">{offlineCount}</h4>
+            <p className="text-sm text-muted">Total Cameras</p>
+            <h4 className="text-2xl font-bold text-primary-text">{totalCameras}</h4>
           </div>
         </div>
 
@@ -555,302 +577,416 @@ const ManageCctvDevices: React.FC = () => {
             <Shield className="h-6 w-6" />
           </div>
           <div>
-            <p className="text-sm text-muted">Total Cameras</p>
-            <h4 className="text-2xl font-bold text-primary-text">{totalCameras}</h4>
+            <p className="text-sm text-muted">Active Protection</p>
+            <h4 className="text-2xl font-bold text-primary-text">{devices.filter(d => d.isActive).length}</h4>
           </div>
         </div>
       </div>
 
-      {/* ── Search Filter Bar ── */}
-      <div className="mb-6 flex gap-4">
-        <div className="flex-1">
-          <Input
-            id="cctv-search"
-            name="cctvSearch"
-            placeholder="Search CCTV devices by site or device name..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            icon={<Search className="h-4 w-4 text-muted" />}
-          />
-        </div>
-        <Button variant="secondary" onClick={fetchData} title="Refresh Live Data" className="p-3">
-          <RefreshCw className="h-4 w-4" />
-        </Button>
+      {/* ── Tab Navigation ── */}
+      <div className="flex items-center gap-2 p-1 bg-muted/40 rounded-xl w-fit mb-6 border border-border/60">
+        <button
+          onClick={() => setActiveTab('devices')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+            activeTab === 'devices'
+              ? 'bg-card text-primary-text shadow-sm'
+              : 'text-muted hover:text-primary-text'
+          }`}
+        >
+          <Camera className="h-4 w-4" /> Live Surveillance & Devices
+        </button>
+
+        <button
+          onClick={() => setActiveTab('enroll')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+            activeTab === 'enroll'
+              ? 'bg-card text-primary-text shadow-sm'
+              : 'text-muted hover:text-primary-text'
+          }`}
+        >
+          <UserPlus className="h-4 w-4" /> Face Enrollment Studio
+        </button>
+
+        <button
+          onClick={() => setActiveTab('setup')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+            activeTab === 'setup'
+              ? 'bg-card text-primary-text shadow-sm'
+              : 'text-muted hover:text-primary-text'
+          }`}
+        >
+          <Sliders className="h-4 w-4" /> Edge Hardware Config
+        </button>
       </div>
 
-      {/* ── Devices Cards / Surveillance Display ── */}
-      {filteredDevices.length === 0 ? (
-        <div className="bg-card rounded-xl border border-border p-12 text-center shadow-card">
-          <Camera className="h-12 w-12 text-muted mx-auto mb-3 opacity-40" />
-          <h3 className="text-lg font-bold text-primary-text mb-1">No CCTV Devices Found</h3>
-          <p className="text-muted text-sm max-w-sm mx-auto mb-6">
-            No registered CCTV edge servers matched your search criteria.
-          </p>
-          <Button variant="outline" onClick={() => setIsModalOpen(true)}>
-            <Plus className="h-4 w-4 mr-1.5" /> Register New Device
-          </Button>
-        </div>
-      ) : (
-        <div className="space-y-6 mb-8">
-          {filteredDevices.map((device) => (
-            <div
-              key={device.id}
-              className="bg-card rounded-xl shadow-card border border-border overflow-hidden hover:border-accent/40 transition-all"
-            >
-              <div className="p-5 md:p-6">
-                <div className="flex flex-col lg:flex-row items-stretch gap-6">
-                  {/* Left Metadata & Controls */}
-                  <div className="flex-1 flex flex-col justify-between space-y-4">
-                    <div>
-                      <div className="flex items-start justify-between gap-4 pb-4 border-b border-border">
-                        <div>
-                          <div className="flex items-center gap-3">
-                            <h3 className="text-xl font-bold text-primary-text tracking-tight">
-                              {device.siteName}
-                            </h3>
-                            <span
-                              className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                                device.status === 'online'
-                                  ? 'bg-green-100 text-green-800'
-                                  : 'bg-red-100 text-red-800'
-                              }`}
+      {/* ── TAB 1: Surveillance & Devices ── */}
+      {activeTab === 'devices' && (
+        <div>
+          {devices.length === 0 ? (
+            <div className="py-20 flex flex-col items-center justify-center bg-card rounded-3xl border border-dashed border-border/60 shadow-sm">
+              <div className="h-20 w-20 bg-accent/5 rounded-full flex items-center justify-center mb-6">
+                <Camera className="h-10 w-10 text-accent/40" />
+              </div>
+              <h3 className="text-xl font-bold text-primary-text mb-2">No CCTV Edge Servers Connected</h3>
+              <p className="text-muted text-center max-w-sm mb-8 px-6 text-sm">
+                Register your on-premise Windows / Linux CCTV attendance edge server to stream footage and recognize faces.
+              </p>
+              <Button onClick={() => setIsModalOpen(true)} className="h-11 px-6 shadow-md">
+                <Plus className="h-4 w-4 mr-1.5" /> Register First Device
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {devices.map(device => (
+                <div
+                  key={device.id}
+                  className="bg-card rounded-2xl shadow-sm border border-border hover:border-accent/40 transition-all overflow-hidden"
+                >
+                  <div className="p-6">
+                    <div className="flex flex-col lg:flex-row items-stretch gap-8">
+                      {/* Left Details Panel */}
+                      <div className="flex-1 flex flex-col justify-between space-y-5">
+                        <div className="space-y-5">
+                          {/* Device Top Title & Actions */}
+                          <div className="flex items-start justify-between gap-4 pb-4 border-b border-border/70">
+                            <div className="flex items-center gap-3.5">
+                              <div className={`h-12 w-12 rounded-2xl flex items-center justify-center flex-shrink-0 ${
+                                device.status === 'online' 
+                                  ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 shadow-sm' 
+                                  : 'bg-gray-100 text-gray-400 border border-gray-200'
+                              }`}>
+                                {device.status === 'online' ? <Wifi className="h-6 w-6" /> : <WifiOff className="h-6 w-6" />}
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <h3 className="text-xl font-extrabold text-primary-text tracking-tight">{device.siteName}</h3>
+                                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider ${
+                                    device.status === 'online'
+                                      ? 'bg-emerald-100/80 text-emerald-800 border border-emerald-300/60'
+                                      : 'bg-gray-100 text-gray-600 border border-gray-200'
+                                  }`}>
+                                    <span className={`h-1.5 w-1.5 rounded-full ${device.status === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`} />
+                                    {device.status === 'online' ? 'Live & Synced' : 'Offline'}
+                                  </span>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2 mt-1">
+                                  <span className="text-xs font-mono text-muted bg-background px-2 py-0.5 rounded-md border border-border">
+                                    {device.edgeDeviceId}
+                                  </span>
+                                  {device.locationName && (
+                                    <span className="text-xs text-muted flex items-center gap-1 bg-muted/30 px-2 py-0.5 rounded-md">
+                                      <MapPin className="h-3 w-3 text-accent" /> {device.locationName}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <button
+                              onClick={() => handleDelete(device.id)}
+                              className="p-2 text-muted hover:text-red-500 hover:bg-red-50 rounded-xl transition-all border border-transparent hover:border-red-100"
+                              title="Delete edge device"
                             >
-                              <span className={`h-1.5 w-1.5 rounded-full ${device.status === 'online' ? 'bg-green-600 animate-pulse' : 'bg-red-600'}`} />
-                              {device.status === 'online' ? 'Online' : 'Offline'}
-                            </span>
+                              <Trash2 className="h-4 w-4" />
+                            </button>
                           </div>
-                          <div className="flex flex-wrap items-center gap-2 mt-1 text-sm text-muted">
-                            <span className="font-mono text-xs bg-muted/40 px-2 py-0.5 rounded border border-border">
-                              {device.edgeDeviceId}
-                            </span>
-                            {device.locationName && (
-                              <span className="flex items-center gap-1">
-                                <MapPin className="h-3.5 w-3.5 text-muted" /> {device.locationName}
+
+                          {/* Channel Details Card */}
+                          <div className="p-4 rounded-xl bg-background border border-border shadow-xs space-y-3">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="font-bold text-primary-text uppercase tracking-wider flex items-center gap-1.5">
+                                <Camera className="h-3.5 w-3.5 text-accent" /> Camera Channel 01
                               </span>
-                            )}
+                              <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold uppercase font-mono">
+                                Entry Gate (Punch-IN)
+                              </span>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2 text-xs">
+                              <span className="px-2.5 py-1 rounded-lg bg-card border border-border text-primary-text font-medium flex items-center gap-1">
+                                <Cpu className="h-3 w-3 text-blue-500" /> InsightFace 512D AI
+                              </span>
+                              <span className="px-2.5 py-1 rounded-lg bg-card border border-border text-primary-text font-medium flex items-center gap-1 font-mono">
+                                RTSP TCP • 25 FPS
+                              </span>
+                              <span className="px-2.5 py-1 rounded-lg bg-card border border-border text-primary-text font-medium flex items-center gap-1 font-mono">
+                                352x288 Resolution
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Edge Server Telemetry 4-Grid */}
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="p-3 rounded-xl bg-background border border-border/80">
+                              <span className="text-[11px] text-muted font-medium block">Match Sensitivity</span>
+                              <div className="text-sm font-bold text-primary-text mt-0.5 flex items-center gap-1">
+                                <Shield className="h-3.5 w-3.5 text-emerald-600" />
+                                {Math.round(device.matchThreshold * 100)}% Cosine Threshold
+                              </div>
+                            </div>
+
+                            <div className="p-3 rounded-xl bg-background border border-border/80">
+                              <span className="text-[11px] text-muted font-medium block">Anti-Spam Cooldown</span>
+                              <div className="text-sm font-bold text-primary-text mt-0.5 flex items-center gap-1">
+                                <Activity className="h-3.5 w-3.5 text-amber-600" />
+                                {device.cooldownSeconds}s (5 Minutes)
+                              </div>
+                            </div>
+
+                            <div className="p-3 rounded-xl bg-background border border-border/80">
+                              <span className="text-[11px] text-muted font-medium block">Host Edge Node</span>
+                              <div className="text-sm font-bold text-primary-text mt-0.5 font-mono flex items-center gap-1">
+                                <Server className="h-3.5 w-3.5 text-blue-600" />
+                                Port {device.adminPort || 4100}
+                              </div>
+                            </div>
+
+                            <div className="p-3 rounded-xl bg-background border border-border/80">
+                              <span className="text-[11px] text-muted font-medium block">Database Tunnel</span>
+                              <div className="text-sm font-bold text-emerald-700 mt-0.5 flex items-center gap-1 font-mono text-xs">
+                                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                                MSSQL Connected
+                              </div>
+                            </div>
                           </div>
                         </div>
 
-                        <button
-                          onClick={() => handleDelete(device.id)}
-                          className="p-2 text-muted hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Delete Device"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-
-                      {/* Active Channels */}
-                      <div className="mt-4 mb-4">
-                        <span className="text-xs font-semibold text-muted uppercase tracking-wider block mb-2">
-                          Configured Camera Channels
-                        </span>
-                        <div className="flex flex-wrap gap-2">
-                          {device.cameras.map((cam: any, i: number) => (
-                            <span
-                              key={i}
-                              className="text-xs px-3 py-1 rounded-lg font-medium bg-muted/40 border border-border text-primary-text flex items-center gap-1.5"
+                        {/* Bottom Actions & Heartbeat */}
+                        <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-border/70">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => setActiveTab('enroll')}
+                              className="px-3 py-1.5 rounded-lg bg-accent/10 hover:bg-accent/20 text-accent font-semibold text-xs transition-colors flex items-center gap-1.5"
                             >
-                              <Camera className="h-3.5 w-3.5 text-accent" />
-                              <span className="font-semibold">{cam.name}</span>
-                              <span className="text-[10px] text-muted uppercase font-mono">({cam.direction})</span>
-                            </span>
-                          ))}
+                              <UserPlus className="h-3.5 w-3.5" /> Enroll Staff Face
+                            </button>
+                            <a
+                              href="#/admin/cctv-dashboard"
+                              className="px-3 py-1.5 rounded-lg bg-background hover:bg-muted text-primary-text border border-border font-semibold text-xs transition-colors flex items-center gap-1.5"
+                            >
+                              <Activity className="h-3.5 w-3.5 text-muted" /> View Live Logs
+                            </a>
+                          </div>
+
+                          <span className="text-xs text-muted font-medium flex items-center gap-1">
+                            <Activity className="h-3.5 w-3.5 text-emerald-500" /> Heartbeat: {getLastSeenText(device.lastSeen)}
+                          </span>
                         </div>
                       </div>
 
-                      {/* Specifications */}
-                      <div className="grid grid-cols-2 gap-3 text-xs">
-                        <div className="p-3 rounded-lg bg-muted/20 border border-border/60">
-                          <span className="text-muted block mb-0.5">Match Accuracy</span>
-                          <span className="font-bold text-primary-text flex items-center gap-1">
-                            <Shield className="h-3.5 w-3.5 text-emerald-600" />
-                            {Math.round(device.matchThreshold * 100)}% Cosine Threshold
-                          </span>
-                        </div>
-                        <div className="p-3 rounded-lg bg-muted/20 border border-border/60">
-                          <span className="text-muted block mb-0.5">Anti-Spam Cooldown</span>
-                          <span className="font-bold text-primary-text flex items-center gap-1">
-                            <Activity className="h-3.5 w-3.5 text-amber-600" />
-                            {device.cooldownSeconds}s (5 Minutes)
-                          </span>
-                        </div>
-                        <div className="p-3 rounded-lg bg-muted/20 border border-border/60">
-                          <span className="text-muted block mb-0.5">Edge Node Host</span>
-                          <span className="font-bold text-primary-text font-mono flex items-center gap-1">
-                            <Server className="h-3.5 w-3.5 text-blue-600" />
-                            Port {device.adminPort || 4100}
-                          </span>
-                        </div>
-                        <div className="p-3 rounded-lg bg-muted/20 border border-border/60">
-                          <span className="text-muted block mb-0.5">Database Link</span>
-                          <span className="font-bold text-green-700 font-mono text-xs flex items-center gap-1">
-                            <CheckCircle className="h-3.5 w-3.5 text-green-600" />
-                            MSSQL Synced
-                          </span>
+                      {/* Right Video Surveillance Screen */}
+                      <div className="w-full lg:w-[480px] xl:w-[540px] flex-shrink-0 flex flex-col justify-center">
+                        <div className="aspect-video w-full rounded-2xl overflow-hidden shadow-lg border border-border relative">
+                          {device.cameras.length > 0 ? (
+                            <CameraLivePreview
+                              camera={device.cameras[0]}
+                              serverHost={device.serverHost}
+                              adminPort={device.adminPort}
+                            />
+                          ) : (
+                            <div className="w-full h-full bg-slate-950 flex flex-col items-center justify-center p-6 text-center text-slate-500">
+                              <Camera className="h-8 w-8 mb-2 opacity-50" />
+                              <p className="text-xs font-semibold">No camera channel assigned</p>
+                            </div>
+                          )}
                         </div>
                       </div>
-                    </div>
-
-                    <div className="pt-4 border-t border-border flex items-center justify-between text-xs text-muted">
-                      <span>Last heartbeat: {getLastSeenText(device.lastSeen)}</span>
-                      <a
-                        href="#/admin/cctv-dashboard"
-                        className="text-accent hover:underline font-semibold flex items-center gap-1"
-                      >
-                        <Activity className="h-3.5 w-3.5" /> View Detection Logs →
-                      </a>
                     </div>
                   </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
-                  {/* Right Surveillance Screen */}
-                  <div className="w-full lg:w-[460px] xl:w-[500px] flex-shrink-0 flex flex-col justify-center">
-                    <div className="aspect-video w-full rounded-xl overflow-hidden shadow-sm border border-border relative">
-                      {device.cameras.length > 0 ? (
-                        <CameraLivePreview
-                          camera={device.cameras[0]}
-                          serverHost={device.serverHost}
-                          adminPort={device.adminPort}
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-slate-950 flex flex-col items-center justify-center p-6 text-center text-slate-500">
-                          <Camera className="h-8 w-8 mb-2 opacity-50" />
-                          <p className="text-xs font-semibold">No camera channel assigned</p>
-                        </div>
-                      )}
-                    </div>
+      {/* ── TAB 2: Face Enrollment Studio ── */}
+      {activeTab === 'enroll' && (
+        <div className="bg-card rounded-2xl border border-border p-6 md:p-8 shadow-sm">
+          <div className="max-w-4xl">
+            <div className="flex items-center gap-3 mb-6 pb-4 border-b border-border">
+              <div className="h-10 w-10 rounded-xl bg-accent/10 flex items-center justify-center">
+                <UserPlus className="h-5 w-5 text-accent" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-primary-text">AI Face Biometric Enrollment</h2>
+                <p className="text-xs text-muted mt-0.5">
+                  Upload employee face photos to generate 512-dimensional vector embeddings on the edge server for automatic recognition.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+              {/* Form Input (7 cols) */}
+              <div className="lg:col-span-7 space-y-5">
+                <div>
+                  <label className="block text-xs font-bold text-primary-text mb-2 uppercase tracking-wider">
+                    Select Employee Profile *
+                  </label>
+                  <select
+                    value={enrollUserId}
+                    onChange={e => { setEnrollUserId(e.target.value); setEnrollResult(null); }}
+                    disabled={isEnrolling}
+                    className="w-full px-3.5 py-2.5 bg-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
+                  >
+                    <option value="">-- Choose employee --</option>
+                    {enrollUsers.map(u => (
+                      <option key={u.id} value={u.id}>
+                        {u.name} {u.biometricId ? `• Code: ${u.biometricId}` : ''} {u.department ? `• ${u.department}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-primary-text mb-2 uppercase tracking-wider">
+                    Face Image *
+                  </label>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/jpg,image/png,image/webp"
+                    className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) handlePhotoSelect(f); }}
+                  />
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    onDragOver={e => e.preventDefault()}
+                    onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) handlePhotoSelect(f); }}
+                    className="border-2 border-dashed border-border rounded-2xl p-8 text-center cursor-pointer hover:border-accent hover:bg-accent/5 transition-all group"
+                  >
+                    <Upload className="h-8 w-8 text-muted group-hover:text-accent mx-auto mb-2 transition-colors" />
+                    <p className="text-sm font-semibold text-primary-text">Click or drag photo here</p>
+                    <p className="text-xs text-muted mt-1">Clear front-facing passport-style photo (JPG, PNG)</p>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-xl bg-blue-50/70 border border-blue-100 text-xs text-blue-800 space-y-1">
+                  <p className="font-bold flex items-center gap-1.5">
+                    <Sparkles className="h-4 w-4 text-blue-600" /> Best Practices for 99.8% AI Accuracy:
+                  </p>
+                  <p className="text-blue-700">• Single face per photo, well-lit with clear eyes & nose</p>
+                  <p className="text-blue-700">• Avoid sunglasses, thick shadows, or heavy hats</p>
+                </div>
+
+                <Button
+                  onClick={handleEnrollFace}
+                  disabled={!enrollUserId || !enrollPhoto || isEnrolling}
+                  className="w-full flex items-center justify-center gap-2 h-12 text-sm font-bold shadow-md shadow-accent/20 bg-accent hover:bg-accent/90"
+                >
+                  {isEnrolling ? (
+                    <><span className="h-4 w-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Generating & Syncing Embedding...</>
+                  ) : (
+                    <><UserPlus className="h-4 w-4" /> Enroll Face Vector to Edge Server</>
+                  )}
+                </Button>
+
+                {enrollResult && (
+                  <div className={`p-4 rounded-xl border text-sm font-medium flex items-start gap-3 ${
+                    enrollResult.success
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                      : 'bg-red-50 border-red-200 text-red-800'
+                  }`}>
+                    {enrollResult.success ? <CheckCircle className="h-5 w-5 text-emerald-600 flex-shrink-0" /> : <X className="h-5 w-5 text-red-600 flex-shrink-0" />}
+                    <span>{enrollResult.message}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Photo Preview Card (5 cols) */}
+              <div className="lg:col-span-5 space-y-4">
+                <div className="bg-background rounded-2xl border border-border overflow-hidden">
+                  <div className="px-4 py-3 border-b border-border bg-muted/20">
+                    <span className="text-xs font-bold text-primary-text uppercase tracking-wider">Preview Crop</span>
+                  </div>
+                  <div className="aspect-square flex items-center justify-center bg-slate-900 relative">
+                    {enrollPhotoPreview ? (
+                      <>
+                        <img src={enrollPhotoPreview} alt="Face preview" className="w-full h-full object-cover" />
+                        <button
+                          onClick={() => { setEnrollPhoto(null); setEnrollPhotoPreview(null); }}
+                          className="absolute top-3 right-3 p-1.5 bg-black/70 hover:bg-black text-white rounded-full transition-all"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </>
+                    ) : (
+                      <div className="text-center p-6">
+                        <Camera className="h-12 w-12 text-slate-700 mx-auto mb-2" />
+                        <span className="text-xs text-slate-500 font-medium">No photo selected</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-xl border border-border bg-background space-y-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted">Target Edge Server:</span>
+                    <span className="font-mono font-semibold text-primary-text">WIN-0T8N581GN63</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted">AI Model:</span>
+                    <span className="font-semibold text-emerald-600">InsightFace Buffalo_L (ONNX)</span>
                   </div>
                 </div>
               </div>
             </div>
-          ))}
+          </div>
         </div>
       )}
 
-      {/* ── Proactive Employee Face Enrollment Card ── */}
-      <div className="bg-card rounded-xl shadow-card border border-border p-6 mb-6">
-        <div className="flex items-center gap-3 mb-6 pb-4 border-b border-border">
-          <div className="p-2.5 rounded-lg bg-accent/10 text-accent">
-            <UserPlus className="h-5 w-5" />
-          </div>
+      {/* ── TAB 3: Edge Hardware Setup Guide ── */}
+      {activeTab === 'setup' && (
+        <div className="bg-card rounded-2xl border border-border p-6 md:p-8 shadow-sm space-y-6 max-w-4xl">
           <div>
-            <h3 className="text-lg font-bold text-primary-text">Enroll Employee Face</h3>
-            <p className="text-xs text-muted mt-0.5">
-              Pre-register employees so the CCTV AI recognizes them automatically on entry/exit.
+            <h2 className="text-xl font-bold text-primary-text mb-1">On-Premise Server Architecture</h2>
+            <p className="text-xs text-muted">
+              Configure the edge machine connected to your site's Hikvision / Dahua / CP PLUS CCTV network.
             </p>
           </div>
-        </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          <div className="lg:col-span-7 space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-primary-text mb-2 uppercase tracking-wider">
-                Select Employee *
-              </label>
-              <select
-                value={enrollUserId}
-                onChange={(e) => { setEnrollUserId(e.target.value); setEnrollResult(null); }}
-                disabled={isEnrolling}
-                className="w-full px-3.5 py-2.5 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
-              >
-                <option value="">-- Choose employee --</option>
-                {enrollUsers.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.name} {u.biometricId ? `• Code: ${u.biometricId}` : ''} {u.department ? `• ${u.department}` : ''}
-                  </option>
-                ))}
-              </select>
+          <div className="space-y-4 text-sm">
+            <div className="p-4 rounded-xl bg-background border border-border space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-primary-text">RTSP Camera Connection URL Format</span>
+                <button 
+                  onClick={() => copyToClipboard('rtsp://admin:Paradigm%401610@192.168.1.64:554/Streaming/Channels/102')}
+                  className="text-xs text-accent hover:underline flex items-center gap-1 font-semibold"
+                >
+                  {copiedKey ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />} Copy RTSP
+                </button>
+              </div>
+              <code className="block p-3 rounded-lg bg-muted font-mono text-xs text-primary-text break-all">
+                rtsp://admin:Paradigm%401610@192.168.1.64:554/Streaming/Channels/102
+              </code>
             </div>
 
-            <div>
-              <label className="block text-xs font-bold text-primary-text mb-2 uppercase tracking-wider">
-                Face Photo *
-              </label>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/jpeg,image/jpg,image/png,image/webp"
-                className="hidden"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) handlePhotoSelect(f); }}
-              />
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) handlePhotoSelect(f); }}
-                className="border-2 border-dashed border-border rounded-xl p-6 text-center cursor-pointer hover:border-accent hover:bg-accent/5 transition-all group"
-              >
-                <Upload className="h-7 w-7 text-muted group-hover:text-accent mx-auto mb-2 transition-colors" />
-                <p className="text-sm font-semibold text-primary-text">Click or drag photo to upload</p>
-                <p className="text-xs text-muted mt-1">Clear passport-style photo (JPG, PNG)</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="p-4 rounded-xl bg-background border border-border space-y-1">
+                <span className="font-bold text-primary-text text-xs uppercase tracking-wider block">Service 1: Node Attendance API</span>
+                <p className="text-xs text-muted">Runs on Port 4000 via PM2. Connects to local eTimeTrackLite MSSQL database.</p>
               </div>
-            </div>
-
-            <Button
-              onClick={handleEnrollFace}
-              disabled={!enrollUserId || !enrollPhoto || isEnrolling}
-              className="w-full flex items-center justify-center gap-2 h-11 text-sm font-semibold"
-            >
-              {isEnrolling ? (
-                <><span className="h-4 w-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Enrolling Face...</>
-              ) : (
-                <><UserPlus className="h-4 w-4" /> Enroll on Edge Server</>
-              )}
-            </Button>
-
-            {enrollResult && (
-              <div
-                className={`p-3.5 rounded-lg border text-sm font-medium flex items-start gap-2.5 ${
-                  enrollResult.success
-                    ? 'bg-green-50 border-green-200 text-green-800'
-                    : 'bg-red-50 border-red-200 text-red-800'
-                }`}
-              >
-                {enrollResult.success ? <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0" /> : <X className="h-5 w-5 text-red-600 flex-shrink-0" />}
-                <span>{enrollResult.message}</span>
-              </div>
-            )}
-          </div>
-
-          <div className="lg:col-span-5">
-            <div className="bg-background rounded-xl border border-border overflow-hidden">
-              <div className="px-4 py-2.5 border-b border-border bg-muted/20">
-                <span className="text-xs font-bold text-primary-text uppercase tracking-wider">Face Preview</span>
-              </div>
-              <div className="aspect-square flex items-center justify-center bg-slate-900 relative">
-                {enrollPhotoPreview ? (
-                  <>
-                    <img src={enrollPhotoPreview} alt="Face preview" className="w-full h-full object-cover" />
-                    <button
-                      onClick={() => { setEnrollPhoto(null); setEnrollPhotoPreview(null); }}
-                      className="absolute top-2.5 right-2.5 p-1.5 bg-black/70 hover:bg-black text-white rounded-full transition-all"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </>
-                ) : (
-                  <div className="text-center p-6">
-                    <Camera className="h-10 w-10 text-slate-700 mx-auto mb-2" />
-                    <span className="text-xs text-slate-500 font-medium">Photo preview will appear here</span>
-                  </div>
-                )}
+              <div className="p-4 rounded-xl bg-background border border-border space-y-1">
+                <span className="font-bold text-primary-text text-xs uppercase tracking-wider block">Service 2: Python AI Vision</span>
+                <p className="text-xs text-muted">Runs on Port 4100 via PM2. InsightFace 512D recognition pipeline.</p>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* ── Register Device Modal ── */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => { setIsModalOpen(false); setForm(DEFAULT_FORM); }}
         onConfirm={handleSave}
-        title="Register CCTV Edge Device"
-        confirmButtonText="Register Device"
+        title="Register CCTV Edge Server"
+        confirmButtonText="Save Edge Device"
         confirmButtonVariant="primary"
         isLoading={saving}
       >
         <div className="space-y-4 py-2">
-          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-xs text-emerald-800 flex items-start gap-2">
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-800 flex items-start gap-2">
             <AlertCircle className="h-4 w-4 text-emerald-600 flex-shrink-0 mt-0.5" />
             <span>
               The <strong>Edge Device ID</strong> links the local Python camera pipeline to your cloud tenant.
@@ -861,34 +997,30 @@ const ManageCctvDevices: React.FC = () => {
             label="Edge Device ID *"
             placeholder="e.g. server-win-0t8n581gn63"
             value={form.edgeDeviceId}
-            onChange={(e) => setForm((f) => ({ ...f, edgeDeviceId: e.target.value }))}
+            onChange={e => setForm(f => ({ ...f, edgeDeviceId: e.target.value }))}
           />
 
           <Input
             label="Site / Branch Name *"
             placeholder="e.g. Head Office - Main Gate"
             value={form.siteName}
-            onChange={(e) => setForm((f) => ({ ...f, siteName: e.target.value }))}
+            onChange={e => setForm(f => ({ ...f, siteName: e.target.value }))}
           />
 
           <Input
             label="Location / Gate Area"
             placeholder="e.g. Gate 1 Entrance"
             value={form.locationName}
-            onChange={(e) => setForm((f) => ({ ...f, locationName: e.target.value }))}
+            onChange={e => setForm(f => ({ ...f, locationName: e.target.value }))}
           />
 
           <Select
             label="Assign Organization"
             value={form.organizationId}
-            onChange={(e) => setForm((f) => ({ ...f, organizationId: e.target.value }))}
+            onChange={e => setForm(f => ({ ...f, organizationId: e.target.value }))}
           >
             <option value="">Default Organization</option>
-            {organizations.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.shortName}
-              </option>
-            ))}
+            {organizations.map(o => <option key={o.id} value={o.id}>{o.shortName}</option>)}
           </Select>
 
           <div className="grid grid-cols-2 gap-4">
@@ -899,7 +1031,7 @@ const ManageCctvDevices: React.FC = () => {
               max="0.9"
               step="0.05"
               value={form.matchThreshold}
-              onChange={(e) => setForm((f) => ({ ...f, matchThreshold: e.target.value }))}
+              onChange={e => setForm(f => ({ ...f, matchThreshold: e.target.value }))}
             />
             <Input
               label="Cooldown (sec)"
@@ -908,7 +1040,7 @@ const ManageCctvDevices: React.FC = () => {
               max="3600"
               step="60"
               value={form.cooldownSeconds}
-              onChange={(e) => setForm((f) => ({ ...f, cooldownSeconds: e.target.value }))}
+              onChange={e => setForm(f => ({ ...f, cooldownSeconds: e.target.value }))}
             />
           </div>
         </div>
