@@ -97,11 +97,10 @@ class FaceEngine:
             if 'CUDAExecutionProvider' in available_providers:
                 providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
                 ctx_id = 0  # GPU 0
-                logger.info("[FaceEngine] 🚀 NVIDIA CUDA GPU detected! Enabling GPU acceleration.")
-            elif 'TensorRTExecutionProvider' in available_providers:
-                providers = ['TensorRTExecutionProvider', 'CUDAExecutionProvider', 'CPUExecutionProvider']
-                ctx_id = 0  # GPU 0
-                logger.info("[FaceEngine] 🚀 NVIDIA TensorRT detected! Enabling TensorRT acceleration.")
+                logger.info("[FaceEngine] NVIDIA CUDA GPU detected! Enabling GPU acceleration.")
+            elif 'TensorrtExecutionProvider' in available_providers:
+                providers.append('TensorrtExecutionProvider')
+                logger.info("[FaceEngine] NVIDIA TensorRT detected! Enabling TensorRT acceleration.")
 
             # Initialize FaceAnalysis with model pack
             self._app = FaceAnalysis(

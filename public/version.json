@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 105,
-  "latestVersionName": "19.5.0",
+  "latestVersionCode": 106,
+  "latestVersionName": "19.6.0",
   "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
   "apkDownloadUrl": "https://app.paradigmfms.com",
-  "releaseNotes": "feat: add ClientAttendanceDashboard component for real-time attendance monitoring and shift analysis\nfeat: add ClientAttendanceDashboard component for real-time attendance monitoring and update vercel configuration\nfeat: add MSSQL proxy endpoints and implement ClientAttendanceDashboard UI\nfeat: implement client attendance dashboard and Supabase access control service\nfeat: implement secure local dev server with CORS policies, rate limiting, and Supabase storage proxying",
+  "releaseNotes": "refactor: optimize network reconnection, add silent session refresh, and introduce useSecurityCheck hook\nfix: add ngrok-skip-browser-warning header to bypass interstitial page\nfeat: implement native permission management utilities and add custom exit warning modal\nrefactor: optimize mobile session persistence by removing 14-day offline cache expiry and streamlining Zustand-based auth restoration\nfeat: implement device validation, security monitoring, and admin impersonation management system",
   "isMandatory": true
 }

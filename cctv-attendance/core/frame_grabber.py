@@ -64,6 +64,11 @@ class CameraStream:
         try:
             logger.info(f"[Camera:{self.config.name}] Connecting to RTSP stream...")
             
+            # Force TCP transport — prevents the 30-failure / 2-min disconnect cycle
+            # caused by UDP packet loss on the local network.
+            import os
+            os.environ['OPENCV_FFMPEG_CAPTURE_OPTIONS'] = 'rtsp_transport;tcp|timeout;10000000'
+
             # OpenCV RTSP options for stability
             self._cap = cv2.VideoCapture(self.config.rtsp_url, cv2.CAP_FFMPEG)
             
@@ -77,6 +82,7 @@ class CameraStream:
             # Try to set receive timeout (may not work with all backends)
             self._cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 10000)
             self._cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 5000)
+
 
             # Read camera properties
             width = int(self._cap.get(cv2.CAP_PROP_FRAME_WIDTH))

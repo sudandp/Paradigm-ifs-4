@@ -252,7 +252,7 @@ class AttendancePipeline:
 
             self._stats.matches += 1
             logger.info(
-                f"[Pipeline] ✅ {match.user_name} detected at "
+                f"[Pipeline] [MATCH] {match.user_name} detected at "
                 f"{captured.camera_name} ({captured.direction}) — "
                 f"confidence: {match.similarity:.3f}"
             )

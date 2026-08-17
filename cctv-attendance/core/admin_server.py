@@ -29,6 +29,21 @@ from .database import LocalDatabase
 from .face_engine import FaceEngine
 
 
+def _make_reconnecting_frame(width: int = 352, height: int = 288) -> "np.ndarray":
+    """Return a black JPEG placeholder frame with a RECONNECTING overlay."""
+    import cv2
+    frame = np.zeros((height, width, 3), dtype=np.uint8)
+    text = "RECONNECTING..."
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    scale = 0.55
+    thickness = 1
+    (tw, th), _ = cv2.getTextSize(text, font, scale, thickness)
+    x = (width - tw) // 2
+    y = (height + th) // 2
+    cv2.putText(frame, text, (x, y), font, scale, (0, 200, 100), thickness, cv2.LINE_AA)
+    return frame
+
+
 def create_admin_app(
     config: AppConfig,
     db: LocalDatabase,
@@ -104,22 +119,36 @@ def create_admin_app(
         if not stream:
             raise HTTPException(404, f"Camera '{camera_name}' not configured")
         
-        captured = stream.get_frame()
-        if captured is None or captured.frame is None:
-            raise HTTPException(503, "No frame available from RTSP stream")
-        
         import cv2
         from fastapi.responses import Response
-        ret, buffer = cv2.imencode('.jpg', captured.frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+
+        captured = stream.get_frame()
+        if captured is not None and captured.frame is not None:
+            ret, buffer = cv2.imencode('.jpg', captured.frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+            if ret:
+                return Response(
+                    content=buffer.tobytes(),
+                    media_type="image/jpeg",
+                    headers={
+                        "Access-Control-Allow-Origin": "*",
+                        "Cache-Control": "no-cache, no-store, must-revalidate",
+                        "X-Camera-Status": "live",
+                    }
+                )
+
+        # Camera is reconnecting — return a black placeholder JPEG with status header
+        placeholder = _make_reconnecting_frame()
+        ret, buffer = cv2.imencode('.jpg', placeholder, [cv2.IMWRITE_JPEG_QUALITY, 60])
         if not ret:
-            raise HTTPException(500, "JPEG encoding failed")
-        
+            raise HTTPException(503, "No frame available from RTSP stream")
         return Response(
             content=buffer.tobytes(),
             media_type="image/jpeg",
+            status_code=200,
             headers={
                 "Access-Control-Allow-Origin": "*",
                 "Cache-Control": "no-cache, no-store, must-revalidate",
+                "X-Camera-Status": "reconnecting",
             }
         )
 
@@ -143,18 +172,24 @@ def create_admin_app(
                         break
                     captured = stream.get_frame()
                     if captured is not None and captured.frame is not None:
-                        ret, buf = cv2.imencode(
-                            '.jpg', captured.frame,
-                            [cv2.IMWRITE_JPEG_QUALITY, 75]
+                        frame_img = captured.frame
+                    else:
+                        # Camera is reconnecting — serve a black placeholder so
+                        # the browser never times out and fires img.onerror
+                        frame_img = _make_reconnecting_frame()
+
+                    ret, buf = cv2.imencode(
+                        '.jpg', frame_img,
+                        [cv2.IMWRITE_JPEG_QUALITY, 75]
+                    )
+                    if ret:
+                        frame_bytes = buf.tobytes()
+                        yield (
+                            b'--frame\r\n'
+                            b'Content-Type: image/jpeg\r\n\r\n'
+                            + frame_bytes +
+                            b'\r\n'
                         )
-                        if ret:
-                            frame_bytes = buf.tobytes()
-                            yield (
-                                b'--frame\r\n'
-                                b'Content-Type: image/jpeg\r\n\r\n'
-                                + frame_bytes +
-                                b'\r\n'
-                            )
                 except Exception:
                     pass
                 await asyncio.sleep(1 / 15)  # 15 FPS target

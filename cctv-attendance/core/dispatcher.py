@@ -159,7 +159,7 @@ class EventDispatcher:
             }
             async with self._session.post(url, json=payload, headers=headers) as resp:
                 if resp.status < 400:
-                    logger.info(f"[Dispatcher] 🟢 Heartbeat sent — device online in cloud ({self.config.edge_device_id})")
+                    logger.info(f"[Dispatcher] [OK] Heartbeat sent — device online in cloud ({self.config.edge_device_id})")
                     return True
                 else:
                     body = await resp.text()
@@ -262,7 +262,7 @@ class EventDispatcher:
                     # Non-critical — attendance event was already inserted
 
             logger.info(
-                f"[Dispatcher] ✅ Pushed: {cctv_log_payload.get('user_name')} "
+                f"[Dispatcher] [OK] Pushed: {cctv_log_payload.get('user_name')} "
                 f"({attendance_payload.get('type')}) via {cctv_log_payload.get('camera_name')}"
             )
             return True

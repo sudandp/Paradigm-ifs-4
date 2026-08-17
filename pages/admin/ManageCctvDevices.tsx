@@ -37,14 +37,16 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [hasError, setHasError] = React.useState(false);
   const [currentTime, setCurrentTime] = React.useState('');
-  const imgRef = React.useRef<HTMLImageElement>(null);
+  const [errorCount, setErrorCount] = React.useState(0);
+  const [debugLog, setDebugLog] = React.useState<string[]>([]);
+  const [frameSrc, setFrameSrc] = React.useState<string>('');
+  const [showDebug, setShowDebug] = React.useState(false);
+  const isMountedRef = React.useRef(true);
+  const isFetchingRef = React.useRef(false);
 
   const camName = typeof camera === 'string' ? camera : camera?.name || 'main_gate_entry';
 
-  // The MJPEG stream URL — passed as query param to bypass ngrok interstitial
-  // (browsers can't set headers on <img> src, but query param works equally well)
-  const streamUrl = `${NGROK_PROXY}/camera/stream/${camName}?ngrok-skip-browser-warning=true`;
-  const snapshotUrl = `${NGROK_PROXY}/camera/frame/${camName}?ngrok-skip-browser-warning=true&t=${Date.now()}`;
+  const addLog = (msg: string) => setDebugLog(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev].slice(0, 6));
 
   // CCTV OSD Clock
   useEffect(() => {
@@ -58,29 +60,55 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
     return () => clearInterval(id);
   }, []);
 
-  // If stream errors, retry after 3s
-  const handleStreamError = () => {
-    setHasError(true);
-    setTimeout(() => {
-      setHasError(false);
-      // Force img reload by toggling src
-      if (imgRef.current) imgRef.current.src = `${streamUrl}&_r=${Date.now()}`;
-    }, 3000);
-  };
+  // Continuous Fast Frame Fetcher (~3 FPS matching camera engine)
+  useEffect(() => {
+    isMountedRef.current = true;
+    let timerId: any = null;
+
+    const fetchNextFrame = () => {
+      if (!isMountedRef.current || isFetchingRef.current) return;
+      isFetchingRef.current = true;
+
+      const img = new Image();
+      const targetUrl = `${NGROK_PROXY}/camera/frame/${encodeURIComponent(camName)}?ngrok-skip-browser-warning=true&_t=${Date.now()}`;
+      
+      img.onload = () => {
+        if (!isMountedRef.current) return;
+        setFrameSrc(targetUrl);
+        setHasError(false);
+        isFetchingRef.current = false;
+        timerId = setTimeout(fetchNextFrame, 350); // ~3 FPS smooth live update
+      };
+
+      img.onerror = () => {
+        if (!isMountedRef.current) return;
+        setHasError(true);
+        setErrorCount(c => c + 1);
+        addLog(`❌ Frame error #${errorCount + 1}`);
+        isFetchingRef.current = false;
+        timerId = setTimeout(fetchNextFrame, 2000); // Retry in 2s
+      };
+
+      img.src = targetUrl;
+    };
+
+    fetchNextFrame();
+
+    return () => {
+      isMountedRef.current = false;
+      if (timerId) clearTimeout(timerId);
+    };
+  }, [camName]);
 
   const handleDownloadSnapshot = async (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      const res = await fetch(`${NGROK_PROXY}/camera/frame/${camName}`, {
-        headers: { 'ngrok-skip-browser-warning': '1', 'x-api-key': 'paradigm-attendance-secret-2024' },
-      });
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
+      const url = `${NGROK_PROXY}/camera/frame/${camName}?ngrok-skip-browser-warning=true&_t=${Date.now()}`;
       const a = document.createElement('a');
       a.href = url;
       a.download = `CCTV_${camName}_${Date.now()}.jpg`;
+      a.target = '_blank';
       a.click();
-      URL.revokeObjectURL(url);
     } catch {}
   };
 
@@ -89,18 +117,15 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
       {/* ── Inline CCTV Player ── */}
       <div className="w-full h-full relative group bg-black overflow-hidden select-none">
 
-        {hasError ? (
+        {hasError && !frameSrc ? (
           <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950 gap-2">
             <Video className="h-7 w-7 text-amber-400 animate-pulse" />
-            <span className="text-[11px] text-amber-300 font-mono tracking-wider">RECONNECTING...</span>
+            <span className="text-[11px] text-amber-300 font-mono tracking-wider">RECONNECTING... (#{errorCount})</span>
           </div>
         ) : (
           <img
-            ref={imgRef}
-            src={streamUrl}
+            src={frameSrc || `${NGROK_PROXY}/camera/frame/${encodeURIComponent(camName)}?ngrok-skip-browser-warning=true`}
             alt={camName}
-            onError={handleStreamError}
-            onLoad={() => setHasError(false)}
             className="w-full h-full object-cover block"
             style={{ imageRendering: 'auto' }}
           />
@@ -170,12 +195,12 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
 
           <div className="flex-1 relative bg-black" onClick={e => e.stopPropagation()}>
             <img
-              src={streamUrl}
+              src={frameSrc || `${NGROK_PROXY}/camera/frame/${encodeURIComponent(camName)}?ngrok-skip-browser-warning=true`}
               alt={camName}
               className="w-full h-full object-contain"
             />
             <div className="absolute top-4 left-4 text-emerald-400 text-xs font-mono bg-black/60 px-3 py-1.5 rounded-lg border border-white/10 pointer-events-none">
-              ● MJPEG STREAM • AI FACE RECOGNITION ACTIVE • WIN-0T8N581GN63
+              ● LIVE CCTV FEED • AI FACE RECOGNITION ACTIVE • WIN-0T8N581GN63
             </div>
           </div>
 
