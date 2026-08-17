@@ -791,21 +791,36 @@ const App: React.FC = () => {
       };
     } else {
       // Web browser: active ping-based connectivity check
+      // Uses navigator.onLine fast-path + consecutive-failure threshold to prevent
+      // false offline screens from server slowness or single packet loss.
       const PING_URL = 'https://app.paradigmfms.com/version.json';
-      const PING_INTERVAL_ONLINE = 5000;   // check every 5s when online
-      const PING_INTERVAL_OFFLINE = 3000;  // retry every 3s when offline
+      const PING_INTERVAL_ONLINE = 15000;              // check every 15s when online (was 5s — too aggressive)
+      const PING_INTERVAL_OFFLINE = 4000;              // retry every 4s when offline
+      const CONSECUTIVE_FAILURES_THRESHOLD = 2;        // require 2 failures before showing offline screen
 
       let pingTimer: ReturnType<typeof setTimeout> | null = null;
       let wasOffline = false;
+      let consecutivePingFailures = 0;
 
       const checkConnectivity = async () => {
+        // Fast-path: browser already knows we're offline — no need to hit the server
+        if (!navigator.onLine) {
+          consecutivePingFailures = CONSECUTIVE_FAILURES_THRESHOLD;
+          wasOffline = true;
+          setStableOffline(true);
+          console.log('[Network] navigator.onLine=false — marking offline immediately.');
+          pingTimer = setTimeout(checkConnectivity, PING_INTERVAL_OFFLINE);
+          return;
+        }
+
         try {
           await fetch(`${PING_URL}?_=${Date.now()}`, {
             method: 'HEAD',
             cache: 'no-cache',
-            signal: AbortSignal.timeout(4000),
+            signal: AbortSignal.timeout(6000), // increased from 4s — server slowness ≠ offline
           });
-          // Successfully reached the internet
+          // Successfully reached the internet — reset failure counter
+          consecutivePingFailures = 0;
           clearOfflineTimer();
           if (wasOffline) {
             wasOffline = false;
@@ -816,17 +831,28 @@ const App: React.FC = () => {
             setStableOffline(false);
           }
           pingTimer = setTimeout(checkConnectivity, PING_INTERVAL_ONLINE);
-        } catch {
-          // Failed — truly offline or no internet access
-          wasOffline = true;
-          setStableOffline(true);
-          console.log('[Network] Ping failed — marking offline.');
+        } catch (err) {
+          // Differentiate: AbortError = server timeout (slow), TypeError = real network error
+          const isTimeout = err instanceof Error && err.name === 'AbortError';
+          // Timeout counts as half a failure — server may just be slow, not truly unreachable
+          consecutivePingFailures += isTimeout ? 0.5 : 1;
+
+          if (consecutivePingFailures >= CONSECUTIVE_FAILURES_THRESHOLD) {
+            // Confirmed offline — multiple consecutive failures
+            wasOffline = true;
+            setStableOffline(true);
+            console.log(`[Network] Ping failed ${consecutivePingFailures}x — marking offline.`);
+          } else {
+            // Single flaky ping — do NOT show offline screen yet
+            console.log(`[Network] Ping failed (attempt ${consecutivePingFailures}/${CONSECUTIVE_FAILURES_THRESHOLD}) — holding off.`);
+          }
           pingTimer = setTimeout(checkConnectivity, PING_INTERVAL_OFFLINE);
         }
       };
 
-      // Also keep browser events as a fast-path trigger
+      // Browser offline event: fast-path trigger — browser is certain we have no connectivity
       const handleOffline = () => {
+        consecutivePingFailures = CONSECUTIVE_FAILURES_THRESHOLD;
         wasOffline = true;
         setStableOffline(true);
         if (pingTimer) clearTimeout(pingTimer);

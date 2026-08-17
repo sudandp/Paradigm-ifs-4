@@ -2,16 +2,23 @@
 CCTV Attendance — Main Processing Pipeline
 
 The central orchestrator that connects:
-  Frame Grabber → Face Engine → Database → Dispatcher
+  Frame Grabber → Object Detector (YOLO) → Face Engine (InsightFace) → Database → Dispatcher
 
-Runs a continuous loop processing frames from all cameras,
-detecting faces, matching against enrolled employees, and
-pushing attendance events to the cloud.
+Two-layer detection architecture:
+  Layer 1 — YOLOv8n detects all objects (humans, cars, bikes, etc.) in each frame
+  Layer 2 — InsightFace runs ONLY on person crops to identify registered employees
+
+This ensures:
+  • Cars, bikes, trucks are labeled and tracked even when no face is visible
+  • Humans walking away or at an angle show "UNKNOWN PERSON" instead of nothing
+  • Face recognition quality improves (smaller crop → better detection)
+  • No more all-black snapshots — any detected object produces a real snapshot
 """
 
 from __future__ import annotations
 
 import asyncio
+import base64
 import time
 from datetime import datetime
 from pathlib import Path
@@ -26,6 +33,7 @@ from .database import LocalDatabase
 from .dispatcher import EventDispatcher
 from .face_engine import FaceEngine, DetectedFace, MatchResult
 from .frame_grabber import MultiCameraGrabber, CapturedFrame
+from .object_detector import ObjectDetector, DetectedObject
 
 
 class AttendancePipeline:
@@ -33,7 +41,7 @@ class AttendancePipeline:
     
     Lifecycle:
         1. Initialize (load models, connect cameras, sync embeddings)
-        2. Run processing loop (detect → match → push)
+        2. Run processing loop (YOLO detect → face recognize → push events)
         3. Periodically sync embeddings and drain offline queue
         4. Shutdown gracefully
     """
@@ -45,6 +53,10 @@ class AttendancePipeline:
             models_dir=config.models_dir,
             detection_threshold=config.min_detection_confidence,
         )
+        self.object_detector = ObjectDetector(
+            confidence_threshold=0.40,
+            iou_threshold=0.45,
+        )
         self.grabber = MultiCameraGrabber(
             cameras=config.cameras,
             target_fps=25,
@@ -55,6 +67,11 @@ class AttendancePipeline:
         self._enrolled: list[dict] = []
         self._last_enrollment_refresh = 0.0
         self._enrollment_refresh_interval = 60.0  # Refresh every 60s
+        
+        # Real-time tracking state for live video HUD overlay
+        # Each track entry now includes: bbox, user_name, user_id, confidence,
+        # is_match, direction, timestamp, object_type, label
+        self.latest_tracks: dict[str, list[dict]] = {}
         
         # Stats
         self._stats = PipelineStats()
@@ -70,39 +87,51 @@ class AttendancePipeline:
         self.db.connect()
         logger.info(f"[Pipeline] Database: {self.config.db_path}")
 
-        # 2. Face Engine
+        # 2. Object Detector (YOLO Layer 1)
+        obj_ready = self.object_detector.initialize()
+        if not obj_ready:
+            logger.warning(
+                "[Pipeline] Object detector (YOLO) not available — "
+                "falling back to face-only detection"
+            )
+
+        # 3. Face Engine (InsightFace Layer 2)
         if not self.face_engine.initialize():
             logger.error("[Pipeline] Face engine initialization failed!")
             return False
 
-        # 3. Cloud dispatcher
+        # 4. Cloud dispatcher
         await self.dispatcher.initialize()
 
-        # 4. Sync embeddings from cloud
+        # 5. Sync embeddings from cloud
         if self.config.cloud_enabled:
             count = await self.dispatcher.sync_embeddings()
             logger.info(f"[Pipeline] Synced {count} face embeddings from cloud")
 
-        # 5. Load enrolled embeddings into memory
+        # 6. Load enrolled embeddings into memory
         self._refresh_enrolled_cache()
 
-        # 6. Send initial heartbeat to Supabase
+        # 7. Send initial heartbeat to Supabase
         if self.config.cloud_enabled:
             cams_meta = [{'name': cam.name, 'direction': cam.direction} for cam in self.config.cameras]
             await self.dispatcher.send_heartbeat(cams_meta)
 
-        # 7. Start cameras
+        # 8. Start cameras
         cam_status = self.grabber.start_all()
         connected = sum(1 for v in cam_status.values() if v)
         if connected == 0:
             logger.error("[Pipeline] No cameras connected!")
             return False
 
-        # 8. Ensure directories exist
+        # 9. Ensure directories exist
         if self.config.save_snapshots:
             self.config.snapshot_dir.mkdir(parents=True, exist_ok=True)
 
-        logger.info(f"[Pipeline] Ready — {connected} cameras, {len(self._enrolled)} enrolled faces")
+        logger.info(
+            f"[Pipeline] Ready — {connected} cameras, "
+            f"{len(self._enrolled)} enrolled faces, "
+            f"object_detector={'ON' if obj_ready else 'OFF (face-only)'}"
+        )
         return True
 
     async def run(self) -> None:
@@ -175,55 +204,202 @@ class AttendancePipeline:
         logger.info("[Pipeline] Stopped")
 
     async def _process_frame(self, captured: CapturedFrame) -> None:
-        """Process a single frame: detect faces, match, and push events."""
+        """Process a single frame using two-layer detection:
+        
+        1. YOLO detects all scene objects (persons, cars, bikes, …)
+        2. InsightFace runs on each person crop to identify registered employees
+        3. Tracks updated for overlay rendering on the live stream
+        4. Attendance events / unknown face reports pushed to cloud
+        """
         self._stats.frames_processed += 1
-
-        # Run CPU-bound face detection in thread pool to avoid blocking event loop
         loop = asyncio.get_event_loop()
-        faces = await loop.run_in_executor(
+        current_tracks: list[dict] = []
+        enrolled_snapshot = list(self._enrolled)
+
+        # ── Layer 1: YOLO object detection ──────────────────────────────────
+        if self.object_detector.is_ready:
+            objects: list[DetectedObject] = await loop.run_in_executor(
+                None, self.object_detector.detect, captured.frame
+            )
+        else:
+            # Fallback: treat whole frame as a single "unknown region" for face scan
+            objects = []
+
+        if not objects and not self.object_detector.is_ready:
+            # YOLO unavailable — fall back to direct face detection on full frame
+            await self._process_frame_faces_only(captured, enrolled_snapshot, current_tracks)
+            self.latest_tracks[captured.camera_name] = current_tracks
+            return
+
+        if not objects:
+            # No objects detected this frame — clear stale tracks gradually
+            if captured.camera_name in self.latest_tracks:
+                tracks = self.latest_tracks[captured.camera_name]
+                if tracks and (time.time() - tracks[0].get('timestamp', 0) > 1.5):
+                    self.latest_tracks[captured.camera_name] = []
+            return
+
+        self._stats.objects_detected += len(objects)
+
+        # ── Layer 2: Face recognition on person crops ────────────────────────
+        for obj in objects:
+            if obj.is_person:
+                await self._process_person_object(
+                    obj, captured, enrolled_snapshot, current_tracks, loop
+                )
+            else:
+                # Non-person object (vehicle, bike, etc.) — just track, no face
+                current_tracks.append({
+                    'bbox':        obj.bbox,
+                    'object_type': obj.label,      # 'CAR', 'MOTORCYCLE', etc.
+                    'label':       obj.label,
+                    'user_name':   obj.label,      # Used by overlay as display text
+                    'user_id':     None,
+                    'confidence':  obj.confidence,
+                    'is_match':    False,
+                    'direction':   captured.direction.upper(),
+                    'timestamp':   time.time(),
+                })
+                self._stats.vehicles_detected += 1
+
+        self.latest_tracks[captured.camera_name] = current_tracks
+
+    async def _process_person_object(
+        self,
+        obj: DetectedObject,
+        captured: CapturedFrame,
+        enrolled_snapshot: list[dict],
+        current_tracks: list[dict],
+        loop: asyncio.AbstractEventLoop,
+    ) -> None:
+        """Handle a detected person: run face recognition, create attendance event."""
+        x1, y1, x2, y2 = obj.bbox
+
+        # Run face detection on the person crop (full-frame coordinates returned)
+        faces: list[DetectedFace] = await loop.run_in_executor(
+            None,
+            lambda: self.face_engine.detect_faces_in_crop(
+                captured.frame, x1, y1, x2, y2
+            )
+        )
+
+        if faces:
+            # Face(s) found — use the highest-confidence one for recognition
+            best_face = max(faces, key=lambda f: f.detection_score)
+            self._stats.faces_detected += 1
+
+            match: Optional[MatchResult] = await loop.run_in_executor(
+                None,
+                lambda f=best_face: self.face_engine.match_face(
+                    embedding=f.embedding,
+                    enrolled_embeddings=enrolled_snapshot,
+                    threshold=self.config.match_threshold,
+                )
+            )
+
+            is_match = bool(match and match.is_match)
+            user_name = match.user_name if is_match else "UNKNOWN PERSON"
+            user_id = match.user_id if is_match else None
+            conf = match.similarity if is_match else best_face.detection_score
+
+            # Use face bbox for the overlay box (more precise than person bbox)
+            track_bbox = [int(v) for v in best_face.bbox]
+
+            current_tracks.append({
+                'bbox':        track_bbox,
+                'object_type': 'HUMAN',
+                'label':       'HUMAN',
+                'user_name':   user_name,
+                'user_id':     user_id,
+                'confidence':  conf,
+                'is_match':    is_match,
+                'direction':   captured.direction.upper(),
+                'timestamp':   time.time(),
+            })
+
+            await self._handle_detected_face(best_face, match, captured)
+
+        else:
+            # Person body detected but face not visible (walking away, occluded, etc.)
+            current_tracks.append({
+                'bbox':        obj.bbox,
+                'object_type': 'HUMAN',
+                'label':       'HUMAN',
+                'user_name':   'UNKNOWN PERSON',
+                'user_id':     None,
+                'confidence':  obj.confidence,
+                'is_match':    False,
+                'direction':   captured.direction.upper(),
+                'timestamp':   time.time(),
+                'face_visible': False,
+            })
+
+            # Save body-only snapshot for admin review
+            await self._save_body_snapshot(obj, captured)
+
+    async def _process_frame_faces_only(
+        self,
+        captured: CapturedFrame,
+        enrolled_snapshot: list[dict],
+        current_tracks: list[dict],
+    ) -> None:
+        """Fallback path when YOLO is unavailable — run InsightFace on full frame."""
+        loop = asyncio.get_event_loop()
+        faces: list[DetectedFace] = await loop.run_in_executor(
             None, self.face_engine.detect_faces, captured.frame
         )
 
         if not faces:
+            if captured.camera_name in self.latest_tracks:
+                tracks = self.latest_tracks[captured.camera_name]
+                if tracks and (time.time() - tracks[0].get('timestamp', 0) > 1.2):
+                    self.latest_tracks[captured.camera_name] = []
             return
 
         self._stats.faces_detected += len(faces)
 
         for face in faces:
-            await self._handle_detected_face(face, captured)
+            match: Optional[MatchResult] = await loop.run_in_executor(
+                None,
+                lambda f=face: self.face_engine.match_face(
+                    embedding=f.embedding,
+                    enrolled_embeddings=enrolled_snapshot,
+                    threshold=self.config.match_threshold,
+                )
+            )
+
+            is_match = bool(match and match.is_match)
+            user_name = match.user_name if is_match else "UNKNOWN PERSON"
+            user_id = match.user_id if is_match else None
+            conf = match.similarity if is_match else face.detection_score
+
+            current_tracks.append({
+                'bbox':        [int(v) for v in face.bbox],
+                'object_type': 'HUMAN',
+                'label':       'HUMAN',
+                'user_name':   user_name,
+                'user_id':     user_id,
+                'confidence':  conf,
+                'is_match':    is_match,
+                'direction':   captured.direction.upper(),
+                'timestamp':   time.time(),
+            })
+
+            await self._handle_detected_face(face, match, captured)
 
     async def _handle_detected_face(
-        self, face: DetectedFace, captured: CapturedFrame
+        self, face: DetectedFace, match: Optional[MatchResult], captured: CapturedFrame
     ) -> None:
         """Handle a single detected face: match and create attendance event."""
-
-        # Run CPU-bound face matching in thread pool
-        loop = asyncio.get_event_loop()
-        enrolled_snapshot = list(self._enrolled)  # Snapshot to avoid race conditions
-        match = await loop.run_in_executor(
-            None,
-            lambda: self.face_engine.match_face(
-                embedding=face.embedding,
-                enrolled_embeddings=enrolled_snapshot,
-                threshold=self.config.match_threshold,
-            )
-        )
-
         if match and match.is_match:
             # ─── Known Face: Check cooldown and create event ──────
             if self.db.check_cooldown(
                 match.user_id, captured.camera_name, self.config.cooldown_seconds
             ):
-                # Within cooldown — skip
                 self._stats.cooldown_skips += 1
                 return
 
-            # Save snapshot if configured
-            snapshot_path = None
-            if self.config.save_snapshots and face.face_crop is not None:
-                snapshot_path = self._save_snapshot(
-                    face.face_crop, match.user_id, captured.camera_name
-                )
+            snapshot_path, snapshot_data_url = self._encode_snapshot(face, match.user_id, captured)
 
             # Log locally
             self.db.log_detection(
@@ -247,23 +423,19 @@ class AttendancePipeline:
                 direction=captured.direction,
                 confidence=match.similarity,
                 timestamp=captured.timestamp,
-                snapshot_path=snapshot_path,
+                snapshot_path=snapshot_data_url or snapshot_path,
             )
 
             self._stats.matches += 1
             logger.info(
-                f"[Pipeline] [MATCH] {match.user_name} detected at "
+                f"[Pipeline] ✅ MATCH: {match.user_name} @ "
                 f"{captured.camera_name} ({captured.direction}) — "
-                f"confidence: {match.similarity:.3f}"
+                f"{match.similarity:.3f}"
             )
 
         else:
             # ─── Unknown Face: Log for admin review ───────────────
-            snapshot_path = None
-            if self.config.save_snapshots and face.face_crop is not None:
-                snapshot_path = self._save_snapshot(
-                    face.face_crop, "unknown", captured.camera_name
-                )
+            snapshot_path, snapshot_data_url = self._encode_snapshot(face, "unknown", captured)
 
             self.db.log_unknown_face(
                 embedding=face.embedding,
@@ -282,7 +454,75 @@ class AttendancePipeline:
                 snapshot_path=snapshot_path,
             )
 
+            await self.dispatcher.push_unknown_face(
+                embedding=face.embedding,
+                camera_name=captured.camera_name,
+                timestamp=captured.timestamp,
+                snapshot_url=snapshot_data_url,
+            )
+
             self._stats.unknown_faces += 1
+
+    async def _save_body_snapshot(
+        self, obj: DetectedObject, captured: CapturedFrame
+    ) -> None:
+        """Save a person body snapshot (no face detected) for admin review."""
+        if not self.config.save_snapshots:
+            return
+        try:
+            x1, y1, x2, y2 = obj.bbox
+            body_crop = captured.frame[y1:y2, x1:x2]
+            if body_crop.size == 0:
+                return
+            timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+            date_dir = self.config.snapshot_dir / datetime.now().strftime('%Y-%m-%d')
+            date_dir.mkdir(parents=True, exist_ok=True)
+            filepath = date_dir / f"body_unknown_{captured.camera_name}_{timestamp_str}.jpg"
+            cv2.imwrite(str(filepath), body_crop, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        except Exception as e:
+            logger.warning(f"[Pipeline] Body snapshot save error: {e}")
+
+    def _encode_snapshot(
+        self,
+        face: DetectedFace,
+        user_id: str,
+        captured: CapturedFrame,
+    ) -> tuple[Optional[str], Optional[str]]:
+        """Save face crop to disk (if enabled) and encode as base64 data URL.
+
+        Returns (snapshot_path, snapshot_data_url).
+        """
+        snapshot_path: Optional[str] = None
+        snapshot_data_url: Optional[str] = None
+
+        if face.face_crop is None:
+            return snapshot_path, snapshot_data_url
+
+        if self.config.save_snapshots:
+            snapshot_path = self._save_snapshot(face.face_crop, user_id, captured.camera_name)
+
+        try:
+            crop_h, crop_w = face.face_crop.shape[:2]
+            if crop_w > 180 or crop_h > 180:
+                scale = 180 / max(crop_w, crop_h)
+                resized = cv2.resize(
+                    face.face_crop,
+                    (int(crop_w * scale), int(crop_h * scale)),
+                    interpolation=cv2.INTER_AREA,
+                )
+            else:
+                resized = face.face_crop
+
+            ret, buf = cv2.imencode('.jpg', resized, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            if ret:
+                snapshot_data_url = (
+                    f"data:image/jpeg;base64,"
+                    f"{base64.b64encode(buf.tobytes()).decode('utf-8')}"
+                )
+        except Exception as e:
+            logger.warning(f"[Pipeline] Snapshot encoding error: {e}")
+
+        return snapshot_path, snapshot_data_url
 
     def _refresh_enrolled_cache(self) -> None:
         """Reload enrolled embeddings from local database into memory."""
@@ -294,11 +534,8 @@ class AttendancePipeline:
         """Save a face crop to disk. Returns the file path."""
         timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
         filename = f"{user_id}_{camera_name}_{timestamp_str}.jpg"
-        
-        # Organize by date
         date_dir = self.config.snapshot_dir / datetime.now().strftime('%Y-%m-%d')
         date_dir.mkdir(parents=True, exist_ok=True)
-        
         filepath = date_dir / filename
         cv2.imwrite(str(filepath), face_crop, [cv2.IMWRITE_JPEG_QUALITY, 85])
         return str(filepath)
@@ -307,16 +544,19 @@ class AttendancePipeline:
         """Get current pipeline statistics."""
         queue_stats = self.db.get_queue_stats()
         return {
-            'frames_processed': self._stats.frames_processed,
-            'faces_detected': self._stats.faces_detected,
-            'matches': self._stats.matches,
-            'unknown_faces': self._stats.unknown_faces,
-            'cooldown_skips': self._stats.cooldown_skips,
-            'errors': self._stats.errors,
-            'enrolled_count': len(self._enrolled),
-            'queue_pending': queue_stats.get('pending', 0),
-            'queue_failed': queue_stats.get('failed', 0),
-            'cameras': self.grabber.get_status(),
+            'frames_processed':   self._stats.frames_processed,
+            'faces_detected':     self._stats.faces_detected,
+            'objects_detected':   self._stats.objects_detected,
+            'vehicles_detected':  self._stats.vehicles_detected,
+            'matches':            self._stats.matches,
+            'unknown_faces':      self._stats.unknown_faces,
+            'cooldown_skips':     self._stats.cooldown_skips,
+            'errors':             self._stats.errors,
+            'enrolled_count':     len(self._enrolled),
+            'object_detector_on': self.object_detector.is_ready,
+            'queue_pending':      queue_stats.get('pending', 0),
+            'queue_failed':       queue_stats.get('failed', 0),
+            'cameras':            self.grabber.get_status(),
         }
 
 
@@ -325,6 +565,8 @@ class PipelineStats:
     def __init__(self):
         self.frames_processed: int = 0
         self.faces_detected: int = 0
+        self.objects_detected: int = 0   # YOLO total objects
+        self.vehicles_detected: int = 0  # Non-person objects
         self.matches: int = 0
         self.unknown_faces: int = 0
         self.cooldown_skips: int = 0

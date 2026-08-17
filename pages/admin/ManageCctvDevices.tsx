@@ -12,7 +12,8 @@ import AdminPageHeader from '../../components/admin/AdminPageHeader';
 import {
   Camera, Plus, Trash2, Wifi, WifiOff, RefreshCw,
   Activity, Shield, AlertCircle, MapPin, UserPlus, Upload, X, CheckCircle,
-  Maximize2, Minimize2, Video, Download, Sliders, Cpu, Server, Check, Copy, Sparkles
+  Maximize2, Minimize2, Video, Download, Sliders, Cpu, Server, Check, Copy, Sparkles,
+  SwitchCamera, Image as ImageIcon, RotateCw
 } from 'lucide-react';
 
 interface CctvDevice {
@@ -57,6 +58,31 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
 
   const camName = typeof camera === 'string' ? camera : camera?.name || 'main_gate_entry';
 
+  // ── AI Object Detection Summary ─────────────────────────────────────────
+  // Polls /tracks/{camera} every 1.5 s to display live object count legend
+  const [trackSummary, setTrackSummary] = useState<Record<string, number>>({});
+  const trackPollRef = useRef<any>(null);
+
+  const pollTracks = useCallback(async () => {
+    try {
+      const res = await fetch(
+        `${NGROK_PROXY}/tracks/${encodeURIComponent(camName)}?ngrok-skip-browser-warning=1`,
+        { headers: { 'ngrok-skip-browser-warning': '1' } }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setTrackSummary(data.summary || {});
+      }
+    } catch { /* silent — no tracks available */ }
+  }, [camName]);
+
+  useEffect(() => {
+    if (!isConnected) return;
+    pollTracks();
+    trackPollRef.current = setInterval(pollTracks, 1500);
+    return () => clearInterval(trackPollRef.current);
+  }, [isConnected, pollTracks]);
+
   // OSD clock
   useEffect(() => {
     const tick = () => {
@@ -93,8 +119,12 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
           if (!canvas) return;
           if (canvas.width !== bmp.width) canvas.width = bmp.width;
           if (canvas.height !== bmp.height) canvas.height = bmp.height;
-          // alpha:false = 15-20% faster 2D context
-          canvas.getContext('2d', { alpha: false })?.drawImage(bmp, 0, 0);
+          const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+          if (ctx) {
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(bmp, 0, 0);
+          }
         });
       }
       rafRef.current = requestAnimationFrame(loop);
@@ -104,16 +134,17 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
   }, []);
 
   // Hardware-accelerated JPEG decode: createImageBitmap() runs off main thread
-  // Max 2 concurrent decodes — if backed up, drop old frames (stay real-time)
   const paintFrame = useCallback(async (jpegBytes: Uint8Array) => {
-    if (pendingDecodeRef.current >= 2) return; // drop frame — stay live, not buffered
+    if (pendingDecodeRef.current >= 4) return;
     pendingDecodeRef.current++;
     try {
-      const bitmap = await createImageBitmap(
-        new Blob([jpegBytes], { type: 'image/jpeg' })
-      );
-      latestBitmapRef.current?.close(); // free previous GPU texture
+      const blob = new Blob([jpegBytes as any], { type: 'image/jpeg' });
+      const bitmap = await createImageBitmap(blob, {
+        resizeQuality: 'high',
+      });
+      const oldBmp = latestBitmapRef.current;
       latestBitmapRef.current = bitmap;
+      oldBmp?.close();
       fpsCounterRef.current++;
       if (!isConnected) setIsConnected(true);
       if (hasError) setHasError(false);
@@ -143,7 +174,7 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
 
       const reader = res.body.getReader();
-      let buf = new Uint8Array(0);
+      let buf: any = new Uint8Array(0);
       const MAX_BUF = 2 * 1024 * 1024;
 
       const concat = (a: Uint8Array, b: Uint8Array): Uint8Array => {
@@ -172,7 +203,7 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
           const end = findSeq(buf, 0xFF, 0xD9, start + 2);
           if (end === -1) break;
           const frameEnd = end + 2;
-          if (frameEnd - start > 500) paintFrame(buf.slice(start, frameEnd));
+          if (frameEnd - start > 500) paintFrame(buf.slice(start, frameEnd) as any);
           offset = frameEnd;
         }
 
@@ -237,7 +268,11 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
         <canvas
           ref={canvasRef}
           className="w-full h-full object-cover block"
-          style={{ display: isConnected ? 'block' : 'none' }}
+          style={{
+            display: isConnected ? 'block' : 'none',
+            filter: 'contrast(1.05) brightness(1.02) saturate(1.04)',
+            imageRendering: 'auto',
+          }}
         />
 
         {/* Vignette */}
@@ -260,13 +295,35 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
 
         {/* Bottom OSD */}
         <div className="absolute bottom-2.5 left-2.5 right-2.5 flex items-center justify-between pointer-events-none z-30">
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-[10px] text-emerald-300 font-mono bg-emerald-950/80 border border-emerald-500/30 px-2 py-0.5 rounded flex items-center gap-1">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> AI ON
             </span>
             <span className="text-[10px] text-slate-300 font-mono bg-black/60 px-2 py-0.5 rounded">
               MJPEG • {fps > 0 ? `${fps} FPS` : '---'}
             </span>
+            {/* Live object detection legend chips */}
+            {(trackSummary['HUMAN'] ?? 0) > 0 && (
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded flex items-center gap-1"
+                style={{ background: 'rgba(0,160,255,0.25)', color: '#64b5f6', border: '1px solid rgba(0,160,255,0.4)' }}>
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: '#64b5f6' }} />
+                👤 {trackSummary['HUMAN']} Human{trackSummary['HUMAN'] > 1 ? 's' : ''}
+              </span>
+            )}
+            {((trackSummary['CAR'] ?? 0) + (trackSummary['TRUCK'] ?? 0) + (trackSummary['BUS'] ?? 0)) > 0 && (
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded flex items-center gap-1"
+                style={{ background: 'rgba(255,140,0,0.25)', color: '#ffb74d', border: '1px solid rgba(255,140,0,0.4)' }}>
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: '#ffb74d' }} />
+                🚗 {(trackSummary['CAR'] ?? 0) + (trackSummary['TRUCK'] ?? 0) + (trackSummary['BUS'] ?? 0)} Vehicle{((trackSummary['CAR'] ?? 0) + (trackSummary['TRUCK'] ?? 0) + (trackSummary['BUS'] ?? 0)) > 1 ? 's' : ''}
+              </span>
+            )}
+            {((trackSummary['MOTORCYCLE'] ?? 0) + (trackSummary['BICYCLE'] ?? 0)) > 0 && (
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded flex items-center gap-1"
+                style={{ background: 'rgba(0,230,180,0.25)', color: '#4dd0e1', border: '1px solid rgba(0,230,180,0.4)' }}>
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: '#4dd0e1' }} />
+                🏍️ {(trackSummary['MOTORCYCLE'] ?? 0) + (trackSummary['BICYCLE'] ?? 0)} Bike{((trackSummary['MOTORCYCLE'] ?? 0) + (trackSummary['BICYCLE'] ?? 0)) > 1 ? 's' : ''}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto">
             <button onClick={handleDownloadSnapshot} title="Download Snapshot" className="p-1.5 rounded-lg bg-black/70 hover:bg-black text-white border border-white/10">
@@ -302,10 +359,17 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
           </div>
 
           <div className="flex-1 relative bg-black flex items-center justify-center overflow-hidden" onClick={e => e.stopPropagation()}>
-            <canvas ref={fsCanvasRef} className="max-h-full max-w-full object-contain" />
+            <canvas
+              ref={fsCanvasRef}
+              className="max-h-full max-w-full object-contain"
+              style={{
+                filter: 'contrast(1.05) brightness(1.02) saturate(1.04)',
+                imageRendering: 'auto',
+              }}
+            />
             <div className="absolute top-4 left-4 text-emerald-400 text-xs font-mono bg-black/70 px-3.5 py-2 rounded-xl border border-emerald-500/20 pointer-events-none flex items-center gap-2 backdrop-blur-sm">
               <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>AI FACE RECOGNITION ACTIVE • INSIGHTFACE 512D • WIN-0T8N581GN63</span>
+              <span>YOLOv8 + InsightFace 512D • DUAL-LAYER AI DETECTION • RTSP TCP</span>
             </div>
           </div>
 
@@ -363,7 +427,8 @@ const ManageCctvDevices: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
-  // Proactive enrollment state
+  // Proactive enrollment state (Upload vs Live Webcam Capture)
+  const [enrollMode, setEnrollMode] = useState<'upload' | 'camera'>('upload');
   const [enrollUsers, setEnrollUsers] = useState<{ id: string; name: string; biometricId: string | null; department: string | null }[]>([]);
   const [enrollUserId, setEnrollUserId] = useState('');
   const [enrollPhoto, setEnrollPhoto] = useState<File | null>(null);
@@ -372,6 +437,14 @@ const ManageCctvDevices: React.FC = () => {
   const [enrollResult, setEnrollResult] = useState<{ success: boolean; message: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [copiedKey, setCopiedKey] = useState(false);
+
+  // Live Webcam state & refs
+  const [isWebcamActive, setIsWebcamActive] = useState(false);
+  const [webcamFacingMode, setWebcamFacingMode] = useState<'user' | 'environment'>('user');
+  const [webcamError, setWebcamError] = useState<string | null>(null);
+  const [isCapturing, setIsCapturing] = useState(false);
+  const webcamVideoRef = useRef<HTMLVideoElement>(null);
+  const webcamStreamRef = useRef<MediaStream | null>(null);
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
@@ -501,6 +574,110 @@ const ManageCctvDevices: React.FC = () => {
       setToast({ message: err.message || 'Failed to delete device', type: 'error' });
     }
   };
+
+  // ─── Webcam Controller Methods ───
+  const startWebcam = useCallback(async (facing: 'user' | 'environment' = webcamFacingMode) => {
+    if (webcamStreamRef.current) {
+      webcamStreamRef.current.getTracks().forEach(t => t.stop());
+      webcamStreamRef.current = null;
+    }
+    setWebcamError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: facing,
+          width: { ideal: 1280, max: 1920 },
+          height: { ideal: 720, max: 1080 },
+        },
+        audio: false,
+      });
+      webcamStreamRef.current = stream;
+      if (webcamVideoRef.current) {
+        webcamVideoRef.current.srcObject = stream;
+        await webcamVideoRef.current.play();
+      }
+      setIsWebcamActive(true);
+    } catch (err: any) {
+      console.error('[CCTV] Webcam access error:', err);
+      let msg = 'Unable to access camera. Please check your camera permissions.';
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        msg = 'Camera access denied. Please allow camera permissions in your browser.';
+      } else if (err.name === 'NotFoundError') {
+        msg = 'No camera device found on this system.';
+      }
+      setWebcamError(msg);
+      setIsWebcamActive(false);
+    }
+  }, [webcamFacingMode]);
+
+  const stopWebcam = useCallback(() => {
+    if (webcamStreamRef.current) {
+      webcamStreamRef.current.getTracks().forEach(t => t.stop());
+      webcamStreamRef.current = null;
+    }
+    if (webcamVideoRef.current) {
+      webcamVideoRef.current.srcObject = null;
+    }
+    setIsWebcamActive(false);
+  }, []);
+
+  const toggleCameraFacing = () => {
+    const nextFacing = webcamFacingMode === 'user' ? 'environment' : 'user';
+    setWebcamFacingMode(nextFacing);
+    if (isWebcamActive) {
+      startWebcam(nextFacing);
+    }
+  };
+
+  const captureWebcamSnapshot = () => {
+    const video = webcamVideoRef.current;
+    if (!video || video.videoWidth === 0) {
+      setToast({ message: 'Camera feed not ready yet. Please wait a second.', type: 'error' });
+      return;
+    }
+
+    setIsCapturing(true);
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      if (webcamFacingMode === 'user') {
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+      }
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      canvas.toBlob((blob) => {
+        setIsCapturing(false);
+        if (!blob) return;
+        const file = new File([blob], `cctv_face_capture_${Date.now()}.jpg`, { type: 'image/jpeg' });
+        setEnrollPhoto(file);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+        setEnrollPhotoPreview(dataUrl);
+        setEnrollResult(null);
+        stopWebcam();
+      }, 'image/jpeg', 0.95);
+    } catch (err: any) {
+      setIsCapturing(false);
+      setToast({ message: 'Failed to capture snapshot: ' + err.message, type: 'error' });
+    }
+  };
+
+  // Auto-stop webcam on unmount or tab switch
+  useEffect(() => {
+    return () => {
+      stopWebcam();
+    };
+  }, [stopWebcam]);
+
+  useEffect(() => {
+    if (activeTab !== 'enroll' || enrollMode !== 'camera') {
+      stopWebcam();
+    }
+  }, [activeTab, enrollMode, stopWebcam]);
 
   const handlePhotoSelect = (file: File) => {
     if (!file.type.startsWith('image/')) {
@@ -904,26 +1081,152 @@ const ManageCctvDevices: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-primary-text mb-2 uppercase tracking-wider">
-                    Face Image *
-                  </label>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/jpeg,image/jpg,image/png,image/webp"
-                    className="hidden"
-                    onChange={e => { const f = e.target.files?.[0]; if (f) handlePhotoSelect(f); }}
-                  />
-                  <div
-                    onClick={() => fileInputRef.current?.click()}
-                    onDragOver={e => e.preventDefault()}
-                    onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) handlePhotoSelect(f); }}
-                    className="border-2 border-dashed border-emerald-200 bg-emerald-50/20 rounded-2xl p-8 text-center cursor-pointer hover:border-emerald-500 hover:bg-emerald-50/40 transition-all group"
-                  >
-                    <Upload className="h-8 w-8 text-emerald-600 group-hover:scale-110 mx-auto mb-2 transition-transform" />
-                    <p className="text-sm font-semibold text-primary-text">Click or drag photo here</p>
-                    <p className="text-xs text-muted mt-1">Clear front-facing passport-style photo (JPG, PNG)</p>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-xs font-bold text-primary-text uppercase tracking-wider">
+                      Face Image *
+                    </label>
+                    {/* Dual Mode Switcher: Upload vs Live Webcam */}
+                    <div className="flex items-center bg-background border border-border p-0.5 rounded-lg text-xs font-semibold">
+                      <button
+                        type="button"
+                        onClick={() => { setEnrollMode('upload'); stopWebcam(); }}
+                        className={`flex items-center gap-1.5 px-3 py-1 rounded-md transition-all ${
+                          enrollMode === 'upload'
+                            ? 'bg-emerald-600 text-white shadow-xs'
+                            : 'text-muted hover:text-primary-text'
+                        }`}
+                      >
+                        <Upload className="h-3.5 w-3.5" />
+                        Upload File
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setEnrollMode('camera'); startWebcam('user'); }}
+                        className={`flex items-center gap-1.5 px-3 py-1 rounded-md transition-all ${
+                          enrollMode === 'camera'
+                            ? 'bg-emerald-600 text-white shadow-xs'
+                            : 'text-muted hover:text-primary-text'
+                        }`}
+                      >
+                        <Camera className="h-3.5 w-3.5" />
+                        Live Webcam
+                      </button>
+                    </div>
                   </div>
+
+                  {/* Mode 1: File Upload */}
+                  {enrollMode === 'upload' && (
+                    <>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/jpeg,image/jpg,image/png,image/webp"
+                        className="hidden"
+                        onChange={e => { const f = e.target.files?.[0]; if (f) handlePhotoSelect(f); }}
+                      />
+                      <div
+                        onClick={() => fileInputRef.current?.click()}
+                        onDragOver={e => e.preventDefault()}
+                        onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) handlePhotoSelect(f); }}
+                        className="border-2 border-dashed border-emerald-200 bg-emerald-50/20 rounded-2xl p-7 text-center cursor-pointer hover:border-emerald-500 hover:bg-emerald-50/40 transition-all group"
+                      >
+                        <Upload className="h-8 w-8 text-emerald-600 group-hover:scale-110 mx-auto mb-2 transition-transform" />
+                        <p className="text-sm font-semibold text-primary-text">Click or drag photo here</p>
+                        <p className="text-xs text-muted mt-1">Clear front-facing passport-style photo (JPG, PNG, WebP)</p>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Mode 2: Live Webcam Capture */}
+                  {enrollMode === 'camera' && (
+                    <div className="border border-border rounded-2xl bg-neutral-950 overflow-hidden shadow-inner">
+                      {isWebcamActive ? (
+                        <div className="relative aspect-video max-h-72 bg-black flex items-center justify-center overflow-hidden">
+                          <video
+                            ref={webcamVideoRef}
+                            autoPlay
+                            playsInline
+                            muted
+                            className="w-full h-full object-cover"
+                            style={{ transform: webcamFacingMode === 'user' ? 'scaleX(-1)' : 'none' }}
+                          />
+
+                          {/* Biometric Face Alignment Oval Overlay */}
+                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <div className="w-36 h-48 sm:w-44 sm:h-56 border-2 border-dashed border-emerald-400/90 rounded-[50%] shadow-[0_0_25px_rgba(16,185,129,0.45)] animate-pulse flex items-center justify-center">
+                              <span className="text-[10px] text-emerald-300/90 font-mono tracking-widest uppercase bg-black/60 px-2 py-0.5 rounded-full backdrop-blur-xs">
+                                Align Face
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Controls bar over webcam */}
+                          <div className="absolute bottom-3 inset-x-3 flex items-center justify-between gap-2 z-10">
+                            <button
+                              type="button"
+                              onClick={toggleCameraFacing}
+                              className="px-2.5 py-1.5 bg-black/70 hover:bg-black text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 backdrop-blur-sm border border-white/10 transition-all"
+                            >
+                              <SwitchCamera className="h-3.5 w-3.5" />
+                              <span className="hidden sm:inline">Flip</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={captureWebcamSnapshot}
+                              disabled={isCapturing}
+                              className="px-5 py-2 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-neutral-950 text-xs font-bold rounded-full flex items-center gap-2 shadow-lg shadow-emerald-900/40 transition-all"
+                            >
+                              <Camera className="h-4 w-4" />
+                              Capture Photo
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={stopWebcam}
+                              className="px-2.5 py-1.5 bg-black/70 hover:bg-black text-red-400 hover:text-red-300 text-xs font-semibold rounded-lg flex items-center gap-1.5 backdrop-blur-sm border border-white/10 transition-all"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                              <span className="hidden sm:inline">Stop</span>
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-8 text-center bg-neutral-900/60">
+                          {webcamError ? (
+                            <div className="space-y-3">
+                              <AlertCircle className="h-8 w-8 text-red-400 mx-auto" />
+                              <p className="text-xs text-red-300 font-medium">{webcamError}</p>
+                              <button
+                                type="button"
+                                onClick={() => startWebcam(webcamFacingMode)}
+                                className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-bold rounded-xl inline-flex items-center gap-1.5"
+                              >
+                                <RefreshCw className="h-3.5 w-3.5" /> Retry Camera
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              <div className="h-12 w-12 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mx-auto text-emerald-400">
+                                <Camera className="h-6 w-6" />
+                              </div>
+                              <div>
+                                <p className="text-sm font-semibold text-white">Live Camera Capture</p>
+                                <p className="text-xs text-neutral-400 mt-0.5">Capture real-time face photo directly from your device webcam</p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => startWebcam('user')}
+                                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl inline-flex items-center gap-2 shadow-md transition-all"
+                              >
+                                <Video className="h-4 w-4" /> Start Camera
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="p-4 rounded-xl bg-emerald-50/80 border border-emerald-200 text-xs text-emerald-900 space-y-1">
@@ -961,16 +1264,34 @@ const ManageCctvDevices: React.FC = () => {
               {/* Photo Preview Card (5 cols) */}
               <div className="lg:col-span-5 space-y-4">
                 <div className="bg-card rounded-2xl border border-emerald-200/80 shadow-xs overflow-hidden">
-                  <div className="px-4 py-3 border-b border-emerald-100 bg-emerald-50/70">
+                  <div className="px-4 py-3 border-b border-emerald-100 bg-emerald-50/70 flex items-center justify-between">
                     <span className="text-xs font-bold text-emerald-950 uppercase tracking-wider">Preview Crop</span>
+                    {enrollPhotoPreview && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEnrollPhoto(null);
+                          setEnrollPhotoPreview(null);
+                          if (enrollMode === 'camera') startWebcam();
+                        }}
+                        className="text-xs text-emerald-700 hover:text-emerald-900 font-semibold flex items-center gap-1"
+                      >
+                        <RotateCw className="h-3 w-3" /> Retake
+                      </button>
+                    )}
                   </div>
                   <div className="aspect-square flex items-center justify-center bg-white relative">
                     {enrollPhotoPreview ? (
                       <>
                         <img src={enrollPhotoPreview} alt="Face preview" className="w-full h-full object-cover" />
                         <button
-                          onClick={() => { setEnrollPhoto(null); setEnrollPhotoPreview(null); }}
+                          onClick={() => {
+                            setEnrollPhoto(null);
+                            setEnrollPhotoPreview(null);
+                            if (enrollMode === 'camera') startWebcam();
+                          }}
                           className="absolute top-3 right-3 p-1.5 bg-black/70 hover:bg-black text-white rounded-full transition-all"
+                          title="Remove photo"
                         >
                           <X className="h-4 w-4" />
                         </button>

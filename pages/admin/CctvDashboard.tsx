@@ -102,7 +102,12 @@ const NvrCameraStream: React.FC<{
           if (!canvas) return;
           if (canvas.width !== bmp.width) canvas.width = bmp.width;
           if (canvas.height !== bmp.height) canvas.height = bmp.height;
-          canvas.getContext('2d', { alpha: false })?.drawImage(bmp, 0, 0);
+          const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+          if (ctx) {
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(bmp, 0, 0);
+          }
         });
       }
       rafRef.current = requestAnimationFrame(loop);
@@ -112,14 +117,17 @@ const NvrCameraStream: React.FC<{
   }, []);
 
   // createImageBitmap: hardware-accelerated, off-main-thread JPEG decode
-  // Drop frames if 2+ are pending — stays live, never buffered
   const paintFrame = useCallback(async (jpegBytes: Uint8Array) => {
-    if (pendingDecodeRef.current >= 2) return;
+    if (pendingDecodeRef.current >= 4) return;
     pendingDecodeRef.current++;
     try {
-      const bitmap = await createImageBitmap(new Blob([jpegBytes], { type: 'image/jpeg' }));
-      latestBitmapRef.current?.close();
+      const blob = new Blob([jpegBytes as any], { type: 'image/jpeg' });
+      const bitmap = await createImageBitmap(blob, {
+        resizeQuality: 'high',
+      });
+      const oldBmp = latestBitmapRef.current;
       latestBitmapRef.current = bitmap;
+      oldBmp?.close();
       fpsCounterRef.current++;
       if (!isConnected) setIsConnected(true);
       if (hasError) setHasError(false);
@@ -153,7 +161,7 @@ const NvrCameraStream: React.FC<{
       }
 
       const reader = res.body.getReader();
-      let buf = new Uint8Array(0);
+      let buf: any = new Uint8Array(0);
       const MAX_BUF = 2 * 1024 * 1024; // 2MB safety cap
 
       const concat = (a: Uint8Array, b: Uint8Array): Uint8Array => {
@@ -185,7 +193,7 @@ const NvrCameraStream: React.FC<{
           if (end === -1) break;
           const frameEnd = end + 2;
           if (frameEnd - start > 500) { // skip garbage tiny blobs
-            paintFrame(buf.slice(start, frameEnd));
+            paintFrame(buf.slice(start, frameEnd) as any);
           }
           offset = frameEnd;
         }
@@ -260,7 +268,11 @@ const NvrCameraStream: React.FC<{
         <canvas
           ref={canvasRef}
           className="w-full h-full object-cover block"
-          style={{ display: isConnected ? 'block' : 'none' }}
+          style={{
+            display: isConnected ? 'block' : 'none',
+            filter: 'contrast(1.05) brightness(1.02) saturate(1.04)',
+            imageRendering: 'auto',
+          }}
         />
 
         {/* OSD Header */}
@@ -322,7 +334,14 @@ const NvrCameraStream: React.FC<{
           </div>
 
           <div className="flex-1 relative bg-black flex items-center justify-center overflow-hidden" onClick={e => e.stopPropagation()}>
-            <canvas ref={fsCanvasRef} className="max-h-full max-w-full object-contain" />
+            <canvas
+              ref={fsCanvasRef}
+              className="max-h-full max-w-full object-contain"
+              style={{
+                filter: 'contrast(1.05) brightness(1.02) saturate(1.04)',
+                imageRendering: 'auto',
+              }}
+            />
             <div className="absolute top-4 left-4 text-emerald-400 text-xs font-mono bg-black/70 px-3 py-2 rounded-xl border border-emerald-500/20 pointer-events-none flex items-center gap-2 backdrop-blur-sm">
               <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
               AI FACE RECOGNITION ACTIVE • INSIGHTFACE 512D
@@ -365,17 +384,15 @@ const CctvDashboard: React.FC = () => {
   const [enrollStep, setEnrollStep] = useState<'select' | 'sending' | 'done'>('select');
 
   const stats = {
-    entries: logs.filter(l => l.direction === 'entry' && l.userId).length,
-    exits: logs.filter(l => l.direction === 'exit' && l.userId).length,
-    unknown: unknownQueue.length,
+    entries: logs.filter(l => (l.direction || '').toLowerCase() === 'entry' && l.userId).length,
+    exits: logs.filter(l => (l.direction || '').toLowerCase() === 'exit' && l.userId).length,
+    unknown: unknownQueue.length + logs.filter(l => !l.userId).length,
     totalToday: logs.length,
   };
 
   const fetchLogs = useCallback(async () => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
     try {
+      // 1. Fetch from Supabase (Cloud)
       const [
         { data: logsData, error: logsError },
         { data: unknownData, error: unknownError },
@@ -384,15 +401,13 @@ const CctvDashboard: React.FC = () => {
         supabase
           .from('cctv_attendance_logs')
           .select('*')
-          .gte('detected_at', today.toISOString())
           .order('detected_at', { ascending: false })
           .limit(100),
         supabase
           .from('cctv_enrollment_queue')
           .select('*')
-          .eq('status', 'pending')
           .order('detected_at', { ascending: false })
-          .limit(20),
+          .limit(50),
         supabase
           .from('users')
           .select('id, name, biometric_id')
@@ -400,37 +415,79 @@ const CctvDashboard: React.FC = () => {
           .limit(200),
       ]);
 
-      if (logsError) throw logsError;
-      if (unknownError) throw unknownError;
+      if (logsError) console.warn('[CCTV] Supabase logs error:', logsError);
+      if (unknownError) console.warn('[CCTV] Supabase queue error:', unknownError);
 
-      setLogs((logsData || []).map((l: any) => ({
+      let mergedLogs: CctvLog[] = (logsData || []).map((l: any) => ({
         id: l.id,
         userId: l.user_id,
-        userName: l.user_name,
+        userName: l.user_name || (l.user_id ? 'Employee' : 'Unknown Person'),
         cameraName: l.camera_name,
-        direction: l.direction,
-        confidence: l.confidence,
+        direction: l.direction || 'entry',
+        confidence: l.confidence || 0.85,
         detectedAt: l.detected_at,
         snapshotUrl: l.snapshot_url,
         edgeDeviceId: l.edge_device_id,
-      })));
+      }));
 
-      setUnknownQueue((unknownData || []).map((u: any) => ({
-        id: u.id,
-        cameraName: u.camera_name,
-        detectedAt: u.detected_at,
-        snapshotUrl: u.snapshot_url,
-        status: u.status,
-        edgeDeviceId: u.edge_device_id,
-      })));
+      let mergedUnknown: EnrollmentItem[] = (unknownData || [])
+        .filter((u: any) => u.status === 'pending' || !u.status)
+        .map((u: any) => ({
+          id: u.id,
+          cameraName: u.camera_name,
+          detectedAt: u.detected_at,
+          snapshotUrl: u.snapshot_url,
+          status: u.status || 'pending',
+          edgeDeviceId: u.edge_device_id,
+        }));
 
-      setUserOptions((usersData || []).map((u: any) => ({
-        id: u.id,
-        name: u.name || 'Unnamed Employee',
-        biometricId: u.biometric_id || null,
-      })));
+      // 2. Also fetch from Edge Server local DB (if online) for instant local zero-delay sync
+      try {
+        const edgeRes = await fetch(`${NGROK_PROXY}/logs/today?ngrok-skip-browser-warning=1`, {
+          headers: { 'ngrok-skip-browser-warning': '1' },
+          signal: AbortSignal.timeout(3000),
+        });
+        if (edgeRes.ok) {
+          const edgeData = await edgeRes.json();
+          if (Array.isArray(edgeData?.logs)) {
+            const edgeLogs = edgeData.logs.map((el: any) => ({
+              id: `edge-${el.id || el.timestamp}`,
+              userId: el.user_id,
+              userName: el.user_name || (el.user_id ? 'Employee' : 'Unknown Person'),
+              cameraName: el.camera_name,
+              direction: el.direction || 'entry',
+              confidence: el.confidence || 0.85,
+              detectedAt: el.timestamp ? new Date(el.timestamp * 1000).toISOString() : new Date().toISOString(),
+              snapshotUrl: el.snapshot_path ? `${NGROK_PROXY}/camera/snapshot/${encodeURIComponent(el.camera_name)}` : undefined,
+              edgeDeviceId: 'edge-server-main',
+            }));
+
+            // Merge avoiding duplicates by timestamp / name proximity
+            const existingTimes = new Set(mergedLogs.map(l => l.detectedAt.slice(0, 19)));
+            for (const el of edgeLogs) {
+              if (!existingTimes.has(el.detectedAt.slice(0, 19))) {
+                mergedLogs.push(el);
+              }
+            }
+            mergedLogs.sort((a, b) => new Date(b.detectedAt).getTime() - new Date(a.detectedAt).getTime());
+          }
+        }
+      } catch {
+        // Edge direct fetch offline/skipped — Supabase data is used
+      }
+
+      setLogs(mergedLogs);
+      setUnknownQueue(mergedUnknown);
+
+      if (usersData) {
+        setUserOptions(usersData.map((u: any) => ({
+          id: u.id,
+          name: u.name || 'Unnamed Employee',
+          biometricId: u.biometric_id || null,
+        })));
+      }
     } catch (err: any) {
-      setToast({ message: err.message || 'Failed to load CCTV data.', type: 'error' });
+      console.error('[CCTV] Fetch logs error:', err);
     } finally {
       setIsLoading(false);
     }
@@ -439,6 +496,7 @@ const CctvDashboard: React.FC = () => {
   // Realtime subscription
   useEffect(() => {
     fetchLogs();
+    const pollId = setInterval(fetchLogs, 4000);
 
     const channel = supabase
       .channel('cctv-live-dash')
@@ -454,7 +512,7 @@ const CctvDashboard: React.FC = () => {
           detectedAt: l.detected_at,
           snapshotUrl: l.snapshot_url,
           edgeDeviceId: l.edge_device_id,
-        }, ...prev].slice(0, 100));
+        }, ...prev.filter(x => x.id !== l.id)].slice(0, 100));
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'cctv_enrollment_queue' }, payload => {
         const u = payload.new as any;
@@ -465,11 +523,14 @@ const CctvDashboard: React.FC = () => {
           snapshotUrl: u.snapshot_url,
           status: 'pending',
           edgeDeviceId: u.edge_device_id,
-        }, ...prev]);
+        }, ...prev.filter(x => x.id !== u.id)]);
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      clearInterval(pollId);
+      supabase.removeChannel(channel);
+    };
   }, [fetchLogs]);
 
   const handleDismiss = async (id: string) => {
@@ -825,14 +886,34 @@ const CctvDashboard: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {unknownQueue.map(item => (
                 <div key={item.id} className="bg-card rounded-2xl border border-amber-200 p-4 shadow-sm space-y-3">
-                  <div className="aspect-square bg-gray-100 rounded-xl overflow-hidden border border-border">
+                  <div className="aspect-square bg-neutral-900 rounded-xl overflow-hidden border border-border relative flex items-center justify-center">
                     {item.snapshotUrl ? (
-                      <img src={item.snapshotUrl} alt="Unknown face" className="w-full h-full object-cover" />
+                      <img
+                        src={item.snapshotUrl}
+                        alt="Unknown face detection"
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.onerror = null;
+                          target.src = `${NGROK_PROXY}/camera/snapshot/${encodeURIComponent(item.cameraName)}?ngrok-skip-browser-warning=1`;
+                        }}
+                      />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-muted">
-                        <Eye className="h-8 w-8 text-amber-500" />
-                      </div>
+                      <img
+                        src={`${NGROK_PROXY}/camera/snapshot/${encodeURIComponent(item.cameraName)}?ngrok-skip-browser-warning=1`}
+                        alt="Camera Snapshot"
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = 'none';
+                          const fallback = target.parentElement?.querySelector('.face-fallback-icon') as HTMLElement;
+                          if (fallback) fallback.style.display = 'flex';
+                        }}
+                      />
                     )}
+                    <div className="face-fallback-icon hidden w-full h-full items-center justify-center text-muted">
+                      <Eye className="h-8 w-8 text-amber-500" />
+                    </div>
                   </div>
                   <div className="flex items-center justify-between text-xs font-mono">
                     <span className="font-bold text-amber-800">{item.cameraName}</span>

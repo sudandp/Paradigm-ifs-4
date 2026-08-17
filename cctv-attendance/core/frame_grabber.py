@@ -156,8 +156,6 @@ class CameraStream:
 
     def _capture_loop(self) -> None:
         """Background loop that continuously reads frames from RTSP."""
-        frame_interval = 1.0 / self.target_fps
-
         while self._running:
             try:
                 if not self.is_connected:
@@ -178,6 +176,7 @@ class CameraStream:
                         )
                         self.disconnect()
                         time.sleep(2.0)
+                    time.sleep(0.01)
                     continue
 
                 self._consecutive_failures = 0
@@ -188,8 +187,8 @@ class CameraStream:
                     self._latest_frame = frame
                     self._last_frame_time = time.time()
 
-                # Throttle to target FPS
-                time.sleep(frame_interval)
+                # Yield thread briefly without delaying the next RTSP frame
+                time.sleep(0.001)
 
             except Exception as e:
                 logger.error(f"[Camera:{self.config.name}] Capture error: {e}")
@@ -205,7 +204,7 @@ class MultiCameraGrabber:
     a unified interface for the face recognition pipeline.
     """
 
-    def __init__(self, cameras: list[CameraConfig], target_fps: int = 25):
+    def __init__(self, cameras: list[CameraConfig], target_fps: int = 30):
         self.streams: dict[str, CameraStream] = {}
         for cam in cameras:
             if cam.enabled:

@@ -244,6 +244,66 @@ class FaceEngine:
         best_face = max(faces, key=lambda f: f.detection_score)
         return best_face.embedding
 
+    def detect_faces_in_crop(
+        self,
+        full_frame: np.ndarray,
+        crop_x1: int,
+        crop_y1: int,
+        crop_x2: int,
+        crop_y2: int,
+    ) -> list["DetectedFace"]:
+        """Detect faces within a sub-region of the full frame.
+
+        Runs face detection on the cropped region and translates all
+        bounding boxes / landmarks back to full-frame coordinates.
+
+        Args:
+            full_frame: The full BGR camera frame
+            crop_x1, crop_y1, crop_x2, crop_y2: Person bounding box in full-frame pixels
+
+        Returns:
+            List of DetectedFace with bbox in full-frame coordinates.
+        """
+        # Extract the person crop from the full frame
+        h, w = full_frame.shape[:2]
+        cx1 = max(0, crop_x1)
+        cy1 = max(0, crop_y1)
+        cx2 = min(w, crop_x2)
+        cy2 = min(h, crop_y2)
+
+        if cx2 <= cx1 or cy2 <= cy1:
+            return []
+
+        person_crop = full_frame[cy1:cy2, cx1:cx2]
+        if person_crop.size == 0:
+            return []
+
+        # Detect faces in the crop
+        faces = self.detect_faces(person_crop)
+
+        # Translate coordinates back to full-frame space
+        for face in faces:
+            fx1, fy1, fx2, fy2 = (int(v) for v in face.bbox)
+            face.bbox = np.array([
+                cx1 + fx1, cy1 + fy1,
+                cx1 + fx2, cy1 + fy2,
+            ], dtype=np.float32)
+
+            # Re-crop face in full frame (so snapshot is correct)
+            fbx1 = max(0, cx1 + fx1)
+            fby1 = max(0, cy1 + fy1)
+            fbx2 = min(w, cx1 + fx2)
+            fby2 = min(h, cy1 + fy2)
+            if fbx2 > fbx1 and fby2 > fby1:
+                pad = int(max(fbx2 - fbx1, fby2 - fby1) * 0.2)
+                pfx1 = max(0, fbx1 - pad)
+                pfy1 = max(0, fby1 - pad)
+                pfx2 = min(w, fbx2 + pad)
+                pfy2 = min(h, fby2 + pad)
+                face.face_crop = full_frame[pfy1:pfy2, pfx1:pfx2].copy()
+
+        return faces
+
     def batch_generate_embeddings(
         self, images: list[np.ndarray]
     ) -> list[Optional[np.ndarray]]:

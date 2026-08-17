@@ -95,10 +95,10 @@ class EventDispatcher:
             hostname = socket.gethostname()
             all_ips = socket.getaddrinfo(hostname, None, socket.AF_INET)
             for entry in all_ips:
-                ip = entry[4][0]
-                if ip.startswith('127.') or ip.startswith('169.254.'):
+                ip_val = str(entry[4][0])
+                if ip_val.startswith('127.') or ip_val.startswith('169.254.'):
                     continue  # Skip loopback and APIPA
-                candidates.append(ip)
+                candidates.append(ip_val)
         except Exception:
             pass
         
@@ -218,6 +218,7 @@ class EventDispatcher:
             'direction': direction,
             'confidence': round(confidence, 4),
             'detected_at': dt.isoformat(),
+            'snapshot_url': snapshot_path,
             'edge_device_id': self.config.edge_device_id,
         }
 
@@ -368,15 +369,16 @@ class EventDispatcher:
         timestamp: float,
         snapshot_url: Optional[str] = None,
     ) -> bool:
-        """Push an unknown face to the cloud enrollment queue."""
+        """Push an unknown face to the cloud enrollment queue and cctv_attendance_logs."""
         if not self._session or not self.config.cloud_enabled:
             return False
 
         try:
+            iso_dt = datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
             payload = {
                 'embedding': embedding.tolist(),
                 'camera_name': camera_name,
-                'detected_at': datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat(),
+                'detected_at': iso_dt,
                 'edge_device_id': self.config.edge_device_id,
                 'snapshot_url': snapshot_url,
                 'status': 'pending',
@@ -385,12 +387,29 @@ class EventDispatcher:
             url = f"{self.config.supabase_url}/rest/v1/cctv_enrollment_queue"
             async with self._session.post(url, json=payload) as resp:
                 if resp.status < 400:
-                    logger.info(f"[Dispatcher] Unknown face pushed to enrollment queue")
-                    return True
+                    logger.info("[Dispatcher] Unknown face pushed to enrollment queue")
                 else:
                     body = await resp.text()
-                    logger.warning(f"[Dispatcher] Unknown face push failed: {body}")
-                    return False
+                    logger.warning(f"[Dispatcher] Unknown face push failed ({resp.status}): {body}")
+
+            # Also push to cctv_attendance_logs
+            cctv_log_payload = {
+                'user_id': None,
+                'user_name': 'Unknown Person',
+                'camera_name': camera_name,
+                'direction': 'entry',
+                'confidence': 0.5,
+                'detected_at': iso_dt,
+                'snapshot_url': snapshot_url,
+                'edge_device_id': self.config.edge_device_id,
+            }
+            url_logs = f"{self.config.supabase_url}/rest/v1/cctv_attendance_logs"
+            async with self._session.post(url_logs, json=cctv_log_payload) as resp:
+                if resp.status >= 400:
+                    body = await resp.text()
+                    logger.warning(f"[Dispatcher] cctv_attendance_logs (unknown) failed: {body}")
+
+            return True
 
         except Exception as e:
             logger.error(f"[Dispatcher] Unknown face push error: {e}")

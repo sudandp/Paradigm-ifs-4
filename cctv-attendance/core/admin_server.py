@@ -15,12 +15,13 @@ import base64
 import time
 from io import BytesIO
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
+import cv2
 import numpy as np
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from loguru import logger
 from PIL import Image
 
@@ -44,11 +45,135 @@ def _make_reconnecting_frame(width: int = 352, height: int = 288) -> "np.ndarray
     return frame
 
 
+def _draw_ai_tracking_overlay(frame: np.ndarray, tracks: list[dict]) -> np.ndarray:
+    """Draw AI tracking overlay for all object types:
+    
+    Colors (BGR):
+      - Registered person  → Emerald green  (0, 235, 120)
+      - Unknown person/face→ Amber          (0, 160, 255)
+      - Human body only    → Sky blue       (255, 180,   0)
+      - Car / Truck / Bus  → Orange         (0, 140, 255)
+      - Motorcycle/Bicycle → Cyan-lime      (255, 220,   0)
+      - Other              → Gray           (160, 160, 160)
+    """
+    import cv2
+    h, w = frame.shape[:2]
+
+    for t in tracks:
+        bbox = t.get('bbox', [])
+        if len(bbox) != 4:
+            continue
+        x1, y1, x2, y2 = bbox
+        x1, y1 = max(0, min(w - 1, x1)), max(0, min(h - 1, y1))
+        x2, y2 = max(0, min(w - 1, x2)), max(0, min(h - 1, y2))
+        if x2 <= x1 or y2 <= y1:
+            continue
+
+        object_type = t.get('object_type', 'HUMAN')
+        is_match = t.get('is_match', False)
+        user_name = t.get('user_name', 'UNKNOWN')
+        confidence = t.get('confidence', 0.0)
+        direction = t.get('direction', '')
+        face_visible = t.get('face_visible', True)
+
+        # ── Color selection ──────────────────────────────────────────────
+        if object_type == 'HUMAN':
+            if is_match:
+                color    = (0, 235, 120)   # Emerald — registered employee
+                bg_color = (15, 110, 50)
+            elif face_visible is False:
+                color    = (255, 180, 0)   # Sky blue — body only, no face
+                bg_color = (100, 70, 10)
+            else:
+                color    = (0, 160, 255)   # Amber — unknown face
+                bg_color = (10, 70, 140)
+        elif object_type in ('CAR', 'TRUCK', 'BUS'):
+            color    = (0, 140, 255)       # Orange
+            bg_color = (10, 60, 120)
+        elif object_type in ('MOTORCYCLE', 'BICYCLE'):
+            color    = (255, 220, 0)       # Cyan-lime
+            bg_color = (100, 90, 10)
+        else:
+            color    = (160, 160, 160)     # Gray
+            bg_color = (60, 60, 60)
+
+        # ── Bounding box ─────────────────────────────────────────────────
+        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 1, cv2.LINE_AA)
+
+        # ── Corner reticles / brackets ───────────────────────────────────
+        bw = max(10, int((x2 - x1) * 0.22))
+        bh = max(10, int((y2 - y1) * 0.22))
+        thick = 3
+        # Top-left
+        cv2.line(frame, (x1, y1), (x1 + bw, y1), color, thick, cv2.LINE_AA)
+        cv2.line(frame, (x1, y1), (x1, y1 + bh), color, thick, cv2.LINE_AA)
+        # Top-right
+        cv2.line(frame, (x2, y1), (x2 - bw, y1), color, thick, cv2.LINE_AA)
+        cv2.line(frame, (x2, y1), (x2, y1 + bh), color, thick, cv2.LINE_AA)
+        # Bottom-left
+        cv2.line(frame, (x1, y2), (x1 + bw, y2), color, thick, cv2.LINE_AA)
+        cv2.line(frame, (x1, y2), (x1, y2 - bh), color, thick, cv2.LINE_AA)
+        # Bottom-right
+        cv2.line(frame, (x2, y2), (x2 - bw, y2), color, thick, cv2.LINE_AA)
+        cv2.line(frame, (x2, y2), (x2, y2 - bh), color, thick, cv2.LINE_AA)
+
+        # ── Badge text ────────────────────────────────────────────────────
+        font = cv2.FONT_HERSHEY_SIMPLEX
+
+        if object_type == 'HUMAN':
+            if is_match:
+                title_text = f" {user_name.upper()} • {direction} "
+                conf_text  = f" {confidence * 100:.1f}% MATCH • PUNCH LOGGED "
+            elif face_visible is False:
+                title_text = " HUMAN DETECTED "
+                conf_text  = f" BODY • FACE NOT VISIBLE • {confidence * 100:.0f}% "
+            else:
+                title_text = " UNKNOWN PERSON "
+                conf_text  = f" SCANNING • {confidence * 100:.0f}% DETECT "
+        else:
+            title_text = f" {object_type} "
+            conf_text  = f" {confidence * 100:.0f}% CONFIDENCE "
+
+        scale1, scale2 = 0.55, 0.38
+        thick1 = 1
+        (tw1, th1), _ = cv2.getTextSize(title_text, font, scale1, thick1)
+        (tw2, th2), _ = cv2.getTextSize(conf_text,  font, scale2, 1)
+
+        badge_w = max(tw1, tw2) + 14
+        badge_h = th1 + th2 + 14
+
+        by1 = max(4, y1 - badge_h - 6)
+        by2 = by1 + badge_h
+        bx1 = max(4, x1)
+        bx2 = min(w - 4, bx1 + badge_w)
+
+        overlay = frame.copy()
+        cv2.rectangle(overlay, (bx1, by1), (bx2, by2), bg_color, -1)
+        cv2.addWeighted(overlay, 0.85, frame, 0.15, 0, frame)
+        cv2.rectangle(frame, (bx1, by1), (bx2, by2), color, 1, cv2.LINE_AA)
+
+        cv2.putText(
+            frame, title_text,
+            (bx1 + 4, by1 + th1 + 4),
+            font, scale1, (255, 255, 255), thick1, cv2.LINE_AA
+        )
+        sub_color = (180, 255, 200) if is_match else (200, 220, 255)
+        cv2.putText(
+            frame, conf_text,
+            (bx1 + 4, by1 + th1 + th2 + 9),
+            font, scale2, sub_color, 1, cv2.LINE_AA
+        )
+
+    return frame
+
+
+
+
 def create_admin_app(
     config: AppConfig,
     db: LocalDatabase,
     face_engine: FaceEngine,
-    pipeline: Optional[any] = None,
+    pipeline: Optional[Any] = None,
 ) -> FastAPI:
     """Create the FastAPI admin application.
     
@@ -82,12 +207,14 @@ def create_admin_app(
             "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "enrolled_count": db.get_embedding_count(),
             "cloud_enabled": config.cloud_enabled,
+            "object_detector_ready": pipeline.object_detector.is_ready if pipeline and hasattr(pipeline, 'object_detector') else False,
         }
 
     @app.get("/stats")
     async def stats():
-        """Pipeline statistics."""
+        """Pipeline statistics including object detection counters."""
         queue_stats = db.get_queue_stats()
+        pipeline_stats = pipeline.get_stats() if pipeline and hasattr(pipeline, 'get_stats') else {}
         return {
             "enrolled_faces": db.get_embedding_count(),
             "queue": queue_stats,
@@ -95,6 +222,50 @@ def create_admin_app(
             "match_threshold": config.match_threshold,
             "cooldown_seconds": config.cooldown_seconds,
             "processing_fps": config.processing_fps,
+            "object_detector_on": pipeline.object_detector.is_ready if pipeline and hasattr(pipeline, 'object_detector') else False,
+            **{k: v for k, v in pipeline_stats.items() if k in (
+                'frames_processed', 'faces_detected', 'objects_detected',
+                'vehicles_detected', 'matches', 'unknown_faces', 'errors'
+            )},
+        }
+
+    @app.get("/tracks/{camera_name}")
+    async def get_tracks(camera_name: str):
+        """Get current real-time AI track list for a camera.
+        
+        Returns the latest object detections (persons, cars, bikes, etc.)
+        so the frontend can display a live object-count legend.
+        """
+        if not pipeline or not hasattr(pipeline, 'latest_tracks'):
+            return {"tracks": [], "camera": camera_name}
+        
+        now = time.time()
+        tracks = [
+            {
+                "object_type": t.get('object_type', 'HUMAN'),
+                "label":       t.get('label', 'HUMAN'),
+                "user_name":   t.get('user_name', ''),
+                "is_match":    t.get('is_match', False),
+                "confidence":  round(t.get('confidence', 0.0), 3),
+                "direction":   t.get('direction', ''),
+                "bbox":        t.get('bbox', []),
+                "face_visible":t.get('face_visible', True),
+            }
+            for t in pipeline.latest_tracks.get(camera_name, [])
+            if now - t.get('timestamp', 0) < 2.0
+        ]
+
+        # Summarize counts by type for the legend
+        summary: dict[str, int] = {}
+        for t in tracks:
+            ot = t['object_type']
+            summary[ot] = summary.get(ot, 0) + 1
+
+        return {
+            "camera": camera_name,
+            "tracks": tracks,
+            "summary": summary,
+            "total": len(tracks),
         }
 
     @app.get("/cameras")
@@ -173,6 +344,16 @@ def create_admin_app(
                     captured = stream.get_frame()
                     if captured is not None and captured.frame is not None:
                         frame_img = captured.frame
+                        # Render AI object + face tracking overlay (persons, cars, bikes…)
+                        if pipeline and hasattr(pipeline, 'latest_tracks'):
+                            now = time.time()
+                            tracks = [
+                                t for t in pipeline.latest_tracks.get(camera_name, [])
+                                if now - t.get('timestamp', 0) < 1.8
+                            ]
+                            if tracks:
+                                frame_img = frame_img.copy()
+                                _draw_ai_tracking_overlay(frame_img, tracks)
                     else:
                         # Camera is reconnecting — serve a black placeholder so
                         # the browser never times out and fires img.onerror
@@ -180,19 +361,20 @@ def create_admin_app(
 
                     ret, buf = cv2.imencode(
                         '.jpg', frame_img,
-                        [cv2.IMWRITE_JPEG_QUALITY, 75]
+                        [cv2.IMWRITE_JPEG_QUALITY, 90, cv2.IMWRITE_JPEG_OPTIMIZE, 1]
                     )
                     if ret:
                         frame_bytes = buf.tobytes()
                         yield (
                             b'--frame\r\n'
-                            b'Content-Type: image/jpeg\r\n\r\n'
+                            b'Content-Type: image/jpeg\r\n'
+                            b'Content-Length: ' + str(len(frame_bytes)).encode('ascii') + b'\r\n\r\n'
                             + frame_bytes +
                             b'\r\n'
                         )
                 except Exception:
                     pass
-                await asyncio.sleep(1 / 25)  # 25 FPS — matches Hikvision/CP Plus smooth playback
+                await asyncio.sleep(0.033)  # ~30 FPS — silky smooth playback
 
         return StreamingResponse(
             generate(),
@@ -201,6 +383,41 @@ def create_admin_app(
                 "Access-Control-Allow-Origin": "*",
                 "Cache-Control": "no-cache, no-store, must-revalidate",
                 "X-Content-Type-Options": "nosniff",
+            }
+        )
+
+    @app.get("/camera/snapshot/{camera_name}")
+    async def get_camera_snapshot(camera_name: str):
+        """Get the latest snapshot from a camera as a JPEG image."""
+        if not pipeline or not hasattr(pipeline, 'grabber'):
+            raise HTTPException(status_code=503, detail="Camera pipeline not initialized")
+        stream = pipeline.grabber.streams.get(camera_name)
+        if stream is None:
+            raise HTTPException(status_code=404, detail=f"Camera '{camera_name}' not found")
+        captured = stream.get_frame()
+        if captured is None or captured.frame is None:
+            raise HTTPException(status_code=404, detail=f"No frame available for camera '{camera_name}'")
+        
+        frame_img = captured.frame.copy()
+        if hasattr(pipeline, 'latest_tracks'):
+            now = time.time()
+            tracks = [
+                t for t in pipeline.latest_tracks.get(camera_name, [])
+                if now - t.get('timestamp', 0) < 1.8
+            ]
+            if tracks:
+                _draw_ai_tracking_overlay(frame_img, tracks)
+
+        ret, buf = cv2.imencode('.jpg', frame_img, [cv2.IMWRITE_JPEG_QUALITY, 90])
+        if not ret:
+            raise HTTPException(status_code=500, detail="Failed to encode JPEG snapshot")
+        
+        return Response(
+            content=buf.tobytes(),
+            media_type="image/jpeg",
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Cache-Control": "no-cache, no-store, must-revalidate",
             }
         )
 
