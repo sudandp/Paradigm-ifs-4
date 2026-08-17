@@ -583,14 +583,14 @@ const ManageCctvDevices: React.FC = () => {
         </div>
       </div>
 
-      {/* ── Tab Navigation ── */}
-      <div className="flex items-center gap-2 p-1 bg-muted/40 rounded-xl w-fit mb-6 border border-border/60">
+      {/* ── Tab Navigation (Crisp Green & White) ── */}
+      <div className="flex items-center gap-2 p-1 bg-gray-100/80 rounded-xl w-fit mb-6 border border-border/80 shadow-2xs">
         <button
           onClick={() => setActiveTab('devices')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
             activeTab === 'devices'
-              ? 'bg-card text-primary-text shadow-sm'
-              : 'text-muted hover:text-primary-text'
+              ? 'bg-emerald-600 text-white shadow-sm'
+              : 'text-gray-600 hover:text-emerald-700 hover:bg-white/80'
           }`}
         >
           <Camera className="h-4 w-4" /> Live Surveillance & Devices
@@ -600,8 +600,8 @@ const ManageCctvDevices: React.FC = () => {
           onClick={() => setActiveTab('enroll')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
             activeTab === 'enroll'
-              ? 'bg-card text-primary-text shadow-sm'
-              : 'text-muted hover:text-primary-text'
+              ? 'bg-emerald-600 text-white shadow-sm'
+              : 'text-gray-600 hover:text-emerald-700 hover:bg-white/80'
           }`}
         >
           <UserPlus className="h-4 w-4" /> Face Enrollment Studio
@@ -611,8 +611,8 @@ const ManageCctvDevices: React.FC = () => {
           onClick={() => setActiveTab('setup')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
             activeTab === 'setup'
-              ? 'bg-card text-primary-text shadow-sm'
-              : 'text-muted hover:text-primary-text'
+              ? 'bg-emerald-600 text-white shadow-sm'
+              : 'text-gray-600 hover:text-emerald-700 hover:bg-white/80'
           }`}
         >
           <Sliders className="h-4 w-4" /> Edge Hardware Config
@@ -674,8 +674,8 @@ const ManageCctvDevices: React.FC = () => {
                                     {device.edgeDeviceId}
                                   </span>
                                   {device.locationName && (
-                                    <span className="text-xs text-muted flex items-center gap-1 bg-muted/30 px-2 py-0.5 rounded-md">
-                                      <MapPin className="h-3 w-3 text-accent" /> {device.locationName}
+                                    <span className="text-xs font-semibold text-emerald-800 flex items-center gap-1 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
+                                      <MapPin className="h-3 w-3 text-emerald-600" /> {device.locationName}
                                     </span>
                                   )}
                                 </div>
@@ -756,7 +756,7 @@ const ManageCctvDevices: React.FC = () => {
                           <div className="flex items-center gap-2">
                             <button
                               onClick={() => setActiveTab('enroll')}
-                              className="px-3 py-1.5 rounded-lg bg-accent/10 hover:bg-accent/20 text-accent font-semibold text-xs transition-colors flex items-center gap-1.5"
+                              className="px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-semibold text-xs transition-colors flex items-center gap-1.5"
                             >
                               <UserPlus className="h-3.5 w-3.5" /> Enroll Staff Face
                             </button>
@@ -805,8 +805,8 @@ const ManageCctvDevices: React.FC = () => {
         <div className="bg-card rounded-2xl border border-border p-6 md:p-8 shadow-sm">
           <div className="max-w-4xl">
             <div className="flex items-center gap-3 mb-6 pb-4 border-b border-border">
-              <div className="h-10 w-10 rounded-xl bg-accent/10 flex items-center justify-center">
-                <UserPlus className="h-5 w-5 text-accent" />
+              <div className="h-10 w-10 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+                <UserPlus className="h-5 w-5 text-emerald-600" />
               </div>
               <div>
                 <h2 className="text-xl font-bold text-primary-text">AI Face Biometric Enrollment</h2>
@@ -827,7 +827,7 @@ const ManageCctvDevices: React.FC = () => {
                     value={enrollUserId}
                     onChange={e => { setEnrollUserId(e.target.value); setEnrollResult(null); }}
                     disabled={isEnrolling}
-                    className="w-full px-3.5 py-2.5 bg-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
+                    className="w-full px-3.5 py-2.5 bg-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50"
                   >
                     <option value="">-- Choose employee --</option>
                     {enrollUsers.map(u => (
@@ -853,26 +853,26 @@ const ManageCctvDevices: React.FC = () => {
                     onClick={() => fileInputRef.current?.click()}
                     onDragOver={e => e.preventDefault()}
                     onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) handlePhotoSelect(f); }}
-                    className="border-2 border-dashed border-border rounded-2xl p-8 text-center cursor-pointer hover:border-accent hover:bg-accent/5 transition-all group"
+                    className="border-2 border-dashed border-emerald-200 bg-emerald-50/20 rounded-2xl p-8 text-center cursor-pointer hover:border-emerald-500 hover:bg-emerald-50/40 transition-all group"
                   >
-                    <Upload className="h-8 w-8 text-muted group-hover:text-accent mx-auto mb-2 transition-colors" />
+                    <Upload className="h-8 w-8 text-emerald-600 group-hover:scale-110 mx-auto mb-2 transition-transform" />
                     <p className="text-sm font-semibold text-primary-text">Click or drag photo here</p>
                     <p className="text-xs text-muted mt-1">Clear front-facing passport-style photo (JPG, PNG)</p>
                   </div>
                 </div>
 
-                <div className="p-4 rounded-xl bg-blue-50/70 border border-blue-100 text-xs text-blue-800 space-y-1">
-                  <p className="font-bold flex items-center gap-1.5">
-                    <Sparkles className="h-4 w-4 text-blue-600" /> Best Practices for 99.8% AI Accuracy:
+                <div className="p-4 rounded-xl bg-emerald-50/80 border border-emerald-200 text-xs text-emerald-900 space-y-1">
+                  <p className="font-bold flex items-center gap-1.5 text-emerald-950">
+                    <Sparkles className="h-4 w-4 text-emerald-700" /> Best Practices for 99.8% AI Accuracy:
                   </p>
-                  <p className="text-blue-700">• Single face per photo, well-lit with clear eyes & nose</p>
-                  <p className="text-blue-700">• Avoid sunglasses, thick shadows, or heavy hats</p>
+                  <p className="text-emerald-800">• Single face per photo, well-lit with clear eyes & nose</p>
+                  <p className="text-emerald-800">• Avoid sunglasses, thick shadows, or heavy hats</p>
                 </div>
 
                 <Button
                   onClick={handleEnrollFace}
                   disabled={!enrollUserId || !enrollPhoto || isEnrolling}
-                  className="w-full flex items-center justify-center gap-2 h-12 text-sm font-bold shadow-md shadow-accent/20 bg-accent hover:bg-accent/90"
+                  className="w-full flex items-center justify-center gap-2 h-12 text-sm font-bold shadow-md bg-emerald-600 hover:bg-emerald-700 text-white"
                 >
                   {isEnrolling ? (
                     <><span className="h-4 w-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Generating & Syncing Embedding...</>
@@ -895,11 +895,11 @@ const ManageCctvDevices: React.FC = () => {
 
               {/* Photo Preview Card (5 cols) */}
               <div className="lg:col-span-5 space-y-4">
-                <div className="bg-background rounded-2xl border border-border overflow-hidden">
-                  <div className="px-4 py-3 border-b border-border bg-muted/20">
-                    <span className="text-xs font-bold text-primary-text uppercase tracking-wider">Preview Crop</span>
+                <div className="bg-card rounded-2xl border border-emerald-200/80 shadow-xs overflow-hidden">
+                  <div className="px-4 py-3 border-b border-emerald-100 bg-emerald-50/70">
+                    <span className="text-xs font-bold text-emerald-950 uppercase tracking-wider">Preview Crop</span>
                   </div>
-                  <div className="aspect-square flex items-center justify-center bg-slate-900 relative">
+                  <div className="aspect-square flex items-center justify-center bg-white relative">
                     {enrollPhotoPreview ? (
                       <>
                         <img src={enrollPhotoPreview} alt="Face preview" className="w-full h-full object-cover" />
@@ -912,8 +912,10 @@ const ManageCctvDevices: React.FC = () => {
                       </>
                     ) : (
                       <div className="text-center p-6">
-                        <Camera className="h-12 w-12 text-slate-700 mx-auto mb-2" />
-                        <span className="text-xs text-slate-500 font-medium">No photo selected</span>
+                        <div className="h-16 w-16 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-3 border border-emerald-100">
+                          <Camera className="h-8 w-8 text-emerald-600" />
+                        </div>
+                        <span className="text-xs text-muted font-medium">No photo selected</span>
                       </div>
                     )}
                   </div>
@@ -951,12 +953,12 @@ const ManageCctvDevices: React.FC = () => {
                 <span className="font-bold text-primary-text">RTSP Camera Connection URL Format</span>
                 <button 
                   onClick={() => copyToClipboard('rtsp://admin:Paradigm%401610@192.168.1.64:554/Streaming/Channels/102')}
-                  className="text-xs text-accent hover:underline flex items-center gap-1 font-semibold"
+                  className="text-xs text-emerald-700 hover:text-emerald-800 flex items-center gap-1 font-semibold"
                 >
                   {copiedKey ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />} Copy RTSP
                 </button>
               </div>
-              <code className="block p-3 rounded-lg bg-muted font-mono text-xs text-primary-text break-all">
+              <code className="block p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 font-mono text-xs text-emerald-950 font-semibold break-all">
                 rtsp://admin:Paradigm%401610@192.168.1.64:554/Streaming/Channels/102
               </code>
             </div>
