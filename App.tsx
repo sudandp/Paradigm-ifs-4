@@ -577,7 +577,7 @@ const App: React.FC = () => {
       clearOnlineTimer();
     };
 
-    const setStableOffline = (offline: boolean, onConfirmedOnline?: () => void) => {
+    const setStableOffline = (offline: boolean, onConfirmedOnline?: () => void | Promise<void>) => {
       const now = Date.now();
       const currentlyOffline = useAuthStore.getState().isOffline;
 
@@ -615,22 +615,20 @@ const App: React.FC = () => {
         clearOfflineTimer();
         // Only start a new online timer if one isn't already pending
         if (!onlineTimer) {
-          console.log('[FLICKER_DEBUG] Starting onlineTimer (2000ms)');
-          onlineTimer = setTimeout(async () => {
+          console.log('[FLICKER_DEBUG] Starting onlineTimer (1500ms)');
+          onlineTimer = setTimeout(() => {
             onlineTimer = null;
             lastStateChangeTime = Date.now();
-            console.log('[Network] Pre-fetching app data before closing offline screen...');
-            if (onConfirmedOnline) {
-              try {
-                await onConfirmedOnline();
-              } catch (syncErr) {
-                console.warn('[Network] Sync data warning before dismiss:', syncErr);
-              }
-            }
-            console.log('[FLICKER_DEBUG] Calling setIsOffline(false) AFTER data sync completed');
+            console.log('[FLICKER_DEBUG] Unfreezing UI: setIsOffline(false)');
             setIsOffline(false);
             console.log('[Network] State → ONLINE (debounced)');
-          }, 2000); // 2s debounce before restoring online
+            // Run data sync asynchronously in background without blocking UI
+            if (onConfirmedOnline) {
+              Promise.resolve(onConfirmedOnline()).catch(syncErr => {
+                console.warn('[Network] Background sync warning:', syncErr);
+              });
+            }
+          }, 1500); // 1.5s debounce before restoring online
         } else {
           console.log('[FLICKER_DEBUG] onlineTimer already running, ignoring');
         }
@@ -639,31 +637,33 @@ const App: React.FC = () => {
 
     const syncData = async () => {
       try {
-        const { settings, roles, holidays } = await apiService.getInitialAppData();
-        const recurringHolidays = await apiService.getRecurringHolidays();
-        if (settings.enrollmentRules) initEnrollmentRules(settings.enrollmentRules);
-        if (roles) initRoles(roles);
-        if (settings.attendanceSettings && holidays) {
-          initSettings({
-            holidays: holidays,
-            attendanceSettings: settings.attendanceSettings,
-            recurringHolidays: recurringHolidays || [],
-            apiSettings: settings.apiSettings,
-            addressSettings: settings.addressSettings,
-            geminiApiSettings: settings.geminiApiSettings,
-            kycApiSettings: settings.kycApiSettings,
-            esignApiSettings: settings.esignApiSettings,
-            offlineOcrSettings: settings.offlineOcrSettings,
-            perfiosApiSettings: settings.perfiosApiSettings,
-            otpSettings: settings.otpSettings,
-            siteManagementSettings: settings.siteManagementSettings,
-            notificationSettings: settings.notificationSettings,
-            voipSettings: settings.voipSettings,
-          });
-        }
-        await useAuthStore.getState().checkAttendanceStatus();
-        // Drain offline outbox queue to sync any pending snags / audits to Supabase
-        await syncEngine.drain().catch((err) => console.warn('[Network] Outbox sync drain warning:', err));
+        await withTimeout((async () => {
+          const { settings, roles, holidays } = await apiService.getInitialAppData();
+          const recurringHolidays = await apiService.getRecurringHolidays();
+          if (settings.enrollmentRules) initEnrollmentRules(settings.enrollmentRules);
+          if (roles) initRoles(roles);
+          if (settings.attendanceSettings && holidays) {
+            initSettings({
+              holidays: holidays,
+              attendanceSettings: settings.attendanceSettings,
+              recurringHolidays: recurringHolidays || [],
+              apiSettings: settings.apiSettings,
+              addressSettings: settings.addressSettings,
+              geminiApiSettings: settings.geminiApiSettings,
+              kycApiSettings: settings.kycApiSettings,
+              esignApiSettings: settings.esignApiSettings,
+              offlineOcrSettings: settings.offlineOcrSettings,
+              perfiosApiSettings: settings.perfiosApiSettings,
+              otpSettings: settings.otpSettings,
+              siteManagementSettings: settings.siteManagementSettings,
+              notificationSettings: settings.notificationSettings,
+              voipSettings: settings.voipSettings,
+            });
+          }
+          await useAuthStore.getState().checkAttendanceStatus(true);
+          // Drain offline outbox queue to sync any pending snags / audits to Supabase
+          await syncEngine.drain().catch((err) => console.warn('[Network] Outbox sync drain warning:', err));
+        })(), 8000, 'SyncData timeout');
         console.log('[Network] Successfully synced all app details after reconnecting.');
       } catch (err) {
         console.warn('[Network] Sync data warning after reconnecting:', err);
@@ -1532,19 +1532,36 @@ const App: React.FC = () => {
         }
 
         // On mobile (Android/iOS), NEVER force logout on resume — the user stays logged in until manual logout.
-        // We only attempt a silent background session refresh for active API communication.
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-          const refreshToken = (await secureGet('supabase.auth.rememberMe'))
-            ?? (await Preferences.get({ key: 'supabase.auth.rememberMe' })).value;
-          if (refreshToken) {
-            console.log('[AppState] Silently refreshing session in background from saved token...');
-            await supabase.auth
-              .refreshSession({ refresh_token: refreshToken })
-              .catch(e => {
-                console.warn('[AppState] Background session refresh notice:', e?.message || e);
+        // If the JWT token has expired or is expiring within 60s, silently refresh it.
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const isSessionExpired = !session || (session.expires_at && session.expires_at * 1000 <= Date.now() + 60000);
+
+          if (isSessionExpired) {
+            const refreshToken = (await secureGet('supabase.auth.rememberMe'))
+              ?? (await Preferences.get({ key: 'supabase.auth.rememberMe' })).value
+              ?? session?.refresh_token;
+
+            if (refreshToken) {
+              console.log('[AppState] Session expired or close to expiry. Silently refreshing from saved token...');
+              await withTimeout(
+                supabase.auth.refreshSession({ refresh_token: refreshToken }),
+                8000,
+                'Background session refresh timeout'
+              ).then(({ data, error }) => {
+                if (data?.session) {
+                  console.log('[AppState] ✅ Session successfully refreshed on resume!');
+                  document.cookie = `sb-access-auth-token=${encodeURIComponent(JSON.stringify({ access_token: data.session.access_token }))}; path=/; max-age=3600; SameSite=Lax; Secure`;
+                } else if (error) {
+                  console.warn('[AppState] Session refresh notice:', error.message);
+                }
+              }).catch(e => {
+                console.warn('[AppState] Background session refresh timeout/notice:', e?.message || e);
               });
+            }
           }
+        } catch (sessionCheckErr) {
+          console.warn('[AppState] Error during resume session verification:', sessionCheckErr);
         }
       }
     });
@@ -1563,6 +1580,7 @@ const App: React.FC = () => {
     return () => {
       isMounted = false;
       subscription?.unsubscribe();
+      appStateSubscription.then(h => h.remove()).catch(() => {});
       window.removeEventListener('supabase-auth-failure', handleAuthFailure);
       clearTimeout(fallbackTimeout);
     };
