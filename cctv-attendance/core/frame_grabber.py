@@ -38,7 +38,7 @@ class CameraStream:
     Only the latest frame is kept to avoid memory buildup.
     """
 
-    def __init__(self, config: CameraConfig, target_fps: int = 3):
+    def __init__(self, config: CameraConfig, target_fps: int = 25):
         self.config = config
         self.target_fps = target_fps
         self._cap: Optional[cv2.VideoCapture] = None
@@ -205,7 +205,7 @@ class MultiCameraGrabber:
     a unified interface for the face recognition pipeline.
     """
 
-    def __init__(self, cameras: list[CameraConfig], target_fps: int = 3):
+    def __init__(self, cameras: list[CameraConfig], target_fps: int = 25):
         self.streams: dict[str, CameraStream] = {}
         for cam in cameras:
             if cam.enabled:

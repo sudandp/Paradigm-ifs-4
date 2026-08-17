@@ -95,7 +95,7 @@ const NvrCameraStream: React.FC<{
               URL.revokeObjectURL(newUrl);
             }
             if (isMountedRef.current) {
-              timerId = setTimeout(fetchNextFrame, 300); // ~3.5 FPS smooth live stream
+              timerId = setTimeout(fetchNextFrame, 50); // 20+ FPS continuous smooth live video
             }
             return;
           }

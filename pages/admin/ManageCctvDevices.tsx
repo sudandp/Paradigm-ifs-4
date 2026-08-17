@@ -91,7 +91,7 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
               URL.revokeObjectURL(newUrl);
             }
             if (isMountedRef.current) {
-              timerId = setTimeout(fetchNextFrame, 350); // ~3 FPS smooth live stream
+              timerId = setTimeout(fetchNextFrame, 50); // 20+ FPS continuous smooth live video
             }
             return;
           }

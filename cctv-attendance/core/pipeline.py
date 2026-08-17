@@ -47,7 +47,7 @@ class AttendancePipeline:
         )
         self.grabber = MultiCameraGrabber(
             cameras=config.cameras,
-            target_fps=config.processing_fps,
+            target_fps=25,
         )
         self.dispatcher = EventDispatcher(config, self.db)
         
