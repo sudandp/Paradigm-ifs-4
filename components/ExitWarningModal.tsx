@@ -22,16 +22,16 @@ const ExitWarningModal: React.FC<ExitWarningModalProps> = ({ isOpen, onConfirm, 
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.2 }}
-                    className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center"
+                    className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
                     style={{ background: 'rgba(2, 20, 10, 0.88)', backdropFilter: 'blur(10px)' }}
                     onClick={onCancel}
                 >
                     <motion.div
-                        initial={{ scale: 0.92, opacity: 0, y: 40 }}
+                        initial={{ scale: 0.92, opacity: 0, y: 20 }}
                         animate={{ scale: 1, opacity: 1, y: 0 }}
-                        exit={{ scale: 0.92, opacity: 0, y: 40 }}
+                        exit={{ scale: 0.92, opacity: 0, y: 20 }}
                         transition={{ type: 'spring', damping: 22, stiffness: 320 }}
-                        className="relative w-full max-w-sm mx-4 mb-6 sm:mb-0 rounded-3xl overflow-hidden"
+                        className="relative w-full max-w-sm rounded-3xl overflow-hidden my-auto"
                         style={{
                             background: 'linear-gradient(155deg, #0a2818 0%, #041b0f 100%)',
                             border: '1px solid rgba(245, 158, 11, 0.35)',

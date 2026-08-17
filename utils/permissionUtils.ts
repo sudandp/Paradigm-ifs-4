@@ -5,6 +5,7 @@ import { Contacts } from '@capacitor-community/contacts';
 import { BleClient } from '@capacitor-community/bluetooth-le';
 import { Capacitor } from '@capacitor/core';
 import { pushNotificationService } from '../services/pushNotificationService';
+import { stepCounterService } from '../services/StepCounterService';
 import { useAlertToneStore } from '../store/alertToneStore';
 import { scheduleBreakAlarm, cancelBreakAlarm } from '../plugins/breakAlarmPlugin';
 
@@ -154,14 +155,13 @@ export const checkRequiredPermissions = async () => {
 
         // 8. Physical Activity / Motion (Android 10+ — ACTIVITY_RECOGNITION)
         if (isAndroid) {
-            const permissions = (window as any).plugins?.permissions;
-            if (permissions) {
-                // ACTIVITY_RECOGNITION is available from the cordova-plugin-android-permissions plugin
-                const ACTIVITY_RECOGNITION = 'android.permission.ACTIVITY_RECOGNITION';
-                const results = await new Promise<any>((resolve) => {
-                    permissions.hasPermission(ACTIVITY_RECOGNITION, (status: any) => resolve(status), () => resolve({ hasPermission: false }));
-                });
-                if (!results?.hasPermission) missing.push('Physical Activity');
+            try {
+                const status = await stepCounterService.checkPermissionStatus();
+                if (status !== 'granted') {
+                    missing.push('Physical Activity');
+                }
+            } catch (err) {
+                console.warn('[PermissionUtils] StepCounter check error:', err);
             }
         }
     } catch (e) {
@@ -355,13 +355,8 @@ export const requestAllPermissions = async (onProgress?: (id: string, missing: s
             let { missing } = await checkRequiredPermissions();
             if (missing.includes('Physical Activity')) {
                 if (onProgress) onProgress('Physical Activity', missing);
-                const permissions = (window as any).plugins?.permissions;
-                if (permissions) {
-                    const ACTIVITY_RECOGNITION = 'android.permission.ACTIVITY_RECOGNITION';
-                    await new Promise((resolve) => {
-                        permissions.requestPermission(ACTIVITY_RECOGNITION, resolve, resolve);
-                    });
-                }
+                console.log('[PermissionUtils] Requesting Physical Activity permission...');
+                await stepCounterService.ensurePermission();
                 await reCheck('Physical Activity');
                 await delay(reqDelay);
             }
@@ -529,6 +524,23 @@ export const requestMusicAudioPermissions = async () => {
         }
     } catch (error) {
         console.error('Error requesting music/audio permissions:', error);
+    }
+};
+
+/**
+ * Request physical activity permissions specifically (targeted, Android 10+)
+ */
+export const requestPhysicalActivityPermissions = async () => {
+    if (!Capacitor.isNativePlatform()) return true;
+    const isAndroid = Capacitor.getPlatform() === 'android';
+    if (!isAndroid) return true;
+
+    try {
+        console.log('[PermissionUtils] Requesting Physical Activity permission directly...');
+        return await stepCounterService.ensurePermission();
+    } catch (error) {
+        console.error('Error requesting physical activity permissions:', error);
+        return false;
     }
 };
  

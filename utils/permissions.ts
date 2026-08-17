@@ -1,6 +1,7 @@
 import { Geolocation } from '@capacitor/geolocation';
 import { Camera } from '@capacitor/camera';
 import { Capacitor } from '@capacitor/core';
+import { stepCounterService } from '../services/StepCounterService';
 
 export type PermissionState = 'granted' | 'prompt' | 'denied' | 'limited';
 export type PermissionType = 
@@ -34,13 +35,12 @@ export const checkPermission = async (name: PermissionType): Promise<PermissionS
         const status = await Geolocation.checkPermissions();
         return status.location as PermissionState;
       }
+      case 'activity': {
+        return await stepCounterService.checkPermissionStatus() as PermissionState;
+      }
       case 'microphone':
       case 'calendar':
-      case 'contacts':
-      case 'activity': {
-        // For permissions without dedicated Capacitor plugins,
-        // we'll assume they need to be requested (return 'prompt')
-        // The actual permission dialog will be shown by Android when the feature is used
+      case 'contacts': {
         return 'prompt';
       }
       default:
@@ -75,10 +75,10 @@ export const requestPermission = async (name: PermissionType): Promise<boolean> 
         const status = await Geolocation.requestPermissions();
         return status.location === 'granted';
       }
+      case 'activity': {
+        return await stepCounterService.ensurePermission();
+      }
       case 'microphone': {
-        // Microphone doesn't have a dedicated Capacitor plugin
-        // The permission will be requested when getUserMedia is called
-        // We'll use the legacy web API for now
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
           stream.getTracks().forEach(track => track.stop());
@@ -88,11 +88,7 @@ export const requestPermission = async (name: PermissionType): Promise<boolean> 
         }
       }
       case 'calendar':
-      case 'contacts':
-      case 'activity': {
-        // These permissions don't have dedicated Capacitor plugins
-        // They will be requested automatically when the feature is accessed
-        // For now, we return true to indicate they're "available"
+      case 'contacts': {
         console.info(`Permission '${name}' will be requested when feature is used`);
         return true;
       }

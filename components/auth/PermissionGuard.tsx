@@ -5,6 +5,7 @@ import { Camera } from '@capacitor/camera';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Filesystem } from '@capacitor/filesystem';
 import { App } from '@capacitor/app';
+import { stepCounterService } from '../../services/StepCounterService';
 
 // Define the interface for our custom plugin
 interface SecurityCheckPlugin {
@@ -86,6 +87,14 @@ const PermissionGuard: React.FC<PermissionGuardProps> = ({ children }) => {
                 console.warn("Failed to check security status or plugin not available", e);
             }
 
+            // Verify activity recognition permission via StepCounter plugin directly
+            if (!nativeActivityGranted) {
+                try {
+                    const activityState = await stepCounterService.checkPermissionStatus();
+                    nativeActivityGranted = activityState === 'granted';
+                } catch {}
+            }
+
             // 1. Location
             const locationStatus = await Geolocation.checkPermissions();
             const locationGranted = locationStatus.location === 'granted' || locationStatus.coarseLocation === 'granted';
@@ -159,6 +168,13 @@ const PermissionGuard: React.FC<PermissionGuardProps> = ({ children }) => {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 stream.getTracks().forEach(track => track.stop());
+            } catch (err) { }
+        }
+
+        // Physical Activity / Motion (Android 10+ ACTIVITY_RECOGNITION)
+        if (!permissions.activity) {
+            try {
+                await stepCounterService.ensurePermission();
             } catch (err) { }
         }
 
