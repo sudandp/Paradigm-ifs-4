@@ -34,14 +34,18 @@ interface CctvDevice {
 
 const NGROK_PROXY = 'https://tassel-estranged-prism.ngrok-free.dev';
 
-// ─── Camera Live Preview Component ──────────────────────────────────────────
+// ─── Camera Live Preview Component (Native MJPEG — Hikvision/CP Plus Style) ─
+// Direct <img src="...stream..."> — browser renders multipart/x-mixed-replace
+// natively as continuous live video. Zero JS polling, zero HTTP overhead per frame.
 const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; adminPort: number }> = ({ camera }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [currentTime, setCurrentTime] = useState('');
-  const [errorCount, setErrorCount] = useState(0);
-  const [frameSrc, setFrameSrc] = useState<string>('');
-  const isMountedRef = useRef(true);
+  const [fps, setFps] = useState(0);
+  const fpsCounterRef = useRef(0);
+  const lastFpsTimeRef = useRef(Date.now());
+  const streamImgRef = useRef<HTMLImageElement>(null);
 
   const camName = typeof camera === 'string' ? camera : camera?.name || 'main_gate_entry';
 
@@ -57,63 +61,33 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
     return () => clearInterval(id);
   }, []);
 
-  // Continuous Fast Frame Fetcher (~3 FPS matching camera edge engine)
+  // Real FPS counter — counts actual frames decoded by the browser
   useEffect(() => {
-    isMountedRef.current = true;
-    let timerId: any = null;
-    let currentObjectUrl = '';
-
-    const fetchNextFrame = async () => {
-      if (!isMountedRef.current) return;
-
-      try {
-        const res = await fetch(
-          `${NGROK_PROXY}/camera/frame/${encodeURIComponent(camName)}?_t=${Date.now()}`,
-          {
-            headers: {
-              'ngrok-skip-browser-warning': '1',
-            },
-          }
-        );
-
-        if (res.ok) {
-          const blob = await res.blob();
-          if (blob.type.includes('image') || blob.size > 1000) {
-            const newUrl = URL.createObjectURL(blob);
-            if (isMountedRef.current) {
-              setFrameSrc(newUrl);
-              setHasError(false);
-              if (currentObjectUrl) {
-                URL.revokeObjectURL(currentObjectUrl);
-              }
-              currentObjectUrl = newUrl;
-            } else {
-              URL.revokeObjectURL(newUrl);
-            }
-            if (isMountedRef.current) {
-              timerId = setTimeout(fetchNextFrame, 50); // 20+ FPS continuous smooth live video
-            }
-            return;
-          }
-        }
-        throw new Error(`Invalid response: ${res.status}`);
-      } catch {
-        if (isMountedRef.current) {
-          setHasError(true);
-          setErrorCount(c => c + 1);
-          timerId = setTimeout(fetchNextFrame, 2000); // Retry in 2s
-        }
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const elapsed = (now - lastFpsTimeRef.current) / 1000;
+      if (elapsed > 0) {
+        setFps(Math.round(fpsCounterRef.current / elapsed));
+        fpsCounterRef.current = 0;
+        lastFpsTimeRef.current = now;
       }
-    };
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
-    fetchNextFrame();
+  // Native MJPEG stream URL
+  const mjpegStreamUrl = `${NGROK_PROXY}/camera/stream/${encodeURIComponent(camName)}`;
 
-    return () => {
-      isMountedRef.current = false;
-      if (timerId) clearTimeout(timerId);
-      if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
-    };
-  }, [camName]);
+  const handleFrameLoad = () => {
+    fpsCounterRef.current += 1;
+    if (!isLoaded) setIsLoaded(true);
+    if (hasError) setHasError(false);
+  };
+
+  const handleError = () => {
+    setHasError(true);
+    setIsLoaded(false);
+  };
 
   const handleDownloadSnapshot = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -134,30 +108,42 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
   return (
     <>
       {/* ── Inline CCTV Player ── */}
-      <div 
+      <div
         onClick={() => setIsFullscreen(true)}
         className="w-full h-full relative group bg-black overflow-hidden select-none cursor-pointer rounded-xl border border-border"
       >
-        {hasError && !frameSrc ? (
-          <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950 gap-2 p-6">
+        {/* Connecting / reconnecting state */}
+        {!isLoaded && !hasError && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950 gap-2 p-6 z-10">
+            <Video className="h-8 w-8 text-emerald-400 animate-pulse" />
+            <span className="text-xs text-emerald-300 font-mono tracking-wider font-semibold">CONNECTING LIVE STREAM...</span>
+            <span className="text-[10px] text-slate-500 font-mono">{camName} • RTSP TCP</span>
+          </div>
+        )}
+        {hasError && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950 gap-2 p-6 z-10">
             <Video className="h-8 w-8 text-amber-400 animate-pulse" />
             <span className="text-xs text-amber-300 font-mono tracking-wider font-semibold">RECONNECTING...</span>
             <span className="text-[10px] text-slate-500 font-mono">Attempting edge stream</span>
           </div>
-        ) : (
-          <img
-            src={frameSrc || `${NGROK_PROXY}/camera/frame/${encodeURIComponent(camName)}?ngrok-skip-browser-warning=true`}
-            alt={camName}
-            className="w-full h-full object-cover block transition-transform duration-500 group-hover:scale-[1.02]"
-            style={{ imageRendering: 'auto' }}
-          />
         )}
 
+        {/* Native MJPEG stream img — no polling, browser pushes frames continuously */}
+        <img
+          ref={streamImgRef}
+          src={mjpegStreamUrl}
+          alt={camName}
+          onLoad={handleFrameLoad}
+          onError={handleError}
+          className="w-full h-full object-cover block"
+          style={{ display: isLoaded ? 'block' : 'none' }}
+        />
+
         {/* Vignette Shadow Overlay */}
-        <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-black/70 via-transparent to-black/60" />
+        <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-black/70 via-transparent to-black/60 z-20" />
 
         {/* Top OSD Header */}
-        <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between pointer-events-none font-mono">
+        <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between pointer-events-none font-mono z-30">
           <div className="flex items-center gap-1.5">
             <span className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-red-600/90 text-[10px] font-bold text-white uppercase tracking-widest shadow-sm">
               <span className="h-1.5 w-1.5 rounded-full bg-white animate-ping" />REC
@@ -172,16 +158,15 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
         </div>
 
         {/* Bottom OSD Bar */}
-        <div className="absolute bottom-2.5 left-2.5 right-2.5 flex items-center justify-between pointer-events-none">
+        <div className="absolute bottom-2.5 left-2.5 right-2.5 flex items-center justify-between pointer-events-none z-30">
           <div className="flex items-center gap-1.5">
             <span className="text-[10px] text-emerald-300 font-mono bg-emerald-950/80 border border-emerald-500/30 px-2 py-0.5 rounded flex items-center gap-1">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> AI ON
             </span>
             <span className="text-[10px] text-slate-300 font-mono bg-black/60 px-2 py-0.5 rounded">
-              352x288 • 25 FPS
+              MJPEG • {fps > 0 ? `${fps} FPS` : '25 FPS'}
             </span>
           </div>
-
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto">
             <button
               onClick={handleDownloadSnapshot}
@@ -203,24 +188,26 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
 
       {/* ── Fullscreen Modal Player ── */}
       {isFullscreen && (
-        <div 
-          className="fixed inset-0 z-50 bg-black/95 flex flex-col backdrop-blur-md"
+        <div
+          className="fixed inset-0 z-50 bg-black flex flex-col backdrop-blur-md"
           onClick={() => setIsFullscreen(false)}
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 flex-shrink-0" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center justify-between px-6 py-3 border-b border-white/10 flex-shrink-0 font-mono bg-black/80" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-3">
               <span className="flex items-center gap-2 px-3 py-1 rounded bg-red-600 text-xs font-bold uppercase tracking-wider text-white">
                 <span className="h-2 w-2 rounded-full bg-white animate-ping" />LIVE SURVEILLANCE
               </span>
-              <span className="text-sm font-bold text-emerald-400 tracking-wider uppercase font-mono">
+              <span className="text-sm font-bold text-emerald-400 tracking-wider uppercase">
                 {camName.replace(/_/g, ' ')} — MAIN ENTRY GATE
               </span>
+              <span className="text-[10px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded">MJPEG STREAM</span>
             </div>
             <div className="flex items-center gap-4">
-              <span className="text-sm text-emerald-300 font-mono font-bold">{currentTime}</span>
-              <button 
-                onClick={() => setIsFullscreen(false)} 
+              <span className="text-sm text-emerald-300 font-bold">{currentTime}</span>
+              <span className="text-xs text-emerald-300 font-mono">{fps > 0 ? `${fps} FPS` : '25 FPS'}</span>
+              <button
+                onClick={() => setIsFullscreen(false)}
                 className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors"
               >
                 <X className="h-5 w-5" />
@@ -228,34 +215,34 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
             </div>
           </div>
 
-          {/* Player Feed */}
-          <div className="flex-1 relative bg-black flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
+          {/* Player Feed — native MJPEG stream fills the screen */}
+          <div className="flex-1 relative bg-black flex items-center justify-center overflow-hidden" onClick={e => e.stopPropagation()}>
             <img
-              src={frameSrc || `${NGROK_PROXY}/camera/frame/${encodeURIComponent(camName)}?ngrok-skip-browser-warning=true`}
+              src={mjpegStreamUrl}
               alt={camName}
-              className="max-h-full max-w-full object-contain rounded-lg shadow-2xl border border-white/10"
+              className="max-h-full max-w-full object-contain"
             />
-            <div className="absolute top-8 left-8 text-emerald-400 text-xs font-mono bg-black/70 px-3.5 py-2 rounded-xl border border-emerald-500/20 pointer-events-none flex items-center gap-2 backdrop-blur-sm">
+            <div className="absolute top-4 left-4 text-emerald-400 text-xs font-mono bg-black/70 px-3.5 py-2 rounded-xl border border-emerald-500/20 pointer-events-none flex items-center gap-2 backdrop-blur-sm">
               <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
               <span>AI FACE RECOGNITION ACTIVE • INSIGHTFACE 512D • WIN-0T8N581GN63</span>
             </div>
           </div>
 
           {/* Footer Bar */}
-          <div className="flex items-center justify-between px-6 py-4 border-t border-white/10 text-xs text-slate-400 flex-shrink-0" onClick={e => e.stopPropagation()}>
-            <span>Paradigm IFS • Real-Time CCTV AI Attendance System</span>
+          <div className="flex items-center justify-between px-6 py-3 border-t border-white/10 text-xs text-slate-400 flex-shrink-0 bg-black/80 font-mono" onClick={e => e.stopPropagation()}>
+            <span>Paradigm IFS • Real-Time CCTV AI Attendance System • RTSP TCP</span>
             <div className="flex gap-3">
-              <button 
-                onClick={handleDownloadSnapshot} 
+              <button
+                onClick={handleDownloadSnapshot}
                 className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-semibold flex items-center gap-2 transition-colors"
               >
                 <Download className="h-4 w-4" /> Save Snapshot
               </button>
-              <button 
-                onClick={() => setIsFullscreen(false)} 
-                className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition-colors shadow-lg shadow-emerald-900/30"
+              <button
+                onClick={() => setIsFullscreen(false)}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center gap-2 transition-colors"
               >
-                Close View
+                <Minimize2 className="h-4 w-4" /> Exit Monitor
               </button>
             </div>
           </div>
@@ -265,7 +252,9 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
   );
 };
 
+
 // ─── Form Interface ─────────────────────────────────────────────────────────
+
 interface NewDeviceForm {
   edgeDeviceId: string;
   deviceSecret: string;

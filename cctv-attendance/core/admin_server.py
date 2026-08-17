@@ -192,7 +192,7 @@ def create_admin_app(
                         )
                 except Exception:
                     pass
-                await asyncio.sleep(1 / 15)  # 15 FPS target
+                await asyncio.sleep(1 / 25)  # 25 FPS — matches Hikvision/CP Plus smooth playback
 
         return StreamingResponse(
             generate(),
