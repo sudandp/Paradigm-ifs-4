@@ -184,10 +184,12 @@ class AttendancePipeline:
                         await self.dispatcher.send_heartbeat(cams_meta)
                     last_queue_drain = time.time()
 
-                # 5. Periodically clean expired cooldowns
+                # 5. Periodically clean expired cooldowns & purge expired snapshots
                 if time.time() - last_cooldown_cleanup > self.config.cooldown_seconds:
                     self.db.clear_expired_cooldowns(self.config.cooldown_seconds)
+                    self._cleanup_old_snapshots()
                     last_cooldown_cleanup = time.time()
+
 
             except Exception as e:
                 logger.error(f"[Pipeline] Processing error: {e}")
@@ -532,7 +534,7 @@ class AttendancePipeline:
         user_id: str,
         captured: CapturedFrame,
     ) -> tuple[Optional[str], Optional[str]]:
-        """Save face crop to disk (if enabled) and encode as base64 data URL.
+        """Save face crop to disk (if enabled) and encode as high-resolution base64 data URL.
 
         Returns (snapshot_path, snapshot_data_url).
         """
@@ -547,17 +549,25 @@ class AttendancePipeline:
 
         try:
             crop_h, crop_w = face.face_crop.shape[:2]
-            if crop_w > 180 or crop_h > 180:
-                scale = 180 / max(crop_w, crop_h)
+            target_dim = 300
+            if max(crop_w, crop_h) > target_dim:
+                scale = target_dim / float(max(crop_w, crop_h))
                 resized = cv2.resize(
                     face.face_crop,
-                    (int(crop_w * scale), int(crop_h * scale)),
+                    (int(round(crop_w * scale)), int(round(crop_h * scale))),
                     interpolation=cv2.INTER_AREA,
+                )
+            elif max(crop_w, crop_h) < 220:
+                scale = 220 / float(max(crop_w, crop_h))
+                resized = cv2.resize(
+                    face.face_crop,
+                    (int(round(crop_w * scale)), int(round(crop_h * scale))),
+                    interpolation=cv2.INTER_LANCZOS4,
                 )
             else:
                 resized = face.face_crop
 
-            ret, buf = cv2.imencode('.jpg', resized, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            ret, buf = cv2.imencode('.jpg', resized, [cv2.IMWRITE_JPEG_QUALITY, 92, cv2.IMWRITE_JPEG_OPTIMIZE, 1])
             if ret:
                 snapshot_data_url = (
                     f"data:image/jpeg;base64,"
@@ -568,6 +578,25 @@ class AttendancePipeline:
 
         return snapshot_path, snapshot_data_url
 
+    def _cleanup_old_snapshots(self) -> None:
+        """Purge snapshot files older than snapshot_retention_days."""
+        try:
+            if not self.config.snapshot_dir.exists():
+                return
+            cutoff_ts = time.time() - (self.config.snapshot_retention_days * 86400)
+            deleted_count = 0
+            for p in self.config.snapshot_dir.rglob('*.jpg'):
+                if p.is_file() and p.stat().st_mtime < cutoff_ts:
+                    try:
+                        p.unlink()
+                        deleted_count += 1
+                    except Exception:
+                        pass
+            if deleted_count > 0:
+                logger.info(f"[Pipeline] Purged {deleted_count} expired snapshot files")
+        except Exception as e:
+            logger.warning(f"[Pipeline] Snapshot cleanup error: {e}")
+
     def _refresh_enrolled_cache(self) -> None:
         """Reload enrolled embeddings from local database into memory."""
         self._enrolled = self.db.get_all_embeddings()
@@ -575,14 +604,15 @@ class AttendancePipeline:
         logger.debug(f"[Pipeline] Refreshed enrolled cache: {len(self._enrolled)} faces")
 
     def _save_snapshot(self, face_crop: np.ndarray, user_id: str, camera_name: str) -> str:
-        """Save a face crop to disk. Returns the file path."""
+        """Save a high-resolution face crop to disk. Returns the file path."""
         timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
         filename = f"{user_id}_{camera_name}_{timestamp_str}.jpg"
         date_dir = self.config.snapshot_dir / datetime.now().strftime('%Y-%m-%d')
         date_dir.mkdir(parents=True, exist_ok=True)
         filepath = date_dir / filename
-        cv2.imwrite(str(filepath), face_crop, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        cv2.imwrite(str(filepath), face_crop, [cv2.IMWRITE_JPEG_QUALITY, 92])
         return str(filepath)
+
 
     def get_stats(self) -> dict:
         """Get current pipeline statistics."""

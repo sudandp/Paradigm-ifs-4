@@ -37,6 +37,8 @@ class DetectedFace:
     detection_score: float      # Face detection confidence (0.0 - 1.0)
     landmarks: Optional[np.ndarray] = None  # 5-point facial landmarks
     face_crop: Optional[np.ndarray] = None  # Cropped face image (for snapshots)
+    sharpness_score: float = 0.0            # Laplacian variance sharpness score
+
 
 
 @dataclass
@@ -149,23 +151,8 @@ class FaceEngine:
                 if det_score < self.detection_threshold:
                     continue
 
-                # Extract face crop for snapshots
                 bbox = face.bbox.astype(int)
-                x1, y1, x2, y2 = bbox
-                # Clamp to frame boundaries
-                h, w = frame.shape[:2]
-                x1, y1 = max(0, x1), max(0, y1)
-                x2, y2 = min(w, x2), min(h, y2)
-                
-                face_crop = None
-                if x2 > x1 and y2 > y1:
-                    # Add some padding around the face
-                    pad = int(max(x2 - x1, y2 - y1) * 0.2)
-                    cx1 = max(0, x1 - pad)
-                    cy1 = max(0, y1 - pad)
-                    cx2 = min(w, x2 + pad)
-                    cy2 = min(h, y2 + pad)
-                    face_crop = frame[cy1:cy2, cx1:cx2].copy()
+                face_crop, sharpness = self.extract_high_res_portrait(frame, bbox)
 
                 results.append(DetectedFace(
                     bbox=face.bbox,
@@ -173,9 +160,11 @@ class FaceEngine:
                     detection_score=det_score,
                     landmarks=getattr(face, 'landmark_2d_106', None),
                     face_crop=face_crop,
+                    sharpness_score=sharpness,
                 ))
 
             return results
+
 
         except Exception as e:
             logger.error(f"[FaceEngine] Detection error: {e}")
@@ -244,6 +233,64 @@ class FaceEngine:
         best_face = max(faces, key=lambda f: f.detection_score)
         return best_face.embedding
 
+    def extract_high_res_portrait(
+        self,
+        full_frame: np.ndarray,
+        bbox: np.ndarray | list[int],
+        min_dim: int = 256,
+    ) -> tuple[Optional[np.ndarray], float]:
+        """Extract a high-resolution portrait with upper-torso/head context,
+        measure sharpness, and enhance image clarity.
+        
+        Returns:
+            (sharpened_portrait_bgr, laplacian_sharpness_score)
+        """
+        if full_frame is None or full_frame.size == 0:
+            return None, 0.0
+
+        h, w = full_frame.shape[:2]
+        x1, y1, x2, y2 = (int(v) for v in bbox)
+        fw, fh = max(1, x2 - x1), max(1, y2 - y1)
+
+        # Generous portrait padding: 45% horizontal, 55% top (hair), 45% bottom (shoulders/collar)
+        pad_x = int(fw * 0.45)
+        pad_top = int(fh * 0.55)
+        pad_bot = int(fh * 0.45)
+
+        cx1 = max(0, x1 - pad_x)
+        cy1 = max(0, y1 - pad_top)
+        cx2 = min(w, x2 + pad_x)
+        cy2 = min(h, y2 + pad_bot)
+
+        if cx2 <= cx1 or cy2 <= cy1:
+            return None, 0.0
+
+        crop = full_frame[cy1:cy2, cx1:cx2].copy()
+        if crop.size == 0:
+            return None, 0.0
+
+        # Measure motion blur / sharpness (Laplacian variance)
+        try:
+            gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+            sharpness = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+        except Exception:
+            sharpness = 50.0
+
+        # Upscale with INTER_LANCZOS4 if smaller than min_dim (prevents pixelated stretching in UI)
+        ch, cw = crop.shape[:2]
+        if max(ch, cw) < min_dim:
+            scale = min_dim / float(max(ch, cw))
+            nw, nh = int(round(cw * scale)), int(round(ch * scale))
+            crop = cv2.resize(crop, (nw, nh), interpolation=cv2.INTER_LANCZOS4)
+
+        # Edge-preserving unsharp mask enhancement
+        try:
+            blurred = cv2.GaussianBlur(crop, (0, 0), 1.8)
+            sharpened = cv2.addWeighted(crop, 1.22, blurred, -0.22, 0)
+            return sharpened, sharpness
+        except Exception:
+            return crop, sharpness
+
     def detect_faces_in_crop(
         self,
         full_frame: np.ndarray,
@@ -256,15 +303,7 @@ class FaceEngine:
 
         Runs face detection on the cropped region and translates all
         bounding boxes / landmarks back to full-frame coordinates.
-
-        Args:
-            full_frame: The full BGR camera frame
-            crop_x1, crop_y1, crop_x2, crop_y2: Person bounding box in full-frame pixels
-
-        Returns:
-            List of DetectedFace with bbox in full-frame coordinates.
         """
-        # Extract the person crop from the full frame
         h, w = full_frame.shape[:2]
         cx1 = max(0, crop_x1)
         cy1 = max(0, crop_y1)
@@ -281,28 +320,22 @@ class FaceEngine:
         # Detect faces in the crop
         faces = self.detect_faces(person_crop)
 
-        # Translate coordinates back to full-frame space
+        # Translate coordinates back to full-frame space and re-extract full-frame portrait
         for face in faces:
             fx1, fy1, fx2, fy2 = (int(v) for v in face.bbox)
-            face.bbox = np.array([
+            full_bbox = np.array([
                 cx1 + fx1, cy1 + fy1,
                 cx1 + fx2, cy1 + fy2,
             ], dtype=np.float32)
+            face.bbox = full_bbox
 
-            # Re-crop face in full frame (so snapshot is correct)
-            fbx1 = max(0, cx1 + fx1)
-            fby1 = max(0, cy1 + fy1)
-            fbx2 = min(w, cx1 + fx2)
-            fby2 = min(h, cy1 + fy2)
-            if fbx2 > fbx1 and fby2 > fby1:
-                pad = int(max(fbx2 - fbx1, fby2 - fby1) * 0.2)
-                pfx1 = max(0, fbx1 - pad)
-                pfy1 = max(0, fby1 - pad)
-                pfx2 = min(w, fbx2 + pad)
-                pfy2 = min(h, fby2 + pad)
-                face.face_crop = full_frame[pfy1:pfy2, pfx1:pfx2].copy()
+            # Extract crisp high-resolution portrait from full frame
+            portrait, sharpness = self.extract_high_res_portrait(full_frame, full_bbox)
+            face.face_crop = portrait
+            face.sharpness_score = sharpness
 
         return faces
+
 
     def batch_generate_embeddings(
         self, images: list[np.ndarray]
