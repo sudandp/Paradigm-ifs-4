@@ -1251,7 +1251,6 @@ const App: React.FC = () => {
       appStateListenerPromise.then(l => l.remove());
     };
   }, [user]);
-
   // Android Native Badge Sync (Capacitor)
   // We sync the total count (Notifications + Approvals) to the app icon badge.
   const totalUnreadCount = useNotificationStore(state => state.totalUnreadCount);
@@ -1280,36 +1279,27 @@ const App: React.FC = () => {
     const initializeApp = async () => {
       setLoading(true);
 
-      // Helper: restore user session from offline cache (14-day window).
-      // User profile is cached to localStorage on every successful login/profile fetch.
-      // This allows the app to stay authenticated during transient network outages.
+      // Helper: restore user session from offline cache / persisted auth store.
+      // On mobile (Android/iOS), user sessions must remain active until explicit logout.
       const restoreFromOfflineCache = async () => {
         try {
           const OFFLINE_USER_KEY = 'paradigm:cachedUser';
           const OFFLINE_TS_KEY = 'paradigm:lastOnlineTimestamp';
-          const MAX_OFFLINE_DAYS = 14;
+
+          // 1. Check if Zustand already restored the user from CapacitorStorage/Preferences
+          const existingZustandUser = useAuthStore.getState().user;
+          if (existingZustandUser && existingZustandUser.id) {
+            console.log('[App] ✅ User session retained from persisted auth store:', existingZustandUser.name);
+            setUser(existingZustandUser);
+            return;
+          }
 
           const raw = localStorage.getItem(OFFLINE_USER_KEY);
-          const lastOnlineStr = localStorage.getItem(OFFLINE_TS_KEY);
-
           if (!raw) {
             console.log('[App] No offline user cache found. Requiring login.');
             setUser(null);
             resetAttendance();
             return;
-          }
-
-          // Enforce a 14-day offline window for security
-          if (lastOnlineStr) {
-            const lastOnline = parseInt(lastOnlineStr, 10);
-            const daysSinceOnline = (Date.now() - lastOnline) / (1000 * 60 * 60 * 24);
-            if (daysSinceOnline > MAX_OFFLINE_DAYS) {
-              console.log(`[App] Offline session expired (${daysSinceOnline.toFixed(1)} days). Requiring re-login.`);
-              localStorage.removeItem(OFFLINE_USER_KEY);
-              setUser(null);
-              resetAttendance();
-              return;
-            }
           }
 
           const cachedUser = JSON.parse(raw);
@@ -1323,17 +1313,18 @@ const App: React.FC = () => {
           }
         } catch (offlineErr) {
           console.error('[App] Failed to restore from offline cache:', offlineErr);
-          setUser(null);
-          resetAttendance();
+          const existingZustandUser = useAuthStore.getState().user;
+          if (existingZustandUser && existingZustandUser.id) {
+            setUser(existingZustandUser);
+          } else {
+            setUser(null);
+            resetAttendance();
+          }
         }
       };
 
       try {
         console.log('[Auth Debug] initializeApp starting...');
-        console.log('[Auth Debug] URL href:', window.location.href);
-        console.log('[Auth Debug] URL search (query params):', window.location.search);
-        console.log('[Auth Debug] URL hash:', window.location.hash);
-
         let sessionFromOAuth: Session | null = null;
         const fullHash = window.location.hash || '';
         const fullSearch = window.location.search || '';
@@ -1398,38 +1389,31 @@ const App: React.FC = () => {
           session = sessionFromOAuth;
         }
         console.log('[Auth Debug] Initial session check complete. Active user:', session?.user?.email || 'None');
-        // If getSession returned an error, log it but continue.
         if (error) {
           console.error('Error fetching initial session:', error.message);
         }
 
         // 1. Check for long-term "Remember Me" token if no session is found
-        // NOTE: We only do this if Supabase didn't already found a session in CapacitorStorage.
         if (!session) {
-          // [SECURITY] Read encrypted token, fall back to legacy plaintext key for backward compatibility.
           const refreshToken = (await secureGet('supabase.auth.rememberMe'))
             ?? (await Preferences.get({ key: 'supabase.auth.rememberMe' })).value;
           if (refreshToken) {
             console.log('Attempting to restore session from long-term token...');
             try {
-              // We use withTimeout to prevent hanging on poor mobile networks
               const { data: refreshData, error: refreshError } = await withTimeout(
                 supabase.auth.refreshSession({ refresh_token: refreshToken }),
-                20000, // 20s for session restoration
+                20000,
                 'Session restoration timed out'
               ).catch(e => ({ data: { session: null }, error: { message: e.message } }));
 
               if (refreshError) {
                 console.error('Failed to restore session from long-term token:', refreshError.message);
-                // ONLY clear the token if it's a definitive invalidation (400)
-                // If it's a network error (failed to fetch) or timeout, we DO NOT clear it.
-                // This ensures "auto renew until manual logout" even if they open the app while offline.
                 const isDefinitiveFailure = refreshError.message?.includes('400') || 
                                            refreshError.message?.includes('invalid refresh token') ||
                                            refreshError.message?.includes('not found');
                 
-                if (isDefinitiveFailure) {
-                  console.warn('Invalid refresh token detected. Clearing persistent storage.');
+                if (isDefinitiveFailure && !Capacitor.isNativePlatform()) {
+                  console.warn('Invalid refresh token detected on web. Clearing persistent storage.');
                   await Preferences.remove({ key: 'supabase.auth.rememberMe' });
                 }
               } else {
@@ -1447,24 +1431,25 @@ const App: React.FC = () => {
             const appUser = await authService.getAppUserProfile(session.user);
             if (isMounted && appUser) {
               setUser(appUser);
-              // Cache user profile for offline use
-
+              // Cache user profile for offline session persistence
+              try {
+                localStorage.setItem('paradigm:cachedUser', JSON.stringify(appUser));
+                localStorage.setItem('paradigm:lastOnlineTimestamp', String(Date.now()));
+              } catch {}
 
               // Initialize push notifications on initial session load
               pushNotificationService.init();
             } else if (isMounted) {
-              // Profile fetch returned null — try offline fallback
               await restoreFromOfflineCache();
             }
           } catch (e) {
             console.error('Failed to fetch user profile during initialization:', e);
             if (isMounted) {
-              // Network might be down — try offline cache
               await restoreFromOfflineCache();
             }
           }
         } else {
-          // No session from Supabase — try offline cache as last resort
+          // No active Supabase session — restore cached user
           if (isMounted) {
             await restoreFromOfflineCache();
           }
@@ -1472,11 +1457,9 @@ const App: React.FC = () => {
       } catch (error) {
         console.error('Error during app initialization:', error);
         if (isMounted) {
-          // Entire initialization failed (likely network) — try offline cache
           await restoreFromOfflineCache();
         }
       } finally {
-        // Only clear the fallback timeout if initialization finishes before the fallback time
         clearTimeout(fallbackTimeout);
         if (isMounted) {
           setLoading(false);
@@ -1488,15 +1471,6 @@ const App: React.FC = () => {
     initializeApp();
 
     // Listen for subsequent auth changes (e.g., login, logout)
-    //
-    // NOTE: The Supabase client can hang indefinitely if asynchronous
-    // operations are performed directly inside the onAuthStateChange
-    // callback.  See: https://github.com/orgs/supabase/discussions/37755
-    // To avoid this, do not await other Supabase calls in the callback
-    // itself.  Instead, schedule any async work on the next event loop
-    // tick via setTimeout().  This ensures the callback returns
-    // immediately and prevents the client from locking up when tabs are
-    // switched or refreshed.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       console.log(`[AuthEvent] ${event}`);
       
@@ -1505,9 +1479,6 @@ const App: React.FC = () => {
         return;
       }
 
-      // Always persist the latest refresh token so it survives app restarts.
-      // TOKEN_REFRESHED fires automatically when Supabase silently renews the access token.
-      // [SECURITY] Tokens and emails are AES-256 encrypted via secureStorage before persisting.
       if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') && session) {
         secureSet('supabase.auth.rememberMe', session.refresh_token).catch(err => console.error('Error synchronizing auth token:', err));
           
@@ -1515,103 +1486,43 @@ const App: React.FC = () => {
           secureSet('rememberedEmail', session.user.email).catch(e => console.warn('[App] Prefs auth save failed:', e));
         }
 
-        // Push fresh JWT access & refresh tokens to native Android background tracking service
-        routeTrackingService.updateTokens(session.access_token, session.refresh_token);
-      }
-
-      // Update global user state based on the session
-      if (session?.user) {
-        const currentUser = useAuthStore.getState().user;
-        let isImpersonating = useImpersonationStore.getState().isImpersonating;
-        if (!isImpersonating) {
-          try {
-            const rawSession = localStorage.getItem('paradigm_impersonation_session');
-            if (rawSession) {
-              const parsed = JSON.parse(rawSession);
-              if (parsed?.isImpersonating && parsed?.targetUser) {
-                isImpersonating = true;
-              }
-            }
-          } catch (e) {}
-        }
-
-        // Only re-fetch the profile when:
-        // - No user is in memory (first login), OR
-        // - The session user ID differs from the current in-memory user (account switch) AND not impersonating.
-        // During impersonation, NEVER overwrite the target user with the session user (Admin profile).
-        const sessionUserId = session.user.id;
-        if (!isImpersonating && (!currentUser || currentUser.id !== sessionUserId)) {
+        if (event === 'SIGNED_IN') {
           setTimeout(async () => {
             try {
-              const appUser = await withTimeout(
-                authService.getAppUserProfile(session.user),
-                15000,
-                'Profile fetch timed out'
-              ).catch(err => {
-                console.warn('Transient error fetching profile:', err.message);
-                return currentUser; 
-              });
-
+              const appUser = await authService.getAppUserProfile(session.user);
               if (isMounted && appUser) {
                 setUser(appUser);
-
-                // Persist profile to localStorage for offline restoration.
-                // This cache is read by restoreFromOfflineCache() when the device is offline.
                 try {
                   localStorage.setItem('paradigm:cachedUser', JSON.stringify(appUser));
                   localStorage.setItem('paradigm:lastOnlineTimestamp', String(Date.now()));
-                } catch (e) {
-                  console.warn('[App] Failed to cache user profile for offline use:', e);
-                }
-
-                // Greeting logic — only once per session
-                const greetKey = `greeting_${new Date().toDateString()}_${appUser.id}`;
-                if (!localStorage.getItem(greetKey)) {
-                  const hour = new Date().getHours();
-                  let greetingText = 'Good evening';
-                  if (hour < 12) greetingText = 'Good morning';
-                  else if (hour < 17) greetingText = 'Good afternoon';
-
-                  apiService.createNotification({
-                    userId: appUser.id,
-                    message: `${greetingText}, ${appUser.name || 'there'}! Welcome to Paradigm Services.`,
-                    type: 'greeting',
-                  }).catch(e => console.warn('[App] Push notification init failed:', e));
-                  localStorage.setItem(greetKey, '1');
-                }
-
-                pushNotificationService.init();
+                } catch {}
               }
             } catch (err) {
-              console.error('Failed to fetch user profile after auth change:', err);
+              console.error('Failed to fetch profile on SIGNED_IN:', err);
             }
           }, 0);
         }
       } else if (event === 'SIGNED_OUT') {
-        // The user explicitly signed out of THIS app (scope:'local').
-        // Clear local state but do NOT attempt session restore — the user chose to leave.
         if (isMounted) {
           setUser(null);
           resetAttendance();
           useOnboardingStore.getState().reset();
           secureRemove('supabase.auth.rememberMe').catch(e => console.warn('[App] secureRemove failed:', e));
           secureRemove('rememberedEmail').catch(() => {});
-          Preferences.remove({ key: 'supabase.auth.rememberMe' }).catch(() => {}); // legacy cleanup
-          Preferences.remove({ key: 'rememberedEmail' }).catch(() => {}); // legacy cleanup
-          // Clear the offline user profile cache so a new user logging in starts fresh
+          Preferences.remove({ key: 'supabase.auth.rememberMe' }).catch(() => {});
+          Preferences.remove({ key: 'rememberedEmail' }).catch(() => {});
           localStorage.removeItem('paradigm:cachedUser');
           localStorage.removeItem('paradigm:lastOnlineTimestamp');
         }
       }
     });
 
-
     // Check session when app returns to foreground
     const appStateSubscription = CapacitorApp.addListener('appStateChange', async ({ isActive }) => {
       if (isActive) {
         console.log('[AppState] App returned to foreground. Verifying session...');
 
-        // Refresh notifications and badge count when app returns to foreground
+        // Refresh notifications when app returns to foreground
         const currentUser = useAuthStore.getState().user;
         if (currentUser) {
           console.log('[AppState] Refreshing notifications on resume...');
@@ -1620,64 +1531,19 @@ const App: React.FC = () => {
           });
         }
 
-        // Silently verify and restore the session WITHOUT forcing the user back to login.
-        // supabase.auth.getSession() returns the in-memory session; if the access token
-        // has expired, Supabase will automatically try to refresh it via autoRefreshToken.
-        // If it cannot (e.g. no network), we fall back to our persisted refreshToken.
-        // IMPORTANT: Network errors during refresh must NEVER force a logout — the user
-        // may simply be in a tunnel/area with no connectivity. Only a definitively invalid
-        // or revoked token (HTTP 400 / "invalid refresh token") warrants a forced logout.
+        // On mobile (Android/iOS), NEVER force logout on resume — the user stays logged in until manual logout.
+        // We only attempt a silent background session refresh for active API communication.
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
-          // [SECURITY] Read encrypted token, fall back to legacy plaintext key for backward compatibility.
           const refreshToken = (await secureGet('supabase.auth.rememberMe'))
             ?? (await Preferences.get({ key: 'supabase.auth.rememberMe' })).value;
           if (refreshToken) {
-            console.log('[AppState] Silently restoring session from saved token...');
-            const { data: refreshData, error: refreshErr } = await supabase.auth
+            console.log('[AppState] Silently refreshing session in background from saved token...');
+            await supabase.auth
               .refreshSession({ refresh_token: refreshToken })
-              .catch(e => ({ data: { session: null }, error: e }));
-            
-            if (refreshErr) {
-              // Distinguish network errors from genuine token invalidation.
-              // Network errors: TypeError (fetch failed), timeout, net::ERR_* — keep user in app.
-              // Token errors: 400 / "invalid refresh token" / "not found" — force logout.
-              const isNetworkFailure =
-                refreshErr instanceof TypeError ||
-                (typeof refreshErr.message === 'string' && (
-                  refreshErr.message.toLowerCase().includes('failed to fetch') ||
-                  refreshErr.message.toLowerCase().includes('network') ||
-                  refreshErr.message.toLowerCase().includes('timed out') ||
-                  refreshErr.message.toLowerCase().includes('timeout')
-                ));
-              const isDefinitiveFailure =
-                !isNetworkFailure && (
-                  refreshErr.message?.includes('invalid') ||
-                  refreshErr.message?.includes('not found') ||
-                  (refreshErr as any).status === 400
-                );
-
-              if (isDefinitiveFailure) {
-                console.warn('[AppState] Saved token is definitively invalid. Forcing logout.');
-                useAuthStore.getState().forceLogout('Your session has expired. Please log in again.');
-              } else {
-                // Network/transient error — silently retain existing user state.
-                console.warn('[AppState] Session refresh failed due to network issue. Keeping user logged in:', refreshErr.message);
-              }
-            } else if (refreshData.session) {
-              console.log('[AppState] Session silently restored.');
-            }
-          } else if (currentUser) {
-            // No refresh token stored. This can happen if the user deliberately cleared
-            // storage or if the device OS wiped the secure storage. Only log out if we are
-            // online — offline with no token could just mean the secure storage wasn't
-            // accessible on this resume cycle.
-            if (navigator.onLine) {
-              console.warn('[AppState] No session or refresh token found (online). Clearing stale user state.');
-              useAuthStore.getState().forceLogout('Your session has expired. Please log in again.');
-            } else {
-              console.log('[AppState] No refresh token, but device is offline. Keeping current user state.');
-            }
+              .catch(e => {
+                console.warn('[AppState] Background session refresh notice:', e?.message || e);
+              });
           }
         }
       }
