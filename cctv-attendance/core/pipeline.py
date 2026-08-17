@@ -305,9 +305,9 @@ class AttendancePipeline:
             )
 
             is_match = bool(match and match.is_match)
-            user_name = match.user_name if is_match else "UNKNOWN PERSON"
-            user_id = match.user_id if is_match else None
-            conf = match.similarity if is_match else best_face.detection_score
+            user_name = match.user_name if (is_match and match) else "UNKNOWN PERSON"
+            user_id = match.user_id if (is_match and match) else None
+            conf = match.similarity if (is_match and match) else best_face.detection_score
 
             # Use face bbox for the overlay box (more precise than person bbox)
             track_bbox = [int(v) for v in best_face.bbox]
@@ -376,9 +376,9 @@ class AttendancePipeline:
             )
 
             is_match = bool(match and match.is_match)
-            user_name = match.user_name if is_match else "UNKNOWN PERSON"
-            user_id = match.user_id if is_match else None
-            conf = match.similarity if is_match else face.detection_score
+            user_name = match.user_name if (is_match and match) else "UNKNOWN PERSON"
+            user_id = match.user_id if (is_match and match) else None
+            conf = match.similarity if (is_match and match) else face.detection_score
 
             current_tracks.append({
                 'bbox':        [int(v) for v in face.bbox],

@@ -540,7 +540,7 @@ const CctvDashboard: React.FC = () => {
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'cctv_enrollment_queue' }, payload => {
         const u = payload.new as any;
-        setUnknownQueue(prev => [{
+        const newItem: EnrollmentItem = {
           id: u.id,
           cameraName: u.camera_name,
           detectedAt: u.detected_at,
@@ -549,7 +549,6 @@ const CctvDashboard: React.FC = () => {
           edgeDeviceId: u.edge_device_id,
         };
         setUnknownQueue(prev => {
-          // Don't add if we already have a pending item from the same camera within 90 seconds
           const newTs = new Date(newItem.detectedAt).getTime();
           const isTooClose = prev.some(
             x => x.cameraName === newItem.cameraName &&
