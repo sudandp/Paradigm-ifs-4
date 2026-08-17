@@ -31,6 +31,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           'x-api-secret': apiSecret,
           'x-api-key': apiSecret,
           'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': '1',
         },
       });
 
