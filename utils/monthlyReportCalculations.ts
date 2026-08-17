@@ -424,17 +424,23 @@ export function processEmployeeMonth(
       return dateStr >= startDateStr && dateStr <= endDateStr && (lType.includes('permission') || lType === 'rp' || lType.includes('rp'));
     });
 
+    const getPermMinutesFromReq = (req: any): number => {
+      if (!req) return 0;
+      let pm = parsePermissionDurationFromReason(req.reason || '');
+      if (!pm && req.permission_duration) pm = parsePermissionDurationFromReason(String(req.permission_duration));
+      if (!pm && typeof req.duration === 'number') pm = Math.round(req.duration * 60);
+      if (!pm && req.correctionDetails?.permissionMinutes) pm = Number(req.correctionDetails.permissionMinutes);
+      if (!pm && req.correctionDetails?.punchIn && req.correctionDetails?.punchOut) {
+        const toMins = (t: string) => { if (!t) return 0; const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+        let diff = toMins(req.correctionDetails.punchOut) - toMins(req.correctionDetails.punchIn);
+        if (diff < 0) diff += 24 * 60;
+        pm = diff;
+      }
+      return pm || 120;
+    };
+
     if (approvedPermissionOnDay) {
-      let permMinutes = parsePermissionDurationFromReason(approvedPermissionOnDay.reason || '');
-      if (!permMinutes && (approvedPermissionOnDay as any).permission_duration) {
-        permMinutes = parsePermissionDurationFromReason(String((approvedPermissionOnDay as any).permission_duration));
-      }
-      if (!permMinutes && typeof (approvedPermissionOnDay as any).duration === 'number') {
-        permMinutes = Math.round((approvedPermissionOnDay as any).duration * 60);
-      }
-      if (!permMinutes) {
-        permMinutes = 120; // Default fallback to 2 hours if no specific duration parsed
-      }
+      const permMinutes = getPermMinutesFromReq(approvedPermissionOnDay);
       currentDayPermDuration = formatTime(permMinutes / 60);
     }
 
@@ -454,7 +460,7 @@ export function processEmployeeMonth(
       let baseGrossHours = totalHours;
       
       if (approvedPermissionOnDay) {
-        const permMinutes = parsePermissionDurationFromReason(approvedPermissionOnDay.reason);
+        const permMinutes = getPermMinutesFromReq(approvedPermissionOnDay);
         baseNetHours += (permMinutes / 60);
         baseGrossHours += (permMinutes / 60);
       }

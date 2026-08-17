@@ -13,7 +13,8 @@ import { useForm, Controller, SubmitHandler, Resolver } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import { format, differenceInCalendarDays, isSameDay, startOfMonth, endOfMonth, differenceInMinutes, getDay, startOfYear, endOfYear, startOfWeek, subDays, eachDayOfInterval, startOfDay } from 'date-fns';
-import { calculateWorkingHours, getStaffCategory, isTechnicalRole, calculateDailyTravelKm, calculateDailyPathTravelKm } from '../../utils/attendanceCalculations';
+import { calculateWorkingHours, getStaffCategory, isTechnicalRole, calculateDailyTravelKm, calculateDailyPathTravelKm, getEarlyDepartureDeductions } from '../../utils/attendanceCalculations';
+import { parsePermissionDurationFromReason } from '../../utils/monthlyReportCalculations';
 
 const formatDuration = (mins: number): string => {
   if (!mins || mins <= 0) return '';
@@ -682,6 +683,87 @@ const LeaveDashboard: React.FC = () => {
         }
     };
 
+    // Early departure permission deductions calculation for viewing month (MUST BE BEFORE EARLY RETURN FOR REACT HOOK RULES)
+    const staffCategoryForEarlyDep = user ? getStaffCategory(user.roleId || user.role || '', user.societyId || user.organizationId, attendanceSettings) : 'office';
+    const userRulesForEarlyDep = attendanceSettings ? attendanceSettings[staffCategoryForEarlyDep] : null;
+
+    const earlyDepartureDeductionsList = useMemo(() => {
+        if (!events || events.length === 0) return [];
+        const targetShiftMins = (userRulesForEarlyDep?.minimumHoursFullDay || 8) * 60;
+        const monthStartStr = format(startOfMonth(viewingDate), 'yyyy-MM');
+        return getEarlyDepartureDeductions(events, targetShiftMins, requests, yearlyData?.leaves || [], monthStartStr);
+    }, [events, userRulesForEarlyDep, requests, yearlyData, viewingDate]);
+
+    const totalEarlyDepartureMins = useMemo(() => {
+        return earlyDepartureDeductionsList.reduce((sum, ed) => sum + ed.earlyMins, 0);
+    }, [earlyDepartureDeductionsList]);
+
+    const totalPermissionMinsUsed = useMemo(() => {
+        let explicitMins = 0;
+        const monthStartStr = format(startOfMonth(viewingDate), 'yyyy-MM');
+        requests.forEach(r => {
+            if (r.leaveType === 'Permission' && (r.status === 'approved' || r.status === 'correction_made') && r.startDate.startsWith(monthStartStr)) {
+                const toMins = (t: string) => { if (!t) return 0; const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+                if (r.correctionDetails?.punchIn && r.correctionDetails?.punchOut) {
+                    let p1 = toMins(r.correctionDetails.punchOut) - toMins(r.correctionDetails.punchIn);
+                    if (p1 < 0) p1 += 24 * 60;
+                    explicitMins += Math.max(0, p1);
+                } else if (r.correctionDetails?.permissionMinutes) {
+                    explicitMins += Number(r.correctionDetails.permissionMinutes);
+                }
+            }
+        });
+        return explicitMins + totalEarlyDepartureMins;
+    }, [requests, viewingDate, totalEarlyDepartureMins]);
+
+    const getMonthlyPermissionSummary = useCallback((reqDateStr: string) => {
+        if (!reqDateStr) return { usedMins: 0, remainingMins: 180, formattedRemaining: '3h 00m', formattedUsed: '0h 00m' };
+        
+        const monthKey = reqDateStr.substring(0, 7);
+        
+        let explicitMins = 0;
+        requests.forEach(r => {
+            const rMonthKey = r.startDate ? r.startDate.substring(0, 7) : '';
+            const rType = String(r.leaveType || (r as any).leave_type || '').toLowerCase();
+            if (rMonthKey === monthKey && rType.includes('permission') && ['approved', 'approved_by_reporting', 'approved_by_admin', 'correction_made'].includes(String(r.status || '').toLowerCase())) {
+                const toMins = (t: string) => { if (!t) return 0; const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+                if (r.correctionDetails?.punchIn && r.correctionDetails?.punchOut) {
+                    let p1 = toMins(r.correctionDetails.punchOut) - toMins(r.correctionDetails.punchIn);
+                    if (p1 < 0) p1 += 24 * 60;
+                    explicitMins += Math.max(0, p1);
+                } else if (r.correctionDetails?.permissionMinutes) {
+                    explicitMins += Number(r.correctionDetails.permissionMinutes);
+                } else if (r.reason) {
+                    explicitMins += parsePermissionDurationFromReason(r.reason);
+                }
+            }
+        });
+
+        const staffCat = user ? getStaffCategory(user.roleId || user.role || '', user.societyId || user.organizationId, attendanceSettings) : 'office';
+        const uRules = attendanceSettings ? attendanceSettings[staffCat] : null;
+        const targetShiftMins = (uRules?.minimumHoursFullDay || 8) * 60;
+        const earlyDeps = getEarlyDepartureDeductions(events || [], targetShiftMins, requests, yearlyData?.leaves || [], monthKey);
+        const edMins = earlyDeps.reduce((sum, ed) => sum + ed.earlyMins, 0);
+
+        const totalUsedMins = explicitMins + edMins;
+        const monthlyLimitMins = 180;
+        const remainingMins = Math.max(0, monthlyLimitMins - totalUsedMins);
+
+        const formatMins = (m: number) => {
+            const hrs = Math.floor(m / 60);
+            const mins = m % 60;
+            return `${hrs}h ${String(mins).padStart(2, '0')}m`;
+        };
+
+        return {
+            usedMins: totalUsedMins,
+            remainingMins,
+            formattedRemaining: formatMins(remainingMins),
+            formattedUsed: formatMins(totalUsedMins),
+            limitFormatted: '3h 00m'
+        };
+    }, [requests, user, attendanceSettings, events, yearlyData]);
+
     // ── Smooth fade-in: double-rAF guarantees the opacity:0 frame is painted
     // before we flip to opacity:1, so CSS transition always fires cleanly.
     useEffect(() => {
@@ -867,6 +949,14 @@ const LeaveDashboard: React.FC = () => {
             infoMessage: "As per policy, it's restricted for only 4 max limit, even if you have earned more."
         },
         {
+            title: 'Permission Pool',
+            value: `${Math.floor(totalPermissionMinsUsed / 60)}h ${totalPermissionMinsUsed % 60}m / 3h`,
+            description: `Used: ${Math.floor(totalPermissionMinsUsed / 60)}h ${totalPermissionMinsUsed % 60}m. Remaining: ${Math.max(0, Math.floor((180 - totalPermissionMinsUsed) / 60))}h ${Math.max(0, (180 - totalPermissionMinsUsed) % 60)}m.${totalEarlyDepartureMins > 0 ? ` (Includes ${totalEarlyDepartureMins}m early departure auto-deductions)` : ''}`,
+            icon: Clock,
+            isExpired: false,
+            infoMessage: "Monthly 3-hour permission pool. Early departures (punching out before shift completion) are automatically deducted from this pool."
+        },
+        {
             title: 'Monthly Pay Days',
             value: monthlyPaydays !== null
                 ? `${monthlyPaydays}`
@@ -940,6 +1030,34 @@ const LeaveDashboard: React.FC = () => {
             }}
         >
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
+
+            {/* Early Departure Notification Banner */}
+            {earlyDepartureDeductionsList.length > 0 && (
+                <div className="bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 p-4 rounded-xl flex items-start gap-3 shadow-sm">
+                    <Clock className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                    <div className="text-xs">
+                        <h4 className="font-bold text-sm text-amber-800 dark:text-amber-200 mb-1 flex items-center gap-2">
+                            Early Departure Permission Auto-Deductions Active
+                        </h4>
+                        <p className="opacity-90 mb-1.5">
+                            Leaving work before completing your full required daily shift automatically deducts time from your 3-hour monthly permission pool:
+                        </p>
+                        <div className="flex flex-wrap gap-2 mt-1">
+                            {earlyDepartureDeductionsList.map(ed => (
+                                <span key={ed.dateStr} className="inline-flex items-center gap-1.5 bg-amber-100 dark:bg-amber-900/50 border border-amber-300 dark:border-amber-700/50 px-2.5 py-1 rounded-lg text-amber-900 dark:text-amber-200 font-semibold">
+                                    <span>{format(new Date(ed.dateStr.replace(/-/g, '/')), 'dd MMM yyyy')}</span>
+                                    <span className="opacity-60">•</span>
+                                    <span>{ed.permissionTimeRange}</span>
+                                    <span className="opacity-60">•</span>
+                                    <span>Worked {ed.formattedWorked} → <strong className="text-emerald-700 dark:text-emerald-300">Corrected: {ed.formattedCorrectedWorked}</strong></span>
+                                    <span className="opacity-60">•</span>
+                                    <span className="font-black text-amber-700 dark:text-amber-300">-{ed.earlyMins}m permission deducted</span>
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div className="flex justify-between items-center">
                 <h2 className="text-xl md:text-2xl font-bold text-primary-text leading-none">
@@ -1150,6 +1268,15 @@ const LeaveDashboard: React.FC = () => {
                                                                 )}
                                                             </div>
                                                         )}
+                                                        {lType.includes('permission') && (() => {
+                                                            const summary = getMonthlyPermissionSummary(req.startDate);
+                                                            return (
+                                                                <div className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 rounded-md px-2 py-1 mt-1.5 inline-block shadow-2xs">
+                                                                    Remaining Available this month: <strong className="font-extrabold text-emerald-800">{summary.formattedRemaining}</strong>
+                                                                    <span className="block text-[9px] text-gray-500 font-medium mt-0.5">(Used {summary.formattedUsed} / 3h 00m)</span>
+                                                                </div>
+                                                            );
+                                                        })()}
                                                     </div>
                                                 </div>
                                             </td>
@@ -1183,6 +1310,14 @@ const LeaveDashboard: React.FC = () => {
                                                         } / {userRulesForDisplay?.maxCorrectionsPerMonth || 3} this month)
                                                     </div>
                                                 )}
+                                                {lType.includes('permission') && (() => {
+                                                    const summary = getMonthlyPermissionSummary(req.startDate);
+                                                    return (
+                                                        <div className="text-[10px] text-emerald-700 font-bold mt-1.5 leading-tight bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100 inline-block">
+                                                            Available: {summary.formattedRemaining}
+                                                        </div>
+                                                    );
+                                                })()}
                                             </td>
                                             <td data-label="Actions" className="px-6 py-4 text-right">
                                                 <div className="flex justify-end gap-1 flex-wrap items-center">

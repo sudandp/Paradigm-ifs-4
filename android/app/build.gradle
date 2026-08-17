@@ -61,6 +61,10 @@ dependencies {
     // FusedLocationProviderClient for reliable background GPS fixes
     implementation 'com.google.android.gms:play-services-location:21.3.0'
     implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.1.0'
+    // Google Play In-App Update API — REQUIRED by @capawesome/capacitor-app-update.
+    // Without this, AppUpdate.getAppUpdateInfo() silently returns UNKNOWN/UP_TO_DATE
+    // even when a newer version exists on the Play Store.
+    implementation 'com.google.android.play:app-update:2.1.0'
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"

@@ -541,17 +541,35 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                     borderColor: 'transparent'
                                 };
                             } else if (isPermission) {
-                                const rawFraction = workingHours / shiftThreshold;
-                                let worked_fraction = Math.round(rawFraction * 20) / 20; // Round to nearest 0.05
-                                worked_fraction = Math.min(1.0, Math.max(0, worked_fraction));
-                                const permission_fraction = Math.round((1.0 - worked_fraction) * 100) / 100;
-                                
-                                overlayText = `${worked_fraction.toFixed(2)}P+${permission_fraction.toFixed(2)}RP`;
-                                const greenPct = Math.min(100, Math.max(0, Math.round(worked_fraction * 100)));
-                                customStyle = {
-                                    background: `linear-gradient(135deg, #10b981 ${greenPct}%, #2563eb ${greenPct}%)`, // Present (green) / Permission (blue)
-                                    borderColor: 'transparent'
-                                };
+                                 let permMins = 120;
+                                 if (relevantLeave?.correctionDetails?.permissionMinutes) {
+                                     permMins = Number(relevantLeave.correctionDetails.permissionMinutes);
+                                 } else if (relevantLeave?.correctionDetails?.punchIn && relevantLeave?.correctionDetails?.punchOut) {
+                                     const toMins = (t: string) => { if (!t) return 0; const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+                                     let diff = toMins(relevantLeave.correctionDetails.punchOut) - toMins(relevantLeave.correctionDetails.punchIn);
+                                     if (diff < 0) diff += 24 * 60;
+                                     permMins = diff;
+                                 }
+                                 const totalEffectiveHrs = workingHours + (permMins / 60);
+
+                                 if (totalEffectiveHrs >= (shiftThreshold - 0.25)) {
+                                     overlayText = 'P';
+                                     customStyle = {
+                                         background: '#10b981',
+                                         borderColor: 'transparent'
+                                     };
+                                 } else {
+                                     const rawFraction = workingHours / shiftThreshold;
+                                     let worked_fraction = Math.round(rawFraction * 20) / 20;
+                                     worked_fraction = Math.min(1.0, Math.max(0, worked_fraction));
+                                     const permission_fraction = Math.round((1.0 - worked_fraction) * 100) / 100;
+                                     overlayText = `${worked_fraction.toFixed(2)}P+${permission_fraction.toFixed(2)}RP`;
+                                     const greenPct = Math.min(100, Math.max(0, Math.round(worked_fraction * 100)));
+                                     customStyle = {
+                                         background: `linear-gradient(135deg, #10b981 ${greenPct}%, #2563eb ${greenPct}%)`,
+                                         borderColor: 'transparent'
+                                     };
+                                 }
                             } else if (isCorrection) {
                                 overlayText = 'P';
                                 customStyle = {

@@ -1,5 +1,6 @@
 package com.paradigm.ifs;
 
+import android.app.Activity;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.content.Context;
@@ -8,17 +9,26 @@ import android.content.IntentFilter;
 import android.content.BroadcastReceiver;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.WindowManager;
 
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
 
+    private static final String TAG = "MainActivity";
+
+    // Google Play In-App Update request code — arbitrary unique int
+    private static final int IN_APP_UPDATE_REQUEST_CODE = 8743;
+
     private BroadcastReceiver foregroundAlarmReceiver;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // Prevent screen recording and screenshots system-wide
+        // NOTE: FLAG_SECURE prevents screenshots but also BLOCKS the Google Play
+        // Immediate Update overlay (performImmediateUpdate). If you want the native
+        // Play overlay to work, remove this flag. The custom in-app UpdatePromptModal
+        // in React still works regardless, as it simply opens the Play Store app.
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
         
         android.content.SharedPreferences prefs = getSharedPreferences("KioskPrefs", Context.MODE_PRIVATE);
@@ -45,6 +55,41 @@ public class MainActivity extends BridgeActivity {
         super.onCreate(savedInstanceState);
         createNotificationChannel();
     }
+
+    /**
+     * Handles the result from the Google Play In-App Update flow.
+     * The Capacitor bridge does not forward Activity results to web by default,
+     * so we must intercept here to handle update accepted / user cancelled states.
+     */
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+
+        if (requestCode == IN_APP_UPDATE_REQUEST_CODE) {
+            if (resultCode == Activity.RESULT_OK) {
+                Log.i(TAG, "[InAppUpdate] Update accepted by user — Play Store is downloading/installing.");
+                // Notify the JS layer so the modal can be dismissed
+                dispatchJsEvent("inAppUpdateAccepted", "{}");
+            } else if (resultCode == Activity.RESULT_CANCELED) {
+                Log.w(TAG, "[InAppUpdate] User dismissed the update dialog.");
+                // Notify the JS layer (modal stays visible as a softer reminder)
+                dispatchJsEvent("inAppUpdateCancelled", "{}");
+            } else {
+                Log.e(TAG, "[InAppUpdate] Update flow failed with result code: " + resultCode);
+                dispatchJsEvent("inAppUpdateFailed", "{\"resultCode\":" + resultCode + "}");
+            }
+        }
+    }
+
+    /** Helper: fire a CustomEvent on the window so React can listen with window.addEventListener */
+    private void dispatchJsEvent(String eventName, String jsonDetail) {
+        if (bridge != null && bridge.getWebView() != null) {
+            final String js = "window.dispatchEvent(new CustomEvent('" + eventName + "', { detail: " + jsonDetail + " }));";
+            bridge.getWebView().post(() -> bridge.getWebView().evaluateJavascript(js, null));
+        }
+    }
+
+
 
     /**
      * Creates a notification channel with badges enabled.

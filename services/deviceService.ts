@@ -249,6 +249,21 @@ export async function registerDevice(
   message: string;
 }> {
   try {
+    // Bypass device registration entirely during active admin impersonation mode
+    const storedImp = localStorage.getItem('paradigm_impersonation_session');
+    if (storedImp) {
+      try {
+        const parsed = JSON.parse(storedImp);
+        if (parsed?.isImpersonating) {
+          return {
+            success: true,
+            requiresApproval: false,
+            message: 'Device registration bypassed during impersonation mode.'
+          };
+        }
+      } catch (e) {}
+    }
+
     const normalizedId = deviceIdentifier.toLowerCase();
     
     // Check if device already exists

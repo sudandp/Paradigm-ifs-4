@@ -123,7 +123,54 @@ def create_admin_app(
             }
         )
 
+    @app.get("/camera/stream/{camera_name}")
+    async def camera_mjpeg_stream(camera_name: str):
+        """Continuous MJPEG stream — browsers treat this like a live video via <img> tag."""
+        import cv2
+        import asyncio
+        from fastapi.responses import StreamingResponse
+
+        if not pipeline or not hasattr(pipeline, 'grabber'):
+            raise HTTPException(503, "Camera pipeline not initialized")
+        if camera_name not in pipeline.grabber.streams:
+            raise HTTPException(404, f"Camera '{camera_name}' not found")
+
+        async def generate():
+            while True:
+                try:
+                    stream = pipeline.grabber.streams.get(camera_name)
+                    if stream is None:
+                        break
+                    captured = stream.get_frame()
+                    if captured is not None and captured.frame is not None:
+                        ret, buf = cv2.imencode(
+                            '.jpg', captured.frame,
+                            [cv2.IMWRITE_JPEG_QUALITY, 75]
+                        )
+                        if ret:
+                            frame_bytes = buf.tobytes()
+                            yield (
+                                b'--frame\r\n'
+                                b'Content-Type: image/jpeg\r\n\r\n'
+                                + frame_bytes +
+                                b'\r\n'
+                            )
+                except Exception:
+                    pass
+                await asyncio.sleep(1 / 15)  # 15 FPS target
+
+        return StreamingResponse(
+            generate(),
+            media_type="multipart/x-mixed-replace; boundary=frame",
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "X-Content-Type-Options": "nosniff",
+            }
+        )
+
     # ─── Detection Logs ───────────────────────────────────────────────────────
+
 
     @app.get("/logs/recent")
     async def recent_logs(limit: int = 50):

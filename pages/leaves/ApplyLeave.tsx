@@ -1,11 +1,11 @@
 import React, { useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { getStaffCategory, isTechnicalRole, calculateWorkingHours } from '../../utils/attendanceCalculations';
+import { getStaffCategory, isTechnicalRole, calculateWorkingHours, getEarlyDepartureDeductions } from '../../utils/attendanceCalculations';
 
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
 import type { LeaveType, UploadedFile, LeaveBalance, UserChild, StaffAttendanceRules, LeaveRequestStatus, AttendanceEvent } from '../../types';
-import { ArrowLeft, Clock, CloudOff, X } from 'lucide-react';
+import { ArrowLeft, Clock, CloudOff, X, AlertTriangle } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import Select from '../../components/ui/Select';
@@ -188,7 +188,7 @@ const ApplyLeave: React.FC = () => {
     const [leaveBalance, setLeaveBalance] = React.useState<number>(0);
     const [fullBalance, setFullBalance] = React.useState<LeaveBalance | null>(null);
     const [correctionUsage, setCorrectionUsage] = React.useState({ used: 0, limit: 3, enabled: false });
-    const [permissionUsage, setPermissionUsage] = React.useState<{ used: number; usedMins: number; limitHrs: number; limit: number; enabled: boolean; requests: any[] }>({ used: 0, usedMins: 0, limitHrs: 3, limit: 3, enabled: false, requests: [] });
+    const [permissionUsage, setPermissionUsage] = React.useState<{ used: number; usedMins: number; limitHrs: number; limit: number; enabled: boolean; requests: any[]; earlyDeductions?: any[] }>({ used: 0, usedMins: 0, limitHrs: 3, limit: 3, enabled: false, requests: [], earlyDeductions: [] });
     const [allLeaveRequests, setAllLeaveRequests] = React.useState<any[]>([]);
     const [dayEvents, setDayEvents] = React.useState<AttendanceEvent[]>([]);
 
@@ -342,7 +342,6 @@ const ApplyLeave: React.FC = () => {
                 r.startDate.startsWith(monthPrefix) &&
                 r.id !== editId
             );
-
             // Fetch auto-closed missed punches count
             let autoClosedCount = 0;
             if (user?.id) {
@@ -355,26 +354,80 @@ const ApplyLeave: React.FC = () => {
             const calcPermMins = (reqs: any[]) => {
                 let total = 0;
                 reqs.forEach(r => {
+                    const toMins = (t: string) => { if (!t) return 0; const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+                    if (r.correctionDetails?.punchIn && r.correctionDetails?.punchOut) {
+                        let p1 = toMins(r.correctionDetails.punchOut) - toMins(r.correctionDetails.punchIn);
+                        if (p1 < 0) p1 += 24 * 60;
+                        let p2 = 0;
+                        if (r.correctionDetails?.punchIn2 && r.correctionDetails?.punchOut2) {
+                            p2 = toMins(r.correctionDetails.punchOut2) - toMins(r.correctionDetails.punchIn2);
+                            if (p2 < 0) p2 += 24 * 60;
+                        }
+                        let bMins = 0;
+                        if (r.correctionDetails?.includeBreak && r.correctionDetails?.breakIn && r.correctionDetails?.breakOut) {
+                            bMins = toMins(r.correctionDetails.breakOut) - toMins(r.correctionDetails.breakIn);
+                            if (bMins < 0) bMins += 24 * 60;
+                        }
+                        const computed = Math.max(0, p1 + p2 - bMins);
+                        if (computed > 0) {
+                            total += computed;
+                            return;
+                        }
+                    }
                     if (r.correctionDetails?.permissionMinutes) {
                         total += Number(r.correctionDetails.permissionMinutes);
-                    } else if (r.correctionDetails?.punchIn && r.correctionDetails?.punchOut) {
-                        const toMins = (t: string) => { if (!t) return 0; const [h, m] = t.split(':').map(Number); return h * 60 + m; };
-                        let worked = toMins(r.correctionDetails.punchOut) - toMins(r.correctionDetails.punchIn);
-                        if (worked < 0) worked += 24 * 60;
-                        if (r.correctionDetails.breakIn && r.correctionDetails.breakOut) {
-                            let bMins = toMins(r.correctionDetails.breakOut) - toMins(r.correctionDetails.breakIn);
-                            if (bMins > 0) worked -= bMins;
-                        }
-                        const targetShiftMins = (rules?.minimumHoursFullDay || 8) * 60;
-                        const shortage = Math.max(0, targetShiftMins - worked);
-                        total += (shortage > 0 && shortage <= 180 ? shortage : Math.min(worked, 180));
                     }
                 });
                 return total;
             };
-            const usedPermMins = calcPermMins(monthPerms);
+
+            // Fetch month's attendance events to calculate automatic early departure deductions
+            let earlyDepartureList: any[] = [];
+            let totalEarlyDepartureMins = 0;
+            if (user?.id) {
+                const startDateTs = `${monthPrefix}-01T00:00:00Z`;
+                const endDateTs = new Date(new Date(startDateTs).getFullYear(), new Date(startDateTs).getMonth() + 1, 0, 23, 59, 59).toISOString();
+                const monthEvents = await api.getAttendanceEvents(user.id, startDateTs, endDateTs).catch(() => []);
+                const targetShiftMins = (rules?.minimumHoursFullDay || 8) * 60;
+                earlyDepartureList = getEarlyDepartureDeductions(monthEvents, targetShiftMins, monthPerms, allLeaveRequests, monthPrefix);
+                totalEarlyDepartureMins = earlyDepartureList.reduce((sum, ed) => sum + ed.earlyMins, 0);
+            }
+
+            const usedExplicitMins = calcPermMins(monthPerms);
+            const totalUsedPermMins = usedExplicitMins + totalEarlyDepartureMins;
+
+            const combinedRequests = [
+                ...monthPerms,
+                ...earlyDepartureList.map(ed => ({
+                    id: `early-${ed.dateStr}`,
+                    isEarlyDeparture: true,
+                    startDate: ed.dateStr,
+                    endDate: ed.dateStr,
+                    status: 'auto_deducted',
+                    earlyMins: ed.earlyMins,
+                    formattedWorked: ed.formattedWorked,
+                    targetMins: ed.targetMins,
+                    correctedWorkedMins: ed.correctedWorkedMins,
+                    formattedCorrectedWorked: ed.formattedCorrectedWorked,
+                    punchOutTime: ed.punchOutTime,
+                    permissionEndTime: ed.permissionEndTime,
+                    permissionTimeRange: ed.permissionTimeRange,
+                    correctionDetails: {
+                        permissionMinutes: ed.earlyMins,
+                        punchIn: ed.punchOutTime,
+                        punchOut: ed.permissionEndTime
+                    }
+                }))
+            ].sort((a, b) => b.startDate.localeCompare(a.startDate));
+
             setCorrectionUsage(prev => ({ ...prev, used: monthCorrections.length + autoClosedCount }));
-            setPermissionUsage(prev => ({ ...prev, used: monthPerms.length, usedMins: usedPermMins, requests: monthPerms }));
+            setPermissionUsage(prev => ({ 
+                ...prev, 
+                used: monthPerms.length + earlyDepartureList.length, 
+                usedMins: totalUsedPermMins, 
+                requests: combinedRequests,
+                earlyDeductions: earlyDepartureList 
+            }));
         };
         fetchUsage();
     }, [watchStartDate, allLeaveRequests, editId, user?.id]);
@@ -445,6 +498,7 @@ const ApplyLeave: React.FC = () => {
              return {
                  hours: wHours,
                  minutes: wMins,
+                 totalMinutes: workedMins,
                  text: `${wHours}h ${wMins}m`
              };
      }, [watchPunchIn, watchPunchOut, watchIncludeBreak, watchBreakIn, watchBreakOut, watchPunchIn2, watchPunchOut2, watchLeaveType, permissionSession]);
@@ -1108,30 +1162,40 @@ const ApplyLeave: React.FC = () => {
                 // Calculate existing permission minutes for this month
                 let totalExistingPermMins = 0;
                 monthPerms.forEach(r => {
+                    const getMinutes = (timeStr: string) => {
+                        if (!timeStr) return 0;
+                        const [h, m] = timeStr.split(':').map(Number);
+                        return h * 60 + m;
+                    };
+                    if (r.correctionDetails?.punchIn && r.correctionDetails?.punchOut) {
+                        let p1 = getMinutes(r.correctionDetails.punchOut) - getMinutes(r.correctionDetails.punchIn);
+                        if (p1 < 0) p1 += 24 * 60;
+                        let p2 = 0;
+                        if (r.correctionDetails?.punchIn2 && r.correctionDetails?.punchOut2) {
+                            p2 = getMinutes(r.correctionDetails.punchOut2) - getMinutes(r.correctionDetails.punchIn2);
+                            if (p2 < 0) p2 += 24 * 60;
+                        }
+                        let bMins = 0;
+                        if (r.correctionDetails?.includeBreak && r.correctionDetails?.breakIn && r.correctionDetails?.breakOut) {
+                            bMins = getMinutes(r.correctionDetails.breakOut) - getMinutes(r.correctionDetails.breakIn);
+                            if (bMins < 0) bMins += 24 * 60;
+                        }
+                        const computed = Math.max(0, p1 + p2 - bMins);
+                        if (computed > 0) {
+                            totalExistingPermMins += computed;
+                            return;
+                        }
+                    }
                     if (r.correctionDetails?.permissionMinutes) {
                         totalExistingPermMins += Number(r.correctionDetails.permissionMinutes);
-                    } else if (r.correctionDetails?.punchIn && r.correctionDetails?.punchOut) {
-                        const getMinutes = (timeStr: string) => {
-                            if (!timeStr) return 0;
-                            const [h, m] = timeStr.split(':').map(Number);
-                            return h * 60 + m;
-                        };
-                        let worked = getMinutes(r.correctionDetails.punchOut) - getMinutes(r.correctionDetails.punchIn);
-                        if (worked < 0) worked += 24 * 60;
-                        if (r.correctionDetails.breakIn && r.correctionDetails.breakOut) {
-                            let bMins = getMinutes(r.correctionDetails.breakOut) - getMinutes(r.correctionDetails.breakIn);
-                            if (bMins > 0) worked -= bMins;
-                        }
-                        const targetShiftMins = (rules?.minimumHoursFullDay || 8) * 60;
-                        const shortage = Math.max(0, targetShiftMins - worked);
-                        totalExistingPermMins += (shortage > 0 && shortage <= 180 ? shortage : Math.min(worked, 180));
                     }
                 });
 
                 // Verify cumulative monthly permission hours pool (3 hours monthly pool)
+                const currentRequestedMins = workedHours.totalMinutes || permissionMinutes;
                 const monthlyPoolHours = (rules?.maxPermissionDurationHours && rules.maxPermissionDurationHours >= 3) ? rules.maxPermissionDurationHours : 3;
-                const durationHours = permissionMinutes / 60;
-                const totalUsedAfterThis = (totalExistingPermMins + permissionMinutes) / 60;
+                const durationHours = currentRequestedMins / 60;
+                const totalUsedAfterThis = (totalExistingPermMins + currentRequestedMins) / 60;
                 const remainingHours = monthlyPoolHours - (totalExistingPermMins / 60);
 
                 if (totalUsedAfterThis > monthlyPoolHours) {
@@ -1252,7 +1316,7 @@ const ApplyLeave: React.FC = () => {
                     punchOut2,
                     breakIn,
                     breakOut,
-                    permissionMinutes,
+                    permissionMinutes: workedHours.totalMinutes || permissionMinutes,
                     locationName,
                     includeSiteOt,
                     siteOtIn,
@@ -1582,20 +1646,25 @@ const ApplyLeave: React.FC = () => {
 
                                 // Helper: compute display duration for a single request
                                 const getReqDuration = (r: any) => {
-                                    if (r.correctionDetails?.permissionMinutes) {
-                                        return Number(r.correctionDetails.permissionMinutes);
-                                    }
                                     const toMins = (t: string) => { if (!t) return 0; const [h, m] = t.split(':').map(Number); return h * 60 + m; };
                                     if (r.correctionDetails?.punchIn && r.correctionDetails?.punchOut) {
-                                        let worked = toMins(r.correctionDetails.punchOut) - toMins(r.correctionDetails.punchIn);
-                                        if (worked < 0) worked += 24 * 60;
-                                        if (r.correctionDetails.breakIn && r.correctionDetails.breakOut) {
-                                            let bMins = toMins(r.correctionDetails.breakOut) - toMins(r.correctionDetails.breakIn);
-                                            if (bMins > 0) worked -= bMins;
+                                        let p1 = toMins(r.correctionDetails.punchOut) - toMins(r.correctionDetails.punchIn);
+                                        if (p1 < 0) p1 += 24 * 60;
+                                        let p2 = 0;
+                                        if (r.correctionDetails?.punchIn2 && r.correctionDetails?.punchOut2) {
+                                            p2 = toMins(r.correctionDetails.punchOut2) - toMins(r.correctionDetails.punchIn2);
+                                            if (p2 < 0) p2 += 24 * 60;
                                         }
-                                        const targetShiftMins = (rules?.minimumHoursFullDay || 8) * 60;
-                                        const shortage = Math.max(0, targetShiftMins - worked);
-                                        return (shortage > 0 && shortage <= 180 ? shortage : Math.min(worked, 180));
+                                        let bMins = 0;
+                                        if (r.correctionDetails?.includeBreak && r.correctionDetails?.breakIn && r.correctionDetails?.breakOut) {
+                                            bMins = toMins(r.correctionDetails.breakOut) - toMins(r.correctionDetails.breakIn);
+                                            if (bMins > 0) bMins += 24 * 60;
+                                        }
+                                        const computed = Math.max(0, p1 + p2 - bMins);
+                                        if (computed > 0) return computed;
+                                    }
+                                    if (r.correctionDetails?.permissionMinutes) {
+                                        return Number(r.correctionDetails.permissionMinutes);
                                     }
                                     return 0;
                                 };
@@ -1621,6 +1690,21 @@ const ApplyLeave: React.FC = () => {
                                             />
                                         </div>
 
+                                        {/* Early Departure Notification Alert */}
+                                        {permissionUsage.earlyDeductions && permissionUsage.earlyDeductions.length > 0 && (
+                                            <div className={`p-3 mb-3 rounded-lg border text-xs flex items-start gap-2 ${
+                                                isMobile ? 'bg-amber-500/10 border-amber-500/20 text-amber-300' : 'bg-amber-100/70 border-amber-300 text-amber-900'
+                                            }`}>
+                                                <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                                                <div>
+                                                    <span className="font-bold">Early Departure Auto-Deductions Active</span>
+                                                    <p className="mt-0.5 text-[11px] opacity-90">
+                                                        Punches out before completing your required daily shift hours are automatically deducted from your monthly 3h permission pool.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        )}
+
                                         {/* Per-request usage history */}
                                         {permissionUsage.requests.length > 0 && (
                                             <div className={`mb-3 rounded-lg border overflow-hidden ${
@@ -1632,24 +1716,30 @@ const ApplyLeave: React.FC = () => {
                                                     Usage History This Month
                                                 </div>
                                                 {permissionUsage.requests.map((r: any, idx: number) => {
-                                                    const durMins = getReqDuration(r);
+                                                    const isEarlyDep = r.isEarlyDeparture;
+                                                    const durMins = isEarlyDep ? r.earlyMins : getReqDuration(r);
                                                     const dH = Math.floor(durMins / 60);
                                                     const dM = durMins % 60;
                                                     const dateStr = r.startDate
                                                         ? format(new Date(r.startDate.replace(/-/g, '/')), 'dd MMM yyyy')
                                                         : '—';
-                                                    const timeRange = r.correctionDetails?.punchIn && r.correctionDetails?.punchOut
-                                                        ? `${r.correctionDetails.punchIn} – ${r.correctionDetails.punchOut}${
-                                                            r.correctionDetails.punchIn2 && r.correctionDetails.punchOut2
-                                                                ? ` & ${r.correctionDetails.punchIn2} – ${r.correctionDetails.punchOut2}`
-                                                                : ''
-                                                          }`
-                                                        : 'Time not recorded';
-                                                    const statusColor = r.status === 'approved'
-                                                        ? 'text-emerald-600'
-                                                        : r.status === 'rejected' || r.status === 'cancelled'
-                                                        ? 'text-rose-500'
-                                                        : 'text-amber-600';
+                                                    const timeRange = isEarlyDep
+                                                        ? `${r.permissionTimeRange || 'Permission'} • Left early at ${r.punchOutTime || 'punch-out'} (${r.formattedWorked} worked → Corrected: ${r.formattedCorrectedWorked || '8h 0m'})`
+                                                        : (r.correctionDetails?.punchIn && r.correctionDetails?.punchOut
+                                                            ? `${r.correctionDetails.punchIn} – ${r.correctionDetails.punchOut}${
+                                                                r.correctionDetails.punchIn2 && r.correctionDetails.punchOut2
+                                                                    ? ` & ${r.correctionDetails.punchIn2} – ${r.correctionDetails.punchOut2}`
+                                                                    : ''
+                                                              }`
+                                                            : 'Time not recorded');
+                                                    const statusText = isEarlyDep ? 'Auto-Deducted' : r.status?.replace(/_/g, ' ');
+                                                    const statusColor = isEarlyDep
+                                                        ? 'text-amber-600 font-bold'
+                                                        : (r.status === 'approved'
+                                                            ? 'text-emerald-600'
+                                                            : r.status === 'rejected' || r.status === 'cancelled'
+                                                            ? 'text-rose-500'
+                                                            : 'text-amber-600');
                                                     return (
                                                         <div key={r.id || idx} className={`flex items-center justify-between px-3 py-2 text-xs ${
                                                             idx % 2 === 0
@@ -1663,7 +1753,7 @@ const ApplyLeave: React.FC = () => {
                                                             <div className="flex flex-col items-end gap-0.5">
                                                                 <span className="font-black">{dH > 0 ? `${dH}h ` : ''}{dM}m</span>
                                                                 <span className={`text-[10px] font-semibold capitalize ${statusColor}`}>
-                                                                    {r.status?.replace(/_/g, ' ')}
+                                                                    {statusText}
                                                                 </span>
                                                             </div>
                                                         </div>
@@ -2375,7 +2465,7 @@ const ApplyLeave: React.FC = () => {
                         </div>
 
                         <div className={`flex items-center gap-4 ${isMobile ? 'pb-10 pt-4' : 'pt-6 justify-end'}`}>
-                            <Button type="button" variant="danger" onClick={() => navigate(-1)} disabled={isSubmitting} className="flex-1 md:flex-none md:w-32">Cancel</Button>
+                            <Button type="button" variant="danger" onClick={() => navigate(-1)} disabled={isSubmitting} className="flex-1 md:flex-none md:w-36">Cancel</Button>
                             <Button 
                                 type="submit" 
                                 form="leave-form" 
@@ -2385,11 +2475,12 @@ const ApplyLeave: React.FC = () => {
                                     (watchLeaveType === 'Correction' && correctionUsage.enabled && correctionUsage.used >= correctionUsage.limit) || 
                                     (watchLeaveType === 'Permission' && permissionUsage.enabled && permissionUsage.usedMins >= (permissionUsage.limitHrs || 3) * 60)
                                 }
-                                className="flex-1 md:flex-none md:w-48"
+                                className="flex-1 md:flex-none md:w-36"
                             >
-                                {isEditMode ? 'Update Request' : 'Submit'}
+                                {isEditMode ? 'Update' : 'Submit'}
                             </Button>
                         </div>
+
                     </form>
                 </div>
             </div>

@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useAuthStore } from '../store/authStore';
+import { useImpersonationStore } from '../store/impersonationStore';
 import { useSecurityCheck } from '../hooks/useSecurityCheck';
 import SecurityWarningModal from '../components/ui/SecurityWarningModal';
 import { api } from '../services/api';
@@ -60,6 +61,15 @@ const SecurityWrapper: React.FC<SecurityWrapperProps> = ({ children }) => {
         const checkDevice = async () => {
             if (!user) return;
 
+            // If developer or admin is impersonating, skip device registration & security checks entirely
+            const isImpState = useImpersonationStore.getState().isImpersonating;
+            const isImpLocal = !!localStorage.getItem('paradigm_impersonation_session');
+            if (user.role === 'developer' || isImpState || isImpLocal) {
+                setDeviceStatus('authorized');
+                lastCheckedUserId.current = user.id;
+                return;
+            }
+
             // Skip if we've already checked this user
             if (lastCheckedUserId.current === user.id) {
                 return;
@@ -74,8 +84,6 @@ const SecurityWrapper: React.FC<SecurityWrapperProps> = ({ children }) => {
                 
                 setLimits(devLimits);
 
-                // For developers, we might just log but not block, or just standard register
-                // Let's standard register everyone to ensure logs are kept
                 const result = await registerDevice(
                     user.id,
                     user.role,
@@ -87,10 +95,8 @@ const SecurityWrapper: React.FC<SecurityWrapperProps> = ({ children }) => {
 
                 if (result.success) {
                     setDeviceStatus('authorized');
-                    // Mark this user as checked
                     lastCheckedUserId.current = user.id;
                 } else if (result.request) {
-                    // Device is awaiting approval
                     setDeviceStatus('pending');
                     setDeviceInfo({ 
                        id: result.request.id, 
@@ -99,7 +105,6 @@ const SecurityWrapper: React.FC<SecurityWrapperProps> = ({ children }) => {
                     });
                     setDeviceMessage(result.message);
                 } else if (result.requiresApproval) {
-                    // Limit reached, wait for user to "press" request button
                     setDeviceStatus('limit_reached');
                     setDeviceInfo({ 
                        id: '', 
@@ -108,7 +113,6 @@ const SecurityWrapper: React.FC<SecurityWrapperProps> = ({ children }) => {
                     });
                     setDeviceMessage(result.message);
                 } else {
-                    // Other error (e.g. revoked)
                     setDeviceStatus('revoked');
                     setDeviceInfo({ 
                        id: '', 
@@ -120,16 +124,14 @@ const SecurityWrapper: React.FC<SecurityWrapperProps> = ({ children }) => {
 
             } catch (error: any) {
                 console.error('Device validation failed:', error);
-                // FAIL CLOSED: Show error instead of letting them in.
                 setDeviceStatus('revoked');
                 setDeviceMessage(`Device security check failed: ${error?.message || 'Network error'}. Please try again.`);
-                // Reset check state to allow trying again
                 lastCheckedUserId.current = null;
             }
         };
 
         checkDevice();
-    }, [user?.id, checkTrigger]); // Only depend on user.id and manual trigger
+    }, [user?.id, checkTrigger]);
 
     // Handler for "Request Access" button - creates a device change request
     const handleRequestAccess = async () => {
@@ -144,12 +146,10 @@ const SecurityWrapper: React.FC<SecurityWrapperProps> = ({ children }) => {
                 deviceName,
                 dInfo
             );
-            // Switch to pending status after successful request
             setDeviceStatus('pending');
             setDeviceMessage('Your device access request has been submitted. Please wait for admin/HR approval.');
         } catch (e: any) {
             console.error('Failed to request access:', e);
-            // If it's a duplicate request error, show pending anyway
             if (e?.message?.includes('duplicate') || e?.code === '23505') {
                 setDeviceStatus('pending');
                 setDeviceMessage('You already have a pending request. Please wait for admin/HR approval.');
@@ -196,16 +196,20 @@ const SecurityWrapper: React.FC<SecurityWrapperProps> = ({ children }) => {
         }
     };
 
+    const isImpersonating = useImpersonationStore(s => s.isImpersonating);
+    const isImpLocal = !!localStorage.getItem('paradigm_impersonation_session');
+
     // 1. Check basic security (Dev mode / Location spoofing)
-    if (user && !isExemptFromSecurityChecks && !securityCheck.isSecure) {
+    if (user && !isExemptFromSecurityChecks && !securityCheck.isSecure && !isImpersonating && !isImpLocal) {
         return <SecurityWarningModal issues={securityCheck.issues} />;
     }
 
-    // 2. Check Device Authorization
-    if (user && deviceStatus !== 'authorized' && deviceStatus !== 'checking') {
-        // If developer, maybe bypass?
-        if (user.role === 'developer') return <>{children}</>;
+    // 2. Check Device Authorization (Bypassed during impersonation or developer role)
+    if (user && (user.role === 'developer' || isImpersonating || isImpLocal)) {
+        return <>{children}</>;
+    }
 
+    if (user && deviceStatus !== 'authorized' && deviceStatus !== 'checking') {
         return (
             <DeviceWarningDialog 
                 userId={user.id}
@@ -224,12 +228,11 @@ const SecurityWrapper: React.FC<SecurityWrapperProps> = ({ children }) => {
         );
     }
     
-    // While checking device status, show a loading screen to prevent "not restructing user" issue
-    if (user && deviceStatus === 'checking' && user.role !== 'developer') {
+    // While checking device status, show a loading screen
+    if (user && deviceStatus === 'checking' && user.role !== 'developer' && !isImpersonating && !isImpLocal) {
          return <LoadingScreen message="Verifying device security..." />;
     }
     
-    // Otherwise, render children normally
     return <>{children}</>;
 };
 

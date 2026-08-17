@@ -292,10 +292,10 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
         <div className="border-0 shadow-none md:bg-card md:p-6 md:rounded-xl md:shadow-card w-full">
             <div className="flex items-center justify-between mb-5">
                 <div className="flex items-center gap-3">
-                    <div className="p-1.5 bg-indigo-50 rounded-lg">
-                        <Clock className="w-5 h-5 text-indigo-600" />
+                    <div className="p-1.5 bg-indigo-50 max-md:bg-indigo-950/60 rounded-lg">
+                        <Clock className="w-5 h-5 text-indigo-600 max-md:text-indigo-400" />
                     </div>
-                    <h2 className="text-base font-semibold text-slate-800">Employee Log</h2>
+                    <h2 className="text-base font-semibold text-slate-800 max-md:text-white">Employee Log</h2>
                 </div>
                 {selectedRange === 'month' && monthlyMissedPunches > 0 && (
                     <div className="bg-rose-50 text-rose-600 px-3 py-1.5 rounded-lg text-[13px] font-medium flex items-center gap-1.5 border border-rose-100">
@@ -316,7 +316,7 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                         onClick={() => handleRangeChange('day')}
                         className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${selectedRange === 'day'
                             ? 'bg-indigo-600 text-white shadow-md'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200 max-md:bg-emerald-950/60 max-md:text-emerald-200 max-md:border max-md:border-emerald-800/40'
                             }`}
                     >
                         Day
@@ -325,7 +325,7 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                         onClick={() => handleRangeChange('week')}
                         className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${selectedRange === 'week'
                             ? 'bg-indigo-600 text-white shadow-md'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200 max-md:bg-emerald-950/60 max-md:text-emerald-200 max-md:border max-md:border-emerald-800/40'
                             }`}
                     >
                         Week
@@ -334,7 +334,7 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                         onClick={() => handleRangeChange('month')}
                         className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${selectedRange === 'month'
                             ? 'bg-indigo-600 text-white shadow-md'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200 max-md:bg-emerald-950/60 max-md:text-emerald-200 max-md:border max-md:border-emerald-800/40'
                             }`}
                     >
                         Month
@@ -342,22 +342,22 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                 </div>
 
                 {/* Date Navigator */}
-                <div className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
+                <div className="flex items-center justify-between bg-gray-50 max-md:bg-[#041b0f] max-md:border max-md:border-white/10 rounded-lg p-3">
                     <button
                         onClick={() => handleDateChange('prev')}
-                        className="p-1.5 bg-white rounded-md shadow-sm hover:bg-gray-100 transition-colors flex items-center justify-center border border-gray-200"
+                        className="p-1.5 bg-white max-md:bg-emerald-950/80 rounded-md shadow-sm hover:bg-gray-100 transition-colors flex items-center justify-center border border-gray-200 max-md:border-emerald-800/50"
                     >
-                        <ChevronLeft className="h-5 w-5 text-gray-600" />
+                        <ChevronLeft className="h-5 w-5 text-gray-600 max-md:text-emerald-200" />
                     </button>
-                    <div className="flex items-center gap-2 font-semibold text-gray-900">
-                        <Calendar className="h-4 w-4" />
+                    <div className="flex items-center gap-2 font-semibold text-gray-900 max-md:text-white">
+                        <Calendar className="h-4 w-4 max-md:text-emerald-400" />
                         <span>{getDateRangeText()}</span>
                     </div>
                     <button
                         onClick={() => handleDateChange('next')}
-                        className="p-1.5 bg-white rounded-md shadow-sm hover:bg-gray-100 transition-colors flex items-center justify-center border border-gray-200"
+                        className="p-1.5 bg-white max-md:bg-emerald-950/80 rounded-md shadow-sm hover:bg-gray-100 transition-colors flex items-center justify-center border border-gray-200 max-md:border-emerald-800/50"
                     >
-                        <ChevronRight className="h-5 w-5 text-gray-600" />
+                        <ChevronRight className="h-5 w-5 text-gray-600 max-md:text-emerald-200" />
                     </button>
                 </div>
             </div>

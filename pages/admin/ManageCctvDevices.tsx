@@ -31,155 +31,117 @@ interface CctvDevice {
   adminPort: number;           // Admin HTTP port (default 4100)
 }
 
-const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; adminPort: number }> = ({ camera, serverHost, adminPort }) => {
-  const [blobUrl, setBlobUrl] = React.useState<string | null>(null);
-  const [isLive, setIsLive] = React.useState<boolean>(false);
-  const [isFullscreen, setIsFullscreen] = React.useState<boolean>(false);
-  const [currentTime, setCurrentTime] = React.useState<string>('');
-  const prevBlobRef = React.useRef<string | null>(null);
-  const failCountRef = React.useRef<number>(0);
+const NGROK_PROXY = 'https://tassel-estranged-prism.ngrok-free.dev';
+
+const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; adminPort: number }> = ({ camera }) => {
+  const [isFullscreen, setIsFullscreen] = React.useState(false);
+  const [hasError, setHasError] = React.useState(false);
+  const [currentTime, setCurrentTime] = React.useState('');
+  const imgRef = React.useRef<HTMLImageElement>(null);
 
   const camName = typeof camera === 'string' ? camera : camera?.name || 'main_gate_entry';
-  const NGROK_PROXY = 'https://tassel-estranged-prism.ngrok-free.dev';
-  const frameUrl = `${NGROK_PROXY}/camera/frame/${camName}`;
 
-  // Live CCTV OSD Clock (e.g. 2026-08-11 17:35:00)
+  // The MJPEG stream URL — passed as query param to bypass ngrok interstitial
+  // (browsers can't set headers on <img> src, but query param works equally well)
+  const streamUrl = `${NGROK_PROXY}/camera/stream/${camName}?ngrok-skip-browser-warning=true`;
+  const snapshotUrl = `${NGROK_PROXY}/camera/frame/${camName}?ngrok-skip-browser-warning=true&t=${Date.now()}`;
+
+  // CCTV OSD Clock
   useEffect(() => {
-    const updateClock = () => {
-      const now = new Date();
-      const pad = (n: number) => n.toString().padStart(2, '0');
-      const timeStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-      setCurrentTime(timeStr);
+    const tick = () => {
+      const n = new Date();
+      const p = (v: number) => v.toString().padStart(2, '0');
+      setCurrentTime(`${n.getFullYear()}-${p(n.getMonth()+1)}-${p(n.getDate())} ${p(n.getHours())}:${p(n.getMinutes())}:${p(n.getSeconds())}`);
     };
-    updateClock();
-    const clockInterval = setInterval(updateClock, 1000);
-    return () => clearInterval(clockInterval);
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
   }, []);
 
-  // Frame Poller with zero-flicker buffer & auto-recovery
-  useEffect(() => {
-    let isMounted = true;
-    let timerId: ReturnType<typeof setTimeout>;
+  // If stream errors, retry after 3s
+  const handleStreamError = () => {
+    setHasError(true);
+    setTimeout(() => {
+      setHasError(false);
+      // Force img reload by toggling src
+      if (imgRef.current) imgRef.current.src = `${streamUrl}&_r=${Date.now()}`;
+    }, 3000);
+  };
 
-    const fetchFrame = async () => {
-      const url = `${frameUrl}?t=${Date.now()}`;
-      try {
-        const res = await fetch(url, {
-          headers: {
-            'ngrok-skip-browser-warning': '1',
-            'x-api-key': 'paradigm-attendance-secret-2024',
-          },
-          signal: AbortSignal.timeout(12000), // 12s timeout to prevent premature aborts
-        });
-
-        if (res.ok) {
-          const contentType = res.headers.get('content-type') || '';
-          if (contentType.includes('image')) {
-            const blob = await res.blob();
-            const newUrl = URL.createObjectURL(blob);
-            if (isMounted) {
-              setBlobUrl(newUrl);
-              setIsLive(true);
-              failCountRef.current = 0;
-              if (prevBlobRef.current) URL.revokeObjectURL(prevBlobRef.current);
-              prevBlobRef.current = newUrl;
-            } else {
-              URL.revokeObjectURL(newUrl);
-            }
-          }
-        } else {
-          failCountRef.current += 1;
-          if (failCountRef.current > 5 && isMounted) setIsLive(false);
-        }
-      } catch {
-        failCountRef.current += 1;
-        if (failCountRef.current > 5 && isMounted) setIsLive(false);
-      }
-
-      if (isMounted) timerId = setTimeout(fetchFrame, 1200);
-    };
-
-    fetchFrame();
-    return () => {
-      isMounted = false;
-      clearTimeout(timerId);
-      if (prevBlobRef.current) URL.revokeObjectURL(prevBlobRef.current);
-    };
-  }, [frameUrl]);
-
-  // Snapshot download
-  const handleDownloadSnapshot = (e: React.MouseEvent) => {
+  const handleDownloadSnapshot = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!blobUrl) return;
-    const a = document.createElement('a');
-    a.href = blobUrl;
-    a.download = `CCTV_${camName}_${Date.now()}.jpg`;
-    a.click();
+    try {
+      const res = await fetch(`${NGROK_PROXY}/camera/frame/${camName}`, {
+        headers: { 'ngrok-skip-browser-warning': '1', 'x-api-key': 'paradigm-attendance-secret-2024' },
+      });
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `CCTV_${camName}_${Date.now()}.jpg`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {}
   };
 
   return (
     <>
-      {/* ── Standard / Card CCTV View ── */}
-      <div className="w-full h-full relative group bg-black overflow-hidden select-none font-mono">
-        {blobUrl ? (
-          <img
-            src={blobUrl}
-            alt={camName}
-            className="w-full h-full object-cover block filter contrast-[1.05]"
-          />
-        ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950 text-slate-400 text-xs gap-2">
-            <Video className="h-7 w-7 text-emerald-500 animate-pulse" />
-            <span className="tracking-widest uppercase text-[11px] text-emerald-400">Connecting Camera Feed...</span>
+      {/* ── Inline CCTV Player ── */}
+      <div className="w-full h-full relative group bg-black overflow-hidden select-none">
+
+        {hasError ? (
+          <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950 gap-2">
+            <Video className="h-7 w-7 text-amber-400 animate-pulse" />
+            <span className="text-[11px] text-amber-300 font-mono tracking-wider">RECONNECTING...</span>
           </div>
+        ) : (
+          <img
+            ref={imgRef}
+            src={streamUrl}
+            alt={camName}
+            onError={handleStreamError}
+            onLoad={() => setHasError(false)}
+            className="w-full h-full object-cover block"
+            style={{ imageRendering: 'auto' }}
+          />
         )}
 
-        {/* CCTV Scanline / OSD Vignette Effect */}
-        <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-black/60 via-transparent to-black/60" />
+        {/* Vignette */}
+        <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-black/55 via-transparent to-black/55" />
 
-        {/* ── Top OSD Overlay ── */}
-        <div className="absolute top-2 left-2 right-2 flex items-center justify-between text-[10px] text-white/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] pointer-events-none">
+        {/* Top OSD */}
+        <div className="absolute top-2 left-2 right-2 flex items-center justify-between pointer-events-none font-mono">
           <div className="flex items-center gap-2">
-            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-red-600/80 backdrop-blur-sm text-[9px] font-bold text-white uppercase tracking-wider">
-              <span className="h-2 w-2 rounded-full bg-white animate-ping" />
-              LIVE
+            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-red-600/90 text-[9px] font-bold text-white uppercase tracking-widest">
+              <span className="h-1.5 w-1.5 rounded-full bg-white animate-ping" />REC
             </span>
-            <span className="font-bold tracking-wider text-emerald-400 uppercase drop-shadow">
-              CAM-01 • {camName.replace(/_/g, ' ')}
+            <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider drop-shadow">
+              CAM-01 • {camName.replace(/_/g,' ')}
             </span>
           </div>
-          <div className="text-[10px] tracking-wider text-emerald-300 font-bold bg-black/50 px-2 py-0.5 rounded backdrop-blur-sm">
+          <span className="text-[10px] text-emerald-300 font-bold bg-black/60 px-2 py-0.5 rounded backdrop-blur-sm">
             {currentTime}
+          </span>
+        </div>
+
+        {/* Center reticle */}
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-15">
+          <div className="w-7 h-7 border border-white/70 rounded-full flex items-center justify-center">
+            <div className="w-1 h-1 bg-white rounded-full" />
           </div>
         </div>
 
-        {/* ── Center Crosshairs (Subtle Authentic CCTV Overlay) ── */}
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-20">
-          <div className="w-8 h-8 border border-white/60 rounded-full flex items-center justify-center">
-            <div className="w-1.5 h-1.5 bg-white rounded-full" />
+        {/* Bottom OSD + hover controls */}
+        <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between font-mono">
+          <div className="flex items-center gap-1.5 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-lg border border-white/10 pointer-events-none">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-[9px] text-slate-300">1080P MJPEG • AI ON</span>
           </div>
-        </div>
-
-        {/* ── Bottom OSD & Action Controls Bar ── */}
-        <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between text-[10px] text-white/90 drop-shadow">
-          <div className="flex items-center gap-2 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-lg border border-white/10 pointer-events-none">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-            <span className="text-slate-300 text-[9px]">1080P • 15 FPS • FACE AI ACTIVE</span>
-          </div>
-
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-black/80 backdrop-blur-md p-1 rounded-lg border border-white/15">
-            <button
-              onClick={handleDownloadSnapshot}
-              title="Save Snapshot"
-              className="p-1.5 rounded hover:bg-white/20 text-white transition-colors"
-            >
+          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-black/80 backdrop-blur-md p-1 rounded-lg border border-white/10">
+            <button onClick={handleDownloadSnapshot} title="Save Snapshot" className="p-1.5 rounded hover:bg-white/20 text-white transition-colors">
               <Download className="h-3.5 w-3.5" />
             </button>
-            <button
-              onClick={() => setIsFullscreen(true)}
-              title="Fullscreen Mode"
-              className="p-1.5 rounded hover:bg-white/20 text-white transition-colors"
-            >
+            <button onClick={() => setIsFullscreen(true)} title="Fullscreen" className="p-1.5 rounded hover:bg-white/20 text-white transition-colors">
               <Maximize2 className="h-3.5 w-3.5" />
             </button>
           </div>
@@ -188,56 +150,43 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
 
       {/* ── Fullscreen Theater Modal ── */}
       {isFullscreen && (
-        <div className="fixed inset-0 z-[9999] bg-black/95 flex flex-col justify-between p-4 font-mono select-none">
-          {/* Header */}
-          <div className="flex items-center justify-between text-white pb-3 border-b border-white/10">
+        <div className="fixed inset-0 z-[9999] bg-black flex flex-col" onClick={() => setIsFullscreen(false)}>
+          <div className="flex items-center justify-between px-5 py-3 border-b border-white/10 text-white font-mono flex-shrink-0" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-3">
               <span className="flex items-center gap-2 px-3 py-1 rounded bg-red-600 text-xs font-bold uppercase tracking-wider">
-                <span className="h-2 w-2 rounded-full bg-white animate-ping" />
-                LIVE CCTV SURVEILLANCE
+                <span className="h-2 w-2 rounded-full bg-white animate-ping" />LIVE CCTV
               </span>
               <span className="text-sm font-bold text-emerald-400 tracking-wider uppercase">
-                {camName.replace(/_/g, ' ')} — MAIN ENTRANCE
+                {camName.replace(/_/g,' ')} — MAIN ENTRANCE
               </span>
             </div>
             <div className="flex items-center gap-4">
               <span className="text-sm text-emerald-300 font-bold">{currentTime}</span>
-              <button
-                onClick={() => setIsFullscreen(false)}
-                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors"
-              >
+              <button onClick={() => setIsFullscreen(false)} className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors">
                 <X className="h-5 w-5" />
               </button>
             </div>
           </div>
 
-          {/* Full Camera Screen */}
-          <div className="flex-1 my-4 relative rounded-2xl overflow-hidden bg-black border border-white/10 flex items-center justify-center">
-            {blobUrl ? (
-              <img src={blobUrl} alt={camName} className="w-full h-full object-contain" />
-            ) : (
-              <span className="text-emerald-400 animate-pulse text-sm">Connecting Stream...</span>
-            )}
-            <div className="absolute top-4 left-4 text-emerald-400 text-xs drop-shadow bg-black/60 px-3 py-1.5 rounded-lg border border-white/10">
-              ● RESOLUTION: 1920x1080 • BITRATE: AUTO • AI FACE RECOGNITION: ENABLED
+          <div className="flex-1 relative bg-black" onClick={e => e.stopPropagation()}>
+            <img
+              src={streamUrl}
+              alt={camName}
+              className="w-full h-full object-contain"
+            />
+            <div className="absolute top-4 left-4 text-emerald-400 text-xs font-mono bg-black/60 px-3 py-1.5 rounded-lg border border-white/10 pointer-events-none">
+              ● MJPEG STREAM • AI FACE RECOGNITION ACTIVE • WIN-0T8N581GN63
             </div>
           </div>
 
-          {/* Footer Controls */}
-          <div className="flex items-center justify-between text-xs text-slate-400 pt-2">
-            <span>Paradigm IFS CCTV Attendance System • Server WIN-0T8N581GN63</span>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={handleDownloadSnapshot}
-                className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-sans text-xs font-bold flex items-center gap-2 transition-colors"
-              >
-                <Download className="h-4 w-4" /> Download Snapshot
+          <div className="flex items-center justify-between px-5 py-3 border-t border-white/10 text-xs text-slate-400 font-sans flex-shrink-0" onClick={e => e.stopPropagation()}>
+            <span>Paradigm IFS CCTV Attendance System</span>
+            <div className="flex gap-2">
+              <button onClick={handleDownloadSnapshot} className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold flex items-center gap-2 transition-colors">
+                <Download className="h-4 w-4" /> Snapshot
               </button>
-              <button
-                onClick={() => setIsFullscreen(false)}
-                className="px-4 py-2 rounded-xl bg-accent text-white font-sans text-xs font-bold hover:bg-accent/90 transition-colors"
-              >
-                Close Fullscreen
+              <button onClick={() => setIsFullscreen(false)} className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition-colors">
+                Close
               </button>
             </div>
           </div>
@@ -246,6 +195,9 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
     </>
   );
 };
+
+
+
 
 interface NewDeviceForm {
   edgeDeviceId: string;

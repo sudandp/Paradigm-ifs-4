@@ -10,7 +10,7 @@
  * Must be rendered inside App.tsx (outside of <Routes>) so it appears on every page.
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useImpersonationStore } from '../../store/impersonationStore';
 import { useAuthStore } from '../../store/authStore';
 import { AlertTriangle, LogOut, Loader2 } from 'lucide-react';
@@ -20,12 +20,43 @@ const ImpersonationBanner: React.FC = () => {
   const user = useAuthStore(s => s.user);
   const [isExiting, setIsExiting] = useState(false);
 
+  // ── IDLE INACTIVITY TIMEOUT ──────────────────────────────────────────────
+  // If the admin remains idle (no mouse movement, click, scroll, touch, or keypress)
+  // for 5 minutes (300,000ms) while viewing as another user:
+  // 1. Auto-exit impersonation (view section closes).
+  // 2. Revert back to admin profile.
+  // 3. Navigate to admin profile / user management page.
+  useEffect(() => {
+    if (!isImpersonating) return;
+
+    const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes (300,000 ms)
+    let idleTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const resetIdleTimer = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(async () => {
+        console.warn('[Impersonation] Idle timeout reached (5 minutes inactivity). Closing view section and returning to admin profile.');
+        await stopImpersonation(true);
+      }, IDLE_TIMEOUT_MS);
+    };
+
+    const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'];
+    events.forEach(evt => window.addEventListener(evt, resetIdleTimer, { passive: true }));
+
+    resetIdleTimer();
+
+    return () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      events.forEach(evt => window.removeEventListener(evt, resetIdleTimer));
+    };
+  }, [isImpersonating, stopImpersonation]);
+
   if (!isImpersonating || !impersonator || !user) return null;
 
   const handleExit = async () => {
     setIsExiting(true);
     try {
-      await stopImpersonation();
+      await stopImpersonation(true);
     } finally {
       setIsExiting(false);
     }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { App } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { AppUpdate, AppUpdateAvailability } from '@capawesome/capacitor-app-update';
@@ -63,13 +63,44 @@ export const useAppUpdate = () => {
   const [updateInfo, setUpdateInfo] = useState<AppVersionInfo | null>(null);
   const [isUpdateRequired, setIsUpdateRequired] = useState(false);
   const [isChecking, setIsChecking] = useState(true);
+  // Prevents double-prompting on repeated resume events after update is already detected
+  const updateDetectedRef = useRef(false);
 
   useEffect(() => {
+    // Only run on native Android — no-op on web/iOS
+    if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') {
+      setIsChecking(false);
+      return;
+    }
+
+    // ── 1. Initial check on mount ────────────────────────────────────────────
     checkVersion();
+
+    // ── 2. Re-check on EVERY foreground resume ───────────────────────────────
+    // Google recommends checking for updates every time the user returns to the
+    // app. Without this, a user who backgrounds the app, checks the Play Store,
+    // and comes back will never see the update prompt.
+    let listenerHandle: { remove: () => void } | null = null;
+
+    const attachResumeListener = async () => {
+      listenerHandle = await App.addListener('appStateChange', ({ isActive }) => {
+        if (isActive && !updateDetectedRef.current) {
+          // App foregrounded and update modal not already showing — re-check
+          console.log('[AppUpdate] App foregrounded — re-checking Play Store...');
+          checkVersion();
+        }
+      });
+    };
+    attachResumeListener();
+
+    // ── 3. Cleanup listener on unmount ───────────────────────────────────────
+    return () => {
+      listenerHandle?.remove();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const checkVersion = async () => {
-    // Only run on native Android
     if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') {
       setIsChecking(false);
       return;
@@ -102,21 +133,23 @@ export const useAppUpdate = () => {
         };
 
         console.log('[AppUpdate] Update detected! Setting modal visible.', remoteInfo);
+        // Mark detected so resume listener doesn't re-trigger
+        updateDetectedRef.current = true;
         setUpdateInfo(remoteInfo);
         setIsUpdateRequired(true);
 
-        // Try native immediate update (Google's full-screen overlay) — only if Play Store allows it
-        // For Early Access apps, immediateUpdateAllowed is typically false; we fall back to our in-app modal
+        // Try native immediate update (Google's full-screen overlay).
+        // NOTE: Will fail silently if FLAG_SECURE is set on the window —
+        // the custom UpdatePromptModal (already rendered in App.tsx) handles the fallback.
         if (info.immediateUpdateAllowed) {
           console.log('[AppUpdate] Launching native immediate update overlay...');
           try {
             await AppUpdate.performImmediateUpdate();
           } catch (immErr) {
-            console.warn('[AppUpdate] performImmediateUpdate failed, modal will handle it:', immErr);
+            console.warn('[AppUpdate] performImmediateUpdate failed — custom modal is the fallback:', immErr);
           }
         } else if (info.flexibleUpdateAllowed) {
-          console.log('[AppUpdate] Immediate not allowed, flexible update available — showing in-app modal.');
-          // Start flexible download in background silently
+          console.log('[AppUpdate] Starting flexible background download...');
           try {
             await AppUpdate.startFlexibleUpdate();
             console.log('[AppUpdate] Flexible update download started in background.');
@@ -124,14 +157,16 @@ export const useAppUpdate = () => {
             console.warn('[AppUpdate] startFlexibleUpdate failed:', flexErr);
           }
         } else {
-          console.log('[AppUpdate] Neither immediate nor flexible allowed by Play Store — showing in-app modal only.');
+          console.log('[AppUpdate] Neither immediate nor flexible allowed — custom modal is the only prompt.');
         }
 
-        // Send FCU broadcast notification
+        // Send FCU broadcast notification (admin-only, fires once per version name)
         await sendFcuBroadcast(remoteInfo);
 
       } else {
         console.log('[AppUpdate] No update available. updateAvailability =', info.updateAvailability);
+        // Reset so future resume events re-check correctly
+        updateDetectedRef.current = false;
       }
     } catch (nativeErr) {
       console.warn('[AppUpdate] Native store check failed:', nativeErr);

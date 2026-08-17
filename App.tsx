@@ -342,6 +342,65 @@ const shouldStorePath = (path: string) => {
   return !IGNORED_PATH_PREFIXES.some(prefix => path.startsWith(prefix));
 };
 
+/**
+ * Safe wrapper around localStorage.setItem for the last-path key.
+ * On QuotaExceededError it evicts stale app:* keys and retries once
+ * rather than crashing the React tree with an unhandled exception.
+ */
+const safeSetLastPath = (path: string) => {
+  try {
+    localStorage.setItem(LAST_PATH_KEY, path);
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'QuotaExceededError') {
+      // Evict all app:* prefixed keys to free space, then retry
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('app:') && k !== LAST_PATH_KEY) keysToRemove.push(k);
+      }
+      keysToRemove.forEach(k => localStorage.removeItem(k));
+      try {
+        localStorage.setItem(LAST_PATH_KEY, path);
+      } catch {
+        // Storage completely full — skip silently, non-critical
+        console.warn('[App] localStorage quota exceeded — skipping lastPath save.');
+      }
+    }
+  }
+};
+
+/**
+ * Proactive localStorage health check — runs ONCE at module load.
+ * Clears stale Supabase auth cache and large app:* blobs when usage exceeds
+ * 80% of the ~5 MB quota, preventing QuotaExceededError mid-session.
+ */
+(() => {
+  try {
+    let totalBytes = 0;
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k) totalBytes += k.length + (localStorage.getItem(k)?.length ?? 0);
+    }
+    // ~5 MB quota → 5 * 1024 * 1024 / 2 chars = 2621440 chars (UTF-16)
+    const QUOTA_CHARS = 2621440;
+    if (totalBytes > QUOTA_CHARS * 0.8) {
+      console.warn('[App] localStorage near quota (' + Math.round(totalBytes / 1024) + ' KB) — evicting stale keys.');
+      const evictPrefixes = ['sb-', 'supabase.auth.', 'app:cache'];
+      const toRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && evictPrefixes.some(p => k.startsWith(p)) && k !== LAST_PATH_KEY) {
+          toRemove.push(k);
+        }
+      }
+      toRemove.forEach(k => localStorage.removeItem(k));
+      console.warn('[App] Evicted ' + toRemove.length + ' stale localStorage keys.');
+    }
+  } catch {
+    // Non-critical — storage may already be locked
+  }
+})();
+
 const DefaultRouteRedirector: React.FC = () => {
   const user = useAuthStore(state => state.user);
   const permissions = usePermissionsStore(state => state.permissions);
@@ -405,7 +464,7 @@ const MainLayoutWrapper: React.FC = () => {
     // Not logged in and not a public path, redirect to login
     // Store the current path before redirecting if it should be remembered.
     if (shouldStorePath(location.pathname + location.search)) {
-      localStorage.setItem(LAST_PATH_KEY, location.pathname + location.search);
+      safeSetLastPath(location.pathname + location.search);
     }
     return <Navigate to="/auth/login" replace />;
   }
@@ -475,6 +534,26 @@ const App: React.FC = () => {
   const { isKioskMode, setKioskMode: updateKioskMode, setDeviceId, isKioskSkipped, setKioskSkipped } = useGateStore();
   const setIsOffline = useAuthStore(state => state.setIsOffline);
   const isOffline = useAuthStore(state => state.isOffline);
+
+  // ── IMPERSONATION SESSION PERSISTENCE SYNC ────────────────────────────────
+  // Enforce target user in authStore on initial mount if an active impersonation session exists in localStorage
+  useEffect(() => {
+    try {
+      const rawSession = localStorage.getItem('paradigm_impersonation_session');
+      if (rawSession) {
+        const parsed = JSON.parse(rawSession);
+        if (parsed?.isImpersonating && parsed?.targetUser) {
+          const current = useAuthStore.getState().user;
+          if (!current || current.id !== parsed.targetUser.id) {
+            console.log(`[Impersonation] Restoring target user ${parsed.targetUser.name} on page refresh.`);
+            useAuthStore.getState().setUser(parsed.targetUser);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[Impersonation] Error syncing stored session on mount:', e);
+    }
+  }, []);
 
   // ── Network Status Tracking ────────────────────────────────────────────────
   useEffect(() => {
@@ -1136,7 +1215,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (user && shouldStorePath(location.pathname + location.search)) {
-      localStorage.setItem(LAST_PATH_KEY, location.pathname + location.search);
+      safeSetLastPath(location.pathname + location.search);
     }
   }, [user, location.pathname, location.search]);
 
@@ -1443,15 +1522,25 @@ const App: React.FC = () => {
       // Update global user state based on the session
       if (session?.user) {
         const currentUser = useAuthStore.getState().user;
+        let isImpersonating = useImpersonationStore.getState().isImpersonating;
+        if (!isImpersonating) {
+          try {
+            const rawSession = localStorage.getItem('paradigm_impersonation_session');
+            if (rawSession) {
+              const parsed = JSON.parse(rawSession);
+              if (parsed?.isImpersonating && parsed?.targetUser) {
+                isImpersonating = true;
+              }
+            }
+          } catch (e) {}
+        }
 
         // Only re-fetch the profile when:
         // - No user is in memory (first login), OR
-        // - The session user ID differs from the current in-memory user (account switch).
-        // TOKEN_REFRESHED / SIGNED_IN on the same account: skip the re-fetch to avoid
-        // triggering a redundant setUser() call that would re-run all user-dependent effects
-        // (notifications, attendance, etc.) and cause visible screen flickering.
+        // - The session user ID differs from the current in-memory user (account switch) AND not impersonating.
+        // During impersonation, NEVER overwrite the target user with the session user (Admin profile).
         const sessionUserId = session.user.id;
-        if (!currentUser || currentUser.id !== sessionUserId) {
+        if (!isImpersonating && (!currentUser || currentUser.id !== sessionUserId)) {
           setTimeout(async () => {
             try {
               const appUser = await withTimeout(

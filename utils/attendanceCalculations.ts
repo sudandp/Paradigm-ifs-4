@@ -934,18 +934,6 @@ export function evaluateAttendanceStatus(params: {
       const total_effective = (workingHours || 0) + permHours + (leave_fraction * baseHrs);
 
       if (total_effective >= full) {
-          const rem_fraction = 1.0 - leave_fraction;
-          if (rem_fraction > 0 && workingHours && workingHours > 0) {
-              // Round worked fraction to nearest 0.05
-              let worked_fraction = Math.round(((workingHours || 0) / baseHrs) * 20) / 20;
-              worked_fraction = Math.min(rem_fraction, worked_fraction);
-              const permission_fraction = Math.round((rem_fraction - worked_fraction) * 100) / 100;
-              
-              if (worked_fraction > 0 && permission_fraction > 0) {
-                  return `${worked_fraction}P+${permission_fraction}RP${approvedMainLeave ? `+${leaveCode}` : ''}`;
-              }
-          }
-          
           if (approvedMainLeave) {
               return `${pCode}+${leaveCode}`;
           }
@@ -1335,6 +1323,138 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
     totalPayableDays: Math.min(days.length, totalPayableDays)
   };
 }
+
+export interface EarlyDepartureDeduction {
+  dateStr: string;
+  workedMins: number;
+  targetMins: number;
+  earlyMins: number;
+  formattedWorked: string;
+  correctedWorkedMins: number;
+  formattedCorrectedWorked: string;
+  punchOutTime: string;
+  permissionEndTime: string;
+  permissionTimeRange: string;
+}
+
+/**
+ * Calculates early departure permission deductions for a list of attendance events.
+ * If an employee punches out early (e.g. required shift 8h/480m, worked 7h 50m/470m = 10m early),
+ * the early departure duration (10m) is automatically deducted from their monthly permission pool.
+ * The permission log records the exact duration (e.g., 17:50 – 18:00) and corrects total effective work hours to 8h 0m.
+ */
+export function getEarlyDepartureDeductions(
+  events: AttendanceEvent[],
+  targetShiftMins: number = 480,
+  approvedPermissionRequests: any[] = [],
+  fullLeaveRequests: any[] = [],
+  monthPrefix?: string
+): EarlyDepartureDeduction[] {
+  const earlyDeductions: EarlyDepartureDeduction[] = [];
+
+  // Group events by date (yyyy-MM-dd)
+  const eventsByDate: Record<string, AttendanceEvent[]> = {};
+  events.forEach(e => {
+    try {
+      const d = format(parseISO(e.timestamp), 'yyyy-MM-dd');
+      if (monthPrefix && !d.startsWith(monthPrefix)) return;
+      if (!eventsByDate[d]) eventsByDate[d] = [];
+      eventsByDate[d].push(e);
+    } catch (err) {
+      // ignore invalid timestamps
+    }
+  });
+
+  Object.entries(eventsByDate).forEach(([dateStr, dayEvents]) => {
+    // Check if there is a punch-out / check-out event for this day
+    const hasPunchOut = dayEvents.some(e => {
+      const t = (e.type || '').toLowerCase();
+      return t.includes('punch-out') || t.includes('punch_out') || t.includes('site-out') || t.includes('site_out') || t.includes('check-out') || t.includes('checkout');
+    });
+    if (!hasPunchOut) return;
+
+    // Skip if employee has an approved Full Day leave on this date
+    const hasFullLeave = fullLeaveRequests.some(r => {
+      if (r.status !== 'approved' && r.status !== 'correction_made') return false;
+      if (r.leaveType === 'Permission') return false;
+      return dateStr >= r.startDate && dateStr <= r.endDate;
+    });
+    if (hasFullLeave) return;
+
+    // Calculate worked minutes for the day
+    const hoursObj = calculateWorkingHours(dayEvents);
+    const workedMins = Math.round(hoursObj.workingHours * 60);
+
+    // If worked time is less than target shift (and at least 60 mins worked, and shortage <= 180 mins)
+    if (workedMins > 0 && workedMins < targetShiftMins) {
+      const grossShortage = targetShiftMins - workedMins;
+      if (grossShortage > 0 && grossShortage <= 180) {
+        // Calculate approved permission minutes on this date if any
+        let approvedMinsOnDate = 0;
+        approvedPermissionRequests.forEach(r => {
+          if (r.startDate === dateStr && (r.status === 'approved' || r.status === 'correction_made')) {
+            const toMins = (t: string) => { if (!t) return 0; const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+            if (r.correctionDetails?.punchIn && r.correctionDetails?.punchOut) {
+              let p1 = toMins(r.correctionDetails.punchOut) - toMins(r.correctionDetails.punchIn);
+              if (p1 < 0) p1 += 24 * 60;
+              approvedMinsOnDate += Math.max(0, p1);
+            } else if (r.correctionDetails?.permissionMinutes) {
+              approvedMinsOnDate += Number(r.correctionDetails.permissionMinutes);
+            }
+          }
+        });
+
+        // Net early departure minutes not covered by an explicit permission request
+        const netEarlyMins = Math.max(0, grossShortage - approvedMinsOnDate);
+        if (netEarlyMins > 0) {
+          // Find latest punch-out event timestamp to get exact departure time
+          const punchOutEvents = dayEvents.filter(e => {
+            const t = (e.type || '').toLowerCase();
+            return t.includes('punch-out') || t.includes('punch_out') || t.includes('site-out') || t.includes('site_out') || t.includes('check-out') || t.includes('checkout');
+          });
+
+          let punchOutStr = '--:--';
+          let endStr = '--:--';
+          let timeRangeStr = 'Permission';
+
+          if (punchOutEvents.length > 0) {
+            const latestOut = punchOutEvents.reduce((prev, curr) =>
+              new Date(curr.timestamp) > new Date(prev.timestamp) ? curr : prev
+            );
+            const outDate = new Date(latestOut.timestamp);
+            punchOutStr = format(outDate, 'HH:mm');
+
+            const endDateObj = new Date(outDate.getTime() + netEarlyMins * 60 * 1000);
+            endStr = format(endDateObj, 'HH:mm');
+            timeRangeStr = `${punchOutStr} – ${endStr}`;
+          }
+
+          const wH = Math.floor(workedMins / 60);
+          const wM = workedMins % 60;
+          const correctedTotalMins = workedMins + netEarlyMins;
+          const cH = Math.floor(correctedTotalMins / 60);
+          const cM = correctedTotalMins % 60;
+
+          earlyDeductions.push({
+            dateStr,
+            workedMins,
+            targetMins: targetShiftMins,
+            earlyMins: netEarlyMins,
+            formattedWorked: `${wH}h ${wM}m`,
+            correctedWorkedMins: correctedTotalMins,
+            formattedCorrectedWorked: `${cH}h ${cM}m`,
+            punchOutTime: punchOutStr,
+            permissionEndTime: endStr,
+            permissionTimeRange: timeRangeStr
+          });
+        }
+      }
+    }
+  });
+
+  return earlyDeductions;
+}
+
 
 // Force Vite HMR
 

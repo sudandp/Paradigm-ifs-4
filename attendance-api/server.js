@@ -117,7 +117,7 @@ app.get(['/', '/health'], (req, res) => {
 const CCTV_PORT = process.env.CCTV_PORT || 4100;
 const CCTV_BASE = `http://127.0.0.1:${CCTV_PORT}`;
 
-// GET /camera/frame/:cameraName  — live MJPEG / JPEG frame polling
+// GET /camera/frame/:cameraName  — single JPEG snapshot frame
 app.get('/camera/frame/:cameraName', async (req, res) => {
   const camName = req.params.cameraName;
   const targetUrl = `${CCTV_BASE}/camera/frame/${encodeURIComponent(camName)}?${new URLSearchParams(req.query).toString()}`;
@@ -135,6 +135,34 @@ app.get('/camera/frame/:cameraName', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: 'Camera proxy error', details: err.message });
   }
+});
+
+// GET /camera/stream/:cameraName  — continuous MJPEG live stream
+// The browser receives a multipart/x-mixed-replace response and renders it as live video
+// directly inside an <img> tag — no JavaScript polling needed.
+app.get('/camera/stream/:cameraName', (req, res) => {
+  const camName = req.params.cameraName;
+  const targetUrl = `${CCTV_BASE}/camera/stream/${encodeURIComponent(camName)}`;
+  const http = require('http');
+
+  const proxyReq = http.get(targetUrl, (proxyRes) => {
+    // Forward all headers (crucially Content-Type: multipart/x-mixed-replace)
+    res.writeHead(proxyRes.statusCode, {
+      ...proxyRes.headers,
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+    });
+    // Pipe the endless MJPEG stream directly — do NOT buffer
+    proxyRes.pipe(res, { end: true });
+  });
+
+  proxyReq.on('error', (err) => {
+    console.warn(`[CCTV Stream Proxy] Stream error for ${camName}:`, err.message);
+    if (!res.headersSent) res.status(502).json({ error: 'CCTV stream unavailable', details: err.message });
+  });
+
+  // When the browser disconnects, kill the upstream connection
+  req.on('close', () => proxyReq.destroy());
 });
 
 // GET /camera/snapshot/:cameraName  — single snapshot

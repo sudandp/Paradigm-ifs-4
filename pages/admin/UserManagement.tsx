@@ -594,10 +594,14 @@ const UserManagement: React.FC = () => {
     }, []);
 
     const handleImpersonate = useCallback((user: User) => {
+        if (adminUser && user.id === adminUser.id) {
+            setToast({ message: 'You are already logged in as yourself.', type: 'error' });
+            return;
+        }
         setImpersonateTarget(user);
         setImpersonateReason('');
         setIsImpersonateModalOpen(true);
-    }, []);
+    }, [adminUser]);
 
     const handleConfirmImpersonation = async () => {
         if (!adminUser || !impersonateTarget) return;
@@ -609,7 +613,7 @@ const UserManagement: React.FC = () => {
         try {
             await startImpersonation(adminUser, impersonateTarget, impersonateReason.trim());
             setIsImpersonateModalOpen(false);
-            navigate('/');
+            navigate('/profile');
         } catch (err) {
             setToast({ message: 'Failed to start impersonation. Please try again.', type: 'error' });
         } finally {

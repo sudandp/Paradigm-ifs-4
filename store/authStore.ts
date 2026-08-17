@@ -201,11 +201,49 @@ const CapacitorStorage = {
     return value;
   },
   setItem: async (key: string, value: string): Promise<void> => {
-    await Preferences.set({ key, value });
+    try {
+      await Preferences.set({ key, value });
+    } catch (e: any) {
+      // On quota exceeded: evict all OTHER CapacitorStorage keys and retry once
+      if (e?.name === 'QuotaExceededError' || e?.message?.includes('quota')) {
+        console.warn('[AuthStore] Storage quota exceeded — evicting stale CapacitorStorage keys...');
+        try {
+          const allKeys = await Preferences.keys();
+          const toRemove = (allKeys.keys || []).filter((k: string) => k !== key);
+          await Promise.all(toRemove.map((k: string) => Preferences.remove({ key: k })));
+          // Also clear any stale Supabase entries from localStorage
+          for (let i = localStorage.length - 1; i >= 0; i--) {
+            const lk = localStorage.key(i);
+            if (lk && (lk.startsWith('sb-') || lk.startsWith('supabase.'))) {
+              localStorage.removeItem(lk);
+            }
+          }
+          await Preferences.set({ key, value });
+          console.warn('[AuthStore] Eviction complete, storage saved successfully.');
+        } catch (retryErr) {
+          // Storage completely unrecoverable — log and skip, do NOT crash
+          console.error('[AuthStore] Storage quota unrecoverable — skipping persist:', retryErr);
+        }
+      } else {
+        console.error('[AuthStore] Unexpected storage error:', e);
+      }
+    }
   },
   removeItem: async (key: string): Promise<void> => {
     await Preferences.remove({ key });
   },
+};
+
+const getActiveImpersonationTargetUser = () => {
+    try {
+        const raw = localStorage.getItem('paradigm_impersonation_session');
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.isImpersonating && parsed.targetUser) {
+            return parsed.targetUser;
+        }
+    } catch {}
+    return null;
 };
 
 let lastSyncedSteps = 0;
@@ -367,7 +405,15 @@ export const useAuthStore = create<AuthState>()(
             }
         },
 
-        setUser: (user) => set({ user, error: null, loading: false }),
+        setUser: (user) => {
+            const activeTarget = getActiveImpersonationTargetUser();
+            if (activeTarget && user && user.id !== activeTarget.id) {
+                console.log(`[authStore] Impersonation active. Preserving target user ${activeTarget.name} instead of setting ${user.name}`);
+                set({ user: activeTarget, error: null, loading: false });
+            } else {
+                set({ user, error: null, loading: false });
+            }
+        },
         setInitialized: (initialized) => set({ isInitialized: initialized }),
         setLoading: (loading) => set({ loading }),
         
@@ -998,11 +1044,25 @@ export const useAuthStore = create<AuthState>()(
                         const hoursElapsed = (today.getTime() - earliestSessionTime.getTime()) / (1000 * 60 * 60);
 
                         if (sessionDateStr < todayDateStr) {
-                            const isResolvedByRequest = leaveRequests.some((r: any) =>
-                                ['Permission', 'Correction', 'Regularization'].includes(r.leaveType) &&
-                                r.startDate === sessionDateStr &&
-                                !['rejected', 'withdrawn', 'cancelled'].includes(r.status)
-                            );
+                            // A session is "resolved" if:
+                            // 1. A Correction/Permission/Regularization request exists for that day, OR
+                            // 2. An approved/pending leave (ANY type: Casual, Sick, Annual, Comp Off, etc.)
+                            //    covers the session date — meaning the employee was legitimately on leave
+                            //    and the open session is simply a pre-leave punch-in with no punch-out.
+                            const isResolvedByRequest = leaveRequests.some((r: any) => {
+                                if (['rejected', 'withdrawn', 'cancelled'].includes(r.status)) return false;
+                                // Correction-type requests must match the exact session date
+                                if (['Permission', 'Correction', 'Regularization'].includes(r.leaveType)) {
+                                    return r.startDate === sessionDateStr;
+                                }
+                                // For ALL other leave types (Casual, Sick, Annual, Comp Off, LOP, etc.)
+                                // check if the session date falls within the leave date range.
+                                // This fixes: field/site staff on leave Aug 15–16 still seeing
+                                // "request punch in" on Aug 17 because Aug 14 session was never closed.
+                                const leaveStart = r.startDate;
+                                const leaveEnd = r.endDate || r.startDate;
+                                return sessionDateStr >= leaveStart && sessionDateStr <= leaveEnd;
+                            });
 
                             if (!isResolvedByRequest) {
                                 const previousDayEvents = events.filter(e => e.timestamp.startsWith(sessionDateStr));
@@ -1710,7 +1770,16 @@ export const useAuthStore = create<AuthState>()(
         name: 'paradigm-auth-storage',
         storage: createJSONStorage(() => CapacitorStorage as any),
         partialize: (state) => ({
-            user: state.user,
+            // ── Core identity (only essential fields, not full profile blobs) ──
+            user: state.user ? {
+                id: state.user.id,
+                name: state.user.name,
+                email: state.user.email,
+                role: state.user.role,
+                company_id: (state.user as any).company_id,
+                avatar_url: (state.user as any).avatar_url,
+            } : null,
+            // ── Attendance state (must survive app restart) ───────────────────
             isCheckedIn: state.isCheckedIn,
             lastCheckInTime: state.lastCheckInTime,
             lastCheckOutTime: state.lastCheckOutTime,
@@ -1719,7 +1788,8 @@ export const useAuthStore = create<AuthState>()(
             lastBreakOutTime: state.lastBreakOutTime,
             totalBreakDurationToday: state.totalBreakDurationToday,
             totalWorkingDurationToday: state.totalWorkingDurationToday,
-            breakIntervals: state.breakIntervals,
+            // Cap breakIntervals to last 20 entries to prevent unbounded growth
+            breakIntervals: (state.breakIntervals || []).slice(-20),
             isOnBreak: state.isOnBreak,
             dailyPunchCount: state.dailyPunchCount,
             isPunchUnlocked: state.isPunchUnlocked,
@@ -1729,10 +1799,10 @@ export const useAuthStore = create<AuthState>()(
             isSiteOtCheckedIn: state.isSiteOtCheckedIn,
             hasPreviousDayOpenSession: state.hasPreviousDayOpenSession,
             previousDaySessionInfo: state.previousDaySessionInfo,
-            geofencingSettings: state.geofencingSettings,
             breakLimit: state.breakLimit,
-            breakReminderInterval: state.breakReminderInterval,
             pendingAutoPunchOut: state.pendingAutoPunchOut,
+            // NOTE: geofencingSettings and breakReminderInterval are intentionally
+            // excluded — they are re-fetched from the server on every login.
         }),
     }
 )
