@@ -441,6 +441,28 @@ const CctvDashboard: React.FC = () => {
           edgeDeviceId: u.edge_device_id,
         }));
 
+      // Deduplicate unknown queue: group same-camera detections within a 90s window.
+      // When the Python cooldown was not active (old records), multiple rows for the
+      // same person can exist — collapse them to the most recent one per group.
+      const UNKNOWN_DEDUP_WINDOW_MS = 90_000;
+      const deduped: EnrollmentItem[] = [];
+      const seenWindows: { cam: string; ts: number }[] = [];
+      // Sort most recent first so the latest snapshot is shown
+      mergedUnknown.sort((a, b) => new Date(b.detectedAt).getTime() - new Date(a.detectedAt).getTime());
+      for (const item of mergedUnknown) {
+        const itemTs = new Date(item.detectedAt).getTime();
+        const isDupe = seenWindows.some(
+          w => w.cam === item.cameraName && Math.abs(w.ts - itemTs) < UNKNOWN_DEDUP_WINDOW_MS
+        );
+        if (!isDupe) {
+          deduped.push(item);
+          seenWindows.push({ cam: item.cameraName, ts: itemTs });
+        }
+      }
+      mergedUnknown = deduped;
+
+      setUnknownQueue(mergedUnknown);
+
       // 2. Also fetch from Edge Server local DB (if online) for instant local zero-delay sync
       try {
         const edgeRes = await fetch(`${NGROK_PROXY}/logs/today?ngrok-skip-browser-warning=1`, {
@@ -476,8 +498,10 @@ const CctvDashboard: React.FC = () => {
         // Edge direct fetch offline/skipped — Supabase data is used
       }
 
+
       setLogs(mergedLogs);
-      setUnknownQueue(mergedUnknown);
+      // Note: setUnknownQueue(mergedUnknown) is called above after deduplication step
+
 
       if (usersData) {
         setUserOptions(usersData.map((u: any) => ({
@@ -523,7 +547,17 @@ const CctvDashboard: React.FC = () => {
           snapshotUrl: u.snapshot_url,
           status: 'pending',
           edgeDeviceId: u.edge_device_id,
-        }, ...prev.filter(x => x.id !== u.id)]);
+        };
+        setUnknownQueue(prev => {
+          // Don't add if we already have a pending item from the same camera within 90 seconds
+          const newTs = new Date(newItem.detectedAt).getTime();
+          const isTooClose = prev.some(
+            x => x.cameraName === newItem.cameraName &&
+                 Math.abs(new Date(x.detectedAt).getTime() - newTs) < 90_000
+          );
+          if (isTooClose) return prev;
+          return [newItem, ...prev.filter(x => x.id !== u.id)];
+        });
       })
       .subscribe();
 

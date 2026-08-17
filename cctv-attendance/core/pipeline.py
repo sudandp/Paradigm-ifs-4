@@ -72,7 +72,14 @@ class AttendancePipeline:
         # Each track entry now includes: bbox, user_name, user_id, confidence,
         # is_match, direction, timestamp, object_type, label
         self.latest_tracks: dict[str, list[dict]] = {}
-        
+
+        # Unknown face cooldown — prevent same person creating duplicate queue entries
+        # Structure: {camera_name: [(embedding_vec, last_seen_timestamp), ...]}
+        # Compares cosine similarity — if > 0.65 within cooldown window → skip
+        self._unknown_face_seen: dict[str, list[tuple]] = {}
+        self._unknown_cooldown: float = 60.0  # seconds between same unknown face reports
+        self._unknown_sim_threshold: float = 0.65  # cosine similarity to consider "same person"
+
         # Stats
         self._stats = PipelineStats()
         self._running = False
@@ -434,7 +441,44 @@ class AttendancePipeline:
             )
 
         else:
-            # ─── Unknown Face: Log for admin review ───────────────
+            # ─── Unknown Face: Deduplicate before logging / pushing ────────
+            # Compare embedding against recently seen unknowns on this camera.
+            # If cosine similarity > threshold within cooldown window → same person, skip.
+            cam = captured.camera_name
+            now_ts = captured.timestamp
+
+            # Clean up expired entries
+            self._unknown_face_seen.setdefault(cam, [])
+            self._unknown_face_seen[cam] = [
+                (emb, ts) for emb, ts in self._unknown_face_seen[cam]
+                if now_ts - ts < self._unknown_cooldown
+            ]
+
+            # Check similarity against all recent unknown faces on this camera
+            is_duplicate = False
+            try:
+                import numpy as _np
+                for prev_emb, _ in self._unknown_face_seen[cam]:
+                    norm_a = _np.linalg.norm(face.embedding)
+                    norm_b = _np.linalg.norm(prev_emb)
+                    if norm_a > 0 and norm_b > 0:
+                        sim = float(_np.dot(face.embedding, prev_emb) / (norm_a * norm_b))
+                        if sim >= self._unknown_sim_threshold:
+                            is_duplicate = True
+                            break
+            except Exception:
+                pass
+
+            if is_duplicate:
+                self._stats.cooldown_skips += 1
+                logger.debug(
+                    f"[Pipeline] 🔁 Duplicate unknown face on {cam} — skipping (cooldown)"
+                )
+                return
+
+            # Not a duplicate — record this embedding and proceed
+            self._unknown_face_seen[cam].append((face.embedding.copy(), now_ts))
+
             snapshot_path, snapshot_data_url = self._encode_snapshot(face, "unknown", captured)
 
             self.db.log_unknown_face(
