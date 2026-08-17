@@ -86,7 +86,7 @@ const NvrCameraStream: React.FC<{
 
   // Build the MJPEG stream URL — the server returns multipart/x-mixed-replace
   // which browsers natively render as continuous live video
-  const mjpegStreamUrl = `${NGROK_PROXY}/camera/stream/${encodeURIComponent(camName)}`;
+  const mjpegStreamUrl = `${NGROK_PROXY}/camera/stream/${encodeURIComponent(camName)}?ngrok-skip-browser-warning=1`;
 
   const handleFrameLoad = () => {
     fpsCounterRef.current += 1;

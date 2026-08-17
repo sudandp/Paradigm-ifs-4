@@ -76,7 +76,7 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
   }, []);
 
   // Native MJPEG stream URL
-  const mjpegStreamUrl = `${NGROK_PROXY}/camera/stream/${encodeURIComponent(camName)}`;
+  const mjpegStreamUrl = `${NGROK_PROXY}/camera/stream/${encodeURIComponent(camName)}?ngrok-skip-browser-warning=1`;
 
   const handleFrameLoad = () => {
     fpsCounterRef.current += 1;

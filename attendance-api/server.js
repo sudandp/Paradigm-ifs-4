@@ -145,12 +145,19 @@ app.get('/camera/stream/:cameraName', (req, res) => {
   const targetUrl = `${CCTV_BASE}/camera/stream/${encodeURIComponent(camName)}`;
   const http = require('http');
 
+  // Disable Express response buffering — critical for streaming
+  res.setHeader('X-Accel-Buffering', 'no');
+
   const proxyReq = http.get(targetUrl, (proxyRes) => {
     // Forward all headers (crucially Content-Type: multipart/x-mixed-replace)
     res.writeHead(proxyRes.statusCode, {
       ...proxyRes.headers,
       'Access-Control-Allow-Origin': '*',
       'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Connection': 'keep-alive',
+      'Transfer-Encoding': 'chunked',
+      'ngrok-skip-browser-warning': '1',  // Pass through so Ngrok doesn't inject HTML
+      'X-Content-Type-Options': 'nosniff',
     });
     // Pipe the endless MJPEG stream directly — do NOT buffer
     proxyRes.pipe(res, { end: true });
@@ -164,6 +171,7 @@ app.get('/camera/stream/:cameraName', (req, res) => {
   // When the browser disconnects, kill the upstream connection
   req.on('close', () => proxyReq.destroy());
 });
+
 
 // GET /camera/snapshot/:cameraName  — single snapshot
 app.get('/camera/snapshot/:cameraName', async (req, res) => {
