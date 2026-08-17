@@ -663,23 +663,37 @@ const ManageCctvDevices: React.FC = () => {
                   <div className="p-6">
                     <div className="flex flex-col lg:flex-row items-stretch gap-8">
                       {/* Left Details Panel */}
-                      <div className="flex-1 flex flex-col justify-between">
-                        <div>
+                      <div className="flex-1 flex flex-col justify-between space-y-5">
+                        <div className="space-y-5">
                           {/* Device Top Title & Actions */}
-                          <div className="flex items-start justify-between gap-4 mb-4">
-                            <div className="flex items-center gap-3">
-                              <div className={`p-3 rounded-2xl ${device.status === 'online' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-gray-100 text-gray-400'}`}>
+                          <div className="flex items-start justify-between gap-4 pb-4 border-b border-border/70">
+                            <div className="flex items-center gap-3.5">
+                              <div className={`h-12 w-12 rounded-2xl flex items-center justify-center flex-shrink-0 ${
+                                device.status === 'online' 
+                                  ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 shadow-sm' 
+                                  : 'bg-gray-100 text-gray-400 border border-gray-200'
+                              }`}>
                                 {device.status === 'online' ? <Wifi className="h-6 w-6" /> : <WifiOff className="h-6 w-6" />}
                               </div>
                               <div>
-                                <h3 className="text-xl font-bold text-primary-text tracking-tight">{device.siteName}</h3>
-                                <div className="flex items-center gap-2 mt-0.5">
-                                  <span className="text-xs font-mono text-muted bg-background px-2 py-0.5 rounded border border-border">
+                                <div className="flex items-center gap-2">
+                                  <h3 className="text-xl font-extrabold text-primary-text tracking-tight">{device.siteName}</h3>
+                                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider ${
+                                    device.status === 'online'
+                                      ? 'bg-emerald-100/80 text-emerald-800 border border-emerald-300/60'
+                                      : 'bg-gray-100 text-gray-600 border border-gray-200'
+                                  }`}>
+                                    <span className={`h-1.5 w-1.5 rounded-full ${device.status === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`} />
+                                    {device.status === 'online' ? 'Live & Synced' : 'Offline'}
+                                  </span>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2 mt-1">
+                                  <span className="text-xs font-mono text-muted bg-background px-2 py-0.5 rounded-md border border-border">
                                     {device.edgeDeviceId}
                                   </span>
                                   {device.locationName && (
-                                    <span className="text-xs text-muted flex items-center gap-1">
-                                      <MapPin className="h-3 w-3" /> {device.locationName}
+                                    <span className="text-xs text-muted flex items-center gap-1 bg-muted/30 px-2 py-0.5 rounded-md">
+                                      <MapPin className="h-3 w-3 text-accent" /> {device.locationName}
                                     </span>
                                   )}
                                 </div>
@@ -688,61 +702,92 @@ const ManageCctvDevices: React.FC = () => {
 
                             <button
                               onClick={() => handleDelete(device.id)}
-                              className="p-2 text-muted hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                              className="p-2 text-muted hover:text-red-500 hover:bg-red-50 rounded-xl transition-all border border-transparent hover:border-red-100"
                               title="Delete edge device"
                             >
                               <Trash2 className="h-4 w-4" />
                             </button>
                           </div>
 
-                          {/* Camera Channel Tags */}
-                          <div className="mb-6">
-                            <div className="text-xs font-semibold text-muted uppercase tracking-wider mb-2">Active AI Channels</div>
-                            <div className="flex flex-wrap gap-2">
-                              {device.cameras.map((cam: any, i: number) => (
-                                <span 
-                                  key={i} 
-                                  className={`text-xs px-3 py-1 rounded-full font-medium flex items-center gap-1.5 border ${
-                                    cam.direction === 'entry' 
-                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
-                                      : 'bg-blue-50 text-blue-700 border-blue-200'
-                                  }`}
-                                >
-                                  <Camera className="h-3.5 w-3.5" />
-                                  <span className="font-semibold">{cam.name}</span>
-                                  <span className="text-[10px] opacity-70 uppercase font-mono">({cam.direction})</span>
-                                </span>
-                              ))}
+                          {/* Channel Details Card */}
+                          <div className="p-4 rounded-xl bg-background border border-border shadow-xs space-y-3">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="font-bold text-primary-text uppercase tracking-wider flex items-center gap-1.5">
+                                <Camera className="h-3.5 w-3.5 text-accent" /> Camera Channel 01
+                              </span>
+                              <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold uppercase font-mono">
+                                Entry Gate (Punch-IN)
+                              </span>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2 text-xs">
+                              <span className="px-2.5 py-1 rounded-lg bg-card border border-border text-primary-text font-medium flex items-center gap-1">
+                                <Cpu className="h-3 w-3 text-blue-500" /> InsightFace 512D AI
+                              </span>
+                              <span className="px-2.5 py-1 rounded-lg bg-card border border-border text-primary-text font-medium flex items-center gap-1 font-mono">
+                                RTSP TCP • 25 FPS
+                              </span>
+                              <span className="px-2.5 py-1 rounded-lg bg-card border border-border text-primary-text font-medium flex items-center gap-1 font-mono">
+                                352x288 Resolution
+                              </span>
                             </div>
                           </div>
 
-                          {/* Edge Server Metrics Grid */}
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-4 bg-background rounded-xl border border-border text-xs">
-                            <div>
-                              <span className="text-muted block mb-0.5">Match Accuracy</span>
-                              <span className="font-bold text-primary-text">{Math.round(device.matchThreshold * 100)}% threshold</span>
+                          {/* Edge Server Telemetry 4-Grid */}
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="p-3 rounded-xl bg-background border border-border/80">
+                              <span className="text-[11px] text-muted font-medium block">Match Sensitivity</span>
+                              <div className="text-sm font-bold text-primary-text mt-0.5 flex items-center gap-1">
+                                <Shield className="h-3.5 w-3.5 text-emerald-600" />
+                                {Math.round(device.matchThreshold * 100)}% Cosine Threshold
+                              </div>
                             </div>
-                            <div>
-                              <span className="text-muted block mb-0.5">Anti-Spam Cooldown</span>
-                              <span className="font-bold text-primary-text">{device.cooldownSeconds}s (5 min)</span>
+
+                            <div className="p-3 rounded-xl bg-background border border-border/80">
+                              <span className="text-[11px] text-muted font-medium block">Anti-Spam Cooldown</span>
+                              <div className="text-sm font-bold text-primary-text mt-0.5 flex items-center gap-1">
+                                <Activity className="h-3.5 w-3.5 text-amber-600" />
+                                {device.cooldownSeconds}s (5 Minutes)
+                              </div>
                             </div>
-                            <div>
-                              <span className="text-muted block mb-0.5">Engine Host</span>
-                              <span className="font-bold text-primary-text font-mono">Port {device.adminPort || 4100}</span>
+
+                            <div className="p-3 rounded-xl bg-background border border-border/80">
+                              <span className="text-[11px] text-muted font-medium block">Host Edge Node</span>
+                              <div className="text-sm font-bold text-primary-text mt-0.5 font-mono flex items-center gap-1">
+                                <Server className="h-3.5 w-3.5 text-blue-600" />
+                                Port {device.adminPort || 4100}
+                              </div>
+                            </div>
+
+                            <div className="p-3 rounded-xl bg-background border border-border/80">
+                              <span className="text-[11px] text-muted font-medium block">Database Tunnel</span>
+                              <div className="text-sm font-bold text-emerald-700 mt-0.5 flex items-center gap-1 font-mono text-xs">
+                                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                                MSSQL Connected
+                              </div>
                             </div>
                           </div>
                         </div>
 
-                        {/* Bottom Status Row */}
-                        <div className="flex items-center justify-between pt-5 mt-5 border-t border-border">
+                        {/* Bottom Actions & Heartbeat */}
+                        <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-border/70">
                           <div className="flex items-center gap-2">
-                            <span className={`h-2.5 w-2.5 rounded-full ${device.status === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`} />
-                            <span className={`text-xs font-bold uppercase tracking-wider ${device.status === 'online' ? 'text-emerald-600' : 'text-gray-500'}`}>
-                              {device.status === 'online' ? 'Connected & Streaming' : 'Server Offline'}
-                            </span>
+                            <button
+                              onClick={() => setActiveTab('enroll')}
+                              className="px-3 py-1.5 rounded-lg bg-accent/10 hover:bg-accent/20 text-accent font-semibold text-xs transition-colors flex items-center gap-1.5"
+                            >
+                              <UserPlus className="h-3.5 w-3.5" /> Enroll Staff Face
+                            </button>
+                            <a
+                              href="#/admin/cctv-dashboard"
+                              className="px-3 py-1.5 rounded-lg bg-background hover:bg-muted text-primary-text border border-border font-semibold text-xs transition-colors flex items-center gap-1.5"
+                            >
+                              <Activity className="h-3.5 w-3.5 text-muted" /> View Live Logs
+                            </a>
                           </div>
-                          <span className="text-xs text-muted flex items-center gap-1">
-                            <Activity className="h-3.5 w-3.5" /> Last heartbeat: {getLastSeenText(device.lastSeen)}
+
+                          <span className="text-xs text-muted font-medium flex items-center gap-1">
+                            <Activity className="h-3.5 w-3.5 text-emerald-500" /> Heartbeat: {getLastSeenText(device.lastSeen)}
                           </span>
                         </div>
                       </div>
