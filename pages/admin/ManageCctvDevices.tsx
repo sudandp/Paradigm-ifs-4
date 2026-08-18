@@ -31,14 +31,16 @@ interface CctvDevice {
   createdAt: string;
   serverHost: string | null;   // Auto-detected LAN IP from edge server
   adminPort: number;           // Admin HTTP port (default 4100)
+  ngrokUrl: string | null;     // Live ngrok public URL (synced from edge heartbeat)
 }
 
-const NGROK_PROXY = 'https://tassel-estranged-prism.ngrok-free.dev';
+// Fallback URL used ONLY when Supabase has no ngrok_url yet.
+const NGROK_PROXY_FALLBACK = 'https://tassel-estranged-prism.ngrok-free.dev';
 
 // ─── Camera Live Preview (Canvas-based MJPEG reader — works through Ngrok) ──
 // fetch() opens ONE persistent connection with custom ngrok headers.
 // Reads binary stream chunks, finds JPEG FFD8..FFD9 boundaries, paints to canvas.
-const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; adminPort: number }> = ({ camera }) => {
+const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; adminPort: number; proxyUrl: string }> = ({ camera, proxyUrl }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [hasError, setHasError] = useState(false);
@@ -66,7 +68,7 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
   const pollTracks = useCallback(async () => {
     try {
       const res = await fetch(
-        `${NGROK_PROXY}/tracks/${encodeURIComponent(camName)}?ngrok-skip-browser-warning=1`,
+        `${proxyUrl}/tracks/${encodeURIComponent(camName)}?ngrok-skip-browser-warning=1`,
         { headers: { 'ngrok-skip-browser-warning': '1' } }
       );
       if (res.ok) {
@@ -161,7 +163,7 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
 
     try {
       const res = await fetch(
-        `${NGROK_PROXY}/camera/stream/${encodeURIComponent(camName)}?ngrok-skip-browser-warning=1`,
+        `${proxyUrl}/camera/stream/${encodeURIComponent(camName)}?ngrok-skip-browser-warning=1`,
         {
           signal: controller.signal,
           headers: {
@@ -418,6 +420,8 @@ const DEFAULT_FORM: NewDeviceForm = {
 // ─── Main Component ─────────────────────────────────────────────────────────
 const ManageCctvDevices: React.FC = () => {
   const { user } = useAuthStore();
+  // Dynamic ngrok proxy URL — read from Supabase cctv_devices
+  const [ngrokProxy, setNgrokProxy] = useState(NGROK_PROXY_FALLBACK);
   const [devices, setDevices] = useState<CctvDevice[]>([]);
   const [organizations, setOrganizations] = useState<{ id: string; shortName: string }[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -476,6 +480,7 @@ const ManageCctvDevices: React.FC = () => {
           createdAt: d.created_at,
           serverHost: d.server_host || null,
           adminPort: d.admin_port || 4100,
+          ngrokUrl: d.ngrok_url || null,
         }))
       );
       setOrganizations((orgsData || []).map((o: any) => ({ id: o.id, shortName: o.short_name })));
@@ -520,6 +525,20 @@ const ManageCctvDevices: React.FC = () => {
     };
 
     loadEmployees();
+
+    // Load the live ngrok_url from cctv_devices into state
+    supabase
+      .from('cctv_devices')
+      .select('ngrok_url')
+      .not('ngrok_url', 'is', null)
+      .order('last_seen', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.ngrok_url) {
+          setNgrokProxy(data.ngrok_url.replace(/\/$/, ''));
+        }
+      });
   }, [fetchData]);
 
   const handleSave = async () => {
@@ -696,7 +715,7 @@ const ManageCctvDevices: React.FC = () => {
     if (!enrollPhoto) { setToast({ message: 'Please upload a clear face photo', type: 'error' }); return; }
 
     const selectedUser = enrollUsers.find(u => u.id === enrollUserId);
-    const enrollUrl = `${NGROK_PROXY}/camera/enroll`;
+    const enrollUrl = `${ngrokProxy}/camera/enroll`;
 
     setIsEnrolling(true);
     setEnrollResult(null);
@@ -1024,6 +1043,7 @@ const ManageCctvDevices: React.FC = () => {
                               camera={device.cameras[0]}
                               serverHost={device.serverHost}
                               adminPort={device.adminPort}
+                              proxyUrl={device.ngrokUrl || ngrokProxy}
                             />
                           ) : (
                             <div className="w-full h-full bg-slate-950 flex flex-col items-center justify-center p-6 text-center text-slate-500">

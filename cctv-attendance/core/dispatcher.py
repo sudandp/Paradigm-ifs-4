@@ -87,23 +87,20 @@ class EventDispatcher:
         or fall back to the non-loopback IP with the lowest last octet distance.
         """
         import socket
-        import ipaddress
         
         candidates = []
         try:
-            # Get all IPs bound to this machine
             hostname = socket.gethostname()
             all_ips = socket.getaddrinfo(hostname, None, socket.AF_INET)
             for entry in all_ips:
                 ip_val = str(entry[4][0])
                 if ip_val.startswith('127.') or ip_val.startswith('169.254.'):
-                    continue  # Skip loopback and APIPA
+                    continue
                 candidates.append(ip_val)
         except Exception:
             pass
         
         if not candidates:
-            # Fallback: use UDP trick
             try:
                 with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
                     s.connect(('8.8.8.8', 80))
@@ -114,19 +111,12 @@ class EventDispatcher:
         if len(candidates) == 1:
             return candidates[0]
         
-        # Multiple adapters: prefer the one that can reach Supabase (non-NVR)
-        # Sort by preference: prefer 192.168.x.x over 10.x.x.x, prefer higher last octet
-        # (NVR IPs tend to be lower, like .100 or .111)
         try:
-            # Prefer the IP that matches the route to the internet (Supabase)
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
                 s.connect(('8.8.8.8', 80))
                 internet_ip = s.getsockname()[0]
-            # If this IP is already a candidate, trust it
-            # But if it looks like a camera IP (e.g. .111), pick the next best
             if internet_ip in candidates and not internet_ip.endswith('.111'):
                 return internet_ip
-            # Otherwise pick any candidate that isn't the camera-looking IP
             for ip in sorted(candidates):
                 if not ip.endswith('.111') and not ip.endswith('.100'):
                     return ip
@@ -135,11 +125,50 @@ class EventDispatcher:
         
         return candidates[0]
 
+    async def _get_ngrok_public_url(self) -> Optional[str]:
+        """Query local ngrok agent API to get the current public HTTPS tunnel URL.
+        
+        Ngrok exposes its API at http://127.0.0.1:4040/api/tunnels.
+        We look for the HTTPS tunnel pointing at our admin port.
+        Returns None if ngrok is not running or not reachable.
+        """
+        try:
+            import aiohttp as _aiohttp
+            async with _aiohttp.ClientSession(timeout=_aiohttp.ClientTimeout(total=2)) as sess:
+                async with sess.get('http://127.0.0.1:4040/api/tunnels') as resp:
+                    if resp.status != 200:
+                        return None
+                    data = await resp.json()
+                    tunnels = data.get('tunnels', [])
+                    # Prefer HTTPS tunnel that forwards to our admin port
+                    for t in tunnels:
+                        public_url: str = t.get('public_url', '')
+                        if public_url.startswith('https://'):
+                            return public_url.rstrip('/')
+                    # Fallback: any tunnel
+                    for t in tunnels:
+                        public_url = t.get('public_url', '')
+                        if public_url:
+                            return public_url.rstrip('/')
+        except Exception:
+            pass
+        return None
+
     async def send_heartbeat(self, cameras: list[dict]) -> bool:
-        """Send device heartbeat to Supabase cctv_devices table via UPSERT."""
+        """Send device heartbeat to Supabase cctv_devices table via UPSERT.
+        
+        Includes the current ngrok public URL so the live web app can
+        discover the tunnel address dynamically instead of using a hardcoded URL.
+        """
         if not self._session or not self.config.cloud_enabled:
             return False
         try:
+            ngrok_url = await self._get_ngrok_public_url()
+            if ngrok_url:
+                logger.info(f"[Dispatcher] Ngrok tunnel detected: {ngrok_url}")
+            else:
+                logger.debug("[Dispatcher] Ngrok not running — ngrok_url will not be updated")
+
             url = f"{self.config.supabase_url}/rest/v1/cctv_devices?on_conflict=edge_device_id"
             payload = {
                 'edge_device_id': self.config.edge_device_id,
@@ -154,9 +183,12 @@ class EventDispatcher:
                 'server_host': self._get_local_ip(),
                 'admin_port': 4100,
             }
-            headers = {
-                'Prefer': 'resolution=merge-duplicates,return=representation'
-            }
+            # Only include ngrok_url in payload when we have a live value
+            # — avoids overwriting a valid URL with NULL if ngrok momentarily fails
+            if ngrok_url:
+                payload['ngrok_url'] = ngrok_url
+
+            headers = {'Prefer': 'resolution=merge-duplicates,return=representation'}
             async with self._session.post(url, json=payload, headers=headers) as resp:
                 if resp.status < 400:
                     logger.info(f"[Dispatcher] [OK] Heartbeat sent — device online in cloud ({self.config.edge_device_id})")

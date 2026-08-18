@@ -12,7 +12,8 @@ import {
   Maximize2, Minimize2, Video, Download, Shield, Cpu, Clock, Search
 } from 'lucide-react';
 
-const NGROK_PROXY = 'https://tassel-estranged-prism.ngrok-free.dev';
+// Fallback URL used ONLY when Supabase has no ngrok_url yet (first boot before heartbeat).
+const NGROK_PROXY_FALLBACK = 'https://tassel-estranged-prism.ngrok-free.dev';
 
 interface CctvLog {
   id: string;
@@ -48,7 +49,8 @@ interface UserOption {
 // Draws each frame to <canvas> — zero polling, zero separate HTTP requests.
 const NvrCameraStream: React.FC<{
   camName: string;
-}> = ({ camName }) => {
+  proxyUrl: string;
+}> = ({ camName, proxyUrl }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [hasError, setHasError] = useState(false);
@@ -146,7 +148,7 @@ const NvrCameraStream: React.FC<{
 
     try {
       const res = await fetch(
-        `${NGROK_PROXY}/camera/stream/${encodeURIComponent(camName)}?ngrok-skip-browser-warning=1`,
+        `${proxyUrl}/camera/stream/${encodeURIComponent(camName)}?ngrok-skip-browser-warning=1`,
         {
           signal: controller.signal,
           headers: {
@@ -210,7 +212,7 @@ const NvrCameraStream: React.FC<{
       // Auto-retry every 4 seconds
       retryTimerRef.current = setTimeout(() => startStream(), 4000);
     }
-  }, [camName]);
+  }, [camName, proxyUrl]);
 
   useEffect(() => {
     startStream();
@@ -369,6 +371,8 @@ const NvrCameraStream: React.FC<{
 const CctvDashboard: React.FC = () => {
 
   const { user } = useAuthStore();
+  // Resolved live ngrok proxy URL — fetched from Supabase on mount
+  const [ngrokProxy, setNgrokProxy] = useState(NGROK_PROXY_FALLBACK);
   const [logs, setLogs] = useState<CctvLog[]>([]);
   const [unknownQueue, setUnknownQueue] = useState<EnrollmentItem[]>([]);
   const [userOptions, setUserOptions] = useState<UserOption[]>([]);
@@ -495,7 +499,7 @@ const CctvDashboard: React.FC = () => {
 
       // 2. Also fetch from Edge Server local DB (if online) for instant local zero-delay sync
       try {
-        const edgeRes = await fetch(`${NGROK_PROXY}/logs/today?ngrok-skip-browser-warning=1`, {
+        const edgeRes = await fetch(`${ngrokProxy}/logs/today?ngrok-skip-browser-warning=1`, {
           headers: { 'ngrok-skip-browser-warning': '1' },
           signal: AbortSignal.timeout(3000),
         });
@@ -510,7 +514,7 @@ const CctvDashboard: React.FC = () => {
               direction: el.direction || 'entry',
               confidence: el.confidence || 0.85,
               detectedAt: el.timestamp ? new Date(el.timestamp * 1000).toISOString() : new Date().toISOString(),
-              snapshotUrl: el.snapshot_path ? `${NGROK_PROXY}/camera/snapshot/${encodeURIComponent(el.camera_name)}` : undefined,
+              snapshotUrl: el.snapshot_path ? `${ngrokProxy}/camera/snapshot/${encodeURIComponent(el.camera_name)}` : undefined,
               edgeDeviceId: 'edge-server-main',
             }));
 
@@ -545,6 +549,27 @@ const CctvDashboard: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
+  }, []);
+
+  // Fetch the live ngrok_url from cctv_devices once on mount
+  useEffect(() => {
+    const loadProxyUrl = async () => {
+      try {
+        const { data } = await supabase
+          .from('cctv_devices')
+          .select('ngrok_url')
+          .not('ngrok_url', 'is', null)
+          .order('last_seen', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (data?.ngrok_url) {
+          setNgrokProxy(data.ngrok_url.replace(/\/$/, ''));
+        }
+      } catch {
+        // Supabase unavailable — keep fallback
+      }
+    };
+    loadProxyUrl();
   }, []);
 
   // Realtime subscription
@@ -639,7 +664,7 @@ const CctvDashboard: React.FC = () => {
           formData.append('organization_id', user?.organizationId || '');
           formData.append('photo', new File([imgBlob], 'face.jpg', { type: 'image/jpeg' }));
 
-          await fetch(`${NGROK_PROXY}/camera/enroll`, {
+          await fetch(`${ngrokProxy}/camera/enroll`, {
             method: 'POST',
             headers: { 'ngrok-skip-browser-warning': '1', 'x-api-key': 'paradigm-attendance-secret-2024' },
             body: formData,
@@ -767,7 +792,7 @@ const CctvDashboard: React.FC = () => {
             </div>
 
             <div className="aspect-video w-full rounded-xl overflow-hidden shadow-inner">
-              <NvrCameraStream camName="main_gate_entry" />
+              <NvrCameraStream camName="main_gate_entry" proxyUrl={ngrokProxy} />
             </div>
 
             <div className="flex items-center justify-between text-xs text-muted mt-3 px-1 pt-2 border-t border-border/70">
@@ -970,7 +995,7 @@ const CctvDashboard: React.FC = () => {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {unknownQueue.map(item => {
-                const imgSource = item.snapshotUrl || `${NGROK_PROXY}/camera/snapshot/${encodeURIComponent(item.cameraName)}?ngrok-skip-browser-warning=1`;
+                const imgSource = item.snapshotUrl || `${ngrokProxy}/camera/snapshot/${encodeURIComponent(item.cameraName)}?ngrok-skip-browser-warning=1`;
                 return (
                   <div key={item.id} className="bg-card rounded-2xl border border-amber-200/90 p-4 shadow-sm space-y-3 hover:border-amber-400 transition-colors">
                     <div
@@ -990,7 +1015,7 @@ const CctvDashboard: React.FC = () => {
                         onError={(e) => {
                           const target = e.target as HTMLImageElement;
                           target.onerror = null;
-                          target.src = `${NGROK_PROXY}/camera/snapshot/${encodeURIComponent(item.cameraName)}?ngrok-skip-browser-warning=1`;
+                          target.src = `${ngrokProxy}/camera/snapshot/${encodeURIComponent(item.cameraName)}?ngrok-skip-browser-warning=1`;
                         }}
                       />
                       <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">

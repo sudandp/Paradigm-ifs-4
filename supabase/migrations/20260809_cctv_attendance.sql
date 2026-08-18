@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS public.cctv_devices (
     is_active           BOOLEAN DEFAULT TRUE,
     server_host         TEXT,                        -- Auto-detected LAN IP of edge server
     admin_port          INTEGER DEFAULT 4100,        -- Admin HTTP port for camera frames
+    ngrok_url           TEXT,                        -- Live ngrok public HTTPS tunnel URL (auto-synced by edge)
     created_at          TIMESTAMPTZ DEFAULT now(),
     updated_at          TIMESTAMPTZ DEFAULT now()
 );
@@ -34,6 +35,9 @@ DO $$ BEGIN
     END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='cctv_devices' AND column_name='admin_port' AND table_schema='public') THEN
         ALTER TABLE public.cctv_devices ADD COLUMN admin_port INTEGER DEFAULT 4100;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='cctv_devices' AND column_name='ngrok_url' AND table_schema='public') THEN
+        ALTER TABLE public.cctv_devices ADD COLUMN ngrok_url TEXT;
     END IF;
 END $$;
 
