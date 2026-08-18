@@ -14,31 +14,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const cameraName = req.query.camera || req.query.cameraName || 'main_gate_entry';
-  let tunnelUrl = (process.env.MSSQL_PROXY_URL || '').replace(/\/$/, '');
-  if (!tunnelUrl || tunnelUrl.includes('trycloudflare.com') || tunnelUrl.includes('loca.lt') || tunnelUrl.includes('ngrok-free.dev')) {
-    tunnelUrl = 'https://cctv.paradigmfms.com';
+  const candidateBaseUrls = [
+    (process.env.MSSQL_PROXY_URL || '').replace(/\/$/, ''),
+    'https://cctv.paradigmfms.com',
+    'https://guide-accuracy-literature-fifteen.trycloudflare.com',
+    'https://sustainability-silk-owners-musical.trycloudflare.com',
+  ].filter(Boolean);
+
+  for (const base of candidateBaseUrls) {
+    const targetUrl = `${base}/camera/frame/${encodeURIComponent(String(cameraName))}?ngrok-skip-browser-warning=true&bypass-tunnel-reminder=true&_t=${Date.now()}`;
+    try {
+      const response = await fetch(targetUrl, {
+        headers: {
+          'ngrok-skip-browser-warning': '1',
+          'bypass-tunnel-reminder': 'true',
+          'Bypass-Tunnel-Reminder': '1',
+        },
+      });
+
+      if (response.ok) {
+        const buffer = await response.arrayBuffer();
+        res.setHeader('Content-Type', 'image/jpeg');
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        return res.status(200).send(Buffer.from(buffer));
+      }
+    } catch (_) {}
   }
 
-  const targetUrl = `${tunnelUrl}/camera/frame/${encodeURIComponent(String(cameraName))}?ngrok-skip-browser-warning=true&bypass-tunnel-reminder=true&_t=${Date.now()}`;
-
-  try {
-    const response = await fetch(targetUrl, {
-      headers: {
-        'ngrok-skip-browser-warning': '1',
-        'bypass-tunnel-reminder': 'true',
-        'Bypass-Tunnel-Reminder': '1',
-      },
-    });
-
-    if (response.ok) {
-      const buffer = await response.arrayBuffer();
-      res.setHeader('Content-Type', 'image/jpeg');
-      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-      return res.status(200).send(Buffer.from(buffer));
-    }
-
-    return res.status(response.status).json({ error: `Edge camera returned ${response.status}` });
-  } catch (err: any) {
-    return res.status(502).json({ error: 'Failed to fetch camera frame', details: err.message });
-  }
+  return res.status(502).json({ error: 'Failed to fetch camera frame from any candidate tunnel' });
 }

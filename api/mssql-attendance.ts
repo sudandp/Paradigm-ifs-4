@@ -13,20 +13,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).end();
   }
 
-  let tunnelUrl = (process.env.MSSQL_PROXY_URL || '').replace(/\/$/, '');
-  if (!tunnelUrl || tunnelUrl.includes('trycloudflare.com') || tunnelUrl.includes('loca.lt') || tunnelUrl.includes('ngrok-free.dev')) {
-    tunnelUrl = 'https://attendance.paradigmfms.com';
-  }
-  const apiSecret = process.env.MSSQL_API_SECRET || 'paradigm-attendance-secret-2024';
+  const candidateBaseUrls = [
+    (process.env.MSSQL_PROXY_URL || '').replace(/\/$/, ''),
+    'https://attendance.paradigmfms.com',
+    'https://sustainability-silk-owners-musical.trycloudflare.com',
+    'https://pretty-nails-dream.loca.lt',
+  ].filter(Boolean);
 
+  const apiSecret = process.env.MSSQL_API_SECRET || 'paradigm-attendance-secret-2024';
   const date = req.query.date || new Date().toISOString().slice(0, 10);
   const siteId = req.query.siteId || 'all';
 
-  // Try both /attendance and /api/attendance to support all local server setups
-  const endpoints = [
-    `${tunnelUrl}/attendance?date=${encodeURIComponent(String(date))}&siteId=${encodeURIComponent(String(siteId))}`,
-    `${tunnelUrl}/api/attendance?date=${encodeURIComponent(String(date))}&siteId=${encodeURIComponent(String(siteId))}`
-  ];
+  // Build endpoints across all candidate URLs
+  const endpoints: string[] = [];
+  for (const base of candidateBaseUrls) {
+    endpoints.push(`${base}/attendance?date=${encodeURIComponent(String(date))}&siteId=${encodeURIComponent(String(siteId))}`);
+    endpoints.push(`${base}/api/attendance?date=${encodeURIComponent(String(date))}&siteId=${encodeURIComponent(String(siteId))}`);
+  }
 
   let lastError = '';
 

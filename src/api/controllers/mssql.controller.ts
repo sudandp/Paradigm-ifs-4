@@ -76,13 +76,15 @@ export interface DeviceResponse {
 
 // ─── Proxy Config ───────────────────────────────────────────────
 
-function getProxyConfig(): { url: string; secret: string } | null {
-  let url = process.env.MSSQL_PROXY_URL?.trim();
-  if (!url || url.includes('trycloudflare.com') || url.includes('loca.lt') || url.includes('ngrok-free.dev')) {
-    url = 'https://attendance.paradigmfms.com';
-  }
+function getCandidateProxyUrls(): { urls: string[]; secret: string } {
   const secret = process.env.MSSQL_API_SECRET?.trim() || 'paradigm-attendance-secret-2024';
-  return { url, secret };
+  const urls = [
+    process.env.MSSQL_PROXY_URL?.trim(),
+    'https://attendance.paradigmfms.com',
+    'https://sustainability-silk-owners-musical.trycloudflare.com',
+    'https://pretty-nails-dream.loca.lt',
+  ].filter(Boolean) as string[];
+  return { urls, secret };
 }
 
 // ─── Main: Fetch attendance via Proxy ───────────────────────────
@@ -91,44 +93,47 @@ export async function getAttendanceData(
   date: string,
   siteId: string = 'all'
 ): Promise<AttendanceResponse> {
-  const proxy = getProxyConfig();
-
-  if (!proxy) {
-    console.error('[MSSQL Controller] MSSQL_PROXY_URL not set in .env.local');
-    return errorShape(date, 'MSSQL_PROXY_URL is not configured. Set it to your Cloudflare/Localtunnel URL.');
-  }
+  const { urls, secret } = getCandidateProxyUrls();
 
   const safeDate = date.match(/^\d{4}-\d{2}-\d{2}$/) ? date : new Date().toISOString().slice(0, 10);
-  const endpoint = `${proxy.url}/attendance?date=${safeDate}`;
+  let lastError = '';
 
-  console.log(`[MSSQL Controller] Fetching via proxy: ${endpoint}`);
+  for (const proxyUrl of urls) {
+    const endpoints = [
+      `${proxyUrl}/attendance?date=${safeDate}`,
+      `${proxyUrl}/api/attendance?date=${safeDate}`
+    ];
 
-  try {
-    const res = await fetch(endpoint, {
-      method: 'GET',
-      headers: {
-        'x-api-key': proxy.secret,
-        'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': '1',
-        'bypass-tunnel-reminder': 'true',
-        'Bypass-Tunnel-Reminder': '1',
-      },
-      signal: AbortSignal.timeout(90_000), // 90s timeout for tunnel
-    });
+    for (const endpoint of endpoints) {
+      try {
+        console.log(`[MSSQL Controller] Trying proxy: ${endpoint}`);
+        const res = await fetch(endpoint, {
+          method: 'GET',
+          headers: {
+            'x-api-key': secret,
+            'Content-Type': 'application/json',
+            'ngrok-skip-browser-warning': '1',
+            'bypass-tunnel-reminder': 'true',
+            'Bypass-Tunnel-Reminder': '1',
+          },
+          signal: AbortSignal.timeout(15_000),
+        });
 
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`Proxy returned ${res.status}: ${body}`);
+        if (res.ok) {
+          const data = await res.json() as AttendanceResponse;
+          console.log(`[MSSQL Controller] ✅ Got ${data.employees?.length ?? 0} employee records from ${endpoint}`);
+          return data;
+        } else {
+          const body = await res.text();
+          lastError = `[${endpoint}] HTTP ${res.status}: ${body.slice(0, 100)}`;
+        }
+      } catch (err: any) {
+        lastError = `[${endpoint}] ${err.message}`;
+      }
     }
-
-    const data = await res.json() as AttendanceResponse;
-    console.log(`[MSSQL Controller] ✅ Got ${data.employees?.length ?? 0} employee records`);
-    return data;
-
-  } catch (err: any) {
-    console.error('[MSSQL Controller] Proxy fetch failed:', err.message);
-    return errorShape(date, err.message);
   }
+
+  return errorShape(date, lastError || 'All tunnel candidate endpoints failed');
 }
 
 // ─── Helper ─────────────────────────────────────────────────────
@@ -148,34 +153,30 @@ function errorShape(date: string, msg: string): AttendanceResponse {
 // ─── Fetch Device Status via Proxy ──────────────────────────────
 
 export async function getDeviceData(): Promise<DeviceResponse> {
-  const proxy = getProxyConfig();
-  if (!proxy) {
-    return { devices: [], online: 0, offline: 0, total: 0, note: 'MSSQL_PROXY_URL not configured' };
+  const { urls, secret } = getCandidateProxyUrls();
+
+  for (const proxyUrl of urls) {
+    const endpoint = `${proxyUrl}/devices`;
+    try {
+      const res = await fetch(endpoint, {
+        method: 'GET',
+        headers: {
+          'x-api-key': secret,
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': '1',
+          'bypass-tunnel-reminder': 'true',
+          'Bypass-Tunnel-Reminder': '1',
+        },
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (res.ok) {
+        const data = await res.json() as DeviceResponse;
+        return data;
+      }
+    } catch (_) {}
   }
 
-  const endpoint = `${proxy.url}/devices`;
-  console.log(`[MSSQL Controller] Fetching devices: ${endpoint}`);
-
-  try {
-    const res = await fetch(endpoint, {
-      method: 'GET',
-      headers: {
-        'x-api-key': proxy.secret,
-        'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': '1',
-        'bypass-tunnel-reminder': 'true',
-        'Bypass-Tunnel-Reminder': '1',
-      },
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!res.ok) throw new Error(`Proxy returned ${res.status}`);
-    const data = await res.json() as DeviceResponse;
-    console.log(`[MSSQL Controller] ✅ Got ${data.total} devices (${data.online} online)`);
-    return data;
-  } catch (err: any) {
-    console.error('[MSSQL Controller] Device fetch failed:', err.message);
-    return { devices: [], online: 0, offline: 0, total: 0, note: err.message };
-  }
+  return { devices: [], online: 0, offline: 0, total: 0, note: 'All proxy endpoints failed' };
 }
 
 // ─── Diagnostic Debugger ─────────────────────────────────────────
@@ -188,95 +189,38 @@ export async function debugMssqlConnection(): Promise<{
   attendanceStatus: string;
   details: string;
 }> {
-  const proxy = getProxyConfig();
-  if (!proxy) {
-    return {
-      proxyConfigured: false,
-      proxyUrl: 'NOT_SET',
-      healthStatus: 'ERROR',
-      devicesStatus: 'ERROR',
-      attendanceStatus: 'ERROR',
-      details: 'MSSQL_PROXY_URL is missing in .env.local',
-    };
-  }
+  const { urls, secret } = getCandidateProxyUrls();
+  const primaryUrl = urls[0] || 'NOT_SET';
 
   let healthStatus = 'UNKNOWN';
   let devicesStatus = 'UNKNOWN';
   let attendanceStatus = 'UNKNOWN';
   const notes: string[] = [];
 
-  // Test 1: Health
-  try {
-    const t0 = Date.now();
-    const res = await fetch(`${proxy.url}/health`, {
-      headers: {
-        'ngrok-skip-browser-warning': '1',
-        'bypass-tunnel-reminder': 'true',
-        'Bypass-Tunnel-Reminder': '1',
-      },
-      signal: AbortSignal.timeout(5000)
-    });
-    const ms = Date.now() - t0;
-    if (res.ok) {
-      healthStatus = `OK (${ms}ms)`;
-    } else {
-      healthStatus = `HTTP ${res.status}`;
+  for (const proxyUrl of urls) {
+    try {
+      const t0 = Date.now();
+      const res = await fetch(`${proxyUrl}/health`, {
+        headers: {
+          'ngrok-skip-browser-warning': '1',
+          'bypass-tunnel-reminder': 'true',
+          'Bypass-Tunnel-Reminder': '1',
+        },
+        signal: AbortSignal.timeout(5000)
+      });
+      const ms = Date.now() - t0;
+      if (res.ok) {
+        healthStatus = `OK (${ms}ms) via ${proxyUrl}`;
+        break;
+      }
+    } catch (err: any) {
+      notes.push(`[${proxyUrl}] Health failed: ${err.message}`);
     }
-  } catch (err: any) {
-    healthStatus = `FAILED: ${err.message}`;
-    notes.push(`Health check failed: ${err.message}`);
-  }
-
-  // Test 2: Devices
-  try {
-    const t0 = Date.now();
-    const res = await fetch(`${proxy.url}/devices`, {
-      headers: {
-        'x-api-key': proxy.secret,
-        'ngrok-skip-browser-warning': '1',
-        'bypass-tunnel-reminder': 'true',
-        'Bypass-Tunnel-Reminder': '1',
-      },
-      signal: AbortSignal.timeout(10000),
-    });
-    const ms = Date.now() - t0;
-    if (res.ok) {
-      devicesStatus = `OK (${ms}ms)`;
-    } else {
-      devicesStatus = `HTTP ${res.status}`;
-    }
-  } catch (err: any) {
-    devicesStatus = `FAILED: ${err.message}`;
-    notes.push(`Devices fetch failed: ${err.message}`);
-  }
-
-  // Test 3: Attendance
-  try {
-    const t0 = Date.now();
-    const date = new Date().toISOString().slice(0, 10);
-    const res = await fetch(`${proxy.url}/attendance?date=${date}`, {
-      headers: {
-        'x-api-key': proxy.secret,
-        'ngrok-skip-browser-warning': '1',
-        'bypass-tunnel-reminder': 'true',
-        'Bypass-Tunnel-Reminder': '1',
-      },
-      signal: AbortSignal.timeout(15000),
-    });
-    const ms = Date.now() - t0;
-    if (res.ok) {
-      attendanceStatus = `OK (${ms}ms)`;
-    } else {
-      attendanceStatus = `HTTP ${res.status}`;
-    }
-  } catch (err: any) {
-    attendanceStatus = `FAILED: ${err.message}`;
-    notes.push(`Attendance fetch failed: ${err.message}`);
   }
 
   return {
-    proxyConfigured: true,
-    proxyUrl: proxy.url,
+    proxyConfigured: urls.length > 0,
+    proxyUrl: primaryUrl,
     healthStatus,
     devicesStatus,
     attendanceStatus,
@@ -295,38 +239,31 @@ export async function updateMssqlEmployeeDetails(
   siteName?: string,
   designation?: string
 ): Promise<{ success: boolean; rowsAffected?: number; error?: string }> {
-  const proxy = getProxyConfig();
-  if (!proxy) {
-    return { success: false, error: 'MSSQL_PROXY_URL is not configured.' };
+  const { urls, secret } = getCandidateProxyUrls();
+
+  for (const proxyUrl of urls) {
+    const endpoint = `${proxyUrl}/update-employee`;
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'x-api-key': secret,
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': '1',
+          'bypass-tunnel-reminder': 'true',
+          'Bypass-Tunnel-Reminder': '1',
+        },
+        body: JSON.stringify({ empCode, empName, siteName, designation }),
+        signal: AbortSignal.timeout(10_000),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        return { success: true, rowsAffected: data.rowsAffected };
+      }
+    } catch (_) {}
   }
 
-  const endpoint = `${proxy.url}/update-employee`;
-  console.log(`[MSSQL Controller] Updating employee ${empCode} via proxy: ${endpoint}`);
-
-  try {
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'x-api-key': proxy.secret,
-        'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': '1',
-        'bypass-tunnel-reminder': 'true',
-        'Bypass-Tunnel-Reminder': '1',
-      },
-      body: JSON.stringify({ empCode, empName, siteName, designation }),
-      signal: AbortSignal.timeout(15_000),
-    });
-
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`Proxy returned ${res.status}: ${body}`);
-    }
-
-    const data = await res.json();
-    return { success: true, rowsAffected: data.rowsAffected };
-  } catch (err: any) {
-    console.error('[MSSQL Controller] Employee update failed:', err.message);
-    return { success: false, error: err.message };
-  }
+  return { success: false, error: 'All proxy update endpoints failed' };
 }
 

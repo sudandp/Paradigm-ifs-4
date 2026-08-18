@@ -13,16 +13,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).end();
   }
 
-  let tunnelUrl = (process.env.MSSQL_PROXY_URL || '').replace(/\/$/, '');
-  if (!tunnelUrl || tunnelUrl.includes('trycloudflare.com') || tunnelUrl.includes('loca.lt') || tunnelUrl.includes('ngrok-free.dev')) {
-    tunnelUrl = 'https://attendance.paradigmfms.com';
-  }
+  const candidateBaseUrls = [
+    (process.env.MSSQL_PROXY_URL || '').replace(/\/$/, ''),
+    'https://attendance.paradigmfms.com',
+    'https://sustainability-silk-owners-musical.trycloudflare.com',
+    'https://pretty-nails-dream.loca.lt',
+  ].filter(Boolean);
+
   const apiSecret = process.env.MSSQL_API_SECRET || 'paradigm-attendance-secret-2024';
 
-  const endpoints = [
-    `${tunnelUrl}/devices`,
-    `${tunnelUrl}/api/devices`
-  ];
+  const endpoints: string[] = [];
+  for (const base of candidateBaseUrls) {
+    endpoints.push(`${base}/devices`);
+    endpoints.push(`${base}/api/devices`);
+  }
 
   for (const targetUrl of endpoints) {
     try {
