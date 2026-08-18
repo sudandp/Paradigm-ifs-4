@@ -14,8 +14,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   let tunnelUrl = (process.env.MSSQL_PROXY_URL || '').replace(/\/$/, '');
-  if (!tunnelUrl || tunnelUrl.includes('ngrok-free.dev')) {
-    tunnelUrl = 'https://pretty-nails-dream.loca.lt';
+  if (!tunnelUrl || tunnelUrl.includes('loca.lt') || tunnelUrl.includes('ngrok-free.dev')) {
+    tunnelUrl = 'https://sustainability-silk-owners-musical.trycloudflare.com';
   }
   const apiSecret = process.env.MSSQL_API_SECRET || 'paradigm-attendance-secret-2024';
 
