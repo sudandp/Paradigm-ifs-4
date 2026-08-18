@@ -16,9 +16,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const cameraName = req.query.camera || req.query.cameraName || 'main_gate_entry';
   const candidateBaseUrls = [
     (process.env.MSSQL_PROXY_URL || '').replace(/\/$/, ''),
+    'https://atmospheric-low-explains-night.trycloudflare.com',
     'https://cctv.paradigmfms.com',
-    'https://guide-accuracy-literature-fifteen.trycloudflare.com',
-    'https://sustainability-silk-owners-musical.trycloudflare.com',
   ].filter(Boolean);
 
   for (const base of candidateBaseUrls) {

@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 
 // Fallback URL used ONLY when Supabase has no ngrok_url yet (first boot before heartbeat).
-const NGROK_PROXY_FALLBACK = 'https://guide-accuracy-literature-fifteen.trycloudflare.com';
+const NGROK_PROXY_FALLBACK = 'https://atmospheric-low-explains-night.trycloudflare.com';
 
 interface CctvLog {
   id: string;
