@@ -80,9 +80,8 @@ function getCandidateProxyUrls(): { urls: string[]; secret: string } {
   const secret = process.env.MSSQL_API_SECRET?.trim() || 'paradigm-attendance-secret-2024';
   const urls = [
     process.env.MSSQL_PROXY_URL?.trim(),
+    'https://blond-backup-lending-upgrading.trycloudflare.com',
     'https://attendance.paradigmfms.com',
-    'https://sustainability-silk-owners-musical.trycloudflare.com',
-    'https://pretty-nails-dream.loca.lt',
   ].filter(Boolean) as string[];
   return { urls, secret };
 }

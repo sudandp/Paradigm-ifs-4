@@ -15,9 +15,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const candidateBaseUrls = [
     (process.env.MSSQL_PROXY_URL || '').replace(/\/$/, ''),
+    'https://blond-backup-lending-upgrading.trycloudflare.com',
     'https://attendance.paradigmfms.com',
-    'https://sustainability-silk-owners-musical.trycloudflare.com',
-    'https://pretty-nails-dream.loca.lt',
   ].filter(Boolean);
 
   const apiSecret = process.env.MSSQL_API_SECRET || 'paradigm-attendance-secret-2024';
