@@ -35,7 +35,7 @@ interface CctvDevice {
 }
 
 // Fallback URL used ONLY when Supabase has no ngrok_url yet.
-const NGROK_PROXY_FALLBACK = 'https://tassel-estranged-prism.ngrok-free.dev';
+const NGROK_PROXY_FALLBACK = 'https://guide-accuracy-literature-fifteen.trycloudflare.com';
 
 // ─── Camera Live Preview (Canvas-based MJPEG reader — works through Ngrok) ──
 // fetch() opens ONE persistent connection with custom ngrok headers.

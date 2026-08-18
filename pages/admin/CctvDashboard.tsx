@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 
 // Fallback URL used ONLY when Supabase has no ngrok_url yet (first boot before heartbeat).
-const NGROK_PROXY_FALLBACK = 'https://tassel-estranged-prism.ngrok-free.dev';
+const NGROK_PROXY_FALLBACK = 'https://guide-accuracy-literature-fifteen.trycloudflare.com';
 
 interface CctvLog {
   id: string;
