@@ -78,8 +78,8 @@ export interface DeviceResponse {
 
 function getProxyConfig(): { url: string; secret: string } | null {
   let url = process.env.MSSQL_PROXY_URL?.trim();
-  if (!url || url.includes('trycloudflare.com')) {
-    url = 'https://tassel-estranged-prism.ngrok-free.dev';
+  if (!url || url.includes('ngrok-free.dev')) {
+    url = 'https://pretty-nails-dream.loca.lt';
   }
   const secret = process.env.MSSQL_API_SECRET?.trim() || 'paradigm-attendance-secret-2024';
   return { url, secret };
@@ -95,7 +95,7 @@ export async function getAttendanceData(
 
   if (!proxy) {
     console.error('[MSSQL Controller] MSSQL_PROXY_URL not set in .env.local');
-    return errorShape(date, 'MSSQL_PROXY_URL is not configured. Set it to your Cloudflare Tunnel URL.');
+    return errorShape(date, 'MSSQL_PROXY_URL is not configured. Set it to your Cloudflare/Localtunnel URL.');
   }
 
   const safeDate = date.match(/^\d{4}-\d{2}-\d{2}$/) ? date : new Date().toISOString().slice(0, 10);
@@ -109,8 +109,11 @@ export async function getAttendanceData(
       headers: {
         'x-api-key': proxy.secret,
         'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': '1',
+        'bypass-tunnel-reminder': 'true',
+        'Bypass-Tunnel-Reminder': '1',
       },
-      signal: AbortSignal.timeout(90_000), // 90s timeout for cloudflared tunnel
+      signal: AbortSignal.timeout(90_000), // 90s timeout for tunnel
     });
 
     if (!res.ok) {
@@ -156,7 +159,13 @@ export async function getDeviceData(): Promise<DeviceResponse> {
   try {
     const res = await fetch(endpoint, {
       method: 'GET',
-      headers: { 'x-api-key': proxy.secret, 'Content-Type': 'application/json' },
+      headers: {
+        'x-api-key': proxy.secret,
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': '1',
+        'bypass-tunnel-reminder': 'true',
+        'Bypass-Tunnel-Reminder': '1',
+      },
       signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) throw new Error(`Proxy returned ${res.status}`);
@@ -199,7 +208,14 @@ export async function debugMssqlConnection(): Promise<{
   // Test 1: Health
   try {
     const t0 = Date.now();
-    const res = await fetch(`${proxy.url}/health`, { signal: AbortSignal.timeout(5000) });
+    const res = await fetch(`${proxy.url}/health`, {
+      headers: {
+        'ngrok-skip-browser-warning': '1',
+        'bypass-tunnel-reminder': 'true',
+        'Bypass-Tunnel-Reminder': '1',
+      },
+      signal: AbortSignal.timeout(5000)
+    });
     const ms = Date.now() - t0;
     if (res.ok) {
       healthStatus = `OK (${ms}ms)`;
@@ -215,7 +231,12 @@ export async function debugMssqlConnection(): Promise<{
   try {
     const t0 = Date.now();
     const res = await fetch(`${proxy.url}/devices`, {
-      headers: { 'x-api-key': proxy.secret },
+      headers: {
+        'x-api-key': proxy.secret,
+        'ngrok-skip-browser-warning': '1',
+        'bypass-tunnel-reminder': 'true',
+        'Bypass-Tunnel-Reminder': '1',
+      },
       signal: AbortSignal.timeout(10000),
     });
     const ms = Date.now() - t0;
@@ -234,7 +255,12 @@ export async function debugMssqlConnection(): Promise<{
     const t0 = Date.now();
     const date = new Date().toISOString().slice(0, 10);
     const res = await fetch(`${proxy.url}/attendance?date=${date}`, {
-      headers: { 'x-api-key': proxy.secret },
+      headers: {
+        'x-api-key': proxy.secret,
+        'ngrok-skip-browser-warning': '1',
+        'bypass-tunnel-reminder': 'true',
+        'Bypass-Tunnel-Reminder': '1',
+      },
       signal: AbortSignal.timeout(15000),
     });
     const ms = Date.now() - t0;
@@ -283,6 +309,9 @@ export async function updateMssqlEmployeeDetails(
       headers: {
         'x-api-key': proxy.secret,
         'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': '1',
+        'bypass-tunnel-reminder': 'true',
+        'Bypass-Tunnel-Reminder': '1',
       },
       body: JSON.stringify({ empCode, empName, siteName, designation }),
       signal: AbortSignal.timeout(15_000),

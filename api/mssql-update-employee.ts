@@ -14,8 +14,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   let tunnelUrl = (process.env.MSSQL_PROXY_URL || '').replace(/\/$/, '');
-  if (!tunnelUrl || tunnelUrl.includes('trycloudflare.com')) {
-    tunnelUrl = 'https://tassel-estranged-prism.ngrok-free.dev';
+  if (!tunnelUrl || tunnelUrl.includes('ngrok-free.dev')) {
+    tunnelUrl = 'https://pretty-nails-dream.loca.lt';
   }
   const apiSecret = process.env.MSSQL_API_SECRET || 'paradigm-attendance-secret-2024';
 
@@ -33,6 +33,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           'x-api-secret': apiSecret,
           'x-api-key': apiSecret,
           'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': '1',
+          'bypass-tunnel-reminder': 'true',
+          'Bypass-Tunnel-Reminder': '1',
         },
         body: JSON.stringify(req.body)
       });

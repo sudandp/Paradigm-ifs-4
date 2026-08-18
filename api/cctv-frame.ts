@@ -15,16 +15,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const cameraName = req.query.camera || req.query.cameraName || 'main_gate_entry';
   let tunnelUrl = (process.env.MSSQL_PROXY_URL || '').replace(/\/$/, '');
-  if (!tunnelUrl || tunnelUrl.includes('trycloudflare.com')) {
-    tunnelUrl = 'https://tassel-estranged-prism.ngrok-free.dev';
+  if (!tunnelUrl || tunnelUrl.includes('ngrok-free.dev')) {
+    tunnelUrl = 'https://pretty-nails-dream.loca.lt';
   }
 
-  const targetUrl = `${tunnelUrl}/camera/frame/${encodeURIComponent(String(cameraName))}?ngrok-skip-browser-warning=true&_t=${Date.now()}`;
+  const targetUrl = `${tunnelUrl}/camera/frame/${encodeURIComponent(String(cameraName))}?ngrok-skip-browser-warning=true&bypass-tunnel-reminder=true&_t=${Date.now()}`;
 
   try {
     const response = await fetch(targetUrl, {
       headers: {
         'ngrok-skip-browser-warning': '1',
+        'bypass-tunnel-reminder': 'true',
+        'Bypass-Tunnel-Reminder': '1',
       },
     });
 

@@ -163,11 +163,13 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
 
     try {
       const res = await fetch(
-        `${proxyUrl}/camera/stream/${encodeURIComponent(camName)}?ngrok-skip-browser-warning=1`,
+        `${proxyUrl}/camera/stream/${encodeURIComponent(camName)}?ngrok-skip-browser-warning=1&bypass-tunnel-reminder=true`,
         {
           signal: controller.signal,
           headers: {
             'ngrok-skip-browser-warning': '1',
+            'bypass-tunnel-reminder': 'true',
+            'Bypass-Tunnel-Reminder': '1',
             'Accept': 'multipart/x-mixed-replace, image/jpeg, */*',
           },
         }
