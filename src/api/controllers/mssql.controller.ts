@@ -78,8 +78,8 @@ export interface DeviceResponse {
 
 function getProxyConfig(): { url: string; secret: string } | null {
   let url = process.env.MSSQL_PROXY_URL?.trim();
-  if (!url || url.includes('loca.lt') || url.includes('ngrok-free.dev')) {
-    url = 'https://sustainability-silk-owners-musical.trycloudflare.com';
+  if (!url || url.includes('trycloudflare.com') || url.includes('loca.lt') || url.includes('ngrok-free.dev')) {
+    url = 'https://attendance.paradigmfms.com';
   }
   const secret = process.env.MSSQL_API_SECRET?.trim() || 'paradigm-attendance-secret-2024';
   return { url, secret };

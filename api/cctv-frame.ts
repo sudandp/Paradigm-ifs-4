@@ -15,8 +15,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const cameraName = req.query.camera || req.query.cameraName || 'main_gate_entry';
   let tunnelUrl = (process.env.MSSQL_PROXY_URL || '').replace(/\/$/, '');
-  if (!tunnelUrl || tunnelUrl.includes('loca.lt') || tunnelUrl.includes('ngrok-free.dev')) {
-    tunnelUrl = 'https://sustainability-silk-owners-musical.trycloudflare.com';
+  if (!tunnelUrl || tunnelUrl.includes('trycloudflare.com') || tunnelUrl.includes('loca.lt') || tunnelUrl.includes('ngrok-free.dev')) {
+    tunnelUrl = 'https://cctv.paradigmfms.com';
   }
 
   const targetUrl = `${tunnelUrl}/camera/frame/${encodeURIComponent(String(cameraName))}?ngrok-skip-browser-warning=true&bypass-tunnel-reminder=true&_t=${Date.now()}`;
