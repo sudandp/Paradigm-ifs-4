@@ -64,6 +64,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     departments: [],
     lastUpdated: new Date().toISOString(),
     connectionStatus: 'error',
-    errorMessage: lastError || `Could not connect to Cloudflare Tunnel (${tunnelUrl})`,
+    errorMessage: lastError || `Could not connect to Cloudflare Tunnel (${candidateBaseUrls[0] || 'none'})`,
   });
 }
