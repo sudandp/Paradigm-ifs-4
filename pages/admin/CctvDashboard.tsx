@@ -13,10 +13,11 @@ import {
 } from 'lucide-react';
 
 // Fallback URL used ONLY when Supabase has no ngrok_url yet (first boot before heartbeat).
-const NGROK_PROXY_FALLBACK = 'https://atmospheric-low-explains-night.trycloudflare.com';
+const NGROK_PROXY_FALLBACK = 'https://cctv.paradigmfms.com';
 
 interface CctvLog {
   id: string;
+  edgeLogId: number | null;  // Edge server SQLite ID for /logs/snapshot/{id}
   userId: string | null;
   userName: string | null;
   cameraName: string;
@@ -390,7 +391,16 @@ const CctvDashboard: React.FC = () => {
   const [enrollStep, setEnrollStep] = useState<'select' | 'sending' | 'done'>('select');
 
   // Lightbox zoom modal state
-  const [zoomPhoto, setZoomPhoto] = useState<{ url: string; title: string; subtitle: string; item?: EnrollmentItem } | null>(null);
+  const [zoomPhoto, setZoomPhoto] = useState<{
+    url: string;
+    edgeLogId: number | null;
+    cameraName: string;
+    title: string;
+    subtitle: string;
+    item?: EnrollmentItem;
+  } | null>(null);
+  // Tracks when we're fetching the high-quality edge server photo
+  const [zoomPhotoLoading, setZoomPhotoLoading] = useState(false);
 
   const stats = {
     entries: logs.filter(l => (l.direction || '').toLowerCase() === 'entry' && l.userId).length,
@@ -456,6 +466,7 @@ const CctvDashboard: React.FC = () => {
 
       let mergedLogs: CctvLog[] = (logsData || []).map((l: any) => ({
         id: l.id,
+        edgeLogId: null,
         userId: l.user_id,
         userName: l.user_name || (l.user_id ? 'Employee' : 'Unknown Person'),
         cameraName: l.camera_name,
@@ -510,13 +521,14 @@ const CctvDashboard: React.FC = () => {
           if (Array.isArray(edgeData?.logs)) {
             const edgeLogs = edgeData.logs.map((el: any) => ({
               id: `edge-${el.id || el.timestamp}`,
+              edgeLogId: typeof el.id === 'number' ? el.id : null,
               userId: el.user_id,
               userName: el.user_name || (el.user_id ? 'Employee' : 'Unknown Person'),
               cameraName: el.camera_name,
               direction: el.direction || 'entry',
               confidence: el.confidence || 0.85,
               detectedAt: el.timestamp ? new Date(el.timestamp * 1000).toISOString() : new Date().toISOString(),
-              snapshotUrl: el.snapshot_path ? `${ngrokProxy}/camera/snapshot/${encodeURIComponent(el.camera_name)}` : undefined,
+              snapshotUrl: el.snapshot_path ? `${ngrokProxy}/logs/snapshot/${el.id}?ngrok-skip-browser-warning=1` : null,
               edgeDeviceId: 'edge-server-main',
             }));
 
@@ -535,7 +547,30 @@ const CctvDashboard: React.FC = () => {
       }
 
 
-      setLogs(mergedLogs);
+      // ── Deduplicate unknown-person entries in attendance logs ──
+      // The edge server writes one row per camera frame, so a single unknown
+      // crossing can produce 7-20 identical rows within seconds.
+      // Collapse them to ONE per camera per 60-second window (same pattern as unknownQueue above).
+      const LOG_DEDUP_WINDOW_MS = 60_000;
+      const dedupedLogs: CctvLog[] = [];
+      const seenUnknownWindows: { cam: string; ts: number }[] = [];
+      for (const log of mergedLogs) {
+        if (log.userId !== null) {
+          // Known employee — always keep every punch event
+          dedupedLogs.push(log);
+        } else {
+          const logTs = new Date(log.detectedAt).getTime();
+          const isDupe = seenUnknownWindows.some(
+            w => w.cam === log.cameraName && Math.abs(w.ts - logTs) < LOG_DEDUP_WINDOW_MS
+          );
+          if (!isDupe) {
+            dedupedLogs.push(log);
+            seenUnknownWindows.push({ cam: log.cameraName, ts: logTs });
+          }
+        }
+      }
+
+      setLogs(dedupedLogs);
       // Note: setUnknownQueue(mergedUnknown) is called above after deduplication step
 
 
@@ -583,17 +618,30 @@ const CctvDashboard: React.FC = () => {
       .channel('cctv-live-dash')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'cctv_attendance_logs' }, payload => {
         const l = payload.new as any;
-        setLogs(prev => [{
-          id: l.id,
-          userId: l.user_id,
-          userName: l.user_name,
-          cameraName: l.camera_name,
-          direction: l.direction,
-          confidence: l.confidence,
-          detectedAt: l.detected_at,
-          snapshotUrl: l.snapshot_url,
-          edgeDeviceId: l.edge_device_id,
-        }, ...prev.filter(x => x.id !== l.id)].slice(0, 100));
+        setLogs(prev => {
+          // For unknown persons: skip if same camera was seen within 60s
+          if (!l.user_id) {
+            const newTs = new Date(l.detected_at).getTime();
+            const isDupe = prev.some(
+              x => !x.userId &&
+                   x.cameraName === l.camera_name &&
+                   Math.abs(new Date(x.detectedAt).getTime() - newTs) < 60_000
+            );
+            if (isDupe) return prev;
+          }
+          return [{
+            id: l.id,
+            edgeLogId: null,
+            userId: l.user_id,
+            userName: l.user_name,
+            cameraName: l.camera_name,
+            direction: l.direction,
+            confidence: l.confidence,
+            detectedAt: l.detected_at,
+            snapshotUrl: l.snapshot_url,
+            edgeDeviceId: l.edge_device_id,
+          }, ...prev.filter(x => x.id !== l.id)].slice(0, 100);
+        });
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'cctv_enrollment_queue' }, payload => {
         const u = payload.new as any;
@@ -951,11 +999,31 @@ const CctvDashboard: React.FC = () => {
                             alt=""
                             className="h-7 w-7 rounded-lg object-cover border border-border cursor-pointer hover:scale-110 transition-transform"
                             style={{ filter: 'contrast(1.05) brightness(1.02)' }}
-                            onClick={() => setZoomPhoto({
-                              url: log.snapshotUrl!,
-                              title: log.userName || 'Unknown Person',
-                              subtitle: `${log.direction.toUpperCase()} • ${log.cameraName} • ${formatTime(log.detectedAt)}`
-                            })}
+                            onClick={async () => {
+                              // Start with the Supabase snapshot, then upgrade to edge server photo
+                              const baseUrl = log.snapshotUrl || '';
+                              setZoomPhoto({
+                                url: baseUrl,
+                                edgeLogId: log.edgeLogId,
+                                cameraName: log.cameraName,
+                                title: log.userName || 'Unknown Person',
+                                subtitle: `${log.direction.toUpperCase()} • ${log.cameraName} • ${formatTime(log.detectedAt)}`
+                              });
+                              // If we have an edge log ID, fetch the full-quality context photo
+                              if (log.edgeLogId) {
+                                setZoomPhotoLoading(true);
+                                try {
+                                  const url = `${ngrokProxy}/logs/snapshot/${log.edgeLogId}?ngrok-skip-browser-warning=1`;
+                                  const res = await fetch(url, { headers: { 'ngrok-skip-browser-warning': '1' }, signal: AbortSignal.timeout(5000) });
+                                  if (res.ok) {
+                                    const blob = await res.blob();
+                                    const objectUrl = URL.createObjectURL(blob);
+                                    setZoomPhoto(prev => prev ? { ...prev, url: objectUrl } : null);
+                                  }
+                                } catch { /* keep Supabase snapshot */ }
+                                finally { setZoomPhotoLoading(false); }
+                              }
+                            }}
                           />
                         )}
                         <span>{log.userName || <span className="text-muted italic">Unknown Person</span>}</span>
@@ -1004,6 +1072,8 @@ const CctvDashboard: React.FC = () => {
                       className="aspect-square bg-neutral-950 rounded-xl overflow-hidden border border-border relative flex items-center justify-center cursor-pointer group"
                       onClick={() => setZoomPhoto({
                         url: imgSource,
+                        edgeLogId: null,
+                        cameraName: item.cameraName,
                         title: `Unknown Face • ${item.cameraName}`,
                         subtitle: `Detected at ${formatTime(item.detectedAt)}`,
                         item: item,
@@ -1061,14 +1131,15 @@ const CctvDashboard: React.FC = () => {
       {/* Lightbox Zoom Photo Modal */}
       {zoomPhoto && (
         <div
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={() => setZoomPhoto(null)}
         >
           <div
-            className="bg-neutral-900 border border-white/20 rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl space-y-3 p-4"
+            className="bg-neutral-900 border border-white/20 rounded-2xl max-w-2xl w-full overflow-hidden shadow-2xl"
             onClick={e => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between text-white border-b border-white/10 pb-3">
+            {/* Header */}
+            <div className="flex items-center justify-between text-white px-5 py-3 border-b border-white/10">
               <div>
                 <h4 className="font-bold text-sm text-emerald-400">{zoomPhoto.title}</h4>
                 <p className="text-xs text-neutral-400">{zoomPhoto.subtitle}</p>
@@ -1080,12 +1151,23 @@ const CctvDashboard: React.FC = () => {
                 ✕
               </button>
             </div>
-            <div className="aspect-square bg-black rounded-xl overflow-hidden flex items-center justify-center">
+
+            {/* Captured snapshot photo — upgrades from Supabase crop to full-frame edge server photo */}
+            <div className="w-full bg-black flex items-center justify-center relative" style={{ minHeight: '420px' }}>
+              {zoomPhotoLoading && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 z-10 gap-2">
+                  <div className="h-8 w-8 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+                  <span className="text-emerald-400 text-xs font-mono">Fetching HD photo from edge server...</span>
+                </div>
+              )}
               <img
                 src={zoomPhoto.url}
-                alt="High-res portrait"
-                className="max-h-full max-w-full object-contain"
-                style={{ filter: 'contrast(1.05) brightness(1.02)' }}
+                alt="Captured face snapshot"
+                className="w-full h-full object-contain"
+                style={{
+                  maxHeight: '480px',
+                  filter: 'contrast(1.18) brightness(1.06) saturate(1.12)',
+                }}
               />
             </div>
             {zoomPhoto.item && (

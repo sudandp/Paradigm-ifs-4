@@ -436,6 +436,43 @@ def create_admin_app(
         logs = db.get_today_detections()
         return {"logs": logs, "count": len(logs)}
 
+    @app.get("/logs/snapshot/{log_id}")
+    async def get_log_snapshot(log_id: int):
+        """Serve the high-quality full-frame context photo for a detection log entry.
+
+        Returns the full camera frame (with face bounding box drawn) that was
+        captured at the moment of detection. Falls back to the face crop if the
+        context photo is not available.
+        """
+        row = db.conn.execute(
+            "SELECT snapshot_path, context_snapshot_path FROM detection_log WHERE id = ?",
+            (log_id,)
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail=f"Log entry {log_id} not found")
+
+        # Prefer the high-quality full-frame context photo
+        photo_path = row["context_snapshot_path"] or row["snapshot_path"]
+        if not photo_path:
+            raise HTTPException(status_code=404, detail="No snapshot saved for this log entry")
+
+        path = Path(photo_path)
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="Snapshot file not found on disk")
+
+        with open(path, "rb") as f:
+            data = f.read()
+
+        return Response(
+            content=data,
+            media_type="image/jpeg",
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "X-Snapshot-Type": "context" if row["context_snapshot_path"] else "face-crop",
+            }
+        )
+
     # ─── Face Enrollment ──────────────────────────────────────────────────────
 
     @app.post("/enroll")

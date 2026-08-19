@@ -72,6 +72,7 @@ class LocalDatabase:
                 confidence      REAL NOT NULL,
                 timestamp       REAL NOT NULL,           -- Unix timestamp
                 snapshot_path   TEXT,                     -- Local path to face crop
+                context_snapshot_path TEXT,              -- Full-frame context photo path
                 pushed_to_cloud INTEGER DEFAULT 0,       -- 1 if successfully synced
                 created_at      REAL DEFAULT (strftime('%s', 'now'))
             );
@@ -226,13 +227,21 @@ class LocalDatabase:
         confidence: float,
         timestamp: float,
         snapshot_path: Optional[str] = None,
+        context_snapshot_path: Optional[str] = None,
     ) -> int:
         """Log a face detection event. Returns the log ID."""
+        # Add context_snapshot_path column if it doesn't exist yet (migration safety)
+        try:
+            self.conn.execute("ALTER TABLE detection_log ADD COLUMN context_snapshot_path TEXT")
+            self.conn.commit()
+        except Exception:
+            pass  # Column already exists
         cursor = self.conn.execute("""
             INSERT INTO detection_log (user_id, user_name, camera_name, direction,
-                                       confidence, timestamp, snapshot_path)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (user_id, user_name, camera_name, direction, confidence, timestamp, snapshot_path))
+                                       confidence, timestamp, snapshot_path, context_snapshot_path)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (user_id, user_name, camera_name, direction, confidence, timestamp,
+              snapshot_path, context_snapshot_path))
         self.conn.commit()
         return cursor.lastrowid  # type: ignore
 

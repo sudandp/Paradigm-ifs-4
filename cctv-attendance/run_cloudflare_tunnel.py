@@ -63,7 +63,30 @@ def run_tunnel():
                     print(f"\n=======================================================")
                     print(f"[OK] LIVE CLOUDFLARE TUNNEL URL: {found_url}")
                     print(f"Saved to {URL_FILE.resolve()}")
-                    print(f"Supabase and live app will sync this URL automatically!")
+
+                    # Instantly push to Supabase so dashboard works immediately without waiting
+                    try:
+                        import urllib.request as _req
+                        import json as _json
+                        sb_url = os.getenv('SUPABASE_URL', 'https://fmyafuhxlorbafbacywa.supabase.co')
+                        sb_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZteWFmdWh4bG9yYmFmYmFjeXdhIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MjIyODU0NiwiZXhwIjoyMDc3ODA0NTQ2fQ.1wQC3L3gzGpZ2SwwQXMhXliZo_f7ye99vKEO7Q2iC5M')
+                        dev_id = os.getenv('EDGE_DEVICE_ID', 'server-win-0t8n581gn63')
+                        post_req = _req.Request(
+                            f"{sb_url}/rest/v1/cctv_devices?edge_device_id=eq.{dev_id}",
+                            data=_json.dumps({'ngrok_url': found_url}).encode('utf-8'),
+                            headers={
+                                'apikey': sb_key,
+                                'Authorization': f"Bearer {sb_key}",
+                                'Content-Type': 'application/json',
+                                'Prefer': 'return=minimal'
+                            },
+                            method='PATCH'
+                        )
+                        with _req.urlopen(post_req, timeout=3) as resp:
+                            print(f"[OK] Instantly synced tunnel URL to Supabase (HTTP {resp.status})")
+                    except Exception as ex:
+                        print(f"[Note] Direct Supabase push skipped ({ex}) — background heartbeat will sync")
+
                     print(f"=======================================================\n", flush=True)
 
         process.wait()

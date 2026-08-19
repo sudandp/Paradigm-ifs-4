@@ -409,6 +409,8 @@ class AttendancePipeline:
                 return
 
             snapshot_path, snapshot_data_url = self._encode_snapshot(face, match.user_id, captured)
+            # Save high-quality full-frame context photo for admin lightbox
+            context_path = self._save_context_snapshot(captured, face)
 
             # Log locally
             self.db.log_detection(
@@ -419,6 +421,7 @@ class AttendancePipeline:
                 confidence=match.similarity,
                 timestamp=captured.timestamp,
                 snapshot_path=snapshot_path,
+                context_snapshot_path=context_path,
             )
 
             # Update cooldown
@@ -482,6 +485,8 @@ class AttendancePipeline:
             self._unknown_face_seen[cam].append((face.embedding.copy(), now_ts))
 
             snapshot_path, snapshot_data_url = self._encode_snapshot(face, "unknown", captured)
+            # Save high-quality full-frame context photo for admin lightbox
+            context_path = self._save_context_snapshot(captured, face)
 
             self.db.log_unknown_face(
                 embedding=face.embedding,
@@ -498,6 +503,7 @@ class AttendancePipeline:
                 confidence=face.detection_score,
                 timestamp=captured.timestamp,
                 snapshot_path=snapshot_path,
+                context_snapshot_path=context_path,
             )
 
             await self.dispatcher.push_unknown_face(
@@ -602,6 +608,39 @@ class AttendancePipeline:
         self._enrolled = self.db.get_all_embeddings()
         self._last_enrollment_refresh = time.time()
         logger.debug(f"[Pipeline] Refreshed enrolled cache: {len(self._enrolled)} faces")
+
+    def _save_context_snapshot(
+        self, captured: CapturedFrame, face: DetectedFace
+    ) -> Optional[str]:
+        """Save the full camera frame at detection time as a high-quality JPEG.
+
+        Draws a bounding box around the detected face so the admin can
+        immediately see which person triggered the event.
+        Returns the file path, or None if save_snapshots is disabled.
+        """
+        if not self.config.save_snapshots:
+            return None
+        try:
+            frame = captured.frame.copy()
+            # Draw face bounding box in green
+            if face.bbox is not None:
+                x1, y1, x2, y2 = [int(v) for v in face.bbox]
+                h, w = frame.shape[:2]
+                pad = 20
+                x1c = max(0, x1 - pad)
+                y1c = max(0, y1 - pad)
+                x2c = min(w, x2 + pad)
+                y2c = min(h, y2 + pad)
+                cv2.rectangle(frame, (x1c, y1c), (x2c, y2c), (0, 230, 100), 3)
+            timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+            date_dir = self.config.snapshot_dir / datetime.now().strftime('%Y-%m-%d') / 'context'
+            date_dir.mkdir(parents=True, exist_ok=True)
+            filepath = date_dir / f"ctx_{captured.camera_name}_{timestamp_str}.jpg"
+            cv2.imwrite(str(filepath), frame, [cv2.IMWRITE_JPEG_QUALITY, 95, cv2.IMWRITE_JPEG_OPTIMIZE, 1])
+            return str(filepath)
+        except Exception as e:
+            logger.warning(f"[Pipeline] Context snapshot save error: {e}")
+            return None
 
     def _save_snapshot(self, face_crop: np.ndarray, user_id: str, camera_name: str) -> str:
         """Save a high-resolution face crop to disk. Returns the file path."""
