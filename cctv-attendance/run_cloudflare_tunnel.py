@@ -46,11 +46,16 @@ def push_to_supabase():
         cctv_url = live_urls.get('cctv_4100')
         att_url = live_urls.get('attendance_4000')
 
+        if cctv_url:
+            try:
+                (Path(__file__).parent / 'tunnel_url.txt').write_text(cctv_url, encoding='utf-8')
+            except Exception:
+                pass
+
         payload = {}
         if cctv_url:
             payload['ngrok_url'] = cctv_url
         if att_url:
-            # Store attendance proxy URL in device_secret or metadata for the web app to read
             payload['device_secret'] = att_url
 
         if payload:
