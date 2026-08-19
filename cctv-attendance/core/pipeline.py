@@ -329,12 +329,12 @@ class AttendancePipeline:
             await self._handle_detected_face(best_face, match, captured)
 
         else:
-            # Person body detected but face not visible (walking away, occluded, etc.)
+            # Person body detected in scene but no face visible — do NOT save false snapshot
             current_tracks.append({
                 'bbox':        obj.bbox,
                 'object_type': 'HUMAN',
                 'label':       'HUMAN',
-                'user_name':   'UNKNOWN PERSON',
+                'user_name':   'HUMAN',
                 'user_id':     None,
                 'confidence':  obj.confidence,
                 'is_match':    False,
@@ -342,9 +342,6 @@ class AttendancePipeline:
                 'timestamp':   time.time(),
                 'face_visible': False,
             })
-
-            # Save body-only snapshot for admin review
-            await self._save_body_snapshot(obj, captured)
 
     async def _process_frame_faces_only(
         self,

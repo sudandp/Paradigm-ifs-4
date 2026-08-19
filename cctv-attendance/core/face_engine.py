@@ -64,7 +64,7 @@ class FaceEngine:
     def __init__(
         self,
         models_dir: Path = Path('./models'),
-        detection_threshold: float = 0.5,
+        detection_threshold: float = 0.65,
         det_size: tuple[int, int] = (640, 640),
     ):
         self.models_dir = models_dir
@@ -146,13 +146,35 @@ class FaceEngine:
 
             results = []
             for face in faces:
-                # Filter by detection confidence
+                # 1. Filter by detection confidence (strict 0.65+ for true human faces)
                 det_score = float(face.det_score)
-                if det_score < self.detection_threshold:
+                if det_score < max(0.65, self.detection_threshold):
                     continue
 
                 bbox = face.bbox.astype(int)
+                x1, y1, x2, y2 = bbox
+                fw, fh = x2 - x1, y2 - y1
+
+                # 2. Strict Human Face Geometry Validation:
+                # Reject micro-noise/texture artifacts (minimum 28x28px)
+                if fw < 28 or fh < 28:
+                    continue
+
+                # Human face aspect ratio (width / height) is between 0.55 and 1.45
+                aspect = fw / float(max(1, fh))
+                if aspect < 0.55 or aspect > 1.45:
+                    continue
+
+                # 3. Facial Landmark Validation (eyes and mouth must be present)
+                kps = getattr(face, 'kps', None)
+                if kps is not None and len(kps) >= 5:
+                    eye_dist = np.linalg.norm(kps[0] - kps[1])
+                    if eye_dist < 8:  # eyes collapsed or noise -> reject
+                        continue
+
                 face_crop, sharpness = self.extract_high_res_portrait(frame, bbox)
+                if face_crop is None or face_crop.size == 0:
+                    continue
 
                 results.append(DetectedFace(
                     bbox=face.bbox,
