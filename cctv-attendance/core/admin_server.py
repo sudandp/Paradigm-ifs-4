@@ -69,12 +69,8 @@ def _draw_ai_tracking_overlay(frame: np.ndarray, tracks: list[dict]) -> np.ndarr
         if x2 <= x1 or y2 <= y1:
             continue
 
-        object_type = t.get('object_type', 'HUMAN')
         is_match = t.get('is_match', False)
-        user_name = t.get('user_name', 'UNKNOWN')
-        confidence = t.get('confidence', 0.0)
-        direction = t.get('direction', '')
-        face_visible = t.get('face_visible', True)
+        user_name = t.get('user_name', 'Unknown')
 
         # ── Visual Style matching Image 1: Bright Green Face Box + Solid Green Name Tag ──
         if is_match:
