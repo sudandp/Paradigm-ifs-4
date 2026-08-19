@@ -323,8 +323,8 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
                         {isCollapsed ? (
                             <div className="h-10 w-10 flex items-center justify-center rounded-xl bg-accent/5 transition-all duration-300" title={isSouthWall ? "South Wall Services" : "Paradigm Services"}>
                                 <Logo 
-                                    localPath={isSouthWall ? "/southwall-favicon.png" : "/paradigm-correct-logo.png"}
-                                    className={isSouthWall ? "h-10 w-10 rounded-lg object-cover" : "h-7 w-7"} 
+                                    localPath={isSouthWall ? "/southwall-favicon.png" : "/favicon.ico"}
+                                    className={isSouthWall ? "h-10 w-10 rounded-lg object-cover" : "h-8 w-8 object-contain"} 
                                     variant={mode === 'dark' ? 'white' : 'original'} 
                                 />
                             </div>

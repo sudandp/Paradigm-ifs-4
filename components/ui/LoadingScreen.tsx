@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLoadingScreenStore } from '../../store/loadingScreenStore';
 import { useThemeStore } from '../../store/themeStore';
+import { useAuthStore } from '../../store/authStore';
 
 interface LoadingScreenProps {
     message?: string;
@@ -11,6 +12,18 @@ interface LoadingScreenProps {
 const LoadingScreen: React.FC<LoadingScreenProps> = ({ message = 'Loading...', fullScreen = true }) => {
     const setFullScreenLoading = useLoadingScreenStore((s) => s.setFullScreenLoading);
     const { theme } = useThemeStore();
+    
+    // Auth Store for branding
+    const user = useAuthStore((state) => state.user);
+    const lastCompany = useAuthStore((state) => state.lastCompany);
+    const effectiveCompany = user?.societyName || user?.organizationName || lastCompany || '';
+    const isSouthWall = effectiveCompany.toLowerCase().includes('south wall') || 
+                        effectiveCompany.toLowerCase().includes('southwall') || 
+                        effectiveCompany.toLowerCase().includes('south-wall');
+
+    const brandName = isSouthWall ? "SOUTHWALL" : "PARADIGM";
+    const subBrandName = isSouthWall ? "PORTAL" : "SERVICES";
+    const logoSrc = isSouthWall ? "/southwall-favicon.png" : "/favicon.png";
 
     // Detect mobile breakpoint reactively
     const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 767);
@@ -72,10 +85,10 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ message = 'Loading...', f
 
                 @keyframes ls-breathe {
                     0%, 100% { transform: scale(1); filter: drop-shadow(0 4px 20px rgba(34, 197, 94, 0.06)); }
-                    50%       { transform: scale(1.025); filter: drop-shadow(0 12px 28px rgba(34, 197, 94, 0.18)); }
+                    50%       { transform: scale(1.15); filter: drop-shadow(0 12px 28px rgba(34, 197, 94, 0.25)); }
                 }
                 .ls-breathe-wrapper {
-                    animation: ls-breathe 4s ease-in-out infinite;
+                    animation: ls-breathe 2.5s ease-in-out infinite;
                 }
 
                 @keyframes ls-spin-clockwise {
@@ -138,10 +151,10 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ message = 'Loading...', f
                 <div className={`${fullScreen ? 'mb-8' : 'mb-4'} relative flex flex-col justify-center items-center`}>
                     <div className="relative mb-6 ls-breathe-wrapper">
                         <div className={`ls-logo-container ${fullScreen ? 'w-60 h-60' : 'w-44 h-44'} relative z-10`}>
-                            <div className="ls-logo-spin w-full h-full flex items-center justify-center">
+                            <div className={`${!isSouthWall ? 'ls-logo-spin' : ''} w-full h-full flex items-center justify-center`}>
                                 <img
-                                    src="/paradigm-correct-logo.png"
-                                    alt="Paradigm Logo"
+                                    src={logoSrc}
+                                    alt={`${brandName} Logo`}
                                     className="w-full h-full object-contain p-2"
                                 />
                             </div>
@@ -150,10 +163,10 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ message = 'Loading...', f
 
                     <div className="company-text flex flex-col items-center ls-animate-fade-up ls-delay-1">
                         <h2 className={`${fullScreen ? 'text-4xl' : 'text-2xl'} font-black ${textPrimary} tracking-[0.2em] uppercase mb-1`}>
-                            PARADIGM
+                            {brandName}
                         </h2>
                         <h3 className={`${fullScreen ? 'text-xl' : 'text-base'} font-bold ${textSub} tracking-[0.4em] uppercase opacity-90`}>
-                            SERVICES
+                            {subBrandName}
                         </h3>
                     </div>
                 </div>
