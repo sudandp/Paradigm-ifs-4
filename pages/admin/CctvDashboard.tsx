@@ -205,6 +205,8 @@ const NvrCameraStream: React.FC<{
 
         // Trim processed bytes; cap buffer to prevent memory growth
         buf = offset > 0 ? buf.slice(offset) : buf;
+        if (buf.length > MAX_BUF) buf = new Uint8Array(0);
+      }
     } catch (err: any) {
       if (err?.name === 'AbortError') return;
 
