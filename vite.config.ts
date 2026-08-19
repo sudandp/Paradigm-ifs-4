@@ -73,7 +73,95 @@ export default defineConfig({
           }
         ]
       }
-    })
+    }),
+    {
+      name: 'mssql-dev-middleware',
+      configureServer(server: any) {
+        server.middlewares.use(async (req: any, res: any, next: any) => {
+          if (!req.url || !req.url.startsWith('/api/mssql-')) {
+            return next();
+          }
+
+          const urlObj = new URL(req.url, 'http://localhost');
+          const path = urlObj.pathname;
+          const search = urlObj.search;
+
+          const candidateBases = [
+            'http://localhost:4000',
+            'http://127.0.0.1:4000',
+            'https://attendance.paradigmfms.com',
+            'https://cctv.paradigmfms.com',
+            'https://tassel-estranged-prism.ngrok-free.dev',
+            'http://192.168.51.112:4000',
+          ];
+
+          try {
+            const sbRes = await fetch('https://fmyafuhxlorbafbacywa.supabase.co/rest/v1/cctv_devices?select=ngrok_url,device_secret&order=last_seen.desc&limit=1', {
+              headers: {
+                apikey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZteWFmdWh4bG9yYmFmYmFjeXdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyMjg1NDYsImV4cCI6MjA3NzgwNDU0Nn0.RqsniEqzNec6ww35TXJtLJD3mafnGbMI82om4XRUdUU',
+                Authorization: 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZteWFmdWh4bG9yYmFmYmFjeXdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyMjg1NDYsImV4cCI6MjA3NzgwNDU0Nn0.RqsniEqzNec6ww35TXJtLJD3mafnGbMI82om4XRUdUU'
+              },
+              signal: AbortSignal.timeout(1800),
+            });
+            if (sbRes.ok) {
+              const data: any = await sbRes.json();
+              if (Array.isArray(data) && data[0]) {
+                const attLive = data[0].device_secret?.replace(/\/$/, '');
+                const cctvLive = data[0].ngrok_url?.replace(/\/$/, '');
+                if (attLive && attLive.startsWith('http') && !candidateBases.includes(attLive)) {
+                  candidateBases.unshift(attLive);
+                }
+                if (cctvLive && cctvLive.startsWith('http') && !candidateBases.includes(cctvLive)) {
+                  candidateBases.unshift(cctvLive);
+                }
+              }
+            }
+          } catch {}
+
+          let subPath = '/attendance';
+          if (path === '/api/mssql-devices') subPath = '/devices';
+          if (path === '/api/mssql-update-employee') subPath = '/update-employee';
+
+          for (const base of candidateBases) {
+            const targetUrl = `${base}${subPath}${search}`;
+            try {
+              const fetchRes = await fetch(targetUrl, {
+                method: req.method || 'GET',
+                headers: {
+                  'x-api-key': 'paradigm-attendance-secret-2024',
+                  'x-api-secret': 'paradigm-attendance-secret-2024',
+                  'Content-Type': 'application/json',
+                  'ngrok-skip-browser-warning': '1',
+                  'bypass-tunnel-reminder': 'true',
+                  'Bypass-Tunnel-Reminder': '1',
+                },
+                signal: AbortSignal.timeout(6000),
+              });
+              if (fetchRes.ok) {
+                const data = await fetchRes.text();
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'application/json');
+                res.setHeader('Access-Control-Allow-Origin', '*');
+                res.end(data);
+                return;
+              }
+            } catch {}
+          }
+
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({
+            summary: { date: new Date().toISOString().slice(0, 10), totalEmployees: 0, present: 0, absent: 0, late: 0, onTime: 0, attendanceRate: 0 },
+            employees: [],
+            trend: [],
+            departments: [],
+            lastUpdated: new Date().toISOString(),
+            connectionStatus: 'error',
+            errorMessage: 'Database proxy unreachable on all candidate endpoints',
+          }));
+        });
+      }
+    }
   ],
 
 
@@ -96,16 +184,6 @@ export default defineConfig({
     },
   },
   server: {
-    // Proxy /api requests to the Node.js server running on port 3000
-    proxy: {
-      '/api': {
-        target: 'http://localhost:3000',
-        changeOrigin: true,
-        secure: false,
-        // Rewrite the path to remove /api if the backend doesn't expect it
-        // rewrite: (path) => path.replace(/^\/api/, ''),
-      },
-    },
     // Configure the file watcher.  Without an ignore list Vite watches the entire
     // project directory, so events such as downloading or opening files in external
     // directories can trigger an unnecessary full reload.  Ignoring these patterns

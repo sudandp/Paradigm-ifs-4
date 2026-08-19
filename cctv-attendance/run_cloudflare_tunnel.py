@@ -1,24 +1,34 @@
 """
-Cloudflare Tunnel Runner for Paradigm CCTV Attendance Edge Server
+Cloudflare Dual Tunnel Runner for Paradigm CCTV + Biometric Attendance Edge Server
+- Automatically launches 2 Cloudflare Tunnels:
+    1. Port 4000 → MS SQL Biometric Attendance API (Site Attendance Dashboard)
+    2. Port 4100 → CCTV AI Surveillance Server (CCTV Dashboard & Live RTSP)
 - 100% Free & Unlimited Bandwidth (No monthly data cap)
 - Automatically downloads cloudflared.exe if missing
-- Automatically starts tunnel to port 4100
-- Writes the live URL to tunnel_url.txt for instant Supabase heartbeat sync
+- Pushes both live URLs to Supabase instantly so dashboards connect with ZERO configuration!
 """
 
 import os
 import re
 import sys
 import time
+import threading
 import subprocess
 import urllib.request
+import json
 from pathlib import Path
 
-PORT = int(os.getenv('ADMIN_PORT', '4100'))
 EXE_PATH = Path(__file__).parent / 'cloudflared.exe'
-URL_FILE = Path(__file__).parent / 'tunnel_url.txt'
-
 DOWNLOAD_URL = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
+
+SB_URL = os.getenv('SUPABASE_URL', 'https://fmyafuhxlorbafbacywa.supabase.co')
+SB_KEY = os.getenv('SUPABASE_SERVICE_ROLE_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZteWFmdWh4bG9yYmFmYmFjeXdhIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MjIyODU0NiwiZXhwIjoyMDc3ODA0NTQ2fQ.1wQC3L3gzGpZ2SwwQXMhXliZo_f7ye99vKEO7Q2iC5M')
+DEV_ID = os.getenv('EDGE_DEVICE_ID', 'server-win-0t8n581gn63')
+
+live_urls = {
+    'attendance_4000': None,
+    'cctv_4100': None,
+}
 
 def ensure_cloudflared_installed():
     if not EXE_PATH.exists():
@@ -28,15 +38,42 @@ def ensure_cloudflared_installed():
             print(f"[Cloudflare] Download completed: {EXE_PATH.resolve()}")
         except Exception as e:
             print(f"[Cloudflare] ERROR: Failed to download cloudflared.exe: {e}")
-            print(f"Please download manually from: {DOWNLOAD_URL} and save as {EXE_PATH}")
             sys.exit(1)
 
-def run_tunnel():
-    ensure_cloudflared_installed()
-    cmd = [str(EXE_PATH.resolve()), "tunnel", "--url", f"http://127.0.0.1:{PORT}"]
-    print(f"[Cloudflare] Starting tunnel for http://127.0.0.1:{PORT} ...")
+def push_to_supabase():
+    """Sync both active tunnel URLs to Supabase cctv_devices and sync_state table."""
+    try:
+        cctv_url = live_urls.get('cctv_4100')
+        att_url = live_urls.get('attendance_4000')
 
-    # Start cloudflared process and read stderr (where cloudflared outputs the URL)
+        payload = {}
+        if cctv_url:
+            payload['ngrok_url'] = cctv_url
+        if att_url:
+            # Store attendance proxy URL in device_secret or metadata for the web app to read
+            payload['device_secret'] = att_url
+
+        if payload:
+            post_req = urllib.request.Request(
+                f"{SB_URL}/rest/v1/cctv_devices?edge_device_id=eq.{DEV_ID}",
+                data=json.dumps(payload).encode('utf-8'),
+                headers={
+                    'apikey': SB_KEY,
+                    'Authorization': f"Bearer {SB_KEY}",
+                    'Content-Type': 'application/json',
+                    'Prefer': 'return=minimal'
+                },
+                method='PATCH'
+            )
+            with urllib.request.urlopen(post_req, timeout=3) as resp:
+                print(f"[OK] Instantly synced to Supabase (HTTP {resp.status})")
+    except Exception as ex:
+        print(f"[Note] Supabase push error ({ex})")
+
+def monitor_tunnel(port: int, label: str, key_name: str):
+    cmd = [str(EXE_PATH.resolve()), "tunnel", "--url", f"http://127.0.0.1:{port}"]
+    print(f"[Cloudflare] Starting tunnel for {label} on http://127.0.0.1:{port} ...")
+
     process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
@@ -53,49 +90,44 @@ def run_tunnel():
             for line in process.stdout:
                 if not line:
                     break
-                print(line, end='', flush=True)
-                
                 match = url_pattern.search(line)
                 if match and not url_saved:
                     found_url = match.group(0).strip()
-                    URL_FILE.write_text(found_url, encoding='utf-8')
+                    live_urls[key_name] = found_url
                     url_saved = True
                     print(f"\n=======================================================")
-                    print(f"[OK] LIVE CLOUDFLARE TUNNEL URL: {found_url}")
-                    print(f"Saved to {URL_FILE.resolve()}")
-
-                    # Instantly push to Supabase so dashboard works immediately without waiting
-                    try:
-                        import urllib.request as _req
-                        import json as _json
-                        sb_url = os.getenv('SUPABASE_URL', 'https://fmyafuhxlorbafbacywa.supabase.co')
-                        sb_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZteWFmdWh4bG9yYmFmYmFjeXdhIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MjIyODU0NiwiZXhwIjoyMDc3ODA0NTQ2fQ.1wQC3L3gzGpZ2SwwQXMhXliZo_f7ye99vKEO7Q2iC5M')
-                        dev_id = os.getenv('EDGE_DEVICE_ID', 'server-win-0t8n581gn63')
-                        post_req = _req.Request(
-                            f"{sb_url}/rest/v1/cctv_devices?edge_device_id=eq.{dev_id}",
-                            data=_json.dumps({'ngrok_url': found_url}).encode('utf-8'),
-                            headers={
-                                'apikey': sb_key,
-                                'Authorization': f"Bearer {sb_key}",
-                                'Content-Type': 'application/json',
-                                'Prefer': 'return=minimal'
-                            },
-                            method='PATCH'
-                        )
-                        with _req.urlopen(post_req, timeout=3) as resp:
-                            print(f"[OK] Instantly synced tunnel URL to Supabase (HTTP {resp.status})")
-                    except Exception as ex:
-                        print(f"[Note] Direct Supabase push skipped ({ex}) — background heartbeat will sync")
-
+                    print(f"[OK] LIVE {label.upper()} TUNNEL URL: {found_url}")
                     print(f"=======================================================\n", flush=True)
+                    push_to_supabase()
 
         process.wait()
+    except Exception as e:
+        print(f"[{label}] Tunnel stopped: {e}")
+        if process.poll() is None:
+            process.terminate()
+
+def run_both_tunnels():
+    ensure_cloudflared_installed()
+
+    # 1. Start Attendance API Tunnel (Port 4000)
+    t1 = threading.Thread(target=monitor_tunnel, args=(4000, "Biometric Attendance API (Port 4000)", "attendance_4000"), daemon=True)
+    t1.start()
+
+    # 2. Start CCTV AI Surveillance Tunnel (Port 4100)
+    t2 = threading.Thread(target=monitor_tunnel, args=(4100, "CCTV AI Surveillance (Port 4100)", "cctv_4100"), daemon=True)
+    t2.start()
+
+    print("=" * 65)
+    print("  PARADIGM DUAL TUNNEL RUNNING (PORT 4000 & PORT 4100)")
+    print("  Press Ctrl+C anytime to stop.")
+    print("=" * 65)
+
+    try:
+        while True:
+            time.sleep(1)
     except KeyboardInterrupt:
-        print("\nStopping Cloudflare Tunnel...")
-        process.terminate()
-        if URL_FILE.exists():
-            URL_FILE.unlink(missing_ok=True)
+        print("\nStopping all Cloudflare tunnels...")
 
 if __name__ == '__main__':
-    run_tunnel()
+    run_both_tunnels()
 

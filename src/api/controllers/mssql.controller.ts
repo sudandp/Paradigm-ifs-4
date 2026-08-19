@@ -76,14 +76,44 @@ export interface DeviceResponse {
 
 // ─── Proxy Config ───────────────────────────────────────────────
 
-function getCandidateProxyUrls(): { urls: string[]; secret: string } {
+async function getCandidateProxyUrls(): Promise<{ urls: string[]; secret: string }> {
   const secret = process.env.MSSQL_API_SECRET?.trim() || 'paradigm-attendance-secret-2024';
-  const urls = [
-    process.env.MSSQL_PROXY_URL?.trim(),
-    'https://blond-backup-lending-upgrading.trycloudflare.com',
+  const urls: string[] = [
     'https://attendance.paradigmfms.com',
-  ].filter(Boolean) as string[];
-  return { urls, secret };
+    'https://cctv.paradigmfms.com',
+    process.env.MSSQL_PROXY_URL?.trim() || '',
+    'https://tassel-estranged-prism.ngrok-free.dev',
+    'http://localhost:4000',
+    'http://127.0.0.1:4000',
+    'http://192.168.51.112:4000',
+  ].filter(Boolean);
+
+  // Dynamic fallback: auto-detect live tunnel URL from Supabase cctv_devices heartbeat
+  try {
+    const sbUrl = process.env.VITE_SUPABASE_URL || 'https://fmyafuhxlorbafbacywa.supabase.co';
+    const sbKey = process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZteWFmdWh4bG9yYmFmYmFjeXdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyMjg1NDYsImV4cCI6MjA3NzgwNDU0Nn0.RqsniEqzNec6ww35TXJtLJD3mafnGbMI82om4XRUdUU';
+    const res = await fetch(`${sbUrl}/rest/v1/cctv_devices?select=ngrok_url,device_secret&order=last_seen.desc&limit=1`, {
+      headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` },
+      signal: AbortSignal.timeout(1800),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data) && data[0]) {
+        const attLive = data[0].device_secret?.replace(/\/$/, '');
+        const cctvLive = data[0].ngrok_url?.replace(/\/$/, '');
+        if (attLive && attLive.startsWith('http') && !urls.includes(attLive)) {
+          urls.unshift(attLive);
+        }
+        if (cctvLive && cctvLive.startsWith('http') && !urls.includes(cctvLive)) {
+          urls.unshift(cctvLive);
+        }
+      }
+    }
+  } catch {
+    // Supabase lookup silent fallback
+  }
+
+  return { urls: Array.from(new Set(urls)), secret };
 }
 
 // ─── Main: Fetch attendance via Proxy ───────────────────────────
@@ -92,15 +122,15 @@ export async function getAttendanceData(
   date: string,
   siteId: string = 'all'
 ): Promise<AttendanceResponse> {
-  const { urls, secret } = getCandidateProxyUrls();
+  const { urls, secret } = await getCandidateProxyUrls();
 
   const safeDate = date.match(/^\d{4}-\d{2}-\d{2}$/) ? date : new Date().toISOString().slice(0, 10);
   let lastError = '';
 
   for (const proxyUrl of urls) {
     const endpoints = [
-      `${proxyUrl}/attendance?date=${safeDate}`,
-      `${proxyUrl}/api/attendance?date=${safeDate}`
+      `${proxyUrl}/attendance?date=${safeDate}&siteId=${encodeURIComponent(siteId)}`,
+      `${proxyUrl}/api/attendance?date=${safeDate}&siteId=${encodeURIComponent(siteId)}`,
     ];
 
     for (const endpoint of endpoints) {
@@ -110,12 +140,13 @@ export async function getAttendanceData(
           method: 'GET',
           headers: {
             'x-api-key': secret,
+            'x-api-secret': secret,
             'Content-Type': 'application/json',
             'ngrok-skip-browser-warning': '1',
             'bypass-tunnel-reminder': 'true',
             'Bypass-Tunnel-Reminder': '1',
           },
-          signal: AbortSignal.timeout(15_000),
+          signal: AbortSignal.timeout(3500), // Fast 3.5s failover
         });
 
         if (res.ok) {
@@ -152,7 +183,7 @@ function errorShape(date: string, msg: string): AttendanceResponse {
 // ─── Fetch Device Status via Proxy ──────────────────────────────
 
 export async function getDeviceData(): Promise<DeviceResponse> {
-  const { urls, secret } = getCandidateProxyUrls();
+  const { urls, secret } = await getCandidateProxyUrls();
 
   for (const proxyUrl of urls) {
     const endpoint = `${proxyUrl}/devices`;
@@ -161,12 +192,13 @@ export async function getDeviceData(): Promise<DeviceResponse> {
         method: 'GET',
         headers: {
           'x-api-key': secret,
+          'x-api-secret': secret,
           'Content-Type': 'application/json',
           'ngrok-skip-browser-warning': '1',
           'bypass-tunnel-reminder': 'true',
           'Bypass-Tunnel-Reminder': '1',
         },
-        signal: AbortSignal.timeout(10_000),
+        signal: AbortSignal.timeout(3500),
       });
       if (res.ok) {
         const data = await res.json() as DeviceResponse;
@@ -188,7 +220,7 @@ export async function debugMssqlConnection(): Promise<{
   attendanceStatus: string;
   details: string;
 }> {
-  const { urls, secret } = getCandidateProxyUrls();
+  const { urls, secret } = await getCandidateProxyUrls();
   const primaryUrl = urls[0] || 'NOT_SET';
 
   let healthStatus = 'UNKNOWN';
@@ -238,7 +270,7 @@ export async function updateMssqlEmployeeDetails(
   siteName?: string,
   designation?: string
 ): Promise<{ success: boolean; rowsAffected?: number; error?: string }> {
-  const { urls, secret } = getCandidateProxyUrls();
+  const { urls, secret } = await getCandidateProxyUrls();
 
   for (const proxyUrl of urls) {
     const endpoint = `${proxyUrl}/update-employee`;
@@ -247,13 +279,14 @@ export async function updateMssqlEmployeeDetails(
         method: 'POST',
         headers: {
           'x-api-key': secret,
+          'x-api-secret': secret,
           'Content-Type': 'application/json',
           'ngrok-skip-browser-warning': '1',
           'bypass-tunnel-reminder': 'true',
           'Bypass-Tunnel-Reminder': '1',
         },
         body: JSON.stringify({ empCode, empName, siteName, designation }),
-        signal: AbortSignal.timeout(10_000),
+        signal: AbortSignal.timeout(3500),
       });
 
       if (res.ok) {
