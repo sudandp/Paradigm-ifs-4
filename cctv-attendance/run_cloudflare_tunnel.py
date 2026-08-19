@@ -76,38 +76,65 @@ def push_to_supabase():
         print(f"[Note] Supabase push error ({ex})")
 
 def monitor_tunnel(port: int, label: str, key_name: str):
-    cmd = [str(EXE_PATH.resolve()), "tunnel", "--url", f"http://127.0.0.1:{port}"]
-    print(f"[Cloudflare] Starting tunnel for {label} on http://127.0.0.1:{port} ...")
+    log_dir = Path(__file__).parent / 'logs'
+    log_dir.mkdir(exist_ok=True)
+    log_file = log_dir / f"tunnel_{port}.log"
+
+    # Reset old log file
+    if log_file.exists():
+        try:
+            log_file.unlink()
+        except Exception:
+            pass
+
+    cmd = [
+        str(EXE_PATH.resolve()),
+        "tunnel",
+        "--url", f"http://localhost:{port}",
+        "--http-host-header", f"localhost:{port}",
+        "--logfile", str(log_file.resolve()),
+    ]
+    print(f"[Cloudflare] Starting tunnel for {label} on http://localhost:{port} ...", flush=True)
+
+    creation_flags = 0
+    if sys.platform == 'win32':
+        creation_flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000)
 
     process = subprocess.Popen(
         cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        universal_newlines=True,
-        bufsize=1
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=creation_flags
     )
 
     url_saved = False
     url_pattern = re.compile(r'https://[a-zA-Z0-9-]+\.trycloudflare\.com')
 
-    try:
-        if process.stdout is not None:
-            for line in process.stdout:
-                if not line:
-                    break
-                match = url_pattern.search(line)
-                if match and not url_saved:
+    # Monitor log file for assigned URL
+    for _ in range(60):
+        if url_saved:
+            break
+        if log_file.exists():
+            try:
+                content = log_file.read_text(encoding='utf-8', errors='ignore')
+                match = url_pattern.search(content)
+                if match:
                     found_url = match.group(0).strip()
                     live_urls[key_name] = found_url
                     url_saved = True
-                    print(f"\n=======================================================")
-                    print(f"[OK] LIVE {label.upper()} TUNNEL URL: {found_url}")
+                    print(f"\n=======================================================", flush=True)
+                    print(f"[OK] LIVE {label.upper()} TUNNEL URL: {found_url}", flush=True)
                     print(f"=======================================================\n", flush=True)
                     push_to_supabase()
+                    break
+            except Exception:
+                pass
+        time.sleep(0.5)
 
+    try:
         process.wait()
     except Exception as e:
-        print(f"[{label}] Tunnel stopped: {e}")
+        print(f"[{label}] Tunnel stopped: {e}", flush=True)
         if process.poll() is None:
             process.terminate()
 

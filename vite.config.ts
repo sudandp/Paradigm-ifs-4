@@ -96,7 +96,7 @@ export default defineConfig({
           ];
 
           try {
-            const sbRes = await fetch('https://fmyafuhxlorbafbacywa.supabase.co/rest/v1/cctv_devices?select=ngrok_url,device_secret&order=last_seen.desc&limit=1', {
+            const sbRes = await fetch('https://fmyafuhxlorbafbacywa.supabase.co/rest/v1/cctv_devices?select=ngrok_url,device_secret&order=updated_at.desc&limit=1', {
               headers: {
                 apikey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZteWFmdWh4bG9yYmFmYmFjeXdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyMjg1NDYsImV4cCI6MjA3NzgwNDU0Nn0.RqsniEqzNec6ww35TXJtLJD3mafnGbMI82om4XRUdUU',
                 Authorization: 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZteWFmdWh4bG9yYmFmYmFjeXdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyMjg1NDYsImV4cCI6MjA3NzgwNDU0Nn0.RqsniEqzNec6ww35TXJtLJD3mafnGbMI82om4XRUdUU'

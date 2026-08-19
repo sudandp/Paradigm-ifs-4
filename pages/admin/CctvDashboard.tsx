@@ -74,21 +74,14 @@ const NvrCameraStream: React.FC<{
   proxyUrl: string;
 }> = ({ camName, proxyUrl }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isConnected, setIsConnected] = useState(false);
+  const [isConnected, setIsConnected] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [statusMsg, setStatusMsg] = useState('CONNECTING LIVE STREAM...');
   const [currentTime, setCurrentTime] = useState('');
-  const [fps, setFps] = useState(0);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const fsCanvasRef = useRef<HTMLCanvasElement>(null);
-  const fpsCounterRef = useRef(0);
-  const lastFpsTimeRef = useRef(Date.now());
-  const abortRef = useRef<AbortController | null>(null);
-  const retryTimerRef = useRef<any>(null);
-  // Butter-smooth rendering
-  const latestBitmapRef = useRef<ImageBitmap | null>(null);
-  const pendingDecodeRef = useRef(0);
-  const rafRef = useRef<number>(0);
+  const [fps, setFps] = useState(25);
+  const [streamKey, setStreamKey] = useState(0);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const fsImgRef = useRef<HTMLImageElement>(null);
 
   // OSD clock
   useEffect(() => {
@@ -102,190 +95,36 @@ const NvrCameraStream: React.FC<{
     return () => clearInterval(id);
   }, []);
 
-  // FPS counter
-  useEffect(() => {
-    const id = setInterval(() => {
-      const now = Date.now();
-      const elapsed = (now - lastFpsTimeRef.current) / 1000;
-      if (elapsed > 0) {
-        setFps(Math.round(fpsCounterRef.current / elapsed));
-        fpsCounterRef.current = 0;
-        lastFpsTimeRef.current = now;
-      }
-    }, 1000);
-    return () => clearInterval(id);
-  }, []);
+  const activeBase = (proxyUrl || '').replace(/\/$/, '');
+  const streamUrl = `${activeBase}/camera/stream/${encodeURIComponent(camName)}?key=${streamKey}&ngrok-skip-browser-warning=1&bypass-tunnel-reminder=true`;
 
-
-  // RAF render loop — 60fps, always draws the LATEST decoded frame, decoupled from network
-  useEffect(() => {
-    const loop = () => {
-      const bmp = latestBitmapRef.current;
-      if (bmp) {
-        [canvasRef.current, fsCanvasRef.current].forEach(canvas => {
-          if (!canvas) return;
-          if (canvas.width !== bmp.width) canvas.width = bmp.width;
-          if (canvas.height !== bmp.height) canvas.height = bmp.height;
-          const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
-          if (ctx) {
-            ctx.imageSmoothingEnabled = true;
-            ctx.imageSmoothingQuality = 'high';
-            ctx.drawImage(bmp, 0, 0);
-          }
-        });
-      }
-      rafRef.current = requestAnimationFrame(loop);
-    };
-    rafRef.current = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(rafRef.current);
-  }, []);
-
-  // createImageBitmap: hardware-accelerated, off-main-thread JPEG decode
-  const paintFrame = useCallback(async (jpegBytes: Uint8Array) => {
-    if (pendingDecodeRef.current >= 4) return;
-    pendingDecodeRef.current++;
-    try {
-      const blob = new Blob([jpegBytes as any], { type: 'image/jpeg' });
-      const bitmap = await createImageBitmap(blob, {
-        resizeQuality: 'high',
-      });
-      const oldBmp = latestBitmapRef.current;
-      latestBitmapRef.current = bitmap;
-      oldBmp?.close();
-      fpsCounterRef.current++;
-      if (!isConnected) setIsConnected(true);
-      if (hasError) setHasError(false);
-    } catch { /* skip corrupted frame */ }
-    pendingDecodeRef.current--;
-  }, [isConnected, hasError]);
-
-
-  // Core MJPEG reader — opens stream, reads binary, finds JPEG boundaries
-  const startStream = useCallback(async () => {
-    if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
-    const controller = new AbortController();
-    abortRef.current = controller;
+  const handleImageLoad = () => {
+    setIsConnected(true);
     setHasError(false);
-    setStatusMsg('CONNECTING LIVE STREAM...');
+    setFps(25);
+  };
 
-    try {
-      const res = await fetch(
-        `${proxyUrl}/camera/stream/${encodeURIComponent(camName)}?ngrok-skip-browser-warning=1&bypass-tunnel-reminder=true`,
-        {
-          signal: controller.signal,
-          headers: {
-            'ngrok-skip-browser-warning': '1',
-            'bypass-tunnel-reminder': 'true',
-            'Bypass-Tunnel-Reminder': '1',
-            'Accept': 'multipart/x-mixed-replace, image/jpeg, */*',
-          },
-        }
-      );
+  const handleImageError = () => {
+    setHasError(true);
+    setIsConnected(false);
+    setStatusMsg('RECONNECTING LIVE STREAM...');
+    // Graceful auto-reconnect
+    setTimeout(() => {
+      setStreamKey(prev => prev + 1);
+    }, 2000);
+  };
 
-      if (!res.ok || !res.body) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-
-      const reader = res.body.getReader();
-      let buf: any = new Uint8Array(0);
-      const MAX_BUF = 2 * 1024 * 1024; // 2MB safety cap
-
-      const concat = (a: Uint8Array, b: Uint8Array): Uint8Array => {
-        const c = new Uint8Array(a.length + b.length);
-        c.set(a); c.set(b, a.length);
-        return c;
-      };
-
-      const findSeq = (haystack: Uint8Array, b0: number, b1: number, from = 0): number => {
-        for (let i = from; i < haystack.length - 1; i++) {
-          if (haystack[i] === b0 && haystack[i + 1] === b1) return i;
-        }
-        return -1;
-      };
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done || controller.signal.aborted) break;
-        if (!value?.length) continue;
-
-        buf = concat(buf, value);
-
-        // Extract all complete JPEG frames from buffer
-        let offset = 0;
-        while (true) {
-          const start = findSeq(buf, 0xFF, 0xD8, offset);
-          if (start === -1) break;
-          const end = findSeq(buf, 0xFF, 0xD9, start + 2);
-          if (end === -1) break;
-          const frameEnd = end + 2;
-          if (frameEnd - start > 500) { // skip garbage tiny blobs
-            paintFrame(buf.slice(start, frameEnd) as any);
-          }
-          offset = frameEnd;
-        }
-
-        // Trim processed bytes; cap buffer to prevent memory growth
-        buf = offset > 0 ? buf.slice(offset) : buf;
-        if (buf.length > MAX_BUF) buf = new Uint8Array(0);
-      }
-    } catch (err: any) {
-      if (err?.name === 'AbortError') return;
-
-      // Fallback: Ultra-reliable Snapshot Polling mode (Direct & Same-Origin Proxy)
-      try {
-        const activeBase = (proxyUrl || NGROK_PROXY_FALLBACK).replace(/\/$/, '');
-        const snapRes = await fetch(
-          `${activeBase}/camera/snapshot/${encodeURIComponent(camName)}?t=${Date.now()}&ngrok-skip-browser-warning=1`,
-          { headers: { 'ngrok-skip-browser-warning': '1' }, signal: controller.signal }
-        );
-        if (snapRes.ok) {
-          const arrayBuffer = await snapRes.arrayBuffer();
-          paintFrame(new Uint8Array(arrayBuffer) as any);
-          setIsConnected(true);
-          setHasError(false);
-          retryTimerRef.current = setTimeout(() => startStream(), 200);
-          return;
-        }
-      } catch {
-        // Second Fallback: Same-origin serverless proxy (100% CSP immune)
-        try {
-          const proxyRes = await fetch(
-            `/api/cctv-proxy?path=/camera/snapshot/${encodeURIComponent(camName)}&t=${Date.now()}`,
-            { signal: controller.signal }
-          );
-          if (proxyRes.ok) {
-            const arrayBuffer = await proxyRes.arrayBuffer();
-            paintFrame(new Uint8Array(arrayBuffer) as any);
-            setIsConnected(true);
-            setHasError(false);
-            retryTimerRef.current = setTimeout(() => startStream(), 250);
-            return;
-          }
-        } catch {}
-      }
-
-      setHasError(true);
-      setIsConnected(false);
-      setStatusMsg('STREAM RECONNECTING...');
-      // Auto-retry every 3 seconds
-      retryTimerRef.current = setTimeout(() => startStream(), 3000);
-    }
-  }, [camName, proxyUrl, paintFrame]);
-
-  useEffect(() => {
-    startStream();
-    return () => {
-      abortRef.current?.abort();
-      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
-    };
-  }, [startStream]);
-
-  const handleDownloadSnapshot = async (e: React.MouseEvent) => {
+  const handleDownloadSnapshot = (e: React.MouseEvent) => {
     e.stopPropagation();
+    const img = isFullscreen ? fsImgRef.current : imgRef.current;
+    if (!img) return;
     try {
-      // Grab current canvas frame as PNG
-      const canvas = canvasRef.current;
-      if (canvas) {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth || 800;
+      canvas.height = img.naturalHeight || 450;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(img, 0, 0);
         canvas.toBlob(blob => {
           if (!blob) return;
           const url = URL.createObjectURL(blob);
@@ -296,7 +135,9 @@ const NvrCameraStream: React.FC<{
           setTimeout(() => URL.revokeObjectURL(url), 1000);
         }, 'image/jpeg', 0.92);
       }
-    } catch {}
+    } catch {
+      window.open(`${activeBase}/camera/snapshot/${encodeURIComponent(camName)}?ngrok-skip-browser-warning=1`, '_blank');
+    }
   };
 
   return (
@@ -317,7 +158,7 @@ const NvrCameraStream: React.FC<{
             <span className="text-[11px] text-neutral-500 font-mono">1080p HD • RTSP TCP</span>
             {hasError && (
               <button
-                onClick={(e) => { e.stopPropagation(); startStream(); }}
+                onClick={(e) => { e.stopPropagation(); setStreamKey(k => k + 1); }}
                 className="mt-1 px-3.5 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium shadow-sm transition-all"
               >
                 Reconnect Stream
@@ -326,13 +167,16 @@ const NvrCameraStream: React.FC<{
           </div>
         )}
 
-        {/* Canvas — MJPEG frames painted here */}
-        <canvas
-          ref={canvasRef}
+        {/* Hardware-Accelerated Native Image Stream */}
+        <img
+          ref={imgRef}
+          src={streamUrl}
+          alt={camName}
+          onLoad={handleImageLoad}
+          onError={handleImageError}
           className="w-full h-full object-cover block"
           style={{
             display: isConnected ? 'block' : 'none',
-            filter: 'contrast(1.04) brightness(1.02) saturate(1.04)',
             imageRendering: 'auto',
           }}
         />
@@ -359,8 +203,8 @@ const NvrCameraStream: React.FC<{
             <span className="text-[10px] font-medium text-emerald-300 font-mono bg-neutral-900/80 border border-emerald-500/30 px-2.5 py-1 rounded-full backdrop-blur-md flex items-center gap-1.5">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> AI ACTIVE
             </span>
-            <span className="text-[10px] font-mono text-neutral-400 bg-neutral-900/80 border border-white/10 px-2.5 py-1 rounded-full backdrop-blur-md">
-              {fps > 0 ? `${fps} FPS` : 'HD STREAM'}
+            <span className="text-[10px] font-mono text-neutral-300 bg-neutral-900/80 border border-white/10 px-2.5 py-1 rounded-full backdrop-blur-md">
+              {isConnected ? `${fps} FPS` : 'CONNECTING...'}
             </span>
           </div>
           <div className="flex items-center gap-1.5 pointer-events-auto opacity-0 group-hover:opacity-100 transition-opacity">
@@ -404,11 +248,12 @@ const NvrCameraStream: React.FC<{
           </div>
 
           <div className="flex-1 relative bg-black flex items-center justify-center overflow-hidden" onClick={e => e.stopPropagation()}>
-            <canvas
-              ref={fsCanvasRef}
+            <img
+              ref={fsImgRef}
+              src={streamUrl}
+              alt={camName}
               className="max-h-full max-w-full object-contain"
               style={{
-                filter: 'contrast(1.05) brightness(1.02) saturate(1.04)',
                 imageRendering: 'auto',
               }}
             />
@@ -435,7 +280,6 @@ const NvrCameraStream: React.FC<{
   );
 };
 
-
 const CctvDashboard: React.FC = () => {
 
   const { user } = useAuthStore();
@@ -445,9 +289,13 @@ const CctvDashboard: React.FC = () => {
   const [unknownQueue, setUnknownQueue] = useState<EnrollmentItem[]>([]);
   const [userOptions, setUserOptions] = useState<UserOption[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'live' | 'unknown' | 'history'>('live');
+  const [activeTab, setActiveTab] = useState<'live' | 'unknown' | 'debugger'>('live');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // AI Live Debugger state
+  const [diagData, setDiagData] = useState<any>(null);
+  const [diagLoading, setDiagLoading] = useState<boolean>(false);
 
   // Enroll modal state
   const [selectedUnknown, setSelectedUnknown] = useState<EnrollmentItem | null>(null);
@@ -743,6 +591,61 @@ const CctvDashboard: React.FC = () => {
       setToast({ message: `Dismissed ${ids.length} unknown face items.`, type: 'success' });
     } catch (err: any) {
       setToast({ message: err.message || 'Failed to dismiss records.', type: 'error' });
+    }
+  };
+
+  const fetchDiagnostics = useCallback(async () => {
+    setDiagLoading(true);
+    try {
+      const res = await fetch(`${ngrokProxy}/debug/analyze/main_gate_entry?ngrok-skip-browser-warning=1`, {
+        headers: { 'ngrok-skip-browser-warning': '1' },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDiagData(data);
+      } else {
+        setToast({ message: `Edge server returned HTTP ${res.status}. Please ensure CCTV server is running.`, type: 'error' });
+      }
+    } catch (err: any) {
+      setToast({ message: 'Edge AI Debugger unreachable. Restart PM2 on the server.', type: 'error' });
+    } finally {
+      setDiagLoading(false);
+    }
+  }, [ngrokProxy]);
+
+  const handlePurgeAllFalseUnknowns = async () => {
+    if (!confirm('This will purge all unassigned unknown face records and false foliage entries from both Supabase and Local Edge DB. Continue?')) return;
+    try {
+      // 1. Purge from Edge Server SQLite
+      try {
+        await fetch(`${ngrokProxy}/debug/purge-false-unknowns`, {
+          method: 'POST',
+          headers: { 'ngrok-skip-browser-warning': '1' },
+          signal: AbortSignal.timeout(5000),
+        });
+      } catch (err) {
+        console.warn('Edge purge warning:', err);
+      }
+
+      // 2. Purge from Supabase cctv_enrollment_queue
+      await supabase
+        .from('cctv_enrollment_queue')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000');
+
+      // 3. Purge from Supabase cctv_attendance_logs where userId is null
+      await supabase
+        .from('cctv_attendance_logs')
+        .delete()
+        .is('user_id', null);
+
+      setUnknownQueue([]);
+      setLogs(prev => prev.filter(l => Boolean(l.userId)));
+      if (zoomPhoto) setZoomPhoto(null);
+      setToast({ message: 'Purged all false-positive unknown detections from database!', type: 'success' });
+    } catch (err: any) {
+      setToast({ message: err.message || 'Failed to purge records', type: 'error' });
     }
   };
 
@@ -1062,8 +965,8 @@ const CctvDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* ── TABS SECTION: All Logs vs Unknown Faces Review ── */}
-      <div className="flex items-center gap-2 p-1 bg-gray-100/80 rounded-xl w-fit mb-6 border border-border/80 shadow-2xs">
+      {/* ── TABS SECTION: All Logs vs Unknown Faces Review vs AI Debugger ── */}
+      <div className="flex items-center gap-2 p-1 bg-gray-100/80 rounded-xl w-fit mb-6 border border-border/80 shadow-2xs flex-wrap">
         <button
           onClick={() => setActiveTab('live')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
@@ -1084,6 +987,17 @@ const CctvDashboard: React.FC = () => {
           }`}
         >
           <AlertTriangle className="h-4 w-4" /> Unknown Faces Review ({unknownQueue.length})
+        </button>
+
+        <button
+          onClick={() => { setActiveTab('debugger'); fetchDiagnostics(); }}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+            activeTab === 'debugger'
+              ? 'bg-emerald-600 text-white shadow-sm'
+              : 'text-gray-600 hover:text-emerald-700 hover:bg-white/80'
+          }`}
+        >
+          <Cpu className="h-4 w-4" /> AI Diagnostics & Debugger
         </button>
       </div>
 
@@ -1179,17 +1093,26 @@ const CctvDashboard: React.FC = () => {
       {activeTab === 'unknown' && (
         <div className="space-y-4">
           {unknownQueue.length > 0 && (
-            <div className="flex items-center justify-between bg-card p-3.5 rounded-2xl border border-amber-200/80 shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-card p-3.5 rounded-2xl border border-amber-200/80 shadow-xs gap-3">
               <span className="text-xs text-amber-900 font-medium">
                 Showing <strong>{unknownQueue.length}</strong> unknown face detections awaiting verification.
               </span>
-              <Button
-                variant="outline"
-                onClick={handleDismissAll}
-                className="text-xs h-8 border-amber-300 text-amber-800 hover:bg-amber-50"
-              >
-                Dismiss All ({unknownQueue.length})
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  onClick={handlePurgeAllFalseUnknowns}
+                  className="text-xs h-8 border-red-300 text-red-700 hover:bg-red-50 font-semibold"
+                >
+                  Purge All False Foliage Unknowns
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleDismissAll}
+                  className="text-xs h-8 border-amber-300 text-amber-800 hover:bg-amber-50"
+                >
+                  Dismiss All ({unknownQueue.length})
+                </Button>
+              </div>
             </div>
           )}
 
@@ -1258,6 +1181,132 @@ const CctvDashboard: React.FC = () => {
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Tab 3: AI Diagnostics & Real-Time Debugger */}
+      {activeTab === 'debugger' && (
+        <div className="space-y-6">
+          <div className="bg-card rounded-2xl border border-border p-5 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-border">
+              <div>
+                <h3 className="font-bold text-primary-text text-base flex items-center gap-2">
+                  <Cpu className="h-5 w-5 text-emerald-600" /> AI Visual Diagnostics & Biometric Inspection
+                </h3>
+                <p className="text-xs text-muted mt-1">
+                  Live breakdown of raw InsightFace detections, plant greenness ratios, skin tone chrominance, and ROI zone validation.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={fetchDiagnostics}
+                  disabled={diagLoading}
+                  className="text-xs h-9 bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${diagLoading ? 'animate-spin' : ''}`} />
+                  {diagLoading ? 'Scanning...' : 'Scan Current Frame'}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handlePurgeAllFalseUnknowns}
+                  className="text-xs h-9 border-red-300 text-red-700 hover:bg-red-50"
+                >
+                  Purge False Unknowns
+                </Button>
+              </div>
+            </div>
+
+            {/* Diagnostic Summary Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mt-5">
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+                <span className="text-xs font-semibold text-slate-600 block">Total Frame Candidates</span>
+                <span className="text-2xl font-bold text-slate-900 mt-1 block">
+                  {diagData?.candidate_count ?? 0}
+                </span>
+              </div>
+              <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200">
+                <span className="text-xs font-semibold text-emerald-700 block">Accepted (Authentic Humans)</span>
+                <span className="text-2xl font-bold text-emerald-900 mt-1 block">
+                  {diagData?.accepted_count ?? 0}
+                </span>
+              </div>
+              <div className="p-4 rounded-xl bg-rose-50 border border-rose-200">
+                <span className="text-xs font-semibold text-rose-700 block">Rejected (Foliage / Non-Human)</span>
+                <span className="text-2xl font-bold text-rose-900 mt-1 block">
+                  {diagData?.rejected_count ?? 0}
+                </span>
+              </div>
+              <div className="p-4 rounded-xl bg-blue-50 border border-blue-200">
+                <span className="text-xs font-semibold text-blue-700 block">Camera Resolution</span>
+                <span className="text-lg font-mono font-bold text-blue-900 mt-1.5 block">
+                  {diagData?.resolution ?? '2560x1440'}
+                </span>
+              </div>
+            </div>
+
+            {/* Candidates Inspection Table */}
+            <div className="mt-6">
+              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">
+                Live Frame Candidate Biometric Analysis
+              </h4>
+              {(!diagData?.candidates || diagData.candidates.length === 0) ? (
+                <div className="p-8 text-center bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-500">
+                  {diagLoading ? 'Analyzing frame...' : 'No candidate boxes detected in the current live frame. Foliage filter active.'}
+                </div>
+              ) : (
+                <div className="overflow-x-auto border border-border rounded-xl">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-100/80 text-slate-800 font-bold uppercase text-[10px] tracking-wider border-b border-border">
+                      <tr>
+                        <th className="py-3 px-3">Status</th>
+                        <th className="py-3 px-3">Confidence Score</th>
+                        <th className="py-3 px-3">Green Foliage %</th>
+                        <th className="py-3 px-3">Human Skin %</th>
+                        <th className="py-3 px-3">Face Dimensions</th>
+                        <th className="py-3 px-3">Analysis / Rejection Reason</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/60">
+                      {diagData.candidates.map((c: any, idx: number) => (
+                        <tr key={idx} className={c.is_human_verified ? 'bg-emerald-50/30' : 'bg-rose-50/20'}>
+                          <td className="py-3 px-3 font-semibold">
+                            {c.is_human_verified ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                <CheckCircle className="h-3 w-3 text-emerald-600" /> ACCEPTED (HUMAN)
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
+                                <XCircle className="h-3 w-3 text-rose-600" /> REJECTED
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 font-mono font-bold">
+                            {(c.det_score * 100).toFixed(1)}% {c.confidence_pass ? '✅' : '❌ (<75%)'}
+                          </td>
+                          <td className="py-3 px-3 font-mono">
+                            <span className={c.green_ratio_pct > 18 ? 'text-rose-600 font-bold' : 'text-emerald-700'}>
+                              {c.green_ratio_pct}% {c.green_ratio_pct > 18 ? '(Foliage)' : ''}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 font-mono">
+                            <span className={c.skin_ratio_pct < 15 ? 'text-rose-600 font-bold' : 'text-emerald-700'}>
+                              {c.skin_ratio_pct}% {c.skin_ratio_pct < 15 ? '(No Skin)' : '✅'}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 font-mono text-muted">
+                            {c.width}x{c.height}px
+                          </td>
+                          <td className="py-3 px-3 text-slate-700 font-medium">
+                            {c.reason}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

@@ -335,6 +335,13 @@ class LocalDatabase:
         self.conn.commit()
         return cursor.lastrowid  # type: ignore
 
+    def purge_unknown_faces(self) -> int:
+        """Purge all unknown faces and unassigned detection logs from local database."""
+        c1 = self.conn.execute("DELETE FROM unknown_faces").rowcount
+        c2 = self.conn.execute("DELETE FROM detection_log WHERE user_id IS NULL OR user_id = ''").rowcount
+        self.conn.commit()
+        return c1 + c2
+
     # ─── Sync State ───────────────────────────────────────────────────────────
 
     def get_sync_state(self, key: str) -> Optional[str]:

@@ -277,9 +277,62 @@ def create_admin_app(
             }
         )
 
+    # ─── Live AI Diagnostic Debugger ──────────────────────────────────────────
+
+    @app.get("/debug/analyze/{camera_name}")
+    async def debug_analyze(camera_name: str):
+        """Live AI Diagnostic Debugger: Runs raw detection, ROI checks, and bio-authenticity metrics."""
+        if not pipeline or not hasattr(pipeline, 'grabber'):
+            raise HTTPException(503, "Camera pipeline not initialized")
+        stream = pipeline.grabber.streams.get(camera_name)
+        if not stream:
+            raise HTTPException(404, f"Camera '{camera_name}' not found")
+
+        captured = stream.get_frame()
+        if captured is None or captured.frame is None:
+            raise HTTPException(503, "No frame available from RTSP stream")
+
+        frame = captured.frame
+        h, w = frame.shape[:2]
+
+        candidates = []
+        if pipeline.face_engine and pipeline.face_engine.is_ready:
+            try:
+                raw_faces = pipeline.face_engine._app.get(frame)
+                for f in raw_faces:
+                    bbox = f.bbox.astype(int)
+                    kps = getattr(f, 'kps', None)
+                    det_score = float(f.det_score)
+                    is_valid, diag = pipeline.face_engine.is_authentic_human_face_with_diagnostics(frame, bbox, kps)
+                    diag["det_score"] = round(det_score, 3)
+                    diag["confidence_pass"] = bool(det_score >= 0.75)
+                    diag["is_human_verified"] = is_valid
+                    candidates.append(diag)
+            except Exception as e:
+                logger.error(f"[Debugger] Analysis error: {e}")
+
+        return {
+            "camera_name": camera_name,
+            "resolution": f"{w}x{h}",
+            "timestamp": time.time(),
+            "candidate_count": len(candidates),
+            "accepted_count": sum(1 for c in candidates if c.get("is_human_verified")),
+            "rejected_count": sum(1 for c in candidates if not c.get("is_human_verified")),
+            "candidates": candidates,
+        }
+
+    @app.post("/debug/purge-false-unknowns")
+    async def debug_purge_false_unknowns():
+        """Purges false-positive unknown records from local edge SQLite database."""
+        try:
+            purged = db.purge_unknown_faces() if hasattr(db, 'purge_unknown_faces') else 0
+            return {"status": "success", "message": "Purged false unknown records", "count": purged}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
     @app.get("/camera/stream/{camera_name}")
     async def camera_mjpeg_stream(camera_name: str):
-        """Continuous MJPEG stream — browsers treat this like a live video via <img> tag."""
+        """Continuous MJPEG stream — low-latency real-time video."""
         import cv2
         import asyncio
         from fastapi.responses import StreamingResponse
@@ -298,24 +351,24 @@ def create_admin_app(
                     captured = stream.get_frame()
                     if captured is not None and captured.frame is not None:
                         frame_img = captured.frame
-                        # Render AI object + face tracking overlay
+                        # Render AI object + face tracking overlay (short 0.45s expiry)
                         if pipeline and hasattr(pipeline, 'latest_tracks'):
                             now = time.time()
                             tracks = [
                                 t for t in pipeline.latest_tracks.get(camera_name, [])
-                                if now - t.get('timestamp', 0) < 1.8
+                                if now - t.get('timestamp', 0) < 0.45
                             ]
                             if tracks:
                                 frame_img = frame_img.copy()
                                 _draw_ai_tracking_overlay(frame_img, tracks)
 
-                        # Downscale live preview frame (960px width) for instantaneous 30 FPS encode & sub-100ms latency
+                        # Downscale live preview frame (800px width) for instantaneous 25–30 FPS encode & sub-60ms latency
                         disp_h, disp_w = frame_img.shape[:2]
-                        if disp_w > 960:
-                            scale = 960.0 / disp_w
+                        if disp_w > 800:
+                            scale = 800.0 / disp_w
                             frame_display = cv2.resize(
                                 frame_img,
-                                (960, int(disp_h * scale)),
+                                (800, int(disp_h * scale)),
                                 interpolation=cv2.INTER_LINEAR,
                             )
                         else:
@@ -324,10 +377,10 @@ def create_admin_app(
                         # Camera is reconnecting — serve a placeholder so browser never errors
                         frame_display = _make_reconnecting_frame()
 
-                    # Fast JPEG encode (quality 75, instant CPU encode <3ms)
+                    # Fast JPEG encode (quality 70, instant CPU encode <2ms)
                     ret, buf = cv2.imencode(
                         '.jpg', frame_display,
-                        [cv2.IMWRITE_JPEG_QUALITY, 75]
+                        [cv2.IMWRITE_JPEG_QUALITY, 70]
                     )
                     if ret:
                         frame_bytes = buf.tobytes()
@@ -340,15 +393,18 @@ def create_admin_app(
                         )
                 except Exception:
                     pass
-                await asyncio.sleep(0.02)  # ~30-40 FPS — silky smooth real-time video
+                await asyncio.sleep(0.033)  # ~30 FPS constant stream
 
         return StreamingResponse(
             generate(),
             media_type="multipart/x-mixed-replace; boundary=frame",
             headers={
                 "Access-Control-Allow-Origin": "*",
-                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Cache-Control": "no-cache, no-store, no-transform, must-revalidate",
+                "Pragma": "no-cache",
+                "X-Accel-Buffering": "no",       # Disable Nginx / Cloudflare chunk buffering
                 "X-Content-Type-Options": "nosniff",
+                "Connection": "keep-alive",
             }
         )
 

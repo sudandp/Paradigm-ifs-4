@@ -129,20 +129,28 @@ class FaceEngine:
         return self._initialized and self._app is not None
 
     @staticmethod
-    def is_authentic_human_face(
+    def is_authentic_human_face_with_diagnostics(
         frame: np.ndarray,
         bbox: np.ndarray | list[int],
         kps: Optional[np.ndarray] = None,
-    ) -> bool:
+    ) -> tuple[bool, dict]:
         """Strict multi-stage validation to reject foliage, plants, trees, wall textures,
         shadows, and background artifacts from being recognized as faces.
 
-        Validations:
-        1. Plant / Foliage Green Filter (HSV): Rejects crops with high plant-green density (>25%).
-        2. Human Skin Chrominance (YCrCb): Verifies authentic human skin presence (Cr: 130-175, Cb: 75-130).
-        3. 5-Point Landmark Topology: Verifies eyes-above-nose, nose-above-mouth, and minimum eye distance.
-        4. Aspect Ratio & Dimension: Minimum 36x36px and realistic human face proportions.
+        Returns (is_valid: bool, diagnostics: dict) with granular metrics.
         """
+        diag = {
+            "bbox": [int(v) for v in bbox],
+            "width": 0,
+            "height": 0,
+            "aspect_ratio": 0.0,
+            "green_ratio_pct": 0.0,
+            "skin_ratio_pct": 0.0,
+            "eye_distance_px": 0.0,
+            "in_exclusion_roi": False,
+            "status": "REJECTED",
+            "reason": "Unknown",
+        }
         try:
             h, w = frame.shape[:2]
             x1, y1, x2, y2 = [int(v) for v in bbox]
@@ -150,40 +158,62 @@ class FaceEngine:
             x2, y2 = min(w, x2), min(h, y2)
             fw, fh = x2 - x1, y2 - y1
 
-            if fw < 36 or fh < 36:
-                return False
+            diag["width"] = fw
+            diag["height"] = fh
+
+            # Minimum size check (44x44px)
+            if fw < 44 or fh < 44:
+                diag["reason"] = f"Face dimensions too small ({fw}x{fh}px < 44x44px)"
+                return False, diag
 
             aspect = fw / float(max(1, fh))
-            if aspect < 0.60 or aspect > 1.40:
-                return False
+            diag["aspect_ratio"] = round(aspect, 2)
+            if aspect < 0.55 or aspect > 1.45:
+                diag["reason"] = f"Abnormal aspect ratio ({aspect:.2f})"
+                return False, diag
+
+            # ── Check 1: Gate Entry ROI Exclusion (Garden Planter Bed Zone) ──
+            # In gate surveillance, humans walk on the stairs & walkway.
+            # The static planter box / tree foliage sits in the upper-mid region: x ∈ [0.22, 0.45], y ∈ [0.0, 0.50]
+            cx_rel = (x1 + x2) / 2.0 / float(w)
+            cy_rel = (y1 + y2) / 2.0 / float(h)
+            if 0.22 <= cx_rel <= 0.45 and cy_rel <= 0.50:
+                diag["in_exclusion_roi"] = True
+                diag["reason"] = f"Position ({cx_rel*100:.1f}%, {cy_rel*100:.1f}%) is inside garden foliage zone"
+                return False, diag
 
             crop = frame[y1:y2, x1:x2]
             if crop.size == 0:
-                return False
+                diag["reason"] = "Empty frame crop"
+                return False, diag
 
-            # ── Check 1: Vegetation & Foliage Green Filter (HSV) ──
+            # ── Check 2: Vegetation & Foliage Green Filter (HSV) ──
             hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
             hue = hsv[:, :, 0]
             sat = hsv[:, :, 1]
-            # Plant green hues: Hue 35–85 with saturation >= 40
-            green_mask = (hue >= 35) & (hue <= 85) & (sat >= 40)
+            # Plant green hues: Hue 30–90 with saturation >= 35
+            green_mask = (hue >= 30) & (hue <= 90) & (sat >= 35)
             green_ratio = float(np.sum(green_mask)) / float(crop.shape[0] * crop.shape[1])
-            if green_ratio > 0.25:
-                # >25% of the crop is green plant/foliage -> false positive, reject!
-                return False
+            diag["green_ratio_pct"] = round(green_ratio * 100.0, 1)
 
-            # ── Check 2: Human Skin Chrominance Verification (YCrCb) ──
+            if green_ratio > 0.18:
+                diag["reason"] = f"High vegetation green content ({green_ratio*100:.1f}% > 18%)"
+                return False, diag
+
+            # ── Check 3: Human Skin Chrominance Verification (YCrCb) ──
             # Universal human skin tones cluster in Cr ∈ [130, 175], Cb ∈ [75, 130]
             ycrcb = cv2.cvtColor(crop, cv2.COLOR_BGR2YCrCb)
             cr = ycrcb[:, :, 1]
             cb = ycrcb[:, :, 2]
             skin_mask = (cr >= 130) & (cr <= 175) & (cb >= 75) & (cb <= 130)
             skin_ratio = float(np.sum(skin_mask)) / float(crop.shape[0] * crop.shape[1])
-            if skin_ratio < 0.12:
-                # Less than 12% skin tone in the face crop -> foliage, cloth pattern, or noise
-                return False
+            diag["skin_ratio_pct"] = round(skin_ratio * 100.0, 1)
 
-            # ── Check 3: 5-Point Facial Landmark Topology Check ──
+            if skin_ratio < 0.15:
+                diag["reason"] = f"Insufficient human skin tones ({skin_ratio*100:.1f}% < 15%)"
+                return False, diag
+
+            # ── Check 4: 5-Point Facial Landmark Topology Check ──
             if kps is not None and len(kps) >= 5:
                 lex, ley = kps[0]
                 rex, rey = kps[1]
@@ -192,21 +222,38 @@ class FaceEngine:
                 rmx, rmy = kps[4]
 
                 eye_dist = float(np.hypot(rex - lex, rey - ley))
-                if eye_dist < 12.0:
-                    return False
+                diag["eye_distance_px"] = round(eye_dist, 1)
+                if eye_dist < 14.0:
+                    diag["reason"] = f"Inter-pupillary distance too narrow ({eye_dist:.1f}px < 14px)"
+                    return False, diag
 
                 # Vertical order check: eyes center must be above nose, nose above mouth
                 eyes_y = (ley + rey) / 2.0
                 mouth_y = (lmy + rmy) / 2.0
                 if mouth_y <= eyes_y + 4.0:
-                    return False
+                    diag["reason"] = "Invalid landmark topology: mouth not below eyes"
+                    return False, diag
                 if ny <= eyes_y - 2.0 or ny >= mouth_y + 6.0:
-                    return False
+                    diag["reason"] = "Invalid landmark topology: nose outside facial bounding zone"
+                    return False, diag
 
-            return True
+            diag["status"] = "ACCEPTED"
+            diag["reason"] = "Authentic Human Face Verified"
+            return True, diag
 
-        except Exception:
-            return True
+        except Exception as e:
+            diag["reason"] = f"Validation exception: {e}"
+            return True, diag
+
+    @staticmethod
+    def is_authentic_human_face(
+        frame: np.ndarray,
+        bbox: np.ndarray | list[int],
+        kps: Optional[np.ndarray] = None,
+    ) -> bool:
+        """Boolean wrapper for biometric authenticity check."""
+        is_valid, _ = FaceEngine.is_authentic_human_face_with_diagnostics(frame, bbox, kps)
+        return is_valid
 
     def detect_faces(self, frame: np.ndarray) -> list[DetectedFace]:
         """Detect all faces in a frame and generate embeddings.
@@ -226,9 +273,9 @@ class FaceEngine:
 
             results = []
             for face in faces:
-                # 1. Filter by detection confidence (strict 0.72+ for true human faces)
+                # 1. Filter by detection confidence (strict 0.75+ for true human faces)
                 det_score = float(face.det_score)
-                if det_score < max(0.72, self.detection_threshold):
+                if det_score < max(0.75, self.detection_threshold):
                     continue
 
                 bbox = face.bbox.astype(int)

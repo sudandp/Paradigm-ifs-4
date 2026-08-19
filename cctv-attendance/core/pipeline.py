@@ -265,11 +265,8 @@ class AttendancePipeline:
 
             self.latest_tracks[captured.camera_name] = current_tracks
         else:
-            # Gradually clear tracks when no face is in view
-            if captured.camera_name in self.latest_tracks:
-                tracks = self.latest_tracks[captured.camera_name]
-                if tracks and (time.time() - tracks[0].get('timestamp', 0) > 1.2):
-                    self.latest_tracks[captured.camera_name] = []
+            # Immediately clear tracks when no face is in view so no stale box lingers
+            self.latest_tracks[captured.camera_name] = []
 
     async def _process_frame_faces_only(
         self,
