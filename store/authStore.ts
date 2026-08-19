@@ -184,6 +184,7 @@ interface AuthState {
     pendingAutoPunchOut: { userId: string; executeAt: number; notificationId: string } | null;
     setPendingAutoPunchOut: (data: { userId: string; executeAt: number; notificationId: string } | null) => void;
     executeAutoPunchOut: () => Promise<void>;
+    lastCompany: string | null;
 }
 
 // Helper for time-based greetings
@@ -286,6 +287,7 @@ export const useAuthStore = create<AuthState>()(
         setIsBreakingOut: (val) => set({ isBreakingOut: val }),
         pendingAutoPunchOut: null,
         setPendingAutoPunchOut: (data) => set({ pendingAutoPunchOut: data }),
+        lastCompany: null,
         executeAutoPunchOut: async () => {
             const { user, isCheckedIn, isFieldCheckedIn, isSiteOtCheckedIn, pendingAutoPunchOut } = get();
             const isUserCheckedInAtAll = isCheckedIn || isFieldCheckedIn || isSiteOtCheckedIn;
@@ -407,11 +409,12 @@ export const useAuthStore = create<AuthState>()(
 
         setUser: (user) => {
             const activeTarget = getActiveImpersonationTargetUser();
+            let companyToSave = user?.societyName || user?.organizationName || get().lastCompany;
             if (activeTarget && user && user.id !== activeTarget.id) {
                 console.log(`[authStore] Impersonation active. Preserving target user ${activeTarget.name} instead of setting ${user.name}`);
-                set({ user: activeTarget, error: null, loading: false });
+                set({ user: activeTarget, lastCompany: companyToSave, error: null, loading: false });
             } else {
-                set({ user, error: null, loading: false });
+                set({ user, lastCompany: companyToSave, error: null, loading: false });
             }
         },
         setInitialized: (initialized) => set({ isInitialized: initialized }),

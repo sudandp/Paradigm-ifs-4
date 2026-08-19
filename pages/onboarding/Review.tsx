@@ -86,6 +86,9 @@ const Review = () => {
         let allSuccess = true;
         const messages: string[] = [];
 
+        const resolvedAadhaar = data.personal.aadhaarNumber || (/^\d{12}$/.test(data.personal.idProofNumber || '') ? data.personal.idProofNumber : '');
+        const resolvedPan = data.personal.panNumber || (/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/i.test(data.personal.idProofNumber || '') ? data.personal.idProofNumber : '');
+
         try {
             // 1. Bank Verification
             logVerificationUsage('Bank AC Verification Advanced');
@@ -94,8 +97,8 @@ const Review = () => {
             const bankResult = await api.verifyBankAccountWithPerfios({
                 name: data.bank.accountHolderName,
                 dob: data.personal.dob,
-                aadhaar: data.personal.idProofNumber || null,
-                pan: null, // PAN not collected for this specific verification step
+                aadhaar: resolvedAadhaar || null,
+                pan: resolvedPan || null,
                 bank: {
                     accountNumber: data.bank.accountNumber,
                     ifsc: data.bank.ifscCode,
@@ -111,11 +114,12 @@ const Review = () => {
             if (!bankResult.success) allSuccess = false;
             
             // 2. Aadhaar Verification
-            if (data.personal.idProofType === 'Aadhaar' && data.personal.idProofNumber) {
+            const aadhaarToVerify = resolvedAadhaar || (data.personal.idProofType === 'Aadhaar' ? data.personal.idProofNumber : '');
+            if (aadhaarToVerify) {
                 logVerificationUsage('Aadhaar Verification');
-                const aadhaarResult = await api.verifyAadhaar(data.personal.idProofNumber);
+                const aadhaarResult = await api.verifyAadhaar(aadhaarToVerify);
                 messages.push(`Aadhaar: ${aadhaarResult.message}`);
-                setPersonalVerifiedStatus({ idProofNumber: aadhaarResult.success });
+                setPersonalVerifiedStatus({ aadhaarNumber: aadhaarResult.success, idProofNumber: aadhaarResult.success });
                 if (!aadhaarResult.success) allSuccess = false;
             }
 
@@ -147,6 +151,9 @@ const Review = () => {
 
     const canSubmit = (verificationState === 'success' || !perfiosApi.enabled) && data.formsGenerated && !!esignDocUrl;
     
+    const resolvedAadhaar = data.personal.aadhaarNumber || (/^\d{12}$/.test(data.personal.idProofNumber || '') ? data.personal.idProofNumber : '');
+    const resolvedPan = data.personal.panNumber || (/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/i.test(data.personal.idProofNumber || '') ? data.personal.idProofNumber : '');
+
     if (isMobileView) {
         return (
              <form onSubmit={async (e) => { e.preventDefault(); await onSubmit(); }} id="review-form">
@@ -159,6 +166,8 @@ const Review = () => {
                              <MobileDetailItem label="Email" value={data.personal.email} />
                              <MobileDetailItem label="Mobile" value={data.personal.mobile} />
                              <MobileDetailItem label="Date of Birth" value={data.personal.dob} />
+                             {resolvedAadhaar && <MobileDetailItem label="Aadhaar Number" value={resolvedAadhaar} />}
+                             {resolvedPan && <MobileDetailItem label="PAN Number" value={resolvedPan} />}
                         </div>
                     </section>
                     <section>
@@ -221,7 +230,20 @@ const Review = () => {
                         <DetailItem label="Mobile" value={data.personal.mobile} />
                         <DetailItemWithStatus label="Date of Birth" value={data.personal.dob} status={data.personal.verifiedStatus?.dob} isVerifying={false} />
                         <DetailItem label="Gender" value={data.personal.gender} />
-                        <DetailItemWithStatus label="Aadhaar Number" value={data.personal.idProofNumber} status={data.personal.verifiedStatus?.idProofNumber} isVerifying={verificationState === 'verifying'} />
+                        <DetailItemWithStatus 
+                            label="Aadhaar Number" 
+                            value={resolvedAadhaar || (data.personal.idProofType === 'Aadhaar' ? data.personal.idProofNumber : '')} 
+                            status={data.personal.verifiedStatus?.aadhaarNumber ?? (data.personal.idProofType === 'Aadhaar' ? data.personal.verifiedStatus?.idProofNumber : undefined)} 
+                            isVerifying={verificationState === 'verifying'} 
+                        />
+                        {(resolvedPan || (data.personal.idProofType === 'PAN' && data.personal.idProofNumber)) && (
+                            <DetailItemWithStatus 
+                                label="PAN Number" 
+                                value={resolvedPan || (data.personal.idProofType === 'PAN' ? data.personal.idProofNumber : '')} 
+                                status={data.personal.verifiedStatus?.panNumber ?? data.personal.verifiedStatus?.panCard ?? (data.personal.idProofType === 'PAN' ? data.personal.verifiedStatus?.idProofNumber : undefined)} 
+                                isVerifying={verificationState === 'verifying'} 
+                            />
+                        )}
                     </dl>
                 </section>
 

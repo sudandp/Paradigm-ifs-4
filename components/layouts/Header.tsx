@@ -71,14 +71,14 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
             <div className={isMobile ? "w-full" : "px-4 w-full"}>
                 <div className={`flex items-center w-full ${isMobile ? 'relative' : 'h-14 justify-between'}`}>
                     {isMobile ? (
-                        <div className="w-full flex items-center justify-center relative py-1.5">
-                            {/* Unified mobile header bar */}
-                            <div className="bg-white/95 backdrop-blur-md py-2 px-4 rounded-2xl shadow-lg shadow-black/10 border border-white/20 flex items-center gap-2 transition-all duration-300">
-                                <Logo className="border-0 h-[30px]" variant="original" />
+                        <div className="w-full flex items-center justify-center relative py-1 px-4">
+                            {/* Mobile header logo — increased by 40% */}
+                            <div className="flex items-center justify-center w-full">
+                                <Logo className="border-0 !w-[56%] max-w-[280px] !h-auto object-contain drop-shadow-sm transition-all duration-300" variant="original" />
                             </div>
-                            {/* Notification bell — absolute right, outside the logo pill */}
+                            {/* Notification bell — absolute right */}
                             {user && (
-                                <div className="absolute right-1 top-1/2 -translate-y-1/2 p-1">
+                                <div className="absolute right-2 top-1/2 -translate-y-1/2 p-1">
                                     <NotificationBell theme="dark" />
                                 </div>
                             )}

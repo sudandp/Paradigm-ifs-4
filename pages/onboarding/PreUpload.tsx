@@ -453,8 +453,19 @@ const PreUpload = () => {
                     else if (genderLower.includes('male') || genderLower.includes('purush') || genderLower === 'm') personalUpdate.gender = 'Male';
                     else if (genderLower.includes('trans')) personalUpdate.gender = 'Other';
                 }
-                if (idData.aadhaarNumber || idData.panNumber || idData.voterIdNumber) {
-                    personalUpdate.idProofNumber = (idData.aadhaarNumber || idData.panNumber || idData.voterIdNumber).replace(/\s/g, '');
+                if (idData.aadhaarNumber) {
+                    const cleanAadhaar = idData.aadhaarNumber.replace(/\s/g, '');
+                    personalUpdate.aadhaarNumber = cleanAadhaar;
+                    personalUpdate.idProofNumber = cleanAadhaar;
+                    personalVerified.aadhaarNumber = true;
+                    personalVerified.idProofNumber = true;
+                } else if (idData.panNumber || idData.voterIdNumber) {
+                    const cleanId = (idData.panNumber || idData.voterIdNumber).replace(/\s/g, '');
+                    if (idData.panNumber) {
+                        personalUpdate.panNumber = cleanId;
+                        personalVerified.panNumber = true;
+                    }
+                    personalUpdate.idProofNumber = cleanId;
                     personalVerified.idProofNumber = true;
                 }
                 if (idData.email && idData.email.includes('@')) {
@@ -515,8 +526,14 @@ const PreUpload = () => {
             } else if (docType === 'pan') {
                 const panData = extractedData;
                 if (panData.panNumber) {
-                    personalUpdate.idProofNumber = panData.panNumber.replace(/\s/g, '');
-                    personalVerified.idProofNumber = true;
+                    const cleanPan = panData.panNumber.replace(/\s/g, '');
+                    personalUpdate.panNumber = cleanPan;
+                    personalVerified.panNumber = true;
+                    personalVerified.panCard = true;
+                    if (currentData.personal.idProofType === 'PAN') {
+                        personalUpdate.idProofNumber = cleanPan;
+                        personalVerified.idProofNumber = true;
+                    }
                     if (!currentData.personal.firstName && panData.name) {
                         const nameParts = panData.name.split(' ');
                         personalUpdate.firstName = formatNameToTitleCase(nameParts.shift() || '');
@@ -895,6 +912,7 @@ const PreUpload = () => {
                 dob: aadhaarData.dob,
                 gender: aadhaarData.gender as any,
                 idProofType: 'Aadhaar',
+                aadhaarNumber: aadhaarData.aadhaarNumber,
                 idProofNumber: aadhaarData.aadhaarNumber,
                 mobile: aadhaarData.mobile,
                 email: aadhaarData.email,
@@ -903,6 +921,7 @@ const PreUpload = () => {
                     ...currentData.personal.verifiedStatus,
                     name: true,
                     dob: true,
+                    aadhaarNumber: true,
                     idProofNumber: true,
                     email: !!aadhaarData.email,
                 },

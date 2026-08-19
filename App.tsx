@@ -1277,6 +1277,31 @@ const App: React.FC = () => {
       appStateListenerPromise.then(l => l.remove());
     };
   }, [user]);
+  // Dynamic Title & Favicon based on User Company (South Wall vs Paradigm)
+  useEffect(() => {
+    const lastCompany = useAuthStore.getState().lastCompany;
+    const isSouthWall = user?.societyName?.toLowerCase().includes('south wall') || 
+                        user?.societyName?.toLowerCase().includes('southwall') ||
+                        user?.organizationName?.toLowerCase().includes('south wall') ||
+                        user?.organizationName?.toLowerCase().includes('southwall') ||
+                        lastCompany?.toLowerCase().includes('south wall') ||
+                        lastCompany?.toLowerCase().includes('southwall');
+
+    if (isSouthWall) {
+      document.title = 'South Wall Employee Portal';
+      const favicons = document.querySelectorAll("link[rel*='icon']");
+      favicons.forEach(favicon => {
+        (favicon as HTMLLinkElement).href = '/southwall-favicon.png';
+      });
+    } else {
+      document.title = 'Paradigm Employee Onboarding';
+      const favicons = document.querySelectorAll("link[rel*='icon']");
+      favicons.forEach(favicon => {
+        (favicon as HTMLLinkElement).href = '/icons/icon-192x192.png';
+      });
+    }
+  }, [user]);
+
   // Android Native Badge Sync (Capacitor)
   // We sync the total count (Notifications + Approvals) to the app icon badge.
   const totalUnreadCount = useNotificationStore(state => state.totalUnreadCount);

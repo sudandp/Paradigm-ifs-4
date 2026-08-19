@@ -51,6 +51,8 @@ const getInitialState = (): OnboardingData => ({
       mobile: '',
       alternateMobile: '',
       email: '',
+      aadhaarNumber: '',
+      panNumber: '',
       emergencyContactName: '',
       emergencyContactNumber: '',
       emergencyContactId: '',

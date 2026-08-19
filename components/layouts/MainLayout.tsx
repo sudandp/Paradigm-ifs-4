@@ -297,6 +297,11 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
         }
     }, [isCollapsed, onExpand, onLinkClick]);
 
+    const effectiveCompany = user?.societyName || user?.organizationName || '';
+    const isSouthWall = effectiveCompany.toLowerCase().includes('south wall') || 
+                        effectiveCompany.toLowerCase().includes('southwall') || 
+                        effectiveCompany.toLowerCase().includes('south-wall');
+
     return (
         <div className="flex flex-col h-full">
             {hideHeader && isCollapsed && (
@@ -313,20 +318,20 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
                 </div>
             )}
             {!hideHeader && (
-                <div className={`p-2 px-3 border-b flex items-center justify-between h-12 transition-all duration-300 flex-shrink-0 ${mode === 'dark' ? 'bg-[#041b0f] border-[#1f3d2b]' : 'bg-white border-gray-200'}`}>
+                <div className={`py-1 px-3 border-b flex items-center justify-between h-12 transition-all duration-300 flex-shrink-0 ${mode === 'dark' ? 'bg-[#041b0f] border-[#1f3d2b]' : 'bg-white border-gray-200'}`}>
                     <div className="flex items-center justify-center flex-1">
                         {isCollapsed ? (
-                            <div className="h-10 w-10 flex items-center justify-center rounded-xl bg-accent/5 transition-all duration-300" title="Paradigm Services">
+                            <div className="h-10 w-10 flex items-center justify-center rounded-xl bg-accent/5 transition-all duration-300" title={isSouthWall ? "South Wall Services" : "Paradigm Services"}>
                                 <Logo 
-                                    localPath="/paradigm-correct-logo.png"
-                                    className="h-7 w-7" 
+                                    localPath={isSouthWall ? "/southwall-favicon.png" : "/paradigm-correct-logo.png"}
+                                    className={isSouthWall ? "h-10 w-10 rounded-lg object-cover" : "h-7 w-7"} 
                                     variant={mode === 'dark' ? 'white' : 'original'} 
                                 />
                             </div>
                         ) : (
-                            <div className="w-full px-2 flex justify-start pl-4">
+                            <div className="w-full flex justify-center items-center">
                                 <Logo 
-                                    className="h-8 md:h-9 w-auto max-w-full" 
+                                    className="h-10 md:h-11 w-auto max-w-full" 
                                     variant={mode === 'dark' ? 'white' : 'original'} 
                                 />
                             </div>

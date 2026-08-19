@@ -86,8 +86,13 @@ const Documents = () => {
             } catch(e) {}
         }
         if (extractedData.aadhaarNumber) {
-            update.idProofNumber = extractedData.aadhaarNumber.replace(/\s/g, '');
+            const cleanAadhaar = extractedData.aadhaarNumber.replace(/\s/g, '');
+            update.aadhaarNumber = cleanAadhaar;
+            update.idProofNumber = cleanAadhaar;
             update.idProofType = 'Aadhaar';
+        }
+        if (extractedData.panNumber) {
+            update.panNumber = extractedData.panNumber.replace(/\s/g, '');
         }
         updatePersonal(update);
     };

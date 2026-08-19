@@ -4,7 +4,6 @@ import { useUiSettingsStore } from '../../store/uiSettingsStore';
 import { useDevice } from '../../hooks/useDevice';
 import Logo from '../ui/Logo';
 import ReferralModal from '../modals/ReferralModal';
-import FireworksBackground from '../ui/FireworksBackground';
 
 const AuthLayout: React.FC = () => {
     const { isMobile } = useDevice();
@@ -22,16 +21,26 @@ const AuthLayout: React.FC = () => {
 
     if (isMobile) {
         return (
-            <div className="min-h-screen min-h-[100dvh] font-sans flex flex-col justify-between pt-10 pt-[calc(1rem+env(safe-area-inset-top))] pb-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))] px-4 px-[calc(1rem+env(safe-area-inset-left))] px-[calc(1rem+env(safe-area-inset-right))] relative overflow-y-auto bg-white" style={{ backgroundColor: '#ffffff' }}>
-                {/* Background for Mobile - clean gradient screen with a subtle green glow */}
-                <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-72 h-72 bg-emerald-500/5 rounded-full blur-[80px] pointer-events-none" style={{ zIndex: 0 }}></div>
-
-                {/* Animated Festive Fireworks Backdrop */}
-                <FireworksBackground />
+            <div
+                className="min-h-screen min-h-[100dvh] font-sans flex flex-col justify-between pt-10 pt-[calc(1rem+env(safe-area-inset-top))] pb-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))] px-4 px-[calc(1rem+env(safe-area-inset-left))] px-[calc(1rem+env(safe-area-inset-right))] relative overflow-y-auto"
+                style={{ backgroundColor: '#f3faf6', color: '#0f172a' }}
+            >
+                {/* Subtle background blobs & dot matrix matching Offline screen */}
+                <div className="absolute inset-0 overflow-hidden pointer-events-none select-none z-0">
+                    <div className="absolute -top-24 -left-24 w-80 h-80 rounded-full bg-emerald-100/60" />
+                    <div className="absolute -bottom-24 -right-24 w-80 h-80 rounded-full bg-teal-100/60" />
+                    <div
+                        className="absolute inset-0 opacity-[0.04]"
+                        style={{
+                            backgroundImage: 'radial-gradient(circle, #006b3f 1.5px, transparent 1.5px)',
+                            backgroundSize: '36px 36px',
+                        }}
+                    />
+                </div>
 
                 {/* Stable Header Brand Logo at the top on all pages */}
                 <div className="relative z-10 w-full flex justify-center pt-2 pb-4">
-                    <Logo className="w-[70%] max-w-[280px] h-auto object-contain" variant="original" />
+                    <Logo className="!h-14 !w-auto max-w-[200px] object-contain" variant="original" />
                 </div>
 
                 {/* Center Container: Card only */}
@@ -105,7 +114,7 @@ const AuthLayout: React.FC = () => {
                 <div className="w-full max-w-[520px] px-4">
                     {/* Floating Logo (No background card, full container width) */}
                     <div className="mb-6 flex justify-start">
-                        <Logo className="!w-full !h-auto max-w-[280px] object-contain transition-all duration-300 hover:scale-[1.01]" variant="original" />
+                        <Logo className="!w-auto !h-16 max-w-[200px] object-contain transition-all duration-300 hover:scale-[1.01]" variant="original" />
                     </div>
 
                     {/* Title */}

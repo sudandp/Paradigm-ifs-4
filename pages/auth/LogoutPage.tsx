@@ -93,20 +93,20 @@ const LogoutPage: React.FC = () => {
                 <div className="w-3/4 h-px mb-5" style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent)' }} />
 
                 {/* ── Actions ── */}
-                <div className="flex flex-col gap-3 w-full">
+                <div className="flex flex-row gap-3 w-full">
                     <button
                         onClick={handleCancel}
-                        className="h-12 text-[13px] font-extrabold text-white bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600 rounded-xl active:scale-[0.97] transition-all duration-300 flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/30"
+                        className="flex-1 h-12 text-[13px] font-extrabold text-white bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600 rounded-xl active:scale-[0.97] transition-all duration-300 flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/30 px-2 text-center"
                     >
-                        <ShieldCheck className="w-4 h-4" />
-                        No, Keep Me Signed In
+                        <ShieldCheck className="w-4 h-4 flex-shrink-0" />
+                        <span>Keep Logged In</span>
                     </button>
                     <button
                         onClick={handleConfirmLogout}
-                        className="h-11 text-xs font-bold text-red-400/70 bg-transparent border border-red-500/15 hover:border-red-500/30 hover:bg-red-500/[0.06] rounded-xl active:scale-[0.98] transition-all duration-300 flex items-center justify-center gap-2"
+                        className="flex-1 h-12 text-xs font-bold text-red-400/70 bg-transparent border border-red-500/15 hover:border-red-500/30 hover:bg-red-500/[0.06] rounded-xl active:scale-[0.98] transition-all duration-300 flex items-center justify-center gap-2 px-2"
                     >
-                        <LogOut className="w-3.5 h-3.5" />
-                        Sign Out
+                        <LogOut className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span>Sign Out</span>
                     </button>
                 </div>
 
@@ -162,22 +162,22 @@ const LogoutPage: React.FC = () => {
             <div className="w-4/5 h-px mb-7" style={{ background: 'linear-gradient(90deg, transparent, rgba(0,0,0,0.06), transparent)' }} />
 
             {/* ═══════ PREMIUM BUTTONS ═══════ */}
-            <div className="flex flex-col w-full gap-3">
+            <div className="flex flex-row w-full gap-3">
                 {/* Primary — Stay Logged In */}
                 <button
                     onClick={handleCancel}
-                    className="lo-btn-primary group w-full h-[52px] rounded-2xl bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600 text-white text-[13px] font-black tracking-wide transition-all duration-300 hover:shadow-xl hover:shadow-emerald-500/25 active:scale-[0.97] flex items-center justify-center gap-2.5"
+                    className="lo-btn-primary group flex-1 h-[52px] rounded-2xl bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600 text-white text-[13px] font-black tracking-wide transition-all duration-300 hover:shadow-xl hover:shadow-emerald-500/25 active:scale-[0.97] flex items-center justify-center gap-2.5 px-2"
                 >
-                    <ShieldCheck className="w-[18px] h-[18px] opacity-80 group-hover:opacity-100 transition-opacity relative z-10" />
-                    <span className="relative z-10">No, Keep Me Signed In</span>
+                    <ShieldCheck className="w-[18px] h-[18px] opacity-80 group-hover:opacity-100 transition-opacity relative z-10 flex-shrink-0" />
+                    <span className="relative z-10">Keep Me Signed In</span>
                 </button>
                 {/* Secondary — Sign Out */}
                 <button
                     onClick={handleConfirmLogout}
-                    className="group w-full h-[52px] rounded-2xl border-2 border-gray-200 hover:border-red-200 bg-white hover:bg-red-50/40 text-gray-400 hover:text-red-500 text-[13px] font-bold tracking-wide transition-all duration-300 active:scale-[0.97] flex items-center justify-center gap-2.5"
+                    className="group flex-1 h-[52px] rounded-2xl border-2 border-gray-200 hover:border-red-200 bg-white hover:bg-red-50/40 text-gray-400 hover:text-red-500 text-[13px] font-bold tracking-wide transition-all duration-300 active:scale-[0.97] flex items-center justify-center gap-2.5 px-2"
                 >
-                    <LogOut className="w-4 h-4 opacity-50 group-hover:opacity-100 transition-opacity" />
-                    Sign Out
+                    <LogOut className="w-4 h-4 opacity-50 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                    <span>Sign Out</span>
                 </button>
             </div>
 

@@ -407,31 +407,33 @@ const OfflineScreen: React.FC = () => {
             )}
           </AnimatePresence>
 
-          <button
-            onClick={handleRetry}
-            disabled={isRetrying}
-            className="w-full max-w-xs bg-[#006b3f] hover:bg-[#005632] disabled:opacity-50 font-bold py-4 px-6 rounded-2xl shadow-[0_10px_28px_rgba(0,107,63,0.22)] transition-all duration-200 flex items-center justify-center gap-2.5 text-xs uppercase tracking-wider border border-[#006b3f]/10 cursor-pointer active:scale-[0.97] relative overflow-hidden"
-            style={{ color: '#ffffff', backgroundColor: '#006b3f' }}
-          >
-            {/* Sweep shimmer */}
-            <div className="absolute inset-0 overflow-hidden rounded-2xl pointer-events-none">
-              <div
-                className="absolute top-0 bottom-0 w-1/2 bg-gradient-to-r from-transparent via-white/20 to-transparent skew-x-12"
-                style={{ animation: 'offlineSweep 5s ease-in-out infinite' }}
-              />
-            </div>
-            <RefreshCw className={`w-4 h-4 relative z-10 ${isRetrying ? 'animate-spin' : ''}`} />
-            <span className="relative z-10" style={{ color: '#ffffff' }}>
-              {isRetrying ? 'Checking Network…' : 'Try Again'}
-            </span>
-          </button>
+          <div className="w-full max-w-sm flex flex-row items-center gap-2.5">
+            <button
+              onClick={handleRetry}
+              disabled={isRetrying}
+              className="flex-1 bg-[#006b3f] hover:bg-[#005632] disabled:opacity-50 font-bold py-3.5 px-2.5 rounded-2xl shadow-[0_8px_20px_rgba(0,107,63,0.22)] transition-all duration-200 flex items-center justify-center gap-1.5 text-[11px] sm:text-xs uppercase tracking-wider border border-[#006b3f]/10 cursor-pointer active:scale-[0.97] relative overflow-hidden"
+              style={{ color: '#ffffff', backgroundColor: '#006b3f' }}
+            >
+              {/* Sweep shimmer */}
+              <div className="absolute inset-0 overflow-hidden rounded-2xl pointer-events-none">
+                <div
+                  className="absolute top-0 bottom-0 w-1/2 bg-gradient-to-r from-transparent via-white/20 to-transparent skew-x-12"
+                  style={{ animation: 'offlineSweep 5s ease-in-out infinite' }}
+                />
+              </div>
+              <RefreshCw className={`w-3.5 h-3.5 relative z-10 ${isRetrying ? 'animate-spin' : ''}`} />
+              <span className="relative z-10 whitespace-nowrap" style={{ color: '#ffffff' }}>
+                {isRetrying ? 'Checking…' : 'Try Again'}
+              </span>
+            </button>
 
-          <button
-            onClick={() => setIsDismissed(true)}
-            className="w-full max-w-xs bg-slate-800/80 hover:bg-slate-800 text-slate-200 font-bold py-3 px-6 rounded-2xl transition-all duration-200 flex items-center justify-center gap-2 text-xs uppercase tracking-wider border border-slate-700/50 cursor-pointer active:scale-[0.97]"
-          >
-            <span>⚡ Continue Working Offline</span>
-          </button>
+            <button
+              onClick={() => setIsDismissed(true)}
+              className="flex-1 bg-slate-800/90 hover:bg-slate-800 text-slate-200 font-bold py-3.5 px-2.5 rounded-2xl transition-all duration-200 flex items-center justify-center gap-1.5 text-[11px] sm:text-xs uppercase tracking-wider border border-slate-700/50 cursor-pointer active:scale-[0.97] shadow-sm whitespace-nowrap"
+            >
+              <span>⚡ Work Offline</span>
+            </button>
+          </div>
 
           <p className="text-[8px] font-bold tracking-widest uppercase select-none mt-1" style={{ color: '#94a3b8' }}>
             Paradigm FMS v1.8.0
@@ -462,13 +464,8 @@ const OfflineScreen: React.FC = () => {
 
       {/* Top Branding Header */}
       <div className="w-full flex items-center justify-between p-6 md:px-16 border-b border-slate-200/50 relative z-10 bg-white/20">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-white border border-emerald-200/80 flex items-center justify-center shadow-sm">
-            <span className="text-[#006b3f] font-black text-sm font-outfit" style={{ color: '#006b3f' }}>P</span>
-          </div>
-          <p className="text-[10px] font-bold tracking-[0.25em] uppercase font-outfit" style={{ color: '#006b3f' }}>
-            Paradigm Services
-          </p>
+        <div className="flex items-center">
+          <Logo className="h-8 md:h-9 w-auto max-w-[240px] object-contain" variant="original" />
         </div>
         <div className="text-[9px] font-bold tracking-widest uppercase font-outfit" style={{ color: '#94a3b8' }}>
           System Portal
@@ -518,7 +515,7 @@ const OfflineScreen: React.FC = () => {
             We couldn't establish a secure connection with our servers. Please check your local network cables, Wi-Fi connectivity, or router configuration and try again.
           </motion.p>
 
-          <motion.div variants={itemVariants} className="w-full max-w-sm">
+          <motion.div variants={itemVariants} className="w-full max-w-lg">
             <AnimatePresence>
               {retryFailed && (
                 <motion.p
@@ -533,36 +530,38 @@ const OfflineScreen: React.FC = () => {
               )}
             </AnimatePresence>
 
-            <motion.button
-              onClick={handleRetry}
-              disabled={isRetrying}
-              whileHover={{ scale: 1.02, boxShadow: '0 20px 45px rgba(0, 107, 63, 0.25)' }}
-              whileTap={{ scale: 0.98 }}
-              className="w-full bg-[#006b3f] hover:bg-[#005632] disabled:opacity-60 font-bold py-4 rounded-2xl transition-colors duration-200 text-xs tracking-wider uppercase border border-[#006b3f]/10 flex items-center justify-center gap-2 cursor-pointer relative overflow-hidden"
-              style={{ color: '#ffffff', backgroundColor: '#006b3f' }}
-            >
-              {/* Shiny sweeping shimmer */}
-              <div className="absolute inset-0 overflow-hidden pointer-events-none rounded-2xl">
-                <div
-                  className="absolute top-0 bottom-0 w-1/2 bg-gradient-to-r from-transparent via-white/20 to-transparent skew-x-12"
-                  style={{ animation: 'offlineSweep 5s ease-in-out infinite' }}
-                />
-              </div>
+            <div className="flex flex-col sm:flex-row items-center gap-3 w-full">
+              <motion.button
+                onClick={handleRetry}
+                disabled={isRetrying}
+                whileHover={{ scale: 1.02, boxShadow: '0 20px 45px rgba(0, 107, 63, 0.25)' }}
+                whileTap={{ scale: 0.98 }}
+                className="flex-1 w-full min-h-[48px] bg-[#006b3f] hover:bg-[#005632] disabled:opacity-60 font-bold px-5 py-3.5 rounded-2xl transition-colors duration-200 text-xs tracking-wider uppercase border border-[#006b3f]/10 flex items-center justify-center gap-2 cursor-pointer relative overflow-hidden shadow-sm"
+                style={{ color: '#ffffff', backgroundColor: '#006b3f' }}
+              >
+                {/* Shiny sweeping shimmer */}
+                <div className="absolute inset-0 overflow-hidden pointer-events-none rounded-2xl">
+                  <div
+                    className="absolute top-0 bottom-0 w-1/2 bg-gradient-to-r from-transparent via-white/20 to-transparent skew-x-12"
+                    style={{ animation: 'offlineSweep 5s ease-in-out infinite' }}
+                  />
+                </div>
 
-              <RefreshCw className={`w-4 h-4 relative z-10 ${isRetrying ? 'animate-spin' : ''}`} />
-              <span className="relative z-10" style={{ color: '#ffffff' }}>
-                {isRetrying ? 'CHECKING CONNECTION...' : 'TRY AGAIN'}
-              </span>
-            </motion.button>
+                <RefreshCw className={`w-4 h-4 relative z-10 ${isRetrying ? 'animate-spin' : ''}`} />
+                <span className="relative z-10 whitespace-nowrap" style={{ color: '#ffffff' }}>
+                  {isRetrying ? 'CHECKING...' : 'TRY AGAIN'}
+                </span>
+              </motion.button>
 
-            <motion.button
-              onClick={() => setIsDismissed(true)}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              className="w-full mt-3 bg-slate-800 hover:bg-slate-900 text-slate-200 font-bold py-3.5 rounded-2xl transition-all duration-200 text-xs tracking-wider uppercase border border-slate-700/50 flex items-center justify-center gap-2 cursor-pointer shadow-md"
-            >
-              <span>⚡ Continue Working Offline</span>
-            </motion.button>
+              <motion.button
+                onClick={() => setIsDismissed(true)}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className="flex-1 w-full min-h-[48px] bg-slate-800 hover:bg-slate-900 text-slate-200 font-bold px-5 py-3.5 rounded-2xl transition-all duration-200 text-xs tracking-wider uppercase border border-slate-700/50 flex items-center justify-center gap-2 cursor-pointer shadow-md whitespace-nowrap"
+              >
+                <span>⚡ Continue Working Offline</span>
+              </motion.button>
+            </div>
           </motion.div>
         </div>
 

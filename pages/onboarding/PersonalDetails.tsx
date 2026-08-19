@@ -49,7 +49,9 @@ const validationSchema = yup.object({
     alternateMobile: yup.string().optional().nullable(),
     email: yup.string().transform((v, orig) => orig === '' ? undefined : v).email('Must be a valid email').optional().nullable(),
     idProofType: yup.string().oneOf(['Aadhaar', 'PAN', 'Voter ID', '']).optional(),
-    idProofNumber: yup.string().optional(),
+    idProofNumber: yup.string().optional().nullable(),
+    aadhaarNumber: yup.string().optional().nullable(),
+    panNumber: yup.string().optional().nullable().transform((v, orig) => orig ? String(orig).toUpperCase() : v),
     photo: yup.mixed().optional().nullable(),
     idProofFront: yup.mixed().optional().nullable(),
     idProofBack: yup.mixed().optional().nullable(),
@@ -88,6 +90,14 @@ const PersonalDetails = () => {
 
     const initialPersonal = useMemo(() => {
         const personal = { ...data.personal };
+        
+        // Auto-resolve Aadhaar / PAN if previously stored under idProofNumber
+        if (!personal.aadhaarNumber && personal.idProofNumber && /^\d{12}$/.test(personal.idProofNumber)) {
+            personal.aadhaarNumber = personal.idProofNumber;
+        }
+        if (!personal.panNumber && personal.idProofNumber && /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/i.test(personal.idProofNumber)) {
+            personal.panNumber = personal.idProofNumber;
+        }
         
         // Auto-detect Spouse → set marital status to Married (if empty/unset)
         const hasSpouse = family.some(member => member.relation === 'Spouse');
@@ -369,6 +379,48 @@ const PersonalDetails = () => {
                                 onChange={field.onChange} 
                             />
                         )}
+                    />
+
+                    <VerifiedInput
+                        label="Aadhaar Number"
+                        id="aadhaarNumber"
+                        maxLength={12}
+                        registration={register('aadhaarNumber', {
+                            onChange: (e) => {
+                                const val = e.target.value.replace(/\D/g, '').slice(0, 12);
+                                setValue('aadhaarNumber', val, { shouldValidate: true });
+                                if (!personalData.idProofType || personalData.idProofType === 'Aadhaar') {
+                                    setValue('idProofNumber', val);
+                                }
+                                setPersonalVerifiedStatus({ aadhaarNumber: false, idProofNumber: false });
+                            }
+                        })}
+                        error={errors.aadhaarNumber?.message}
+                        isVerified={data.personal.verifiedStatus?.aadhaarNumber === true || (data.personal.idProofType === 'Aadhaar' && data.personal.verifiedStatus?.idProofNumber === true)}
+                        hasValue={!!personalData.aadhaarNumber || !!personalData.idProofNumber}
+                        onManualInput={() => setPersonalVerifiedStatus({ aadhaarNumber: false, idProofNumber: false })}
+                        placeholder="12-digit Aadhaar Number"
+                    />
+
+                    <VerifiedInput
+                        label="PAN Number"
+                        id="panNumber"
+                        maxLength={10}
+                        registration={register('panNumber', {
+                            onChange: (e) => {
+                                const val = e.target.value.toUpperCase().slice(0, 10);
+                                setValue('panNumber', val, { shouldValidate: true });
+                                if (personalData.idProofType === 'PAN') {
+                                    setValue('idProofNumber', val);
+                                }
+                                setPersonalVerifiedStatus({ panNumber: false, panCard: false });
+                            }
+                        })}
+                        error={errors.panNumber?.message}
+                        isVerified={data.personal.verifiedStatus?.panNumber === true || data.personal.verifiedStatus?.panCard === true || (data.personal.idProofType === 'PAN' && data.personal.verifiedStatus?.idProofNumber === true)}
+                        hasValue={!!personalData.panNumber}
+                        onManualInput={() => setPersonalVerifiedStatus({ panNumber: false, panCard: false })}
+                        placeholder="10-character PAN (e.g. ABCDE1234F)"
                     />
 
                     <Input label="Mobile Number" id="mobile" type="tel" registration={register('mobile')} error={errors.mobile?.message} description="Onboarding updates and alerts will be sent to this number via WhatsApp." />

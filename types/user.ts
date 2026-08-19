@@ -192,6 +192,8 @@ export interface PersonalDetails {
   email: string;
   idProofType?: 'Aadhaar' | 'PAN' | 'Voter ID' | '';
   idProofNumber?: string;
+  aadhaarNumber?: string;
+  panNumber?: string;
   photo?: UploadedFile | null;
   idProofFront?: UploadedFile | null;
   idProofBack?: UploadedFile | null;
@@ -205,6 +207,8 @@ export interface PersonalDetails {
     name?: boolean | null;
     dob?: boolean | null;
     idProofNumber?: boolean | null;
+    aadhaarNumber?: boolean | null;
+    panNumber?: boolean | null;
     email?: boolean | null;
     panCard?: boolean | null;
   };
