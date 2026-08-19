@@ -76,91 +76,50 @@ def _draw_ai_tracking_overlay(frame: np.ndarray, tracks: list[dict]) -> np.ndarr
         direction = t.get('direction', '')
         face_visible = t.get('face_visible', True)
 
-        # ── Sleek Minimalist Palette (BGR) ──────────────────────────────
-        if object_type == 'HUMAN':
-            if is_match:
-                accent_color = (100, 230, 60)    # Sleek Emerald — Employee verified
-                dot_color    = (100, 230, 60)
-            elif face_visible is False:
-                accent_color = (240, 190, 70)    # Soft Sky/Cyan — Body in scene
-                dot_color    = (240, 190, 70)
-            else:
-                accent_color = (40, 180, 255)    # Subtle Amber — Scanning / Unenrolled
-                dot_color    = (40, 180, 255)
-        elif object_type in ('CAR', 'TRUCK', 'BUS'):
-            accent_color = (255, 160, 40)        # Soft Azure
-            dot_color    = (255, 160, 40)
-        elif object_type in ('MOTORCYCLE', 'BICYCLE'):
-            accent_color = (240, 220, 20)        # Lime
-            dot_color    = (240, 220, 20)
+        # ── Visual Style matching Image 1: Bright Green Face Box + Solid Green Name Tag ──
+        if is_match:
+            box_color = (0, 255, 0)       # Bright Neon Green for verified employee (BGR)
+            display_name = user_name.title()
         else:
-            accent_color = (180, 180, 180)       # Neutral slate
-            dot_color    = (180, 180, 180)
+            box_color = (0, 255, 0)       # Bright Neon Green for detected face
+            display_name = user_name.title() if user_name else "Unknown"
 
-        # ── Ultra-thin Bounding Box with Sleek Corner Brackets ──────────
-        # Subtle thin 1px perimeter
-        cv2.rectangle(frame, (x1, y1), (x2, y2), accent_color, 1, cv2.LINE_AA)
+        # 1. Tight Face Bounding Box (2px solid green)
+        cv2.rectangle(frame, (x1, y1), (x2, y2), box_color, 2, cv2.LINE_AA)
 
-        # Corner accents (clean 2px brackets, max 14px length)
-        bw = min(14, max(6, int((x2 - x1) * 0.20)))
-        bh = min(14, max(6, int((y2 - y1) * 0.20)))
-        thick = 2
-        # Top-left
-        cv2.line(frame, (x1, y1), (x1 + bw, y1), accent_color, thick, cv2.LINE_AA)
-        cv2.line(frame, (x1, y1), (x1, y1 + bh), accent_color, thick, cv2.LINE_AA)
-        # Top-right
-        cv2.line(frame, (x2, y1), (x2 - bw, y1), accent_color, thick, cv2.LINE_AA)
-        cv2.line(frame, (x2, y1), (x2, y1 + bh), accent_color, thick, cv2.LINE_AA)
-        # Bottom-left
-        cv2.line(frame, (x1, y2), (x1 + bw, y2), accent_color, thick, cv2.LINE_AA)
-        cv2.line(frame, (x1, y2), (x1, y2 - bh), accent_color, thick, cv2.LINE_AA)
-        # Bottom-right
-        cv2.line(frame, (x2, y2), (x2 - bw, y2), accent_color, thick, cv2.LINE_AA)
-        cv2.line(frame, (x2, y2), (x2 - bw, y2), accent_color, thick, cv2.LINE_AA)
-
-        # ── Minimalist Floating Pill Badge ──────────────────────────────
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        scale = 0.40
+        # 2. Solid Green Name Label Box attached to bottom of face box (Image 1 style)
+        font = cv2.FONT_HERSHEY_DUPLEX
+        font_scale = 0.55
         font_thick = 1
+        (tw, th), _ = cv2.getTextSize(display_name, font, font_scale, font_thick)
 
-        if object_type == 'HUMAN':
-            if is_match:
-                badge_text = f"{user_name.upper()} • {confidence * 100:.0f}%"
-            elif face_visible is False:
-                badge_text = f"BODY • {confidence * 100:.0f}%"
-            else:
-                badge_text = f"SCANNING • {confidence * 100:.0f}%"
+        fw = x2 - x1
+        label_w = max(fw, tw + 16)
+        label_h = th + 12
+
+        # Centered horizontally with face box
+        bx1 = max(0, min(w - label_w, x1 + (fw - label_w) // 2))
+        bx2 = bx1 + label_w
+
+        # Position below face box; if near bottom of frame, flip above face box
+        if y2 + label_h <= h - 4:
+            by1 = y2
+            by2 = y2 + label_h
+            text_y = by1 + th + 6
         else:
-            badge_text = f"{object_type} • {confidence * 100:.0f}%"
+            by1 = max(0, y1 - label_h)
+            by2 = y1
+            text_y = by1 + th + 6
 
-        (tw, th), _ = cv2.getTextSize(badge_text, font, scale, font_thick)
-        pill_pad_x = 8
-        pill_pad_y = 5
-        pill_w = tw + pill_pad_x * 2 + 10  # extra room for status dot
-        pill_h = th + pill_pad_y * 2
+        # Draw filled solid green label background
+        cv2.rectangle(frame, (bx1, by1), (bx2, by2), box_color, cv2.FILLED)
 
-        # Position pill centered above or inside top of bounding box
-        bx1 = max(4, min(w - pill_w - 4, x1 + (x2 - x1 - pill_w) // 2))
-        by1 = max(4, y1 - pill_h - 4) if (y1 - pill_h - 4) > 4 else y1 + 4
-        bx2 = bx1 + pill_w
-        by2 = by1 + pill_h
-
-        # Dark translucent pill background
-        overlay = frame.copy()
-        cv2.rectangle(overlay, (bx1, by1), (bx2, by2), (18, 22, 26), -1)
-        cv2.addWeighted(overlay, 0.78, frame, 0.22, 0, frame)
-        cv2.rectangle(frame, (bx1, by1), (bx2, by2), accent_color, 1, cv2.LINE_AA)
-
-        # Status dot
-        dot_x = bx1 + 7
-        dot_y = by1 + pill_h // 2
-        cv2.circle(frame, (dot_x, dot_y), 3, dot_color, -1, cv2.LINE_AA)
-
-        # Badge text
+        # Draw bold black text inside green label
+        text_x = bx1 + (label_w - tw) // 2
         cv2.putText(
-            frame, badge_text,
-            (dot_x + 7, by1 + th + pill_pad_y - 1),
-            font, scale, (245, 245, 245), font_thick, cv2.LINE_AA
+            frame, display_name,
+            (text_x, text_y),
+            font, font_scale, (0, 0, 0), font_thick, cv2.LINE_AA
         )
 
     return frame

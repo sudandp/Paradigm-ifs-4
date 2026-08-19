@@ -213,135 +213,63 @@ class AttendancePipeline:
         logger.info("[Pipeline] Stopped")
 
     async def _process_frame(self, captured: CapturedFrame) -> None:
-        """Process a single frame using two-layer detection:
+        """Process a single frame with concurrent multi-face recognition:
         
-        1. YOLO detects all scene objects (persons, cars, bikes, …)
-        2. InsightFace runs on each person crop to identify registered employees
-        3. Tracks updated for overlay rendering on the live stream
-        4. Attendance events / unknown face reports pushed to cloud
+        1. InsightFace SCRFD detects ALL faces in the frame simultaneously (Image 1 style)
+        2. Matches every detected face against enrolled employee embeddings
+        3. Real-time tracks updated with green bounding box and name tag for each person
+        4. Attendance events pushed for matched employees; unknown faces queued
         """
         self._stats.frames_processed += 1
         loop = asyncio.get_event_loop()
         current_tracks: list[dict] = []
         enrolled_snapshot = list(self._enrolled)
 
-        # ── Layer 1: YOLO object detection ──────────────────────────────────
-        if self.object_detector.is_ready:
-            objects: list[DetectedObject] = await loop.run_in_executor(
-                None, self.object_detector.detect, captured.frame
-            )
-        else:
-            # Fallback: treat whole frame as a single "unknown region" for face scan
-            objects = []
-
-        if not objects and not self.object_detector.is_ready:
-            # YOLO unavailable — fall back to direct face detection on full frame
-            await self._process_frame_faces_only(captured, enrolled_snapshot, current_tracks)
-            self.latest_tracks[captured.camera_name] = current_tracks
-            return
-
-        if not objects:
-            # No objects detected this frame — clear stale tracks gradually
-            if captured.camera_name in self.latest_tracks:
-                tracks = self.latest_tracks[captured.camera_name]
-                if tracks and (time.time() - tracks[0].get('timestamp', 0) > 1.5):
-                    self.latest_tracks[captured.camera_name] = []
-            return
-
-        self._stats.objects_detected += len(objects)
-
-        # ── Layer 2: Face recognition on person crops ────────────────────────
-        for obj in objects:
-            if obj.is_person:
-                await self._process_person_object(
-                    obj, captured, enrolled_snapshot, current_tracks, loop
-                )
-            else:
-                # Non-person object (vehicle, bike, etc.) — just track, no face
-                current_tracks.append({
-                    'bbox':        obj.bbox,
-                    'object_type': obj.label,      # 'CAR', 'MOTORCYCLE', etc.
-                    'label':       obj.label,
-                    'user_name':   obj.label,      # Used by overlay as display text
-                    'user_id':     None,
-                    'confidence':  obj.confidence,
-                    'is_match':    False,
-                    'direction':   captured.direction.upper(),
-                    'timestamp':   time.time(),
-                })
-                self._stats.vehicles_detected += 1
-
-        self.latest_tracks[captured.camera_name] = current_tracks
-
-    async def _process_person_object(
-        self,
-        obj: DetectedObject,
-        captured: CapturedFrame,
-        enrolled_snapshot: list[dict],
-        current_tracks: list[dict],
-        loop: asyncio.AbstractEventLoop,
-    ) -> None:
-        """Handle a detected person: run face recognition, create attendance event."""
-        x1, y1, x2, y2 = obj.bbox
-
-        # Run face detection on the person crop (full-frame coordinates returned)
+        # ── Concurrent Multi-Face Detection (Full-Frame InsightFace) ────────
         faces: list[DetectedFace] = await loop.run_in_executor(
-            None,
-            lambda: self.face_engine.detect_faces_in_crop(
-                captured.frame, x1, y1, x2, y2
-            )
+            None, self.face_engine.detect_faces, captured.frame
         )
 
         if faces:
-            # Face(s) found — use the highest-confidence one for recognition
-            best_face = max(faces, key=lambda f: f.detection_score)
-            self._stats.faces_detected += 1
-
-            match: Optional[MatchResult] = await loop.run_in_executor(
-                None,
-                lambda f=best_face: self.face_engine.match_face(
-                    embedding=f.embedding,
-                    enrolled_embeddings=enrolled_snapshot,
-                    threshold=self.config.match_threshold,
+            self._stats.faces_detected += len(faces)
+            for face in faces:
+                match: Optional[MatchResult] = await loop.run_in_executor(
+                    None,
+                    lambda f=face: self.face_engine.match_face(
+                        embedding=f.embedding,
+                        enrolled_embeddings=enrolled_snapshot,
+                        threshold=self.config.match_threshold,
+                    )
                 )
-            )
 
-            is_match = bool(match and match.is_match)
-            user_name = match.user_name if (is_match and match) else "UNKNOWN PERSON"
-            user_id = match.user_id if (is_match and match) else None
-            conf = match.similarity if (is_match and match) else best_face.detection_score
+                is_match = bool(match and match.is_match)
+                user_name = match.user_name if (is_match and match) else "Unknown"
+                user_id = match.user_id if (is_match and match) else None
+                conf = match.similarity if (is_match and match) else face.detection_score
 
-            # Use face bbox for the overlay box (more precise than person bbox)
-            track_bbox = [int(v) for v in best_face.bbox]
+                track_bbox = [int(v) for v in face.bbox]
 
-            current_tracks.append({
-                'bbox':        track_bbox,
-                'object_type': 'HUMAN',
-                'label':       'HUMAN',
-                'user_name':   user_name,
-                'user_id':     user_id,
-                'confidence':  conf,
-                'is_match':    is_match,
-                'direction':   captured.direction.upper(),
-                'timestamp':   time.time(),
-            })
+                current_tracks.append({
+                    'bbox':        track_bbox,
+                    'object_type': 'FACE',
+                    'label':       'FACE',
+                    'user_name':   user_name,
+                    'user_id':     user_id,
+                    'confidence':  conf,
+                    'is_match':    is_match,
+                    'direction':   captured.direction.upper(),
+                    'timestamp':   time.time(),
+                })
 
-            await self._handle_detected_face(best_face, match, captured)
+                await self._handle_detected_face(face, match, captured)
 
+            self.latest_tracks[captured.camera_name] = current_tracks
         else:
-            # Person body detected in scene but no face visible — do NOT save false snapshot
-            current_tracks.append({
-                'bbox':        obj.bbox,
-                'object_type': 'HUMAN',
-                'label':       'HUMAN',
-                'user_name':   'HUMAN',
-                'user_id':     None,
-                'confidence':  obj.confidence,
-                'is_match':    False,
-                'direction':   captured.direction.upper(),
-                'timestamp':   time.time(),
-                'face_visible': False,
-            })
+            # Gradually clear tracks when no face is in view
+            if captured.camera_name in self.latest_tracks:
+                tracks = self.latest_tracks[captured.camera_name]
+                if tracks and (time.time() - tracks[0].get('timestamp', 0) > 1.2):
+                    self.latest_tracks[captured.camera_name] = []
 
     async def _process_frame_faces_only(
         self,
