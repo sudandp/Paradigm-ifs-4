@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 106,
-  "latestVersionName": "19.6.0",
+  "latestVersionCode": 107,
+  "latestVersionName": "19.7.0",
   "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
   "apkDownloadUrl": "https://app.paradigmfms.com",
-  "releaseNotes": "refactor: optimize network reconnection, add silent session refresh, and introduce useSecurityCheck hook\nfix: add ngrok-skip-browser-warning header to bypass interstitial page\nfeat: implement native permission management utilities and add custom exit warning modal\nrefactor: optimize mobile session persistence by removing 14-day offline cache expiry and streamlining Zustand-based auth restoration\nfeat: implement device validation, security monitoring, and admin impersonation management system",
+  "releaseNotes": "fix(vercel): consolidate serverless functions to 8 to fit within hobby tier limit\nfeat: implement cloudflare tunnel watchdog service with automated self-healing and supabase sync for CCTV infrastructure\nfeat: implement CCTV attendance pipeline with YOLO object detection and InsightFace recognition\nfeat: implement core InsightFace recognition engine with hardware acceleration and heuristic-based false-positive filtering\nfeat: implement FastAPI admin server for real-time CCTV monitoring and dashboard integration",
   "isMandatory": true
 }

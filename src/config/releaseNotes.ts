@@ -1,11 +1,11 @@
 export const RELEASE_NOTES = {
-  version: '19.6.0',
-  date: '2026-08-17',
+  version: '19.7.0',
+  date: '2026-08-19',
   notes: [
-  "refactor: optimize network reconnection, add silent session refresh, and introduce useSecurityCheck hook",
-  "fix: add ngrok-skip-browser-warning header to bypass interstitial page",
-  "feat: implement native permission management utilities and add custom exit warning modal",
-  "refactor: optimize mobile session persistence by removing 14-day offline cache expiry and streamlining Zustand-based auth restoration",
-  "feat: implement device validation, security monitoring, and admin impersonation management system"
+  "fix(vercel): consolidate serverless functions to 8 to fit within hobby tier limit",
+  "feat: implement cloudflare tunnel watchdog service with automated self-healing and supabase sync for CCTV infrastructure",
+  "feat: implement CCTV attendance pipeline with YOLO object detection and InsightFace recognition",
+  "feat: implement core InsightFace recognition engine with hardware acceleration and heuristic-based false-positive filtering",
+  "feat: implement FastAPI admin server for real-time CCTV monitoring and dashboard integration"
 ]
 };
