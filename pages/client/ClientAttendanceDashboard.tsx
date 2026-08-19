@@ -13,7 +13,7 @@ import {
   Calendar, WifiOff, Wifi, BarChart3, Building2, Shield, Radio, Bug, CheckCircle2,
   Settings, Plus, Trash2, Edit3, Copy, Sliders, Save, RotateCcw,
   Lock, ShieldCheck, CheckSquare, Square, UserPlus, FileText, Camera, AlertOctagon, MessageSquare, Eye, X, Video, Moon, Pencil, Check,
-  FileDown, Mail, Filter, Download, Printer, FileSpreadsheet, Loader2, Send
+  FileDown, Mail, Filter, Download, Printer, FileSpreadsheet, Loader2, Send, Cpu, Sparkles
 } from 'lucide-react';
 import { supabase } from '../../services/supabase';
 import { useAuthStore } from '../../store/authStore';
@@ -1487,6 +1487,42 @@ const ClientAttendanceDashboard: React.FC = () => {
     setEditingRuleId(null);
   };
 
+  // Manual Proxy Override & Debug state
+  const [manualTunnelInput, setManualTunnelInput] = useState('');
+  const [isSavingTunnelManual, setIsSavingTunnelManual] = useState(false);
+  const [showConnectionInspector, setShowConnectionInspector] = useState(false);
+  const [connectionTestResult, setConnectionTestResult] = useState<string | null>(null);
+
+  const handleSaveManualTunnel = async () => {
+    const raw = manualTunnelInput.trim().replace(/\/$/, '');
+    if (!raw || !raw.startsWith('http')) {
+      alert('Please enter a valid URL starting with http:// or https://');
+      return;
+    }
+    setIsSavingTunnelManual(true);
+    setConnectionTestResult('Testing and saving tunnel URL...');
+    try {
+      // 1. Update Supabase cctv_devices
+      const { error } = await supabase
+        .from('cctv_devices')
+        .update({
+          device_secret: raw,
+          updated_at: new Date().toISOString(),
+        })
+        .neq('id', '00000000-0000-0000-0000-000000000000');
+      
+      if (error) throw error;
+
+      setConnectionTestResult('✅ Saved to Supabase! Re-fetching attendance data...');
+      // 2. Trigger fetch
+      await fetchData(true);
+    } catch (e: any) {
+      setConnectionTestResult(`❌ Failed to save: ${e.message}`);
+    } finally {
+      setIsSavingTunnelManual(false);
+    }
+  };
+
   // Clean error message for user display
   const cleanErrorMessage = useMemo(() => {
     if (!data?.errorMessage) return 'Database connection is temporarily offline. Retrying...';
@@ -1494,7 +1530,7 @@ const ClientAttendanceDashboard: React.FC = () => {
     if (text.includes('502') || text.includes('Bad Gateway') || text.includes('500') || text.includes('DOCTYPE')) {
       return 'Database proxy server disconnected. Please verify local proxy server status.';
     }
-    return text.slice(0, 120) || 'Database connection is temporarily offline.';
+    return text || 'Database connection is temporarily offline.';
   }, [data]);
 
   // ── Fetch data from Express server ────────────────────────────────────────
@@ -3809,23 +3845,10 @@ const DetailedAuditReportView: React.FC<{
         </div>
       </div>
 
-      {/* ── DB Error Banner ────────────────────────────────────────────────── */}
+      {/* ── DB Error Banner & Interactive Connection Inspector ──────────────── */}
       {data?.connectionStatus === 'error' && (
-        showDebug ? (
-          <div className="flex items-start gap-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-2xl p-4">
-            <WifiOff size={20} className="text-red-600 shrink-0 mt-0.5" />
-            <div className="flex-1 min-w-0">
-              <p className="font-bold text-red-800 dark:text-red-300 text-sm">MS SQL Proxy Connection Error [Admin Debug]</p>
-              <p className="text-xs text-red-600 dark:text-red-400 font-mono mt-1 leading-relaxed bg-red-100/60 dark:bg-red-900/40 p-2.5 rounded-xl border border-red-200 dark:border-red-800 break-all">
-                {data?.errorMessage || cleanErrorMessage}
-              </p>
-              <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-2 font-medium">
-                💡 <strong>Troubleshooting:</strong> Ensure <code className="bg-red-100 dark:bg-red-900 px-1 rounded">node attendance-api/server.js</code> is running on local port 4000 and <code className="bg-red-100 dark:bg-red-900 px-1 rounded">MSSQL_PROXY_URL</code> in Vercel matches your Cloudflare Tunnel URL.
-              </p>
-            </div>
-          </div>
-        ) : (
-          <div className="flex items-center justify-between bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800 rounded-2xl p-4 shadow-xs">
+        <div className="bg-amber-50/90 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-2xl p-4 shadow-sm space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/60 flex items-center justify-center shrink-0 text-amber-600 dark:text-amber-400">
                 <WifiOff size={20} />
@@ -3837,15 +3860,68 @@ const DetailedAuditReportView: React.FC<{
                 </p>
               </div>
             </div>
-            <button
-              onClick={() => fetchData(true)}
-              disabled={refreshing}
-              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white rounded-xl text-xs font-bold transition-all shrink-0 shadow-xs"
-            >
-              {refreshing ? 'Connecting...' : 'Reconnect'}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowConnectionInspector(prev => !prev)}
+                className="px-3 py-2 bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 hover:bg-amber-100 text-amber-900 dark:text-amber-200 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
+              >
+                <Sliders size={13} />
+                {showConnectionInspector ? 'Hide Inspector' : 'Connection Inspector'}
+              </button>
+              <button
+                onClick={() => fetchData(true)}
+                disabled={refreshing}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white rounded-xl text-xs font-bold transition-all shrink-0 shadow-xs"
+              >
+                {refreshing ? 'Connecting...' : 'Reconnect'}
+              </button>
+            </div>
           </div>
-        )
+
+          {/* Interactive Connection Debugger & Manual Override Drawer */}
+          {showConnectionInspector && (
+            <div className="pt-3 border-t border-amber-200/80 dark:border-amber-800/80 space-y-3">
+              <div className="bg-white/80 dark:bg-slate-900/80 p-3.5 rounded-xl border border-amber-200 dark:border-amber-800/60 text-xs space-y-2">
+                <p className="font-bold text-amber-950 dark:text-amber-200 flex items-center gap-1.5">
+                  <Cpu size={14} className="text-amber-600" />
+                  Real-Time Candidate Endpoints Attempted:
+                </p>
+                <div className="font-mono text-[11px] bg-amber-100/50 dark:bg-amber-950/80 p-2.5 rounded-lg border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-300 break-all leading-relaxed">
+                  {data?.errorMessage || 'No specific proxy attempts recorded.'}
+                </div>
+              </div>
+
+              {/* Manual URL Override Box */}
+              <div className="bg-white/90 dark:bg-slate-900/90 p-3.5 rounded-xl border border-emerald-300 dark:border-emerald-800 shadow-xs space-y-2">
+                <p className="font-bold text-emerald-950 dark:text-emerald-200 text-xs flex items-center gap-1.5">
+                  <Sparkles size={14} className="text-emerald-600" />
+                  Manual Cloudflare / Proxy URL Override:
+                </p>
+                <div className="flex flex-col sm:flex-row items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="e.g. https://your-tunnel-name.trycloudflare.com"
+                    value={manualTunnelInput}
+                    onChange={e => setManualTunnelInput(e.target.value)}
+                    className="flex-1 w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <button
+                    onClick={handleSaveManualTunnel}
+                    disabled={isSavingTunnelManual || !manualTunnelInput.trim()}
+                    className="w-full sm:w-auto px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-xs shrink-0"
+                  >
+                    {isSavingTunnelManual ? 'Testing...' : 'Apply & Connect'}
+                  </button>
+                </div>
+                {connectionTestResult && (
+                  <p className="text-[11px] font-mono text-emerald-700 dark:text-emerald-300 font-semibold pt-1">
+                    {connectionTestResult}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {/* ── SUB-PAGE CONTROLS ──────────────────────────────────────────────── */}

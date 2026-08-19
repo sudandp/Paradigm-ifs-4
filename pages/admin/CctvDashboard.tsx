@@ -11,7 +11,7 @@ import {
   Activity, ArrowRight, ArrowLeft, AlertTriangle, RefreshCw,
   Camera, CheckCircle, XCircle, Eye, UserPlus, UserCheck,
   Maximize2, Minimize2, Video, Download, Shield, Cpu, Clock, Search,
-  ZoomIn, ZoomOut, RotateCcw, User, Layers, Sparkles, SplitSquareVertical
+  ZoomIn, ZoomOut, RotateCcw, User, Layers, Sparkles, SplitSquareVertical, Sliders
 } from 'lucide-react';
 
 // Fallback URL used ONLY when Supabase has no ngrok_url yet (first boot before heartbeat).
@@ -147,7 +147,7 @@ const NvrCameraStream: React.FC<{
         className="w-full h-full relative group bg-neutral-950 overflow-hidden select-none cursor-pointer rounded-2xl border border-border/80 shadow-sm"
       >
         {/* Status overlays */}
-        {!isConnected && (
+        {hasError && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-neutral-950/95 gap-2.5 p-6 z-10">
             <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
               <Video className="h-7 w-7 animate-pulse" />
@@ -156,14 +156,12 @@ const NvrCameraStream: React.FC<{
               {statusMsg}
             </span>
             <span className="text-[11px] text-neutral-500 font-mono">1080p HD • RTSP TCP</span>
-            {hasError && (
-              <button
-                onClick={(e) => { e.stopPropagation(); setStreamKey(k => k + 1); }}
-                className="mt-1 px-3.5 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium shadow-sm transition-all"
-              >
-                Reconnect Stream
-              </button>
-            )}
+            <button
+              onClick={(e) => { e.stopPropagation(); setStreamKey(k => k + 1); setHasError(false); }}
+              className="mt-1 px-3.5 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium shadow-sm transition-all"
+            >
+              Reconnect Stream
+            </button>
           </div>
         )}
 
@@ -174,11 +172,7 @@ const NvrCameraStream: React.FC<{
           alt={camName}
           onLoad={handleImageLoad}
           onError={handleImageError}
-          className="w-full h-full object-cover block"
-          style={{
-            display: isConnected ? 'block' : 'none',
-            imageRendering: 'auto',
-          }}
+          className={`w-full h-full object-cover block ${hasError ? 'opacity-0' : 'opacity-100'}`}
         />
 
         {/* Top OSD Bar */}
@@ -485,6 +479,36 @@ const CctvDashboard: React.FC = () => {
     }
   }, [ngrokProxy]);
 
+  // Stream Connection Inspector & Manual Override
+  const [showStreamInspector, setShowStreamInspector] = useState(false);
+  const [manualStreamInput, setManualStreamInput] = useState('');
+  const [isSavingStreamUrl, setIsSavingStreamUrl] = useState(false);
+
+  const handleSaveManualStream = async () => {
+    const raw = manualStreamInput.trim().replace(/\/$/, '');
+    if (!raw || !raw.startsWith('http')) {
+      alert('Please enter a valid URL starting with http:// or https://');
+      return;
+    }
+    setIsSavingStreamUrl(true);
+    try {
+      setNgrokProxy(raw);
+      await supabase
+        .from('cctv_devices')
+        .update({
+          ngrok_url: raw,
+          updated_at: new Date().toISOString(),
+        })
+        .neq('id', '00000000-0000-0000-0000-000000000000');
+      setToast({ message: 'Live stream URL updated and connected!', type: 'success' });
+      setShowStreamInspector(false);
+    } catch (e: any) {
+      setToast({ message: `Failed to save stream URL: ${e.message}`, type: 'error' });
+    } finally {
+      setIsSavingStreamUrl(false);
+    }
+  };
+
   // Fetch the live ngrok_url from cctv_devices once on mount
   useEffect(() => {
     const loadProxyUrl = async () => {
@@ -493,11 +517,12 @@ const CctvDashboard: React.FC = () => {
           .from('cctv_devices')
           .select('ngrok_url')
           .not('ngrok_url', 'is', null)
-          .order('last_seen', { ascending: false })
+          .order('updated_at', { ascending: false })
           .limit(1)
           .maybeSingle();
         if (data?.ngrok_url) {
           setNgrokProxy(data.ngrok_url.replace(/\/$/, ''));
+          setManualStreamInput(data.ngrok_url.replace(/\/$/, ''));
         }
       } catch {
         // Supabase unavailable — keep fallback
@@ -865,10 +890,49 @@ const CctvDashboard: React.FC = () => {
                   Live CCTV Surveillance Stream
                 </h3>
               </div>
-              <span className="text-[11px] font-mono font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-md">
-                RTSP TCP • MAIN GATE
-              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowStreamInspector(prev => !prev)}
+                  className="px-2.5 py-1 text-[11px] font-bold rounded-md bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 text-primary-text border border-border transition-all flex items-center gap-1"
+                >
+                  <Sliders className="h-3 w-3 text-emerald-600" />
+                  {showStreamInspector ? 'Hide Inspector' : 'Stream Inspector'}
+                </button>
+                <span className="text-[11px] font-mono font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-md">
+                  RTSP TCP • MAIN GATE
+                </span>
+              </div>
             </div>
+
+            {/* Stream Inspector & Manual Override Drawer */}
+            {showStreamInspector && (
+              <div className="mb-3 p-3 bg-neutral-50 dark:bg-neutral-900/90 rounded-xl border border-emerald-300 dark:border-emerald-800/80 shadow-xs space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-emerald-950 dark:text-emerald-300 flex items-center gap-1">
+                    <Sparkles className="h-3.5 w-3.5 text-emerald-600" /> Active CCTV Stream Base URL:
+                  </span>
+                  <span className="font-mono text-[10px] bg-white dark:bg-black/50 px-2 py-0.5 rounded border border-border">
+                    {ngrokProxy || 'No proxy URL set'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="e.g. https://grade-katie-airports-zoloft.trycloudflare.com"
+                    value={manualStreamInput}
+                    onChange={e => setManualStreamInput(e.target.value)}
+                    className="flex-1 px-3 py-1.5 bg-background border border-border rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                  <button
+                    onClick={handleSaveManualStream}
+                    disabled={isSavingStreamUrl || !manualStreamInput.trim()}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs shrink-0"
+                  >
+                    {isSavingStreamUrl ? 'Saving...' : 'Apply Stream URL'}
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="aspect-video w-full rounded-xl overflow-hidden shadow-inner">
               <NvrCameraStream camName="main_gate_entry" proxyUrl={ngrokProxy} />

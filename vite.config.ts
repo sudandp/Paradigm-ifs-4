@@ -122,6 +122,8 @@ export default defineConfig({
           if (path === '/api/mssql-devices') subPath = '/devices';
           if (path === '/api/mssql-update-employee') subPath = '/update-employee';
 
+          const attemptLogs: string[] = [];
+
           for (const base of candidateBases) {
             const targetUrl = `${base}${subPath}${search}`;
             try {
@@ -139,13 +141,22 @@ export default defineConfig({
               });
               if (fetchRes.ok) {
                 const data = await fetchRes.text();
+                console.log(`[MSSQL Proxy] ✅ Success via ${targetUrl}`);
                 res.statusCode = 200;
                 res.setHeader('Content-Type', 'application/json');
                 res.setHeader('Access-Control-Allow-Origin', '*');
                 res.end(data);
                 return;
+              } else {
+                const statusNote = `HTTP ${fetchRes.status}`;
+                attemptLogs.push(`${base} (${statusNote})`);
+                console.warn(`[MSSQL Proxy] ⚠️ Failed ${targetUrl} -> ${statusNote}`);
               }
-            } catch {}
+            } catch (fetchErr: any) {
+              const errNote = fetchErr?.name === 'TimeoutError' ? 'Timeout' : (fetchErr?.message || 'Error');
+              attemptLogs.push(`${base} (${errNote})`);
+              console.warn(`[MSSQL Proxy] ❌ Error ${targetUrl} -> ${errNote}`);
+            }
           }
 
           res.statusCode = 200;
@@ -157,7 +168,8 @@ export default defineConfig({
             departments: [],
             lastUpdated: new Date().toISOString(),
             connectionStatus: 'error',
-            errorMessage: 'Database proxy unreachable on all candidate endpoints',
+            errorMessage: `Database proxy unreachable. Attempts: ${attemptLogs.join(', ')}`,
+            attemptLogs,
           }));
         });
       }

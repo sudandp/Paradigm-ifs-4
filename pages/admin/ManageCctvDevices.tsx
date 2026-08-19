@@ -42,11 +42,11 @@ const NGROK_PROXY_FALLBACK = 'https://cctv.paradigmfms.com';
 // Reads binary stream chunks, finds JPEG FFD8..FFD9 boundaries, paints to canvas.
 const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; adminPort: number; proxyUrl: string }> = ({ camera, proxyUrl }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isConnected, setIsConnected] = useState(false);
+  const [isConnected, setIsConnected] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [statusMsg, setStatusMsg] = useState('CONNECTING LIVE STREAM...');
   const [currentTime, setCurrentTime] = useState('');
-  const [fps, setFps] = useState(0);
+  const [fps, setFps] = useState(25);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fsCanvasRef = useRef<HTMLCanvasElement>(null);
   const fpsCounterRef = useRef(0);
@@ -118,7 +118,9 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
     // Graceful auto-reconnect
     setTimeout(() => {
       setStreamKey(prev => prev + 1);
-    }, 2000);
+      setHasError(false);
+      setIsConnected(true);
+    }, 3000);
   };
 
   const handleDownloadSnapshot = (e: React.MouseEvent) => {
@@ -154,21 +156,19 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
         onClick={() => setIsFullscreen(true)}
         className="w-full h-full relative group bg-black overflow-hidden select-none cursor-pointer rounded-xl border border-border"
       >
-        {!isConnected && (
+        {hasError && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950 gap-2 p-6 z-10">
-            <Video className={`h-8 w-8 ${hasError ? 'text-amber-400' : 'text-emerald-400'} animate-pulse`} />
-            <span className={`text-xs font-mono tracking-wider font-semibold ${hasError ? 'text-amber-300' : 'text-emerald-300'}`}>
+            <Video className="h-8 w-8 text-amber-400 animate-pulse" />
+            <span className="text-xs font-mono tracking-wider font-semibold text-amber-300">
               {statusMsg}
             </span>
             <span className="text-[10px] text-slate-500 font-mono">{camName} • RTSP TCP</span>
-            {hasError && (
-              <button
-                onClick={(e) => { e.stopPropagation(); setStreamKey(k => k + 1); }}
-                className="mt-2 px-3 py-1 text-[10px] bg-emerald-700 hover:bg-emerald-600 text-white rounded font-mono"
-              >
-                RETRY NOW
-              </button>
-            )}
+            <button
+              onClick={(e) => { e.stopPropagation(); setStreamKey(k => k + 1); setHasError(false); }}
+              className="mt-2 px-3 py-1 text-[10px] bg-emerald-700 hover:bg-emerald-600 text-white rounded font-mono"
+            >
+              RETRY NOW
+            </button>
           </div>
         )}
 
@@ -178,11 +178,7 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
           alt={camName}
           onLoad={handleImageLoad}
           onError={handleImageError}
-          className="w-full h-full object-cover block"
-          style={{
-            display: isConnected ? 'block' : 'none',
-            imageRendering: 'auto',
-          }}
+          className={`w-full h-full object-cover block ${hasError ? 'opacity-0' : 'opacity-100'}`}
         />
 
         {/* Vignette */}
