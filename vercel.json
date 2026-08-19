@@ -43,10 +43,6 @@
         {
           "key": "Cross-Origin-Opener-Policy",
           "value": "same-origin-allow-popups"
-        },
-        {
-          "key": "Content-Security-Policy",
-          "value": "default-src 'self' 'unsafe-inline' 'unsafe-eval' * data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https: http:; style-src 'self' 'unsafe-inline' https: http:; font-src 'self' https: data:; img-src * data: blob:; connect-src *; frame-src *; media-src * blob:; object-src 'none'; base-uri 'self'; form-action 'self';"
         }
       ]
     },
