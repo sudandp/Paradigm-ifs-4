@@ -298,7 +298,7 @@ def create_admin_app(
                     captured = stream.get_frame()
                     if captured is not None and captured.frame is not None:
                         frame_img = captured.frame
-                        # Render AI object + face tracking overlay (persons, cars, bikes…)
+                        # Render AI object + face tracking overlay
                         if pipeline and hasattr(pipeline, 'latest_tracks'):
                             now = time.time()
                             tracks = [
@@ -308,14 +308,26 @@ def create_admin_app(
                             if tracks:
                                 frame_img = frame_img.copy()
                                 _draw_ai_tracking_overlay(frame_img, tracks)
-                    else:
-                        # Camera is reconnecting — serve a black placeholder so
-                        # the browser never times out and fires img.onerror
-                        frame_img = _make_reconnecting_frame()
 
+                        # Downscale live preview frame (960px width) for instantaneous 30 FPS encode & sub-100ms latency
+                        disp_h, disp_w = frame_img.shape[:2]
+                        if disp_w > 960:
+                            scale = 960.0 / disp_w
+                            frame_display = cv2.resize(
+                                frame_img,
+                                (960, int(disp_h * scale)),
+                                interpolation=cv2.INTER_LINEAR,
+                            )
+                        else:
+                            frame_display = frame_img
+                    else:
+                        # Camera is reconnecting — serve a placeholder so browser never errors
+                        frame_display = _make_reconnecting_frame()
+
+                    # Fast JPEG encode (quality 75, instant CPU encode <3ms)
                     ret, buf = cv2.imencode(
-                        '.jpg', frame_img,
-                        [cv2.IMWRITE_JPEG_QUALITY, 90, cv2.IMWRITE_JPEG_OPTIMIZE, 1]
+                        '.jpg', frame_display,
+                        [cv2.IMWRITE_JPEG_QUALITY, 75]
                     )
                     if ret:
                         frame_bytes = buf.tobytes()
@@ -328,7 +340,7 @@ def create_admin_app(
                         )
                 except Exception:
                     pass
-                await asyncio.sleep(0.033)  # ~30 FPS — silky smooth playback
+                await asyncio.sleep(0.02)  # ~30-40 FPS — silky smooth real-time video
 
         return StreamingResponse(
             generate(),
