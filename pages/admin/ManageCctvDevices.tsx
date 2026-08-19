@@ -66,9 +66,10 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
   const trackPollRef = useRef<any>(null);
 
   const pollTracks = useCallback(async () => {
+    const activeBase = (proxyUrl || NGROK_PROXY_FALLBACK).replace(/\/$/, '');
     try {
       const res = await fetch(
-        `${proxyUrl}/tracks/${encodeURIComponent(camName)}?ngrok-skip-browser-warning=1`,
+        `${activeBase}/tracks/${encodeURIComponent(camName)}?ngrok-skip-browser-warning=1`,
         { headers: { 'ngrok-skip-browser-warning': '1' } }
       );
       if (res.ok) {
@@ -76,7 +77,7 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
         setTrackSummary(data.summary || {});
       }
     } catch { /* silent — no tracks available */ }
-  }, [camName]);
+  }, [camName, proxyUrl]);
 
   useEffect(() => {
     if (!isConnected) return;
@@ -161,9 +162,11 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
     setHasError(false);
     setStatusMsg('CONNECTING LIVE STREAM...');
 
+    const activeBase = (proxyUrl || NGROK_PROXY_FALLBACK).replace(/\/$/, '');
+
     try {
       const res = await fetch(
-        `${proxyUrl}/camera/stream/${encodeURIComponent(camName)}?ngrok-skip-browser-warning=1&bypass-tunnel-reminder=true`,
+        `${activeBase}/camera/stream/${encodeURIComponent(camName)}?ngrok-skip-browser-warning=1&bypass-tunnel-reminder=true`,
         {
           signal: controller.signal,
           headers: {
@@ -216,12 +219,29 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
       }
     } catch (err: any) {
       if (err?.name === 'AbortError') return;
+
+      // Fallback: Ultra-reliable Snapshot Polling mode
+      try {
+        const snapRes = await fetch(
+          `${activeBase}/camera/snapshot/${encodeURIComponent(camName)}?t=${Date.now()}&ngrok-skip-browser-warning=1`,
+          { headers: { 'ngrok-skip-browser-warning': '1' }, signal: controller.signal }
+        );
+        if (snapRes.ok) {
+          const arrayBuffer = await snapRes.arrayBuffer();
+          paintFrame(new Uint8Array(arrayBuffer) as any);
+          setIsConnected(true);
+          setHasError(false);
+          retryTimerRef.current = setTimeout(() => startStream(), 200);
+          return;
+        }
+      } catch {}
+
       setHasError(true);
       setIsConnected(false);
       setStatusMsg('STREAM RECONNECTING...');
-      retryTimerRef.current = setTimeout(() => startStream(), 4000);
+      retryTimerRef.current = setTimeout(() => startStream(), 3000);
     }
-  }, [camName]);
+  }, [camName, proxyUrl, paintFrame]);
 
   useEffect(() => {
     startStream();
