@@ -128,6 +128,86 @@ class FaceEngine:
     def is_ready(self) -> bool:
         return self._initialized and self._app is not None
 
+    @staticmethod
+    def is_authentic_human_face(
+        frame: np.ndarray,
+        bbox: np.ndarray | list[int],
+        kps: Optional[np.ndarray] = None,
+    ) -> bool:
+        """Strict multi-stage validation to reject foliage, plants, trees, wall textures,
+        shadows, and background artifacts from being recognized as faces.
+
+        Validations:
+        1. Plant / Foliage Green Filter (HSV): Rejects crops with high plant-green density (>25%).
+        2. Human Skin Chrominance (YCrCb): Verifies authentic human skin presence (Cr: 130-175, Cb: 75-130).
+        3. 5-Point Landmark Topology: Verifies eyes-above-nose, nose-above-mouth, and minimum eye distance.
+        4. Aspect Ratio & Dimension: Minimum 36x36px and realistic human face proportions.
+        """
+        try:
+            h, w = frame.shape[:2]
+            x1, y1, x2, y2 = [int(v) for v in bbox]
+            x1, y1 = max(0, x1), max(0, y1)
+            x2, y2 = min(w, x2), min(h, y2)
+            fw, fh = x2 - x1, y2 - y1
+
+            if fw < 36 or fh < 36:
+                return False
+
+            aspect = fw / float(max(1, fh))
+            if aspect < 0.60 or aspect > 1.40:
+                return False
+
+            crop = frame[y1:y2, x1:x2]
+            if crop.size == 0:
+                return False
+
+            # ── Check 1: Vegetation & Foliage Green Filter (HSV) ──
+            hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+            hue = hsv[:, :, 0]
+            sat = hsv[:, :, 1]
+            # Plant green hues: Hue 35–85 with saturation >= 40
+            green_mask = (hue >= 35) & (hue <= 85) & (sat >= 40)
+            green_ratio = float(np.sum(green_mask)) / float(crop.shape[0] * crop.shape[1])
+            if green_ratio > 0.25:
+                # >25% of the crop is green plant/foliage -> false positive, reject!
+                return False
+
+            # ── Check 2: Human Skin Chrominance Verification (YCrCb) ──
+            # Universal human skin tones cluster in Cr ∈ [130, 175], Cb ∈ [75, 130]
+            ycrcb = cv2.cvtColor(crop, cv2.COLOR_BGR2YCrCb)
+            cr = ycrcb[:, :, 1]
+            cb = ycrcb[:, :, 2]
+            skin_mask = (cr >= 130) & (cr <= 175) & (cb >= 75) & (cb <= 130)
+            skin_ratio = float(np.sum(skin_mask)) / float(crop.shape[0] * crop.shape[1])
+            if skin_ratio < 0.12:
+                # Less than 12% skin tone in the face crop -> foliage, cloth pattern, or noise
+                return False
+
+            # ── Check 3: 5-Point Facial Landmark Topology Check ──
+            if kps is not None and len(kps) >= 5:
+                lex, ley = kps[0]
+                rex, rey = kps[1]
+                nx, ny = kps[2]
+                lmx, lmy = kps[3]
+                rmx, rmy = kps[4]
+
+                eye_dist = float(np.hypot(rex - lex, rey - ley))
+                if eye_dist < 12.0:
+                    return False
+
+                # Vertical order check: eyes center must be above nose, nose above mouth
+                eyes_y = (ley + rey) / 2.0
+                mouth_y = (lmy + rmy) / 2.0
+                if mouth_y <= eyes_y + 4.0:
+                    return False
+                if ny <= eyes_y - 2.0 or ny >= mouth_y + 6.0:
+                    return False
+
+            return True
+
+        except Exception:
+            return True
+
     def detect_faces(self, frame: np.ndarray) -> list[DetectedFace]:
         """Detect all faces in a frame and generate embeddings.
         
@@ -146,31 +226,17 @@ class FaceEngine:
 
             results = []
             for face in faces:
-                # 1. Filter by detection confidence (strict 0.65+ for true human faces)
+                # 1. Filter by detection confidence (strict 0.72+ for true human faces)
                 det_score = float(face.det_score)
-                if det_score < max(0.65, self.detection_threshold):
+                if det_score < max(0.72, self.detection_threshold):
                     continue
 
                 bbox = face.bbox.astype(int)
-                x1, y1, x2, y2 = bbox
-                fw, fh = x2 - x1, y2 - y1
-
-                # 2. Strict Human Face Geometry Validation:
-                # Reject micro-noise/texture artifacts (minimum 28x28px)
-                if fw < 28 or fh < 28:
-                    continue
-
-                # Human face aspect ratio (width / height) is between 0.55 and 1.45
-                aspect = fw / float(max(1, fh))
-                if aspect < 0.55 or aspect > 1.45:
-                    continue
-
-                # 3. Facial Landmark Validation (eyes and mouth must be present)
                 kps = getattr(face, 'kps', None)
-                if kps is not None and len(kps) >= 5:
-                    eye_dist = np.linalg.norm(kps[0] - kps[1])
-                    if eye_dist < 8:  # eyes collapsed or noise -> reject
-                        continue
+
+                # 2. Strict Human Face vs Foliage / Background Artifacts Validation
+                if not self.is_authentic_human_face(frame, bbox, kps):
+                    continue
 
                 face_crop, sharpness = self.extract_high_res_portrait(frame, bbox)
                 if face_crop is None or face_crop.size == 0:
@@ -186,7 +252,6 @@ class FaceEngine:
                 ))
 
             return results
-
 
         except Exception as e:
             logger.error(f"[FaceEngine] Detection error: {e}")

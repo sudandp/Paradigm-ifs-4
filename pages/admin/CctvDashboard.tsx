@@ -729,6 +729,23 @@ const CctvDashboard: React.FC = () => {
     setToast({ message: 'Unknown face dismissed', type: 'success' });
   };
 
+  const handleDismissAll = async () => {
+    if (unknownQueue.length === 0) return;
+    if (!confirm(`Dismiss all ${unknownQueue.length} pending unknown detections from the queue?`)) return;
+    try {
+      const ids = unknownQueue.map(u => u.id);
+      await supabase
+        .from('cctv_enrollment_queue')
+        .update({ status: 'dismissed', resolved_at: new Date().toISOString(), resolved_by: user?.id })
+        .in('id', ids);
+      setUnknownQueue([]);
+      if (zoomPhoto?.item) setZoomPhoto(null);
+      setToast({ message: `Dismissed ${ids.length} unknown face items.`, type: 'success' });
+    } catch (err: any) {
+      setToast({ message: err.message || 'Failed to dismiss records.', type: 'error' });
+    }
+  };
+
   const handleAssignFaceDirect = async (targetItem: EnrollmentItem, targetUserId: string) => {
     if (!targetItem || !targetUserId) {
       setToast({ message: 'Please select an employee to assign.', type: 'error' });
@@ -827,7 +844,7 @@ const CctvDashboard: React.FC = () => {
   };
 
   const handleOpenUnknownPhoto = (item: EnrollmentItem) => {
-    const portraitUrl = item.snapshotUrl || `${ngrokProxy}/camera/snapshot/${encodeURIComponent(item.cameraName)}?ngrok-skip-browser-warning=1`;
+    const portraitUrl = item.snapshotUrl || '';
     const contextUrl = `${ngrokProxy}/camera/snapshot/${encodeURIComponent(item.cameraName)}?ngrok-skip-browser-warning=1`;
 
     setZoomLevel(1);
@@ -1161,6 +1178,21 @@ const CctvDashboard: React.FC = () => {
       {/* Tab 2: Unknown Faces Review Queue */}
       {activeTab === 'unknown' && (
         <div className="space-y-4">
+          {unknownQueue.length > 0 && (
+            <div className="flex items-center justify-between bg-card p-3.5 rounded-2xl border border-amber-200/80 shadow-xs">
+              <span className="text-xs text-amber-900 font-medium">
+                Showing <strong>{unknownQueue.length}</strong> unknown face detections awaiting verification.
+              </span>
+              <Button
+                variant="outline"
+                onClick={handleDismissAll}
+                className="text-xs h-8 border-amber-300 text-amber-800 hover:bg-amber-50"
+              >
+                Dismiss All ({unknownQueue.length})
+              </Button>
+            </div>
+          )}
+
           {unknownQueue.length === 0 ? (
             <div className="py-16 flex flex-col items-center justify-center bg-card rounded-2xl border border-dashed border-border shadow-sm">
               <div className="h-16 w-16 bg-emerald-50 rounded-full flex items-center justify-center mb-3">
@@ -1172,23 +1204,25 @@ const CctvDashboard: React.FC = () => {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {unknownQueue.map(item => {
-                const imgSource = item.snapshotUrl || `${ngrokProxy}/camera/snapshot/${encodeURIComponent(item.cameraName)}?ngrok-skip-browser-warning=1`;
+                const imgSource = item.snapshotUrl;
                 return (
                   <div key={item.id} className="bg-card rounded-2xl border border-amber-200/90 p-4 shadow-sm space-y-3 hover:border-amber-400 transition-colors">
                     <div
                       className="aspect-square bg-neutral-950 rounded-xl overflow-hidden border border-border relative flex items-center justify-center cursor-pointer group"
                       onClick={() => handleOpenUnknownPhoto(item)}
                     >
-                      <img
-                        src={imgSource}
-                        alt="Unknown face detection"
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          target.onerror = null;
-                          target.src = `${ngrokProxy}/camera/snapshot/${encodeURIComponent(item.cameraName)}?ngrok-skip-browser-warning=1`;
-                        }}
-                      />
+                      {imgSource ? (
+                        <img
+                          src={imgSource}
+                          alt="Unknown face detection"
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center text-neutral-500 bg-neutral-900 gap-2 p-4 text-center">
+                          <User className="h-10 w-10 text-amber-400/60" />
+                          <span className="text-[11px] font-mono text-neutral-400">Snapshot not captured</span>
+                        </div>
+                      )}
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                         <span className="bg-black/80 text-white text-xs font-semibold px-3 py-1.5 rounded-lg backdrop-blur-xs flex items-center gap-1.5 shadow-sm">
                           <Maximize2 className="h-3.5 w-3.5 text-emerald-400" /> Click to Inspect
@@ -1367,23 +1401,30 @@ const CctvDashboard: React.FC = () => {
               {zoomPhoto.activeView === 'portrait' && (
                 <div className="w-full h-full flex flex-col items-center justify-center">
                   <div
-                    className="relative rounded-2xl overflow-hidden border border-emerald-500/30 bg-neutral-900 shadow-2xl max-w-sm w-full flex items-center justify-center"
+                    className="relative rounded-2xl overflow-hidden border border-emerald-500/30 bg-neutral-900 shadow-2xl max-w-sm w-full flex items-center justify-center min-h-[280px]"
                     style={{ maxHeight: '380px' }}
                   >
-                    <img
-                      src={zoomPhoto.portraitUrl}
-                      alt="Face portrait"
-                      className="w-full h-full object-contain transition-transform duration-200"
-                      style={{
-                        transform: `scale(${zoomLevel})`,
-                        maxHeight: '380px',
-                      }}
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        target.onerror = null;
-                        if (zoomPhoto.contextUrl) target.src = zoomPhoto.contextUrl;
-                      }}
-                    />
+                    {zoomPhoto.portraitUrl ? (
+                      <img
+                        src={zoomPhoto.portraitUrl}
+                        alt="Face portrait"
+                        className="w-full h-full object-contain transition-transform duration-200"
+                        style={{
+                          transform: `scale(${zoomLevel})`,
+                          maxHeight: '380px',
+                        }}
+                      />
+                    ) : (
+                      <div className="w-full h-64 flex flex-col items-center justify-center text-neutral-400 p-6 text-center gap-3">
+                        <User className="h-12 w-12 text-amber-400/80" />
+                        <div>
+                          <p className="text-sm font-semibold text-white">No Face Snapshot Recorded</p>
+                          <p className="text-xs text-neutral-400 mt-1">
+                            Switch to "Gate Scene Context" to inspect the camera entrance view.
+                          </p>
+                        </div>
+                      </div>
+                    )}
                     <div className="absolute top-3 left-3 bg-neutral-950/85 border border-emerald-500/30 text-emerald-400 px-2.5 py-1 rounded-full text-[10px] font-mono flex items-center gap-1.5 backdrop-blur-md">
                       <Sparkles className="h-3 w-3" /> INSIGHTFACE 512D
                     </div>
