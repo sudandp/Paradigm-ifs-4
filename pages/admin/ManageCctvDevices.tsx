@@ -319,57 +319,57 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
         <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-black/70 via-transparent to-black/60 z-20" />
 
         {/* Top OSD */}
-        <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between pointer-events-none font-mono z-30">
-          <div className="flex items-center gap-1.5">
-            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-red-600/90 text-[10px] font-bold text-white uppercase tracking-widest shadow-sm">
-              <span className={`h-1.5 w-1.5 rounded-full bg-white ${isConnected ? 'animate-ping' : ''}`} />REC
+        <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none z-30">
+          <div className="flex items-center gap-2">
+            <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-neutral-900/80 border border-white/10 text-[10px] font-semibold text-white backdrop-blur-md shadow-xs">
+              <span className={`h-2 w-2 rounded-full bg-rose-500 ${isConnected ? 'animate-pulse' : ''}`} />
+              LIVE
             </span>
-            <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider drop-shadow-md">
-              CAM-01 • {camName.replace(/_/g, ' ')}
+            <span className="text-[11px] font-semibold text-neutral-200 bg-neutral-900/80 border border-white/10 px-2.5 py-1 rounded-full backdrop-blur-md">
+              CAM-01 • {camName.replace(/_/g, ' ').toUpperCase()}
             </span>
           </div>
-          <span className="text-[10px] font-bold text-slate-200 bg-black/50 px-2 py-0.5 rounded backdrop-blur-sm">
+          <span className="text-[11px] font-mono text-neutral-300 bg-neutral-900/80 border border-white/10 px-2.5 py-1 rounded-full backdrop-blur-md">
             {currentTime}
           </span>
         </div>
 
         {/* Bottom OSD */}
-        <div className="absolute bottom-2.5 left-2.5 right-2.5 flex items-center justify-between pointer-events-none z-30">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[10px] text-emerald-300 font-mono bg-emerald-950/80 border border-emerald-500/30 px-2 py-0.5 rounded flex items-center gap-1">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> AI ON
+        <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between pointer-events-none z-30">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] font-medium text-emerald-300 font-mono bg-neutral-900/80 border border-emerald-500/30 px-2.5 py-1 rounded-full backdrop-blur-md flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> AI ACTIVE
             </span>
-            <span className="text-[10px] text-slate-300 font-mono bg-black/60 px-2 py-0.5 rounded">
-              MJPEG • {fps > 0 ? `${fps} FPS` : '---'}
+            <span className="text-[10px] font-mono text-neutral-400 bg-neutral-900/80 border border-white/10 px-2.5 py-1 rounded-full backdrop-blur-md">
+              {fps > 0 ? `${fps} FPS` : 'HD STREAM'}
             </span>
             {/* Live object detection legend chips */}
             {(trackSummary['HUMAN'] ?? 0) > 0 && (
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded flex items-center gap-1"
-                style={{ background: 'rgba(0,160,255,0.25)', color: '#64b5f6', border: '1px solid rgba(0,160,255,0.4)' }}>
-                <span className="h-1.5 w-1.5 rounded-full" style={{ background: '#64b5f6' }} />
+              <span className="text-[10px] font-mono px-2.5 py-1 rounded-full bg-neutral-900/80 border border-sky-500/30 text-sky-300 backdrop-blur-md flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
                 👤 {trackSummary['HUMAN']} Human{trackSummary['HUMAN'] > 1 ? 's' : ''}
               </span>
             )}
             {((trackSummary['CAR'] ?? 0) + (trackSummary['TRUCK'] ?? 0) + (trackSummary['BUS'] ?? 0)) > 0 && (
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded flex items-center gap-1"
-                style={{ background: 'rgba(255,140,0,0.25)', color: '#ffb74d', border: '1px solid rgba(255,140,0,0.4)' }}>
-                <span className="h-1.5 w-1.5 rounded-full" style={{ background: '#ffb74d' }} />
+              <span className="text-[10px] font-mono px-2.5 py-1 rounded-full bg-neutral-900/80 border border-amber-500/30 text-amber-300 backdrop-blur-md flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
                 🚗 {(trackSummary['CAR'] ?? 0) + (trackSummary['TRUCK'] ?? 0) + (trackSummary['BUS'] ?? 0)} Vehicle{((trackSummary['CAR'] ?? 0) + (trackSummary['TRUCK'] ?? 0) + (trackSummary['BUS'] ?? 0)) > 1 ? 's' : ''}
               </span>
             )}
-            {((trackSummary['MOTORCYCLE'] ?? 0) + (trackSummary['BICYCLE'] ?? 0)) > 0 && (
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded flex items-center gap-1"
-                style={{ background: 'rgba(0,230,180,0.25)', color: '#4dd0e1', border: '1px solid rgba(0,230,180,0.4)' }}>
-                <span className="h-1.5 w-1.5 rounded-full" style={{ background: '#4dd0e1' }} />
-                🏍️ {(trackSummary['MOTORCYCLE'] ?? 0) + (trackSummary['BICYCLE'] ?? 0)} Bike{((trackSummary['MOTORCYCLE'] ?? 0) + (trackSummary['BICYCLE'] ?? 0)) > 1 ? 's' : ''}
-              </span>
-            )}
           </div>
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto">
-            <button onClick={handleDownloadSnapshot} title="Download Snapshot" className="p-1.5 rounded-lg bg-black/70 hover:bg-black text-white border border-white/10">
+          <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto">
+            <button
+              onClick={handleDownloadSnapshot}
+              title="Capture Snapshot"
+              className="p-2 bg-neutral-900/85 hover:bg-neutral-800 text-white rounded-xl border border-white/15 backdrop-blur-md transition-all shadow-sm"
+            >
               <Download className="h-3.5 w-3.5" />
             </button>
-            <button onClick={(e) => { e.stopPropagation(); setIsFullscreen(true); }} title="Fullscreen" className="p-1.5 rounded-lg bg-black/70 hover:bg-black text-white border border-white/10">
+            <button
+              onClick={(e) => { e.stopPropagation(); setIsFullscreen(true); }}
+              title="Fullscreen"
+              className="p-2 bg-neutral-900/85 hover:bg-neutral-800 text-white rounded-xl border border-white/15 backdrop-blur-md transition-all shadow-sm"
+            >
               <Maximize2 className="h-3.5 w-3.5" />
             </button>
           </div>

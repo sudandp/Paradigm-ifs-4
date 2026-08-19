@@ -282,22 +282,24 @@ const NvrCameraStream: React.FC<{
     <>
       <div
         onClick={() => setIsFullscreen(true)}
-        className="w-full h-full relative group bg-black overflow-hidden select-none cursor-pointer rounded-2xl border border-border shadow-md"
+        className="w-full h-full relative group bg-neutral-950 overflow-hidden select-none cursor-pointer rounded-2xl border border-border/80 shadow-sm"
       >
         {/* Status overlays */}
         {!isConnected && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950 gap-2 p-6 z-10">
-            <Video className={`h-8 w-8 ${hasError ? 'text-amber-400' : 'text-emerald-400'} animate-pulse`} />
-            <span className={`text-xs font-mono tracking-wider font-semibold ${hasError ? 'text-amber-300' : 'text-emerald-300'}`}>
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-neutral-950/95 gap-2.5 p-6 z-10">
+            <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+              <Video className="h-7 w-7 animate-pulse" />
+            </div>
+            <span className="text-xs font-mono tracking-wider font-semibold text-neutral-300">
               {statusMsg}
             </span>
-            <span className="text-[10px] text-slate-500 font-mono">{camName} • RTSP TCP</span>
+            <span className="text-[11px] text-neutral-500 font-mono">1080p HD • RTSP TCP</span>
             {hasError && (
               <button
                 onClick={(e) => { e.stopPropagation(); startStream(); }}
-                className="mt-2 px-3 py-1 text-[10px] bg-emerald-700 hover:bg-emerald-600 text-white rounded font-mono"
+                className="mt-1 px-3.5 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium shadow-sm transition-all"
               >
-                RETRY NOW
+                Reconnect Stream
               </button>
             )}
           </div>
@@ -309,41 +311,50 @@ const NvrCameraStream: React.FC<{
           className="w-full h-full object-cover block"
           style={{
             display: isConnected ? 'block' : 'none',
-            filter: 'contrast(1.05) brightness(1.02) saturate(1.04)',
+            filter: 'contrast(1.04) brightness(1.02) saturate(1.04)',
             imageRendering: 'auto',
           }}
         />
 
-        {/* OSD Header */}
-        <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none font-mono z-20">
+        {/* Top OSD Bar */}
+        <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none z-20">
           <div className="flex items-center gap-2">
-            <span className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-red-600/90 text-[10px] font-bold text-white uppercase tracking-widest shadow-sm">
-              <span className={`h-1.5 w-1.5 rounded-full bg-white ${isConnected ? 'animate-ping' : ''}`} /> REC
+            <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-neutral-900/80 border border-white/10 text-[10px] font-semibold text-white backdrop-blur-md shadow-xs">
+              <span className={`h-2 w-2 rounded-full bg-rose-500 ${isConnected ? 'animate-pulse' : ''}`} />
+              LIVE
             </span>
-            <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider drop-shadow-md bg-black/50 px-2 py-0.5 rounded">
-              CAM-01 • {camName.replace(/_/g, ' ')}
+            <span className="text-[11px] font-semibold text-neutral-200 bg-neutral-900/80 border border-white/10 px-2.5 py-1 rounded-full backdrop-blur-md">
+              CAM-01 • {camName.replace(/_/g, ' ').toUpperCase()}
             </span>
           </div>
-          <span className="text-[11px] font-bold text-white bg-black/60 px-2.5 py-1 rounded backdrop-blur-xs">
+          <span className="text-[11px] font-mono text-neutral-300 bg-neutral-900/80 border border-white/10 px-2.5 py-1 rounded-full backdrop-blur-md">
             {currentTime}
           </span>
         </div>
 
-        {/* OSD Bottom Bar */}
+        {/* Bottom OSD Bar */}
         <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between pointer-events-none z-20">
           <div className="flex items-center gap-2">
-            <span className="text-[10px] text-emerald-300 font-mono bg-emerald-950/80 border border-emerald-500/30 px-2 py-0.5 rounded flex items-center gap-1">
+            <span className="text-[10px] font-medium text-emerald-300 font-mono bg-neutral-900/80 border border-emerald-500/30 px-2.5 py-1 rounded-full backdrop-blur-md flex items-center gap-1.5">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> AI ACTIVE
             </span>
-            <span className="text-[10px] text-slate-300 font-mono bg-black/60 px-2 py-0.5 rounded">
-              MJPEG CANVAS • {fps > 0 ? `${fps} FPS` : '---'}
+            <span className="text-[10px] font-mono text-neutral-400 bg-neutral-900/80 border border-white/10 px-2.5 py-1 rounded-full backdrop-blur-md">
+              {fps > 0 ? `${fps} FPS` : 'HD STREAM'}
             </span>
           </div>
-          <div className="flex items-center gap-2 pointer-events-auto opacity-0 group-hover:opacity-100 transition-opacity">
-            <button onClick={handleDownloadSnapshot} className="p-1.5 bg-black/70 hover:bg-black text-white rounded-lg border border-white/20" title="Download Snapshot">
+          <div className="flex items-center gap-1.5 pointer-events-auto opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              onClick={handleDownloadSnapshot}
+              className="p-2 bg-neutral-900/85 hover:bg-neutral-800 text-white rounded-xl border border-white/15 backdrop-blur-md transition-all shadow-sm"
+              title="Capture Snapshot"
+            >
               <Download className="h-3.5 w-3.5" />
             </button>
-            <button onClick={(e) => { e.stopPropagation(); setIsFullscreen(true); }} className="p-1.5 bg-black/70 hover:bg-black text-white rounded-lg border border-white/20" title="Fullscreen">
+            <button
+              onClick={(e) => { e.stopPropagation(); setIsFullscreen(true); }}
+              className="p-2 bg-neutral-900/85 hover:bg-neutral-800 text-white rounded-xl border border-white/15 backdrop-blur-md transition-all shadow-sm"
+              title="Fullscreen View"
+            >
               <Maximize2 className="h-3.5 w-3.5" />
             </button>
           </div>
@@ -352,22 +363,21 @@ const NvrCameraStream: React.FC<{
 
       {/* Fullscreen NVR Monitor */}
       {isFullscreen && (
-        <div className="fixed inset-0 z-50 bg-black flex flex-col" onClick={() => setIsFullscreen(false)}>
-          <div className="flex items-center justify-between px-6 py-3 bg-black/80 border-b border-white/10 flex-shrink-0 font-mono" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 bg-neutral-950 flex flex-col" onClick={() => setIsFullscreen(false)}>
+          <div className="flex items-center justify-between px-6 py-3.5 bg-neutral-900 border-b border-white/10 flex-shrink-0" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-3">
-              <span className="flex items-center gap-2 px-3 py-1 rounded bg-red-600 text-xs font-bold uppercase tracking-widest text-white">
-                <span className="h-2 w-2 rounded-full bg-white animate-ping" /> LIVE
+              <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500 text-xs font-semibold text-white">
+                <span className="h-2 w-2 rounded-full bg-white animate-pulse" /> LIVE
               </span>
-              <span className="text-emerald-400 font-bold tracking-wider text-sm">
-                {camName.toUpperCase().replace(/_/g, ' ')} — MAIN ENTRANCE GATE
+              <span className="text-white font-semibold text-sm">
+                {camName.toUpperCase().replace(/_/g, ' ')} — MAIN SURVEILLANCE GATE
               </span>
-              <span className="text-[10px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded">MJPEG CANVAS</span>
             </div>
             <div className="flex items-center gap-4">
-              <span className="text-sm text-white font-bold">{currentTime}</span>
-              <span className="text-xs text-emerald-300 font-mono">{fps > 0 ? `${fps} FPS` : '---'}</span>
-              <button onClick={() => setIsFullscreen(false)} className="p-2 bg-white/10 hover:bg-white/20 rounded-xl">
-                <Minimize2 className="h-5 w-5 text-white" />
+              <span className="text-xs text-neutral-400 font-mono">{currentTime}</span>
+              <span className="text-xs text-emerald-400 font-mono">{fps > 0 ? `${fps} FPS` : 'HD'}</span>
+              <button onClick={() => setIsFullscreen(false)} className="p-2 bg-white/10 hover:bg-white/20 text-white rounded-xl transition-colors">
+                <Minimize2 className="h-4 w-4" />
               </button>
             </div>
           </div>
