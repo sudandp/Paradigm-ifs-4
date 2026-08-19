@@ -210,7 +210,7 @@ const NvrCameraStream: React.FC<{
     } catch (err: any) {
       if (err?.name === 'AbortError') return;
 
-      // Fallback: Ultra-reliable Snapshot Polling mode
+      // Fallback: Ultra-reliable Snapshot Polling mode (Direct & Same-Origin Proxy)
       try {
         const activeBase = (proxyUrl || NGROK_PROXY_FALLBACK).replace(/\/$/, '');
         const snapRes = await fetch(
@@ -225,7 +225,23 @@ const NvrCameraStream: React.FC<{
           retryTimerRef.current = setTimeout(() => startStream(), 200);
           return;
         }
-      } catch {}
+      } catch {
+        // Second Fallback: Same-origin serverless proxy (100% CSP immune)
+        try {
+          const proxyRes = await fetch(
+            `/api/cctv-proxy?path=/camera/snapshot/${encodeURIComponent(camName)}&t=${Date.now()}`,
+            { signal: controller.signal }
+          );
+          if (proxyRes.ok) {
+            const arrayBuffer = await proxyRes.arrayBuffer();
+            paintFrame(new Uint8Array(arrayBuffer) as any);
+            setIsConnected(true);
+            setHasError(false);
+            retryTimerRef.current = setTimeout(() => startStream(), 250);
+            return;
+          }
+        } catch {}
+      }
 
       setHasError(true);
       setIsConnected(false);
