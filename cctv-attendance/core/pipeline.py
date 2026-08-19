@@ -555,7 +555,7 @@ class AttendancePipeline:
 
         try:
             crop_h, crop_w = face.face_crop.shape[:2]
-            target_dim = 300
+            target_dim = 480
             if max(crop_w, crop_h) > target_dim:
                 scale = target_dim / float(max(crop_w, crop_h))
                 resized = cv2.resize(
@@ -563,8 +563,8 @@ class AttendancePipeline:
                     (int(round(crop_w * scale)), int(round(crop_h * scale))),
                     interpolation=cv2.INTER_AREA,
                 )
-            elif max(crop_w, crop_h) < 220:
-                scale = 220 / float(max(crop_w, crop_h))
+            elif max(crop_w, crop_h) < 320:
+                scale = 320 / float(max(crop_w, crop_h))
                 resized = cv2.resize(
                     face.face_crop,
                     (int(round(crop_w * scale)), int(round(crop_h * scale))),
@@ -573,7 +573,7 @@ class AttendancePipeline:
             else:
                 resized = face.face_crop
 
-            ret, buf = cv2.imencode('.jpg', resized, [cv2.IMWRITE_JPEG_QUALITY, 92, cv2.IMWRITE_JPEG_OPTIMIZE, 1])
+            ret, buf = cv2.imencode('.jpg', resized, [cv2.IMWRITE_JPEG_QUALITY, 95, cv2.IMWRITE_JPEG_OPTIMIZE, 1])
             if ret:
                 snapshot_data_url = (
                     f"data:image/jpeg;base64,"
