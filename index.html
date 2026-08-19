@@ -134,7 +134,7 @@
       //   2. localStorage — persists across launches when iOS allows it.
       // If both are absent we unregister broken SWs and reload ONCE per session.
       if ("serviceWorker" in navigator) {
-        var FIX_KEY = "pifs_sw_fix_v5";
+        var FIX_KEY = "pifs_sw_fix_v6";
         var SESSION_RELOAD_KEY = "pifs_sw_reloaded_session";
 
         // Check if we already reloaded in THIS session (prevents infinite loop)
