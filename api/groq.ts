@@ -11,6 +11,12 @@ const ALLOWED_ORIGINS = [
   process.env.FRONTEND_URL || 'https://your-production-app.vercel.app'
 ];
 
+export const config = {
+  api: {
+    bodyParser: { sizeLimit: '25mb' },
+  },
+};
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const origin = req.headers.origin;
   if (origin && ALLOWED_ORIGINS.includes(origin)) {
@@ -39,35 +45,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    // TASK 2: Rate Limiting
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-    const { count } = await supabase
-      .from('api_rate_limits')
-      .select('*', { count: 'exact', head: true })
-      .eq('hr_user_id', user.id)
-      .gte('created_at', oneHourAgo);
+    const action = (req.query.action as string) || (req.url?.includes('transcribe') ? 'transcribe' : 'summarise');
 
-    if (count !== null && count >= 20) {
-      res.setHeader('Retry-After', '3600');
-      return res.status(429).json({ error: 'Rate limit exceeded. Try again later.' });
+    // ── Transcribe Action ─────────────────────────────────────
+    if (action === 'transcribe') {
+      const { audioUrl } = req.body;
+      if (!audioUrl || typeof audioUrl !== 'string') {
+        return res.status(400).json({ error: 'audioUrl is required' });
+      }
+
+      if (audioUrl.length > 2000) {
+        return res.status(400).json({ error: 'audioUrl exceeds maximum length of 2000 characters' });
+      }
+
+      const audioResponse = await fetch(audioUrl);
+      if (!audioResponse.ok) throw new Error('Failed to fetch audio from storage');
+
+      const audioBlob = await audioResponse.blob();
+      const formData = new FormData();
+      formData.append('file', audioBlob, 'recording.wav');
+      formData.append('model', 'distil-whisper-large-v3-en');
+      formData.append('response_format', 'json');
+      formData.append('language', 'en');
+
+      const groqResponse = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${process.env.GROQ_API_KEY}` },
+        body: formData as any
+      });
+
+      if (!groqResponse.ok) throw new Error(`Groq API returned ${groqResponse.status}`);
+      const data = await groqResponse.json();
+
+      return res.status(200).json({ success: true, text: data.text });
     }
 
-    // Log this request
-    await supabase.from('api_rate_limits').insert({ 
-      hr_user_id: user.id, 
-      endpoint: 'groq-summarise' 
-    });
-
+    // ── Summarise Action ──────────────────────────────────────
     let { transcript, candidateName, role } = req.body;
-
     if (!transcript || !candidateName || !role) {
       return res.status(400).json({ error: 'transcript, candidateName, and role are required' });
     }
-
-    // TASK 4: Input sanitisation and validation
-    if (transcript.length > 50000) return res.status(400).json({ error: 'transcript exceeds maximum length of 50,000 characters' });
-    if (candidateName.length > 200) return res.status(400).json({ error: 'candidateName exceeds maximum length of 200 characters' });
-    if (role.length > 200) return res.status(400).json({ error: 'role exceeds maximum length of 200 characters' });
 
     const stripHtml = (str: string) => str.replace(/<[^>]*>?/gm, '');
     transcript = stripHtml(transcript);
@@ -118,7 +135,6 @@ Do not include markdown blocks, just the JSON string.`;
     try {
       parsedResult = JSON.parse(rawContent);
     } catch (parseErr) {
-      console.error('Failed to parse JSON from Groq:', rawContent);
       return res.status(500).json({ error: 'AI returned invalid JSON formatting' });
     }
 
@@ -128,7 +144,6 @@ Do not include markdown blocks, just the JSON string.`;
     });
 
   } catch (error: any) {
-    console.error('Summarisation failed:', error);
     return res.status(500).json({ success: false, error: error.message || 'Internal error' });
   }
 }

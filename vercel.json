@@ -1,9 +1,12 @@
 {
   "rewrites": [
     { "source": "/api/cctv-proxy", "destination": "/api/cctv-proxy" },
-    { "source": "/api/mssql-attendance", "destination": "/api/mssql-attendance" },
-    { "source": "/api/mssql-devices", "destination": "/api/mssql-devices" },
-    { "source": "/api/mssql-update-employee", "destination": "/api/mssql-update-employee" },
+    { "source": "/api/cctv-frame", "destination": "/api/cctv-proxy?action=frame" },
+    { "source": "/api/mssql-attendance", "destination": "/api/mssql?action=attendance" },
+    { "source": "/api/mssql-devices", "destination": "/api/mssql?action=devices" },
+    { "source": "/api/mssql-update-employee", "destination": "/api/mssql?action=update-employee" },
+    { "source": "/api/groq-summarise", "destination": "/api/groq?action=summarise" },
+    { "source": "/api/groq-transcribe", "destination": "/api/groq?action=transcribe" },
     { "source": "/api/view-file/(.*)", "destination": "/api/view-file?path=$1" },
     { "source": "/api/hrm/(.*)", "destination": "/api/hrm" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
