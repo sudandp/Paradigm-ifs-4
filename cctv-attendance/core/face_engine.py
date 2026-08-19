@@ -280,7 +280,7 @@ class FaceEngine:
         ch, cw = crop.shape[:2]
         if max(ch, cw) < min_dim:
             scale = min_dim / float(max(ch, cw))
-            nw, nh = int(round(cw * scale)), int(round(ch * scale))
+            nw, nh = round(cw * scale), round(ch * scale)
             crop = cv2.resize(crop, (nw, nh), interpolation=cv2.INTER_LANCZOS4)
 
         # Edge-preserving detail enhancement

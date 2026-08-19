@@ -560,14 +560,14 @@ class AttendancePipeline:
                 scale = target_dim / float(max(crop_w, crop_h))
                 resized = cv2.resize(
                     face.face_crop,
-                    (int(round(crop_w * scale)), int(round(crop_h * scale))),
+                    (round(crop_w * scale), round(crop_h * scale)),
                     interpolation=cv2.INTER_AREA,
                 )
             elif max(crop_w, crop_h) < 320:
                 scale = 320 / float(max(crop_w, crop_h))
                 resized = cv2.resize(
                     face.face_crop,
-                    (int(round(crop_w * scale)), int(round(crop_h * scale))),
+                    (round(crop_w * scale), round(crop_h * scale)),
                     interpolation=cv2.INTER_LANCZOS4,
                 )
             else:
