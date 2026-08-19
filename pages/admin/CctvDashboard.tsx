@@ -205,17 +205,33 @@ const NvrCameraStream: React.FC<{
 
         // Trim processed bytes; cap buffer to prevent memory growth
         buf = offset > 0 ? buf.slice(offset) : buf;
-        if (buf.length > MAX_BUF) buf = new Uint8Array(0);
-      }
     } catch (err: any) {
       if (err?.name === 'AbortError') return;
+
+      // Fallback: Ultra-reliable Snapshot Polling mode
+      try {
+        const activeBase = (proxyUrl || NGROK_PROXY_FALLBACK).replace(/\/$/, '');
+        const snapRes = await fetch(
+          `${activeBase}/camera/snapshot/${encodeURIComponent(camName)}?t=${Date.now()}&ngrok-skip-browser-warning=1`,
+          { headers: { 'ngrok-skip-browser-warning': '1' }, signal: controller.signal }
+        );
+        if (snapRes.ok) {
+          const arrayBuffer = await snapRes.arrayBuffer();
+          paintFrame(new Uint8Array(arrayBuffer) as any);
+          setIsConnected(true);
+          setHasError(false);
+          retryTimerRef.current = setTimeout(() => startStream(), 200);
+          return;
+        }
+      } catch {}
+
       setHasError(true);
       setIsConnected(false);
       setStatusMsg('STREAM RECONNECTING...');
-      // Auto-retry every 4 seconds
-      retryTimerRef.current = setTimeout(() => startStream(), 4000);
+      // Auto-retry every 3 seconds
+      retryTimerRef.current = setTimeout(() => startStream(), 3000);
     }
-  }, [camName, proxyUrl]);
+  }, [camName, proxyUrl, paintFrame]);
 
   useEffect(() => {
     startStream();
