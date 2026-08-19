@@ -403,12 +403,11 @@ def create_admin_app(
         return {"logs": logs, "count": len(logs)}
 
     @app.get("/logs/snapshot/{log_id}")
-    async def get_log_snapshot(log_id: int):
-        """Serve the high-quality full-frame context photo for a detection log entry.
+    async def get_log_snapshot(log_id: int, mode: Optional[str] = "context"):
+        """Serve the portrait face crop or full-frame context photo for a detection log entry.
 
-        Returns the full camera frame (with face bounding box drawn) that was
-        captured at the moment of detection. Falls back to the face crop if the
-        context photo is not available.
+        - mode='context' (default): Returns the full camera frame with face bounding box.
+        - mode='portrait': Returns the high-resolution face portrait crop.
         """
         row = db.conn.execute(
             "SELECT snapshot_path, context_snapshot_path FROM detection_log WHERE id = ?",
@@ -417,25 +416,35 @@ def create_admin_app(
         if not row:
             raise HTTPException(status_code=404, detail=f"Log entry {log_id} not found")
 
-        # Prefer the high-quality full-frame context photo
-        photo_path = row["context_snapshot_path"] or row["snapshot_path"]
+        if mode == "portrait" and row["snapshot_path"]:
+            photo_path = row["snapshot_path"]
+        else:
+            # Prefer the high-quality full-frame context photo
+            photo_path = row["context_snapshot_path"] or row["snapshot_path"]
+
         if not photo_path:
             raise HTTPException(status_code=404, detail="No snapshot saved for this log entry")
 
         path = Path(photo_path)
         if not path.exists():
-            raise HTTPException(status_code=404, detail="Snapshot file not found on disk")
+            # Fallback to alternate if one exists
+            alt_path = row["snapshot_path"] if photo_path == row["context_snapshot_path"] else row["context_snapshot_path"]
+            if alt_path and Path(alt_path).exists():
+                path = Path(alt_path)
+            else:
+                raise HTTPException(status_code=404, detail="Snapshot file not found on disk")
 
         with open(path, "rb") as f:
             data = f.read()
 
+        is_context = str(path) == str(row["context_snapshot_path"])
         return Response(
             content=data,
             media_type="image/jpeg",
             headers={
                 "Access-Control-Allow-Origin": "*",
                 "Cache-Control": "no-cache, no-store, must-revalidate",
-                "X-Snapshot-Type": "context" if row["context_snapshot_path"] else "face-crop",
+                "X-Snapshot-Type": "context" if is_context else "face-crop",
             }
         )
 

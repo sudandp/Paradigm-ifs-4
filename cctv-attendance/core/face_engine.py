@@ -259,10 +259,11 @@ class FaceEngine:
         self,
         full_frame: np.ndarray,
         bbox: np.ndarray | list[int],
-        min_dim: int = 360,
+        min_dim: int = 400,
     ) -> tuple[Optional[np.ndarray], float]:
-        """Extract a high-resolution portrait with full head and upper-body context,
-        measure sharpness, and enhance image clarity.
+        """Extract a high-resolution, naturally framed portrait with full head,
+        hair, neck, and upper-body context. Designed specifically for overhead/downward
+        angled CCTV cameras.
         
         Returns:
             (sharpened_portrait_bgr, laplacian_sharpness_score)
@@ -274,10 +275,13 @@ class FaceEngine:
         x1, y1, x2, y2 = (int(v) for v in bbox)
         fw, fh = max(1, x2 - x1), max(1, y2 - y1)
 
-        # Generous portrait padding: 55% horizontal, 65% top (full head/hair), 60% bottom (shoulders/torso)
-        pad_x = int(fw * 0.55)
-        pad_top = int(fh * 0.65)
-        pad_bot = int(fh * 0.60)
+        # Generous portrait padding:
+        # - 70% horizontal (ears, side of hair, shoulders)
+        # - 85% top (crown of head & headroom even when face is tilted down)
+        # - 100% bottom (chin, neck, collar, upper chest)
+        pad_x = int(fw * 0.70)
+        pad_top = int(fh * 0.85)
+        pad_bot = int(fh * 1.00)
 
         cx1 = max(0, x1 - pad_x)
         cy1 = max(0, y1 - pad_top)
@@ -305,10 +309,10 @@ class FaceEngine:
             nw, nh = round(cw * scale), round(ch * scale)
             crop = cv2.resize(crop, (nw, nh), interpolation=cv2.INTER_LANCZOS4)
 
-        # Edge-preserving detail enhancement
+        # Natural detail enhancement (subtle unsharp mask without artificial noise)
         try:
-            blurred = cv2.GaussianBlur(crop, (0, 0), 1.5)
-            sharpened = cv2.addWeighted(crop, 1.25, blurred, -0.25, 0)
+            blurred = cv2.GaussianBlur(crop, (0, 0), 1.2)
+            sharpened = cv2.addWeighted(crop, 1.18, blurred, -0.18, 0)
             return sharpened, sharpness
         except Exception:
             return crop, sharpness

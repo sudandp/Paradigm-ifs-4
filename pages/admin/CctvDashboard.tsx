@@ -6,10 +6,12 @@ import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import Modal from '../../components/ui/Modal';
 import AdminPageHeader from '../../components/admin/AdminPageHeader';
+import { ProfilePlaceholder } from '../../components/ui/ProfilePlaceholder';
 import {
   Activity, ArrowRight, ArrowLeft, AlertTriangle, RefreshCw,
   Camera, CheckCircle, XCircle, Eye, UserPlus, UserCheck,
-  Maximize2, Minimize2, Video, Download, Shield, Cpu, Clock, Search
+  Maximize2, Minimize2, Video, Download, Shield, Cpu, Clock, Search,
+  ZoomIn, ZoomOut, RotateCcw, User, Layers, Sparkles, SplitSquareVertical
 } from 'lucide-react';
 
 // Fallback URL used ONLY when Supabase has no ngrok_url yet (first boot before heartbeat).
@@ -41,6 +43,25 @@ interface UserOption {
   id: string;
   name: string;
   biometricId: string | null;
+  photoUrl?: string | null;
+}
+
+interface ZoomPhotoData {
+  portraitUrl: string;
+  contextUrl: string | null;
+  activeView: 'portrait' | 'context' | 'compare';
+  title: string;
+  subtitle: string;
+  cameraName: string;
+  direction: 'entry' | 'exit';
+  confidence: number;
+  detectedAt: string;
+  userId: string | null;
+  userName: string | null;
+  userPhotoUrl?: string | null;
+  edgeDeviceId?: string;
+  edgeLogId: number | null;
+  item?: EnrollmentItem;
 }
 
 // ── Canvas-based MJPEG Stream Reader (Hikvision/CP Plus web client technique) ──
@@ -435,15 +456,8 @@ const CctvDashboard: React.FC = () => {
   const [enrollStep, setEnrollStep] = useState<'select' | 'sending' | 'done'>('select');
 
   // Lightbox zoom modal state
-  const [zoomPhoto, setZoomPhoto] = useState<{
-    url: string;
-    edgeLogId: number | null;
-    cameraName: string;
-    title: string;
-    subtitle: string;
-    item?: EnrollmentItem;
-  } | null>(null);
-  // Tracks when we're fetching the high-quality edge server photo
+  const [zoomPhoto, setZoomPhoto] = useState<ZoomPhotoData | null>(null);
+  const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [zoomPhotoLoading, setZoomPhotoLoading] = useState(false);
 
   const stats = {
@@ -500,7 +514,7 @@ const CctvDashboard: React.FC = () => {
           .limit(50),
         supabase
           .from('users')
-          .select('id, name, biometric_id')
+          .select('id, name, biometric_id, photo_url')
           .order('name', { ascending: true })
           .limit(200),
       ]);
@@ -533,12 +547,9 @@ const CctvDashboard: React.FC = () => {
         }));
 
       // Deduplicate unknown queue: group same-camera detections within a 90s window.
-      // When the Python cooldown was not active (old records), multiple rows for the
-      // same person can exist — collapse them to the most recent one per group.
       const UNKNOWN_DEDUP_WINDOW_MS = 90_000;
       const deduped: EnrollmentItem[] = [];
       const seenWindows: { cam: string; ts: number }[] = [];
-      // Sort most recent first so the latest snapshot is shown
       mergedUnknown.sort((a, b) => new Date(b.detectedAt).getTime() - new Date(a.detectedAt).getTime());
       for (const item of mergedUnknown) {
         const itemTs = new Date(item.detectedAt).getTime();
@@ -572,7 +583,7 @@ const CctvDashboard: React.FC = () => {
               direction: el.direction || 'entry',
               confidence: el.confidence || 0.85,
               detectedAt: el.timestamp ? new Date(el.timestamp * 1000).toISOString() : new Date().toISOString(),
-              snapshotUrl: el.snapshot_path ? `${ngrokProxy}/logs/snapshot/${el.id}?ngrok-skip-browser-warning=1` : null,
+              snapshotUrl: el.snapshot_path ? `${ngrokProxy}/logs/snapshot/${el.id}?mode=portrait&ngrok-skip-browser-warning=1` : null,
               edgeDeviceId: 'edge-server-main',
             }));
 
@@ -590,17 +601,12 @@ const CctvDashboard: React.FC = () => {
         // Edge direct fetch offline/skipped — Supabase data is used
       }
 
-
-      // ── Deduplicate unknown-person entries in attendance logs ──
-      // The edge server writes one row per camera frame, so a single unknown
-      // crossing can produce 7-20 identical rows within seconds.
-      // Collapse them to ONE per camera per 60-second window (same pattern as unknownQueue above).
+      // Deduplicate unknown-person entries in attendance logs
       const LOG_DEDUP_WINDOW_MS = 60_000;
       const dedupedLogs: CctvLog[] = [];
       const seenUnknownWindows: { cam: string; ts: number }[] = [];
       for (const log of mergedLogs) {
         if (log.userId !== null) {
-          // Known employee — always keep every punch event
           dedupedLogs.push(log);
         } else {
           const logTs = new Date(log.detectedAt).getTime();
@@ -615,14 +621,13 @@ const CctvDashboard: React.FC = () => {
       }
 
       setLogs(dedupedLogs);
-      // Note: setUnknownQueue(mergedUnknown) is called above after deduplication step
-
 
       if (usersData) {
         setUserOptions(usersData.map((u: any) => ({
           id: u.id,
           name: u.name || 'Unnamed Employee',
           biometricId: u.biometric_id || null,
+          photoUrl: u.photo_url || null,
         })));
       }
     } catch (err: any) {
@@ -630,7 +635,7 @@ const CctvDashboard: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [ngrokProxy]);
 
   // Fetch the live ngrok_url from cctv_devices once on mount
   useEffect(() => {
@@ -663,7 +668,6 @@ const CctvDashboard: React.FC = () => {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'cctv_attendance_logs' }, payload => {
         const l = payload.new as any;
         setLogs(prev => {
-          // For unknown persons: skip if same camera was seen within 60s
           if (!l.user_id) {
             const newTs = new Date(l.detected_at).getTime();
             const isDupe = prev.some(
@@ -721,18 +725,19 @@ const CctvDashboard: React.FC = () => {
       .update({ status: 'dismissed', resolved_at: new Date().toISOString(), resolved_by: user?.id })
       .eq('id', id);
     setUnknownQueue(prev => prev.filter(u => u.id !== id));
+    if (zoomPhoto?.item?.id === id) setZoomPhoto(null);
     setToast({ message: 'Unknown face dismissed', type: 'success' });
   };
 
-  const handleAssignFace = async () => {
-    if (!selectedUnknown || !selectedUserId) {
+  const handleAssignFaceDirect = async (targetItem: EnrollmentItem, targetUserId: string) => {
+    if (!targetItem || !targetUserId) {
       setToast({ message: 'Please select an employee to assign.', type: 'error' });
       return;
     }
 
     setIsAssigning(true);
     setEnrollStep('sending');
-    const selectedUserObj = userOptions.find(u => u.id === selectedUserId);
+    const selectedUserObj = userOptions.find(u => u.id === targetUserId);
 
     try {
       const { error } = await supabase
@@ -741,17 +746,18 @@ const CctvDashboard: React.FC = () => {
           status: 'enrolled',
           resolved_at: new Date().toISOString(),
           resolved_by: user?.id,
+          linked_user_id: targetUserId,
         })
-        .eq('id', selectedUnknown.id);
+        .eq('id', targetItem.id);
       if (error) throw error;
 
-      if (selectedUnknown.snapshotUrl) {
+      if (targetItem.snapshotUrl) {
         try {
-          const imgResponse = await fetch(selectedUnknown.snapshotUrl);
+          const imgResponse = await fetch(targetItem.snapshotUrl);
           const imgBlob = await imgResponse.blob();
 
           const formData = new FormData();
-          formData.append('user_id', selectedUserId);
+          formData.append('user_id', targetUserId);
           formData.append('user_name', selectedUserObj?.name || 'Employee');
           formData.append('biometric_id', selectedUserObj?.biometricId || '');
           formData.append('department', 'CCTV_ENROLLED');
@@ -770,13 +776,14 @@ const CctvDashboard: React.FC = () => {
       }
 
       setEnrollStep('done');
-      setUnknownQueue(prev => prev.filter(u => u.id !== selectedUnknown.id));
+      setUnknownQueue(prev => prev.filter(u => u.id !== targetItem.id));
       setToast({
-        message: `Success! ${selectedUserObj?.name || 'Employee'} assigned and face embedding synced!`,
+        message: `Success! ${selectedUserObj?.name || 'Employee'} assigned and face vector synced!`,
         type: 'success',
       });
       setSelectedUnknown(null);
       setSelectedUserId('');
+      setZoomPhoto(null);
       setEnrollStep('select');
     } catch (err: any) {
       setToast({ message: err.message || 'Failed to assign face.', type: 'error' });
@@ -784,6 +791,64 @@ const CctvDashboard: React.FC = () => {
     } finally {
       setIsAssigning(false);
     }
+  };
+
+  const handleAssignFace = async () => {
+    if (selectedUnknown && selectedUserId) {
+      await handleAssignFaceDirect(selectedUnknown, selectedUserId);
+    }
+  };
+
+  const handleOpenLogPhoto = (log: CctvLog) => {
+    const userOpt = userOptions.find(u => u.id === log.userId);
+    const portraitUrl = log.snapshotUrl || '';
+    const contextUrl = log.edgeLogId
+      ? `${ngrokProxy}/logs/snapshot/${log.edgeLogId}?mode=context&ngrok-skip-browser-warning=1`
+      : `${ngrokProxy}/camera/snapshot/${encodeURIComponent(log.cameraName)}?ngrok-skip-browser-warning=1`;
+
+    setZoomLevel(1);
+    setSelectedUserId('');
+    setZoomPhoto({
+      portraitUrl,
+      contextUrl,
+      activeView: 'portrait',
+      title: log.userName || (log.userId ? 'Registered Employee' : 'Unknown Person'),
+      subtitle: `${log.direction.toUpperCase()} • ${log.cameraName} • ${formatTime(log.detectedAt)}`,
+      cameraName: log.cameraName,
+      direction: log.direction,
+      confidence: log.confidence,
+      detectedAt: log.detectedAt,
+      userId: log.userId,
+      userName: log.userName,
+      userPhotoUrl: userOpt?.photoUrl || null,
+      edgeDeviceId: log.edgeDeviceId,
+      edgeLogId: log.edgeLogId,
+    });
+  };
+
+  const handleOpenUnknownPhoto = (item: EnrollmentItem) => {
+    const portraitUrl = item.snapshotUrl || `${ngrokProxy}/camera/snapshot/${encodeURIComponent(item.cameraName)}?ngrok-skip-browser-warning=1`;
+    const contextUrl = `${ngrokProxy}/camera/snapshot/${encodeURIComponent(item.cameraName)}?ngrok-skip-browser-warning=1`;
+
+    setZoomLevel(1);
+    setSelectedUserId('');
+    setZoomPhoto({
+      portraitUrl,
+      contextUrl,
+      activeView: 'portrait',
+      title: 'Unknown Person Detected',
+      subtitle: `ENTRY • ${item.cameraName} • ${formatTime(item.detectedAt)}`,
+      cameraName: item.cameraName,
+      direction: 'entry',
+      confidence: 0.5,
+      detectedAt: item.detectedAt,
+      userId: null,
+      userName: null,
+      userPhotoUrl: null,
+      edgeDeviceId: item.edgeDeviceId,
+      edgeLogId: null,
+      item: item,
+    });
   };
 
   const formatTime = (iso: string) =>
@@ -924,18 +989,33 @@ const CctvDashboard: React.FC = () => {
                 </div>
               ) : (
                 logs.slice(0, 15).map(log => (
-                  <div key={log.id} className="p-3.5 hover:bg-emerald-50/30 transition-colors flex items-center gap-3">
-                    <div className={`h-10 w-10 rounded-xl flex items-center justify-center text-sm font-extrabold flex-shrink-0 border ${
-                      log.userId 
-                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
-                        : 'bg-gray-100 text-gray-500 border-gray-200'
-                    }`}>
-                      {log.userName ? log.userName.charAt(0).toUpperCase() : '?'}
+                  <div
+                    key={log.id}
+                    onClick={() => handleOpenLogPhoto(log)}
+                    className="p-3.5 hover:bg-emerald-50/40 cursor-pointer transition-colors flex items-center gap-3 group"
+                  >
+                    <div className="relative">
+                      {log.snapshotUrl ? (
+                        <img
+                          src={log.snapshotUrl}
+                          alt=""
+                          className="h-10 w-10 rounded-xl object-cover border border-emerald-500/30 group-hover:scale-105 transition-transform shadow-xs"
+                        />
+                      ) : (
+                        <div className={`h-10 w-10 rounded-xl flex items-center justify-center text-sm font-extrabold flex-shrink-0 border ${
+                          log.userId 
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                            : 'bg-gray-100 text-gray-500 border-gray-200'
+                        }`}>
+                          {log.userName ? log.userName.charAt(0).toUpperCase() : '?'}
+                        </div>
+                      )}
+                      <span className={`absolute -bottom-1 -right-1 h-3 w-3 rounded-full border-2 border-white ${log.userId ? 'bg-emerald-500' : 'bg-amber-500'}`} />
                     </div>
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-bold text-xs text-primary-text truncate">
+                        <span className="font-bold text-xs text-primary-text truncate group-hover:text-emerald-700 transition-colors">
                           {log.userName || 'Unknown Person'}
                         </span>
                         <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded ${
@@ -951,10 +1031,11 @@ const CctvDashboard: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="text-right flex-shrink-0">
+                    <div className="text-right flex-shrink-0 flex items-center gap-2">
                       <span className="text-xs font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                         {(log.confidence * 100).toFixed(0)}%
                       </span>
+                      <Maximize2 className="h-3.5 w-3.5 text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
                     </div>
                   </div>
                 ))
@@ -1035,42 +1116,24 @@ const CctvDashboard: React.FC = () => {
                   </tr>
                 ) : (
                   filteredLogs.map(log => (
-                    <tr key={log.id} className="hover:bg-emerald-50/30 transition-colors">
-                      <td className="py-3 px-4 font-semibold text-primary-text flex items-center gap-2">
-                        {log.snapshotUrl && (
+                    <tr
+                      key={log.id}
+                      onClick={() => handleOpenLogPhoto(log)}
+                      className="hover:bg-emerald-50/30 transition-colors cursor-pointer group"
+                    >
+                      <td className="py-3 px-4 font-semibold text-primary-text flex items-center gap-2.5">
+                        {log.snapshotUrl ? (
                           <img
                             src={log.snapshotUrl}
                             alt=""
-                            className="h-7 w-7 rounded-lg object-cover border border-border cursor-pointer hover:scale-110 transition-transform"
-                            style={{ filter: 'contrast(1.05) brightness(1.02)' }}
-                            onClick={async () => {
-                              // Start with the Supabase snapshot, then upgrade to edge server photo
-                              const baseUrl = log.snapshotUrl || '';
-                              setZoomPhoto({
-                                url: baseUrl,
-                                edgeLogId: log.edgeLogId,
-                                cameraName: log.cameraName,
-                                title: log.userName || 'Unknown Person',
-                                subtitle: `${log.direction.toUpperCase()} • ${log.cameraName} • ${formatTime(log.detectedAt)}`
-                              });
-                              // If we have an edge log ID, fetch the full-quality context photo
-                              if (log.edgeLogId) {
-                                setZoomPhotoLoading(true);
-                                try {
-                                  const url = `${ngrokProxy}/logs/snapshot/${log.edgeLogId}?ngrok-skip-browser-warning=1`;
-                                  const res = await fetch(url, { headers: { 'ngrok-skip-browser-warning': '1' }, signal: AbortSignal.timeout(5000) });
-                                  if (res.ok) {
-                                    const blob = await res.blob();
-                                    const objectUrl = URL.createObjectURL(blob);
-                                    setZoomPhoto(prev => prev ? { ...prev, url: objectUrl } : null);
-                                  }
-                                } catch { /* keep Supabase snapshot */ }
-                                finally { setZoomPhotoLoading(false); }
-                              }
-                            }}
+                            className="h-8 w-8 rounded-lg object-cover border border-border group-hover:ring-2 group-hover:ring-emerald-500 group-hover:scale-105 transition-all"
                           />
+                        ) : (
+                          <div className={`h-8 w-8 rounded-lg flex items-center justify-center text-xs font-bold border ${log.userId ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-gray-100 text-gray-400'}`}>
+                            {log.userName ? log.userName.charAt(0).toUpperCase() : '?'}
+                          </div>
                         )}
-                        <span>{log.userName || <span className="text-muted italic">Unknown Person</span>}</span>
+                        <span className="group-hover:text-emerald-700 transition-colors">{log.userName || <span className="text-muted italic">Unknown Person</span>}</span>
                       </td>
                       <td className="py-3 px-4">
                         <span className={`px-2.5 py-0.5 rounded-full font-bold uppercase text-[10px] ${
@@ -1114,29 +1177,21 @@ const CctvDashboard: React.FC = () => {
                   <div key={item.id} className="bg-card rounded-2xl border border-amber-200/90 p-4 shadow-sm space-y-3 hover:border-amber-400 transition-colors">
                     <div
                       className="aspect-square bg-neutral-950 rounded-xl overflow-hidden border border-border relative flex items-center justify-center cursor-pointer group"
-                      onClick={() => setZoomPhoto({
-                        url: imgSource,
-                        edgeLogId: null,
-                        cameraName: item.cameraName,
-                        title: `Unknown Face • ${item.cameraName}`,
-                        subtitle: `Detected at ${formatTime(item.detectedAt)}`,
-                        item: item,
-                      })}
+                      onClick={() => handleOpenUnknownPhoto(item)}
                     >
                       <img
                         src={imgSource}
                         alt="Unknown face detection"
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        style={{ filter: 'contrast(1.06) brightness(1.02) saturate(1.05)' }}
                         onError={(e) => {
                           const target = e.target as HTMLImageElement;
                           target.onerror = null;
                           target.src = `${ngrokProxy}/camera/snapshot/${encodeURIComponent(item.cameraName)}?ngrok-skip-browser-warning=1`;
                         }}
                       />
-                      <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                        <span className="bg-black/70 text-white text-xs font-semibold px-2.5 py-1 rounded-lg backdrop-blur-xs flex items-center gap-1">
-                          <Maximize2 className="h-3 w-3" /> Click to Enlarge
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                        <span className="bg-black/80 text-white text-xs font-semibold px-3 py-1.5 rounded-lg backdrop-blur-xs flex items-center gap-1.5 shadow-sm">
+                          <Maximize2 className="h-3.5 w-3.5 text-emerald-400" /> Click to Inspect
                         </span>
                       </div>
                       <div className="face-fallback-icon hidden w-full h-full items-center justify-center text-muted">
@@ -1172,72 +1227,332 @@ const CctvDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* Lightbox Zoom Photo Modal */}
+      {/* ── REDESIGNED ADVANCED DETECTION & PHOTO LIGHTBOX MODAL ── */}
       {zoomPhoto && (
         <div
-          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 md:p-6 overflow-y-auto"
           onClick={() => setZoomPhoto(null)}
         >
           <div
-            className="bg-neutral-900 border border-white/20 rounded-2xl max-w-2xl w-full overflow-hidden shadow-2xl"
+            className="bg-neutral-950 border border-emerald-500/30 rounded-3xl max-w-3xl w-full overflow-hidden shadow-2xl text-white my-auto flex flex-col"
             onClick={e => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-center justify-between text-white px-5 py-3 border-b border-white/10">
-              <div>
-                <h4 className="font-bold text-sm text-emerald-400">{zoomPhoto.title}</h4>
-                <p className="text-xs text-neutral-400">{zoomPhoto.subtitle}</p>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-neutral-900/90">
+              <div className="flex items-center gap-3">
+                <div className={`p-2.5 rounded-xl border ${zoomPhoto.userId ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-amber-500/10 text-amber-400 border-amber-500/30'}`}>
+                  {zoomPhoto.userId ? <CheckCircle className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-bold text-base text-white">{zoomPhoto.title}</h4>
+                    <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+                      zoomPhoto.direction === 'entry'
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                        : 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                    }`}>
+                      {zoomPhoto.direction.toUpperCase()}
+                    </span>
+                  </div>
+                  <p className="text-xs text-neutral-400 mt-0.5 font-mono">
+                    {zoomPhoto.cameraName} • Detected at {formatTime(zoomPhoto.detectedAt)}
+                  </p>
+                </div>
               </div>
               <button
                 onClick={() => setZoomPhoto(null)}
-                className="text-neutral-400 hover:text-white p-1 rounded-lg hover:bg-white/10"
+                className="text-neutral-400 hover:text-white p-2 rounded-xl hover:bg-white/10 transition-colors"
+                title="Close"
               >
                 ✕
               </button>
             </div>
 
-            {/* Captured snapshot photo — upgrades from Supabase crop to full-frame edge server photo */}
-            <div className="w-full bg-black flex items-center justify-center relative" style={{ minHeight: '420px' }}>
+            {/* View Mode Switcher Toolbar */}
+            <div className="px-6 py-3 bg-neutral-900/60 border-b border-white/10 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-1.5 bg-neutral-950/80 p-1 rounded-xl border border-white/10 text-xs">
+                <button
+                  onClick={() => { setZoomPhoto(prev => prev ? { ...prev, activeView: 'portrait' } : null); setZoomLevel(1); }}
+                  className={`px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 transition-all ${
+                    zoomPhoto.activeView === 'portrait'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'text-neutral-400 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  <User className="h-3.5 w-3.5" /> Biometric Face Portrait
+                </button>
+
+                {zoomPhoto.contextUrl && (
+                  <button
+                    onClick={() => { setZoomPhoto(prev => prev ? { ...prev, activeView: 'context' } : null); setZoomLevel(1); }}
+                    className={`px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 transition-all ${
+                      zoomPhoto.activeView === 'context'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-neutral-400 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <Layers className="h-3.5 w-3.5" /> Gate Scene Context
+                  </button>
+                )}
+
+                {(zoomPhoto.userId || selectedUserId) && (
+                  <button
+                    onClick={() => { setZoomPhoto(prev => prev ? { ...prev, activeView: 'compare' } : null); setZoomLevel(1); }}
+                    className={`px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 transition-all ${
+                      zoomPhoto.activeView === 'compare'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-neutral-400 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <SplitSquareVertical className="h-3.5 w-3.5" /> Side-by-Side Match
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                {zoomPhoto.activeView !== 'compare' && (
+                  <div className="flex items-center gap-1 bg-neutral-950/80 p-1 rounded-xl border border-white/10">
+                    <button
+                      onClick={() => setZoomLevel(prev => Math.max(1, prev - 0.5))}
+                      disabled={zoomLevel <= 1}
+                      className="p-1.5 text-neutral-400 hover:text-white disabled:opacity-30 rounded-lg hover:bg-white/10"
+                      title="Zoom Out"
+                    >
+                      <ZoomOut className="h-3.5 w-3.5" />
+                    </button>
+                    <span className="text-[11px] font-mono font-semibold px-1 text-neutral-300 min-w-[36px] text-center">
+                      {(zoomLevel * 100).toFixed(0)}%
+                    </span>
+                    <button
+                      onClick={() => setZoomLevel(prev => Math.min(2.5, prev + 0.5))}
+                      disabled={zoomLevel >= 2.5}
+                      className="p-1.5 text-neutral-400 hover:text-white disabled:opacity-30 rounded-lg hover:bg-white/10"
+                      title="Zoom In"
+                    >
+                      <ZoomIn className="h-3.5 w-3.5" />
+                    </button>
+                    {zoomLevel !== 1 && (
+                      <button
+                        onClick={() => setZoomLevel(1)}
+                        className="p-1.5 text-neutral-400 hover:text-white rounded-lg hover:bg-white/10"
+                        title="Reset Zoom"
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                <a
+                  href={zoomPhoto.activeView === 'context' ? (zoomPhoto.contextUrl || zoomPhoto.portraitUrl) : zoomPhoto.portraitUrl}
+                  download={`cctv_${zoomPhoto.cameraName}_${Date.now()}.jpg`}
+                  className="p-2 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl border border-white/15 transition-all text-xs font-semibold flex items-center gap-1.5 shadow-sm"
+                  title="Download Image"
+                >
+                  <Download className="h-3.5 w-3.5" /> Save
+                </a>
+              </div>
+            </div>
+
+            {/* Main Image Display Viewport */}
+            <div className="relative bg-neutral-950 p-4 md:p-6 flex items-center justify-center min-h-[380px] max-h-[480px] overflow-hidden">
               {zoomPhotoLoading && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 z-10 gap-2">
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 z-20 gap-2">
                   <div className="h-8 w-8 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
-                  <span className="text-emerald-400 text-xs font-mono">Fetching HD photo from edge server...</span>
+                  <span className="text-emerald-400 text-xs font-mono">Loading full-resolution photo...</span>
                 </div>
               )}
-              <img
-                src={zoomPhoto.url}
-                alt="Captured face snapshot"
-                className="w-full h-full object-contain"
-                style={{
-                  maxHeight: '480px',
-                  filter: 'contrast(1.18) brightness(1.06) saturate(1.12)',
-                }}
-              />
+
+              {/* 1. Biometric Face Portrait Mode */}
+              {zoomPhoto.activeView === 'portrait' && (
+                <div className="w-full h-full flex flex-col items-center justify-center">
+                  <div
+                    className="relative rounded-2xl overflow-hidden border border-emerald-500/30 bg-neutral-900 shadow-2xl max-w-sm w-full flex items-center justify-center"
+                    style={{ maxHeight: '380px' }}
+                  >
+                    <img
+                      src={zoomPhoto.portraitUrl}
+                      alt="Face portrait"
+                      className="w-full h-full object-contain transition-transform duration-200"
+                      style={{
+                        transform: `scale(${zoomLevel})`,
+                        maxHeight: '380px',
+                      }}
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.onerror = null;
+                        if (zoomPhoto.contextUrl) target.src = zoomPhoto.contextUrl;
+                      }}
+                    />
+                    <div className="absolute top-3 left-3 bg-neutral-950/85 border border-emerald-500/30 text-emerald-400 px-2.5 py-1 rounded-full text-[10px] font-mono flex items-center gap-1.5 backdrop-blur-md">
+                      <Sparkles className="h-3 w-3" /> INSIGHTFACE 512D
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 2. Gate Scene Context Mode */}
+              {zoomPhoto.activeView === 'context' && zoomPhoto.contextUrl && (
+                <div className="w-full h-full flex flex-col items-center justify-center">
+                  <div
+                    className="relative rounded-2xl overflow-hidden border border-white/20 bg-neutral-900 shadow-2xl max-w-2xl w-full flex items-center justify-center"
+                    style={{ maxHeight: '380px' }}
+                  >
+                    <img
+                      src={zoomPhoto.contextUrl}
+                      alt="Full scene camera context"
+                      className="w-full h-full object-contain transition-transform duration-200"
+                      style={{
+                        transform: `scale(${zoomLevel})`,
+                        maxHeight: '380px',
+                      }}
+                    />
+                    <div className="absolute top-3 left-3 bg-neutral-950/85 border border-white/20 text-neutral-300 px-3 py-1 rounded-full text-[11px] font-mono flex items-center gap-1.5 backdrop-blur-md">
+                      <Camera className="h-3.5 w-3.5 text-emerald-400" /> GATE ENTRANCE SCENE
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 3. Side-by-Side Profile Comparison Mode */}
+              {zoomPhoto.activeView === 'compare' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-2xl items-stretch">
+                  {/* Left: CCTV Live Detection */}
+                  <div className="bg-neutral-900/90 rounded-2xl border border-emerald-500/30 p-4 flex flex-col items-center text-center shadow-lg">
+                    <span className="text-xs font-mono font-bold text-emerald-400 mb-2 flex items-center gap-1.5">
+                      <Camera className="h-3.5 w-3.5" /> CCTV Live Detection
+                    </span>
+                    <div className="aspect-square w-40 rounded-2xl overflow-hidden border border-emerald-500/40 bg-neutral-950 shadow-inner mb-3 flex items-center justify-center">
+                      <img
+                        src={zoomPhoto.portraitUrl}
+                        alt="Live CCTV"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <span className="text-xs font-semibold text-white truncate max-w-full">
+                      {zoomPhoto.userName || 'Live Unknown'}
+                    </span>
+                    <span className="text-[11px] text-neutral-400 font-mono mt-0.5">
+                      {formatTime(zoomPhoto.detectedAt)} • {zoomPhoto.cameraName}
+                    </span>
+                  </div>
+
+                  {/* Right: Registered Database Profile Photo */}
+                  <div className="bg-neutral-900/90 rounded-2xl border border-white/20 p-4 flex flex-col items-center text-center shadow-lg">
+                    <span className="text-xs font-mono font-bold text-sky-400 mb-2 flex items-center gap-1.5">
+                      <User className="h-3.5 w-3.5" /> System Profile Record
+                    </span>
+                    <div className="aspect-square w-40 rounded-2xl overflow-hidden border border-sky-500/40 bg-neutral-950 shadow-inner mb-3 flex items-center justify-center">
+                      {(() => {
+                        const targetUser = userOptions.find(u => u.id === (zoomPhoto.userId || selectedUserId));
+                        if (targetUser?.photoUrl) {
+                          return (
+                            <img
+                              src={targetUser.photoUrl}
+                              alt="Profile"
+                              className="w-full h-full object-cover"
+                            />
+                          );
+                        }
+                        return (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <ProfilePlaceholder seed={targetUser?.id} photoUrl={targetUser?.photoUrl} className="w-full h-full" />
+                          </div>
+                        );
+                      })()}
+                    </div>
+                    <span className="text-xs font-semibold text-white truncate max-w-full">
+                      {userOptions.find(u => u.id === (zoomPhoto.userId || selectedUserId))?.name || 'Employee Profile'}
+                    </span>
+                    <span className="text-[11px] text-neutral-400 font-mono mt-0.5">
+                      Code: {userOptions.find(u => u.id === (zoomPhoto.userId || selectedUserId))?.biometricId || 'N/A'}
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
-            {zoomPhoto.item && (
-              <div className="pt-2 flex justify-end gap-2">
-                <Button
-                  onClick={() => {
-                    const it = zoomPhoto.item!;
-                    setZoomPhoto(null);
-                    setSelectedUnknown(it);
-                    setSelectedUserId('');
-                  }}
-                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs h-9"
-                >
-                  <UserPlus className="h-4 w-4 mr-1.5" /> Assign This Face to Employee
-                </Button>
+
+            {/* Metadata Telemetry Bar */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 px-6 py-3 bg-neutral-900/80 border-t border-white/10 text-xs font-mono">
+              <div className="bg-neutral-950/60 p-2.5 rounded-xl border border-white/5">
+                <span className="text-neutral-400 text-[10px] block uppercase">Camera Channel</span>
+                <span className="font-bold text-white truncate block">{zoomPhoto.cameraName}</span>
               </div>
-            )}
+              <div className="bg-neutral-950/60 p-2.5 rounded-xl border border-white/5">
+                <span className="text-neutral-400 text-[10px] block uppercase">Timestamp</span>
+                <span className="font-bold text-white truncate block">{formatTime(zoomPhoto.detectedAt)}</span>
+              </div>
+              <div className="bg-neutral-950/60 p-2.5 rounded-xl border border-white/5">
+                <span className="text-neutral-400 text-[10px] block uppercase">Gate Direction</span>
+                <span className={`font-bold uppercase ${zoomPhoto.direction === 'entry' ? 'text-emerald-400' : 'text-blue-400'}`}>
+                  {zoomPhoto.direction === 'entry' ? '→ Punch-IN' : '← Punch-OUT'}
+                </span>
+              </div>
+              <div className="bg-neutral-950/60 p-2.5 rounded-xl border border-white/5">
+                <span className="text-neutral-400 text-[10px] block uppercase">Match Confidence</span>
+                <span className="font-bold text-emerald-400">
+                  {(zoomPhoto.confidence * 100).toFixed(1)}% Match
+                </span>
+              </div>
+            </div>
+
+            {/* Footer / Direct Face Assignment Panel */}
+            <div className="px-6 py-4 bg-neutral-900 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3">
+              {zoomPhoto.item ? (
+                <div className="w-full flex flex-col sm:flex-row items-center gap-3">
+                  <div className="flex-1 w-full">
+                    <select
+                      value={selectedUserId}
+                      onChange={e => setSelectedUserId(e.target.value)}
+                      className="w-full px-3.5 py-2 bg-neutral-950 border border-white/20 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    >
+                      <option value="">-- Choose employee to assign this face --</option>
+                      {userOptions.map(u => (
+                        <option key={u.id} value={u.id}>
+                          {u.name} {u.biometricId ? `(Code: ${u.biometricId})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <Button
+                      onClick={() => handleAssignFaceDirect(zoomPhoto.item!, selectedUserId)}
+                      disabled={!selectedUserId || isAssigning}
+                      className="flex-1 sm:flex-none text-xs h-9 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold flex items-center justify-center gap-1.5"
+                    >
+                      <UserCheck className="h-4 w-4" /> {isAssigning ? 'Syncing Vector...' : 'Confirm & Sync Face'}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleDismiss(zoomPhoto.item!.id)}
+                      className="text-xs h-9 text-neutral-400 hover:text-red-400 border-white/10"
+                    >
+                      Dismiss
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="w-full flex items-center justify-between">
+                  <span className="text-xs text-neutral-400 font-mono">
+                    InsightFace Biometric Punch Verified
+                  </span>
+                  <Button
+                    onClick={() => setZoomPhoto(null)}
+                    className="text-xs h-9 bg-white/10 hover:bg-white/20 text-white px-5"
+                  >
+                    Close Preview
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
 
-      {/* Assign Face Modal */}
+      {/* Assign Face Modal (Triggered from grid button) */}
       <Modal
         isOpen={!!selectedUnknown}
         onClose={() => setSelectedUnknown(null)}
-
         onConfirm={handleAssignFace}
         title="Assign Face to Employee Profile"
         confirmButtonText={isAssigning ? 'Syncing...' : 'Confirm & Sync Face Vector'}
