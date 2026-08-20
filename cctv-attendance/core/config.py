@@ -122,10 +122,10 @@ class AppConfig:
             edge_device_id=os.getenv('EDGE_DEVICE_ID', 'edge-server-default'),
             edge_device_secret=os.getenv('EDGE_DEVICE_SECRET', ''),
             cameras=CameraConfig.parse_from_env(os.getenv('CAMERAS', '')),
-            match_threshold=float(os.getenv('MATCH_THRESHOLD', '0.52')),
-            min_detection_confidence=float(os.getenv('MIN_DETECTION_CONFIDENCE', '0.60')),
+            match_threshold=float(os.getenv('MATCH_THRESHOLD', '0.45')),
+            min_detection_confidence=float(os.getenv('MIN_DETECTION_CONFIDENCE', '0.45')),
             cooldown_seconds=int(os.getenv('COOLDOWN_SECONDS', '300')),
-            processing_fps=int(os.getenv('PROCESSING_FPS', '3')),
+            processing_fps=int(os.getenv('PROCESSING_FPS', '4')),
 
             admin_port=int(os.getenv('ADMIN_PORT', '4100')),
             log_level=os.getenv('LOG_LEVEL', 'INFO'),

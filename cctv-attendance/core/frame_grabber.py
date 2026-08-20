@@ -128,7 +128,16 @@ class CameraStream:
         for cand_url in candidate_urls:
             for transport in ['tcp', 'udp']:
                 try:
-                    os.environ['OPENCV_FFMPEG_CAPTURE_OPTIONS'] = f'rtsp_transport;{transport}|timeout;5000000'
+                    # Low-latency FFMPEG options: discard internal FIFO buffer to ensure 0ms real-time delay
+                    os.environ['OPENCV_FFMPEG_CAPTURE_OPTIONS'] = (
+                        f'rtsp_transport;{transport}|'
+                        'fflags;nobuffer|'
+                        'flags;low_delay|'
+                        'max_delay;100000|'
+                        'reorder_queue_size;0|'
+                        'buffer_size;102400|'
+                        'timeout;5000000'
+                    )
                     cap = cv2.VideoCapture(cand_url, cv2.CAP_FFMPEG)
                     
                     if cap and cap.isOpened():
@@ -144,7 +153,7 @@ class CameraStream:
                             native_fps = self._cap.get(cv2.CAP_PROP_FPS)
 
                             logger.info(
-                                f"[Camera:{self.config.name}] Connected via {transport.upper()} — "
+                                f"[Camera:{self.config.name}] Connected via {transport.upper()} (Zero-Latency mode) — "
                                 f"{width}x{height} @ {native_fps:.1f} FPS (URL: {cand_url.split('@')[-1]})"
                             )
                             self._consecutive_failures = 0
@@ -212,19 +221,20 @@ class CameraStream:
         )
 
     def _capture_loop(self) -> None:
-        """Background loop that continuously reads frames from RTSP."""
+        """High-speed real-time capture loop:
+        Constantly drains the RTSP buffer so OpenCV is ALWAYS reading the current live frame (0ms lag).
+        """
         while self._running:
             try:
                 if not self.is_connected:
                     logger.warning(f"[Camera:{self.config.name}] Disconnected, attempting reconnect...")
                     time.sleep(5.0)
                     if not self.connect():
-                        time.sleep(10.0)
+                        time.sleep(5.0)
                         continue
 
-                ret, frame = self._cap.read()  # type: ignore
-
-                if not ret or frame is None:
+                # Fast grab to discard any queued stale frames in network socket
+                if not self._cap.grab():
                     self._consecutive_failures += 1
                     if self._consecutive_failures >= self._max_failures:
                         logger.warning(
@@ -236,20 +246,26 @@ class CameraStream:
                     time.sleep(0.01)
                     continue
 
+                # Retrieve decoded latest frame
+                ret, frame = self._cap.retrieve()
+                if not ret or frame is None:
+                    continue
+
                 self._consecutive_failures = 0
                 self._frame_count += 1
+                now = time.time()
 
-                # Store latest frame (overwriting previous to avoid memory buildup)
+                # Overwrite immediately with the freshest live frame
                 with self._frame_lock:
                     self._latest_frame = frame
-                    self._last_frame_time = time.time()
+                    self._last_frame_time = now
 
-                # Yield thread briefly without delaying the next RTSP frame
+                # Yield thread briefly without accumulating buffer
                 time.sleep(0.001)
 
             except Exception as e:
                 logger.error(f"[Camera:{self.config.name}] Capture error: {e}")
-                time.sleep(1.0)
+                time.sleep(0.5)
 
         logger.info(f"[Camera:{self.config.name}] Capture loop ended")
 

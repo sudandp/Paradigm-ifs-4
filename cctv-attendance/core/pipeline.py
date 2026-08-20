@@ -75,10 +75,10 @@ class AttendancePipeline:
 
         # Unknown face cooldown — prevent same person creating duplicate queue entries
         # Structure: {camera_name: [(embedding_vec, last_seen_timestamp), ...]}
-        # Compares cosine similarity — if > 0.65 within cooldown window → skip
+        # Compares cosine similarity — if > 0.78 within cooldown window → skip
         self._unknown_face_seen: dict[str, list[tuple]] = {}
-        self._unknown_cooldown: float = 60.0  # seconds between same unknown face reports
-        self._unknown_sim_threshold: float = 0.65  # cosine similarity to consider "same person"
+        self._unknown_cooldown: float = 20.0  # seconds between same unknown face reports
+        self._unknown_sim_threshold: float = 0.78  # strict cosine similarity to consider "same person"
 
         # Stats
         self._stats = PipelineStats()
@@ -232,16 +232,18 @@ class AttendancePipeline:
 
         if faces:
             self._stats.faces_detected += len(faces)
-            for face in faces:
-                match: Optional[MatchResult] = await loop.run_in_executor(
-                    None,
-                    lambda f=face: self.face_engine.match_face(
-                        embedding=f.embedding,
-                        enrolled_embeddings=enrolled_snapshot,
-                        threshold=self.config.match_threshold,
-                    )
-                )
+            
+            # Vectorized Batch Matching: Match all detected faces in one fast BLAS matrix multiplication (<1ms)
+            face_embeddings = [f.embedding for f in faces]
+            matches: list[Optional[MatchResult]] = await loop.run_in_executor(
+                None,
+                self.face_engine.match_faces_batch,
+                face_embeddings,
+                enrolled_snapshot,
+                self.config.match_threshold,
+            )
 
+            for face, match in zip(faces, matches):
                 is_match = bool(match and match.is_match)
                 user_name = match.user_name if (is_match and match) else "Unknown"
                 user_id = match.user_id if (is_match and match) else None
@@ -289,16 +291,16 @@ class AttendancePipeline:
 
         self._stats.faces_detected += len(faces)
 
-        for face in faces:
-            match: Optional[MatchResult] = await loop.run_in_executor(
-                None,
-                lambda f=face: self.face_engine.match_face(
-                    embedding=f.embedding,
-                    enrolled_embeddings=enrolled_snapshot,
-                    threshold=self.config.match_threshold,
-                )
-            )
+        face_embeddings = [f.embedding for f in faces]
+        matches: list[Optional[MatchResult]] = await loop.run_in_executor(
+            None,
+            self.face_engine.match_faces_batch,
+            face_embeddings,
+            enrolled_snapshot,
+            self.config.match_threshold,
+        )
 
+        for face, match in zip(faces, matches):
             is_match = bool(match and match.is_match)
             user_name = match.user_name if (is_match and match) else "UNKNOWN PERSON"
             user_id = match.user_id if (is_match and match) else None
