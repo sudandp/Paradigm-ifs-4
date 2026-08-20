@@ -21,6 +21,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const candidateBases = [
+    'https://cctv.cctv.rest',
     'https://cctv.paradigmfms.com',
     'http://localhost:4100',
     'http://127.0.0.1:4100',

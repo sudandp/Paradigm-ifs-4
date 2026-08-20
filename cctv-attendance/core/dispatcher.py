@@ -142,8 +142,8 @@ class EventDispatcher:
             clean_env_url = env_url.rstrip('/')
             # Health check: verify the permanent domain is actually reachable online
             try:
-                async with _aiohttp.ClientSession(timeout=_aiohttp.ClientTimeout(total=2)) as sess:
-                    async with sess.get(f"{clean_env_url}/status") as resp:
+                async with _aiohttp.ClientSession(timeout=_aiohttp.ClientTimeout(total=4)) as sess:
+                    async with sess.get(f"{clean_env_url}/health") as resp:
                         if resp.status == 200:
                             logger.debug(f"[Dispatcher] Permanent domain healthy: {clean_env_url}")
                             return clean_env_url

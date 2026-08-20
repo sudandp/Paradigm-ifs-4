@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 
 // Fallback URL used ONLY when Supabase has no ngrok_url yet (first boot before heartbeat).
-const NGROK_PROXY_FALLBACK = 'https://cctv.paradigmfms.com';
+const NGROK_PROXY_FALLBACK = 'https://cctv.cctv.rest';
 
 interface CctvLog {
   id: string;

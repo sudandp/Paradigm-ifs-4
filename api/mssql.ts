@@ -14,6 +14,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const candidateBaseUrls: string[] = [
+    'https://attendance.cctv.rest',
     'https://attendance.paradigmfms.com',
     (process.env.MSSQL_PROXY_URL || '').replace(/\/$/, ''),
     'https://tassel-estranged-prism.ngrok-free.dev',

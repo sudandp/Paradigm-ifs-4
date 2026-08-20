@@ -35,7 +35,7 @@ interface CctvDevice {
 }
 
 // Fallback URL used ONLY when Supabase has no ngrok_url yet.
-const NGROK_PROXY_FALLBACK = 'https://cctv.paradigmfms.com';
+const NGROK_PROXY_FALLBACK = 'https://cctv.cctv.rest';
 
 // ─── Camera Live Preview (Canvas-based MJPEG reader — works through Ngrok) ──
 // fetch() opens ONE persistent connection with custom ngrok headers.

@@ -87,10 +87,12 @@ export default defineConfig({
           const search = urlObj.search;
 
           const candidateBases = [
-            'http://localhost:4000',
-            'http://127.0.0.1:4000',
+            'https://attendance.cctv.rest',
+            'https://cctv.cctv.rest',
             'https://attendance.paradigmfms.com',
             'https://cctv.paradigmfms.com',
+            'http://localhost:4000',
+            'http://127.0.0.1:4000',
             'https://tassel-estranged-prism.ngrok-free.dev',
             'http://192.168.51.112:4000',
           ];

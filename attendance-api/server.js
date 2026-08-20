@@ -38,13 +38,21 @@ function requireApiKey(req, res, next) {
   next();
 }
 
-// ΓöÇΓöÇΓöÇ CORS ΓÇö only allow your Vercel domain ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─── CORS ─────────────────────────────────────────────────────────────
 app.use(cors({
   origin: [
+    'https://cctv.rest',
+    'https://attendance.cctv.rest',
+    'https://cctv.cctv.rest',
+    'https://app.paradigmfms.com',
+    'https://paradigmfms.com',
+    'https://www.paradigmfms.com',
     'https://paradigm-ifs-4.vercel.app',
+    'https://www.paradigm-ifs-4.vercel.app',
     'http://localhost:3000',
     'http://localhost:5173',
-  ]
+  ],
+  credentials: true,
 }));
 app.use(express.json());
 

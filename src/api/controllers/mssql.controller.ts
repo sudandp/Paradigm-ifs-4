@@ -79,12 +79,14 @@ export interface DeviceResponse {
 async function getCandidateProxyUrls(): Promise<{ urls: string[]; secret: string }> {
   const secret = process.env.MSSQL_API_SECRET?.trim() || 'paradigm-attendance-secret-2024';
   const urls: string[] = [
+    'https://attendance.cctv.rest',
+    'https://cctv.cctv.rest',
     'https://attendance.paradigmfms.com',
     'https://cctv.paradigmfms.com',
     process.env.MSSQL_PROXY_URL?.trim() || '',
-    'https://tassel-estranged-prism.ngrok-free.dev',
     'http://localhost:4000',
     'http://127.0.0.1:4000',
+    'https://tassel-estranged-prism.ngrok-free.dev',
     'http://192.168.51.112:4000',
   ].filter(Boolean);
 

@@ -19,14 +19,6 @@ module.exports = {
       interpreter: 'python',
       autorestart: true,
       max_restarts: 10
-    },
-    {
-      name: 'tunnel-sync',
-      script: 'sync_tunnels.py',
-      cwd: 'C:/cctv-attendance',
-      interpreter: 'python',
-      autorestart: true,
-      max_restarts: 10
     }
   ]
 };

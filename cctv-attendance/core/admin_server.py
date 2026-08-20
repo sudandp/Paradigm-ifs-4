@@ -152,6 +152,7 @@ def create_admin_app(
     # ─── Health & Status ──────────────────────────────────────────────────────
 
     @app.get("/health")
+    @app.get("/status")
     async def health():
         """Health check endpoint."""
         return {
