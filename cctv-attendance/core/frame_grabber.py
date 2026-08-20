@@ -50,6 +50,9 @@ class CameraStream:
         self._consecutive_failures = 0
         self._max_failures = 30  # Reconnect after this many consecutive read failures
         self._last_frame_time = 0.0
+        self.last_error = ""
+        self.active_rtsp_url = self.config.rtsp_url
+        self.connection_attempts = 0
 
     @property
     def is_connected(self) -> bool:
@@ -59,47 +62,101 @@ class CameraStream:
     def frame_count(self) -> int:
         return self._frame_count
 
+    def _get_candidate_urls(self) -> list[str]:
+        """Generate alternative RTSP URLs to try if default fails (e.g., Dahua subtype 1, Hikvision, decoded pass)."""
+        base = self.config.rtsp_url
+        candidates = [base]
+
+        # Alternative 1: If %40 in password, try unescaped @ or vice versa
+        if '%40' in base:
+            candidates.append(base.replace('%40', '@'))
+        elif '@' in base and base.count('@') > 1:
+            # e.g. rtsp://admin:Paradigm@2006@192.168...
+            parts = base.split('@')
+            candidates.append(f"{parts[0]}%40{'@'.join(parts[1:])}")
+
+        # Alternative 2: Try subtype=1 (substream) if currently subtype=0
+        if 'subtype=0' in base:
+            candidates.append(base.replace('subtype=0', 'subtype=1'))
+        elif 'subtype=1' in base:
+            candidates.append(base.replace('subtype=1', 'subtype=0'))
+        elif '/cam/realmonitor' in base and 'subtype' not in base:
+            candidates.append(base + '&subtype=1')
+
+        # Alternative 3: Hikvision stream paths if Dahua path fails
+        if '/cam/realmonitor' in base:
+            prefix = base.split('/cam/realmonitor')[0]
+            candidates.append(f"{prefix}/Streaming/Channels/101")
+            candidates.append(f"{prefix}/Streaming/Channels/102")
+
+        # Deduplicate while preserving order
+        seen = set()
+        deduped = []
+        for c in candidates:
+            if c not in seen:
+                seen.add(c)
+                deduped.append(c)
+        return deduped
+
     def connect(self) -> bool:
-        """Open RTSP connection to the camera."""
+        """Open RTSP connection to the camera with multi-candidate fallback."""
+        import os
+        import socket
+        import urllib.parse
+
+        self.connection_attempts += 1
+        logger.info(f"[Camera:{self.config.name}] Connecting to RTSP stream (attempt {self.connection_attempts})...")
+
+        # Check socket reachability to host/port 554 first
         try:
-            logger.info(f"[Camera:{self.config.name}] Connecting to RTSP stream...")
-            
-            # Force TCP transport — prevents the 30-failure / 2-min disconnect cycle
-            # caused by UDP packet loss on the local network.
-            import os
-            os.environ['OPENCV_FFMPEG_CAPTURE_OPTIONS'] = 'rtsp_transport;tcp|timeout;10000000'
-
-            # OpenCV RTSP options for stability
-            self._cap = cv2.VideoCapture(self.config.rtsp_url, cv2.CAP_FFMPEG)
-            
-            if not self._cap or not self._cap.isOpened():
-                logger.error(f"[Camera:{self.config.name}] Failed to open RTSP stream")
-                return False
-
-            # Set buffer size to minimum to reduce latency
-            self._cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-            
-            # Try to set receive timeout (may not work with all backends)
-            self._cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 10000)
-            self._cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 5000)
-
-
-            # Read camera properties
-            width = int(self._cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            height = int(self._cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            native_fps = self._cap.get(cv2.CAP_PROP_FPS)
-
-            logger.info(
-                f"[Camera:{self.config.name}] Connected — "
-                f"{width}x{height} @ {native_fps:.1f} FPS (processing at {self.target_fps} FPS)"
-            )
-            
-            self._consecutive_failures = 0
-            return True
-
+            parsed = urllib.parse.urlparse(self.config.rtsp_url)
+            host = parsed.hostname or '192.168.51.111'
+            port = parsed.port or 554
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(2.0)
+            res = sock.connect_ex((host, port))
+            sock.close()
+            if res != 0:
+                self.last_error = f"Socket error: {host}:{port} unreachable (code {res})"
+                logger.warning(f"[Camera:{self.config.name}] {self.last_error}")
+            else:
+                self.last_error = f"TCP {host}:{port} open, negotiating RTSP..."
         except Exception as e:
-            logger.error(f"[Camera:{self.config.name}] Connection error: {e}")
-            return False
+            self.last_error = f"Host check failed: {e}"
+
+        candidate_urls = self._get_candidate_urls()
+        for cand_url in candidate_urls:
+            for transport in ['tcp', 'udp']:
+                try:
+                    os.environ['OPENCV_FFMPEG_CAPTURE_OPTIONS'] = f'rtsp_transport;{transport}|timeout;5000000'
+                    cap = cv2.VideoCapture(cand_url, cv2.CAP_FFMPEG)
+                    
+                    if cap and cap.isOpened():
+                        # Test reading 1 frame to be 100% sure stream produces frames
+                        ret, test_frame = cap.read()
+                        if ret and test_frame is not None:
+                            self._cap = cap
+                            self.active_rtsp_url = cand_url
+                            self._cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+                            width = int(self._cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                            height = int(self._cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                            native_fps = self._cap.get(cv2.CAP_PROP_FPS)
+
+                            logger.info(
+                                f"[Camera:{self.config.name}] Connected via {transport.upper()} — "
+                                f"{width}x{height} @ {native_fps:.1f} FPS (URL: {cand_url.split('@')[-1]})"
+                            )
+                            self._consecutive_failures = 0
+                            self.last_error = "Connected"
+                            return True
+                        else:
+                            cap.release()
+                except Exception as e:
+                    self.last_error = f"Error trying {transport}: {e}"
+
+        logger.error(f"[Camera:{self.config.name}] Failed to connect to any candidate RTSP stream")
+        return False
 
     def disconnect(self) -> None:
         """Close RTSP connection."""

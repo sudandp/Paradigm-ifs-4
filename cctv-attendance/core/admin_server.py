@@ -30,18 +30,39 @@ from .database import LocalDatabase
 from .face_engine import FaceEngine
 
 
-def _make_reconnecting_frame(width: int = 352, height: int = 288) -> "np.ndarray":
-    """Return a black JPEG placeholder frame with a RECONNECTING overlay."""
+def _make_reconnecting_frame(cam_name: str = "main_gate_entry", status_text: str = "", width: int = 800, height: int = 450) -> "np.ndarray":
+    """Return a crisp, high-visibility diagnostic placeholder frame when camera RTSP is reconnecting."""
     import cv2
-    frame = np.zeros((height, width, 3), dtype=np.uint8)
-    text = "RECONNECTING..."
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    scale = 0.55
-    thickness = 1
-    (tw, th), _ = cv2.getTextSize(text, font, scale, thickness)
-    x = (width - tw) // 2
-    y = (height + th) // 2
-    cv2.putText(frame, text, (x, y), font, scale, (0, 200, 100), thickness, cv2.LINE_AA)
+    import time
+    # Dark slate background (RGB 15, 23, 42)
+    frame = np.full((height, width, 3), (42, 23, 15), dtype=np.uint8)
+
+    # Outer border
+    cv2.rectangle(frame, (10, 10), (width - 10, height - 10), (70, 50, 35), 2)
+
+    # Title Card
+    cv2.rectangle(frame, (30, 30), (width - 30, 95), (60, 40, 25), -1)
+    cv2.circle(frame, (55, 62), 8, (0, 0, 235), -1) # Red pulse dot
+    cv2.putText(frame, "CCTV RTSP STREAM CONNECTING", (75, 70), cv2.FONT_HERSHEY_DUPLEX, 0.75, (255, 255, 255), 1, cv2.LINE_AA)
+
+    # Camera Info
+    cv2.putText(frame, f"Channel: {cam_name.upper()}", (35, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 235, 120), 1, cv2.LINE_AA)
+    
+    # Status Message
+    status_disp = status_text or "Probing camera RTSP port 554 & candidate streams..."
+    cv2.putText(frame, f"Status: {status_disp}", (35, 185), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (220, 220, 220), 1, cv2.LINE_AA)
+
+    # Diagnostic Steps Card
+    cv2.rectangle(frame, (30, 225), (width - 30, 370), (35, 25, 18), -1)
+    cv2.putText(frame, "DIAGNOSTIC CHECKS:", (45, 255), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 200, 255), 1, cv2.LINE_AA)
+    cv2.putText(frame, "1. Camera IP reachable on local office LAN (192.168.51.111)", (45, 285), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (180, 180, 180), 1, cv2.LINE_AA)
+    cv2.putText(frame, "2. RTSP Port 554 active on camera (TCP / UDP)", (45, 312), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (180, 180, 180), 1, cv2.LINE_AA)
+    cv2.putText(frame, "3. Auto-testing Subtype 0 (1080p), Subtype 1 (480p), & Hikvision paths...", (45, 339), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (180, 180, 180), 1, cv2.LINE_AA)
+
+    # Timestamp Footer
+    ts = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+    cv2.putText(frame, f"Edge Server Live | {ts}", (width - 320, height - 25), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (130, 130, 130), 1, cv2.LINE_AA)
+
     return frame
 
 
@@ -375,8 +396,9 @@ def create_admin_app(
                         else:
                             frame_display = frame_img
                     else:
-                        # Camera is reconnecting — serve a placeholder so browser never errors
-                        frame_display = _make_reconnecting_frame()
+                        # Camera is reconnecting — serve high-visibility visual diagnostic frame
+                        err_text = getattr(stream, 'last_error', '') if stream else ''
+                        frame_display = _make_reconnecting_frame(cam_name=camera_name, status_text=err_text)
 
                     # Fast JPEG encode (quality 70, instant CPU encode <2ms)
                     ret, buf = cv2.imencode(
@@ -408,6 +430,74 @@ def create_admin_app(
                 "Connection": "keep-alive",
             }
         )
+
+    @app.get("/debug/camera")
+    @app.get("/debug/camera/{camera_name}")
+    async def debug_camera_connection(camera_name: Optional[str] = None):
+        """Comprehensive RTSP connection & network diagnostic endpoint."""
+        import socket
+        import subprocess
+        import urllib.parse
+
+        if not pipeline or not hasattr(pipeline, 'grabber'):
+            raise HTTPException(status_code=503, detail="Camera pipeline not initialized")
+
+        target_cams = [camera_name] if camera_name and camera_name in pipeline.grabber.streams else list(pipeline.grabber.streams.keys())
+        results = {}
+
+        for c_name in target_cams:
+            stream = pipeline.grabber.streams.get(c_name)
+            if not stream:
+                continue
+
+            raw_url = stream.config.rtsp_url
+            parsed = urllib.parse.urlparse(raw_url)
+            host = parsed.hostname or '192.168.51.111'
+            port = parsed.port or 554
+
+            # 1. Socket check
+            sock_open = False
+            sock_error = ""
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.settimeout(2.0)
+                code = s.connect_ex((host, port))
+                s.close()
+                sock_open = (code == 0)
+                if code != 0:
+                    sock_error = f"Socket error code {code}"
+            except Exception as e:
+                sock_error = str(e)
+
+            # 2. Ping check
+            ping_ok = False
+            try:
+                p = subprocess.run(['ping', '-n', '1', '-w', '1500', host], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                ping_ok = (p.returncode == 0)
+            except Exception:
+                pass
+
+            candidates = stream._get_candidate_urls() if hasattr(stream, '_get_candidate_urls') else [raw_url]
+
+            results[c_name] = {
+                "camera_name": c_name,
+                "is_connected": stream.is_connected,
+                "frame_count": stream.frame_count,
+                "last_error": getattr(stream, 'last_error', ''),
+                "active_rtsp_url": getattr(stream, 'active_rtsp_url', raw_url).split('@')[-1],
+                "configured_host": host,
+                "configured_port": port,
+                "port_554_open": sock_open,
+                "host_pingable": ping_ok,
+                "socket_error": sock_error,
+                "candidate_urls_tested": [c.split('@')[-1] for c in candidates],
+            }
+
+        return {
+            "status": "ok",
+            "server_time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+            "cameras": results
+        }
 
     @app.get("/camera/snapshot/{camera_name}")
     async def get_camera_snapshot(camera_name: str):
