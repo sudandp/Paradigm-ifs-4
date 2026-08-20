@@ -22,6 +22,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.util.Log;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
@@ -62,6 +63,8 @@ public class TrackingService extends Service implements SensorEventListener {
     private static final String TAG = "TrackingService";
     private static final String CHANNEL_ID = "tracking_service_channel";
     private static final int NOTIFICATION_ID = 9999;
+
+    private PowerManager.WakeLock wakeLock;
 
     // ── SharedPreference keys ──────────────────────────────────────────────
     private static final String PREF_NAME        = "StepCounterPrefs";
@@ -133,10 +136,46 @@ public class TrackingService extends Service implements SensorEventListener {
         // Activity Recognition setup
         activityRecognitionClient = ActivityRecognition.getClient(this);
         setupActivityTransitionReceiver();
+
+        // Acquire partial wakelock so CPU executes background GPS and step batches in Doze mode
+        acquireWakeLock();
+    }
+
+    private void acquireWakeLock() {
+        if (wakeLock == null) {
+            try {
+                PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+                if (pm != null) {
+                    wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ParadigmIFS:TrackingWakeLock");
+                    wakeLock.setReferenceCounted(false);
+                    wakeLock.acquire(24 * 60 * 60 * 1000L); // 24-hour safeguard
+                    Log.i(TAG, "Partial WakeLock acquired for background operations");
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Failed to acquire WakeLock: " + e.getMessage());
+            }
+        }
+    }
+
+    private void releaseWakeLock() {
+        if (wakeLock != null) {
+            try {
+                if (wakeLock.isHeld()) {
+                    wakeLock.release();
+                }
+                wakeLock = null;
+                Log.i(TAG, "Partial WakeLock released");
+            } catch (Exception e) {
+                Log.w(TAG, "Failed to release WakeLock: " + e.getMessage());
+            }
+        }
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        // Ensure wakelock is active
+        acquireWakeLock();
+
         // ── Read config from Intent ───────────────────────────────────────
         if (intent != null) {
             if (intent.hasExtra(EXTRA_USER_ID))                userId               = intent.getStringExtra(EXTRA_USER_ID);
@@ -201,6 +240,7 @@ public class TrackingService extends Service implements SensorEventListener {
         if (activityTransitionReceiver != null) {
             try { unregisterReceiver(activityTransitionReceiver); } catch (Exception ignored) {}
         }
+        releaseWakeLock();
         super.onDestroy();
     }
 

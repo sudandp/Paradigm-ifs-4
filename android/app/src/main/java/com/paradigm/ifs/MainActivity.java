@@ -124,6 +124,22 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onResume() {
         super.onResume();
+
+        // Explicitly un-pause Chromium JS timers and wake up GPU renderer to prevent 20-min freeze
+        if (bridge != null && bridge.getWebView() != null) {
+            try {
+                bridge.getWebView().resumeTimers();
+                bridge.getWebView().postInvalidate();
+                bridge.getWebView().post(() -> {
+                    try {
+                        bridge.getWebView().evaluateJavascript("window.dispatchEvent(new CustomEvent('appResumeRecovery'));", null);
+                    } catch (Exception ignored) {}
+                });
+            } catch (Exception e) {
+                Log.w(TAG, "Error recovering webview on resume: " + e.getMessage());
+            }
+        }
+
         handleAlarmIntent(getIntent());
 
         if (foregroundAlarmReceiver == null) {

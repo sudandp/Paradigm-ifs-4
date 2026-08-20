@@ -276,26 +276,17 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
     try {
       const count = get().totalUnreadCount;
       const badgeCount = isNaN(count) ? 0 : Math.max(0, count);
-      console.log(`[NotificationStore] Syncing system badge count: ${badgeCount}`);
+
+      // Directly set the badge without repeatedly blocking on permission requests
+      Badge.set({ count: badgeCount }).catch(() => {});
       
-      // Request permissions explicitly (required on many Android launchers to show the number)
-      const perm = await Badge.requestPermissions();
-      if (perm.display === 'granted') {
-        await Badge.set({ count: badgeCount });
-        console.log(`[NotificationStore] Badge.set({ count: ${badgeCount} }) called successfully`);
-        
-        // For strict Android launchers (like Samsung OneUI) that ignore Badge.set,
-        // we use our custom BadgeHelper plugin to post a silent notification that holds the badge count.
-        if (Capacitor.getPlatform() === 'android') {
-          try {
-            await BadgeHelper.setBadgeWithNotification({ count: badgeCount });
-            console.log(`[NotificationStore] BadgeHelper setBadgeWithNotification called with count: ${badgeCount}`);
-          } catch (e) {
-            console.warn('[NotificationStore] BadgeHelper failed:', e);
-          }
+      // For strict Android launchers (like Samsung OneUI) that tie launcher badges to notifications
+      if (Capacitor.getPlatform() === 'android') {
+        try {
+          BadgeHelper.setBadgeWithNotification({ count: badgeCount }).catch(() => {});
+        } catch (e) {
+          // Non-critical
         }
-      } else {
-        console.warn(`[NotificationStore] Badge permission state: ${perm.display}`);
       }
     } catch (err) {
       console.warn('[NotificationStore] Badge update failed:', err);

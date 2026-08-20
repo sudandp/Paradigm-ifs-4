@@ -94,6 +94,22 @@ const SafeLocalStorage = {
 const isNativePlatform = isBrowser && !!(window as any).Capacitor?.isNativePlatform();
 const authStorage = isNativePlatform ? CapacitorStorage : (isBrowser ? SafeLocalStorage : CapacitorStorage);
 
+// Custom fetch wrapper with a 15-second timeout to prevent dead socket hangs on mobile
+const customFetch = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+  const controller = new AbortController();
+  const timeoutDuration = 15000; // 15s hard timeout for REST queries
+  const timer = setTimeout(() => controller.abort(), timeoutDuration);
+
+  if (init?.signal) {
+    init.signal.addEventListener('abort', () => controller.abort(), { once: true });
+  }
+
+  return fetch(input, {
+    ...init,
+    signal: controller.signal,
+  }).finally(() => clearTimeout(timer));
+};
+
 // Main client for all requests
 export const supabase = createClient(resolvedUrl, resolvedAnonKey, {
     auth: {
@@ -109,9 +125,31 @@ export const supabase = createClient(resolvedUrl, resolvedAnonKey, {
         // during React re-renders, visibility changes, and concurrent getSession calls.
         lock: async (_name, _acquireTimeout, fn) => await fn(),
     },
-    // Disable multi‑tab broadcast.  Supabase uses BroadcastChannel internally to synchronize
-    // sessions across multiple tabs; however, this feature has been unstable in some client
-    // versions and can cause the client to become unresponsive when several tabs are open.  Set
-    // multiTab to false to ensure each tab manages its own session without interfering with
-    // others.
+    global: {
+        fetch: customFetch,
+    },
 });
+
+/**
+ * Reconnects the Supabase Realtime client.
+ * Essential when returning from 20+ minute background pause to purge dead TCP sockets.
+ */
+export const reconnectSupabaseRealtime = () => {
+  try {
+    if (supabase && (supabase as any).realtime) {
+      console.log('[SupabaseRealtime] Purging zombie sockets and reconnecting realtime...');
+      (supabase as any).realtime.disconnect();
+      setTimeout(() => {
+        try {
+          (supabase as any).realtime.connect();
+          console.log('[SupabaseRealtime] ✅ Realtime client reconnected successfully.');
+        } catch (connErr) {
+          console.warn('[SupabaseRealtime] Reconnection notice:', connErr);
+        }
+      }, 150);
+    }
+  } catch (e) {
+    console.warn('[SupabaseRealtime] Realtime disconnect/reconnect notice:', e);
+  }
+};
+

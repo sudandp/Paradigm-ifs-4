@@ -15,7 +15,7 @@ import { usePermissionsStore } from './store/permissionsStore';
 import { useSettingsStore } from './store/settingsStore';
 import { useMediaQuery } from './hooks/useMediaQuery';
 import { useDevice } from './hooks/useDevice';
-import { supabase } from './services/supabase';
+import { supabase, reconnectSupabaseRealtime } from './services/supabase';
 import type { Session } from '@supabase/supabase-js';
 import { authService } from './services/authService';
 import { GOOGLE_CONFIG } from './config/authConfig';
@@ -1247,8 +1247,6 @@ const App: React.FC = () => {
 
   // Initialize notifications, real-time subscription, and foreground refresh when user is available.
   // IMPORTANT: This is a single consolidated effect to prevent duplicate fetchNotifications() calls.
-  // Previously two separate effects both called fetchNotifications() and registered appStateChange
-  // listeners on [user], causing the notification store to fetch twice on every user change.
   useEffect(() => {
     if (!user) return;
 
@@ -1258,23 +1256,9 @@ const App: React.FC = () => {
     const authUnsubscribe = useAuthStore.getState().subscribeToAttendance();
     useAuthStore.getState().fetchGeofencingSettings();
 
-    // Single appStateChange listener — handles both badge sync (native) and notification refresh.
-    const setupAppStateListener = async () => {
-      const { App } = await import('@capacitor/app');
-      return App.addListener('appStateChange', ({ isActive }) => {
-        if (isActive) {
-          console.log('[App] App returned to foreground, refreshing notifications...');
-          useNotificationStore.getState().fetchNotifications();
-        }
-      });
-    };
-
-    const appStateListenerPromise = setupAppStateListener();
-
     return () => {
       if (typeof unsubscribe === 'function') unsubscribe();
       if (typeof authUnsubscribe === 'function') authUnsubscribe();
-      appStateListenerPromise.then(l => l.remove());
     };
   }, [user]);
   // Dynamic Title & Favicon based on User Company (South Wall vs Paradigm)
@@ -1568,54 +1552,91 @@ const App: React.FC = () => {
       }
     });
 
-    // Check session when app returns to foreground
-    const appStateSubscription = CapacitorApp.addListener('appStateChange', async ({ isActive }) => {
-      if (isActive) {
-        console.log('[AppState] App returned to foreground. Verifying session...');
+    // Unified App Resume Recovery (Handles both Capacitor appStateChange and native Android appResumeRecovery)
+    let lastResumeTime = 0;
+    const handleAppResume = async () => {
+      const now = Date.now();
+      // Debounce: prevent duplicate resume triggers within 2 seconds
+      if (now - lastResumeTime < 2000) return;
+      lastResumeTime = now;
 
-        // Refresh notifications when app returns to foreground
-        const currentUser = useAuthStore.getState().user;
-        if (currentUser) {
-          console.log('[AppState] Refreshing notifications on resume...');
-          useNotificationStore.getState().fetchNotifications().catch(err => {
-            console.error('[AppState] Failed to refresh notifications on resume:', err);
-          });
-        }
+      console.log('[AppResume] App returned to foreground. Performing connection & rendering recovery...');
 
-        // On mobile (Android/iOS), NEVER force logout on resume — the user stays logged in until manual logout.
-        // If the JWT token has expired or is expiring within 60s, silently refresh it.
-        try {
-          const { data: { session } } = await supabase.auth.getSession();
-          const isSessionExpired = !session || (session.expires_at && session.expires_at * 1000 <= Date.now() + 60000);
+      // 1. Kick Chromium rendering engine to wake up from GPU stall
+      try {
+        requestAnimationFrame(() => {
+          document.body.style.opacity = '0.999';
+          setTimeout(() => { document.body.style.opacity = '1'; }, 30);
+        });
+      } catch (domErr) {
+        console.warn('[AppResume] DOM repaint trigger notice:', domErr);
+      }
 
-          if (isSessionExpired) {
-            const refreshToken = (await secureGet('supabase.auth.rememberMe'))
-              ?? (await Preferences.get({ key: 'supabase.auth.rememberMe' })).value
-              ?? session?.refresh_token;
+      // 2. Purge dead TCP sockets and reconnect Supabase Realtime
+      reconnectSupabaseRealtime();
 
-            if (refreshToken) {
-              console.log('[AppState] Session expired or close to expiry. Silently refreshing from saved token...');
-              await withTimeout(
-                supabase.auth.refreshSession({ refresh_token: refreshToken }),
-                8000,
-                'Background session refresh timeout'
-              ).then(({ data, error }) => {
-                if (data?.session) {
-                  console.log('[AppState] ✅ Session successfully refreshed on resume!');
-                  document.cookie = `sb-access-auth-token=${encodeURIComponent(JSON.stringify({ access_token: data.session.access_token }))}; path=/; max-age=3600; SameSite=Lax; Secure`;
-                } else if (error) {
-                  console.warn('[AppState] Session refresh notice:', error.message);
-                }
-              }).catch(e => {
-                console.warn('[AppState] Background session refresh timeout/notice:', e?.message || e);
-              });
-            }
+      // 3. Refresh notifications with a strict 6-second timeout
+      const currentUser = useAuthStore.getState().user;
+      if (currentUser) {
+        withTimeout(
+          useNotificationStore.getState().fetchNotifications(),
+          6000,
+          'Notifications fetch on resume timed out'
+        ).catch(err => {
+          console.warn('[AppResume] Notification refresh notice:', err?.message || err);
+        });
+      }
+
+      // 4. Verify & silently refresh session if near expiry (with strict timeout)
+      try {
+        const { data: { session } } = await withTimeout(
+          supabase.auth.getSession(),
+          5000,
+          'Session check timed out'
+        ).catch(() => ({ data: { session: null } }));
+
+        const isSessionExpired = !session || (session.expires_at && session.expires_at * 1000 <= Date.now() + 60000);
+
+        if (isSessionExpired) {
+          const refreshToken = (await secureGet('supabase.auth.rememberMe'))
+            ?? (await Preferences.get({ key: 'supabase.auth.rememberMe' })).value
+            ?? session?.refresh_token;
+
+          if (refreshToken) {
+            console.log('[AppResume] Session expired or close to expiry. Silently refreshing from saved token...');
+            await withTimeout(
+              supabase.auth.refreshSession({ refresh_token: refreshToken }),
+              8000,
+              'Background session refresh timeout'
+            ).then(({ data, error }) => {
+              if (data?.session) {
+                console.log('[AppResume] ✅ Session successfully refreshed on resume!');
+                document.cookie = `sb-access-auth-token=${encodeURIComponent(JSON.stringify({ access_token: data.session.access_token }))}; path=/; max-age=3600; SameSite=Lax; Secure`;
+              } else if (error) {
+                console.warn('[AppResume] Session refresh notice:', error.message);
+              }
+            }).catch(e => {
+              console.warn('[AppResume] Background session refresh timeout/notice:', e?.message || e);
+            });
           }
-        } catch (sessionCheckErr) {
-          console.warn('[AppState] Error during resume session verification:', sessionCheckErr);
         }
+      } catch (sessionCheckErr) {
+        console.warn('[AppResume] Error during resume session verification:', sessionCheckErr);
+      }
+    };
+
+    // Listen to Capacitor native appStateChange
+    const appStateSubscription = CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+      if (isActive) {
+        handleAppResume();
       }
     });
+
+    // Listen to custom native Android resume recovery event from MainActivity.java
+    const onNativeResume = () => {
+      handleAppResume();
+    };
+    window.addEventListener('appResumeRecovery', onNativeResume);
 
     // Listen for global auth failures from API
     const handleAuthFailure = (e: any) => {
@@ -1632,6 +1653,7 @@ const App: React.FC = () => {
       isMounted = false;
       subscription?.unsubscribe();
       appStateSubscription.then(h => h.remove()).catch(() => {});
+      window.removeEventListener('appResumeRecovery', onNativeResume);
       window.removeEventListener('supabase-auth-failure', handleAuthFailure);
       clearTimeout(fallbackTimeout);
     };
