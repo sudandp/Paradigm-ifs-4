@@ -1,104 +1,131 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Search, Edit2, Trash2, Box, RefreshCw, RotateCcw, Plus, Eye, X, Layers, List, Check, Tag, ChevronDown, ChevronUp, Maximize2, Minimize2, Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle2, FileText, HelpCircle, BookOpen, Lock } from 'lucide-react';
-import { HTMasterOption, HTMasterCategory } from '../../types/htYard';
+import { HTMasterOption, HTMasterCategory, HTFieldTarget } from '../../types/htYard';
 import { htYardMasterDataService } from '../../services/htYardMasterDataService';
 import { useAuthStore } from '../../store/authStore';
 import { supabase } from '../../services/supabase';
 import toast from 'react-hot-toast';
-import ExcelJS from 'exceljs';
-import { saveAs } from 'file-saver';
 
-const INITIAL_FIELD_TARGETS_MAP: Record<HTMasterCategory, Array<{ key: string; label: string }>> = {
+const INITIAL_FIELD_TARGETS_MAP: Record<HTMasterCategory, HTFieldTarget[]> = {
   'RMUMD': [
-    { key: 'mfr_name', label: 'Manufacturer Name' },
-    { key: 'no_of_ways', label: 'No. of Ways' },
-    { key: 'no_of_sections', label: 'No. of Sections' },
-    { key: 'power_indicator', label: 'Power Line Indicators Details' },
-    { key: 'protection_relay', label: 'RMU Protection Relay Details' },
-    { key: 'mf_meter', label: 'Multi Function Meter' },
-    { key: 'fault_indicator', label: 'Line Fault Indicator Details' },
-    { key: 'selector_switch', label: 'Selector Switch 1 & 2 Details' },
-    { key: 'line_charge_indicator', label: 'Line Charge Indicator' },
-    { key: 'sf6_status', label: 'SF-6 Status' },
-    { key: 'ic_og', label: 'I/C/OG' },
-    { key: 'labelling', label: 'Labelling' },
-    { key: 'door_condition', label: 'Condition of Doors' },
-    { key: 'outgoing', label: 'Outgoing' },
-    { key: 'vcb_breaker_make', label: 'VCB Breaker Make' },
-    { key: 'capacity', label: 'Current Rating / Capacity' },
-    { key: 'master_trip_relay', label: 'Master Trip Relay' },
-    { key: 'tc_supervision_relay', label: 'Trip Circuit Supervision Relay' },
-    { key: 'annunciator', label: 'Annunciator' },
-    { key: 'tr_protection_relay', label: 'Transformer Protection Relay' },
-    { key: 'selector_switch_relay', label: 'Selector Switch Relay' },
-    { key: 'control_mcb', label: "Control MCB's" },
-    { key: 'acb_breaker_make', label: 'ACB Breaker Make' },
-    { key: 'voltmeter', label: 'Volt Meter' },
-    { key: 'power_pack_battery_backup', label: 'Power Pack With Battery Backup' },
-    { key: 'nonc_contactor', label: 'NO/NC Contactor' },
-    { key: 'relay_1', label: 'Relay 1' },
-    { key: 'body_condition', label: 'Body Condition' }
+    // 1. Equipment Details
+    { key: 'mfr_name', label: 'Manufacturer Name', section: 'Equipment Details' },
+    { key: 'capacity', label: 'Current Rating / Capacity', section: 'Equipment Details' },
+    { key: 'no_of_ways', label: 'No. of Ways', section: 'Equipment Details' },
+    { key: 'no_of_sections', label: 'No. of Sections', section: 'Equipment Details' },
+
+    // 2. 7. Incoming OD 1 Details
+    { key: 'cable_rating_rmu', label: 'RMU Cable Rating', section: '7. Incoming OD 1 Details' },
+    { key: 'power_indicator', label: 'Power Line Indicators Details', section: '7. Incoming OD 1 Details' },
+    { key: 'fault_indicator', label: 'Line Fault Indicator Details', section: '7. Incoming OD 1 Details' },
+    { key: 'mf_meter', label: 'Multi Function Meter', section: '7. Incoming OD 1 Details' },
+    { key: 'protection_relay', label: 'RMU Protection Relay Details', section: '7. Incoming OD 1 Details' },
+    { key: 'sf6_status', label: 'SF-6 Status', section: '7. Incoming OD 1 Details' },
+    { key: 'selector_switch', label: 'Selector Switch 1 & 2 Details', section: '7. Incoming OD 1 Details' },
+    { key: 'line_charge_indicator', label: 'Line Charge Indicator', section: '7. Incoming OD 1 Details' },
+
+    // 3. HT Control Components
+    { key: 'control_mcb', label: "Control MCB's", section: 'HT Control Components' },
+    { key: 'voltmeter', label: 'Volt Meter', section: 'HT Control Components' },
+    { key: 'master_trip_relay', label: 'Master Trip Relay', section: 'HT Control Components' },
+    { key: 'tc_supervision_relay', label: 'Trip Circuit Supervision Relay', section: 'HT Control Components' },
+    { key: 'annunciator', label: 'Annunciator', section: 'HT Control Components' },
+    { key: 'tr_protection_relay', label: 'Transformer Protection Relay', section: 'HT Control Components' },
+    { key: 'selector_switch_relay', label: 'Selector Switch Relay', section: 'HT Control Components' },
+    { key: 'power_pack_battery_backup', label: 'Power Pack With Battery Backup', section: 'HT Control Components' },
+    { key: 'nonc_contactor', label: 'NO/NC Contactor', section: 'HT Control Components' },
+    { key: 'relay_1', label: 'Relay 1', section: 'HT Control Components' },
+    { key: 'acb_breaker_make', label: 'ACB Breaker Make', section: 'HT Control Components' },
+    { key: 'vcb_breaker_make', label: 'VCB Breaker Make', section: 'HT Control Components' },
+
+    // 4. Installation Condition
+    { key: 'foundation_cond', label: 'Condition of Foundation', section: 'Installation Condition' },
+    { key: 'cable_laying', label: 'Laying of Cables', section: 'Installation Condition' },
+    { key: 'body_condition', label: 'Body Condition', section: 'Installation Condition' },
+    { key: 'labelling', label: 'Labelling', section: 'Installation Condition' },
+
+    // 5. Operation & Maintenance
+    { key: 'door_condition', label: 'Condition of Doors', section: 'Operation & Maintenance' },
+
+    // 6. Feeder & Section Blocks
+    { key: 'outgoing', label: 'Outgoing', section: 'Feeder & Section Blocks' },
+    { key: 'ic_og', label: 'I/C/OG', section: 'Feeder & Section Blocks' }
   ],
   'TRMaster Data': [
-    { key: 'mfr_name', label: 'Manufacturer Name' },
-    { key: 'capacity', label: 'Capacity' },
-    { key: 'coil_material', label: 'Coil Winding Material' },
-    { key: 'oil_level_indicator', label: 'Oil Level Indicator' },
-    { key: 'oil_temp_indicator', label: 'Oil Temperature Indicator' },
-    { key: 'winding_temp_indicator', label: 'Winding Temperature Indicator' },
-    { key: 'prv', label: 'Pressure Relief Valve' },
-    { key: 'drain_valve', label: 'Drain Valve' },
-    { key: 'tap_changer', label: 'Tap Changer' },
-    { key: 'tap_position', label: 'Tap Position' },
-    { key: 'conservator_cond', label: 'Condition of Oil Conservator' },
-    { key: 'explosion_vent', label: 'Explosion Vent' },
-    { key: 'air_breather', label: 'Air Breather Silica Gel' },
-    { key: 'body_earth_terminals', label: 'Earthing Terminals Body' },
-    { key: 'neutral_earth_terminals', label: 'Earthing Terminals Neutral' },
-    { key: 'lifting_lugs', label: 'Lifting Lugs' },
-    { key: 'foundation_cond', label: 'Condition of Foundation' },
-    { key: 'cable_laying', label: 'Laying of Cables' },
-    { key: 'incoming_cable_fixing', label: 'Incoming Cable Fixing' },
-    { key: 'outgoing_cable_fixing', label: 'Outgoing Cable Fixing' },
-    { key: 'gland_condition', label: 'Cable Gland Condition' },
-    { key: 'gland_earthing', label: 'Cable Gland Earthing' },
-    { key: 'body_condition', label: 'Body Condition' },
-    { key: 'silica_gel', label: 'Silica Gel Condition' },
-    { key: 'oil_level', label: 'Oil Level' },
-    { key: 'oil_leakage', label: 'Oil Leakage' },
-    { key: 'humming_sound', label: 'Humming Sound' }
+    // 1. Equipment Details
+    { key: 'mfr_name', label: 'Manufacturer Name', section: 'Equipment Details' },
+    { key: 'capacity', label: 'Capacity', section: 'Equipment Details' },
+    { key: 'coil_material', label: 'Coil Winding Material', section: 'Equipment Details' },
+
+    // 2. Equipment Accessories
+    { key: 'oil_level_indicator', label: 'Oil Level Indicator', section: 'Equipment Accessories' },
+    { key: 'oil_temp_indicator', label: 'Oil Temperature Indicator', section: 'Equipment Accessories' },
+    { key: 'winding_temp_indicator', label: 'Winding Temperature Indicator', section: 'Equipment Accessories' },
+    { key: 'prv', label: 'Pressure Relief Valve', section: 'Equipment Accessories' },
+    { key: 'drain_valve', label: 'Drain Valve', section: 'Equipment Accessories' },
+    { key: 'tap_changer', label: 'Tap Changer', section: 'Equipment Accessories' },
+    { key: 'tap_position', label: 'Tap Position', section: 'Equipment Accessories' },
+    { key: 'conservator_cond', label: 'Condition of Oil Conservator', section: 'Equipment Accessories' },
+    { key: 'explosion_vent', label: 'Explosion Vent', section: 'Equipment Accessories' },
+    { key: 'air_breather', label: 'Air Breather Silica Gel', section: 'Equipment Accessories' },
+    { key: 'body_earth_terminals', label: 'Earthing Terminals Body', section: 'Equipment Accessories' },
+    { key: 'neutral_earth_terminals', label: 'Earthing Terminals Neutral', section: 'Equipment Accessories' },
+    { key: 'lifting_lugs', label: 'Lifting Lugs', section: 'Equipment Accessories' },
+
+    // 3. Installation Condition
+    { key: 'foundation_cond', label: 'Condition of Foundation', section: 'Installation Condition' },
+    { key: 'cable_laying', label: 'Laying of Cables', section: 'Installation Condition' },
+    { key: 'incoming_cable_fixing', label: 'Incoming Cable Fixing', section: 'Installation Condition' },
+    { key: 'outgoing_cable_fixing', label: 'Outgoing Cable Fixing', section: 'Installation Condition' },
+    { key: 'gland_condition', label: 'Cable Gland Condition', section: 'Installation Condition' },
+    { key: 'gland_earthing', label: 'Cable Gland Earthing', section: 'Installation Condition' },
+    { key: 'body_condition', label: 'Body Condition', section: 'Installation Condition' },
+
+    // 4. Operation & Maintenance
+    { key: 'silica_gel', label: 'Silica Gel Condition', section: 'Operation & Maintenance' },
+    { key: 'oil_level', label: 'Oil Level', section: 'Operation & Maintenance' },
+    { key: 'oil_leakage', label: 'Oil Leakage', section: 'Operation & Maintenance' },
+    { key: 'humming_sound', label: 'Humming Sound', section: 'Operation & Maintenance' }
   ],
   'LTKMD': [
-    { key: 'mfr_name', label: 'Manufacturer Name' },
-    { key: 'capacity', label: 'Capacity' },
-    { key: 'incomer_mccb_make', label: 'Incomer MCCB Make' },
-    { key: 'earth_leakage_relay', label: 'Earth Leakage Relay Make' },
-    { key: 'voltmeter', label: 'Volt Meter' },
-    { key: 'ammeter', label: 'Ammeter' },
-    { key: 'mf_meter', label: 'Multi Function Meter' },
-    { key: 'selector_switch_make', label: 'Selector Switch Make' },
-    { key: 'bescom_master_meter', label: 'BESCOM Master Meter Details' },
-    { key: 'bus_coupler', label: 'Bus Coupler Details' },
-    { key: 'pfc_controller', label: 'PFC Controller Make' },
-    { key: 'cap_bank_sizes', label: 'Capacitor Bank Sizes' },
-    { key: 'relay_timer_lvm', label: 'Relay / Timer / LVM' },
-    { key: 'ct_ratio', label: 'CT Ratio' },
-    { key: 'ct_constant', label: 'CT Constant' },
-    { key: 'ct_va', label: 'CT VA' },
-    { key: 'ct_cl', label: 'CT CL' },
-    { key: 'bescom_seal', label: 'BESCOM Seal' },
-    { key: 'ct_classification', label: 'CT Classification' },
-    { key: 'outgoing_mccb_make', label: 'Outgoing MCCB Make' },
-    { key: 'outgoing_capacity', label: 'Outgoing Capacity' }
+    // 1. Equipment Details
+    { key: 'mfr_name', label: 'Manufacturer Name', section: 'Equipment Details' },
+    { key: 'capacity', label: 'Capacity', section: 'Equipment Details' },
+
+    // 2. Equipment Accessories
+    { key: 'incomer_mccb_make', label: 'Incomer MCCB Make', section: 'Equipment Accessories' },
+    { key: 'earth_leakage_relay', label: 'Earth Leakage Relay Make', section: 'Equipment Accessories' },
+    { key: 'voltmeter', label: 'Volt Meter', section: 'Equipment Accessories' },
+    { key: 'ammeter', label: 'Ammeter', section: 'Equipment Accessories' },
+    { key: 'mf_meter', label: 'Multi Function Meter', section: 'Equipment Accessories' },
+    { key: 'selector_switch_make', label: 'Selector Switch Make', section: 'Equipment Accessories' },
+    { key: 'bescom_master_meter', label: 'BESCOM Master Meter Details', section: 'Equipment Accessories' },
+    { key: 'bus_coupler', label: 'Bus Coupler Details', section: 'Equipment Accessories' },
+    { key: 'bescom_seal', label: 'BESCOM Seal', section: 'Equipment Accessories' },
+    { key: 'ct_ratio', label: 'CT Ratio', section: 'Equipment Accessories' },
+    { key: 'ct_constant', label: 'CT Constant', section: 'Equipment Accessories' },
+    { key: 'ct_va', label: 'CT VA', section: 'Equipment Accessories' },
+    { key: 'ct_cl', label: 'CT CL', section: 'Equipment Accessories' },
+    { key: 'ct_classification', label: 'CT Classification', section: 'Equipment Accessories' },
+
+    // 3. Capacitor Bank Details
+    { key: 'pfc_controller', label: 'PFC Controller Make', section: 'Capacitor Bank Details' },
+    { key: 'cap_bank_sizes', label: 'Capacitor Bank Sizes', section: 'Capacitor Bank Details' },
+    { key: 'relay_timer_lvm', label: 'Relay / Timer / LVM', section: 'Capacitor Bank Details' },
+    { key: 'outgoing_mccb_make', label: 'Outgoing MCCB Make', section: 'Capacitor Bank Details' },
+    { key: 'outgoing_capacity', label: 'Outgoing Capacity', section: 'Capacitor Bank Details' },
+
+    // 4. Installation Condition & Safety
+    { key: 'cable_details', label: 'Cable Details (Rating & Cores)', section: 'Installation Condition & Safety' }
   ],
   'Cable Details': [
-    { key: 'cable_rating_rmu', label: 'RMU Cable Rating' },
-    { key: 'cable_rating_transformer', label: 'Transformer Cable Details' },
-    { key: 'cable_rating_ltkiosk', label: 'LT Kiosk Cable Details' }
+    { key: 'cable_rating_rmu', label: 'RMU Cable Rating', section: 'RMU Cable Details' },
+    { key: 'cable_rating_transformer', label: 'Transformer Cable Details', section: 'Transformer Cable Details' },
+    { key: 'cable_rating_ltkiosk', label: 'LT Kiosk Cable Details', section: 'LT Kiosk Cable Details' }
   ],
   'HTYardCommon': [
-    { key: 'yard_cleanliness', label: 'Yard Cleanliness' },
-    { key: 'fire_extinguishers', label: 'Fire Extinguishers' }
+    { key: 'yard_cleanliness', label: 'Yard Cleanliness', section: 'Stage 1: Yard Infrastructure & Environment' },
+    { key: 'fire_extinguishers', label: 'Fire Extinguishers', section: 'Stage 2: Safety & Initial Reports' }
   ]
 };
 
@@ -109,19 +136,30 @@ export const HTMasterDataAdmin: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'grouped' | 'flat'>('grouped');
 
+  const [selectedSection, setSelectedSection] = useState<string>('All');
   const [selectedFieldKey, setSelectedFieldKey] = useState<string>('All');
-  const [fieldTargetsMap, setFieldTargetsMap] = useState<Record<string, Array<{ key: string; label: string }>>>(() => {
+  const [fieldTargetsMap, setFieldTargetsMap] = useState<Record<string, HTFieldTarget[]>>(() => {
     try {
       const saved = localStorage.getItem('ht_custom_field_targets');
       if (saved) {
         const parsed = JSON.parse(saved);
-        const merged: Record<string, Array<{ key: string; label: string }>> = { ...INITIAL_FIELD_TARGETS_MAP };
+        const merged: Record<string, HTFieldTarget[]> = { ...INITIAL_FIELD_TARGETS_MAP };
         Object.keys(parsed).forEach((cat) => {
           const defaultList = merged[cat] || [];
-          const customList = parsed[cat] || [];
-          const existingKeys = new Set(defaultList.map(t => t.key));
-          const additions = customList.filter((t: { key: string }) => !existingKeys.has(t.key));
-          merged[cat] = [...defaultList, ...additions];
+          const customList: HTFieldTarget[] = parsed[cat] || [];
+          const defaultKeyMap = new Map(defaultList.map(t => [t.key, t]));
+
+          const mergedList: HTFieldTarget[] = defaultList.map(d => {
+            const override = customList.find(c => c.key === d.key);
+            return override ? { ...d, label: override.label || d.label, section: override.section || d.section } : d;
+          });
+
+          customList.forEach(c => {
+            if (!defaultKeyMap.has(c.key)) {
+              mergedList.push(c);
+            }
+          });
+          merged[cat] = mergedList;
         });
         return merged;
       }
@@ -168,6 +206,7 @@ export const HTMasterDataAdmin: React.FC = () => {
   // Custom Target Field & Category states
   const [newTargetLabel, setNewTargetLabel] = useState('');
   const [newTargetKey, setNewTargetKey] = useState('');
+  const [newTargetSection, setNewTargetSection] = useState('');
   const [newCategoryName, setNewCategoryName] = useState('');
 
   // Viewing Choices Modal State
@@ -200,6 +239,11 @@ export const HTMasterDataAdmin: React.FC = () => {
   // Download Pre-Formatted Multi-Sheet Bulk Upload Template (.XLSX)
   const downloadBulkTemplate = async () => {
     try {
+      const [ExcelJSModule, { saveAs }] = await Promise.all([
+        import('exceljs'),
+        import('file-saver')
+      ]);
+      const ExcelJS = ExcelJSModule.default || ExcelJSModule;
       const workbook = new ExcelJS.Workbook();
       workbook.creator = 'Paradigm Office Admin Studio';
       workbook.created = new Date();
@@ -296,7 +340,7 @@ export const HTMasterDataAdmin: React.FC = () => {
         const targets = fieldTargetsMap[cat] || INITIAL_FIELD_TARGETS_MAP[cat] || [];
         targets.forEach((t) => {
           const count = options.filter(o => o.category === cat && o.fieldKey === t.key).length;
-          refSheet.addRow([cat, t.label, `Form dropdown field for ${cat}`, `${count} existing choices`]);
+          refSheet.addRow([cat, t.label, t.section ? `Section: ${t.section}` : `Form dropdown field for ${cat}`, `${count} existing choices`]);
         });
       });
 
@@ -321,6 +365,8 @@ export const HTMasterDataAdmin: React.FC = () => {
 
       if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
         const buffer = await file.arrayBuffer();
+        const ExcelJSModule = await import('exceljs');
+        const ExcelJS = ExcelJSModule.default || ExcelJSModule;
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.load(buffer);
         const sheet = workbook.getWorksheet('Upload Data') || workbook.worksheets[0];
@@ -518,6 +564,7 @@ export const HTMasterDataAdmin: React.FC = () => {
 
   useEffect(() => {
     setSearchQuery('');
+    setSelectedSection('All');
     setSelectedFieldKey('All');
     loadOptions();
   }, [activeTab]);
@@ -532,7 +579,7 @@ export const HTMasterDataAdmin: React.FC = () => {
         setFieldTargetsMap(prev => {
           const currentList = prev[activeTab] || [];
           const existingKeys = new Set(currentList.map(t => t.key));
-          const newTargets: Array<{ key: string; label: string }> = [];
+          const newTargets: HTFieldTarget[] = [];
 
           data.forEach(opt => {
             if (opt.fieldKey && opt.fieldKey !== 'generic' && !existingKeys.has(opt.fieldKey)) {
@@ -541,7 +588,7 @@ export const HTMasterDataAdmin: React.FC = () => {
                 .split('_')
                 .map(word => word.charAt(0).toUpperCase() + word.slice(1))
                 .join(' ');
-              newTargets.push({ key: opt.fieldKey, label: formattedLabel });
+              newTargets.push({ key: opt.fieldKey, label: formattedLabel, section: opt.section });
             }
           });
 
@@ -818,13 +865,22 @@ export const HTMasterDataAdmin: React.FC = () => {
 
   const availableFieldTargets = fieldTargetsMap[activeTab] || [];
 
+  // Available unique sections in activeTab
+  const availableSections = useMemo(() => {
+    const sectionsSet = new Set<string>();
+    availableFieldTargets.forEach(t => {
+      if (t.section) sectionsSet.add(t.section);
+    });
+    return Array.from(sectionsSet);
+  }, [availableFieldTargets]);
+
   // Group options by field target key
   const groupedFields = useMemo(() => {
-    const map = new Map<string, { fieldKey: string; label: string; category: HTMasterCategory; items: HTMasterOption[] }>();
+    const map = new Map<string, { fieldKey: string; label: string; section?: string; category: HTMasterCategory; items: HTMasterOption[] }>();
 
     // Pre-populate with all known field targets for activeTab
     availableFieldTargets.forEach(t => {
-      map.set(t.key, { fieldKey: t.key, label: t.label, category: activeTab, items: [] });
+      map.set(t.key, { fieldKey: t.key, label: t.label, section: t.section, category: activeTab, items: [] });
     });
 
     // Add actual items
@@ -832,7 +888,7 @@ export const HTMasterDataAdmin: React.FC = () => {
       const key = opt.fieldKey || 'generic';
       if (!map.has(key)) {
         const friendly = availableFieldTargets.find(t => t.key === key);
-        map.set(key, { fieldKey: key, label: friendly ? friendly.label : key, category: activeTab, items: [] });
+        map.set(key, { fieldKey: key, label: friendly ? friendly.label : key, section: friendly?.section || opt.section, category: activeTab, items: [] });
       }
       map.get(key)!.items.push(opt);
     });
@@ -841,12 +897,14 @@ export const HTMasterDataAdmin: React.FC = () => {
       const matchesSearch = searchQuery === '' || 
         g.label.toLowerCase().includes(searchQuery.toLowerCase()) || 
         g.fieldKey.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (g.section && g.section.toLowerCase().includes(searchQuery.toLowerCase())) ||
         g.items.some(i => i.optionValue.toLowerCase().includes(searchQuery.toLowerCase()));
 
       const matchesFieldKey = selectedFieldKey === 'All' || g.fieldKey === selectedFieldKey;
-      return matchesSearch && matchesFieldKey;
+      const matchesSection = selectedSection === 'All' || g.section === selectedSection;
+      return matchesSearch && matchesFieldKey && matchesSection;
     });
-  }, [options, activeTab, searchQuery, selectedFieldKey, fieldTargetsMap]);
+  }, [options, activeTab, searchQuery, selectedFieldKey, selectedSection, fieldTargetsMap]);
 
   // Active viewing target group for List Modal
   const activeViewingGroup = useMemo(() => {
@@ -995,6 +1053,54 @@ export const HTMasterDataAdmin: React.FC = () => {
         </div>
       </div>
 
+      {/* Section Filter Pills */}
+      {availableSections.length > 0 && (
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 mb-5 scrollbar-thin">
+          <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 shrink-0 mr-1.5 flex items-center gap-1">
+            <Layers className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> Section:
+          </span>
+          <button
+            onClick={() => {
+              setSelectedSection('All');
+              setSelectedFieldKey('All');
+            }}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 shrink-0 ${
+              selectedSection === 'All'
+                ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/20'
+                : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'
+            }`}
+          >
+            All Sections
+            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${selectedSection === 'All' ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
+              {availableFieldTargets.length}
+            </span>
+          </button>
+          {availableSections.map((sec) => {
+            const count = availableFieldTargets.filter(t => t.section === sec).length;
+            const isSelected = selectedSection === sec;
+            return (
+              <button
+                key={sec}
+                onClick={() => {
+                  setSelectedSection(sec);
+                  setSelectedFieldKey('All');
+                }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 shrink-0 ${
+                  isSelected
+                    ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/20'
+                    : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'
+                }`}
+              >
+                📑 {sec}
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${isSelected ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* Filter & Search Bar */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mb-6">
         <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -1005,7 +1111,28 @@ export const HTMasterDataAdmin: React.FC = () => {
               className="w-full sm:w-auto pl-3.5 pr-8 py-2 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs font-semibold bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
             >
               <option value="All">Filter by Target Field: All ({availableFieldTargets.length})</option>
-              {availableFieldTargets.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+              {availableSections.map(sec => (
+                <optgroup key={sec} label={`📁 ${sec}`}>
+                  {availableFieldTargets
+                    .filter(t => t.section === sec)
+                    .map(t => (
+                      <option key={t.key} value={t.key}>
+                        {t.label}
+                      </option>
+                    ))}
+                </optgroup>
+              ))}
+              {availableFieldTargets.filter(t => !t.section).length > 0 && (
+                <optgroup label="📁 Other Fields">
+                  {availableFieldTargets
+                    .filter(t => !t.section)
+                    .map(t => (
+                      <option key={t.key} value={t.key}>
+                        {t.label}
+                      </option>
+                    ))}
+                </optgroup>
+              )}
             </select>
           </div>
 
@@ -1055,7 +1182,7 @@ export const HTMasterDataAdmin: React.FC = () => {
             </div>
           ) : groupedFields.length === 0 ? (
             <div className="bg-white dark:bg-slate-900 rounded-3xl p-12 text-center text-sm text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800">
-              No fields or choices found for {activeTab}.
+              No fields or choices found for {activeTab}{selectedSection !== 'All' ? ` in section "${selectedSection}"` : ''}.
             </div>
           ) : (
             groupedFields.map((group) => {
@@ -1091,6 +1218,11 @@ export const HTMasterDataAdmin: React.FC = () => {
                           <h3 className="font-extrabold text-slate-900 dark:text-white text-base">
                             {group.label}
                           </h3>
+                          {group.section && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/40">
+                              📑 {group.section}
+                            </span>
+                          )}
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-pink-50 text-pink-600 dark:bg-pink-950/40 dark:text-pink-400 border border-pink-200/60 dark:border-pink-800/40">
                             {group.category}
                           </span>
@@ -1304,9 +1436,14 @@ export const HTMasterDataAdmin: React.FC = () => {
                     <tr className="bg-slate-100/90 dark:bg-slate-800/90 border-y border-slate-200 dark:border-slate-800">
                       <td colSpan={5} className="px-6 py-3">
                         <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2 font-extrabold text-slate-900 dark:text-white text-xs">
+                          <div className="flex items-center gap-2 font-extrabold text-slate-900 dark:text-white text-xs flex-wrap">
                             <Box className="w-4 h-4 text-emerald-600 shrink-0" />
                             <span>{group.label}</span>
+                            {group.section && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/40">
+                                📑 {group.section}
+                              </span>
+                            )}
                           </div>
                           <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-0.5 rounded-full border border-emerald-200/60 dark:border-emerald-800/40">
                             {group.items.length} choices
@@ -1596,6 +1733,23 @@ export const HTMasterDataAdmin: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Audit Stage / Section (Optional)
+                </label>
+                <input
+                  type="text"
+                  list="target-section-suggestions"
+                  placeholder="e.g. Equipment Details, Incoming OD 1 Details"
+                  value={newTargetSection}
+                  onChange={(e) => setNewTargetSection(e.target.value)}
+                  className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
+                />
+                <datalist id="target-section-suggestions">
+                  {availableSections.map(s => <option key={s} value={s} />)}
+                </datalist>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   Technical Field Key (snake_case) *
                 </label>
                 <input
@@ -1667,11 +1821,28 @@ export const HTMasterDataAdmin: React.FC = () => {
                     }}
                     className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
                   >
-                    {availableFieldTargets.map(t => (
-                      <option key={t.key} value={t.key}>
-                        {t.label}
-                      </option>
+                    {availableSections.map(sec => (
+                      <optgroup key={sec} label={`📁 ${sec}`}>
+                        {availableFieldTargets
+                          .filter(t => t.section === sec)
+                          .map(t => (
+                            <option key={t.key} value={t.key}>
+                              {t.label}
+                            </option>
+                          ))}
+                      </optgroup>
                     ))}
+                    {availableFieldTargets.filter(t => !t.section).length > 0 && (
+                      <optgroup label="📁 Other Fields">
+                        {availableFieldTargets
+                          .filter(t => !t.section)
+                          .map(t => (
+                            <option key={t.key} value={t.key}>
+                              {t.label}
+                            </option>
+                          ))}
+                      </optgroup>
+                    )}
                     <option value="__custom__">+ Enter Custom Field Key...</option>
                   </select>
                 ) : (

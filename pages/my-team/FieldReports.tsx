@@ -9,8 +9,6 @@ import Button from '../../components/ui/Button';
 import Pagination from '../../components/ui/Pagination';
 import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
-import { pdf } from '@react-pdf/renderer';
-import { FieldReportDocument } from '../attendance/PDFReports';
 import { useDevice } from '../../hooks/useDevice';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 
@@ -30,6 +28,10 @@ const PdfPreviewModal: React.FC<{
         if (!report) return null;
         
         try {
+            const [{ pdf }, { FieldReportDocument }] = await Promise.all([
+                import('@react-pdf/renderer'),
+                import('../attendance/PDFReports')
+            ]);
             const doc = <FieldReportDocument report={report} template={template} />;
             const blob = await pdf(doc).toBlob();
             return blob;

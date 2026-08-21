@@ -524,6 +524,7 @@ const UserManagement: React.FC = () => {
                 setFetchedAllFiltered(false);
             }
         } catch (error) {
+            console.error('[UserManagement] fetchUsers error:', error);
             setToast({ message: 'Failed to fetch users.', type: 'error' });
         } finally {
             setIsLoading(false);

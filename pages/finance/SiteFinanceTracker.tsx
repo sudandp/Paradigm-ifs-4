@@ -1,11 +1,19 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import ExcelJS from 'exceljs';
-import { saveAs } from 'file-saver';
+import type ExcelJS from 'exceljs';
 import { api } from '../../services/api';
 import type { SiteFinanceRecord, SiteInvoiceDefault } from '../../types';
 import { useAuthStore } from '../../store/authStore';
 import { format, startOfMonth, startOfDay, parseISO } from 'date-fns';
+
+const getExcelJS = async () => {
+    const [ExcelJSModule, { saveAs }] = await Promise.all([
+        import('exceljs'),
+        import('file-saver')
+    ]);
+    const ExcelJS = ExcelJSModule.default || ExcelJSModule;
+    return { ExcelJS, saveAs };
+};
 import { 
     Loader2, Plus, Edit2, Trash2, IndianRupee, FileSpreadsheet, TrendingUp, TrendingDown, 
     ClipboardCheck, Building2, Download, Upload, AlertTriangle, RotateCcw, ShieldX, Search, Info, FilterX, X, Clock
@@ -116,6 +124,7 @@ const SiteFinanceTracker: React.FC = () => {
     const handleDownloadTemplate = async () => {
         setIsExporting(true);
         try {
+            const { ExcelJS, saveAs } = await getExcelJS();
             // Always use the CURRENT calendar month — finance team downloads for the present month
             const now = new Date();
             const currentYear = now.getFullYear();
@@ -270,6 +279,7 @@ const SiteFinanceTracker: React.FC = () => {
         if (!file) return;
 
         try {
+            const { ExcelJS } = await getExcelJS();
             const workbook = new ExcelJS.Workbook();
             const arrayBuffer = await file.arrayBuffer();
             await workbook.xlsx.load(arrayBuffer);
@@ -451,6 +461,7 @@ const SiteFinanceTracker: React.FC = () => {
         setIsExporting(true);
         setExportDropdownOpen(false);
         try {
+            const { ExcelJS, saveAs } = await getExcelJS();
             const workbook = new ExcelJS.Workbook();
             const exportYear = filters.year === 'all' ? new Date().getFullYear().toString() : filters.year;
             const exportMonth = filters.month === 'all' ? (new Date().getMonth() + 1).toString() : filters.month;
@@ -477,6 +488,7 @@ const SiteFinanceTracker: React.FC = () => {
         setIsExporting(true);
         setExportDropdownOpen(false);
         try {
+            const { ExcelJS, saveAs } = await getExcelJS();
             const exportYear = filters.year === 'all' ? new Date().getFullYear() : Number(filters.year);
             const currentMonth = new Date().getFullYear() === exportYear ? new Date().getMonth() + 1 : 12;
 
@@ -570,6 +582,7 @@ const SiteFinanceTracker: React.FC = () => {
         setIsExporting(true);
         setExportDropdownOpen(false);
         try {
+            const { ExcelJS, saveAs } = await getExcelJS();
             const exportYear = filters.year === 'all' ? new Date().getFullYear() : Number(filters.year);
             const exportMonth = filters.month === 'all' ? new Date().getMonth() + 1 : Number(filters.month);
             const monthLabel = format(new Date(exportYear, exportMonth - 1, 1), 'MMMM yyyy');

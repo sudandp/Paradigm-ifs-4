@@ -55,19 +55,23 @@ export async function fetchAttendanceSummary(
   siteIds?: string[]
 ): Promise<DaySummary[]> {
   let rows: DaySummary[];
-  const { data, error } = await supabase.rpc('get_attendance_summary', {
-    p_start:      format(startDate, 'yyyy-MM-dd'),
-    p_end:        format(endDate,   'yyyy-MM-dd'),
-    p_society_id: societyId ?? null,
-    p_site_ids:   siteIds   ?? null,
-  });
+  try {
+    const { data, error } = await supabase.rpc('get_attendance_summary', {
+      p_start:      format(startDate, 'yyyy-MM-dd'),
+      p_end:        format(endDate,   'yyyy-MM-dd'),
+      p_society_id: societyId ?? null,
+      p_site_ids:   siteIds   ?? null,
+    });
 
-  if (error) {
-    // RPC broken — fall back to direct query so charts still render
-    console.warn('[attendanceDashboard] get_attendance_summary RPC failed, using fallback:', error.message);
+    if (error) {
+      console.warn('[attendanceDashboard] get_attendance_summary RPC failed, using fallback:', error.message);
+      rows = await fetchAttendanceSummaryFallback(startDate, endDate, societyId, siteIds);
+    } else {
+      rows = data as DaySummary[];
+    }
+  } catch (err: any) {
+    console.warn('[attendanceDashboard] RPC exception, using fallback:', err?.message);
     rows = await fetchAttendanceSummaryFallback(startDate, endDate, societyId, siteIds);
-  } else {
-    rows = data as DaySummary[];
   }
 
   // Patch today's data to ensure real-time update in the graph
@@ -92,7 +96,36 @@ export async function fetchAttendanceSummary(
     }
   }
 
-  return rows;
+  // Ensure every calendar day between startDate and endDate is in the returned array
+  const rowMap = new Map<string, DaySummary>();
+  (rows || []).forEach(r => {
+    if (r?.day) rowMap.set(r.day, r);
+  });
+
+  const fullRangeRows: DaySummary[] = [];
+  const cursor = new Date(startDate);
+  const totalStaff = (rows && rows.find(r => r.total_active_staff > 0)?.total_active_staff) || 0;
+
+  while (cursor <= endDate) {
+    const dStr = format(cursor, 'yyyy-MM-dd');
+    if (rowMap.has(dStr)) {
+      fullRangeRows.push(rowMap.get(dStr)!);
+    } else {
+      fullRangeRows.push({
+        day: dStr,
+        present_count: 0,
+        wfh_count: 0,
+        on_leave_count: 0,
+        absent_count: 0,
+        avg_working_hours: 0,
+        late_arrivals: 0,
+        total_active_staff: totalStaff,
+      });
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return fullRangeRows;
 }
 
 /** Direct-query fallback — used when the RPC is unavailable or broken */
@@ -108,8 +141,7 @@ async function fetchAttendanceSummaryFallback(
   // 1. Get active staff count & profiles
   let staffQuery = supabase
     .from('users')
-    .select('id, role_id, role, organization_id, society_id')
-    .not('role_id', 'is', null);
+    .select('id, role_id, role, organization_id, society_id');
   if (societyId) staffQuery = staffQuery.eq('society_id', societyId);
   if (siteIds?.length) staffQuery = staffQuery.in('organization_id', siteIds);
   const { data: activeUsers } = await staffQuery;
@@ -117,11 +149,14 @@ async function fetchAttendanceSummaryFallback(
   const staffCount = staff.length;
 
   // 2. Fetch punch-in / punch-out events for the date window
+  const rangeStartIso = new Date(`${startStr}T00:00:00+05:30`).toISOString();
+  const rangeEndIso = new Date(`${endStr}T23:59:59+05:30`).toISOString();
+
   let evQuery = supabase
     .from('attendance_events')
     .select('user_id, timestamp, type')
-    .gte('timestamp', `${startStr}T00:00:00+05:30`)
-    .lte('timestamp', `${endStr}T23:59:59+05:30`)
+    .gte('timestamp', rangeStartIso)
+    .lte('timestamp', rangeEndIso)
     .in('type', ['punch-in', 'punch-out']);
 
   // Fetch leaves in period
@@ -313,15 +348,14 @@ async function fetchTodayMetricsFallback(
   siteIds?: string[]
 ): Promise<TodayMetrics> {
   const todayStr = format(new Date(), 'yyyy-MM-dd');
-  const startOfDayStr = `${todayStr}T00:00:00+05:30`;
-  const endOfDayStr = `${todayStr}T23:59:59+05:30`;
+  const startOfDayStr = new Date(`${todayStr}T00:00:00+05:30`).toISOString();
+  const endOfDayStr = new Date(`${todayStr}T23:59:59+05:30`).toISOString();
 
   // 1. Get active staff count
   let staffQuery = supabase
     .from('users')
     .select('id')
-    .not('role_id', 'is', null)
-    .neq('role_id', 'unverified');
+    .neq('role', 'unverified');
   if (societyId) staffQuery = staffQuery.eq('society_id', societyId);
   if (siteIds?.length) staffQuery = staffQuery.in('organization_id', siteIds);
   const { data: staffData, error: staffErr } = await staffQuery;
@@ -456,12 +490,15 @@ async function fetchTopPerformersFallback(
   if (staffIds.length === 0) return [];
 
   // 2. Fetch events
+  const startIso = new Date(`${startStr}T00:00:00+05:30`).toISOString();
+  const endIso = new Date(`${endStr}T23:59:59+05:30`).toISOString();
+
   const { data: events, error: evErr } = await supabase
     .from('attendance_events')
     .select('user_id, timestamp, type')
     .in('user_id', staffIds)
-    .gte('timestamp', `${startStr}T00:00:00+05:30`)
-    .lte('timestamp', `${endStr}T23:59:59+05:30`)
+    .gte('timestamp', startIso)
+    .lte('timestamp', endIso)
     .in('type', ['punch-in', 'punch-out', 'break-in', 'break-out']);
 
   if (evErr) throw evErr;

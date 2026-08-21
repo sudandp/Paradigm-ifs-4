@@ -27,10 +27,11 @@ const PriorityIndicator: React.FC<{ priority: SupportTicket['priority'] }> = ({ 
 };
 
 const StatusChip: React.FC<{ status: SupportTicket['status'] }> = ({ status }) => {
-    const styles = {
+    const styles: Record<SupportTicket['status'], string> = {
         Open: 'bg-emerald-50 text-emerald-700 border-emerald-200',
         'In Progress': 'bg-blue-50 text-blue-700 border-blue-200',
         'Pending Requester': 'bg-amber-50 text-amber-700 border-amber-200',
+        'Need Approval': 'bg-purple-50 text-purple-700 border-purple-200',
         Resolved: 'bg-slate-100 text-slate-600 border-slate-200',
         Closed: 'bg-gray-50 text-gray-500 border-gray-200',
     };
@@ -42,7 +43,7 @@ const StatusChip: React.FC<{ status: SupportTicket['status'] }> = ({ status }) =
     );
 };
 
-const TicketCard: React.FC<{ 
+const TicketRow: React.FC<{ 
     ticket: SupportTicket; 
     isMobile?: boolean; 
     isAdmin?: boolean; 
@@ -51,47 +52,45 @@ const TicketCard: React.FC<{
 }> = ({ ticket, isMobile, isAdmin, onClick, onDelete }) => (
     <div
         onClick={onClick}
-        className="group p-5 rounded-2xl border border-border bg-card transition-all duration-300 flex flex-col justify-between h-full shadow-sm hover:-translate-y-0.5 cursor-pointer relative hover:border-emerald-300 hover:shadow-md"
+        className="group flex items-center gap-4 p-3.5 rounded-xl border border-border bg-card transition-all duration-200 hover:border-emerald-300 hover:shadow-sm hover:bg-emerald-50/30 cursor-pointer"
     >
-        <div>
-            <div className="flex justify-between items-start gap-3 mb-2">
-                <h4 className="font-bold leading-snug group-hover:text-emerald-500 transition-colors line-clamp-2 text-primary-text">
-                    {ticket.title}
-                </h4>
-                <div className="flex-shrink-0 mt-1"><PriorityIndicator priority={ticket.priority} /></div>
-            </div>
-            <p className="text-xs font-mono text-muted/80">#{ticket.ticketNumber}</p>
+        {/* Priority dot */}
+        <div className="flex-shrink-0"><PriorityIndicator priority={ticket.priority} /></div>
+
+        {/* Title + ticket number */}
+        <div className="flex-1 min-w-0">
+            <p className="font-semibold text-sm text-primary-text group-hover:text-emerald-600 transition-colors truncate leading-tight">
+                {ticket.title}
+            </p>
+            <p className="text-[10px] font-mono text-muted/70 mt-0.5">#{ticket.ticketNumber}</p>
         </div>
-        <div className="mt-4 pt-4 border-t border-border">
-            <div className="flex justify-between items-center text-[10px] mb-3 font-medium uppercase tracking-wider text-muted">
-                <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-[#006B3F] flex items-center justify-center text-[10px] text-white font-black shadow">
-                        {ticket.raisedByName.charAt(0)}
-                    </div>
-                    <span className="font-bold text-primary-text">{ticket.raisedByName}</span>
-                </div>
-                <span className="font-semibold">{formatDistanceToNow(new Date(ticket.raisedAt), { addSuffix: true })}</span>
+
+        {/* Raised by */}
+        <div className="hidden sm:flex items-center gap-1.5 flex-shrink-0 min-w-[110px]">
+            <div className="w-5 h-5 rounded-full bg-[#006B3F] flex items-center justify-center text-[9px] text-white font-black">
+                {ticket.raisedByName.charAt(0)}
             </div>
-            <div className="flex justify-between items-center">
-                <StatusChip status={ticket.status} />
-                {isAdmin && onDelete && (
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onDelete(e);
-                        }}
-                        className={`p-1.5 rounded-lg border transition-all active:scale-95 ${
-                            isMobile 
-                                ? 'text-red-400 hover:text-red-300 bg-red-500/10 border-red-500/20' 
-                                : 'text-red-500 hover:text-red-700 bg-red-50 border-red-200'
-                        }`}
-                        title="Delete Ticket"
-                    >
-                        <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                )}
-            </div>
+            <span className="text-xs text-muted truncate max-w-[80px]">{ticket.raisedByName}</span>
         </div>
+
+        {/* Time ago */}
+        <span className="hidden md:block text-[11px] text-muted flex-shrink-0 min-w-[90px] text-right">
+            {formatDistanceToNow(new Date(ticket.raisedAt), { addSuffix: true })}
+        </span>
+
+        {/* Status */}
+        <div className="flex-shrink-0"><StatusChip status={ticket.status} /></div>
+
+        {/* Delete */}
+        {isAdmin && onDelete && (
+            <button
+                onClick={(e) => { e.stopPropagation(); onDelete(e); }}
+                className="flex-shrink-0 p-1.5 rounded-lg border text-red-500 hover:text-red-700 bg-red-50 border-red-200 transition-all active:scale-95 opacity-0 group-hover:opacity-100"
+                title="Delete Ticket"
+            >
+                <Trash2 className="h-3.5 w-3.5" />
+            </button>
+        )}
     </div>
 );
 
@@ -748,23 +747,22 @@ const SupportDashboard: React.FC = () => {
                         </div>
 
                         {isLoading ? (
-                            <div className="flex justify-center items-center h-64">
+                            <div className="flex justify-center items-center h-40">
                                 <Loader2 className="h-8 w-8 animate-spin text-accent" />
                             </div>
                         ) : (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="flex flex-col gap-2">
                                 {filteredTickets.length > 0 ? filteredTickets.map(ticket => (
-                                    <div key={ticket.id}>
-                                        <TicketCard 
-                                            ticket={ticket} 
-                                            isMobile={isMobile}
-                                            isAdmin={user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'developer'}
-                                            onClick={() => navigate(`/support/ticket/${ticket.id}`)} 
-                                            onDelete={() => handleDeleteTicket(ticket.id)}
-                                        />
-                                    </div>
+                                    <TicketRow
+                                        key={ticket.id}
+                                        ticket={ticket} 
+                                        isMobile={isMobile}
+                                        isAdmin={user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'developer'}
+                                        onClick={() => navigate(`/support/ticket/${ticket.id}`)} 
+                                        onDelete={() => handleDeleteTicket(ticket.id)}
+                                    />
                                 )) : (
-                                    <div className={`col-span-full flex flex-col items-center justify-center py-12 ${isMobile ? 'text-muted' : 'text-slate-400'}`}>
+                                    <div className={`flex flex-col items-center justify-center py-12 ${isMobile ? 'text-muted' : 'text-slate-400'}`}>
                                         <div className={`p-4 rounded-full mb-3 ${isMobile ? 'bg-accent/5' : 'bg-slate-50'}`}>
                                             <Search className="h-8 w-8 opacity-50" />
                                         </div>

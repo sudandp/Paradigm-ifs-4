@@ -35,10 +35,6 @@ import toast from 'react-hot-toast';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
-import ExcelJS from 'exceljs';
-import { saveAs } from 'file-saver';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { opsApi } from '../../services/opsApi';
 import { htYardExporter } from '../../services/htYardExporter';
 import { api } from '../../services/api';
@@ -276,7 +272,11 @@ const SnagReportPage: React.FC = () => {
   };
 
   // Helper functions for single item exports
-  const exportSnagToPDF = (entry: SnagEntry) => {
+  const exportSnagToPDF = async (entry: SnagEntry) => {
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable')
+    ]);
     const doc = new jsPDF();
     doc.setFontSize(20);
     doc.text('Paradigm Services - Snag Audit Report', 14, 20);
@@ -308,6 +308,11 @@ const SnagReportPage: React.FC = () => {
   };
 
   const exportSnagToExcel = async (entry: SnagEntry) => {
+    const [ExcelJSModule, { saveAs }] = await Promise.all([
+      import('exceljs'),
+      import('file-saver')
+    ]);
+    const ExcelJS = ExcelJSModule.default || ExcelJSModule;
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Snag Detail');
 
@@ -338,7 +343,11 @@ const SnagReportPage: React.FC = () => {
     toast.success('Snag Excel Report downloaded!');
   };
 
-  const exportPPMToPDF = (ppm: any) => {
+  const exportPPMToPDF = async (ppm: any) => {
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable')
+    ]);
     const doc = new jsPDF();
     doc.setFontSize(20);
     doc.text('Paradigm Services - PPM Audit Report', 14, 20);
@@ -369,6 +378,11 @@ const SnagReportPage: React.FC = () => {
   };
 
   const exportPPMToExcel = async (ppm: any) => {
+    const [ExcelJSModule, { saveAs }] = await Promise.all([
+      import('exceljs'),
+      import('file-saver')
+    ]);
+    const ExcelJS = ExcelJSModule.default || ExcelJSModule;
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('PPM Detail');
 

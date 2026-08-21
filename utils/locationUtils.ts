@@ -78,41 +78,38 @@ export async function reverseGeocode(lat: number, lon: number): Promise<string> 
                         cinema || theatre || museum || 
                         attraction || tourism || historic ||
                         building || amenity || shop || office || 
-                        park || garden;
+                        park || garden || null;
         
         const placeName = city || village || town || null;
-        const suburbOrNeighbourhood = suburb || neighbourhood || null;
-        
-        const shouldIncludeCity = placeName && 
-          placeName !== suburbOrNeighbourhood && 
-          placeName !== city_district &&
-          placeName !== road;
+        const mainArea = poiName || neighbourhood || suburb || road || placeName;
+        const cityArea = placeName && placeName !== mainArea ? placeName : null;
+        if (mainArea && cityArea) {
+          return `${mainArea}, ${cityArea}`;
+        }
+        if (mainArea) {
+          return mainArea;
+        }
 
         const rawParts = [
           house_number, 
           road, 
-          residential,
           neighbourhood,
           suburb, 
-          city_district,
-          shouldIncludeCity ? placeName : null,
-          state, 
-          postcode,
+          placeName,
+          postcode
         ].filter(Boolean) as string[];
 
         const parts = rawParts.filter((part, i) => i === 0 || part !== rawParts[i - 1]);
-        const shortAddress = parts.join(', ');
+        const shortAddress = parts.slice(0, 3).join(', ');
         
-        if (poiName) {
-          return `${poiName} - ${shortAddress || data.display_name}`;
-        }
         if (shortAddress) return shortAddress;
       }
       
       if (data.display_name) {
         const cleaned = (data.display_name as string)
           .split(', ')
-          .filter(p => !/(India|South City Corporation|Municipal Corporation|Corporation|District)/i.test(p))
+          .filter(p => !/(India|South City Corporation|Municipal Corporation|Central City Corporation|Corporation|District|Urban|Karnataka)/i.test(p))
+          .slice(0, 3)
           .join(', ');
         if (cleaned) return cleaned;
       }
@@ -137,6 +134,11 @@ export async function resolveLocationName(
 ): Promise<string> {
   const homeLocName = user?.name ? `${user.name} Home` : 'Home Location';
 
+  // 0. Prioritize clean, registered site/office name if present (e.g. "Paradigm Office", "PIFS Bangalore")
+  if (rawAddress && !/^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(rawAddress.trim()) && rawAddress !== 'GPS Location' && rawAddress !== 'Auto Check-out') {
+    return rawAddress;
+  }
+
   // 1. Check direct distance match to user's registered Home Location coordinates
   if (lat != null && lon != null && user?.homeLatitude != null && user?.homeLongitude != null) {
     const homeLat = Number(user.homeLatitude);
@@ -154,8 +156,8 @@ export async function resolveLocationName(
     for (const loc of userLocations) {
       if (loc.latitude != null && loc.longitude != null) {
         const dist = calculateDistanceMeters(lat, lon, Number(loc.latitude), Number(loc.longitude));
-        // Use site radius or default to 500m threshold for accurate site recognition
-        const radius = Math.max(Number(loc.radius) || 300, 500);
+        // Use site radius or default to 800m threshold for accurate site recognition
+        const radius = Math.max(Number(loc.radius) || 300, 800);
         if (dist <= radius) {
           return loc.name || homeLocName;
         }
@@ -163,44 +165,12 @@ export async function resolveLocationName(
     }
   }
 
-  // 3. Check if rawAddress is a specific site/location name (e.g., "PIFS Bangalore")
-  const isCoordString = !!(rawAddress && /^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(rawAddress.trim()));
-  const isGeneric = !rawAddress || isCoordString || rawAddress.includes('GPS') || rawAddress === 'Auto Check-out';
-
-  if (rawAddress && !isGeneric && !rawAddress.toLowerCase().includes('location')) {
-    return rawAddress;
-  }
-
-  // 4. Resolve address via Reverse Geocoding if lat/lon exist
-  let geocodedAddress: string | null = null;
-  if (lat != null && lon != null && (isGeneric || !rawAddress)) {
-    geocodedAddress = await reverseGeocode(lat, lon);
-  }
-
-  const isGeocodedCoord = !!(geocodedAddress && /^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(geocodedAddress.trim()));
-
-  const addressToCheck = (!isCoordString && rawAddress && !isGeneric)
-    ? rawAddress
-    : (geocodedAddress && !isGeocodedCoord ? geocodedAddress : (rawAddress || geocodedAddress));
-
-  if (addressToCheck) {
-    if (user?.homeAddress) {
-      const normAddress = addressToCheck.toLowerCase().replace(/[^a-z0-9]/g, '');
-      const normHome = user.homeAddress.toLowerCase().replace(/[^a-z0-9]/g, '');
-      
-      if (
-        normAddress.includes(normHome) ||
-        normHome.includes(normAddress) ||
-        (normHome.length > 15 && normAddress.includes(normHome.slice(0, 20))) ||
-        (normAddress.length > 15 && normHome.includes(normAddress.slice(0, 20)))
-      ) {
-        return homeLocName;
-      }
+  // 3. Resolve clean address via Reverse Geocoding if lat/lon exist
+  if (lat != null && lon != null) {
+    const geocodedAddress = await reverseGeocode(lat, lon);
+    if (geocodedAddress && !/^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(geocodedAddress.trim())) {
+      return geocodedAddress;
     }
-    if (/^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(addressToCheck.trim())) {
-      return 'GPS Location';
-    }
-    return addressToCheck;
   }
 
   return rawAddress && !/^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(rawAddress.trim()) ? rawAddress : (lat != null && lon != null ? 'GPS Location' : 'Unknown Location');

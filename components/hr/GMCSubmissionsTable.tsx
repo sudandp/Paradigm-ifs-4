@@ -5,8 +5,6 @@ import { Search, Filter, ChevronLeft, ChevronRight, FileText, Download, Building
 import Button from '../ui/Button';
 import { format, differenceInYears } from 'date-fns';
 import { exportGenericReportToExcel } from '../../utils/excelExport';
-import { pdf } from '@react-pdf/renderer';
-import { GMCSubmissionDocument } from '../../pages/attendance/PDFReports';
 
 // Reusable PDF Template for individual GMC submission (Hidden from view)
 // Template is now handled by GMCSubmissionDocument in PDFReports.tsx
@@ -146,6 +144,10 @@ const GMCSubmissionsTable: React.FC = () => {
 
     const handleDownloadPdf = async (sub: GmcSubmission) => {
         try {
+            const [{ pdf }, { GMCSubmissionDocument }] = await Promise.all([
+                import('@react-pdf/renderer'),
+                import('../../pages/attendance/PDFReports')
+            ]);
             const doc = <GMCSubmissionDocument sub={sub} />;
             const blob = await pdf(doc).toBlob();
             if (blob) {

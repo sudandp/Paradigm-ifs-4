@@ -558,7 +558,7 @@ export interface SupportTicket {
   description: string;
   category: 'Software Developer' | 'Admin' | 'Operational' | 'HR Query' | 'Other';
   priority: 'Low' | 'Medium' | 'High' | 'Urgent';
-  status: 'Open' | 'In Progress' | 'Pending Requester' | 'Resolved' | 'Closed';
+  status: 'Open' | 'In Progress' | 'Pending Requester' | 'Need Approval' | 'Resolved' | 'Closed';
   raisedById: string;
   raisedByName: string;
   raisedAt: string; // ISO String

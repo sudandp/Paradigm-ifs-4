@@ -1,6 +1,3 @@
-import ExcelJS from 'exceljs';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { HTAuditHeader, HTEquipmentInstance, HTAuditResponse, HTSnagItem } from '../types/htYard';
 
 export const htYardExporter = {
@@ -11,6 +8,8 @@ export const htYardExporter = {
     responses: Record<string, HTAuditResponse>,
     snagItems: HTSnagItem[]
   ): Promise<void> {
+    const ExcelJSModule = await import('exceljs');
+    const ExcelJS = ExcelJSModule.default || ExcelJSModule;
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'Paradigm IFS 4.0';
     workbook.created = new Date();
@@ -91,12 +90,16 @@ export const htYardExporter = {
   },
 
   // Generate PDF report for BESCOM/CEIG submission
-  exportToPDF(
+  async exportToPDF(
     audit: HTAuditHeader,
     equipmentInstances: HTEquipmentInstance[],
     responses: Record<string, HTAuditResponse>,
     snagItems: HTSnagItem[]
-  ): void {
+  ): Promise<void> {
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable')
+    ]);
     const doc = new jsPDF();
 
     // Title

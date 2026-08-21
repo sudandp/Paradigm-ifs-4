@@ -92,6 +92,12 @@ export interface HTSnagItem {
 
 export type HTMasterCategory = 'Cable Details' | 'RMUMD' | 'TRMaster Data' | 'LTKMD' | 'HTYardCommon' | (string & {});
 
+export interface HTFieldTarget {
+  key: string;
+  label: string;
+  section?: string;
+}
+
 export interface HTMasterOption {
   id: string;
   category: HTMasterCategory;
@@ -99,6 +105,7 @@ export interface HTMasterOption {
   fieldKey: string;
   optionValue: string;
   isActive: boolean;
+  section?: string;
   updatedBy?: string;
   createdAt?: string;
   updatedAt?: string;

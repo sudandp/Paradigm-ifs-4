@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../../services/supabase';
+import { api } from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 import Button from '../../components/ui/Button';
@@ -11,8 +12,10 @@ import {
   Activity, ArrowRight, ArrowLeft, AlertTriangle, RefreshCw,
   Camera, CheckCircle, XCircle, Eye, UserPlus, UserCheck,
   Maximize2, Minimize2, Video, Download, Shield, Cpu, Clock, Search,
-  ZoomIn, ZoomOut, RotateCcw, User, Layers, Sparkles, SplitSquareVertical, Sliders
+  ZoomIn, ZoomOut, RotateCcw, User, Layers, Sparkles, SplitSquareVertical, Sliders,
+  ChevronLeft, ChevronRight, ChevronDown, Edit2, MapPin
 } from 'lucide-react';
+import { CctvQuickMapModal, UserOptionItem, SiteLocationItem, QuickMapTargetLog } from '../../components/cctv/CctvQuickMapModal';
 
 // Fallback URL used ONLY when Supabase has no ngrok_url yet (first boot before heartbeat).
 const NGROK_PROXY_FALLBACK = 'https://cctv.cctv.rest';
@@ -72,7 +75,8 @@ interface ZoomPhotoData {
 const NvrCameraStream: React.FC<{
   camName: string;
   proxyUrl: string;
-}> = ({ camName, proxyUrl }) => {
+  locationName?: string;
+}> = ({ camName, proxyUrl, locationName }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isConnected, setIsConnected] = useState(true);
   const [hasError, setHasError] = useState(false);
@@ -183,7 +187,7 @@ const NvrCameraStream: React.FC<{
               LIVE
             </span>
             <span className="text-[11px] font-semibold text-neutral-200 bg-neutral-900/80 border border-white/10 px-2.5 py-1 rounded-full backdrop-blur-md">
-              CAM-01 • {camName.replace(/_/g, ' ').toUpperCase()}
+              CAM-01 • {locationName || 'Paradigm Office (Main Gate)'}
             </span>
           </div>
           <span className="text-[11px] font-mono text-neutral-300 bg-neutral-900/80 border border-white/10 px-2.5 py-1 rounded-full backdrop-blur-md">
@@ -229,7 +233,7 @@ const NvrCameraStream: React.FC<{
                 <span className="h-2 w-2 rounded-full bg-white animate-pulse" /> LIVE
               </span>
               <span className="text-white font-semibold text-sm">
-                {camName.toUpperCase().replace(/_/g, ' ')} — MAIN SURVEILLANCE GATE
+                {locationName || 'Paradigm Office'} — MAIN SURVEILLANCE GATE
               </span>
             </div>
             <div className="flex items-center gap-4">
@@ -274,6 +278,238 @@ const NvrCameraStream: React.FC<{
   );
 };
 
+// ── Registered Users Tab ──────────────────────────────────────────────────────
+const RegisteredUsersTab: React.FC<{
+  userOptions: UserOptionItem[];
+  logs: CctvLog[];
+}> = ({ userOptions, logs }) => {
+  const [search, setSearch] = React.useState('');
+  const [expandedId, setExpandedId] = React.useState<string | null>(null);
+
+  // Group logs by userId
+  const logsByUser = React.useMemo(() => {
+    const map: Record<string, CctvLog[]> = {};
+    logs.forEach(l => {
+      if (!l.userId) return;
+      if (!map[l.userId]) map[l.userId] = [];
+      map[l.userId].push(l);
+    });
+    // Sort each user's logs newest first
+    Object.keys(map).forEach(uid => {
+      map[uid].sort((a, b) => b.detectedAt.localeCompare(a.detectedAt));
+    });
+    return map;
+  }, [logs]);
+
+  const filtered = React.useMemo(() => {
+    const q = search.toLowerCase().trim();
+    if (!q) return userOptions;
+    return userOptions.filter(u =>
+      u.name.toLowerCase().includes(q) ||
+      (u.email || '').toLowerCase().includes(q) ||
+      (u.role || '').toLowerCase().includes(q) ||
+      (u.location || '').toLowerCase().includes(q) ||
+      (u.biometricId || '').toLowerCase().includes(q)
+    );
+  }, [userOptions, search]);
+
+  // Sort: active users first
+  const sorted = React.useMemo(() =>
+    [...filtered].sort((a, b) => {
+      const aActive = !!(logsByUser[a.id]?.length);
+      const bActive = !!(logsByUser[b.id]?.length);
+      if (aActive && !bActive) return -1;
+      if (!aActive && bActive) return 1;
+      return a.name.localeCompare(b.name);
+    }),
+  [filtered, logsByUser]);
+
+  const fmt = (iso: string) => {
+    const d = new Date(iso);
+    return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+  };
+
+  const activeCount = userOptions.filter(u => logsByUser[u.id]?.length).length;
+
+  return (
+    <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
+      {/* Header */}
+      <div className="p-4 border-b border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h3 className="font-bold text-primary-text flex items-center gap-2 text-sm">
+            <UserCheck className="h-4 w-4 text-emerald-600" />
+            Registered Users — Gate Log View
+          </h3>
+          <p className="text-[11px] text-muted mt-0.5">
+            {activeCount} active today · {userOptions.length} total enrolled · Click a user to expand their logs
+          </p>
+        </div>
+        <div className="relative max-w-xs w-full">
+          <Search className="h-4 w-4 text-muted absolute left-3 top-2.5" />
+          <input
+            type="text"
+            placeholder="Search name, role, biometric ID..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 bg-background border border-border rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+        </div>
+      </div>
+
+      {/* Stats bar */}
+      <div className="grid grid-cols-3 divide-x divide-border border-b border-border">
+        <div className="px-4 py-2.5 text-center">
+          <p className="text-base font-black text-emerald-600">{userOptions.length}</p>
+          <p className="text-[9px] text-muted uppercase tracking-widest font-semibold">Enrolled</p>
+        </div>
+        <div className="px-4 py-2.5 text-center">
+          <p className="text-base font-black text-blue-600">{activeCount}</p>
+          <p className="text-[9px] text-muted uppercase tracking-widest font-semibold">Active Today</p>
+        </div>
+        <div className="px-4 py-2.5 text-center">
+          <p className="text-base font-black text-slate-600">{logs.filter(l => l.userId).length}</p>
+          <p className="text-[9px] text-muted uppercase tracking-widest font-semibold">Total Events</p>
+        </div>
+      </div>
+
+      {/* List */}
+      {sorted.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-muted">
+          <UserCheck className="h-10 w-10 opacity-20 mb-3" />
+          <p className="text-sm font-medium">No users match your search.</p>
+        </div>
+      ) : (
+        <div className="divide-y divide-border/60">
+          {sorted.map(u => {
+            const userLogs = logsByUser[u.id] || [];
+            const isActive = userLogs.length > 0;
+            const isExpanded = expandedId === u.id;
+            const entries = userLogs.filter(l => l.direction === 'entry').length;
+            const exits   = userLogs.filter(l => l.direction === 'exit').length;
+
+            return (
+              <div key={u.id} className={`transition-colors ${isExpanded ? 'bg-emerald-50/40' : 'hover:bg-slate-50/60'}`}>
+                {/* User row — click to expand */}
+                <button
+                  className="w-full flex items-center gap-3 px-4 py-3 text-left"
+                  onClick={() => setExpandedId(isExpanded ? null : u.id)}
+                >
+                  {/* Avatar */}
+                  <div className="relative flex-shrink-0">
+                    {u.photoUrl ? (
+                      <img src={u.photoUrl} alt={u.name}
+                        className="w-10 h-10 rounded-xl object-cover border border-border"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700 font-black text-base">
+                        {u.name.charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    {isActive && (
+                      <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white" />
+                    )}
+                  </div>
+
+                  {/* Name / role / location */}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm text-primary-text truncate">{u.name}</p>
+                    <p className="text-[10px] text-muted truncate capitalize">
+                      {u.role ? u.role.replace(/_/g, ' ') : ''}
+                      {u.location ? ` · ${u.location}` : ''}
+                    </p>
+                  </div>
+
+                  {/* Biometric ID */}
+                  {u.biometricId && (
+                    <span className="hidden sm:inline text-[9px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded-full">
+                      🔑 {u.biometricId}
+                    </span>
+                  )}
+
+                  {/* Activity summary */}
+                  {isActive ? (
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <span className="flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-full text-[10px] font-bold">
+                        <ArrowRight className="h-2.5 w-2.5" />{entries}
+                      </span>
+                      <span className="flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-800 border border-blue-200 rounded-full text-[10px] font-bold">
+                        <ArrowLeft className="h-2.5 w-2.5" />{exits}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-[10px] text-muted italic flex-shrink-0">No activity</span>
+                  )}
+
+                  {/* Expand chevron */}
+                  <ChevronDown className={`h-4 w-4 text-muted flex-shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                </button>
+
+                {/* Expanded log list */}
+                {isExpanded && (
+                  <div className="px-4 pb-3">
+                    {userLogs.length === 0 ? (
+                      <p className="text-xs text-muted italic py-2 pl-14">No gate events recorded today.</p>
+                    ) : (
+                      <div className="ml-13 rounded-xl border border-border overflow-hidden bg-white/80 shadow-sm">
+                        {/* Log list header */}
+                        <div className="grid grid-cols-4 text-[9px] font-bold uppercase tracking-widest text-muted bg-slate-50 border-b border-border px-3 py-2">
+                          <span>Time</span>
+                          <span>Direction</span>
+                          <span>Camera / Location</span>
+                          <span className="text-right">Confidence</span>
+                        </div>
+                        <div className="divide-y divide-border/50 max-h-52 overflow-y-auto">
+                          {userLogs.map(log => (
+                            <div key={log.id} className="grid grid-cols-4 items-center px-3 py-2 hover:bg-emerald-50/40 transition-colors text-[11px]">
+                              {/* Snapshot thumb + time */}
+                              <div className="flex items-center gap-2">
+                                {log.snapshotUrl ? (
+                                  <img src={log.snapshotUrl} alt=""
+                                    className="w-7 h-7 rounded-lg object-cover border border-border flex-shrink-0"
+                                  />
+                                ) : (
+                                  <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+                                    <Camera className="h-3 w-3 text-slate-400" />
+                                  </div>
+                                )}
+                                <span className="font-mono text-primary-text font-semibold">{fmt(log.detectedAt)}</span>
+                              </div>
+
+                              {/* Direction */}
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-bold w-fit text-[10px] ${
+                                log.direction === 'entry'
+                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                  : 'bg-blue-100 text-blue-800 border border-blue-200'
+                              }`}>
+                                {log.direction === 'entry'
+                                  ? <><ArrowRight className="h-2.5 w-2.5" /> IN</>
+                                  : <><ArrowLeft className="h-2.5 w-2.5" /> OUT</>
+                                }
+                              </span>
+
+                              {/* Camera */}
+                              <span className="text-muted truncate">{log.cameraName}</span>
+
+                              {/* Confidence */}
+                              <span className="text-right font-mono text-emerald-700 font-semibold">
+                                {(log.confidence * 100).toFixed(1)}%
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const CctvDashboard: React.FC = () => {
 
   const { user } = useAuthStore();
@@ -281,11 +517,23 @@ const CctvDashboard: React.FC = () => {
   const [ngrokProxy, setNgrokProxy] = useState(NGROK_PROXY_FALLBACK);
   const [logs, setLogs] = useState<CctvLog[]>([]);
   const [unknownQueue, setUnknownQueue] = useState<EnrollmentItem[]>([]);
-  const [userOptions, setUserOptions] = useState<UserOption[]>([]);
+  const [userOptions, setUserOptions] = useState<UserOptionItem[]>([]);
+  const [siteLocations, setSiteLocations] = useState<SiteLocationItem[]>([]);
+  const [selectedSiteLocation, setSelectedSiteLocation] = useState<string>('Paradigm Office');
+  const [quickMapTarget, setQuickMapTarget] = useState<QuickMapTargetLog | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'live' | 'unknown' | 'debugger'>('live');
+  const [activeTab, setActiveTab] = useState<'live' | 'unknown' | 'debugger' | 'registered'>('live');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+
+  const formatCameraLocation = (camName?: string | null) => {
+    if (!camName) return 'Paradigm Office (Main Gate)';
+    const lower = camName.toLowerCase();
+    if (lower.includes('main_gate') || lower.includes('main gate') || lower.includes('gate_entry')) {
+      return 'Paradigm Office (Main Gate)';
+    }
+    return camName.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  };
 
   // AI Live Debugger state
   const [diagData, setDiagData] = useState<any>(null);
@@ -301,6 +549,67 @@ const CctvDashboard: React.FC = () => {
   const [zoomPhoto, setZoomPhoto] = useState<ZoomPhotoData | null>(null);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [zoomPhotoLoading, setZoomPhotoLoading] = useState(false);
+
+  // Dynamic height sync: locks right detections panel height to CCTV stream card
+  const leftCardRef = useRef<HTMLDivElement>(null);
+  const [cctvCardHeight, setCctvCardHeight] = useState<number | undefined>(undefined);
+
+  useEffect(() => {
+    const updateHeight = () => {
+      if (leftCardRef.current) {
+        const rect = leftCardRef.current.getBoundingClientRect();
+        if (rect.height > 100) {
+          setCctvCardHeight(Math.round(rect.height));
+        }
+      }
+    };
+
+    updateHeight();
+    const el = leftCardRef.current;
+    if (!el) return;
+
+    const observer = new ResizeObserver(() => {
+      updateHeight();
+    });
+    observer.observe(el);
+
+    window.addEventListener('resize', updateHeight);
+    const intervals = [50, 150, 300, 600, 1000, 2000].map(ms => setTimeout(updateHeight, ms));
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateHeight);
+      intervals.forEach(clearTimeout);
+    };
+  }, []);
+
+  // Pagination for Real-Time Face Detections (10 per page)
+  const [liveLogsPage, setLiveLogsPage] = useState(1);
+  const LIVE_LOGS_PER_PAGE = 10;
+  const totalLivePages = Math.max(1, Math.ceil(logs.length / LIVE_LOGS_PER_PAGE));
+  const safeLivePage = Math.min(liveLogsPage, totalLivePages);
+  const paginatedLogs = logs.slice((safeLivePage - 1) * LIVE_LOGS_PER_PAGE, safeLivePage * LIVE_LOGS_PER_PAGE);
+
+  const getPaginationNumbers = (current: number, total: number) => {
+    if (total <= 5) {
+      return Array.from({ length: total }, (_, i) => i + 1);
+    }
+    const pages: (number | string)[] = [];
+    pages.push(1);
+    if (current > 3) {
+      pages.push('...');
+    }
+    const start = Math.max(2, current - 1);
+    const end = Math.min(total - 1, current + 1);
+    for (let i = start; i <= end; i++) {
+      pages.push(i);
+    }
+    if (current < total - 2) {
+      pages.push('...');
+    }
+    pages.push(total);
+    return pages;
+  };
 
   const stats = {
     entries: logs.filter(l => (l.direction || '').toLowerCase() === 'entry' && l.userId).length,
@@ -338,11 +647,12 @@ const CctvDashboard: React.FC = () => {
 
   const fetchLogs = useCallback(async () => {
     try {
-      // 1. Fetch from Supabase (Cloud)
+      // 1. Fetch from Supabase (Cloud) & API Service
       const [
         { data: logsData, error: logsError },
         { data: unknownData, error: unknownError },
-        { data: usersData }
+        usersResult,
+        locationsResult
       ] = await Promise.all([
         supabase
           .from('cctv_attendance_logs')
@@ -354,11 +664,14 @@ const CctvDashboard: React.FC = () => {
           .select('*')
           .order('detected_at', { ascending: false })
           .limit(50),
-        supabase
-          .from('users')
-          .select('id, name, biometric_id, photo_url')
-          .order('name', { ascending: true })
-          .limit(200),
+        api.getUsers().catch(async () => {
+          const { data } = await supabase.from('users').select('*').limit(500);
+          return data || [];
+        }),
+        api.getLocations().catch(async () => {
+          const { data } = await supabase.from('locations').select('*').limit(1000);
+          return data || [];
+        }),
       ]);
 
       if (logsError) console.warn('[CCTV] Supabase logs error:', logsError);
@@ -464,20 +777,39 @@ const CctvDashboard: React.FC = () => {
 
       setLogs(dedupedLogs);
 
-      if (usersData) {
-        setUserOptions(usersData.map((u: any) => ({
+      if (Array.isArray(usersResult) && usersResult.length > 0) {
+        setUserOptions(usersResult.map((u: any) => ({
           id: u.id,
           name: u.name || 'Unnamed Employee',
-          biometricId: u.biometric_id || null,
-          photoUrl: u.photo_url || null,
+          email: u.email || null,
+          role: u.role || u.roleId || null,
+          company: u.organizationName || u.organization_name || u.company || 'PARADIGM INTEGRATED FACILITY SERVICES PVT LTD',
+          location: u.location || null,
+          biometricId: u.biometricId || u.biometric_id || null,
+          photoUrl: u.photoUrl || u.photo_url || null,
         })));
+      }
+
+      if (Array.isArray(locationsResult) && locationsResult.length > 0) {
+        const formattedLocs: SiteLocationItem[] = locationsResult.map((l: any) => ({
+          id: l.id,
+          name: l.name || l.address || 'Site Location',
+          address: l.address || null,
+          coordinates: l.latitude && l.longitude ? `${l.latitude}, ${l.longitude}` : (l.coordinates || null),
+          radius: l.radius || 100,
+        }));
+        setSiteLocations(formattedLocs);
+        const paradigmLoc = formattedLocs.find(l => l.name.toLowerCase().includes('paradigm'));
+        if (paradigmLoc && !selectedSiteLocation) {
+          setSelectedSiteLocation(paradigmLoc.name);
+        }
       }
     } catch (err: any) {
       console.error('[CCTV] Fetch logs error:', err);
     } finally {
       setIsLoading(false);
     }
-  }, [ngrokProxy]);
+  }, [ngrokProxy, selectedSiteLocation]);
 
   // Stream Connection Inspector & Manual Override
   const [showStreamInspector, setShowStreamInspector] = useState(false);
@@ -538,51 +870,67 @@ const CctvDashboard: React.FC = () => {
 
     const channel = supabase
       .channel('cctv-live-dash')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'cctv_attendance_logs' }, payload => {
-        const l = payload.new as any;
-        setLogs(prev => {
-          if (!l.user_id) {
-            const newTs = new Date(l.detected_at).getTime();
-            const isDupe = prev.some(
-              x => !x.userId &&
-                   x.cameraName === l.camera_name &&
-                   Math.abs(new Date(x.detectedAt).getTime() - newTs) < 60_000
-            );
-            if (isDupe) return prev;
-          }
-          return [{
-            id: l.id,
-            edgeLogId: null,
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cctv_attendance_logs' }, payload => {
+        if (payload.eventType === 'INSERT') {
+          const l = payload.new as any;
+          setLogs(prev => {
+            if (!l.user_id) {
+              const newTs = new Date(l.detected_at).getTime();
+              const isDupe = prev.some(
+                x => !x.userId &&
+                     x.cameraName === l.camera_name &&
+                     Math.abs(new Date(x.detectedAt).getTime() - newTs) < 60_000
+              );
+              if (isDupe) return prev;
+            }
+            return [{
+              id: l.id,
+              edgeLogId: null,
+              userId: l.user_id,
+              userName: l.user_name,
+              cameraName: l.camera_name,
+              direction: l.direction,
+              confidence: l.confidence,
+              detectedAt: l.detected_at,
+              snapshotUrl: l.snapshot_url,
+              edgeDeviceId: l.edge_device_id,
+            }, ...prev.filter(x => x.id !== l.id)].slice(0, 100);
+          });
+        } else if (payload.eventType === 'UPDATE') {
+          const l = payload.new as any;
+          setLogs(prev => prev.map(x => x.id === l.id ? {
+            ...x,
             userId: l.user_id,
-            userName: l.user_name,
-            cameraName: l.camera_name,
-            direction: l.direction,
-            confidence: l.confidence,
-            detectedAt: l.detected_at,
-            snapshotUrl: l.snapshot_url,
-            edgeDeviceId: l.edge_device_id,
-          }, ...prev.filter(x => x.id !== l.id)].slice(0, 100);
-        });
+            userName: l.user_name || x.userName,
+          } : x));
+        }
       })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'cctv_enrollment_queue' }, payload => {
-        const u = payload.new as any;
-        const newItem: EnrollmentItem = {
-          id: u.id,
-          cameraName: u.camera_name,
-          detectedAt: u.detected_at,
-          snapshotUrl: u.snapshot_url,
-          status: 'pending',
-          edgeDeviceId: u.edge_device_id,
-        };
-        setUnknownQueue(prev => {
-          const newTs = new Date(newItem.detectedAt).getTime();
-          const isTooClose = prev.some(
-            x => x.cameraName === newItem.cameraName &&
-                 Math.abs(new Date(x.detectedAt).getTime() - newTs) < 90_000
-          );
-          if (isTooClose) return prev;
-          return [newItem, ...prev.filter(x => x.id !== u.id)];
-        });
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cctv_enrollment_queue' }, payload => {
+        if (payload.eventType === 'INSERT') {
+          const u = payload.new as any;
+          const newItem: EnrollmentItem = {
+            id: u.id,
+            cameraName: u.camera_name,
+            detectedAt: u.detected_at,
+            snapshotUrl: u.snapshot_url,
+            status: u.status || 'pending',
+            edgeDeviceId: u.edge_device_id,
+          };
+          setUnknownQueue(prev => {
+            const newTs = new Date(newItem.detectedAt).getTime();
+            const isTooClose = prev.some(
+              x => x.cameraName === newItem.cameraName &&
+                   Math.abs(new Date(x.detectedAt).getTime() - newTs) < 90_000
+            );
+            if (isTooClose) return prev;
+            return [newItem, ...prev.filter(x => x.id !== u.id)];
+          });
+        } else if (payload.eventType === 'UPDATE' || payload.eventType === 'DELETE') {
+          const u = (payload.new || payload.old) as any;
+          if (u?.status === 'enrolled' || u?.status === 'dismissed' || payload.eventType === 'DELETE') {
+            setUnknownQueue(prev => prev.filter(x => x.id !== u.id));
+          }
+        }
       })
       .subscribe();
 
@@ -744,6 +1092,16 @@ const CctvDashboard: React.FC = () => {
     }
   };
 
+  const handleQuickMapSuccess = (updated: { id: string; userId: string; userName: string }) => {
+    setLogs(prev => prev.map(l => l.id === updated.id ? { ...l, userId: updated.userId, userName: updated.userName } : l));
+    setUnknownQueue(prev => prev.filter(u => u.id !== updated.id));
+    if (zoomPhoto) {
+      setZoomPhoto(prev => prev ? { ...prev, userId: updated.userId, userName: updated.userName, title: updated.userName } : null);
+    }
+    setToast({ message: `Successfully mapped face to ${updated.userName}!`, type: 'success' });
+    fetchLogs();
+  };
+
   const handleOpenLogPhoto = (log: CctvLog) => {
     const userOpt = userOptions.find(u => u.id === log.userId);
     const portraitUrl = log.snapshotUrl || '';
@@ -879,10 +1237,10 @@ const CctvDashboard: React.FC = () => {
       </div>
 
       {/* ── CENTRAL NVR SURVEILLANCE & REALTIME PUNCH STATION ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8 items-stretch">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8 items-start">
         {/* Left Column: Live NVR Camera Window (7 cols) */}
         <div className="lg:col-span-7 flex flex-col">
-          <div className="bg-card rounded-2xl border border-border p-4 shadow-sm flex-1 flex flex-col justify-between">
+          <div ref={leftCardRef} className="bg-card rounded-2xl border border-border p-4 shadow-sm flex flex-col justify-between">
             <div className="flex items-center justify-between mb-3 px-1">
               <div className="flex items-center gap-2">
                 <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -898,8 +1256,9 @@ const CctvDashboard: React.FC = () => {
                   <Sliders className="h-3 w-3 text-emerald-600" />
                   {showStreamInspector ? 'Hide Inspector' : 'Stream Inspector'}
                 </button>
-                <span className="text-[11px] font-mono font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-md">
-                  RTSP TCP • MAIN GATE
+                <span className="text-[11px] font-mono font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-md flex items-center gap-1">
+                  <MapPin className="h-3 w-3 text-emerald-600" />
+                  RTSP TCP • PARADIGM OFFICE
                 </span>
               </div>
             </div>
@@ -931,11 +1290,29 @@ const CctvDashboard: React.FC = () => {
                     {isSavingStreamUrl ? 'Saving...' : 'Apply Stream URL'}
                   </button>
                 </div>
+                {siteLocations.length > 0 && (
+                  <div className="pt-1.5 border-t border-border/60 flex items-center justify-between gap-2">
+                    <span className="text-[11px] text-muted flex items-center gap-1">
+                      <MapPin className="h-3 w-3 text-emerald-600" /> Camera Site Location:
+                    </span>
+                    <select
+                      value={selectedSiteLocation}
+                      onChange={e => setSelectedSiteLocation(e.target.value)}
+                      className="px-2 py-1 bg-background border border-border rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500 max-w-[220px]"
+                    >
+                      {siteLocations.map(l => (
+                        <option key={l.id} value={l.name}>
+                          {l.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
             )}
 
             <div className="aspect-video w-full rounded-xl overflow-hidden shadow-inner">
-              <NvrCameraStream camName="main_gate_entry" proxyUrl={ngrokProxy} />
+              <NvrCameraStream camName="main_gate_entry" proxyUrl={ngrokProxy} locationName={`${selectedSiteLocation || 'Paradigm Office'} (Main Gate)`} />
             </div>
 
             <div className="flex items-center justify-between text-xs text-muted mt-3 px-1 pt-2 border-t border-border/70">
@@ -950,9 +1327,15 @@ const CctvDashboard: React.FC = () => {
         </div>
 
         {/* Right Column: Real-Time Attendance Ticker (5 cols) */}
-        <div className="lg:col-span-5 flex flex-col">
-          <div className="bg-card rounded-2xl border border-border shadow-sm flex-1 flex flex-col overflow-hidden">
-            <div className="px-5 py-4 border-b border-border bg-emerald-50/50 flex items-center justify-between">
+        <div 
+          className="lg:col-span-5 flex flex-col w-full min-h-0"
+          style={{ 
+            height: cctvCardHeight ? `${cctvCardHeight}px` : undefined,
+            maxHeight: cctvCardHeight ? `${cctvCardHeight}px` : undefined 
+          }}
+        >
+          <div className="bg-card rounded-2xl border border-border shadow-sm flex flex-col overflow-hidden h-full max-h-full">
+            <div className="px-5 py-4 border-b border-border bg-emerald-50/50 flex items-center justify-between flex-shrink-0">
               <div className="flex items-center gap-2">
                 <Activity className="h-4 w-4 text-emerald-600" />
                 <h3 className="font-bold text-emerald-950 text-sm">Real-Time Face Detections</h3>
@@ -962,8 +1345,8 @@ const CctvDashboard: React.FC = () => {
               </span>
             </div>
 
-            <div className="flex-1 overflow-y-auto max-h-[360px] divide-y divide-border/60">
-              {logs.length === 0 ? (
+            <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-border/60">
+              {paginatedLogs.length === 0 ? (
                 <div className="py-16 flex flex-col items-center justify-center text-center p-6">
                   <div className="h-12 w-12 bg-emerald-50 rounded-full flex items-center justify-center mb-3">
                     <Camera className="h-6 w-6 text-emerald-500" />
@@ -972,21 +1355,21 @@ const CctvDashboard: React.FC = () => {
                   <p className="text-xs text-muted mt-1">Camera is scanning for faces in real-time.</p>
                 </div>
               ) : (
-                logs.slice(0, 15).map(log => (
+                paginatedLogs.map(log => (
                   <div
                     key={log.id}
                     onClick={() => handleOpenLogPhoto(log)}
-                    className="p-3.5 hover:bg-emerald-50/40 cursor-pointer transition-colors flex items-center gap-3 group"
+                    className="p-3 hover:bg-emerald-50/40 cursor-pointer transition-colors flex items-center gap-3 group"
                   >
                     <div className="relative">
                       {log.snapshotUrl ? (
                         <img
                           src={log.snapshotUrl}
                           alt=""
-                          className="h-10 w-10 rounded-xl object-cover border border-emerald-500/30 group-hover:scale-105 transition-transform shadow-xs"
+                          className="h-9 w-9 rounded-xl object-cover border border-emerald-500/30 group-hover:scale-105 transition-transform shadow-xs"
                         />
                       ) : (
-                        <div className={`h-10 w-10 rounded-xl flex items-center justify-center text-sm font-extrabold flex-shrink-0 border ${
+                        <div className={`h-9 w-9 rounded-xl flex items-center justify-center text-xs font-extrabold flex-shrink-0 border ${
                           log.userId 
                             ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
                             : 'bg-gray-100 text-gray-500 border-gray-200'
@@ -994,7 +1377,7 @@ const CctvDashboard: React.FC = () => {
                           {log.userName ? log.userName.charAt(0).toUpperCase() : '?'}
                         </div>
                       )}
-                      <span className={`absolute -bottom-1 -right-1 h-3 w-3 rounded-full border-2 border-white ${log.userId ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                      <span className={`absolute -bottom-1 -right-1 h-2.5 w-2.5 rounded-full border-2 border-white ${log.userId ? 'bg-emerald-500' : 'bg-amber-500'}`} />
                     </div>
 
                     <div className="flex-1 min-w-0">
@@ -1011,20 +1394,97 @@ const CctvDashboard: React.FC = () => {
                         </span>
                       </div>
                       <div className="text-[11px] text-muted flex items-center gap-1 mt-0.5">
-                        <Clock className="h-3 w-3 text-muted" /> {formatTime(log.detectedAt)} • {log.cameraName}
+                        <Clock className="h-3 w-3 text-muted" /> {formatTime(log.detectedAt)} • {formatCameraLocation(log.cameraName)}
                       </div>
                     </div>
 
-                    <div className="text-right flex-shrink-0 flex items-center gap-2">
+                    <div className="text-right flex-shrink-0 flex items-center gap-1.5">
                       <span className="text-xs font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                         {(log.confidence * 100).toFixed(0)}%
                       </span>
-                      <Maximize2 className="h-3.5 w-3.5 text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setQuickMapTarget({
+                            id: log.id,
+                            snapshotUrl: log.snapshotUrl,
+                            cameraName: formatCameraLocation(log.cameraName),
+                            direction: log.direction,
+                            confidence: log.confidence,
+                            detectedAt: log.detectedAt,
+                            userId: log.userId,
+                            userName: log.userName,
+                            edgeDeviceId: log.edgeDeviceId,
+                            edgeLogId: log.edgeLogId,
+                          });
+                        }}
+                        className="p-1 px-2 rounded-lg border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-[10px] flex items-center gap-1 transition-all shadow-2xs"
+                        title="Quick Edit / Map User"
+                      >
+                        <Edit2 className="h-3 w-3 text-emerald-600" />
+                        <span>{log.userId ? 'Edit' : 'Map'}</span>
+                      </button>
                     </div>
                   </div>
                 ))
               )}
             </div>
+
+            {/* Pagination Footer */}
+            {logs.length > 0 && (
+              <div className="px-4 py-2.5 border-t border-border bg-neutral-50/90 dark:bg-neutral-900/60 flex items-center justify-between flex-shrink-0 text-xs select-none gap-2">
+                <span className="text-[11px] text-muted font-medium shrink-0">
+                  Showing <span className="font-semibold text-primary-text">{(safeLivePage - 1) * LIVE_LOGS_PER_PAGE + 1}</span>-
+                  <span className="font-semibold text-primary-text">{Math.min(safeLivePage * LIVE_LOGS_PER_PAGE, logs.length)}</span> of{' '}
+                  <span className="font-semibold text-primary-text">{logs.length}</span>
+                </span>
+
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setLiveLogsPage(p => Math.max(1, p - 1))}
+                    disabled={safeLivePage === 1}
+                    className="h-7 px-2 rounded-lg border border-border bg-white dark:bg-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-700 disabled:opacity-40 disabled:cursor-not-allowed text-primary-text font-medium text-[11px] transition-all flex items-center gap-0.5 shadow-2xs"
+                    title="Previous Page"
+                  >
+                    <ChevronLeft className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Prev</span>
+                  </button>
+
+                  <div className="flex items-center gap-1">
+                    {getPaginationNumbers(safeLivePage, totalLivePages).map((p, idx) =>
+                      p === '...' ? (
+                        <span key={`dots-${idx}`} className="px-1 text-muted select-none text-xs font-semibold">
+                          ...
+                        </span>
+                      ) : (
+                        <button
+                          key={`page-${p}`}
+                          onClick={() => setLiveLogsPage(Number(p))}
+                          className={`min-w-[26px] h-7 px-1.5 rounded-lg text-xs font-bold transition-all border ${
+                            safeLivePage === p
+                              ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                              : 'bg-white dark:bg-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-700 text-primary-text border-border'
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      )
+                    )}
+                  </div>
+
+                  <button
+                    onClick={() => setLiveLogsPage(p => Math.min(totalLivePages, p + 1))}
+                    disabled={safeLivePage === totalLivePages}
+                    className="h-7 px-2 rounded-lg border border-border bg-white dark:bg-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-700 disabled:opacity-40 disabled:cursor-not-allowed text-primary-text font-medium text-[11px] transition-all flex items-center gap-0.5 shadow-2xs"
+                    title="Next Page"
+                  >
+                    <span className="hidden sm:inline">Next</span>
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1063,6 +1523,17 @@ const CctvDashboard: React.FC = () => {
         >
           <Cpu className="h-4 w-4" /> AI Diagnostics & Debugger
         </button>
+
+        <button
+          onClick={() => setActiveTab('registered')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+            activeTab === 'registered'
+              ? 'bg-emerald-600 text-white shadow-sm'
+              : 'text-gray-600 hover:text-emerald-700 hover:bg-white/80'
+          }`}
+        >
+          <UserCheck className="h-4 w-4" /> Registered Users ({userOptions.length})
+        </button>
       </div>
 
       {/* Tab 1: All Logs Table */}
@@ -1097,15 +1568,16 @@ const CctvDashboard: React.FC = () => {
                 <tr>
                   <th className="py-3.5 px-4">Employee</th>
                   <th className="py-3.5 px-4">Direction</th>
-                  <th className="py-3.5 px-4">Camera Channel</th>
+                  <th className="py-3.5 px-4">Site Location / Channel</th>
                   <th className="py-3.5 px-4">AI Confidence</th>
                   <th className="py-3.5 px-4">Timestamp</th>
+                  <th className="py-3.5 px-4 text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/60">
                 {filteredLogs.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-12 text-center text-muted font-medium">
+                    <td colSpan={6} className="py-12 text-center text-muted font-medium">
                       No attendance events found matching your search.
                     </td>
                   </tr>
@@ -1139,11 +1611,41 @@ const CctvDashboard: React.FC = () => {
                           {log.direction === 'entry' ? '→ Punch-IN' : '← Punch-OUT'}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-muted font-mono">{log.cameraName}</td>
+                      <td className="py-3 px-4 text-primary-text font-medium">
+                        <span className="inline-flex items-center gap-1.5 bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded-md border border-border">
+                          <MapPin className="h-3 w-3 text-emerald-600 shrink-0" />
+                          <span className="font-semibold">{formatCameraLocation(log.cameraName)}</span>
+                        </span>
+                      </td>
                       <td className="py-3 px-4 font-mono font-bold text-emerald-700">
                         {(log.confidence * 100).toFixed(0)}% Match
                       </td>
                       <td className="py-3 px-4 text-muted">{formatTime(log.detectedAt)}</td>
+                      <td className="py-3 px-4 text-right">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setQuickMapTarget({
+                              id: log.id,
+                              snapshotUrl: log.snapshotUrl,
+                              cameraName: formatCameraLocation(log.cameraName),
+                              direction: log.direction,
+                              confidence: log.confidence,
+                              detectedAt: log.detectedAt,
+                              userId: log.userId,
+                              userName: log.userName,
+                              edgeDeviceId: log.edgeDeviceId,
+                              edgeLogId: log.edgeLogId,
+                            });
+                          }}
+                          className="px-2.5 py-1 rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs inline-flex items-center gap-1 transition-all shadow-2xs"
+                          title="Quick Edit / Map User"
+                        >
+                          <Edit2 className="h-3 w-3 text-emerald-600" />
+                          <span>{log.userId ? 'Edit' : 'Map User'}</span>
+                        </button>
+                      </td>
                     </tr>
                   ))
                 )}
@@ -1220,17 +1722,31 @@ const CctvDashboard: React.FC = () => {
                       </div>
                     </div>
                     <div className="flex items-center justify-between text-xs font-mono">
-                      <span className="font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                        {item.cameraName}
+                      <span className="font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 flex items-center gap-1">
+                        <MapPin className="h-3 w-3 text-emerald-600" />
+                        {formatCameraLocation(item.cameraName)}
                       </span>
                       <span className="text-muted">{formatTime(item.detectedAt)}</span>
                     </div>
                     <div className="flex items-center gap-2 pt-2 border-t border-border">
                       <Button
-                        onClick={() => { setSelectedUnknown(item); setSelectedUserId(''); }}
-                        className="flex-1 text-xs h-9 bg-emerald-600 hover:bg-emerald-700 text-white"
+                        onClick={() => {
+                          setQuickMapTarget({
+                            id: item.id,
+                            snapshotUrl: item.snapshotUrl,
+                            cameraName: formatCameraLocation(item.cameraName),
+                            direction: 'entry',
+                            confidence: 0.8,
+                            detectedAt: item.detectedAt,
+                            userId: null,
+                            userName: 'Unknown Person',
+                            edgeDeviceId: item.edgeDeviceId,
+                            enrollmentQueueId: item.id,
+                          });
+                        }}
+                        className="flex-1 text-xs h-9 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
                       >
-                        <UserPlus className="h-3.5 w-3.5 mr-1" /> Assign Face
+                        <UserPlus className="h-3.5 w-3.5 mr-1" /> Quick Map & Enroll
                       </Button>
                       <Button
                         variant="outline"
@@ -1372,6 +1888,11 @@ const CctvDashboard: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── TAB 4: Registered Users ── */}
+      {activeTab === 'registered' && (
+        <RegisteredUsersTab userOptions={userOptions} logs={logs} />
       )}
 
       {/* ── REDESIGNED ADVANCED DETECTION & PHOTO LIGHTBOX MODAL ── */}
@@ -1629,8 +2150,11 @@ const CctvDashboard: React.FC = () => {
             {/* Metadata Telemetry Bar */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 px-6 py-3 bg-neutral-900/80 border-t border-white/10 text-xs font-mono">
               <div className="bg-neutral-950/60 p-2.5 rounded-xl border border-white/5">
-                <span className="text-neutral-400 text-[10px] block uppercase">Camera Channel</span>
-                <span className="font-bold text-white truncate block">{zoomPhoto.cameraName}</span>
+                <span className="text-neutral-400 text-[10px] block uppercase">Camera Channel / Location</span>
+                <span className="font-bold text-white truncate block flex items-center gap-1">
+                  <MapPin className="h-3 w-3 text-emerald-400 shrink-0" />
+                  {formatCameraLocation(zoomPhoto.cameraName)}
+                </span>
               </div>
               <div className="bg-neutral-950/60 p-2.5 rounded-xl border border-white/5">
                 <span className="text-neutral-400 text-[10px] block uppercase">Timestamp</span>
@@ -1652,58 +2176,59 @@ const CctvDashboard: React.FC = () => {
 
             {/* Footer / Direct Face Assignment Panel */}
             <div className="px-6 py-4 bg-neutral-900 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3">
-              {zoomPhoto.item ? (
-                <div className="w-full flex flex-col sm:flex-row items-center gap-3">
-                  <div className="flex-1 w-full">
-                    <select
-                      value={selectedUserId}
-                      onChange={e => setSelectedUserId(e.target.value)}
-                      className="w-full px-3.5 py-2 bg-neutral-950 border border-white/20 rounded-xl text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    >
-                      <option value="">-- Choose employee to assign this face --</option>
-                      {userOptions.map(u => (
-                        <option key={u.id} value={u.id}>
-                          {u.name} {u.biometricId ? `(Code: ${u.biometricId})` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="flex items-center gap-2 w-full sm:w-auto">
-                    <Button
-                      onClick={() => handleAssignFaceDirect(zoomPhoto.item!, selectedUserId)}
-                      disabled={!selectedUserId || isAssigning}
-                      className="flex-1 sm:flex-none text-xs h-9 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold flex items-center justify-center gap-1.5"
-                    >
-                      <UserCheck className="h-4 w-4" /> {isAssigning ? 'Syncing Vector...' : 'Confirm & Sync Face'}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => handleDismiss(zoomPhoto.item!.id)}
-                      className="text-xs h-9 text-neutral-400 hover:text-red-400 border-white/10"
-                    >
-                      Dismiss
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="w-full flex items-center justify-between">
-                  <span className="text-xs text-neutral-400 font-mono">
-                    InsightFace Biometric Punch Verified
-                  </span>
-                  <Button
-                    onClick={() => setZoomPhoto(null)}
-                    className="text-xs h-9 bg-white/10 hover:bg-white/20 text-white px-5"
-                  >
-                    Close Preview
-                  </Button>
-                </div>
-              )}
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <Button
+                  onClick={() => {
+                    const targetLog: QuickMapTargetLog = {
+                      id: zoomPhoto.item?.id || (zoomPhoto.edgeLogId ? `edge-${zoomPhoto.edgeLogId}` : 'zoom-photo'),
+                      snapshotUrl: zoomPhoto.portraitUrl,
+                      cameraName: formatCameraLocation(zoomPhoto.cameraName),
+                      direction: zoomPhoto.direction,
+                      confidence: zoomPhoto.confidence,
+                      detectedAt: zoomPhoto.detectedAt,
+                      userId: zoomPhoto.userId,
+                      userName: zoomPhoto.userName,
+                      edgeDeviceId: zoomPhoto.edgeDeviceId,
+                      edgeLogId: zoomPhoto.edgeLogId,
+                      enrollmentQueueId: zoomPhoto.item?.id || null,
+                    };
+                    setQuickMapTarget(targetLog);
+                  }}
+                  className="text-xs h-9 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold flex items-center justify-center gap-1.5"
+                >
+                  <Edit2 className="h-4 w-4" /> {zoomPhoto.userId ? 'Edit Employee Details' : 'Quick Map Face to Employee'}
+                </Button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-neutral-400 font-mono hidden sm:inline">
+                  InsightFace Biometric Punch System
+                </span>
+                <Button
+                  onClick={() => setZoomPhoto(null)}
+                  className="text-xs h-9 bg-white/10 hover:bg-white/20 text-white px-5"
+                >
+                  Close Preview
+                </Button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Assign Face Modal (Triggered from grid button) */}
+      {/* Quick Map & User Edit Modal */}
+      <CctvQuickMapModal
+        isOpen={!!quickMapTarget}
+        onClose={() => setQuickMapTarget(null)}
+        targetLog={quickMapTarget}
+        users={userOptions}
+        locations={siteLocations}
+        ngrokProxy={ngrokProxy}
+        currentUserId={user?.id}
+        onSuccess={handleQuickMapSuccess}
+      />
+
+      {/* Assign Face Modal (Triggered from grid button fallback) */}
       <Modal
         isOpen={!!selectedUnknown}
         onClose={() => setSelectedUnknown(null)}

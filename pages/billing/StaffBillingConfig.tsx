@@ -11,7 +11,6 @@ import {
   Users, IndianRupee, Filter, RefreshCw, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { format } from 'date-fns';
-import ExcelJS from 'exceljs';
 
 interface StaffRow {
   userId: string;
@@ -150,6 +149,8 @@ const StaffBillingConfig: React.FC = () => {
 
   // Excel export
   const handleExport = async () => {
+    const ExcelJSModule = await import('exceljs');
+    const ExcelJS = ExcelJSModule.default || ExcelJSModule;
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet('Staff Billing Config');
     ws.columns = [
@@ -213,6 +214,8 @@ const StaffBillingConfig: React.FC = () => {
     if (!file) return;
     setIsImporting(true);
     try {
+      const ExcelJSModule = await import('exceljs');
+      const ExcelJS = ExcelJSModule.default || ExcelJSModule;
       const wb = new ExcelJS.Workbook();
       await wb.xlsx.load(await file.arrayBuffer());
       const ws = wb.getWorksheet(1);

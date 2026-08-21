@@ -410,17 +410,20 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
                 if (field.optionsCategory) {
                   const categoryOptions = masterOptionsMap[field.optionsCategory] || [];
                   const targetFieldKey = field.optionsFieldKey || (field.isManufacturerField ? 'mfr_name' : field.key);
-                  const matching = categoryOptions.filter(o => o.fieldKey === targetFieldKey);
+                  const matching = categoryOptions.filter(o => o.fieldKey === targetFieldKey && o.isActive !== false);
                   if (matching.length > 0) {
                     optionsList = matching.map(o => o.optionValue);
                   } else {
-                    const fallback = categoryOptions.filter(o => !o.fieldKey || o.fieldKey === 'generic' || o.fieldKey === targetFieldKey);
-                    optionsList = fallback.length > 0 ? fallback.map(o => o.optionValue) : categoryOptions.map(o => o.optionValue);
+                    const fallback = categoryOptions.filter(o => o.fieldKey === 'generic' && o.isActive !== false);
+                    optionsList = fallback.map(o => o.optionValue);
                   }
                 }
                 const cleanOptionsList = Array.from(
                   new Set(
-                    optionsList.map(opt => (opt.trim().toLowerCase() === 'other' ? 'Other — Specify in Remarks' : opt))
+                    optionsList
+                      .map(opt => (opt || '').trim())
+                      .filter(Boolean)
+                      .map(opt => (opt.toLowerCase() === 'other' ? 'Other — Specify in Remarks' : opt))
                   )
                 );
 

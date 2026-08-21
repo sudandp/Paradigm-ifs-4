@@ -1,7 +1,5 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import ExcelJS from 'exceljs';
-import { saveAs } from 'file-saver';
 import { api } from '../../services/api';
 import Button from '../../components/ui/Button';
 import { Download, Upload, AlertCircle, CheckCircle2, Loader2, FileSpreadsheet, ArrowLeft, Info } from 'lucide-react';
@@ -21,7 +19,12 @@ const BulkEarnedLeavePage: React.FC = () => {
         setIsDownloading(true);
         setError(null);
         try {
-            const users = await api.getUsers(); // Get all users
+            const [ExcelJSModule, { saveAs }, users] = await Promise.all([
+                import('exceljs'),
+                import('file-saver'),
+                api.getUsers()
+            ]);
+            const ExcelJS = ExcelJSModule.default || ExcelJSModule;
             const workbook = new ExcelJS.Workbook();
             const worksheet = workbook.addWorksheet('Earned Leaves');
 
@@ -70,6 +73,8 @@ const BulkEarnedLeavePage: React.FC = () => {
         setPreviewData([]);
 
         try {
+            const ExcelJSModule = await import('exceljs');
+            const ExcelJS = ExcelJSModule.default || ExcelJSModule;
             const workbook = new ExcelJS.Workbook();
             const arrayBuffer = await file.arrayBuffer();
             await workbook.xlsx.load(arrayBuffer);

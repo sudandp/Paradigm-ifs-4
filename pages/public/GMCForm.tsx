@@ -18,8 +18,6 @@ import Logo from '../../components/ui/Logo';
 import SearchableSelect from '../../components/ui/SearchableSelect';
 import { api } from '../../services/api';
 import { useDevice } from '../../hooks/useDevice';
-import { pdf } from '@react-pdf/renderer';
-import { GMCFormReceiptDocument } from '../attendance/PDFReports';
 import { useLogoStore } from '../../store/logoStore';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 

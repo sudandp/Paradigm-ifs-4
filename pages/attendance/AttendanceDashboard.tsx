@@ -3,13 +3,27 @@ import { isAdmin } from '../../utils/auth';
 
 // This component has been extended to support manual date entry for the attendance dashboard, enforce whole
 // number increments on the chart axes, and unify the report generation/download flow into a single action.
-import { api } from '../../services/api';
+import { api, offlineDb } from '../../services/api';
 import { supabase } from '../../services/supabase';
 import { fetchTodayMetrics, fetchAttendanceSummary, fetchTopPerformers, buildChartDatasets, TodayMetrics, DaySummary, TopPerformer } from '../../services/attendanceDashboard';
 
 import { fetchKioskDevices, type KioskDevice } from '../../services/gateApi';
 import { pdf } from '@react-pdf/renderer';
-import { BasicReportDocument, MonthlyReportDocument, MonthlyMatrixReportDocument, SiteOtReportDocument, AttendanceLogDocument, WorkHoursReportDocument, AuditLogDocument, AttendanceLogDataRow, WorkHoursReportDataRow, SiteOtDataRow, AuditLogDataRow, MonthlyReportRow as PDFMonthlyReportRow, BasicReportDataRow, LeaveBalanceTrackerDocument } from './PDFReports';
+import { 
+    BasicReportDocument, 
+    AttendanceLogDocument, 
+    MonthlyMatrixReportDocument, 
+    MonthlyReportDocument, 
+    SiteOtReportDocument, 
+    AuditLogDocument, 
+    LeaveBalanceTrackerDocument,
+    type AttendanceLogDataRow, 
+    type WorkHoursReportDataRow, 
+    type SiteOtDataRow, 
+    type AuditLogDataRow, 
+    type MonthlyReportRow as PDFMonthlyReportRow, 
+    type BasicReportDataRow 
+} from './PDFReports';
 import { buildAttendanceDayKeyByEventId } from '../../utils/attendanceDayGrouping';
 import { useAuthStore } from '../../store/authStore';
 import { usePermissionsStore } from '../../store/permissionsStore';
@@ -2150,13 +2164,7 @@ const AttendanceDashboard: React.FC = () => {
             } catch (error) {
                 console.error("Failed to fetch employee attendance", error);
             } finally {
-                const duration = Date.now() - startTime;
-                const minDelay = 800;
-                if (duration < minDelay) {
-                    setTimeout(() => setIsLoading(false), minDelay - duration);
-                } else {
-                    setIsLoading(false);
-                }
+                setIsLoading(false);
             }
         };
 
@@ -2623,13 +2631,7 @@ const AttendanceDashboard: React.FC = () => {
                     approvedLeavesToday: 0,
                 });
             } finally {
-                const duration = Date.now() - startTime;
-                const minDelay = 800;
-                if (duration < minDelay) {
-                    setTimeout(() => setIsLoading(false), minDelay - duration);
-                } else {
-                    setIsLoading(false);
-                }
+                setIsLoading(false);
             }
         };
         loadData();

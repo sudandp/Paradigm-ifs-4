@@ -380,8 +380,19 @@ const AttendanceSettings: React.FC = () => {
             return;
         }
 
-        // Convert YYYY-MM-DD to -MM-DD format for consistency with constants if needed
-        const datePart = newPoolHolidayDate.substring(4); // Keep -MM-DD
+        // Safely extract -MM-DD format for consistency with constants
+        let datePart = newPoolHolidayDate;
+        if (newPoolHolidayDate.startsWith('-')) {
+            datePart = newPoolHolidayDate;
+        } else if (/^\d{4}-\d{2}-\d{2}/.test(newPoolHolidayDate)) {
+            const parts = newPoolHolidayDate.split('-');
+            datePart = `-${parts[1]}-${parts[2].slice(0, 2)}`;
+        } else if (/^\d{2}\/\d{2}/.test(newPoolHolidayDate)) {
+            const [d, m] = newPoolHolidayDate.split('/');
+            datePart = `-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+        } else if (newPoolHolidayDate.length >= 5) {
+            datePart = newPoolHolidayDate.substring(newPoolHolidayDate.length - 6);
+        }
 
         const pool = [...(currentRules.holidayPool || HOLIDAY_SELECTION_POOL)];
         pool.push({ name: newPoolHolidayName, date: datePart });
@@ -430,7 +441,18 @@ const AttendanceSettings: React.FC = () => {
     const handleSavePoolEdit = () => {
         if (editingPoolIndex === null) return;
         
-        const dateStr = newPoolHolidayDate.substring(4);
+        let dateStr = newPoolHolidayDate;
+        if (newPoolHolidayDate.startsWith('-')) {
+            dateStr = newPoolHolidayDate;
+        } else if (/^\d{4}-\d{2}-\d{2}/.test(newPoolHolidayDate)) {
+            const parts = newPoolHolidayDate.split('-');
+            dateStr = `-${parts[1]}-${parts[2].slice(0, 2)}`;
+        } else if (/^\d{2}\/\d{2}/.test(newPoolHolidayDate)) {
+            const [d, m] = newPoolHolidayDate.split('/');
+            dateStr = `-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+        } else if (newPoolHolidayDate.length >= 5) {
+            dateStr = newPoolHolidayDate.substring(newPoolHolidayDate.length - 6);
+        }
 
         const pool = [...(currentRules.holidayPool || HOLIDAY_SELECTION_POOL)];
         pool[editingPoolIndex] = { name: newPoolHolidayName, date: dateStr };

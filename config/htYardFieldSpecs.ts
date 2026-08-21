@@ -48,7 +48,7 @@ export const HT_YARD_FIELD_SPECS: Record<string, ModuleSpec> = {
           { key: 'ac_protector', label: '18. Input AC Protector', type: 'text' },
           { key: 'battery_charger', label: '19. Battery Charger', type: 'text' },
           { key: 'heater_mcb', label: '20. MCB for Heater in Secondary', type: 'text' },
-          { key: 'control_mcb', label: '21. Control MCB', type: 'text' },
+          { key: 'control_mcb', label: '21. Control MCB', type: 'select', optionsCategory: 'RMUMD', optionsFieldKey: 'control_mcb' },
           { key: 'control_battery', label: '22. Control Battery', type: 'text' },
           { key: 'testing_connections', label: '23. Testing Connections', type: 'text' },
           { key: 'ct_chamber', label: '24. CT Chamber', type: 'text' }

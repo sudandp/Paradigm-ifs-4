@@ -261,12 +261,19 @@ class EventDispatcher:
         # Build the attendance event payload
         dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
         
+        # Resolve human-friendly location name (Paradigm Office)
+        loc_name = 'Paradigm Office'
+        if camera_name and 'main_gate' in camera_name.lower():
+            loc_name = 'Paradigm Office'
+        elif camera_name:
+            loc_name = camera_name.replace('_', ' ').title()
+
         payload = {
             'user_id': user_id,
             'timestamp': dt.isoformat(),
             'type': event_type,
             'device_id': self.config.edge_device_id,
-            'location_name': f'CCTV: {camera_name}',
+            'location_name': loc_name,
             'source': 'cctv',
         }
 
@@ -274,7 +281,7 @@ class EventDispatcher:
         cctv_log_payload = {
             'user_id': user_id,
             'user_name': user_name,
-            'camera_name': camera_name,
+            'camera_name': loc_name,
             'direction': direction,
             'confidence': round(confidence, 4),
             'detected_at': dt.isoformat(),
@@ -435,9 +442,15 @@ class EventDispatcher:
 
         try:
             iso_dt = datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
+            loc_name = 'Paradigm Office'
+            if camera_name and 'main_gate' in camera_name.lower():
+                loc_name = 'Paradigm Office'
+            elif camera_name:
+                loc_name = camera_name.replace('_', ' ').title()
+
             payload = {
                 'embedding': embedding.tolist(),
-                'camera_name': camera_name,
+                'camera_name': loc_name,
                 'detected_at': iso_dt,
                 'edge_device_id': self.config.edge_device_id,
                 'snapshot_url': snapshot_url,
@@ -456,7 +469,7 @@ class EventDispatcher:
             cctv_log_payload = {
                 'user_id': None,
                 'user_name': 'Unknown Person',
-                'camera_name': camera_name,
+                'camera_name': loc_name,
                 'direction': 'entry',
                 'confidence': 0.5,
                 'detected_at': iso_dt,

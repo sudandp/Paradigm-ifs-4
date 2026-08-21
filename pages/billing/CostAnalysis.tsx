@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { api } from '../../services/api';
-import { pdf } from '@react-pdf/renderer';
-import { CostAnalysisDocument } from '../attendance/PDFReports';
 import type { SubmissionCostBreakdown, VerificationCosts, VerificationCostSetting } from '../../types';
 import AdminPageHeader from '../../components/admin/AdminPageHeader';
 import { DateRangePicker, type Range, type RangeKeyDict } from 'react-date-range';
@@ -202,6 +200,10 @@ const CostAnalysis: React.FC = () => {
         if (type === 'pdf') {
             setIsGenerating(true);
             try {
+                const [{ pdf }, { CostAnalysisDocument }] = await Promise.all([
+                    import('@react-pdf/renderer'),
+                    import('../attendance/PDFReports')
+                ]);
                 const range = `${format(dateRange[0].startDate!, 'dd MMM yyyy')} to ${format(dateRange[0].endDate!, 'dd MMM yyyy')}`;
                 const doc = <CostAnalysisDocument data={processedData} stats={summaryStats} range={range} />;
                 const blob = await pdf(doc).toBlob();

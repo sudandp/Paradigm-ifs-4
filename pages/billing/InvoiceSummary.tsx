@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { api } from '../../services/api';
-import { pdf } from '@react-pdf/renderer';
-import { InvoiceSummaryDocument } from '../attendance/PDFReports';
 import type { Organization, InvoiceData } from '../../types';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
@@ -269,6 +267,11 @@ const InvoiceSummary: React.FC = () => {
             const finalTotal = grandTotal + gst + gst + roundOff;
             
             const calculations = { subTotal, serviceCharge, grandTotal, gst, finalTotal };
+
+            const [{ pdf }, { InvoiceSummaryDocument }] = await Promise.all([
+                import('@react-pdf/renderer'),
+                import('../attendance/PDFReports')
+            ]);
 
             const doc = (
                 <InvoiceSummaryDocument 

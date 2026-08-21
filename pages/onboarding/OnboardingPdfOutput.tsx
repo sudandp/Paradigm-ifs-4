@@ -6,8 +6,6 @@ import { api } from '../../services/api';
 import { Download, Loader2, ArrowLeft } from 'lucide-react';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { useLogoStore } from '../../store/logoStore';
-import { pdf } from '@react-pdf/renderer';
-import { EmployeeOnboardingDocument } from '../attendance/PDFReports';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 
 
@@ -39,6 +37,10 @@ const OnboardingPdfOutput: React.FC = () => {
         if (!employeeData) return;
         setIsGenerating(true);
         try {
+            const [{ pdf }, { EmployeeOnboardingDocument }] = await Promise.all([
+                import('@react-pdf/renderer'),
+                import('../attendance/PDFReports')
+            ]);
             const doc = <EmployeeOnboardingDocument data={employeeData} logoUrl={logo} />;
             const blob = await pdf(doc).toBlob();
             if (blob) {

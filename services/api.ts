@@ -23,7 +23,7 @@ import {
   subDays, subMonths, eachMonthOfInterval, isSameMonth, startOfWeek
 } from 'date-fns';
 import { useAuthStore } from '../store/authStore';
-const offlineDb = {
+export const offlineDb = {
   getCache: async (key?: string) => {
     if (!key || typeof window === 'undefined') return null;
     try {
@@ -1974,35 +1974,75 @@ export const api = {
         return cached;
     }
 
-    if (filter?.fetchAll) {
+    const isPaginated = filter?.page !== undefined && filter?.pageSize !== undefined;
+
+    if (filter?.fetchAll || !isPaginated) {
       let allData: any[] = [];
       let page = 1;
       const pageSize = 1000;
       let hasMore = true;
 
-      while (hasMore) {
-        const { data, error } = await supabase
-          .from('users')
-          .select('*, role:roles(display_name), companies!users_society_id_fkey(location)')
-          .range((page - 1) * pageSize, page * pageSize - 1)
-          .order(filter?.sortBy || 'created_at', { ascending: filter?.sortAscending ?? false });
+      try {
+        while (hasMore) {
+          let query = supabase
+            .from('users')
+            .select('*, role:roles(display_name), companies!users_society_id_fkey(location)')
+            .range((page - 1) * pageSize, page * pageSize - 1);
 
-        if (error) throw error;
-        if (!data || data.length === 0) {
-          hasMore = false;
-        } else {
-          allData = [...allData, ...data];
-          if (data.length < pageSize) {
+          if (filter?.search) {
+            query = query.or(`name.ilike.%${filter.search}%,email.ilike.%${filter.search}%`);
+          }
+          query = query.order(filter?.sortBy || 'created_at', { ascending: filter?.sortAscending ?? false });
+
+          const { data, error } = await query;
+          if (error) throw error;
+          if (!data || data.length === 0) {
             hasMore = false;
           } else {
-            page++;
+            allData = [...allData, ...data];
+            if (data.length < pageSize) {
+              hasMore = false;
+            } else {
+              page++;
+            }
           }
+        }
+      } catch (err) {
+        console.warn('[API] getUsers extended query failed, falling back to base paginated select:', err);
+        let fallbackHasMore = true;
+        let fallbackPage = 1;
+        allData = [];
+        try {
+          while (fallbackHasMore) {
+            let baseQuery = supabase
+              .from('users')
+              .select('*')
+              .range((fallbackPage - 1) * pageSize, fallbackPage * pageSize - 1);
+            if (filter?.search) {
+              baseQuery = baseQuery.or(`name.ilike.%${filter.search}%,email.ilike.%${filter.search}%`);
+            }
+            baseQuery = baseQuery.order(filter?.sortBy || 'created_at', { ascending: filter?.sortAscending ?? false });
+            const { data: baseData, error: baseErr } = await baseQuery;
+            if (baseErr) throw baseErr;
+            if (!baseData || baseData.length === 0) {
+              fallbackHasMore = false;
+            } else {
+              allData = [...allData, ...baseData];
+              if (baseData.length < pageSize) {
+                fallbackHasMore = false;
+              } else {
+                fallbackPage++;
+              }
+            }
+          }
+        } catch (fErr) {
+          console.error('[API] getUsers base fallback failed:', fErr);
         }
       }
 
-      return allData.map(u => {
+      const formatted = allData.map(u => {
         const roleData = u.role;
-        const rawRoleName = (Array.isArray(roleData) ? roleData[0]?.display_name : (roleData as any)?.display_name) || u.role_id;
+        const rawRoleName = (Array.isArray(roleData) ? roleData[0]?.display_name : (roleData as any)?.display_name) || u.role_id || u.role;
         const roleName = typeof rawRoleName === 'string' ? rawRoleName.toLowerCase().replace(/\s+/g, '_') : rawRoleName;
         const camelUser = toCamelCase({ ...u, role: roleName });
         if (u.companies) {
@@ -2013,47 +2053,65 @@ export const api = {
         }
         return camelUser;
       });
+
+      await offlineDb.setCache('users_all', formatted);
+      return formatted.map(processUrlsForDisplay);
     }
 
-    let query = supabase.from('users').select('*, role:roles(display_name), companies!users_society_id_fkey(location)', { count: 'exact' });
-    
-    if (filter?.search) {
-      query = query.or(`name.ilike.%${filter.search}%,email.ilike.%${filter.search}%`);
-    }
-
-    // Default to created_at descending if no sort specified
     const sortBy = filter?.sortBy || 'created_at';
     const sortAscending = filter?.sortAscending ?? (filter?.sortBy ? true : false);
-    query = query.order(sortBy, { ascending: sortAscending });
 
-    const isPaginated = filter?.page !== undefined && filter?.pageSize !== undefined;
-    if (isPaginated) {
+    try {
+      let query = supabase.from('users').select('*, role:roles(display_name), companies!users_society_id_fkey(location)', { count: 'exact' });
+      
+      if (filter?.search) {
+        query = query.or(`name.ilike.%${filter.search}%,email.ilike.%${filter.search}%`);
+      }
+
+      query = query.order(sortBy, { ascending: sortAscending });
+
       const from = (filter!.page! - 1) * filter!.pageSize!;
       const to = from + filter!.pageSize! - 1;
       query = query.range(from, to);
-    }
-    
-    const { data, count, error } = await query;
-    if (error) throw error;
-    
-    const formattedData = (data || []).map(u => {
-      const roleData = u.role;
-      const rawRoleName = (Array.isArray(roleData) ? roleData[0]?.display_name : (roleData as any)?.display_name) || u.role_id;
-      const roleName = typeof rawRoleName === 'string' ? rawRoleName.toLowerCase().replace(/\s+/g, '_') : rawRoleName;
-      const camelUser = toCamelCase({ ...u, role: roleName });
-      if (u.companies) {
-        const compLocation = Array.isArray(u.companies) ? u.companies[0]?.location : u.companies?.location;
-        if (compLocation) {
-          camelUser.location = compLocation;
+      
+      const { data, count, error } = await query;
+      if (error) throw error;
+      
+      const formattedData = (data || []).map(u => {
+        const roleData = u.role;
+        const rawRoleName = (Array.isArray(roleData) ? roleData[0]?.display_name : (roleData as any)?.display_name) || u.role_id || u.role;
+        const roleName = typeof rawRoleName === 'string' ? rawRoleName.toLowerCase().replace(/\s+/g, '_') : rawRoleName;
+        const camelUser = toCamelCase({ ...u, role: roleName });
+        if (u.companies) {
+          const compLocation = Array.isArray(u.companies) ? u.companies[0]?.location : u.companies?.location;
+          if (compLocation) {
+            camelUser.location = compLocation;
+          }
         }
-      }
-      return camelUser;
-    });
-    
-    if (isPaginated) {
+        return camelUser;
+      });
+      
       return { data: formattedData.map(processUrlsForDisplay), total: count || 0 };
+    } catch (err) {
+      console.warn('[API] getUsers extended query failed, falling back to base select:', err);
+      let baseQuery = supabase.from('users').select('*', { count: 'exact' });
+      if (filter?.search) {
+        baseQuery = baseQuery.or(`name.ilike.%${filter.search}%,email.ilike.%${filter.search}%`);
+      }
+      baseQuery = baseQuery.order(sortBy, { ascending: sortAscending });
+      const from = (filter!.page! - 1) * filter!.pageSize!;
+      const to = from + filter!.pageSize! - 1;
+      baseQuery = baseQuery.range(from, to);
+      const { data: baseData, count: baseCount, error: baseErr } = await baseQuery;
+      if (baseErr) throw baseErr;
+
+      const formattedBase = (baseData || []).map(u => toCamelCase({
+        ...u,
+        role: u.role_id || u.role || 'staff'
+      }));
+
+      return { data: formattedBase.map(processUrlsForDisplay), total: baseCount || 0 };
     }
-    return formattedData.map(processUrlsForDisplay);
   },
 
   /**

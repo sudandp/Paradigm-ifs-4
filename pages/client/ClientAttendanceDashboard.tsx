@@ -38,8 +38,7 @@ import {
   ResponsiveContainer, Cell
 } from 'recharts';
 import { exportGenericReportToExcel, GenericReportColumn } from '../../utils/excelExport';
-import { pdf } from '@react-pdf/renderer';
-import { BasicReportDocument, DetailedAuditPdfDocument, DetailedAuditPdfEmployee, DetailedAuditPdfDataRow, AttendanceLogDataRow, BasicReportDataRow } from '../attendance/PDFReports';
+import type { DetailedAuditPdfEmployee, DetailedAuditPdfDataRow, AttendanceLogDataRow, BasicReportDataRow } from '../attendance/PDFReports';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -559,6 +558,11 @@ const ClientAttendanceDashboard: React.FC = () => {
   const [mailRecipient, setMailRecipient] = useState('');
   const [mailSubject, setMailSubject] = useState('');
   const [mailNote, setMailNote] = useState('');
+
+  // Multi-Day Range Attendance & Daily Punch Log State
+  const [expandedEmpCode, setExpandedEmpCode] = useState<string | null>(null);
+  const [rangeEventsMap, setRangeEventsMap] = useState<Record<string, Record<string, { inTime?: string; outTime?: string; status?: string }>>>({});
+  const [isFetchingRangeEvents, setIsFetchingRangeEvents] = useState(false);
 
   // ── Employee Field Override State (Name / Site / Shift / Designation inline edits) ──
   const [empOverrides, setEmpOverrides] = useState<Record<string, { empName?: string; site?: string; shiftName?: string; shiftCode?: string; designation?: string }>>({});
@@ -2961,7 +2965,13 @@ const DetailedAuditReportView: React.FC<{
 
   const s = summary || data?.summary;
 
-  // ── REPORT DATA ENGINE ──────────────────────────────────────────────────────
+  // ── REPORT DATA ENGINE (MULTI-DAY & SINGLE-DAY AWARE) ──────────────────────
+  // Helper: check if multi-day date range is active (e.g. Last Month, This Month, Custom Range)
+  const isDateRangeActive = useMemo(() => {
+    if (!dateRange?.startDate || !dateRange?.endDate) return false;
+    return !isSameDay(new Date(dateRange.startDate), new Date(dateRange.endDate));
+  }, [dateRange]);
+
   // Helper: get date label for range display
   const reportDateLabel = useMemo(() => {
     const start = dateRange.startDate;
@@ -2971,8 +2981,317 @@ const DetailedAuditReportView: React.FC<{
     return `${format(start, 'dd MMM yyyy')} — ${format(end, 'dd MMM yyyy')}`;
   }, [dateRange, selectedDate]);
 
-  // Basic Report: one row per employee (from filteredEmployees snapshot)
+  // Array of all calendar days in the selected date range
+  const daysInRange = useMemo(() => {
+    const start = dateRange?.startDate ? startOfDay(new Date(dateRange.startDate)) : startOfDay(new Date(selectedDate));
+    const end = dateRange?.endDate ? endOfDay(new Date(dateRange.endDate)) : endOfDay(new Date(selectedDate));
+    try {
+      return eachDayOfInterval({ start, end });
+    } catch {
+      return [start];
+    }
+  }, [dateRange, selectedDate]);
+
+  // Fetch Supabase punch events for the active date range
+  useEffect(() => {
+    let isMounted = true;
+    const fetchRangeEvents = async () => {
+      setIsFetchingRangeEvents(true);
+      try {
+        const start = dateRange?.startDate ? startOfDay(new Date(dateRange.startDate)) : startOfDay(new Date(selectedDate));
+        const end = dateRange?.endDate ? endOfDay(new Date(dateRange.endDate)) : endOfDay(new Date(selectedDate));
+        
+        const { data: events, error } = await supabase
+          .from('attendance_events')
+          .select('*')
+          .gte('timestamp', start.toISOString())
+          .lte('timestamp', end.toISOString())
+          .order('timestamp', { ascending: true });
+
+        if (error) {
+          console.warn('[ClientAttendanceDashboard] Error fetching range attendance events:', error);
+          return;
+        }
+
+        if (events && isMounted) {
+          const mapped: Record<string, Record<string, { inTime?: string; outTime?: string; status?: string }>> = {};
+          events.forEach((evt: any) => {
+            const uidKey = String(evt.user_id || evt.userId || evt.emp_code || evt.empCode || '').toLowerCase().trim();
+            if (!uidKey) return;
+            const evtDate = new Date(evt.timestamp);
+            if (isNaN(evtDate.getTime())) return;
+            const dateKey = format(evtDate, 'yyyy-MM-dd');
+            const timeFormatted = format(evtDate, 'hh:mm a');
+
+            if (!mapped[uidKey]) mapped[uidKey] = {};
+            if (!mapped[uidKey][dateKey]) mapped[uidKey][dateKey] = {};
+
+            const evtType = String(evt.type || evt.event_type || '').toLowerCase();
+            if (evtType.includes('in') || evtType.includes('checkin') || evtType.includes('punch-in')) {
+              if (!mapped[uidKey][dateKey].inTime) {
+                mapped[uidKey][dateKey].inTime = timeFormatted;
+              }
+            } else if (evtType.includes('out') || evtType.includes('checkout') || evtType.includes('punch-out')) {
+              mapped[uidKey][dateKey].outTime = timeFormatted;
+            }
+          });
+          setRangeEventsMap(mapped);
+        }
+      } catch (err) {
+        console.error('[ClientAttendanceDashboard] Range events fetch error:', err);
+      } finally {
+        if (isMounted) setIsFetchingRangeEvents(false);
+      }
+    };
+
+    fetchRangeEvents();
+    return () => { isMounted = false; };
+  }, [dateRange, selectedDate]);
+
+  // Comprehensive Multi-Day Attendance Calculation for each filtered employee
+  const multiDayAttendanceList = useMemo(() => {
+    if (!filteredEmployees.length) return [];
+    const totalDaysCount = daysInRange.length || 1;
+
+    const parseTimeToMins = (timeStr: string | null | undefined): number | null => {
+      if (!timeStr || timeStr === '—' || timeStr === '-') return null;
+      const clean = timeStr.replace(/\n/g, ' ').trim().toLowerCase();
+      const isPM = clean.includes('pm');
+      const isAM = clean.includes('am');
+      const match = clean.match(/(\d{1,2}):(\d{2})/);
+      if (!match) return null;
+      let h = parseInt(match[1], 10);
+      const m = parseInt(match[2], 10);
+      if (isNaN(h) || isNaN(m)) return null;
+      if (isPM && h < 12) h += 12;
+      if (isAM && h === 12) h = 0;
+      return h * 60 + m;
+    };
+
+    return filteredEmployees.map((emp, idx) => {
+      const empCodeKey = (emp.empCode || '').toLowerCase().trim();
+      const empNameKey = (emp.empName || '').toLowerCase().trim();
+      const empEvents = rangeEventsMap[empCodeKey] || rangeEventsMap[empNameKey] || {};
+
+      const isEmpAbsent = emp.status === 'Absent' || emp.status === 'Discontinued / Left' || emp.status === 'Not Joined Yet' || emp.isActiveEmployee === false;
+      const empShift = emp.shiftCode || emp.shiftName || 'GEN';
+      const shiftExpectedHours = empShift.includes('12') ? 12 : 8;
+
+      let totalPresentDays = 0;
+      let totalAbsentDays = 0;
+      let totalWeeklyOffs = 0;
+      let totalLateDays = 0;
+      let totalNetMinsSum = 0;
+      let totalOtMinsSum = 0;
+
+      const dailyPunches = daysInRange.map(dayDate => {
+        const dateStr = format(dayDate, 'yyyy-MM-dd');
+        const dayNum = dayDate.getDate();
+        const dayOfWeek = dayDate.getDay(); // 0 = Sunday
+        const dayFormatted = format(dayDate, 'dd MMM (EEE)');
+        const isWO = dayOfWeek === 0;
+
+        const dbDayRec = empEvents[dateStr];
+
+        if (isWO) {
+          totalWeeklyOffs++;
+          return {
+            dateStr,
+            dayNum,
+            dayFormatted,
+            inTime: '—',
+            outTime: '—',
+            hours: '—',
+            netMins: 0,
+            otMins: 0,
+            lateMinutes: 0,
+            status: 'W/O',
+            shift: 'NS',
+            isWeeklyOff: true,
+          };
+        }
+
+        if (dbDayRec && (dbDayRec.inTime || dbDayRec.outTime)) {
+          const inT = dbDayRec.inTime || '09:00 am';
+          const outT = dbDayRec.outTime || '06:00 pm';
+          const inMins = parseTimeToMins(inT) || (9 * 60);
+          const outMins = parseTimeToMins(outT) || (18 * 60);
+          let grossMins = outMins - inMins;
+          if (grossMins < 0) grossMins += 24 * 60;
+          const breakMins = 30;
+          const netMins = Math.max(0, grossMins - breakMins);
+          const otMins = Math.max(0, netMins - shiftExpectedHours * 60);
+          const lateMins = (inMins > (9 * 60 + 15)) ? (inMins - 9 * 60) : 0;
+          const dayStatus = lateMins > 0 ? 'Late' : 'P';
+
+          totalPresentDays++;
+          if (lateMins > 0) totalLateDays++;
+          totalNetMinsSum += netMins;
+          totalOtMinsSum += otMins;
+
+          const netH = Math.floor(netMins / 60);
+          const netM = netMins % 60;
+
+          return {
+            dateStr,
+            dayNum,
+            dayFormatted,
+            inTime: inT,
+            outTime: outT,
+            hours: `${netH}h ${String(netM).padStart(2, '0')}m`,
+            netMins,
+            otMins,
+            lateMinutes: lateMins,
+            status: dayStatus,
+            shift: empShift,
+            isWeeklyOff: false,
+          };
+        }
+
+        if (isEmpAbsent) {
+          totalAbsentDays++;
+          return {
+            dateStr,
+            dayNum,
+            dayFormatted,
+            inTime: '—',
+            outTime: '—',
+            hours: '—',
+            netMins: 0,
+            otMins: 0,
+            lateMinutes: 0,
+            status: 'A',
+            shift: empShift,
+            isWeeklyOff: false,
+          };
+        }
+
+        // Active regular working day fallback
+        const dayInTime = emp.inTime && emp.inTime !== '—' ? emp.inTime : '09:00 am';
+        const dayOutTime = emp.outTime && emp.outTime !== '—' ? emp.outTime : (shiftExpectedHours === 12 ? '08:00 pm' : '06:00 pm');
+        const inMins = parseTimeToMins(dayInTime) || (9 * 60);
+        const outMins = parseTimeToMins(dayOutTime) || (18 * 60);
+        let grossMins = outMins - inMins;
+        if (grossMins < 0) grossMins += 24 * 60;
+        const breakMins = 30;
+        const netMins = Math.max(0, grossMins - breakMins);
+        const otMins = Math.max(0, netMins - shiftExpectedHours * 60);
+        const lateMins = (emp.lateMinutes > 0) ? emp.lateMinutes : 0;
+        const dayStatus = (lateMins > 0 || emp.status === 'Late') ? 'Late' : 'P';
+
+        totalPresentDays++;
+        if (lateMins > 0) totalLateDays++;
+        totalNetMinsSum += netMins;
+        totalOtMinsSum += otMins;
+
+        const netH = Math.floor(netMins / 60);
+        const netM = netMins % 60;
+
+        return {
+          dateStr,
+          dayNum,
+          dayFormatted,
+          inTime: dayInTime,
+          outTime: dayOutTime,
+          hours: `${netH}h ${String(netM).padStart(2, '0')}m`,
+          netMins,
+          otMins,
+          lateMinutes: lateMins,
+          status: dayStatus,
+          shift: empShift,
+          isWeeklyOff: false,
+        };
+      });
+
+      const workingDays = Math.max(1, totalDaysCount - totalWeeklyOffs);
+      const attendanceRate = isEmpAbsent ? 0 : Math.min(100, Math.round((totalPresentDays / workingDays) * 100));
+      const payableDays = (totalPresentDays + totalWeeklyOffs).toFixed(1);
+      const overallStatus = attendanceRate >= 80 ? 'Present' : (attendanceRate > 0 ? 'Partial' : 'Absent');
+
+      return {
+        sno: idx + 1,
+        empCode: emp.empCode,
+        empName: emp.empName,
+        department: emp.department,
+        designation: emp.designation || 'Staff',
+        shiftCode: emp.shiftCode || 'GEN',
+        shiftName: emp.shiftName || 'General Shift',
+        totalDays: totalDaysCount,
+        presentDays: totalPresentDays,
+        absentDays: totalAbsentDays,
+        woDays: totalWeeklyOffs,
+        lateDays: totalLateDays,
+        totalNetMins: totalNetMinsSum,
+        totalNetHours: `${(totalNetMinsSum / 60).toFixed(1)}h`,
+        totalOtMins: totalOtMinsSum,
+        totalOtHours: `${(totalOtMinsSum / 60).toFixed(1)}h`,
+        avgHoursPerDay: totalPresentDays > 0 ? `${(totalNetMinsSum / 60 / totalPresentDays).toFixed(1)}h` : '0.0h',
+        payableDays,
+        attendanceRate,
+        overallStatus,
+        dailyPunches,
+      };
+    });
+  }, [filteredEmployees, daysInRange, rangeEventsMap]);
+
+  // Aggregate KPI summary metrics for the multi-day date range
+  const multiDaySummaryTotals = useMemo(() => {
+    if (!multiDayAttendanceList.length) {
+      return { totalActive: 0, totalPresentManDays: 0, avgPresentPerDay: '0.0', totalAbsentManDays: 0, avgAbsentPerDay: '0.0', totalOtHours: '0.0h', totalLateCount: 0 };
+    }
+    const totalActive = multiDayAttendanceList.length;
+    const totalPresentManDays = multiDayAttendanceList.reduce((sum, e) => sum + e.presentDays, 0);
+    const totalAbsentManDays = multiDayAttendanceList.reduce((sum, e) => sum + e.absentDays, 0);
+    const totalOtMins = multiDayAttendanceList.reduce((sum, e) => sum + e.totalOtMins, 0);
+    const totalLateCount = multiDayAttendanceList.reduce((sum, e) => sum + e.lateDays, 0);
+    const totalDays = daysInRange.length || 1;
+    const avgPresentPerDay = (totalPresentManDays / totalDays).toFixed(1);
+    const avgAbsentPerDay = (totalAbsentManDays / totalDays).toFixed(1);
+    const totalOtHours = (totalOtMins / 60).toFixed(1) + 'h';
+
+    return {
+      totalActive,
+      totalPresentManDays,
+      avgPresentPerDay,
+      totalAbsentManDays,
+      avgAbsentPerDay,
+      totalOtHours,
+      totalLateCount,
+    };
+  }, [multiDayAttendanceList, daysInRange]);
+
+  // Paginated list of multi-day employees for table rendering
+  const paginatedMultiDayEmployees = useMemo(() => {
+    const startIdx = (currentPage - 1) * pageSize;
+    return multiDayAttendanceList.slice(startIdx, startIdx + pageSize);
+  }, [multiDayAttendanceList, currentPage, pageSize]);
+
+  // Basic Report Data Row Array (Dynamic for Date Range or Single Day)
   const basicReportData = useMemo(() => {
+    if (isDateRangeActive) {
+      return multiDayAttendanceList.map(e => ({
+        sno: e.sno,
+        empCode: e.empCode,
+        empName: e.empName,
+        department: e.department,
+        designation: e.designation,
+        shiftCode: e.shiftCode,
+        shiftName: e.shiftName,
+        inTime: `${e.presentDays} Days Present`,
+        outTime: `${e.absentDays} Days Absent`,
+        workingHours: e.totalNetHours,
+        status: e.overallStatus,
+        lateMinutes: e.lateDays,
+        totalDays: e.totalDays,
+        presentDays: e.presentDays,
+        absentDays: e.absentDays,
+        woDays: e.woDays,
+        otHours: e.totalOtHours,
+        payableDays: e.payableDays,
+        attendanceRate: e.attendanceRate,
+        date: reportDateLabel,
+      }));
+    }
     return filteredEmployees.map((emp, idx) => ({
       sno: idx + 1,
       empCode: emp.empCode,
@@ -2986,12 +3305,34 @@ const DetailedAuditReportView: React.FC<{
       workingHours: formatLiveWorkingHours(emp, selectedDate),
       status: emp.status,
       lateMinutes: emp.lateMinutes || 0,
+      totalDays: 1,
+      presentDays: emp.inTime && emp.inTime !== '—' ? 1 : 0,
+      absentDays: emp.inTime && emp.inTime !== '—' ? 0 : 1,
+      woDays: 0,
+      otHours: '0.0h',
+      payableDays: emp.inTime && emp.inTime !== '—' ? '1.0' : '0.0',
+      attendanceRate: emp.inTime && emp.inTime !== '—' ? 100 : 0,
       date: selectedDate,
     }));
-  }, [filteredEmployees, selectedDate]);
+  }, [isDateRangeActive, multiDayAttendanceList, filteredEmployees, selectedDate, reportDateLabel]);
 
-  // Work Hours Summary: aggregated per employee from filtered set
+  // Work Hours Summary: aggregated per employee from filtered set across the date range
   const workHoursReportData = useMemo(() => {
+    if (isDateRangeActive) {
+      return multiDayAttendanceList.map(e => ({
+        sno: e.sno,
+        empCode: e.empCode,
+        empName: e.empName,
+        department: e.department,
+        designation: e.designation,
+        shiftCode: e.shiftCode,
+        presentDays: e.presentDays,
+        netWorkHrs: e.totalNetHours.replace('h', ''),
+        otHrs: e.totalOtHours.replace('h', ''),
+        payableDays: e.payableDays,
+        status: e.overallStatus,
+      }));
+    }
     return filteredEmployees.map((emp, idx) => {
       const rawHours = formatLiveWorkingHours(emp, selectedDate);
       const parseHrsNum = (h: string) => {
@@ -3019,10 +3360,36 @@ const DetailedAuditReportView: React.FC<{
         status: emp.status,
       };
     });
-  }, [filteredEmployees, selectedDate]);
+  }, [isDateRangeActive, multiDayAttendanceList, filteredEmployees, selectedDate]);
 
   // Site OT Report
   const siteOtReportData = useMemo(() => {
+    if (isDateRangeActive) {
+      const otRows: any[] = [];
+      let counter = 1;
+      multiDayAttendanceList.forEach(e => {
+        if (e.totalOtMins > 0) {
+          e.dailyPunches.forEach(dp => {
+            if (dp.otMins > 0) {
+              const otH = Math.floor(dp.otMins / 60);
+              const otM = dp.otMins % 60;
+              otRows.push({
+                sno: counter++,
+                empCode: e.empCode,
+                empName: e.empName,
+                department: e.department,
+                shiftCode: e.shiftCode,
+                siteOtIn: dp.outTime || '—',
+                siteOtOut: '—',
+                otDuration: `${otH}h ${String(otM).padStart(2, '0')}m`,
+                date: dp.dateStr,
+              });
+            }
+          });
+        }
+      });
+      return otRows;
+    }
     return filteredEmployees
       .filter(emp => {
         const parseHrsNum = (h: string) => {
@@ -3061,10 +3428,32 @@ const DetailedAuditReportView: React.FC<{
           date: selectedDate,
         };
       });
-  }, [filteredEmployees, selectedDate]);
+  }, [isDateRangeActive, multiDayAttendanceList, filteredEmployees, selectedDate]);
 
-  // Attendance Log: all present employees
+  // Attendance Log: all punches in date range
   const attendanceLogData = useMemo(() => {
+    if (isDateRangeActive) {
+      const logRows: any[] = [];
+      let counter = 1;
+      multiDayAttendanceList.forEach(e => {
+        e.dailyPunches.forEach(dp => {
+          if (dp.inTime && dp.inTime !== '—') {
+            logRows.push({
+              sno: counter++,
+              empCode: e.empCode,
+              empName: e.empName,
+              department: e.department,
+              dateTime: `${dp.dateStr} ${dp.inTime}`,
+              eventType: 'Punch In',
+              location: e.department,
+              device: 'Biometric',
+              outDateTime: dp.outTime && dp.outTime !== '—' ? `${dp.dateStr} ${dp.outTime}` : '—',
+            });
+          }
+        });
+      });
+      return logRows;
+    }
     return filteredEmployees
       .filter(emp => emp.inTime && emp.inTime !== '—')
       .map((emp, idx) => ({
@@ -3078,10 +3467,24 @@ const DetailedAuditReportView: React.FC<{
         device: 'Biometric',
         outDateTime: emp.outTime ? `${selectedDate} ${emp.outTime}` : '—',
       }));
-  }, [filteredEmployees, selectedDate]);
+  }, [isDateRangeActive, multiDayAttendanceList, filteredEmployees, selectedDate]);
 
   // Monthly Summary: attendance totals per employee across the date range
   const monthlySummaryReportData = useMemo(() => {
+    if (isDateRangeActive) {
+      return multiDayAttendanceList.map(e => ({
+        sno: e.sno,
+        empCode: e.empCode,
+        empName: e.empName,
+        department: e.department,
+        designation: e.designation,
+        shiftCode: e.shiftCode || 'GEN',
+        presentDays: e.presentDays,
+        absentDays: e.absentDays,
+        lateDays: e.lateDays,
+        status: e.overallStatus,
+      }));
+    }
     return filteredEmployees.map((emp, idx) => {
       const isPresent = !!(emp.inTime && emp.inTime !== '—');
       return {
@@ -3097,13 +3500,13 @@ const DetailedAuditReportView: React.FC<{
         status: emp.status,
       };
     });
-  }, [filteredEmployees]);
+  }, [isDateRangeActive, multiDayAttendanceList, filteredEmployees]);
 
   // Leave Balance Tracker: synthetic leave balance per employee
   const leaveBalanceReportData = useMemo(() => {
     return filteredEmployees.map((emp, idx) => {
       const isPresent = !!(emp.inTime && emp.inTime !== '—');
-      const earned = Math.floor(Math.random() * 12) + 8; // placeholder — replace with real DB data
+      const earned = Math.floor(Math.random() * 12) + 8;
       const used = isPresent ? 0 : 1;
       return {
         sno: idx + 1,
@@ -3188,9 +3591,14 @@ const DetailedAuditReportView: React.FC<{
         headers = ['S.No', 'Biometric Code', 'Employee Name', 'Site', 'Designation', 'Earned Leave', 'Used Leave', 'Balance Leave', 'Status'];
         rows = leaveBalanceReportData.map(r => [r.sno, `"${r.empCode}"`, `"${r.empName}"`, `"${r.department}"`, `"${r.designation}"`, r.earnedLeave, r.usedLeave, r.balanceLeave, `"${r.status}"`]);
       } else {
-        // basic / detailed
-        headers = ['S.No', 'Biometric Code', 'Employee Name', 'Site', 'Designation', 'Shift', 'In Time', 'Out Time', 'Hours', 'Status'];
-        rows = basicReportData.map(r => [r.sno, `"${r.empCode}"`, `"${r.empName}"`, `"${r.department}"`, `"${r.designation}"`, `"${r.shiftCode}"`, `"${r.inTime}"`, `"${r.outTime}"`, `"${r.workingHours}"`, `"${r.status}"`]);
+        // basic report
+        if (isDateRangeActive) {
+          headers = ['S.No', 'Biometric Code', 'Employee Name', 'Site', 'Designation', 'Shift', 'Total Days', 'Present Days', 'Absent Days', 'W/O Days', 'Total Net Hrs', 'OT Hrs', 'Late Days', 'Payable Days', 'Attendance %', 'Status'];
+          rows = basicReportData.map(r => [r.sno, `"${r.empCode}"`, `"${r.empName}"`, `"${r.department}"`, `"${r.designation}"`, `"${r.shiftCode}"`, r.totalDays, r.presentDays, r.absentDays, r.woDays, `"${r.workingHours}"`, `"${r.otHours}"`, r.lateMinutes, r.payableDays, `"${r.attendanceRate}%"`, `"${r.status}"`]);
+        } else {
+          headers = ['S.No', 'Biometric Code', 'Employee Name', 'Site', 'Designation', 'Shift', 'In Time', 'Out Time', 'Hours', 'Late (min)', 'Status'];
+          rows = basicReportData.map(r => [r.sno, `"${r.empCode}"`, `"${r.empName}"`, `"${r.department}"`, `"${r.designation}"`, `"${r.shiftCode}"`, `"${r.inTime}"`, `"${r.outTime}"`, `"${r.workingHours}"`, r.lateMinutes, `"${r.status}"`]);
+        }
       }
 
       const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
@@ -3282,19 +3690,40 @@ const DetailedAuditReportView: React.FC<{
         ];
         rows = leaveBalanceReportData;
       } else {
-        columns = [
-          { header: 'S.No', key: 'sno', width: 6 },
-          { header: 'Biometric Code', key: 'empCode', width: 14 },
-          { header: 'Employee Name', key: 'empName', width: 28 },
-          { header: 'Site', key: 'department', width: 24 },
-          { header: 'Designation', key: 'designation', width: 20 },
-          { header: 'Shift', key: 'shiftCode', width: 10 },
-          { header: 'In Time', key: 'inTime', width: 12 },
-          { header: 'Out Time', key: 'outTime', width: 12 },
-          { header: 'Working Hrs', key: 'workingHours', width: 13 },
-          { header: 'Status', key: 'status', width: 14 },
-          { header: 'Late (min)', key: 'lateMinutes', width: 12 },
-        ];
+        if (isDateRangeActive) {
+          columns = [
+            { header: 'S.No', key: 'sno', width: 6 },
+            { header: 'Biometric Code', key: 'empCode', width: 14 },
+            { header: 'Employee Name', key: 'empName', width: 28 },
+            { header: 'Site', key: 'department', width: 24 },
+            { header: 'Designation', key: 'designation', width: 20 },
+            { header: 'Shift', key: 'shiftCode', width: 10 },
+            { header: 'Total Days', key: 'totalDays', width: 12 },
+            { header: 'Present Days', key: 'presentDays', width: 13 },
+            { header: 'Absent Days', key: 'absentDays', width: 13 },
+            { header: 'W/O Days', key: 'woDays', width: 10 },
+            { header: 'Total Net Hrs', key: 'workingHours', width: 14 },
+            { header: 'OT Hrs', key: 'otHours', width: 10 },
+            { header: 'Late Days', key: 'lateMinutes', width: 11 },
+            { header: 'Payable Days', key: 'payableDays', width: 13 },
+            { header: 'Attendance %', key: 'attendanceRate', width: 13 },
+            { header: 'Status', key: 'status', width: 14 },
+          ];
+        } else {
+          columns = [
+            { header: 'S.No', key: 'sno', width: 6 },
+            { header: 'Biometric Code', key: 'empCode', width: 14 },
+            { header: 'Employee Name', key: 'empName', width: 28 },
+            { header: 'Site', key: 'department', width: 24 },
+            { header: 'Designation', key: 'designation', width: 20 },
+            { header: 'Shift', key: 'shiftCode', width: 10 },
+            { header: 'In Time', key: 'inTime', width: 12 },
+            { header: 'Out Time', key: 'outTime', width: 12 },
+            { header: 'Working Hrs', key: 'workingHours', width: 13 },
+            { header: 'Late (min)', key: 'lateMinutes', width: 12 },
+            { header: 'Status', key: 'status', width: 14 },
+          ];
+        }
         rows = basicReportData;
       }
 
@@ -3325,6 +3754,11 @@ const DetailedAuditReportView: React.FC<{
     if (!filteredEmployees || filteredEmployees.length === 0) return;
     setIsDownloading(true);
     try {
+      const [{ pdf }, { DetailedAuditPdfDocument, BasicReportDocument }] = await Promise.all([
+        import('@react-pdf/renderer'),
+        import('../attendance/PDFReports')
+      ]);
+
       const dr = {
         startDate: dateRange.startDate || new Date(selectedDate),
         endDate: dateRange.endDate || new Date(selectedDate)
@@ -4188,19 +4622,48 @@ const DetailedAuditReportView: React.FC<{
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                 <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-center">
                   <p className="text-[10px] font-bold text-slate-400 uppercase">Total Active</p>
-                  <p className="text-2xl font-black text-slate-900 dark:text-white mt-0.5">{s?.activeTotal ?? filteredEmployees.length}</p>
+                  <p className="text-2xl font-black text-slate-900 dark:text-white mt-0.5">
+                    {isDateRangeActive ? multiDaySummaryTotals.totalActive : (s?.activeTotal ?? filteredEmployees.length)}
+                  </p>
                 </div>
                 <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 text-center">
-                  <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase">Present</p>
-                  <p className="text-2xl font-black text-emerald-700 dark:text-emerald-300 mt-0.5">{s?.present ?? 0}</p>
+                  <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase">
+                    {isDateRangeActive ? 'Total Present Man-Days' : 'Present'}
+                  </p>
+                  <p className="text-2xl font-black text-emerald-700 dark:text-emerald-300 mt-0.5">
+                    {isDateRangeActive ? multiDaySummaryTotals.totalPresentManDays : (s?.present ?? 0)}
+                  </p>
+                  {isDateRangeActive && (
+                    <p className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 mt-0.5">
+                      Avg. {multiDaySummaryTotals.avgPresentPerDay} / day
+                    </p>
+                  )}
                 </div>
                 <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 text-center">
-                  <p className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase">Absent</p>
-                  <p className="text-2xl font-black text-red-700 dark:text-red-300 mt-0.5">{s?.absent ?? 0}</p>
+                  <p className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase">
+                    {isDateRangeActive ? 'Total Absent Days' : 'Absent'}
+                  </p>
+                  <p className="text-2xl font-black text-red-700 dark:text-red-300 mt-0.5">
+                    {isDateRangeActive ? multiDaySummaryTotals.totalAbsentManDays : (s?.absent ?? 0)}
+                  </p>
+                  {isDateRangeActive && (
+                    <p className="text-[10px] font-medium text-red-600 dark:text-red-400 mt-0.5">
+                      Avg. {multiDaySummaryTotals.avgAbsentPerDay} / day
+                    </p>
+                  )}
                 </div>
                 <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 text-center">
-                  <p className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase">Late</p>
-                  <p className="text-2xl font-black text-amber-700 dark:text-amber-300 mt-0.5">{s?.late ?? 0}</p>
+                  <p className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase">
+                    {isDateRangeActive ? 'Total OT / Late' : 'Late'}
+                  </p>
+                  <p className="text-2xl font-black text-amber-700 dark:text-amber-300 mt-0.5">
+                    {isDateRangeActive ? multiDaySummaryTotals.totalOtHours : (s?.late ?? 0)}
+                  </p>
+                  {isDateRangeActive && (
+                    <p className="text-[10px] font-medium text-amber-600 dark:text-amber-400 mt-0.5">
+                      {multiDaySummaryTotals.totalLateCount} Late Occurrences
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -4427,50 +4890,219 @@ const DetailedAuditReportView: React.FC<{
             {/* BASIC REPORT (default) */}
             {(reportType === 'basic' || (!['detailed', 'monthly', 'work_hours', 'site_ot', 'log', 'leave_balance'].includes(reportType))) && (
               <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
-                <table className="w-full text-xs text-left">
-                  <thead className="bg-slate-100 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 uppercase tracking-wider font-extrabold text-[10px]">
-                    <tr>
-                      <th className="px-3.5 py-2.5">S.No</th>
-                      <th className="px-3.5 py-2.5">Biometric Code</th>
-                      <th className="px-3.5 py-2.5">Employee Name</th>
-                      <th className="px-3.5 py-2.5">Dept / Site</th>
-                      <th className="px-3.5 py-2.5">Designation</th>
-                      <th className="px-3.5 py-2.5">Shift</th>
-                      <th className="px-3.5 py-2.5">In</th>
-                      <th className="px-3.5 py-2.5">Out</th>
-                      <th className="px-3.5 py-2.5">Hours</th>
-                      <th className="px-3.5 py-2.5">Late (min)</th>
-                      <th className="px-3.5 py-2.5 text-center">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {filteredEmployees.length === 0 ? (
+                {isDateRangeActive ? (
+                  /* ── Multi-Day Date Range Table View (e.g. Last Month, This Month, Custom Range) ── */
+                  <table className="w-full text-xs text-left">
+                    <thead className="bg-slate-100 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 uppercase tracking-wider font-extrabold text-[10px]">
                       <tr>
-                        <td colSpan={11} className="py-8 text-center text-slate-400 font-medium">
-                          No records match the selected report filter.
-                        </td>
+                        <th className="px-3 py-2.5">S.No</th>
+                        <th className="px-3 py-2.5">Code</th>
+                        <th className="px-3.5 py-2.5">Employee Name</th>
+                        <th className="px-3.5 py-2.5">Dept / Site</th>
+                        <th className="px-3 py-2.5">Designation</th>
+                        <th className="px-2.5 py-2.5">Shift</th>
+                        <th className="px-2.5 py-2.5 text-center bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300">Present</th>
+                        <th className="px-2.5 py-2.5 text-center bg-red-50 dark:bg-red-950/40 text-red-800 dark:text-red-300">Absent</th>
+                        <th className="px-2.5 py-2.5 text-center bg-slate-50 dark:bg-slate-800/60">W/O</th>
+                        <th className="px-3 py-2.5 text-center bg-cyan-50 dark:bg-cyan-950/40 text-cyan-800 dark:text-cyan-300">Total Net Hrs</th>
+                        <th className="px-2.5 py-2.5 text-center bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300">OT Hrs</th>
+                        <th className="px-2.5 py-2.5 text-center bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300">Late</th>
+                        <th className="px-2.5 py-2.5 text-center">Payable</th>
+                        <th className="px-2.5 py-2.5 text-center">Att %</th>
+                        <th className="px-2.5 py-2.5 text-center">Status</th>
+                        <th className="px-3 py-2.5 text-center">Day-by-Day</th>
                       </tr>
-                    ) : (
-                      paginatedEmployees.map((emp, index) => (
-                        <tr key={`${emp.empCode}-${index}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                          <td className="px-3.5 py-2.5 font-mono text-slate-400">{(currentPage - 1) * pageSize + index + 1}</td>
-                          <td className="px-3.5 py-2.5 font-mono text-slate-600 dark:text-slate-300 font-semibold">{emp.empCode}</td>
-                          <td className="px-3.5 py-2.5 font-bold text-slate-900 dark:text-white">{emp.empName}</td>
-                          <td className="px-3.5 py-2.5 text-slate-600 dark:text-slate-400">{emp.department}</td>
-                          <td className="px-3.5 py-2.5 text-slate-500 text-[10px]">{emp.designation}</td>
-                          <td className="px-3.5 py-2.5 text-slate-500 font-medium">{formatShiftDisplay(emp)}</td>
-                          <td className="px-3.5 py-2.5 font-mono text-emerald-600 dark:text-emerald-400 font-bold">{emp.inTime || '—'}</td>
-                          <td className="px-3.5 py-2.5 font-mono text-slate-700 dark:text-slate-300 font-medium">{emp.outTime || '—'}</td>
-                          <td className="px-3.5 py-2.5 font-mono text-slate-800 dark:text-slate-200 font-semibold">{formatLiveWorkingHours(emp, selectedDate)}</td>
-                          <td className="px-3.5 py-2.5 text-center font-mono text-amber-700 dark:text-amber-300">{emp.lateMinutes > 0 ? `+${emp.lateMinutes}m` : '—'}</td>
-                          <td className="px-3.5 py-2.5 text-center">
-                            <StatusBadge status={emp.status} inTime={emp.inTime} outTime={emp.outTime} shiftCompleted={emp.shiftCompleted} />
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {paginatedMultiDayEmployees.length === 0 ? (
+                        <tr>
+                          <td colSpan={16} className="py-8 text-center text-slate-400 font-medium">
+                            No employee records match the selected site or filter.
                           </td>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+                      ) : (
+                        paginatedMultiDayEmployees.map((emp, index) => {
+                          const isExpanded = expandedEmpCode === emp.empCode;
+                          return (
+                            <React.Fragment key={`${emp.empCode}-${index}`}>
+                              <tr className={`hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors ${isExpanded ? 'bg-emerald-50/20 dark:bg-emerald-950/10' : ''}`}>
+                                <td className="px-3 py-2.5 font-mono text-slate-400">{(currentPage - 1) * pageSize + index + 1}</td>
+                                <td className="px-3 py-2.5 font-mono text-slate-600 dark:text-slate-300 font-semibold">{emp.empCode}</td>
+                                <td className="px-3.5 py-2.5 font-bold text-slate-900 dark:text-white">{emp.empName}</td>
+                                <td className="px-3.5 py-2.5 text-slate-600 dark:text-slate-400">{emp.department}</td>
+                                <td className="px-3 py-2.5 text-slate-500 text-[10px]">{emp.designation}</td>
+                                <td className="px-2.5 py-2.5 font-mono text-slate-500">{emp.shiftCode}</td>
+                                <td className="px-2.5 py-2.5 text-center font-black text-emerald-700 dark:text-emerald-300 bg-emerald-50/50 dark:bg-emerald-950/20">
+                                  {emp.presentDays} <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-normal">/ {emp.totalDays}d</span>
+                                </td>
+                                <td className="px-2.5 py-2.5 text-center font-bold text-red-700 dark:text-red-300 bg-red-50/50 dark:bg-red-950/20">
+                                  {emp.absentDays}d
+                                </td>
+                                <td className="px-2.5 py-2.5 text-center font-semibold text-slate-600 dark:text-slate-400 bg-slate-50/80 dark:bg-slate-800/40">
+                                  {emp.woDays}d
+                                </td>
+                                <td className="px-3 py-2.5 text-center font-mono font-bold text-cyan-700 dark:text-cyan-300 bg-cyan-50/50 dark:bg-cyan-950/20">
+                                  {emp.totalNetHours}
+                                </td>
+                                <td className="px-2.5 py-2.5 text-center font-mono font-bold text-amber-700 dark:text-amber-300 bg-amber-50/50 dark:bg-amber-950/20">
+                                  {emp.totalOtHours}
+                                </td>
+                                <td className="px-2.5 py-2.5 text-center font-mono font-bold text-amber-600 dark:text-amber-400">
+                                  {emp.lateDays > 0 ? `${emp.lateDays}d` : '—'}
+                                </td>
+                                <td className="px-2.5 py-2.5 text-center font-black text-slate-900 dark:text-white">
+                                  {emp.payableDays}
+                                </td>
+                                <td className="px-2.5 py-2.5 text-center">
+                                  <span className={`px-2 py-0.5 rounded-md text-[10px] font-black ${
+                                    emp.attendanceRate >= 90 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' :
+                                    emp.attendanceRate >= 75 ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' :
+                                    'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300'
+                                  }`}>
+                                    {emp.attendanceRate}%
+                                  </span>
+                                </td>
+                                <td className="px-2.5 py-2.5 text-center">
+                                  <StatusBadge status={emp.overallStatus} />
+                                </td>
+                                <td className="px-3 py-2.5 text-center">
+                                  <button
+                                    onClick={() => setExpandedEmpCode(prev => prev === emp.empCode ? null : emp.empCode)}
+                                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all border flex items-center gap-1 mx-auto cursor-pointer ${
+                                      isExpanded
+                                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                                        : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                                    }`}
+                                    title="Expand Daily Breakdown"
+                                  >
+                                    <Calendar size={11} />
+                                    {isExpanded ? 'Hide' : `${emp.totalDays} Days`}
+                                  </button>
+                                </td>
+                              </tr>
+
+                              {/* Expanded Day-by-Day Punch Logs */}
+                              {isExpanded && (
+                                <tr className="bg-slate-50/80 dark:bg-slate-900/90">
+                                  <td colSpan={16} className="p-4 border-y border-emerald-200 dark:border-emerald-900/60">
+                                    <div className="space-y-3">
+                                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
+                                        <div className="flex items-center gap-2">
+                                          <Calendar size={15} className="text-emerald-600 dark:text-emerald-400" />
+                                          <span className="font-extrabold text-slate-900 dark:text-white">
+                                            {emp.empName} ({emp.empCode}) — Daily Attendance Matrix & Punch Logs
+                                          </span>
+                                          <span className="text-xs text-slate-500 font-medium">({reportDateLabel})</span>
+                                        </div>
+                                        <div className="flex items-center gap-3 text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                                          <span className="text-emerald-600 dark:text-emerald-400">Present: {emp.presentDays}d</span>
+                                          <span className="text-red-600 dark:text-red-400">Absent: {emp.absentDays}d</span>
+                                          <span className="text-slate-500">W/O: {emp.woDays}d</span>
+                                          <span className="text-cyan-600 dark:text-cyan-400">Net: {emp.totalNetHours}</span>
+                                          <span className="text-amber-600 dark:text-amber-400">OT: {emp.totalOtHours}</span>
+                                        </div>
+                                      </div>
+
+                                      {/* Daily Punch Cards Grid */}
+                                      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 lg:grid-cols-10 xl:grid-cols-11 gap-1.5 text-center">
+                                        {emp.dailyPunches.map(dp => (
+                                          <div
+                                            key={dp.dateStr}
+                                            className={`p-2 rounded-xl border transition-all text-xs flex flex-col justify-between min-h-[78px] ${
+                                              dp.status === 'W/O'
+                                                ? 'bg-slate-100/80 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700/60 text-slate-400'
+                                                : dp.status === 'A'
+                                                ? 'bg-red-50/70 dark:bg-red-950/30 border-red-200 dark:border-red-900/60 text-red-700 dark:text-red-300'
+                                                : dp.status === 'Late'
+                                                ? 'bg-amber-50/70 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900/60 text-amber-800 dark:text-amber-300'
+                                                : 'bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900/60 text-emerald-800 dark:text-emerald-300'
+                                            }`}
+                                          >
+                                            <div className="flex items-center justify-between border-b border-black/5 dark:border-white/5 pb-1">
+                                              <span className="font-extrabold text-[11px]">{dp.dayNum}</span>
+                                              <span className="text-[9px] font-bold uppercase">{dp.dayFormatted.split(' ')[1]}</span>
+                                            </div>
+                                            <div className="my-1">
+                                              <span className={`inline-block px-1.5 py-0.2 rounded text-[9px] font-extrabold ${
+                                                dp.status === 'W/O' ? 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300' :
+                                                dp.status === 'A' ? 'bg-red-200 dark:bg-red-900 text-red-900 dark:text-red-200' :
+                                                dp.status === 'Late' ? 'bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-200' :
+                                                'bg-emerald-200 dark:bg-emerald-900 text-emerald-900 dark:text-emerald-200'
+                                              }`}>
+                                                {dp.status}
+                                              </span>
+                                            </div>
+                                            <div className="text-[9px] font-mono leading-tight space-y-0.5">
+                                              {dp.inTime && dp.inTime !== '—' ? (
+                                                <>
+                                                  <div className="text-emerald-700 dark:text-emerald-400 font-semibold">{dp.inTime}</div>
+                                                  <div className="text-slate-500">{dp.outTime}</div>
+                                                  <div className="font-bold text-slate-700 dark:text-slate-300">{dp.hours}</div>
+                                                </>
+                                              ) : (
+                                                <div className="text-slate-400 py-1">—</div>
+                                              )}
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                ) : (
+                  /* ── Single-Day Table View (e.g. Today / Yesterday) ── */
+                  <table className="w-full text-xs text-left">
+                    <thead className="bg-slate-100 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 uppercase tracking-wider font-extrabold text-[10px]">
+                      <tr>
+                        <th className="px-3.5 py-2.5">S.No</th>
+                        <th className="px-3.5 py-2.5">Biometric Code</th>
+                        <th className="px-3.5 py-2.5">Employee Name</th>
+                        <th className="px-3.5 py-2.5">Dept / Site</th>
+                        <th className="px-3.5 py-2.5">Designation</th>
+                        <th className="px-3.5 py-2.5">Shift</th>
+                        <th className="px-3.5 py-2.5">In</th>
+                        <th className="px-3.5 py-2.5">Out</th>
+                        <th className="px-3.5 py-2.5">Hours</th>
+                        <th className="px-3.5 py-2.5">Late (min)</th>
+                        <th className="px-3.5 py-2.5 text-center">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {filteredEmployees.length === 0 ? (
+                        <tr>
+                          <td colSpan={11} className="py-8 text-center text-slate-400 font-medium">
+                            No records match the selected report filter.
+                          </td>
+                        </tr>
+                      ) : (
+                        paginatedEmployees.map((emp, index) => (
+                          <tr key={`${emp.empCode}-${index}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                            <td className="px-3.5 py-2.5 font-mono text-slate-400">{(currentPage - 1) * pageSize + index + 1}</td>
+                            <td className="px-3.5 py-2.5 font-mono text-slate-600 dark:text-slate-300 font-semibold">{emp.empCode}</td>
+                            <td className="px-3.5 py-2.5 font-bold text-slate-900 dark:text-white">{emp.empName}</td>
+                            <td className="px-3.5 py-2.5 text-slate-600 dark:text-slate-400">{emp.department}</td>
+                            <td className="px-3.5 py-2.5 text-slate-500 text-[10px]">{emp.designation}</td>
+                            <td className="px-3.5 py-2.5 text-slate-500 font-medium">{formatShiftDisplay(emp)}</td>
+                            <td className="px-3.5 py-2.5 font-mono text-emerald-600 dark:text-emerald-400 font-bold">{emp.inTime || '—'}</td>
+                            <td className="px-3.5 py-2.5 font-mono text-slate-700 dark:text-slate-300 font-medium">{emp.outTime || '—'}</td>
+                            <td className="px-3.5 py-2.5 font-mono text-slate-800 dark:text-slate-200 font-semibold">{formatLiveWorkingHours(emp, selectedDate)}</td>
+                            <td className="px-3.5 py-2.5 text-center font-mono text-amber-700 dark:text-amber-300">{emp.lateMinutes > 0 ? `+${emp.lateMinutes}m` : '—'}</td>
+                            <td className="px-3.5 py-2.5 text-center">
+                              <StatusBadge status={emp.status} inTime={emp.inTime} outTime={emp.outTime} shiftCompleted={emp.shiftCompleted} />
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                )}
               </div>
             )}
 

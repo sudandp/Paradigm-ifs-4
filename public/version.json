@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 107,
-  "latestVersionName": "19.7.0",
+  "latestVersionCode": 108,
+  "latestVersionName": "19.8.0",
   "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
   "apkDownloadUrl": "https://app.paradigmfms.com",
-  "releaseNotes": "fix(vercel): consolidate serverless functions to 8 to fit within hobby tier limit\nfeat: implement cloudflare tunnel watchdog service with automated self-healing and supabase sync for CCTV infrastructure\nfeat: implement CCTV attendance pipeline with YOLO object detection and InsightFace recognition\nfeat: implement core InsightFace recognition engine with hardware acceleration and heuristic-based false-positive filtering\nfeat: implement FastAPI admin server for real-time CCTV monitoring and dashboard integration",
+  "releaseNotes": "feat: implement robust Supabase client with Capacitor storage, session persistence, and real-time notification service management.\nfeat: implement core CCTV processing pipeline with dual-layer detection and face recognition\nfeat: initialize FastAPI admin server with endpoints for system monitoring, AI tracking overlays, and camera stream management.\nchore: create archive of attendance-api repository for backup purposes\nfeat: implement remote MSSQL attendance and device management via secure proxy tunnel",
   "isMandatory": true
 }

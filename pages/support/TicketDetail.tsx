@@ -30,10 +30,11 @@ const PriorityIndicator: React.FC<{ priority: SupportTicket['priority'] }> = ({ 
 };
 
 const StatusChip: React.FC<{ status: SupportTicket['status'] }> = ({ status }) => {
-    const styles = {
+    const styles: Record<SupportTicket['status'], string> = {
         Open: 'status-chip--pending',
         'In Progress': 'sync-chip--pending_sync',
         'Pending Requester': 'leave-status-chip--pending_hr_confirmation',
+        'Need Approval': 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300',
         Resolved: 'leave-status-chip--approved',
         Closed: 'status-chip--draft',
     };
@@ -55,6 +56,19 @@ const TicketDetail: React.FC = () => {
     const [isMobileDetailsExpanded, setIsMobileDetailsExpanded] = useState(false);
     const isMobile = useMediaQuery('(max-width: 1023px)');
     const userIsAdmin = user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'developer';
+    const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
+    const statusDropdownRef = useRef<HTMLDivElement>(null);
+
+    // Close dropdown on outside click
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (statusDropdownRef.current && !statusDropdownRef.current.contains(e.target as Node)) {
+                setStatusDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
 
     useEffect(() => {
         if (!id) return;
@@ -201,26 +215,80 @@ const TicketDetail: React.FC = () => {
     if (!ticket) return null;
 
     const isRequester = user?.id === ticket.raisedById;
+    const canChangeStatus = userIsAdmin || user?.id === ticket.assignedToId;
+
+    // All status options with their visual config
+    const STATUS_OPTIONS: { value: SupportTicket['status']; label: string; icon: string; color: string }[] = [
+        { value: 'Open',              label: 'Open',              icon: '🔓', color: 'text-yellow-600' },
+        { value: 'In Progress',       label: 'In Progress',       icon: '⚙️', color: 'text-blue-600'   },
+        { value: 'Pending Requester', label: 'Pending Requester', icon: '⏳', color: 'text-orange-600' },
+        { value: 'Need Approval',     label: 'Need Approval',     icon: '🔐', color: 'text-purple-600' },
+        { value: 'Resolved',          label: 'Resolved',          icon: '✅', color: 'text-emerald-600'},
+        { value: 'Closed',            label: 'Closed',            icon: '🔒', color: 'text-slate-500'  },
+    ];
 
     const renderActionButtons = () => {
         if (ticket.status === 'Closed') return null;
 
         return (
-            <div className="flex flex-wrap gap-2">
-                {ticket.status === 'Open' && (
-                    <Button onClick={() => handleTicketUpdate({ status: 'In Progress', assignedToId: user?.id, assignedToName: user?.name })}>
+            <div className="flex flex-wrap items-center gap-2">
+                {/* Status dropdown — visible to assignee or admin */}
+                {canChangeStatus && (
+                    <div className="relative" ref={statusDropdownRef}>
+                        <button
+                            onClick={() => setStatusDropdownOpen(p => !p)}
+                            className="flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-xl border border-[#006B3F] bg-[#006B3F] text-white hover:bg-[#005a34] transition-all active:scale-95 shadow-sm"
+                        >
+                            <span>Change Status</span>
+                            <ChevronDown className={`h-4 w-4 transition-transform ${statusDropdownOpen ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        {statusDropdownOpen && (
+                            <div className="absolute left-0 mt-1.5 w-52 bg-white dark:bg-[#0d1f15] border border-slate-200 dark:border-[#1d422f] rounded-2xl shadow-xl z-50 overflow-hidden">
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-muted px-3 pt-3 pb-1">Set Status To</p>
+                                {STATUS_OPTIONS.filter(opt => opt.value !== ticket.status).map(opt => (
+                                    <button
+                                        key={opt.value}
+                                        onClick={async () => {
+                                            setStatusDropdownOpen(false);
+                                            const updates: Partial<SupportTicket> = { status: opt.value };
+                                            if (opt.value === 'In Progress' && !ticket.assignedToId) {
+                                                updates.assignedToId = user?.id;
+                                                updates.assignedToName = user?.name;
+                                            }
+                                            if (opt.value === 'Resolved') {
+                                                updates.resolvedAt = new Date().toISOString();
+                                            }
+                                            if (opt.value === 'Closed') {
+                                                setIsCloseModalOpen(true);
+                                                return;
+                                            }
+                                            await handleTicketUpdate(updates);
+                                        }}
+                                        className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors"
+                                    >
+                                        <span>{opt.icon}</span>
+                                        <span className={`font-semibold ${opt.color}`}>{opt.label}</span>
+                                    </button>
+                                ))}
+                                <div className="h-2" />
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Assign to me — only shown if Open and current user is not the assignee */}
+                {ticket.status === 'Open' && user?.id !== ticket.assignedToId && (
+                    <Button
+                        onClick={() => handleTicketUpdate({ status: 'In Progress', assignedToId: user?.id, assignedToName: user?.name })}
+                    >
                         Assign to Me
                     </Button>
                 )}
-                 {ticket.status === 'In Progress' && user?.id === ticket.assignedToId && (
-                    <Button onClick={() => handleTicketUpdate({ status: 'Resolved', resolvedAt: new Date().toISOString() })}>
-                        Mark as Resolved
-                    </Button>
-                )}
-                 {ticket.status === 'Resolved' && isRequester && (
-                    <Button onClick={() => setIsCloseModalOpen(true)}>
-                        Close Ticket
-                    </Button>
+
+                {/* Requester: close their resolved ticket */}
+                {ticket.status === 'Resolved' && isRequester && (
+                    <Button onClick={() => setIsCloseModalOpen(true)}>Close Ticket</Button>
                 )}
             </div>
         );

@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import ExcelJS from 'exceljs';
-import { saveAs } from 'file-saver';
 import { api } from '../../services/api';
 import type { SiteInvoiceRecord, SiteInvoiceDefault } from '../../types';
 import { format, differenceInCalendarDays, parseISO, isBefore, isToday, startOfDay, subDays } from 'date-fns';
@@ -240,6 +238,11 @@ const SiteAttendanceTracker: React.FC = () => {
     const handleExport = async () => {
         setIsExporting(true);
         try {
+            const [ExcelJSModule, { saveAs }] = await Promise.all([
+                import('exceljs'),
+                import('file-saver')
+            ]);
+            const ExcelJS = ExcelJSModule.default || ExcelJSModule;
             const workbook = new ExcelJS.Workbook();
             const ws = workbook.addWorksheet('Invoice Tracker');
             ws.columns = [
@@ -281,6 +284,11 @@ const SiteAttendanceTracker: React.FC = () => {
     const handleDownloadTemplate = async () => {
         setIsExporting(true);
         try {
+            const [ExcelJSModule, { saveAs }] = await Promise.all([
+                import('exceljs'),
+                import('file-saver')
+            ]);
+            const ExcelJS = ExcelJSModule.default || ExcelJSModule;
             const workbook = new ExcelJS.Workbook();
             const ws = workbook.addWorksheet('Template');
             ws.columns = [
@@ -330,6 +338,8 @@ const SiteAttendanceTracker: React.FC = () => {
         const file = e.target.files?.[0];
         if (!file) return;
         try {
+            const ExcelJSModule = await import('exceljs');
+            const ExcelJS = ExcelJSModule.default || ExcelJSModule;
             const workbook = new ExcelJS.Workbook();
             await workbook.xlsx.load(await file.arrayBuffer());
             const ws = workbook.getWorksheet(1);

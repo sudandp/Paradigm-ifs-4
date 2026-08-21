@@ -4,12 +4,7 @@ import Button from '../components/ui/Button';
 import type { OnboardingData, FamilyMember } from '../types';
 import { api } from '../services/api';
 import { Download, ShieldCheck, Loader2 } from 'lucide-react';
-import { pdf } from '@react-pdf/renderer';
-import { InsuranceSummaryDocument } from './attendance/PDFReports';
-
-
 import { useOnboardingStore } from '../store/onboardingStore';
-
 
 const PdfExportButton: React.FC<{ employeeData: OnboardingData }> = ({ employeeData }) => {
     const [isGenerating, setIsGenerating] = useState(false);
@@ -17,6 +12,10 @@ const PdfExportButton: React.FC<{ employeeData: OnboardingData }> = ({ employeeD
     const handleExport = async () => {
         setIsGenerating(true);
         try {
+            const [{ pdf }, { InsuranceSummaryDocument }] = await Promise.all([
+                import('@react-pdf/renderer'),
+                import('./attendance/PDFReports')
+            ]);
             const doc = <InsuranceSummaryDocument data={employeeData} />;
             const blob = await pdf(doc).toBlob();
             if (blob) {
