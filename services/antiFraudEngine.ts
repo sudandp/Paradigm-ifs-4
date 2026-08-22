@@ -23,6 +23,7 @@
 import { Geolocation } from '@capacitor/geolocation';
 import { Camera, CameraResultType, CameraSource, CameraDirection } from '@capacitor/camera';
 import { supabase } from './supabase';
+import { getPrecisePosition } from '../utils/locationUtils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -70,10 +71,7 @@ export async function captureRecruiterGPS(
   employeeId?: string,
 ): Promise<RecruiterGPS | null> {
   try {
-    const position = await Geolocation.getCurrentPosition({
-      enableHighAccuracy: true,
-      timeout: 8000,
-    });
+    const position = await getPrecisePosition(40, 8000);
 
     const gpsRecord: RecruiterGPS = {
       latitude: position.coords.latitude,
@@ -134,7 +132,7 @@ export async function captureGeoTaggedSelfie(): Promise<GeoTaggedSelfie | null> 
         promptLabelPhoto: 'Take Selfie',
         promptLabelPicture: 'Take Selfie',
       }),
-      Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 8000 }),
+      getPrecisePosition(40, 8000),
     ]);
 
     if (!photo.dataUrl) return null;

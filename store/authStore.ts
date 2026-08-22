@@ -316,10 +316,7 @@ export const useAuthStore = create<AuthState>()(
                 let punchOutLng: number | undefined;
                 let punchOutLocationName: string | undefined;
                 try {
-                    const pos = await Promise.race([
-                        Geolocation.getCurrentPosition({ enableHighAccuracy: false }),
-                        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('GPS timeout')), 5000))
-                    ]) as Awaited<ReturnType<typeof Geolocation.getCurrentPosition>>;
+                    const pos = await getPrecisePosition(50, 5000);
                     punchOutLat = pos.coords.latitude;
                     punchOutLng = pos.coords.longitude;
                     punchOutLocationName = 'Last Known Location';

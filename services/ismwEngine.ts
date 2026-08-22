@@ -45,36 +45,30 @@ export interface LocalAddressCapture {
   capturedAt: string;        // ISO timestamp
 }
 
-interface IndiaPostResponse {
-  Status: string;
-  PostOffice: Array<{
-    Name: string;
-    District: string;
-    State: string;
-    Country: string;
-    Pincode: string;
-  }> | null;
-}
-
-// ─── State Resolver via India Post API ───────────────────────────────────────
+// ─── India Post Pincode Resolver ──────────────────────────────────────────────
 
 /**
- * Resolve the Indian state name from a 6-digit pincode using India Post API.
- * Returns null if pincode is invalid or API is unreachable (offline).
+ * Resolves state from a 6-digit Indian PIN code using India Post API.
+ * Falls back to null if offline or invalid pincode.
  */
 export async function resolveStateFromPincode(pincode: string): Promise<string | null> {
-  if (!/^\d{6}$/.test(pincode.trim())) return null;
+  const clean = pincode.replace(/\D/g, '');
+  if (clean.length !== 6) return null;
 
   try {
-    const res = await fetch(
-      `https://api.postalpincode.in/pincode/${pincode.trim()}`,
-      { signal: AbortSignal.timeout(8000) } // 8-second timeout for offline resilience
-    );
-    const data: IndiaPostResponse[] = await res.json();
-    const record = data?.[0];
+    const res = await fetch(`https://api.postalpincode.in/pincode/${clean}`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return null;
 
-    if (record?.Status === 'Success' && record.PostOffice?.length) {
-      return record.PostOffice[0].State.trim();
+    const data = await res.json();
+    if (
+      Array.isArray(data) &&
+      data[0]?.Status === 'Success' &&
+      Array.isArray(data[0]?.PostOffice) &&
+      data[0].PostOffice.length > 0
+    ) {
+      return data[0].PostOffice[0].State ?? null;
     }
     return null;
   } catch {
@@ -91,10 +85,7 @@ export async function resolveStateFromPincode(pincode: string): Promise<string |
  */
 async function resolveCurrentStateFromGPS(): Promise<string | null> {
   try {
-    const position = await Geolocation.getCurrentPosition({
-      enableHighAccuracy: true,
-      timeout: 10000,
-    });
+    const position = await getPrecisePosition(50, 8000);
 
     const address = await reverseGeocode(
       position.coords.latitude,

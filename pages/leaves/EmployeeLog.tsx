@@ -7,32 +7,39 @@ import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, end
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { processDailyEvents } from '../../utils/attendanceCalculations';
 import LoadingScreen from '../../components/ui/LoadingScreen';
-import { reverseGeocode, resolveLocationName, findRegisteredSiteDistance } from '../../utils/locationUtils';
+import { reverseGeocode, resolveLocationName, resolveLocationNameSync, findRegisteredSiteDistance } from '../../utils/locationUtils';
 import { buildAttendanceDayKeyByEventId } from '../../utils/attendanceDayGrouping';
 import { isAdmin } from '../../utils/auth';
 
 const AddressResolver: React.FC<{ lat?: number; lng?: number; fallback?: string | null; userLocations?: any[] }> = ({ lat, lng, fallback, userLocations }) => {
-    const [resolvedAddress, setResolvedAddress] = useState<string | null>(null);
-    const [loading, setLoading] = useState(false);
     const { user } = useAuthStore();
+    const syncName = resolveLocationNameSync(lat, lng, fallback, user, userLocations);
+    const initialText = syncName || (fallback && !/^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(fallback.trim()) 
+        ? fallback 
+        : (lat && lng ? `${lat.toFixed(4)}, ${lng.toFixed(4)}` : null));
+
+    const [resolvedAddress, setResolvedAddress] = useState<string | null>(initialText);
 
     useEffect(() => {
+        let isMounted = true;
         const resolve = async () => {
             try {
-                setLoading(true);
                 const name = await resolveLocationName(lat, lng, fallback, user, userLocations);
-                setResolvedAddress(name);
+                if (isMounted && name) {
+                    setResolvedAddress(name);
+                }
             } catch (err) {
-                setResolvedAddress(fallback || (lat && lng ? `${lat.toFixed(4)}, ${lng.toFixed(4)}` : null));
-            } finally {
-                setLoading(false);
+                if (isMounted) {
+                    setResolvedAddress(syncName || fallback || (lat && lng ? `${lat.toFixed(4)}, ${lng.toFixed(4)}` : null));
+                }
             }
         };
         resolve();
-    }, [lat, lng, fallback, user, userLocations]);
+        return () => { isMounted = false; };
+    }, [lat, lng, fallback, user, userLocations, syncName]);
 
-    if (loading) return <span className="animate-pulse text-indigo-400 font-medium">Resolving address...</span>;
-    return <span>{resolvedAddress || fallback || (lat && lng ? `${lat.toFixed(4)}, ${lng.toFixed(4)}` : '')}</span>;
+    // Show clean address by default when loading without flicker or placeholder text
+    return <span>{resolvedAddress || syncName || fallback || (lat && lng ? `${lat.toFixed(4)}, ${lng.toFixed(4)}` : '')}</span>;
 };
 
 
@@ -407,18 +414,80 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                                 </div>
                             </div>
 
-                            {/* Events List */}
+                             {/* Events List */}
                             <div className="p-4 space-y-3">
-                                {group.events
-                                    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-                                    .map((event, index) => {
+                                {(() => {
+                                    const sortedEvents = [...group.events].sort(
+                                        (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+                                    );
+
+                                    return sortedEvents.map((event, index) => {
                                         const distInfo = findRegisteredSiteDistance(
                                             event.latitude,
                                             event.longitude,
-                                            group.events,
+                                            sortedEvents,
                                             userLocations,
                                             user
                                         );
+
+                                        // Calculate duration for breaks and work sessions
+                                        let durationBadge: { text: string; bgClass: string; textClass: string } | null = null;
+                                        if (event.type === 'break-out') {
+                                            const prevBreakIn = sortedEvents
+                                                .slice(0, index)
+                                                .reverse()
+                                                .find(e => e.type === 'break-in');
+                                            if (prevBreakIn) {
+                                                const diffMins = Math.max(
+                                                    1,
+                                                    Math.round(
+                                                        (new Date(event.timestamp).getTime() -
+                                                            new Date(prevBreakIn.timestamp).getTime()) /
+                                                            60000
+                                                    )
+                                                );
+                                                const hrs = Math.floor(diffMins / 60);
+                                                const mins = diffMins % 60;
+                                                const durText = hrs > 0 ? `${hrs}h ${mins}m break` : `${mins}m break`;
+                                                durationBadge = {
+                                                    text: durText,
+                                                    bgClass: 'bg-amber-100 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-700/60',
+                                                    textClass: 'text-amber-800 dark:text-amber-300'
+                                                };
+                                            }
+                                        } else if (
+                                            event.type === 'punch-out' ||
+                                            event.type === 'site-out' ||
+                                            event.type === 'site-ot-out'
+                                        ) {
+                                            const prevIn = sortedEvents
+                                                .slice(0, index)
+                                                .reverse()
+                                                .find(
+                                                    e =>
+                                                        e.type === 'punch-in' ||
+                                                        e.type === 'site-in' ||
+                                                        e.type === 'site-ot-in'
+                                                );
+                                            if (prevIn) {
+                                                const diffMins = Math.max(
+                                                    1,
+                                                    Math.round(
+                                                        (new Date(event.timestamp).getTime() -
+                                                            new Date(prevIn.timestamp).getTime()) /
+                                                            60000
+                                                    )
+                                                );
+                                                const hrs = Math.floor(diffMins / 60);
+                                                const mins = diffMins % 60;
+                                                const durText = hrs > 0 ? `${hrs}h ${mins}m worked` : `${mins}m worked`;
+                                                durationBadge = {
+                                                    text: durText,
+                                                    bgClass: 'bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700/60',
+                                                    textClass: 'text-emerald-800 dark:text-emerald-300'
+                                                };
+                                            }
+                                        }
 
                                         return (
                                         <div
@@ -434,7 +503,7 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                                             <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
 
                                                 {/* Row 1 (Mobile) / Col 1 (Desktop): Punch In & Time */}
-                                                <div className="flex items-center justify-between md:justify-start gap-3 flex-shrink-0 md:w-[180px]">
+                                                <div className="flex items-center justify-between md:justify-start gap-3 flex-shrink-0 md:w-[190px]">
                                                     <div className="flex items-center gap-3">
                                                         <div
                                                             className={`p-2 rounded-lg flex-shrink-0 ${
@@ -461,14 +530,21 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                                                                  event.type === 'site-ot-out' ? 'Site OT Out' :
                                                                  event.type.replace('-', ' ')}
                                                             </div>
-                                                            <div className={`text-xs md:text-sm font-medium ${
-                                                                (event.type === 'punch-in' || event.type === 'site-ot-in') ? 'text-emerald-700 max-md:text-emerald-400' :
-                                                                (event.type === 'punch-out' || event.type === 'site-ot-out') ? 'text-rose-700 max-md:text-rose-400' :
-                                                                event.type === 'break-in' ? 'text-amber-700 max-md:text-amber-400' :
-                                                                event.type.includes('site-ot') ? 'text-indigo-700 max-md:text-indigo-400' :
-                                                                'text-sky-700 max-md:text-sky-400'
-                                                            }`}>
-                                                                {format(new Date(event.timestamp), 'hh:mm a')}
+                                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                                <span className={`text-xs md:text-sm font-medium ${
+                                                                    (event.type === 'punch-in' || event.type === 'site-ot-in') ? 'text-emerald-700 max-md:text-emerald-400' :
+                                                                    (event.type === 'punch-out' || event.type === 'site-ot-out') ? 'text-rose-700 max-md:text-rose-400' :
+                                                                    event.type === 'break-in' ? 'text-amber-700 max-md:text-amber-400' :
+                                                                    event.type.includes('site-ot') ? 'text-indigo-700 max-md:text-indigo-400' :
+                                                                    'text-sky-700 max-md:text-sky-400'
+                                                                }`}>
+                                                                    {format(new Date(event.timestamp), 'hh:mm a')}
+                                                                </span>
+                                                                {durationBadge && (
+                                                                    <span className={`text-[10px] font-semibold px-1.5 py-0.2 rounded-md ${durationBadge.bgClass} ${durationBadge.textClass}`}>
+                                                                        ⏱ {durationBadge.text}
+                                                                    </span>
+                                                                )}
                                                             </div>
                                                             {(event.checkoutNote || event.source === 'auto_system') && (
                                                                 <div className="text-[11px] font-medium text-slate-500 italic mt-0.5 max-w-[200px] leading-tight">
@@ -533,7 +609,8 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                                                         const isAutoOut = event.source === 'auto_system' && (event.type === 'punch-out' || event.type === 'site-ot-out');
                                                         const displayLocation = hasCoords || hasLocationText || isAutoOut;
                                                         const isCoordLoc = !!(event.locationName && /^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(event.locationName.trim()));
-                                                        const cleanLocationName = isCoordLoc ? undefined : event.locationName;
+                                                        const isFakeHome = distInfo.isUnregistered && !!(event.locationName && event.locationName.toLowerCase().includes('home'));
+                                                        const cleanLocationName = (isCoordLoc || isFakeHome) ? undefined : event.locationName;
 
                                                         const shiftPunchInEvent = group.events.find(e => 
                                                             (e.type === 'punch-in' || e.type === 'site-in') && 
@@ -541,7 +618,7 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                                                             !/^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(e.locationName.trim()) &&
                                                             !e.locationName.toLowerCase().includes('home')
                                                         );
-                                                        const shiftSiteName = shiftPunchInEvent?.locationName || (distInfo.isHome ? undefined : distInfo.targetSiteName);
+                                                        const shiftSiteName = shiftPunchInEvent?.locationName || (distInfo.isHome ? (user?.name ? `${user.name} Home` : 'Home Location') : (distInfo.targetSiteName && distInfo.distanceKm <= 2.5 ? `Near by (${distInfo.targetSiteName})` : undefined));
 
                                                         const locationFallback = cleanLocationName || shiftSiteName || (isAutoOut ? 'Auto Check-out' : undefined);
 
@@ -580,7 +657,8 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                                             </div>
                                         </div>
                                         );
-                                    })}
+                                    });
+                                })()}
                             </div>
 
                             {/* Summary Footer */}
