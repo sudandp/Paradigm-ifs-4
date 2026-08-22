@@ -1522,34 +1522,28 @@ export const useAuthStore = create<AuthState>()(
                 let isViolation = false;
 
                 try {
-                    // Stage 0: Check direct match with user's registered home location coordinates
-                    if (user.homeLatitude != null && user.homeLongitude != null) {
-                        const homeLat = Number(user.homeLatitude);
-                        const homeLng = Number(user.homeLongitude);
-                        if (!isNaN(homeLat) && !isNaN(homeLng)) {
-                            const distToHome = calculateDistanceMeters(latitude, longitude, homeLat, homeLng);
-                            if (distToHome <= 300) {
-                                locationName = user.name ? `${user.name} Home` : 'Home Location';
-                            }
-                        }
-                    }
-
-                    // Stage 1: Always attempt to match against known locations (sites) first
-                    // to get a friendly name (e.g., "PIFS Bangalore") regardless of geofencing status.
+                    // Stage 1: Check match against assigned/known work sites FIRST
+                    // (Work sites take priority over home location)
                     let userLocations: any[] = [];
                     try {
                         userLocations = await api.getUserLocations(user.id);
                     } catch (err) {
-                        console.warn('[Location] Failed to fetch live locations:', err);
+                        console.warn('[Location] Failed to fetch user locations:', err);
                         userLocations = [];
                     }
 
                     for (const loc of userLocations) {
-                        const dist = calculateDistanceMeters(latitude, longitude, loc.latitude, loc.longitude);
-                        if (dist <= loc.radius) {
-                            locationId = loc.id;
-                            locationName = loc.name;
-                            break;
+                        if (loc.latitude != null && loc.longitude != null) {
+                            const isHomeType = loc.type === 'home' || loc.name?.toLowerCase().includes('home');
+                            if (!isHomeType) {
+                                const dist = calculateDistanceMeters(latitude, longitude, Number(loc.latitude), Number(loc.longitude));
+                                const siteRadius = Number(loc.radius) || 300;
+                                if (dist <= siteRadius) {
+                                    locationId = loc.id;
+                                    locationName = loc.name;
+                                    break;
+                                }
+                            }
                         }
                     }
 
@@ -1557,13 +1551,19 @@ export const useAuthStore = create<AuthState>()(
                         try {
                             const allLocations = await api.getLocations();
                             for (const loc of allLocations) {
-                                const dist = calculateDistanceMeters(latitude, longitude, loc.latitude, loc.longitude);
-                                if (dist <= loc.radius) {
-                                    locationId = loc.id;
-                                    locationName = loc.name;
-                                    // Auto-assign this location to the user
-                                    api.assignLocationToUser(user.id, loc.id).catch(e => console.warn('[authStore] assignLocationToUser failed:', e));
-                                    break;
+                                if (loc.latitude != null && loc.longitude != null) {
+                                    const isHomeType = (loc as any).type === 'home' || loc.name?.toLowerCase().includes('home');
+                                    if (!isHomeType) {
+                                        const dist = calculateDistanceMeters(latitude, longitude, Number(loc.latitude), Number(loc.longitude));
+                                        const siteRadius = Number(loc.radius) || 300;
+                                        if (dist <= siteRadius) {
+                                            locationId = loc.id;
+                                            locationName = loc.name;
+                                            // Auto-assign this corporate location to the user
+                                            api.assignLocationToUser(user.id, loc.id).catch(e => console.warn('[authStore] assignLocationToUser failed:', e));
+                                            break;
+                                        }
+                                    }
                                 }
                             }
                         } catch (e) {
@@ -1571,34 +1571,37 @@ export const useAuthStore = create<AuthState>()(
                         }
                     }
 
-                    // Helper to check if reverse geocoded address matches home address
-                    const resolveHomeOrAddress = async (lat: number, lon: number) => {
+                    // Stage 2: If not at a work site, check direct match to user's registered Home coordinates (GPS Haversine only)
+                    if (!locationId && user.homeLatitude != null && user.homeLongitude != null) {
+                        const homeLat = Number(user.homeLatitude);
+                        const homeLng = Number(user.homeLongitude);
+                        if (!isNaN(homeLat) && !isNaN(homeLng) && homeLat !== 0 && homeLng !== 0) {
+                            const distToHome = calculateDistanceMeters(latitude, longitude, homeLat, homeLng);
+                            const homeRadius = Number((user as any).homeRadius) || 150;
+                            if (distToHome <= homeRadius) {
+                                locationName = user.name ? `${user.name} Home` : 'Home Location';
+                            }
+                        }
+                    }
+
+                    // Stage 3: Reverse Geocoding for clean human-readable address
+                    const getRealAddress = async (lat: number, lon: number) => {
                         try {
                             const geoAddr = await reverseGeocode(lat, lon);
-                            if (user.homeAddress) {
-                                const normGeo = geoAddr.toLowerCase().replace(/[^a-z0-9]/g, '');
-                                const normHome = user.homeAddress.toLowerCase().replace(/[^a-z0-9]/g, '');
-                                if (
-                                    normGeo.includes(normHome) || 
-                                    normHome.includes(normGeo) || 
-                                    (normHome.length > 15 && normGeo.includes(normHome.slice(0, 20))) ||
-                                    (normGeo.length > 15 && normHome.includes(normGeo.slice(0, 20)))
-                                ) {
-                                    return user.name ? `${user.name} Home` : 'Home Location';
-                                }
-                            }
-                            return geoAddr;
+                            return (geoAddr && !/^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(geoAddr.trim()))
+                                ? geoAddr
+                                : 'Mobile Punch-in';
                         } catch (err) {
                             return 'Mobile Punch-in';
                         }
                     };
 
-                    // Stage 2: Handle Geofencing enforcement (Violations)
+                    // Stage 4: Handle Geofencing enforcement (Violations)
                     if (settings.enabled && !locationId) {
                         isViolation = true;
                         try {
                             if (!locationName) {
-                                locationName = await resolveHomeOrAddress(latitude, longitude);
+                                locationName = await getRealAddress(latitude, longitude);
                             }
                         } catch (err) {
                             // If reverse geocoding fails, we might be offline
@@ -1654,7 +1657,7 @@ export const useAuthStore = create<AuthState>()(
                         );
                     } else if (!locationId && !locationName) {
                         // Geofencing disabled or no enforcement, and no site match:
-                        locationName = await resolveHomeOrAddress(latitude, longitude);
+                        locationName = await getRealAddress(latitude, longitude);
                     }
                 } catch (geoErr) {
                     console.warn('Location name resolution failed:', geoErr);

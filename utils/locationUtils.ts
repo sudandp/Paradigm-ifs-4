@@ -134,43 +134,74 @@ export async function resolveLocationName(
 ): Promise<string> {
   const homeLocName = user?.name ? `${user.name} Home` : 'Home Location';
 
-  // 0. Prioritize clean, registered site/office name if present (e.g. "Paradigm Office", "PIFS Bangalore")
-  if (rawAddress && !/^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(rawAddress.trim()) && rawAddress !== 'GPS Location' && rawAddress !== 'Auto Check-out') {
-    return rawAddress;
-  }
+  // 1. If coordinates are provided, check registered work sites first
+  if (lat != null && lon != null && !isNaN(Number(lat)) && !isNaN(Number(lon))) {
+    const numLat = Number(lat);
+    const numLon = Number(lon);
 
-  // 1. Check direct distance match to user's registered Home Location coordinates
-  if (lat != null && lon != null && user?.homeLatitude != null && user?.homeLongitude != null) {
-    const homeLat = Number(user.homeLatitude);
-    const homeLng = Number(user.homeLongitude);
-    if (!isNaN(homeLat) && !isNaN(homeLng)) {
-      const dist = calculateDistanceMeters(lat, lon, homeLat, homeLng);
-      if (dist <= 300) { // 300m radius threshold for home location
-        return homeLocName;
-      }
-    }
-  }
-
-  // 2. Check user's assigned locations list (sites / home geofences)
-  if (lat != null && lon != null && Array.isArray(userLocations) && userLocations.length > 0) {
-    for (const loc of userLocations) {
-      if (loc.latitude != null && loc.longitude != null) {
-        const dist = calculateDistanceMeters(lat, lon, Number(loc.latitude), Number(loc.longitude));
-        // Use site radius or default to 800m threshold for accurate site recognition
-        const radius = Math.max(Number(loc.radius) || 300, 800);
-        if (dist <= radius) {
-          return loc.name || homeLocName;
+    // 1a. Match assigned corporate / work sites (non-home)
+    if (Array.isArray(userLocations) && userLocations.length > 0) {
+      for (const loc of userLocations) {
+        if (loc.latitude != null && loc.longitude != null) {
+          const lLat = Number(loc.latitude);
+          const lLon = Number(loc.longitude);
+          if (!isNaN(lLat) && !isNaN(lLon)) {
+            const isHomeType = loc.type === 'home' || loc.name?.toLowerCase().includes('home');
+            if (!isHomeType) {
+              const dist = calculateDistanceMeters(numLat, numLon, lLat, lLon);
+              const radius = Number(loc.radius) || 300;
+              if (dist <= radius) {
+                return loc.name;
+              }
+            }
+          }
         }
       }
     }
-  }
 
-  // 3. Resolve clean address via Reverse Geocoding if lat/lon exist
-  if (lat != null && lon != null) {
-    const geocodedAddress = await reverseGeocode(lat, lon);
+    // 1b. Check direct distance match to user's registered Home Location coordinates
+    if (user?.homeLatitude != null && user?.homeLongitude != null) {
+      const homeLat = Number(user.homeLatitude);
+      const homeLng = Number(user.homeLongitude);
+      if (!isNaN(homeLat) && !isNaN(homeLng) && homeLat !== 0 && homeLng !== 0) {
+        const dist = calculateDistanceMeters(numLat, numLon, homeLat, homeLng);
+        const homeRadius = Number(user.homeRadius) || 150;
+        if (dist <= homeRadius) {
+          return homeLocName;
+        }
+      }
+    }
+
+    // 1c. Check assigned locations explicitly designated as Home
+    if (Array.isArray(userLocations) && userLocations.length > 0) {
+      for (const loc of userLocations) {
+        if (loc.latitude != null && loc.longitude != null) {
+          const lLat = Number(loc.latitude);
+          const lLon = Number(loc.longitude);
+          if (!isNaN(lLat) && !isNaN(lLon)) {
+            const isHomeType = loc.type === 'home' || loc.name?.toLowerCase().includes('home');
+            if (isHomeType) {
+              const dist = calculateDistanceMeters(numLat, numLon, lLat, lLon);
+              const radius = Number(loc.radius) || 150;
+              if (dist <= radius) {
+                return loc.name || homeLocName;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // 1d. Resolve clean address via Reverse Geocoding if lat/lon exist
+    const geocodedAddress = await reverseGeocode(numLat, numLon);
     if (geocodedAddress && !/^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(geocodedAddress.trim())) {
       return geocodedAddress;
     }
+  }
+
+  // 2. Prioritize clean, registered site/office name if present (e.g. "Paradigm Office", "PIFS Bangalore")
+  if (rawAddress && !/^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(rawAddress.trim()) && rawAddress !== 'GPS Location' && rawAddress !== 'Auto Check-out') {
+    return rawAddress;
   }
 
   return rawAddress && !/^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(rawAddress.trim()) ? rawAddress : (lat != null && lon != null ? 'GPS Location' : 'Unknown Location');
@@ -211,13 +242,13 @@ export function findRegisteredSiteDistance(
   if (user?.homeLatitude != null && user?.homeLongitude != null) {
     const hLat = Number(user.homeLatitude);
     const hLon = Number(user.homeLongitude);
-    if (!isNaN(hLat) && !isNaN(hLon)) {
+    if (!isNaN(hLat) && !isNaN(hLon) && hLat !== 0 && hLon !== 0) {
       candidates.push({
         name: user.name ? `${user.name} Home` : 'Home',
         lat: hLat,
         lon: hLon,
         isHome: true,
-        radius: 300
+        radius: Number(user.homeRadius) || 150
       });
     }
   }
@@ -295,22 +326,20 @@ export function findRegisteredSiteDistance(
   };
 }
 
-
-
 /**
- * Attempt to obtain a high‑accuracy geolocation fix with multi-stage fallbacks.
- * Prevents overlapping requests to avoid permission loops on iOS Safari.
+ * Attempt to obtain a fresh high‑accuracy geolocation fix with fast multi-stage fallbacks.
+ * Eliminates stale cached fixes (maximumAge: 0) and avoids permission loops on iOS Safari/Capacitor.
  */
-export async function getPrecisePosition(accuracyThreshold: number = 50, timeoutMs: number = 20000): Promise<GeolocationPosition> {
-  // If a request is already in progress, wait for it instead of starting a new one
+export async function getPrecisePosition(accuracyThreshold: number = 100, timeoutMs: number = 10000): Promise<GeolocationPosition> {
+  // If a request is already active, wait for it
   if (activeLocationPromise) {
-    console.log('[Location] Joining existing location request flow...');
+    console.log('[Location] Joining active location request flow...');
     return activeLocationPromise;
   }
 
   activeLocationPromise = (async () => {
     try {
-      // Accessing permissions via Capacitor is only necessary/supported on native platforms (iOS/Android).
+      // Accessing permissions via Capacitor on native platforms (iOS/Android)
       if (Capacitor.isNativePlatform()) {
         try {
           const permission = await Geolocation.checkPermissions();
@@ -323,135 +352,135 @@ export async function getPrecisePosition(accuracyThreshold: number = 50, timeout
             }
           }
         } catch (err) {
-          console.warn('Capacitor checkPermissions not available:', err);
+          console.warn('[Location] Capacitor checkPermissions error:', err);
         }
       }
 
-      return await new Promise<GeolocationPosition>((resolve, reject) => {
-        (async () => {
-          let bestPos: GeolocationPosition | null = null;
-          let watchId: string | null = null;
-          let resolved = false;
-          let isFallbackChainActive = false;
-
-          const safeResolve = (pos: GeolocationPosition) => {
-            if (resolved) return;
-            resolved = true;
-            resolve(pos);
-          };
-
-          const cleanup = async () => {
-            if (watchId) {
-              try { await Geolocation.clearWatch({ id: watchId }); } catch (_) {}
-              watchId = null;
-            }
-          };
-
-          // Timer for the primary high-accuracy watch
-          const timer = setTimeout(async () => {
-            if (resolved || isFallbackChainActive) return;
-            
-            isFallbackChainActive = true;
-            console.warn('[Location] Primary match timed out, starting serial fallbacks');
-
-            // Fallback chain: try multiple strategies SERIALY to avoid overlapping prompts on iOS
-            
-            // Fallback 1: High-accuracy with generous cache (Fastest if GPS was recently on)
-            try {
-              const pos = await Geolocation.getCurrentPosition({
+      // Stage 1: Fast direct acquisition (High Accuracy, maximumAge: 0 for fresh GPS fix)
+      try {
+        const directPromise = Capacitor.isNativePlatform()
+          ? Geolocation.getCurrentPosition({
+              enableHighAccuracy: true,
+              timeout: Math.min(timeoutMs, 7000),
+              maximumAge: 0 // ALWAYS FRESH!
+            })
+          : new Promise<GeolocationPosition>((resolve, reject) => {
+              if (typeof navigator === 'undefined' || !navigator.geolocation) {
+                return reject(new Error('Geolocation not supported'));
+              }
+              navigator.geolocation.getCurrentPosition(resolve, reject, {
                 enableHighAccuracy: true,
-                timeout: 5000,
-                maximumAge: 300000 
+                timeout: Math.min(timeoutMs, 7000),
+                maximumAge: 0 // ALWAYS FRESH!
               });
-              console.log('[Location] Fallback 1 (cached) succeeded');
-              await cleanup();
-              safeResolve(pos as unknown as GeolocationPosition);
-              return;
-            } catch (err) {
-              console.warn('[Location] Fallback 1 failed');
-            }
+            });
 
-            // Fallback 2: Low-accuracy WebView API (Safest for Web/iOS)
-            if (typeof navigator !== 'undefined' && navigator.geolocation) {
-              try {
-                const webPos = await new Promise<GeolocationPosition>((res, rej) => {
-                  navigator.geolocation.getCurrentPosition(res, rej, {
-                    enableHighAccuracy: false,
-                    timeout: 8000,
-                    maximumAge: 300000
-                  });
-                });
-                console.log('[Location] Fallback 2 (WebView Low) succeeded');
-                await cleanup();
-                safeResolve(webPos);
-                return;
-              } catch (err: any) {
-                console.warn('[Location] Fallback 2 failed:', err.message);
-                if (err.code === 1 || err.message?.toLowerCase().includes('permission')) {
-                  const pError = new Error('Location permission denied. Please check your browser settings.');
-                  (pError as any).isPermissionError = true;
-                  reject(pError);
-                  return;
-                }
+        const pos = (await directPromise) as unknown as GeolocationPosition;
+        if (pos?.coords?.latitude != null && pos?.coords?.longitude != null) {
+          console.log('[Location] Stage 1 (High Accuracy Direct) succeeded:', {
+            lat: pos.coords.latitude,
+            lon: pos.coords.longitude,
+            accuracy: pos.coords.accuracy
+          });
+          return pos;
+        }
+      } catch (stage1Err: any) {
+        console.warn('[Location] Stage 1 (High Accuracy Direct) failed or timed out:', stage1Err.message);
+        if (stage1Err.code === 1 || stage1Err.message?.toLowerCase().includes('denied') || stage1Err.message?.toLowerCase().includes('permission')) {
+          const pError = new Error('Location permission denied. Please enable location access in settings.');
+          (pError as any).isPermissionError = true;
+          throw pError;
+        }
+      }
+
+      // Stage 2: Low-accuracy fast fallback (Cellular/Wi-Fi positioning, maximumAge: 0)
+      try {
+        const fallbackPromise = Capacitor.isNativePlatform()
+          ? Geolocation.getCurrentPosition({
+              enableHighAccuracy: false,
+              timeout: 5000,
+              maximumAge: 0
+            })
+          : new Promise<GeolocationPosition>((resolve, reject) => {
+              if (typeof navigator === 'undefined' || !navigator.geolocation) {
+                return reject(new Error('Geolocation not supported'));
               }
-            }
+              navigator.geolocation.getCurrentPosition(resolve, reject, {
+                enableHighAccuracy: false,
+                timeout: 5000,
+                maximumAge: 0
+              });
+            });
 
-            if (bestPos) {
-              console.log('[Location] Returning best available position after all timeouts');
-              await cleanup();
-              safeResolve(bestPos);
-              return;
-            }
+        const lowPos = (await fallbackPromise) as unknown as GeolocationPosition;
+        if (lowPos?.coords?.latitude != null && lowPos?.coords?.longitude != null) {
+          console.log('[Location] Stage 2 (Low Accuracy Fallback) succeeded:', {
+            lat: lowPos.coords.latitude,
+            lon: lowPos.coords.longitude,
+            accuracy: lowPos.coords.accuracy
+          });
+          return lowPos;
+        }
+      } catch (stage2Err: any) {
+        console.warn('[Location] Stage 2 (Low Accuracy Fallback) failed:', stage2Err.message);
+      }
 
-            if (!resolved) {
-              await cleanup();
-              reject(new Error('GPS Signal Weak. Please ensure you are outdoors.'));
-            }
-          }, timeoutMs);
+      // Stage 3: WatchPosition listener with rapid resolve for best available position
+      return await new Promise<GeolocationPosition>((resolve, reject) => {
+        let bestPos: GeolocationPosition | null = null;
+        let watchId: string | null = null;
+        let resolved = false;
 
-          try {
-            // Start watching for position updates
-            watchId = await Geolocation.watchPosition(
-              {
-                enableHighAccuracy: true,
-                timeout: timeoutMs,
-                maximumAge: 30000
-              },
-              (position, err) => {
-                if (err) {
-                  console.warn('[Location] watchPosition error:', err);
-                  // On web/Safari, if we get a permission error here, we stop immediately
-                  if (err.message?.toLowerCase().includes('permission')) {
-                    const pError = new Error('Location permission denied. Please check your app settings.');
-                    (pError as any).isPermissionError = true;
-                    clearTimeout(timer);
-                    cleanup().then(() => reject(pError));
-                  }
-                  return;
-                }
-
-                if (position) {
-                  const pos = position as unknown as GeolocationPosition;
-                  // Update best position if this one is better
-                  if (!bestPos || (pos.coords.accuracy && pos.coords.accuracy < (bestPos.coords.accuracy || Infinity))) {
-                    bestPos = pos;
-                  }
-                  // If accuracy is good enough, resolve immediately
-                  if (pos.coords.accuracy && pos.coords.accuracy <= accuracyThreshold) {
-                    clearTimeout(timer);
-                    cleanup().then(() => safeResolve(pos));
-                  }
-                }
-              }
-            );
-          } catch (err) {
-            console.error('[Location] Failed to start watchPosition:', err);
-            // Fallback chain will still be triggered by the timer
+        const safeResolve = (pos: GeolocationPosition) => {
+          if (resolved) return;
+          resolved = true;
+          if (watchId) {
+            Geolocation.clearWatch({ id: watchId }).catch(() => {});
+            watchId = null;
           }
-        })();
+          resolve(pos);
+        };
+
+        const timer = setTimeout(() => {
+          if (resolved) return;
+          if (watchId) {
+            Geolocation.clearWatch({ id: watchId }).catch(() => {});
+            watchId = null;
+          }
+          if (bestPos) {
+            console.log('[Location] Stage 3: Resolving best acquired position');
+            safeResolve(bestPos);
+          } else {
+            reject(new Error('GPS Signal Weak. Please ensure location services are enabled and you are not in a basement.'));
+          }
+        }, Math.min(timeoutMs, 5000));
+
+        Geolocation.watchPosition(
+          { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 },
+          (position, err) => {
+            if (err) {
+              console.warn('[Location] watchPosition error:', err);
+              return;
+            }
+            if (position) {
+              const p = position as unknown as GeolocationPosition;
+              if (!bestPos || (p.coords.accuracy && p.coords.accuracy < (bestPos.coords.accuracy || Infinity))) {
+                bestPos = p;
+              }
+              if (p.coords.accuracy && p.coords.accuracy <= accuracyThreshold) {
+                clearTimeout(timer);
+                safeResolve(p);
+              }
+            }
+          }
+        ).then(id => {
+          watchId = id;
+        }).catch(err => {
+          console.warn('[Location] watchPosition start failed:', err);
+        });
       });
+
     } finally {
-      // Clear the active promise so the next request can start fresh if needed
       activeLocationPromise = null;
     }
   })();

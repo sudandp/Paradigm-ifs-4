@@ -536,9 +536,12 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                                                         const cleanLocationName = isCoordLoc ? undefined : event.locationName;
 
                                                         const shiftPunchInEvent = group.events.find(e => 
-                                                            (e.type === 'punch-in' || e.type === 'site-in') && e.locationName && !/^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(e.locationName.trim())
+                                                            (e.type === 'punch-in' || e.type === 'site-in') && 
+                                                            e.locationName && 
+                                                            !/^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(e.locationName.trim()) &&
+                                                            !e.locationName.toLowerCase().includes('home')
                                                         );
-                                                        const shiftSiteName = shiftPunchInEvent?.locationName || distInfo.targetSiteName;
+                                                        const shiftSiteName = shiftPunchInEvent?.locationName || (distInfo.isHome ? undefined : distInfo.targetSiteName);
 
                                                         const locationFallback = cleanLocationName || shiftSiteName || (isAutoOut ? 'Auto Check-out' : undefined);
 
