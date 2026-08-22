@@ -30,7 +30,69 @@ export function calculateDistanceMeters(lat1: number, lon1: number, lat2: number
 export async function reverseGeocode(lat: number, lon: number): Promise<string> {
   const fallback = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
   
-  // 1. Try BigDataCloud Client Reverse Geocode API (CORS enabled, no API key, browser-safe)
+  // 1. Primary: Nominatim OpenStreetMap API (Detailed street, landmark, and neighborhood resolution)
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.address) {
+        const { 
+          amenity, building, shop, office, hotel, hospital, clinic, bank, school, university,
+          mall, supermarket, fuel, petrol_pump, house_name,
+          road, pedestrian, footway, street,
+          neighbourhood, residential, subdistrict,
+          quarter, suburb,
+          city, town, village, municipality,
+          state, postcode
+        } = data.address;
+        
+        const landmark = amenity || building || shop || office || hotel || hospital || clinic || bank || school || university || mall || supermarket || fuel || petrol_pump || house_name;
+        const streetName = road || street || pedestrian || footway;
+        const areaName = suburb || quarter || neighbourhood || residential || subdistrict;
+        const cityName = city || town || village || municipality || 'Bengaluru';
+        const stateName = state || 'Karnataka';
+        const pin = postcode;
+
+        const parts: string[] = [];
+        if (landmark) {
+          parts.push(`Near by (${landmark})`);
+        }
+        if (streetName) {
+          parts.push(streetName);
+        }
+        if (areaName && areaName !== streetName) {
+          parts.push(areaName);
+        }
+        if (cityName) {
+          parts.push(cityName);
+        }
+        if (stateName) {
+          parts.push(stateName);
+        }
+        if (pin) {
+          parts.push(pin);
+        }
+
+        if (parts.length > 0) {
+          return parts.join(', ');
+        }
+      }
+      
+      if (data.display_name) {
+        const cleaned = (data.display_name as string)
+          .split(', ')
+          .filter(p => !/(India|South City Corporation|Municipal Corporation|Central City Corporation|Corporation|District|Urban)/i.test(p))
+          .slice(0, 5)
+          .join(', ');
+        if (cleaned) return cleaned;
+      }
+    }
+  } catch (err) {
+    console.warn('Nominatim reverse geocode failed:', err);
+  }
+
+  // 2. Fallback: BigDataCloud Client Reverse Geocode API
   try {
     const bdcUrl = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`;
     const bdcRes = await fetch(bdcUrl);
@@ -50,74 +112,6 @@ export async function reverseGeocode(lat: number, lon: number): Promise<string> 
     console.warn('BigDataCloud reverse geocode failed:', bdcErr);
   }
 
-  // 2. Try Nominatim OpenStreetMap API (without unsafe browser User-Agent headers)
-  try {
-    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=16&addressdetails=1`;
-    const res = await fetch(url);
-    if (res.ok) {
-      const data = await res.json();
-      if (data.address) {
-        const { 
-          house_number, house_name,
-          hotel, school, university, college, 
-          apartment, apartments, mall, supermarket,
-          bus_stop, fuel, petrol_pump,
-          hospital, clinic, doctors,
-          cinema, theatre, museum, 
-          attraction, tourism, historic,
-          building, amenity, shop, office, 
-          park, garden,
-          road, residential, neighbourhood, suburb, city_district,
-          city, village, town, state, postcode
-        } = data.address;
-        
-        const poiName = house_name || hotel || school || university || college || 
-                        apartment || apartments || mall || supermarket ||
-                        bus_stop || fuel || petrol_pump ||
-                        hospital || clinic || doctors ||
-                        cinema || theatre || museum || 
-                        attraction || tourism || historic ||
-                        building || amenity || shop || office || 
-                        park || garden || null;
-        
-        const placeName = city || village || town || null;
-        const mainArea = poiName || neighbourhood || suburb || road || placeName;
-        const cityArea = placeName && placeName !== mainArea ? placeName : null;
-        if (mainArea && cityArea) {
-          return `${mainArea}, ${cityArea}`;
-        }
-        if (mainArea) {
-          return mainArea;
-        }
-
-        const rawParts = [
-          house_number, 
-          road, 
-          neighbourhood,
-          suburb, 
-          placeName,
-          postcode
-        ].filter(Boolean) as string[];
-
-        const parts = rawParts.filter((part, i) => i === 0 || part !== rawParts[i - 1]);
-        const shortAddress = parts.slice(0, 3).join(', ');
-        
-        if (shortAddress) return shortAddress;
-      }
-      
-      if (data.display_name) {
-        const cleaned = (data.display_name as string)
-          .split(', ')
-          .filter(p => !/(India|South City Corporation|Municipal Corporation|Central City Corporation|Corporation|District|Urban|Karnataka)/i.test(p))
-          .slice(0, 3)
-          .join(', ');
-        if (cleaned) return cleaned;
-      }
-    }
-  } catch (err) {
-    console.warn('Nominatim reverse geocode failed:', err);
-  }
-
   return fallback;
 }
 
@@ -134,6 +128,23 @@ export async function resolveLocationName(
 ): Promise<string> {
   const homeLocName = user?.name ? `${user.name} Home` : 'Home Location';
 
+  const isRawAddressString = (name?: string | null): boolean => {
+    if (!name) return true;
+    const trimmed = name.trim();
+    if (/^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(trimmed)) return true;
+    if (
+      trimmed.length > 50 &&
+      (trimmed.includes('Bengaluru') ||
+        trimmed.includes('Corporation') ||
+        trimmed.includes('Urban') ||
+        trimmed.includes('District') ||
+        (trimmed.match(/,/g) || []).length >= 3)
+    ) {
+      return true;
+    }
+    return false;
+  };
+
   // 1. If coordinates are provided, check registered work sites first
   if (lat != null && lon != null && !isNaN(Number(lat)) && !isNaN(Number(lon))) {
     const numLat = Number(lat);
@@ -141,21 +152,36 @@ export async function resolveLocationName(
 
     // 1a. Match assigned corporate / work sites (non-home)
     if (Array.isArray(userLocations) && userLocations.length > 0) {
+      const siteMatches: Array<{ name: string; dist: number; isRaw: boolean }> = [];
+
       for (const loc of userLocations) {
         if (loc.latitude != null && loc.longitude != null) {
           const lLat = Number(loc.latitude);
           const lLon = Number(loc.longitude);
-          if (!isNaN(lLat) && !isNaN(lLon)) {
+          if (!isNaN(lLat) && !isNaN(lLon) && lLat !== 0 && lLon !== 0) {
             const isHomeType = loc.type === 'home' || loc.name?.toLowerCase().includes('home');
             if (!isHomeType) {
               const dist = calculateDistanceMeters(numLat, numLon, lLat, lLon);
-              const radius = Number(loc.radius) || 300;
+              const radius = Number(loc.radius) || 100;
               if (dist <= radius) {
-                return loc.name;
+                siteMatches.push({
+                  name: loc.name,
+                  dist,
+                  isRaw: isRawAddressString(loc.name)
+                });
               }
             }
           }
         }
+      }
+
+      if (siteMatches.length > 0) {
+        // Sort: Clean corporate names first, then closest distance
+        siteMatches.sort((a, b) => {
+          if (a.isRaw !== b.isRaw) return a.isRaw ? 1 : -1;
+          return a.dist - b.dist;
+        });
+        return siteMatches[0].name;
       }
     }
 
@@ -200,11 +226,21 @@ export async function resolveLocationName(
   }
 
   // 2. Prioritize clean, registered site/office name if present (e.g. "Paradigm Office", "PIFS Bangalore")
-  if (rawAddress && !/^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(rawAddress.trim()) && rawAddress !== 'GPS Location' && rawAddress !== 'Auto Check-out') {
+  if (
+    rawAddress &&
+    !/^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(rawAddress.trim()) &&
+    rawAddress !== 'GPS Location' &&
+    rawAddress !== 'Auto Check-out' &&
+    !isRawAddressString(rawAddress)
+  ) {
     return rawAddress;
   }
 
-  return rawAddress && !/^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(rawAddress.trim()) ? rawAddress : (lat != null && lon != null ? 'GPS Location' : 'Unknown Location');
+  return rawAddress && !/^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(rawAddress.trim()) && !isRawAddressString(rawAddress)
+    ? rawAddress
+    : lat != null && lon != null
+    ? 'GPS Location'
+    : 'Unknown Location';
 }
 
 export interface SiteDistanceInfo {
@@ -233,12 +269,52 @@ export function findRegisteredSiteDistance(
   const punchLat = Number(lat);
   const punchLon = Number(lon);
 
-  const ROAD_FACTOR = 1.6;
+  // Helper to verify a name is a genuine human-readable site name and not raw coordinates or placeholder
+  const isValidNamedLocation = (name?: string | null): boolean => {
+    if (!name) return false;
+    const trimmed = name.trim();
+    if (!trimmed) return false;
+    if (/^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(trimmed)) return false;
+    const lower = trimmed.toLowerCase();
+    return !(
+      lower === 'gps location' ||
+      lower === 'unknown location' ||
+      lower === 'registered site' ||
+      lower === 'site location' ||
+      lower === 'mobile punch-in' ||
+      lower === 'offline punch' ||
+      lower === 'outside geofence' ||
+      lower === 'auto check-out'
+    );
+  };
+
+  const ROAD_FACTOR = 1.4;
   const AVG_SPEED_KMH = 26;
 
   const candidates: Array<{ name: string; lat: number; lon: number; isHome: boolean; radius: number }> = [];
 
-  // 1. Add User Registered Home location if present
+  // 1. Add User Registered DB Locations (Corporate / Client Sites from database)
+  const dbLocs = Array.isArray(userLocations) ? userLocations : [];
+  for (const loc of dbLocs) {
+    if (loc.latitude != null && loc.longitude != null) {
+      const lLat = Number(loc.latitude);
+      const lLon = Number(loc.longitude);
+      if (!isNaN(lLat) && !isNaN(lLon) && lLat !== 0 && lLon !== 0) {
+        const isHomeType = loc.type === 'home' || loc.name?.toLowerCase().includes('home');
+        if (isValidNamedLocation(loc.name)) {
+          candidates.push({
+            name: loc.name,
+            lat: lLat,
+            lon: lLon,
+            isHome: isHomeType,
+            radius: Number(loc.radius) || 300
+          });
+        }
+      }
+    }
+  }
+
+  // 2. Add User Registered Home location if present
   if (user?.homeLatitude != null && user?.homeLongitude != null) {
     const hLat = Number(user.homeLatitude);
     const hLon = Number(user.homeLongitude);
@@ -253,38 +329,16 @@ export function findRegisteredSiteDistance(
     }
   }
 
-  // 2. Add User DB Locations (Sites / Geofences)
-  const dbLocs = Array.isArray(userLocations) ? userLocations : [];
-  for (const loc of dbLocs) {
-    if (loc.latitude != null && loc.longitude != null) {
-      const lLat = Number(loc.latitude);
-      const lLon = Number(loc.longitude);
-      if (!isNaN(lLat) && !isNaN(lLon)) {
-        const isHomeType = loc.type === 'home' || loc.name?.toLowerCase().includes('home');
-        candidates.push({
-          name: loc.name || (isHomeType ? 'Home' : 'Registered Site'),
-          lat: lLat,
-          lon: lLon,
-          isHome: isHomeType,
-          radius: loc.radius || 300
-        });
-      }
-    }
-  }
-
-  // 3. Fallback: Check Same-Day Site Check In events for site coordinates/names
-  if (Array.isArray(sameDayEvents)) {
+  // 3. Fallback: Check sameDayEvents only for verified genuine named sites (not coordinates)
+  if (candidates.length === 0 && Array.isArray(sameDayEvents)) {
     sameDayEvents.forEach(e => {
-      const isSite = e.type === 'site-check-in' || e.type === 'site-in' || e.type === 'check-in' || (e.type === 'punch-in' && e.workType === 'field');
-      if (isSite && e.latitude != null && e.longitude != null) {
+      if (e.latitude != null && e.longitude != null && isValidNamedLocation(e.locationName)) {
         const eLat = Number(e.latitude);
         const eLon = Number(e.longitude);
-        if (!isNaN(eLat) && !isNaN(eLon)) {
-          const isHomeType = e.locationName?.toLowerCase().includes('home');
-          const rawName = e.locationName || 'Site Location';
-          const candName = /^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(rawName.trim()) ? 'Registered Site' : rawName;
+        if (!isNaN(eLat) && !isNaN(eLon) && eLat !== 0 && eLon !== 0) {
+          const isHomeType = e.locationName.toLowerCase().includes('home');
           candidates.push({
-            name: candName,
+            name: e.locationName,
             lat: eLat,
             lon: eLon,
             isHome: isHomeType,
@@ -297,7 +351,7 @@ export function findRegisteredSiteDistance(
 
   if (candidates.length === 0) return empty;
 
-  // Find nearest candidate
+  // Find nearest candidate among saved locations
   let nearestCandidate: typeof candidates[0] | null = null;
   let nearestDistMeters = Infinity;
 
@@ -311,11 +365,12 @@ export function findRegisteredSiteDistance(
 
   if (!nearestCandidate || nearestDistMeters === Infinity) return empty;
 
-  // Inside geofence radius — no alert
+  // Inside geofence radius — user is AT the location, no alert needed
   if (nearestDistMeters <= nearestCandidate.radius) return empty;
 
-  const roadDistKm = Number(((nearestDistMeters / 1000) * ROAD_FACTOR).toFixed(1));
-  const durationMin = Math.max(5, Math.round((roadDistKm / AVG_SPEED_KMH) * 60));
+  const straightKm = nearestDistMeters / 1000;
+  const roadDistKm = Number((straightKm * ROAD_FACTOR).toFixed(1));
+  const durationMin = Math.max(2, Math.round((roadDistKm / AVG_SPEED_KMH) * 60));
 
   return {
     isUnregistered: true,

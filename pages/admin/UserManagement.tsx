@@ -337,7 +337,6 @@ const UserManagement: React.FC = () => {
     const [pageSize, setPageSize] = useState(10);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
-    const [fetchedAllFiltered, setFetchedAllFiltered] = useState(false);
 
     // Impersonation state
     const adminUser = useAuthStore(s => s.user);
@@ -482,35 +481,47 @@ const UserManagement: React.FC = () => {
         return sites;
     }, [allSites, pendingFilters.company, pendingFilters.location, filteredCompanies]);
 
+    // Load background metadata (orgStructure, allRoles, dbUsers for filter options) once on mount
+    useEffect(() => {
+        let isMounted = true;
+        const loadMetadata = async () => {
+            try {
+                const [structureRes, rolesRes, allUsersRes] = await Promise.allSettled([
+                    api.getOrganizationStructure(),
+                    api.getRoles(),
+                    api.getUsers()
+                ]);
+
+                if (!isMounted) return;
+
+                if (structureRes.status === 'fulfilled' && Array.isArray(structureRes.value)) {
+                    setOrgStructure(structureRes.value);
+                }
+                if (rolesRes.status === 'fulfilled' && Array.isArray(rolesRes.value)) {
+                    setAllRoles(rolesRes.value);
+                }
+                if (allUsersRes.status === 'fulfilled') {
+                    const data = Array.isArray(allUsersRes.value) ? allUsersRes.value : (allUsersRes.value?.data || []);
+                    setDbUsers(data);
+                }
+            } catch (err) {
+                console.warn('[UserManagement] metadata load non-critical warning:', err);
+            }
+        };
+
+        loadMetadata();
+        return () => { isMounted = false; };
+    }, []);
+
     const fetchUsers = useCallback(async () => {
-        // Only show full-page skeleton if we have no users yet
-        const shouldShowSkeleton = users.length === 0;
-        if (shouldShowSkeleton) setIsLoading(true);
-        
+        setIsLoading(true);
         try {
-            // Fetch structure if not already fetched
-            if (orgStructure.length === 0) {
-                const structure = await api.getOrganizationStructure();
-                setOrgStructure(structure);
-            }
-
-            // Fetch all roles if not already fetched
-            if (allRoles.length === 0) {
-                const roles = await api.getRoles();
-                setAllRoles(roles);
-            }
-
-            // Always fetch the full list of users for dropdowns/caching
-            const allUsers = await api.getUsers();
-            setDbUsers(allUsers);
-
             if (hasActiveFilters) {
-                // If we've already fetched all users for filtering, don't fetch again
-                if (fetchedAllFiltered) return;
-
+                // When filtering is active, use full user dataset
+                const allUsers = await api.getUsers();
+                setDbUsers(allUsers);
                 setUsers(allUsers);
                 setTotalUsers(allUsers.length);
-                setFetchedAllFiltered(true);
             } else {
                 const res = await api.getUsers({ 
                     page: currentPage, 
@@ -518,10 +529,10 @@ const UserManagement: React.FC = () => {
                     sortBy: 'name',
                     sortAscending: true
                 });
-                setUsers(res.data);
-                setTotalUsers(res.total);
-                // Reset this when going back to server-side pagination
-                setFetchedAllFiltered(false);
+                const userList = Array.isArray(res) ? res : (res?.data || []);
+                const total = Array.isArray(res) ? res.length : (res?.total ?? userList.length);
+                setUsers(userList);
+                setTotalUsers(total);
             }
         } catch (error) {
             console.error('[UserManagement] fetchUsers error:', error);
@@ -529,7 +540,7 @@ const UserManagement: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [currentPage, pageSize, hasActiveFilters, fetchedAllFiltered, users.length, orgStructure.length, allRoles.length]);
+    }, [currentPage, pageSize, hasActiveFilters]);
 
     useEffect(() => {
         setCurrentPage(1);

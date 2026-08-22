@@ -2054,7 +2054,13 @@ export const api = {
         return camelUser;
       });
 
-      await offlineDb.setCache('users_all', formatted);
+      if (formatted.length > 0) {
+        await offlineDb.setCache('users_all', formatted);
+      } else {
+        const cached = await offlineDb.getCache('users_all') || await offlineDb.getCache('users') || [];
+        if (cached.length > 0) return cached.map(processUrlsForDisplay);
+      }
+
       return formatted.map(processUrlsForDisplay);
     }
 
@@ -2094,23 +2100,32 @@ export const api = {
       return { data: formattedData.map(processUrlsForDisplay), total: count || 0 };
     } catch (err) {
       console.warn('[API] getUsers extended query failed, falling back to base select:', err);
-      let baseQuery = supabase.from('users').select('*', { count: 'exact' });
-      if (filter?.search) {
-        baseQuery = baseQuery.or(`name.ilike.%${filter.search}%,email.ilike.%${filter.search}%`);
+      try {
+        let baseQuery = supabase.from('users').select('*', { count: 'exact' });
+        if (filter?.search) {
+          baseQuery = baseQuery.or(`name.ilike.%${filter.search}%,email.ilike.%${filter.search}%`);
+        }
+        baseQuery = baseQuery.order(sortBy, { ascending: sortAscending });
+        const from = (filter!.page! - 1) * filter!.pageSize!;
+        const to = from + filter!.pageSize! - 1;
+        baseQuery = baseQuery.range(from, to);
+        const { data: baseData, count: baseCount, error: baseErr } = await baseQuery;
+        if (baseErr) throw baseErr;
+
+        const formattedBase = (baseData || []).map(u => toCamelCase({
+          ...u,
+          role: u.role_id || u.role || 'staff'
+        }));
+
+        return { data: formattedBase.map(processUrlsForDisplay), total: baseCount || 0 };
+      } catch (fallbackErr) {
+        console.warn('[API] getUsers base fallback failed, falling back to cache:', fallbackErr);
+        const cached = await offlineDb.getCache('users_all') || await offlineDb.getCache('users') || [];
+        const from = (filter!.page! - 1) * filter!.pageSize!;
+        const to = from + filter!.pageSize!;
+        const slice = cached.slice(from, to);
+        return { data: slice.map(processUrlsForDisplay), total: cached.length };
       }
-      baseQuery = baseQuery.order(sortBy, { ascending: sortAscending });
-      const from = (filter!.page! - 1) * filter!.pageSize!;
-      const to = from + filter!.pageSize! - 1;
-      baseQuery = baseQuery.range(from, to);
-      const { data: baseData, count: baseCount, error: baseErr } = await baseQuery;
-      if (baseErr) throw baseErr;
-
-      const formattedBase = (baseData || []).map(u => toCamelCase({
-        ...u,
-        role: u.role_id || u.role || 'staff'
-      }));
-
-      return { data: formattedBase.map(processUrlsForDisplay), total: baseCount || 0 };
     }
   },
 
@@ -2861,61 +2876,72 @@ export const api = {
     if (error) throw error;
   },
   getOrganizationStructure: async (): Promise<OrganizationGroup[]> => {
-    const { data: groups, error: groupsError } = await supabase.from('organization_groups').select('*');
-    if (groupsError) throw groupsError;
-    const { data: companies, error: companiesError } = await supabase.from('companies').select('*');
-    if (companiesError) throw companiesError;
-    const { data: entities, error: entitiesError } = await supabase.from('entities').select('*');
-    if (entitiesError) throw entitiesError;
+    try {
+      const [groupsRes, companiesRes, entitiesRes] = await Promise.allSettled([
+        supabase.from('organization_groups').select('*'),
+        supabase.from('companies').select('*'),
+        supabase.from('entities').select('*')
+      ]);
 
-    const camelGroups: any[] = (groups || []).map(g => processUrlsForDisplay(toCamelCase(g)));
-    const camelCompanies: any[] = (companies || []).map(c => processUrlsForDisplay(toCamelCase(c)));
-    const camelEntities: any[] = (entities || []).map(e => processUrlsForDisplay(toCamelCase(e)));
+      const groups = (groupsRes.status === 'fulfilled' && !groupsRes.value.error) ? (groupsRes.value.data || []) : [];
+      const companies = (companiesRes.status === 'fulfilled' && !companiesRes.value.error) ? (companiesRes.value.data || []) : [];
+      const entities = (entitiesRes.status === 'fulfilled' && !entitiesRes.value.error) ? (entitiesRes.value.data || []) : [];
 
-    const companyMap = new Map<string, any[]>();
-    const assignedEntityIds = new Set<string>();
+      const camelGroups: any[] = groups.map(g => processUrlsForDisplay(toCamelCase(g)));
+      const camelCompanies: any[] = companies.map(c => processUrlsForDisplay(toCamelCase(c)));
+      const camelEntities: any[] = entities.map(e => processUrlsForDisplay(toCamelCase(e)));
 
-    camelCompanies.forEach(company => {
-      const companyEntities = camelEntities.filter(e => e.companyId === company.id);
-      companyEntities.forEach(e => assignedEntityIds.add(e.id));
-      const companyWithEntities = { ...company, entities: companyEntities };
-      
-      const targetGroupId = company.groupId || 'unassigned_group';
-      if (!companyMap.has(targetGroupId)) companyMap.set(targetGroupId, []);
-      companyMap.get(targetGroupId)!.push(companyWithEntities);
-    });
+      const companyMap = new Map<string, any[]>();
+      const assignedEntityIds = new Set<string>();
 
-    const structure = camelGroups.map(group => ({ ...group, companies: companyMap.get(group.id) || [], locations: Array.isArray(group.locations) ? group.locations : [] }));
+      camelCompanies.forEach(company => {
+        const companyEntities = camelEntities.filter(e => e.companyId === company.id);
+        companyEntities.forEach(e => assignedEntityIds.add(e.id));
+        const companyWithEntities = { ...company, entities: companyEntities };
+        
+        const targetGroupId = company.groupId || 'unassigned_group';
+        if (!companyMap.has(targetGroupId)) companyMap.set(targetGroupId, []);
+        companyMap.get(targetGroupId)!.push(companyWithEntities);
+      });
 
-    const unassignedCompanies = companyMap.get('unassigned_group') || [];
-    const validGroupIds = new Set(camelGroups.map(g => g.id));
-    for (const [groupId, comps] of companyMap.entries()) {
-        if (groupId !== 'unassigned_group' && !validGroupIds.has(groupId)) {
-            unassignedCompanies.push(...comps);
-        }
+      const structure = camelGroups.map(group => ({ ...group, companies: companyMap.get(group.id) || [], locations: Array.isArray(group.locations) ? group.locations : [] }));
+
+      const unassignedCompanies = companyMap.get('unassigned_group') || [];
+      const validGroupIds = new Set(camelGroups.map(g => g.id));
+      for (const [groupId, comps] of companyMap.entries()) {
+          if (groupId !== 'unassigned_group' && !validGroupIds.has(groupId)) {
+              unassignedCompanies.push(...comps);
+          }
+      }
+
+      const unassignedEntities = camelEntities.filter(e => !assignedEntityIds.has(e.id));
+
+      if (unassignedCompanies.length > 0 || unassignedEntities.length > 0) {
+          if (unassignedEntities.length > 0) {
+              let defaultCompany = unassignedCompanies.find(c => c.id === 'unassigned_company');
+              if (!defaultCompany) {
+                  defaultCompany = { id: 'unassigned_company', name: 'Unassigned Entities', groupId: 'unassigned_group', entities: [] };
+                  unassignedCompanies.push(defaultCompany);
+              }
+              defaultCompany.entities.push(...unassignedEntities);
+          }
+
+          structure.push({
+              id: 'unassigned_group',
+              name: 'Unassigned / Orphaned',
+              companies: unassignedCompanies,
+              locations: []
+          });
+      }
+
+      if (structure.length > 0) {
+        await offlineDb.setCache('organization_structure', structure);
+      }
+      return structure;
+    } catch (err) {
+      console.warn('[API] getOrganizationStructure failed, using cache:', err);
+      return await offlineDb.getCache('organization_structure') || [];
     }
-
-    const unassignedEntities = camelEntities.filter(e => !assignedEntityIds.has(e.id));
-
-    if (unassignedCompanies.length > 0 || unassignedEntities.length > 0) {
-        if (unassignedEntities.length > 0) {
-            let defaultCompany = unassignedCompanies.find(c => c.id === 'unassigned_company');
-            if (!defaultCompany) {
-                defaultCompany = { id: 'unassigned_company', name: 'Unassigned Entities', groupId: 'unassigned_group', entities: [] };
-                unassignedCompanies.push(defaultCompany);
-            }
-            defaultCompany.entities.push(...unassignedEntities);
-        }
-
-        structure.push({
-            id: 'unassigned_group',
-            name: 'Unassigned / Orphaned',
-            companies: unassignedCompanies,
-            locations: []
-        });
-    }
-
-    return structure;
   },
   bulkSaveOrganizationStructure: async (groups: OrganizationGroup[]): Promise<void> => {
     // 1. Upsert Groups (exclude companies and locations)
