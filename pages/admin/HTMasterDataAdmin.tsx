@@ -1,8 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search, Edit2, Trash2, Box, RefreshCw, RotateCcw, Plus, Eye, X, Layers, List, Check, Tag, ChevronDown, ChevronUp, Maximize2, Minimize2, Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle2, FileText, HelpCircle, BookOpen, Lock } from 'lucide-react';
-import { HTMasterOption, HTMasterCategory, HTFieldTarget } from '../../types/htYard';
+import { Link } from 'react-router-dom';
+import { Search, Edit2, Trash2, Box, RefreshCw, RotateCcw, Plus, Eye, X, Layers, List, Check, Tag, ChevronDown, Maximize2, Minimize2, Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle2, FileText, BookOpen, Lock, Settings2, Calendar, QrCode } from 'lucide-react';
+import { HTMasterOption, HTMasterCategory, HTFieldTarget, CustomFieldSpec, HTFieldType } from '../../types/htYard';
 import { htYardMasterDataService } from '../../services/htYardMasterDataService';
+import { htYardFieldSpecService, CATEGORY_TO_MODULE_MAP } from '../../services/htYardFieldSpecService';
+import { HT_YARD_FIELD_SPECS } from '../../config/htYardFieldSpecs';
 import { useAuthStore } from '../../store/authStore';
+import { api } from '../../services/api';
 import { supabase } from '../../services/supabase';
 import toast from 'react-hot-toast';
 
@@ -163,7 +167,9 @@ export const HTMasterDataAdmin: React.FC = () => {
         });
         return merged;
       }
-    } catch (e) {}
+    } catch (err) {
+      console.debug('Failed to parse ht_custom_field_targets', err);
+    }
     return INITIAL_FIELD_TARGETS_MAP;
   });
 
@@ -171,7 +177,7 @@ export const HTMasterDataAdmin: React.FC = () => {
   const [expandedKeys, setExpandedKeys] = useState<Record<string, boolean>>({});
   const [quickAddInputs, setQuickAddInputs] = useState<Record<string, string>>({});
 
-  const { user: currentUser } = useAuthStore();
+  const { user: currentUser, loginWithPasscode } = useAuthStore();
 
   // Delete Password Modal state
   const [deletePasswordModal, setDeletePasswordModal] = useState<{
@@ -203,10 +209,30 @@ export const HTMasterDataAdmin: React.FC = () => {
     manufacturer: ''
   });
 
+  // Dynamic Field Customization & Type Conversion State
+  const [customFieldSpecs, setCustomFieldSpecs] = useState<CustomFieldSpec[]>([]);
+  const [showConfigureFieldModal, setShowConfigureFieldModal] = useState(false);
+  const [configuringField, setConfiguringField] = useState<{
+    category: HTMasterCategory;
+    moduleType: string;
+    sectionKey: string;
+    sectionTitle: string;
+    fieldKey: string;
+    fieldLabel: string;
+    fieldType: HTFieldType;
+    unit?: string;
+    placeholder?: string;
+    isCustom?: boolean;
+    initialChoice?: string;
+  } | null>(null);
+
   // Custom Target Field & Category states
   const [newTargetLabel, setNewTargetLabel] = useState('');
   const [newTargetKey, setNewTargetKey] = useState('');
   const [newTargetSection, setNewTargetSection] = useState('');
+  const [newTargetType, setNewTargetType] = useState<HTFieldType>('select');
+  const [newTargetChoices, setNewTargetChoices] = useState('');
+  const [newTargetUnit, setNewTargetUnit] = useState('');
   const [newCategoryName, setNewCategoryName] = useState('');
 
   // Viewing Choices Modal State
@@ -558,7 +584,9 @@ export const HTMasterDataAdmin: React.FC = () => {
         const parsed = JSON.parse(saved);
         return Array.from(new Set([...defaultCategories, ...parsed]));
       }
-    } catch (e) {}
+    } catch (err) {
+      console.debug('Failed to parse ht_custom_categories', err);
+    }
     return defaultCategories;
   });
 
@@ -567,7 +595,24 @@ export const HTMasterDataAdmin: React.FC = () => {
     setSelectedSection('All');
     setSelectedFieldKey('All');
     loadOptions();
+    loadCustomSpecs();
+
+    const handleSpecUpdate = () => {
+      loadCustomSpecs();
+      loadOptions();
+    };
+    window.addEventListener('ht_field_specs_updated', handleSpecUpdate);
+    return () => window.removeEventListener('ht_field_specs_updated', handleSpecUpdate);
   }, [activeTab]);
+
+  const loadCustomSpecs = async () => {
+    try {
+      const specs = await htYardFieldSpecService.getCustomFieldSpecs(activeTab);
+      setCustomFieldSpecs(specs);
+    } catch (e) {
+      console.warn('Failed to load custom field specs', e);
+    }
+  };
 
   const loadOptions = async () => {
     setLoading(true);
@@ -599,7 +644,9 @@ export const HTMasterDataAdmin: React.FC = () => {
             };
             try {
               localStorage.setItem('ht_custom_field_targets', JSON.stringify(updated));
-            } catch (e) {}
+            } catch (err) {
+              console.debug('Failed to save ht_custom_field_targets', err);
+            }
             return updated;
           }
           return prev;
@@ -703,7 +750,9 @@ export const HTMasterDataAdmin: React.FC = () => {
     try {
       const customOnly = updated.filter(c => !defaultCategories.includes(c));
       localStorage.setItem('ht_custom_categories', JSON.stringify(customOnly));
-    } catch (e) {}
+    } catch (err) {
+      console.debug('Failed to save ht_custom_categories', err);
+    }
 
     logMasterDataActivity('CREATE', catName, `Created new Master Data Category "${catName}"`);
     setActiveTab(catName);
@@ -737,7 +786,18 @@ export const HTMasterDataAdmin: React.FC = () => {
     });
   };
 
-  const handleCreateNewTargetField = (e: React.FormEvent) => {
+  const promptDeleteField = (fieldKey: string, fieldLabel: string, sectionTitle?: string) => {
+    setDeletePasswordModal({
+      isOpen: true,
+      type: 'FIELD',
+      targetName: fieldLabel,
+      targetId: fieldKey,
+      passwordInput: '',
+      isVerifying: false
+    });
+  };
+
+  const handleCreateNewTargetField = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTargetLabel.trim() || !newTargetKey.trim()) {
       toast.error('Both field name and technical key are required');
@@ -746,39 +806,145 @@ export const HTMasterDataAdmin: React.FC = () => {
 
     const cleanKey = newTargetKey.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
     const label = newTargetLabel.trim();
+    const sectionTitle = newTargetSection.trim() || 'Equipment Details';
+    const sectionKey = sectionTitle.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    const moduleType = CATEGORY_TO_MODULE_MAP[activeTab] || 'RMU';
 
-    setFieldTargetsMap(prev => {
-      const currentList = prev[activeTab] || [];
-      const exists = currentList.some(t => t.key === cleanKey);
-      const updatedList = exists
-        ? currentList.map(t => t.key === cleanKey ? { key: cleanKey, label } : t)
-        : [...currentList, { key: cleanKey, label }];
-
-      const updated = {
-        ...prev,
-        [activeTab]: updatedList
+    try {
+      // 1. Save Field Spec to htYardFieldSpecService
+      const newSpec: CustomFieldSpec = {
+        category: activeTab,
+        moduleType: moduleType,
+        sectionKey: sectionKey,
+        sectionTitle: sectionTitle,
+        fieldKey: cleanKey,
+        fieldLabel: label,
+        fieldType: newTargetType,
+        unit: newTargetUnit.trim() || undefined,
+        optionsCategory: activeTab,
+        optionsFieldKey: cleanKey,
+        isCustom: true,
+        isActive: true
       };
-      try {
-        localStorage.setItem('ht_custom_field_targets', JSON.stringify(updated));
-      } catch (e) {}
-      return updated;
-    });
 
-    logMasterDataActivity('CREATE', label, `Created new target field "${label}" (${cleanKey}) for category "${activeTab}"`);
-    toast.success(`Target field "${cleanKey}" created!`);
-    setShowAddTargetModal(false);
-    setNewTargetLabel('');
-    setNewTargetKey('');
+      await htYardFieldSpecService.saveFieldSpec(newSpec);
 
-    // Open add choice modal prefilled with new target key
-    setEditingOption({
-      category: activeTab,
-      fieldKey: cleanKey,
-      optionValue: '',
-      manufacturer: ''
-    });
-    setIsCustomKey(false);
-    setShowAddModal(true);
+      // 2. If dropdown and initial choices provided, save them
+      if (newTargetChoices.trim() && (newTargetType === 'select' || newTargetType === 'searchable_select')) {
+        const choices = newTargetChoices.split(',').map(c => c.trim()).filter(Boolean);
+        for (const choice of choices) {
+          await htYardMasterDataService.saveMasterOption({
+            category: activeTab,
+            fieldKey: cleanKey,
+            optionValue: choice,
+            isActive: true
+          });
+        }
+      }
+
+      setFieldTargetsMap(prev => {
+        const currentList = prev[activeTab] || [];
+        const exists = currentList.some(t => t.key === cleanKey);
+        const updatedList = exists
+          ? currentList.map(t => t.key === cleanKey ? { key: cleanKey, label, section: sectionTitle } : t)
+          : [...currentList, { key: cleanKey, label, section: sectionTitle }];
+
+        const updated = {
+          ...prev,
+          [activeTab]: updatedList
+        };
+        try {
+          localStorage.setItem('ht_custom_field_targets', JSON.stringify(updated));
+        } catch (err) {
+          console.debug('Failed to save ht_custom_field_targets', err);
+        }
+        return updated;
+      });
+
+      logMasterDataActivity('CREATE', label, `Created new target field "${label}" (${cleanKey}) [Type: ${newTargetType}] in section "${sectionTitle}" for category "${activeTab}"`);
+      toast.success(`Target field "${label}" [${newTargetType}] created!`);
+      setShowAddTargetModal(false);
+      setNewTargetLabel('');
+      setNewTargetKey('');
+      setNewTargetSection('');
+      setNewTargetChoices('');
+      setNewTargetUnit('');
+      setNewTargetType('select');
+
+      await loadCustomSpecs();
+      await loadOptions();
+    } catch (err) {
+      toast.error('Failed to create field');
+    }
+  };
+
+  const handleSaveFieldConfiguration = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!configuringField) return;
+
+    try {
+      const sectionTitle = configuringField.sectionTitle || 'Equipment Details';
+      const sectionKey = sectionTitle.toLowerCase().replace(/[^a-z0-9]/g, '_');
+      const updatedSpec: CustomFieldSpec = {
+        category: configuringField.category,
+        moduleType: configuringField.moduleType || CATEGORY_TO_MODULE_MAP[configuringField.category] || 'RMU',
+        sectionKey: sectionKey,
+        sectionTitle: sectionTitle,
+        fieldKey: configuringField.fieldKey,
+        fieldLabel: configuringField.fieldLabel,
+        fieldType: configuringField.fieldType,
+        unit: configuringField.unit || undefined,
+        placeholder: configuringField.placeholder || undefined,
+        optionsCategory: configuringField.category,
+        optionsFieldKey: configuringField.fieldKey,
+        isCustom: true,
+        isActive: true
+      };
+
+      await htYardFieldSpecService.saveFieldSpec(updatedSpec);
+
+      // Also update fieldTargetsMap for responsive label and section change
+      setFieldTargetsMap(prev => {
+        const currentList = prev[configuringField.category] || [];
+        const exists = currentList.some(t => t.key === configuringField.fieldKey);
+        const updatedList = exists
+          ? currentList.map(t => t.key === configuringField.fieldKey ? { ...t, label: configuringField.fieldLabel, section: sectionTitle } : t)
+          : [...currentList, { key: configuringField.fieldKey, label: configuringField.fieldLabel, section: sectionTitle }];
+        const updated = {
+          ...prev,
+          [configuringField.category]: updatedList
+        };
+        try {
+          localStorage.setItem('ht_custom_field_targets', JSON.stringify(updated));
+        } catch (err) {
+          console.debug('Failed to save ht_custom_field_targets', err);
+        }
+        return updated;
+      });
+
+      // If initial choice added during dropdown conversion
+      if (configuringField.initialChoice?.trim() && (configuringField.fieldType === 'select' || configuringField.fieldType === 'searchable_select')) {
+        const choices = configuringField.initialChoice.split(',').map(c => c.trim()).filter(Boolean);
+        for (const choice of choices) {
+          await htYardMasterDataService.saveMasterOption({
+            category: configuringField.category,
+            fieldKey: configuringField.fieldKey,
+            optionValue: choice,
+            isActive: true
+          });
+        }
+      }
+
+      logMasterDataActivity('EDIT', configuringField.fieldLabel, `Updated Field "${configuringField.fieldLabel}" [Type: ${configuringField.fieldType}, Section: ${sectionTitle}] for category "${configuringField.category}"`);
+      toast.success(`Updated field "${configuringField.fieldLabel}"!`);
+      setShowConfigureFieldModal(false);
+      setConfiguringField(null);
+
+      await loadCustomSpecs();
+      await loadOptions();
+    } catch (err) {
+      toast.error('Failed to save field configuration');
+    }
   };
 
   const handleDelete = (id: string) => {
@@ -796,19 +962,69 @@ export const HTMasterDataAdmin: React.FC = () => {
     setDeletePasswordModal(prev => ({ ...prev, isVerifying: true }));
     try {
       const email = currentUser?.email;
-      if (!email) {
-        toast.error('User email not found. Please log in again.');
-        setDeletePasswordModal(prev => ({ ...prev, isVerifying: false }));
-        return;
+      const inputPass = deletePasswordModal.passwordInput.trim();
+      let verified = false;
+
+      // Strategy 1: Check Database User Passcode (matches user's active passcode/PIN in database)
+      if (currentUser?.id) {
+        try {
+          const dbPasscode = await api.getUserPasscode(currentUser.id);
+          if (dbPasscode && dbPasscode === inputPass) {
+            verified = true;
+          }
+        } catch {
+          // ignore error and proceed
+        }
       }
 
-      // Verify user password against Supabase auth
-      const { error } = await supabase.auth.signInWithPassword({
-        email: email,
-        password: deletePasswordModal.passwordInput
-      });
+      // Strategy 2: Check current user in-memory profile passcode
+      if (!verified && currentUser?.passcode && currentUser.passcode === inputPass) {
+        verified = true;
+      }
 
-      if (error) {
+      // Strategy 3: Try loginWithPasscode (handles 4-digit 'PAR_xxxx' and normal passwords)
+      if (!verified && email && loginWithPasscode) {
+        try {
+          const res = await loginWithPasscode(email, inputPass, true);
+          if (!res.error) {
+            verified = true;
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      // Strategy 4: Direct Supabase auth sign-in with raw password
+      if (!verified && email) {
+        try {
+          const { error } = await supabase.auth.signInWithPassword({
+            email: email,
+            password: inputPass
+          });
+          if (!error) {
+            verified = true;
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      // Strategy 5: If 4-digit numeric passcode, try 'PAR_' prefix with Supabase auth
+      if (!verified && email && /^\d{4}$/.test(inputPass)) {
+        try {
+          const { error } = await supabase.auth.signInWithPassword({
+            email: email,
+            password: `PAR_${inputPass}`
+          });
+          if (!error) {
+            verified = true;
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      if (!verified) {
         toast.error('Incorrect password! Verification failed.');
         setDeletePasswordModal(prev => ({ ...prev, isVerifying: false }));
         return;
@@ -826,12 +1042,49 @@ export const HTMasterDataAdmin: React.FC = () => {
         const customOnly = updated.filter(c => !defaultCategories.includes(c));
         try {
           localStorage.setItem('ht_custom_categories', JSON.stringify(customOnly));
-        } catch (err) {}
+        } catch (err) {
+          console.debug('Failed to save ht_custom_categories', err);
+        }
         if (activeTab === catName) {
           setActiveTab(updated[0] || 'RMUMD');
         }
         logMasterDataActivity('DELETE', catName, `Deleted Master Data Category "${catName}" and all associated options`);
         toast.success(`Category "${catName}" deleted successfully!`);
+      } else if (deletePasswordModal.type === 'FIELD' && deletePasswordModal.targetId) {
+        const fieldKey = deletePasswordModal.targetId;
+        const fieldLabel = deletePasswordModal.targetName;
+        const sectionTitle = groupedFields.find(g => g.fieldKey === fieldKey)?.section || 'Equipment Details';
+        const sectionKey = sectionTitle.toLowerCase().replace(/[^a-z0-9]/g, '_');
+
+        // 1. Delete from Field Spec service
+        await htYardFieldSpecService.deleteFieldSpec(activeTab, fieldKey, sectionKey);
+
+        // 2. Delete all options belonging to this field in this category
+        const fieldOptions = options.filter(o => o.fieldKey === fieldKey);
+        for (const opt of fieldOptions) {
+          await htYardMasterDataService.deleteMasterOption(opt.id, activeTab);
+        }
+
+        // 3. Remove from fieldTargetsMap and localStorage
+        setFieldTargetsMap(prev => {
+          const currentList = prev[activeTab] || [];
+          const updatedList = currentList.filter(t => t.key !== fieldKey);
+          const updated = {
+            ...prev,
+            [activeTab]: updatedList
+          };
+          try {
+            localStorage.setItem('ht_custom_field_targets', JSON.stringify(updated));
+          } catch (err) {
+            console.debug('Failed to save ht_custom_field_targets', err);
+          }
+          return updated;
+        });
+
+        logMasterDataActivity('DELETE', fieldLabel, `Deleted field "${fieldLabel}" (${fieldKey}) and all associated choices from category "${activeTab}"`);
+        toast.success(`Field "${fieldLabel}" deleted successfully!`);
+        await loadCustomSpecs();
+        await loadOptions();
       } else if (deletePasswordModal.type === 'OPTION' && deletePasswordModal.targetId) {
         await htYardMasterDataService.deleteMasterOption(deletePasswordModal.targetId, activeTab);
         logMasterDataActivity('DELETE', deletePasswordModal.targetName, `Deleted choice option "${deletePasswordModal.targetName}" from category "${activeTab}"`);
@@ -865,30 +1118,92 @@ export const HTMasterDataAdmin: React.FC = () => {
 
   const availableFieldTargets = fieldTargetsMap[activeTab] || [];
 
-  // Available unique sections in activeTab
-  const availableSections = useMemo(() => {
-    const sectionsSet = new Set<string>();
-    availableFieldTargets.forEach(t => {
-      if (t.section) sectionsSet.add(t.section);
-    });
-    return Array.from(sectionsSet);
-  }, [availableFieldTargets]);
-
-  // Group options by field target key
+  // Group options by field target key with full baseline + custom field spec merge
   const groupedFields = useMemo(() => {
-    const map = new Map<string, { fieldKey: string; label: string; section?: string; category: HTMasterCategory; items: HTMasterOption[] }>();
+    const map = new Map<string, { 
+      fieldKey: string; 
+      label: string; 
+      section?: string; 
+      category: HTMasterCategory; 
+      fieldType: HTFieldType;
+      unit?: string;
+      placeholder?: string;
+      isCustom?: boolean;
+      items: HTMasterOption[] 
+    }>();
 
-    // Pre-populate with all known field targets for activeTab
+    // 1. Module Spec baseline fields from HT_YARD_FIELD_SPECS for this category
+    const moduleType = CATEGORY_TO_MODULE_MAP[activeTab] || 'RMU';
+    const baseModule = HT_YARD_FIELD_SPECS[moduleType];
+    if (baseModule) {
+      baseModule.sections.forEach(sec => {
+        sec.fields.forEach(f => {
+          map.set(f.key, {
+            fieldKey: f.key,
+            label: f.label.replace(/^\d+\.\s*/, ''), // clean leading number for admin title
+            section: sec.title,
+            category: activeTab,
+            fieldType: f.type || 'text',
+            unit: f.unit,
+            placeholder: f.placeholder,
+            isCustom: false,
+            items: []
+          });
+        });
+      });
+    }
+
+    // 2. Pre-populate with all known field targets for activeTab
     availableFieldTargets.forEach(t => {
-      map.set(t.key, { fieldKey: t.key, label: t.label, section: t.section, category: activeTab, items: [] });
+      if (!map.has(t.key)) {
+        map.set(t.key, {
+          fieldKey: t.key,
+          label: t.label,
+          section: t.section,
+          category: activeTab,
+          fieldType: 'select',
+          isCustom: true,
+          items: []
+        });
+      } else if (t.section) {
+        const existing = map.get(t.key)!;
+        existing.section = t.section;
+      }
     });
 
-    // Add actual items
+    // 3. Apply custom field specs overrides
+    customFieldSpecs.forEach(cs => {
+      if (cs.isActive === false) {
+        map.delete(cs.fieldKey);
+        return;
+      }
+      map.set(cs.fieldKey, {
+        fieldKey: cs.fieldKey,
+        label: cs.fieldLabel,
+        section: cs.sectionTitle,
+        category: activeTab,
+        fieldType: cs.fieldType || 'select',
+        unit: cs.unit,
+        placeholder: cs.placeholder,
+        isCustom: cs.isCustom ?? true,
+        items: []
+      });
+    });
+
+    // 4. Add actual option choices to the field items
     options.forEach(opt => {
       const key = opt.fieldKey || 'generic';
       if (!map.has(key)) {
         const friendly = availableFieldTargets.find(t => t.key === key);
-        map.set(key, { fieldKey: key, label: friendly ? friendly.label : key, section: friendly?.section || opt.section, category: activeTab, items: [] });
+        map.set(key, {
+          fieldKey: key,
+          label: friendly ? friendly.label : key,
+          section: friendly?.section || opt.section,
+          category: activeTab,
+          fieldType: 'select',
+          isCustom: true,
+          items: []
+        });
       }
       map.get(key)!.items.push(opt);
     });
@@ -898,13 +1213,23 @@ export const HTMasterDataAdmin: React.FC = () => {
         g.label.toLowerCase().includes(searchQuery.toLowerCase()) || 
         g.fieldKey.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (g.section && g.section.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        g.fieldType.toLowerCase().includes(searchQuery.toLowerCase()) ||
         g.items.some(i => i.optionValue.toLowerCase().includes(searchQuery.toLowerCase()));
 
       const matchesFieldKey = selectedFieldKey === 'All' || g.fieldKey === selectedFieldKey;
       const matchesSection = selectedSection === 'All' || g.section === selectedSection;
       return matchesSearch && matchesFieldKey && matchesSection;
     });
-  }, [options, activeTab, searchQuery, selectedFieldKey, selectedSection, fieldTargetsMap]);
+  }, [options, activeTab, searchQuery, selectedFieldKey, selectedSection, fieldTargetsMap, customFieldSpecs]);
+
+  // Available unique sections in activeTab derived from groupedFields
+  const availableSections = useMemo(() => {
+    const sectionsSet = new Set<string>();
+    groupedFields.forEach(t => {
+      if (t.section) sectionsSet.add(t.section);
+    });
+    return Array.from(sectionsSet);
+  }, [groupedFields]);
 
   // Active viewing target group for List Modal
   const activeViewingGroup = useMemo(() => {
@@ -975,6 +1300,22 @@ export const HTMasterDataAdmin: React.FC = () => {
             >
               <Upload className="w-3.5 h-3.5" /> Bulk Upload
             </button>
+
+            <Link
+              to="/operations/ppm-calendar"
+              title="Open Planned Preventive Maintenance Calendar & Checklists"
+              className="px-3.5 py-2 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-300 dark:border-emerald-700 rounded-2xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-2xs"
+            >
+              <Calendar className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> PPM Calendar
+            </Link>
+
+            <Link
+              to="/operations/asset-qr-center"
+              title="Open Asset QR Code Tagging, Stickers & Digital Twin Center"
+              className="px-3.5 py-2 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-300 dark:border-emerald-700 rounded-2xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-2xs"
+            >
+              <QrCode className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> Asset QR Tags
+            </Link>
 
             <button
               onClick={() => setShowAddTargetModal(true)}
@@ -1218,6 +1559,9 @@ export const HTMasterDataAdmin: React.FC = () => {
                           <h3 className="font-extrabold text-slate-900 dark:text-white text-base">
                             {group.label}
                           </h3>
+                          <code className="text-[10px] text-slate-400 dark:text-slate-500 font-mono bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
+                            #{group.fieldKey}
+                          </code>
                           {group.section && (
                             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/40">
                               📑 {group.section}
@@ -1226,40 +1570,135 @@ export const HTMasterDataAdmin: React.FC = () => {
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-pink-50 text-pink-600 dark:bg-pink-950/40 dark:text-pink-400 border border-pink-200/60 dark:border-pink-800/40">
                             {group.category}
                           </span>
+                          {/* Dynamic Control Type Badge */}
+                          {group.fieldType === 'select' || group.fieldType === 'searchable_select' || group.fieldType === 'cascading_select' ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                              📋 Dropdown ({group.items.length} choices)
+                            </span>
+                          ) : group.fieldType === 'gps_location' ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+                              📍 GPS Geo-Tagging (Auto-Fetch)
+                            </span>
+                          ) : group.fieldType === 'lifespan_calculator' ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                              ⏳ Life Span & Health Analyzer
+                            </span>
+                          ) : group.fieldType === 'model_catalog_autofill' ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                              🤖 Smart Catalog Auto-Fill
+                            </span>
+                          ) : group.fieldType === 'digital_signature' ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                              ✍️ Digital Signoff
+                            </span>
+                          ) : group.fieldType === 'date' ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                              📅 Date Picker
+                            </span>
+                          ) : group.fieldType === 'number' ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                              🔢 Number {group.unit ? `(${group.unit})` : ''}
+                            </span>
+                          ) : group.fieldType === 'photo' ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-cyan-100 text-cyan-800 dark:bg-cyan-950/60 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800">
+                              📷 Photo Field
+                            </span>
+                          ) : group.fieldType === 'textarea' ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-orange-100 text-orange-800 dark:bg-orange-950/60 dark:text-orange-300 border border-orange-200 dark:border-orange-800">
+                              📝 Multiline Remarks
+                            </span>
+                          ) : group.fieldType === 'boolean' ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-teal-100 text-teal-800 dark:bg-teal-950/60 dark:text-teal-300 border border-teal-200 dark:border-teal-800">
+                              🔘 Toggle / Boolean
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                              🔤 Text Input
+                            </span>
+                          )}
                         </div>
 
                         {/* Collapsed Preview Chips */}
                         {!isExpanded && (
                           <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                            {group.items.length === 0 ? (
-                              <span className="text-xs text-slate-400 italic">No choices added yet</span>
+                            {(group.fieldType === 'select' || group.fieldType === 'searchable_select') ? (
+                              group.items.length === 0 ? (
+                                <span className="text-xs text-slate-400 italic">No dropdown choices configured yet</span>
+                              ) : (
+                                <>
+                                  {samples.map(item => (
+                                    <span key={item.id} className="text-xs font-semibold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-lg border border-slate-200/60 dark:border-slate-700/60 truncate max-w-[150px]">
+                                      {item.optionValue}
+                                    </span>
+                                  ))}
+                                  {remainingCount > 0 && (
+                                    <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 px-2 py-0.5 rounded-lg border border-indigo-200/60 dark:border-indigo-800/40">
+                                      +{remainingCount} more...
+                                    </span>
+                                  )}
+                                </>
+                              )
                             ) : (
-                              <>
-                                {samples.map(item => (
-                                  <span key={item.id} className="text-xs font-semibold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-lg border border-slate-200/60 dark:border-slate-700/60 truncate max-w-[150px]">
-                                    {item.optionValue}
-                                  </span>
-                                ))}
-                                {remainingCount > 0 && (
-                                  <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 px-2 py-0.5 rounded-lg border border-indigo-200/60 dark:border-indigo-800/40">
-                                    +{remainingCount} more...
-                                  </span>
-                                )}
-                              </>
+                              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                                Configured as {group.fieldType} field on Site Audit form • Click Settings to convert
+                              </span>
                             )}
                           </div>
                         )}
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3 shrink-0">
-                      <span className={`px-3 py-1 rounded-xl text-xs font-extrabold border transition-colors ${
-                        isExpanded
-                          ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
-                          : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200/60 dark:border-slate-700/60'
-                      }`}>
-                        {group.items.length} choices
-                      </span>
+                    <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                      {/* Edit Field Settings Button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const sectionTitle = group.section || 'Equipment Details';
+                          const sectionKey = sectionTitle.toLowerCase().replace(/[^a-z0-9]/g, '_');
+                          const moduleType = CATEGORY_TO_MODULE_MAP[activeTab] || 'RMU';
+                          setConfiguringField({
+                            category: activeTab,
+                            moduleType: moduleType,
+                            sectionKey: sectionKey,
+                            sectionTitle: sectionTitle,
+                            fieldKey: group.fieldKey,
+                            fieldLabel: group.label,
+                            fieldType: group.fieldType,
+                            unit: group.unit || '',
+                            placeholder: group.placeholder || '',
+                            isCustom: group.isCustom,
+                            initialChoice: ''
+                          });
+                          setShowConfigureFieldModal(true);
+                        }}
+                        className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-emerald-50 dark:bg-slate-800 dark:hover:bg-emerald-950/60 text-slate-700 hover:text-emerald-700 dark:text-slate-300 dark:hover:text-emerald-300 border border-slate-200/80 dark:border-slate-700 text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                        title="Edit Field Label, Section, Control Type, or Units"
+                      >
+                        <Edit2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                        <span className="hidden sm:inline">Edit Field</span>
+                      </button>
+
+                      {/* Delete Field Button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          promptDeleteField(group.fieldKey, group.label, group.section);
+                        }}
+                        className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-slate-200/80 dark:border-slate-700 hover:border-rose-200 dark:hover:border-rose-900/60 transition-colors cursor-pointer"
+                        title={`Delete Field "${group.label}" & all choices`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+
+                      {(group.fieldType === 'select' || group.fieldType === 'searchable_select') && (
+                        <span className={`px-3 py-1 rounded-xl text-xs font-extrabold border transition-colors ${
+                          isExpanded
+                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                            : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200/60 dark:border-slate-700/60'
+                        }`}>
+                          {group.items.length} choices
+                        </span>
+                      )}
 
                       <div className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${
                         isExpanded
@@ -1271,69 +1710,71 @@ export const HTMasterDataAdmin: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Expanded Choices Panel */}
+                  {/* Expanded Choices / Control Panel */}
                   {isExpanded && (
                     <div className="p-4 sm:p-5 pt-0 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/40 dark:bg-slate-900/40">
-                      {/* Quick Add Bar */}
-                      <form
-                        onSubmit={async (e) => {
-                          e.preventDefault();
-                          const val = (quickAddInputs[group.fieldKey] || '').trim();
-                          if (!val) return;
-                          try {
-                            await htYardMasterDataService.saveMasterOption({
-                              category: activeTab,
-                              fieldKey: group.fieldKey,
-                              optionValue: val,
-                              isActive: true
-                            });
-                            toast.success(`Added "${val}" to ${group.label}!`);
-                            setQuickAddInputs(prev => ({ ...prev, [group.fieldKey]: '' }));
-                            // Reload choices
-                            const data = await htYardMasterDataService.getMasterOptions(activeTab);
-                            setOptions(data);
-                          } catch (err: any) {
-                            toast.error('Failed to add option');
-                          }
-                        }}
-                        className="mt-4 flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs"
-                      >
-                        <input
-                          type="text"
-                          placeholder={`Type new choice for ${group.label} and hit Enter...`}
-                          value={quickAddInputs[group.fieldKey] || ''}
-                          onChange={(e) => setQuickAddInputs(prev => ({ ...prev, [group.fieldKey]: e.target.value }))}
-                          className="flex-1 bg-transparent px-3 py-1.5 text-xs font-semibold text-slate-900 dark:text-white focus:outline-none placeholder-slate-400"
-                        />
-                        <button
-                          type="submit"
-                          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 shrink-0"
-                        >
-                          <Plus className="w-3.5 h-3.5" /> Add Choice
-                        </button>
-                      </form>
-
-                      {/* Full List of Choices Grid */}
-                      <div className="mt-4">
-                        <div className="text-xs font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2.5 flex items-center justify-between">
-                          <span>Available Choices ({group.items.length}):</span>
-                          <button
-                            onClick={() => {
-                              setViewingTargetKey(group.fieldKey);
-                              setListModalSearch('');
+                      {group.fieldType === 'select' || group.fieldType === 'searchable_select' ? (
+                        <>
+                          {/* Quick Add Bar */}
+                          <form
+                            onSubmit={async (e) => {
+                              e.preventDefault();
+                              const val = (quickAddInputs[group.fieldKey] || '').trim();
+                              if (!val) return;
+                              try {
+                                await htYardMasterDataService.saveMasterOption({
+                                  category: activeTab,
+                                  fieldKey: group.fieldKey,
+                                  optionValue: val,
+                                  isActive: true
+                                });
+                                toast.success(`Added "${val}" to ${group.label}!`);
+                                setQuickAddInputs(prev => ({ ...prev, [group.fieldKey]: '' }));
+                                // Reload choices
+                                const data = await htYardMasterDataService.getMasterOptions(activeTab);
+                                setOptions(data);
+                              } catch (err: any) {
+                                toast.error('Failed to add option');
+                              }
                             }}
-                            className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1"
+                            className="mt-4 flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs"
                           >
-                            <Eye className="w-3.5 h-3.5" /> View List Modal
-                          </button>
-                        </div>
+                            <input
+                              type="text"
+                              placeholder={`Type new choice for ${group.label} and hit Enter...`}
+                              value={quickAddInputs[group.fieldKey] || ''}
+                              onChange={(e) => setQuickAddInputs(prev => ({ ...prev, [group.fieldKey]: e.target.value }))}
+                              className="flex-1 bg-transparent px-3 py-1.5 text-xs font-semibold text-slate-900 dark:text-white focus:outline-none placeholder-slate-400"
+                            />
+                            <button
+                              type="submit"
+                              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 shrink-0"
+                            >
+                              <Plus className="w-3.5 h-3.5" /> Add Choice
+                            </button>
+                          </form>
 
-                        {group.items.length === 0 ? (
-                          <div className="p-6 text-center text-xs text-slate-400 italic bg-white dark:bg-slate-900 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800">
-                            No choices configured yet for this field. Type above to add one!
-                          </div>
-                        ) : (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                          {/* Full List of Choices Grid */}
+                          <div className="mt-4">
+                            <div className="text-xs font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2.5 flex items-center justify-between">
+                              <span>Available Choices ({group.items.length}):</span>
+                              <button
+                                onClick={() => {
+                                  setViewingTargetKey(group.fieldKey);
+                                  setListModalSearch('');
+                                }}
+                                className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1"
+                              >
+                                <Eye className="w-3.5 h-3.5" /> View List Modal
+                              </button>
+                            </div>
+
+                            {group.items.length === 0 ? (
+                              <div className="p-6 text-center text-xs text-slate-400 italic bg-white dark:bg-slate-900 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800">
+                                No choices configured yet for this dropdown. Type above to add one!
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
                             {group.items.map((opt) => (
                               <div
                                 key={opt.id}
@@ -1404,11 +1845,54 @@ export const HTMasterDataAdmin: React.FC = () => {
                                 </div>
                               </div>
                             ))}
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="mt-4 p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div className="flex items-start gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
+                            <Settings2 className="w-4 h-4" />
                           </div>
-                        )}
+                          <div>
+                            <h4 className="font-bold text-xs text-slate-900 dark:text-white uppercase tracking-wider">
+                              Control Type: {group.fieldType}
+                            </h4>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                              This field is configured as a <strong className="text-emerald-600 dark:text-emerald-400">{group.fieldType}</strong> input on the RMU/Site Audit form. You can convert it into a Dropdown with selectable choices, or adjust label, units, and placeholder.
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => {
+                            const sectionTitle = group.section || 'Equipment Details';
+                            const sectionKey = sectionTitle.toLowerCase().replace(/[^a-z0-9]/g, '_');
+                            const moduleType = CATEGORY_TO_MODULE_MAP[activeTab] || 'RMU';
+                            setConfiguringField({
+                              category: activeTab,
+                              moduleType: moduleType,
+                              sectionKey: sectionKey,
+                              sectionTitle: sectionTitle,
+                              fieldKey: group.fieldKey,
+                              fieldLabel: group.label,
+                              fieldType: 'select', // pre-select dropdown conversion
+                              unit: group.unit || '',
+                              placeholder: group.placeholder || '',
+                              isCustom: group.isCustom,
+                              initialChoice: ''
+                            });
+                            setShowConfigureFieldModal(true);
+                          }}
+                          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 shrink-0 cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> Convert to Dropdown
+                        </button>
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
+                )}
                 </div>
               );
             })
@@ -1439,15 +1923,52 @@ export const HTMasterDataAdmin: React.FC = () => {
                           <div className="flex items-center gap-2 font-extrabold text-slate-900 dark:text-white text-xs flex-wrap">
                             <Box className="w-4 h-4 text-emerald-600 shrink-0" />
                             <span>{group.label}</span>
+                            <code className="text-[10px] text-slate-400 font-mono bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-200/60 dark:border-slate-700/60">
+                              #{group.fieldKey}
+                            </code>
                             {group.section && (
                               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/40">
                                 📑 {group.section}
                               </span>
                             )}
                           </div>
-                          <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-0.5 rounded-full border border-emerald-200/60 dark:border-emerald-800/40">
-                            {group.items.length} choices
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => {
+                                const sectionTitle = group.section || 'Equipment Details';
+                                const sectionKey = sectionTitle.toLowerCase().replace(/[^a-z0-9]/g, '_');
+                                const moduleType = CATEGORY_TO_MODULE_MAP[activeTab] || 'RMU';
+                                setConfiguringField({
+                                  category: activeTab,
+                                  moduleType: moduleType,
+                                  sectionKey: sectionKey,
+                                  sectionTitle: sectionTitle,
+                                  fieldKey: group.fieldKey,
+                                  fieldLabel: group.label,
+                                  fieldType: group.fieldType,
+                                  unit: group.unit || '',
+                                  placeholder: group.placeholder || '',
+                                  isCustom: group.isCustom,
+                                  initialChoice: ''
+                                });
+                                setShowConfigureFieldModal(true);
+                              }}
+                              className="px-2.5 py-1 rounded-xl text-xs font-bold text-slate-700 hover:text-emerald-700 dark:text-slate-300 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center gap-1 shadow-2xs cursor-pointer"
+                              title="Edit Field Settings"
+                            >
+                              <Edit2 className="w-3 h-3 text-emerald-600" /> Edit Field
+                            </button>
+                            <button
+                              onClick={() => promptDeleteField(group.fieldKey, group.label, group.section)}
+                              className="p-1 rounded-xl text-slate-400 hover:text-rose-600 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-rose-200 transition-colors cursor-pointer"
+                              title={`Delete Field "${group.label}"`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                            <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-0.5 rounded-full border border-emerald-200/60 dark:border-emerald-800/40">
+                              {group.items.length} choices
+                            </span>
+                          </div>
                         </div>
                       </td>
                     </tr>
@@ -1700,11 +2221,11 @@ export const HTMasterDataAdmin: React.FC = () => {
       {/* CREATE TARGET FIELD MODAL */}
       {showAddTargetModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <Tag className="w-5 h-5 text-emerald-600" />
-                Add New Target Field to {activeTab}
+                Add New Field to {activeTab}
               </h2>
               <button onClick={() => setShowAddTargetModal(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
@@ -1714,12 +2235,12 @@ export const HTMasterDataAdmin: React.FC = () => {
             <form onSubmit={handleCreateNewTargetField} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Target Field Display Name *
+                  Field Display Name *
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Breaker Status, Oil Color, Relay Type"
+                  placeholder="e.g. RMU Operating Status, Serial No, Commissioning Date"
                   value={newTargetLabel}
                   onChange={(e) => {
                     setNewTargetLabel(e.target.value);
@@ -1733,7 +2254,7 @@ export const HTMasterDataAdmin: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Audit Stage / Section (Optional)
+                  Audit Stage / Section (Where on Audit Form?)
                 </label>
                 <input
                   type="text"
@@ -1755,12 +2276,76 @@ export const HTMasterDataAdmin: React.FC = () => {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. breaker_status, oil_color"
+                  placeholder="e.g. rmu_status, serial_no, test_date"
                   value={newTargetKey}
                   onChange={(e) => setNewTargetKey(e.target.value)}
                   className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-sm font-mono focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
                 />
               </div>
+
+              {/* Control Type Selector */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Control / Input Type *
+                </label>
+                <select
+                  value={newTargetType}
+                  onChange={(e) => setNewTargetType(e.target.value as HTFieldType)}
+                  className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-sm font-semibold focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
+                >
+                  <optgroup label="🌟 Smart Automated Controls (10-Year Future-Proof)">
+                    <option value="gps_location">📍 GPS Location (1-Tap Auto-Fetch Live Coordinates & Address)</option>
+                    <option value="lifespan_calculator">⏳ Equipment Life Span & Health Analyzer (Calculates Age & RUL)</option>
+                    <option value="model_catalog_autofill">🤖 Smart Catalog Auto-Fill (OEM Model Specifications Database)</option>
+                    <option value="digital_signature">✍️ Digital Signature (Auditor & Client Signoff)</option>
+                  </optgroup>
+                  <optgroup label="📋 Standard Form Controls">
+                    <option value="select">📋 Dropdown Choices (Select from options)</option>
+                    <option value="searchable_select">🔍 Searchable Select (Typeahead filter)</option>
+                    <option value="text">🔤 Standard Text Input</option>
+                    <option value="date">📅 Date Picker (Calendar dd-mm-yyyy)</option>
+                    <option value="number">🔢 Numeric Input (with engineering units)</option>
+                    <option value="photo">📷 Photo Field (Camera capture & watermark)</option>
+                    <option value="textarea">📝 Multiline Remarks / Observations</option>
+                    <option value="boolean">🔘 Toggle / Boolean (Yes / No / Compliant)</option>
+                  </optgroup>
+                </select>
+              </div>
+
+              {/* If Dropdown chosen, initial choices input */}
+              {(newTargetType === 'select' || newTargetType === 'searchable_select') && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Initial Dropdown Choices (Comma-separated)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Working, Not Working, Under Maintenance, Standby"
+                    value={newTargetChoices}
+                    onChange={(e) => setNewTargetChoices(e.target.value)}
+                    className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Separate multiple choices with commas. You can also add more choices anytime from the cards below.
+                  </p>
+                </div>
+              )}
+
+              {/* If Numeric chosen, engineering unit */}
+              {newTargetType === 'number' && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Engineering Unit (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. A, kVA, kV, mm, °C, bar"
+                    value={newTargetUnit}
+                    onChange={(e) => setNewTargetUnit(e.target.value)}
+                    className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
+                  />
+                </div>
+              )}
 
               <div className="flex justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <button
@@ -1772,10 +2357,221 @@ export const HTMasterDataAdmin: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-sm transition-all"
+                  className="px-4 py-2 text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-sm transition-all flex items-center gap-1.5"
                 >
-                  Create Target Field
+                  <Plus className="w-4 h-4" /> Create Field
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIGURE CONTROL TYPE & FIELD SETTINGS MODAL */}
+      {showConfigureFieldModal && configuringField && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Settings2 className="w-5 h-5 text-emerald-600" />
+                Configure Field: {configuringField.fieldLabel}
+              </h2>
+              <button onClick={() => { setShowConfigureFieldModal(false); setConfiguringField(null); }} className="text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveFieldConfiguration} className="space-y-4">
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] uppercase font-extrabold text-slate-400 tracking-wider">Technical Key</span>
+                  <div className="text-xs font-mono font-bold text-slate-800 dark:text-slate-200">{configuringField.fieldKey}</div>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-extrabold text-slate-400 tracking-wider">Category</span>
+                  <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400">{configuringField.category}</div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Field Display Label *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Manufacturer Name, Breaker Make..."
+                  value={configuringField.fieldLabel}
+                  onChange={(e) => setConfiguringField({ ...configuringField, fieldLabel: e.target.value })}
+                  className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 font-semibold"
+                />
+              </div>
+
+              {/* Target Section Selection / Edit */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Section / Group Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Equipment Details, HT Control Components..."
+                  value={configuringField.sectionTitle || ''}
+                  onChange={(e) => setConfiguringField({ ...configuringField, sectionTitle: e.target.value })}
+                  list="field-sections-datalist"
+                  className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
+                />
+                <datalist id="field-sections-datalist">
+                  {availableSections.map(sec => (
+                    <option key={sec} value={sec} />
+                  ))}
+                </datalist>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Select an existing section or type a new section name to organize this field.
+                </p>
+              </div>
+
+              {/* Change Control Type */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Control / Input Type on Site Audit Form *
+                </label>
+                <select
+                  value={configuringField.fieldType}
+                  onChange={(e) => setConfiguringField({ ...configuringField, fieldType: e.target.value as HTFieldType })}
+                  className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-sm font-semibold focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
+                >
+                  <optgroup label="🌟 Smart Automated Controls">
+                    <option value="gps_location">📍 GPS Location (1-Tap Auto-Fetch Live Coordinates & Address)</option>
+                    <option value="lifespan_calculator">⏳ Equipment Life Span & Health Analyzer (Calculates Age & RUL)</option>
+                    <option value="model_catalog_autofill">🤖 Smart Catalog Auto-Fill (OEM Model Specifications Database)</option>
+                    <option value="digital_signature">✍️ Digital Signature (Auditor & Client Signoff)</option>
+                  </optgroup>
+                  <optgroup label="📋 Standard Controls">
+                    <option value="select">📋 Dropdown Choices (Select from options)</option>
+                    <option value="searchable_select">🔍 Searchable Select (Typeahead filter)</option>
+                    <option value="text">🔤 Standard Text Box</option>
+                    <option value="date">📅 Date Picker (Calendar dd-mm-yyyy)</option>
+                    <option value="number">🔢 Numeric Input</option>
+                    <option value="photo">📷 Photo Field</option>
+                    <option value="textarea">📝 Multiline Remarks</option>
+                    <option value="boolean">🔘 Toggle / Boolean (Yes / No / Compliant)</option>
+                  </optgroup>
+                </select>
+
+                {/* Dynamic Smart Help text based on selected type */}
+                {configuringField.fieldType === 'gps_location' && (
+                  <div className="mt-2 p-3 bg-rose-50 dark:bg-rose-950/40 rounded-xl border border-rose-200/60 dark:border-rose-800/40 text-xs text-rose-800 dark:text-rose-300 space-y-1">
+                    <p className="font-bold flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                      1-Tap GPS Geo-Tagging Active
+                    </p>
+                    <p className="text-[11px] text-rose-700 dark:text-rose-400">
+                      Engineers on the audit form will see a prominent <strong>"📍 Fetch Exact GPS Location"</strong> button. Clicking it automatically captures device GPS coordinates, precision accuracy, and reverse-geocoded physical address with OpenStreetMap/Google Maps integration.
+                    </p>
+                  </div>
+                )}
+
+                {configuringField.fieldType === 'lifespan_calculator' && (
+                  <div className="mt-2 p-3 bg-amber-50 dark:bg-amber-950/40 rounded-xl border border-amber-200/60 dark:border-amber-800/40 text-xs text-amber-800 dark:text-amber-300 space-y-1">
+                    <p className="font-bold flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                      Asset Life Span & Health Analyzer Active
+                    </p>
+                    <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                      Derives asset age from Manufacturing / Commissioning Year, computes <strong>Remaining Useful Life (RUL)</strong> against standard lifespan (25/30 yrs), and displays a visual Degradation Health Index with maintenance advisories.
+                    </p>
+                  </div>
+                )}
+
+                {configuringField.fieldType === 'model_catalog_autofill' && (
+                  <div className="mt-2 p-3 bg-indigo-50 dark:bg-indigo-950/40 rounded-xl border border-indigo-200/60 dark:border-indigo-800/40 text-xs text-indigo-800 dark:text-indigo-300 space-y-1">
+                    <p className="font-bold flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+                      OEM Catalog 1-Click Auto-Fill Active
+                    </p>
+                    <p className="text-[11px] text-indigo-700 dark:text-indigo-400">
+                      Provides pre-calibrated engineering specs for <strong>Cummins, ABB, Schneider, Siemens, Kirloskar, CAT</strong>, etc. Selecting a model automatically populates Voltage, Capacity, Breaking Capacity, Insulation Medium, and Lifespan in one click!
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* If converting to Dropdown, option to add choices */}
+              {(configuringField.fieldType === 'select' || configuringField.fieldType === 'searchable_select') && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Add New Option Choices (Comma-separated)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. ABB-SN-001, ABB-SN-002, Siemens-SN-100"
+                    value={configuringField.initialChoice || ''}
+                    onChange={(e) => setConfiguringField({ ...configuringField, initialChoice: e.target.value })}
+                    className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
+                  />
+                </div>
+              )}
+
+              {/* Unit & Placeholder */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Engineering Unit (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. A, kVA, kV, mm, Years"
+                    value={configuringField.unit || ''}
+                    onChange={(e) => setConfiguringField({ ...configuringField, unit: e.target.value })}
+                    className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Placeholder Hint (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Enter serial number..."
+                    value={configuringField.placeholder || ''}
+                    onChange={(e) => setConfiguringField({ ...configuringField, placeholder: e.target.value })}
+                    className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const fKey = configuringField.fieldKey;
+                    const fLabel = configuringField.fieldLabel;
+                    const fSec = configuringField.sectionTitle;
+                    setShowConfigureFieldModal(false);
+                    promptDeleteField(fKey, fLabel, fSec);
+                  }}
+                  className="px-3.5 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer border border-rose-200/80 dark:border-rose-900/60"
+                  title="Delete this entire field & all choices"
+                >
+                  <Trash2 className="w-4 h-4" /> Delete Field
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setShowConfigureFieldModal(false); setConfiguringField(null); }}
+                    className="px-4 py-2 text-sm font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Check className="w-4 h-4" /> Save Field Settings
+                  </button>
+                </div>
               </div>
             </form>
           </div>
@@ -2312,7 +3108,7 @@ export const HTMasterDataAdmin: React.FC = () => {
 
             <div className="p-3.5 bg-rose-50/80 dark:bg-rose-950/40 rounded-2xl border border-rose-200/80 dark:border-rose-900/60 text-xs text-rose-800 dark:text-rose-300 space-y-1">
               <p className="font-extrabold">
-                ⚠️ You are deleting {deletePasswordModal.type === 'CATEGORY' ? 'Category' : 'Option'}: "{deletePasswordModal.targetName}"
+                ⚠️ You are deleting {deletePasswordModal.type === 'CATEGORY' ? 'Category' : deletePasswordModal.type === 'FIELD' ? 'Field' : 'Option'}: "{deletePasswordModal.targetName}"
               </p>
               <p className="text-[11px] opacity-90">
                 Please enter your account password to confirm and authorize this deletion.

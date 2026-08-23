@@ -17,6 +17,7 @@ import CloseTicketModal from '../../components/support/CloseTicketModal';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 import { getProxyUrl } from '../../utils/fileUrl';
+import BlurhashImage from '../../components/ui/BlurhashImage';
 
 
 const PriorityIndicator: React.FC<{ priority: SupportTicket['priority'] }> = ({ priority }) => {
@@ -381,11 +382,12 @@ const TicketDetail: React.FC = () => {
                                                 }} 
                                                 className="block border border-[#1d422f] rounded-lg overflow-hidden max-w-xs hover:border-accent text-left"
                                             >
-                                                <img 
+                                                <BlurhashImage 
                                                     src={ticket.attachmentUrl} 
+                                                    seed={`ticket-att-${ticket.ticketNumber || ticket.id}`}
                                                     alt="Attachment" 
-                                                    className="max-h-64 w-auto" 
-                                                    onError={(e) => (e.currentTarget.parentElement!.style.display = 'none')}
+                                                    className="max-h-64 w-auto min-h-[120px] min-w-[160px]" 
+                                                    imgClassName="max-h-64 w-auto object-contain"
                                                 />
                                             </button>
                                         </div>
@@ -500,11 +502,12 @@ const TicketDetail: React.FC = () => {
                                         }} 
                                         className="block border rounded-lg overflow-hidden max-w-xs hover:border-accent text-left"
                                     >
-                                        <img 
+                                        <BlurhashImage 
                                             src={ticket.attachmentUrl} 
+                                            seed={`ticket-att-desk-${ticket.ticketNumber || ticket.id}`}
                                             alt="Attachment" 
-                                            className="max-h-64 w-auto" 
-                                            onError={(e) => (e.currentTarget.parentElement!.style.display = 'none')}
+                                            className="max-h-64 w-auto min-h-[120px] min-w-[160px]" 
+                                            imgClassName="max-h-64 w-auto object-contain"
                                         />
                                     </button>
                                 </div>

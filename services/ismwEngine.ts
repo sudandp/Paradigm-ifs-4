@@ -85,7 +85,7 @@ export async function resolveStateFromPincode(pincode: string): Promise<string |
  */
 async function resolveCurrentStateFromGPS(): Promise<string | null> {
   try {
-    const position = await getPrecisePosition(50, 8000);
+    const position = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 8000 });
 
     const address = await reverseGeocode(
       position.coords.latitude,

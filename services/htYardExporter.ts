@@ -49,10 +49,12 @@ export const htYardExporter = {
       );
 
       instanceResponses.forEach((r, idx) => {
+        const val = r.isNotApplicable ? 'N/A' : r.responseValue || '-';
+        const photoNote = r.photoUrls && r.photoUrls.length > 0 ? ` [${r.photoUrls.length} Photo(s) Attached]` : '';
         sheet.addRow({
           sl: idx + 1,
           label: r.fieldLabel,
-          value: r.isNotApplicable ? 'N/A' : r.responseValue || '-',
+          value: `${val}${photoNote}`,
           remarks: r.remarks || ''
         });
       });
@@ -124,12 +126,16 @@ export const htYardExporter = {
         (r) => r.equipmentInstanceId === inst.id
       );
 
-      const tableData = instanceResponses.map((r, idx) => [
-        idx + 1,
-        r.fieldLabel,
-        r.isNotApplicable ? 'N/A' : r.responseValue || '-',
-        r.remarks || ''
-      ]);
+      const tableData = instanceResponses.map((r, idx) => {
+        const val = r.isNotApplicable ? 'N/A' : r.responseValue || '-';
+        const photoNote = r.photoUrls && r.photoUrls.length > 0 ? ` (${r.photoUrls.length} Photo${r.photoUrls.length > 1 ? 's' : ''})` : '';
+        return [
+          idx + 1,
+          r.fieldLabel,
+          `${val}${photoNote}`,
+          r.remarks || ''
+        ];
+      });
 
       autoTable(doc, {
         startY: startY + 4,

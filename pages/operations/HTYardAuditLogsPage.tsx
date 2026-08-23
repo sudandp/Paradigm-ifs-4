@@ -3,7 +3,8 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { 
   History, ArrowLeft, Search, Filter, RefreshCw, 
   Download, User, ShieldCheck, Zap, ChevronDown, Check, Trash2,
-  Clock, Activity, AlertCircle, Plus, Pencil, Layers, FileSpreadsheet
+  Clock, Activity, AlertCircle, Plus, Pencil, Layers, FileSpreadsheet,
+  Calendar, X
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { getCachedPpmExecutions } from '../../services/offline/cache';
@@ -30,6 +31,8 @@ export const HTYardAuditLogsPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [actionFilter, setActionFilter] = useState<string>('ALL');
   const [moduleFilter, setModuleFilter] = useState<string>('ALL');
+  const [fromDate, setFromDate] = useState<string>('');
+  const [toDate, setToDate] = useState<string>('');
   const [showSiteDropdown, setShowSiteDropdown] = useState<boolean>(false);
 
   const loadAllLogs = async () => {
@@ -221,6 +224,14 @@ export const HTYardAuditLogsPage: React.FC = () => {
     const matchesModule = moduleFilter === 'ALL' || log.moduleType === moduleFilter;
     const matchesSite = selectedSiteId === 'ALL' || !log.auditId || log.auditId === 'ppm-global' || log.auditId === 'md-global' || log.auditId === 'ht-global' || log.auditId === 'snag-global' || log.auditId === selectedSiteId;
     const matchesAction = actionFilter === 'ALL' || (log.actionType && log.actionType.toUpperCase() === actionFilter.toUpperCase());
+    
+    // Date Range (From Date -> To Date)
+    if (fromDate || toDate) {
+      const rawDate = log.timestamp ? log.timestamp.split('T')[0].split(' ')[0] : '';
+      if (fromDate && rawDate && rawDate < fromDate) return false;
+      if (toDate && rawDate && rawDate > toDate) return false;
+    }
+
     const query = searchQuery.toLowerCase().trim();
     const matchesSearch = !query ||
       log.userName.toLowerCase().includes(query) ||
@@ -514,6 +525,85 @@ export const HTYardAuditLogsPage: React.FC = () => {
                 {type}
               </button>
             ))}
+          </div>
+        </div>
+
+        {/* Date to Date Filter Row */}
+        <div className="px-4 sm:px-6 py-2.5 bg-slate-50/80 dark:bg-slate-900/80 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1">
+              <Calendar className="w-3.5 h-3.5 text-emerald-600" />
+              Filter by Date:
+            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-slate-400">From</span>
+              <input
+                type="date"
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
+                className="px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-slate-400">To</span>
+              <input
+                type="date"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+                className="px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              />
+            </div>
+
+            {(fromDate || toDate) && (
+              <button
+                onClick={() => { setFromDate(''); setToDate(''); }}
+                className="px-2 py-1 text-[11px] font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition-colors flex items-center gap-0.5 cursor-pointer"
+              >
+                <X size={12} /> Clear Dates
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1 text-[11px]">
+            <button
+              onClick={() => { setFromDate(''); setToDate(''); }}
+              className={`px-2 py-0.5 rounded-md font-semibold transition-colors cursor-pointer ${!fromDate && !toDate ? 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+            >
+              All Time
+            </button>
+            <button
+              onClick={() => {
+                const today = new Date().toISOString().split('T')[0];
+                setFromDate(today);
+                setToDate(today);
+              }}
+              className="px-2 py-0.5 rounded-md font-semibold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              Today
+            </button>
+            <button
+              onClick={() => {
+                const now = new Date();
+                const d = new Date();
+                d.setDate(d.getDate() - 7);
+                setFromDate(d.toISOString().split('T')[0]);
+                setToDate(now.toISOString().split('T')[0]);
+              }}
+              className="px-2 py-0.5 rounded-md font-semibold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              Last 7 Days
+            </button>
+            <button
+              onClick={() => {
+                const now = new Date();
+                const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+                setFromDate(firstDay);
+                setToDate(now.toISOString().split('T')[0]);
+              }}
+              className="px-2 py-0.5 rounded-md font-semibold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              This Month
+            </button>
           </div>
         </div>
 

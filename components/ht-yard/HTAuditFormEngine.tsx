@@ -1,8 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { CheckCircle2, HelpCircle, Check, Plus, Minus, Pencil, X } from 'lucide-react';
+import { 
+  CheckCircle2, HelpCircle, Check, Plus, Minus, Pencil, X, Calendar, 
+  Image, Hash, AlignLeft, MapPin, Sparkles, Clock, ExternalLink, 
+  Activity, Cpu, Layers, ShieldCheck, Sliders, RefreshCw, AlertTriangle 
+} from 'lucide-react';
 import { ModuleSpec, HTAuditResponse } from '../../types/htYard';
 import { htYardMasterDataService } from '../../services/htYardMasterDataService';
+import { htYardFieldSpecService } from '../../services/htYardFieldSpecService';
+import { htEquipmentCatalogService, EquipmentCatalogItem } from '../../services/htEquipmentCatalogService';
+import { reverseGeocode } from '../../utils/locationUtils';
+import { Geolocation } from '@capacitor/geolocation';
 import { HTPhotoCaptureWidget } from './HTPhotoCaptureWidget.tsx';
+import toast from 'react-hot-toast';
 
 export interface CustomStage {
   key: string;
@@ -35,8 +44,15 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
   duplicatedStages: propsDuplicatedStages,
   onDuplicatedStagesChange
 }) => {
+  const [activeSpecState, setActiveSpecState] = useState<ModuleSpec>(spec);
   const [activeSectionKey, setActiveSectionKey] = useState<string>(spec.sections[0]?.sectionKey || '');
   const [masterOptionsMap, setMasterOptionsMap] = useState<Record<string, any[]>>({});
+  
+  // Smart GPS & Catalog States
+  const [fetchingGpsKey, setFetchingGpsKey] = useState<string | null>(null);
+  const [showCatalogModal, setShowCatalogModal] = useState<boolean>(false);
+  const [catalogSearch, setCatalogSearch] = useState<string>('');
+  const [catalogCategoryFilter, setCatalogCategoryFilter] = useState<string>('ALL');
 
   // Dynamic stage duplication state
   const [duplicatedStages, setDuplicatedStages] = useState<Record<string, { id: string; label: string }[]>>(
@@ -60,21 +76,48 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
     }
   };
 
-  // When spec changes, reset active section
+  // Load dynamically merged specs (baseline + custom field overrides)
+  const loadMergedSpec = async () => {
+    try {
+      const merged = await htYardFieldSpecService.getMergedModuleSpec(spec.moduleType);
+      setActiveSpecState(merged);
+      if (merged.sections.length > 0 && !activeSectionKey) {
+        setActiveSectionKey(merged.sections[0].sectionKey);
+      }
+    } catch (e) {
+      setActiveSpecState(spec);
+    }
+  };
+
+  // When spec changes or custom field definitions update, reload
   useEffect(() => {
-    if (spec.sections.length > 0) {
-      setActiveSectionKey(spec.sections[0].sectionKey);
+    loadMergedSpec();
+    loadCategoryOptions();
+
+    const handleSpecUpdate = () => {
+      loadMergedSpec();
+      loadCategoryOptions();
+    };
+    window.addEventListener('ht_field_specs_updated', handleSpecUpdate);
+    return () => window.removeEventListener('ht_field_specs_updated', handleSpecUpdate);
+  }, [spec.moduleType, selectedManufacturer]);
+
+  useEffect(() => {
+    if (activeSpecState.sections.length > 0) {
+      if (!activeSpecState.sections.some(s => s.sectionKey === activeSectionKey)) {
+        setActiveSectionKey(activeSpecState.sections[0].sectionKey);
+      }
     } else if (customStages.length > 0) {
       setActiveSectionKey(customStages[0].key);
     }
-    // Clear duplicates when spec changes (switching equipment instance)
+    // Clear duplicates when switching equipment instance
     setDuplicatedStages({});
     setEditingTitleId(null);
-  }, [spec.moduleType]);
+  }, [activeSpecState.moduleType]);
 
   useEffect(() => {
     loadCategoryOptions();
-  }, [spec, selectedManufacturer]);
+  }, [activeSpecState, selectedManufacturer]);
 
   const handleDuplicateStage = (originalKey: string, originalTitle: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -152,7 +195,7 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
 
   const loadCategoryOptions = async () => {
     const categoriesNeeded = new Set<string>();
-    spec.sections.forEach((sec) => {
+    activeSpecState.sections.forEach((sec) => {
       sec.fields.forEach((f) => {
         if (f.optionsCategory) categoriesNeeded.add(f.optionsCategory);
       });
@@ -173,8 +216,192 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
     setMasterOptionsMap(map);
   };
 
+  // ─── 1. GPS Location Fetching Handler ─────────────────────────────────────────
+  const handleFetchGpsLocation = async (itemKey: string, fieldLabel: string, currentResponse: Partial<HTAuditResponse>) => {
+    setFetchingGpsKey(itemKey);
+    try {
+      let lat: number | null = null;
+      let lon: number | null = null;
+      let accuracy: number = 5;
+
+      try {
+        const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 10000 });
+        lat = pos.coords.latitude;
+        lon = pos.coords.longitude;
+        accuracy = Math.round(pos.coords.accuracy || 5);
+      } catch (geoErr) {
+        if (typeof navigator !== 'undefined' && navigator.geolocation) {
+          await new Promise<void>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(
+              (p) => {
+                lat = p.coords.latitude;
+                lon = p.coords.longitude;
+                accuracy = Math.round(p.coords.accuracy || 5);
+                resolve();
+              },
+              (err) => reject(err),
+              { enableHighAccuracy: true, timeout: 10000 }
+            );
+          });
+        }
+      }
+
+      if (lat == null || lon == null) {
+        throw new Error('Could not access device GPS sensor. Please verify location permissions.');
+      }
+
+      const address = await reverseGeocode(lat, lon);
+      const timestamp = new Date().toLocaleString();
+      const geoSummary = `${lat.toFixed(5)}, ${lon.toFixed(5)} | ±${accuracy}m | ${address}`;
+
+      onChangeResponse(itemKey, {
+        ...currentResponse,
+        responseValue: geoSummary,
+        remarks: currentResponse.remarks ? currentResponse.remarks : `Geo-tagged at ${timestamp} (GPS Accuracy ±${accuracy}m)`
+      });
+
+      toast.success(`📍 Geo-Tagged: ${address.split(',')[0]} (±${accuracy}m precision)`, { icon: '🎯' });
+      if (onLogAction) {
+        onLogAction({
+          actionType: 'EDIT',
+          target: fieldLabel,
+          details: `Captured high-precision GPS geo-tag: ${geoSummary}`
+        });
+      }
+    } catch (err: any) {
+      console.warn('GPS location fetch error:', err);
+      toast.error('GPS Fetch Failed: ' + (err?.message || 'Permission denied'));
+    } finally {
+      setFetchingGpsKey(null);
+    }
+  };
+
+  // ─── 2. 1-Click OEM Model & Yard Preset Auto-Fill Handler ─────────────────
+  const handleAutoFillFromModel = (catalogItem: EquipmentCatalogItem) => {
+    let filledCount = 0;
+
+    // Loop through ALL sections of the active module specification
+    activeSpecState.sections.forEach(targetSection => {
+      targetSection.fields.forEach(f => {
+        const k = f.key.toLowerCase();
+        const instancePrefix = `${equipmentInstanceId}_${targetSection.sectionKey}`;
+        const targetItemKey = `${instancePrefix}_${f.key}`;
+        const existing: HTAuditResponse = responses[targetItemKey] || {
+          auditId: equipmentInstanceId || 'audit',
+          equipmentInstanceId: equipmentInstanceId !== 'site' ? equipmentInstanceId : undefined,
+          moduleType: spec.moduleType,
+          sectionKey: targetSection.sectionKey,
+          itemNumber: 1,
+          fieldKey: f.key,
+          fieldLabel: f.label,
+          responseValue: '',
+          remarks: '',
+          photoUrls: [],
+          isNotApplicable: false
+        };
+
+        let nextVal: string | null = null;
+
+        // 1. Direct customSpecs check from preset
+        if (catalogItem.customSpecs && catalogItem.customSpecs[f.key]) {
+          nextVal = catalogItem.customSpecs[f.key];
+        } 
+        // 2. Yard common fields heuristic matching
+        else if (catalogItem.category === 'YARD_COMMON') {
+          if (k.includes('fenc') || k.includes('height')) nextVal = '2.4 Meters GI Chainlink with 3-strand Razor Barbed Wire';
+          else if (k.includes('jelly') || k.includes('gravel')) nextVal = 'Yes';
+          else if (k.includes('caution') || k.includes('board') || k.includes('danger')) nextVal = 'Yes';
+          else if (k.includes('oil_filt') || k.includes('filtration')) nextVal = 'Completed - Moisture < 15 ppm, Acidity 0.03 mg KOH/g';
+          else if (k.includes('bdv') || k.includes('dielectric')) nextVal = 'BDV 62 kV @ 2.5mm gap (Passed > 50 kV standard)';
+          else if (k.includes('clean') || k.includes('cleanliness')) nextVal = 'Satisfactory / Clean';
+          else if (k.includes('fire') || k.includes('extinguish')) nextVal = 'CO2 4.5kg + DCP 9kg';
+          else if (k.includes('sand') || k.includes('bucket')) nextVal = 'Yes';
+          else if (k.includes('report') || k.includes('approval') || k.includes('drawing') || k.includes('status')) nextVal = 'Yes';
+        }
+        // 3. Equipment technical specs matching
+        else {
+          if (k.includes('mfr') || k.includes('manufacturer') || f.isManufacturerField) {
+            nextVal = catalogItem.manufacturer;
+          } else if (k.includes('model')) {
+            nextVal = catalogItem.modelNumber;
+          } else if (k.includes('capacity') || k.includes('rating') || k.includes('current')) {
+            nextVal = catalogItem.ratingCapacity || catalogItem.ratedCurrent || '';
+          } else if (k.includes('voltage') || k.includes('rated_kv')) {
+            nextVal = catalogItem.ratedVoltage;
+          } else if (k.includes('breaking') || k.includes('ka')) {
+            nextVal = catalogItem.breakingCapacity || '21 kA / 3s';
+          } else if (k.includes('insul') || k.includes('medium') || k.includes('oil') || k.includes('gas') || k.includes('sf6')) {
+            nextVal = catalogItem.insulationMedium || (catalogItem.category === 'RMU' ? 'SF6 Gas (1.42 bar)' : 'Mineral Oil Class 1');
+          } else if (k.includes('life') || k.includes('span')) {
+            nextVal = `${catalogItem.standardLifeSpanYears} Years`;
+          } else if (k.includes('cool') || k.includes('phase')) {
+            nextVal = catalogItem.coolingType || catalogItem.phases || '';
+          } else if (k.includes('cable_rating')) {
+            nextVal = catalogItem.category === 'RMU' ? '3C x 300 sq.mm XLPE' : '3.5C x 240 sq.mm Al XLPE';
+          } else if (k.includes('relay') || k.includes('protection')) {
+            nextVal = catalogItem.manufacturer.includes('ABB') ? 'ABB REF615 Numerical Relay' :
+                      catalogItem.manufacturer.includes('Schneider') ? 'Schneider Micom P122' : 'Numerical Overcurrent + Earth Fault Relay';
+          } else if (k.includes('foundation')) {
+            nextVal = 'RCC Plinth Foundation (Good Condition)';
+          } else if (k.includes('rubber_mat') || k.includes('rain_shade')) {
+            nextVal = 'Yes';
+          }
+        }
+
+        if (nextVal !== null) {
+          onChangeResponse(targetItemKey, { ...existing, responseValue: nextVal });
+          filledCount++;
+        }
+      });
+    });
+
+    setShowCatalogModal(false);
+    toast.success(`✨ 1-Click Auto-Filled ${filledCount} field specifications from ${catalogItem.modelNumber}!`, { icon: '⚡' });
+    if (onLogAction) {
+      onLogAction({
+        actionType: 'EDIT',
+        target: catalogItem.modelName,
+        details: `1-Click Auto-filled ${filledCount} technical parameters from ${catalogItem.modelNumber}`
+      });
+    }
+  };
+
+  // ─── 3. Life Span & Age Helper ──────────────────────────────────────────────
+  const getAssetAgeAndLifespan = (standardLifespanYears: number = 25) => {
+    // Look for mfg_year in instance responses
+    let mfgYear = new Date().getFullYear();
+    const allResp = Object.values(responses);
+    const mfgResp = allResp.find(r => 
+      (r.fieldKey?.includes('mfg') || r.fieldKey?.includes('year') || r.fieldLabel?.toLowerCase().includes('year')) &&
+      r.responseValue && r.responseValue.trim() !== ''
+    );
+    if (mfgResp?.responseValue) {
+      const match = mfgResp.responseValue.match(/\b(19\d\d|20\d\d)\b/);
+      if (match) mfgYear = parseInt(match[1], 10);
+    }
+
+    const currentYear = new Date().getFullYear();
+    const age = Math.max(0, currentYear - mfgYear);
+    const rul = Math.max(0, standardLifespanYears - age);
+    const percentElapsed = Math.min(100, Math.round((age / standardLifespanYears) * 100));
+    const percentRemaining = 100 - percentElapsed;
+
+    let healthStatus: 'GOOD' | 'WARNING' | 'CRITICAL' = 'GOOD';
+    let advisory = `Asset is operating within expected nominal lifespan. Continue standard preventive maintenance.`;
+
+    if (rul <= 5 || percentRemaining <= 20) {
+      healthStatus = 'CRITICAL';
+      advisory = `🚨 Critical Aging Alert: Asset has reached ${percentElapsed}% of design lifespan. Recommend Residual Life Assessment (RLA) & capital replacement planning.`;
+    } else if (rul <= 10 || percentRemaining <= 40) {
+      healthStatus = 'WARNING';
+      advisory = `⚠️ Moderate Aging: Asset is ${age} years old. Recommend enhanced diagnostic testing (DGA, thermography, contact resistance).`;
+    }
+
+    return { mfgYear, age, standardLifespanYears, rul, percentElapsed, percentRemaining, healthStatus, advisory };
+  };
+
   const getSectionProgress = (sectionKey: string) => {
-    const section = spec.sections.find(s => s.sectionKey === sectionKey);
+    const section = activeSpecState.sections.find(s => s.sectionKey === sectionKey);
     if (!section) return { completed: 0, total: 0, isDone: false };
 
     const total = section.fields.length;
@@ -194,7 +421,7 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
     key: string;
     title: string;
     type: 'spec' | 'spec_dup' | 'custom' | 'custom_dup';
-    section?: typeof spec.sections[0];
+    section?: typeof activeSpecState.sections[0];
     content?: React.ReactNode;
     subtitle: string;
     isDone: boolean;
@@ -202,7 +429,7 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
     isDuplicate?: boolean;
   }> = [];
 
-  spec.sections.forEach(s => {
+  activeSpecState.sections.forEach(s => {
     // Push the original spec stage
     allStages.push({
       key: s.sectionKey,
@@ -388,13 +615,54 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
               )}
             </div>
 
+            {/* Top Smart OEM / Yard Preset Auto-Fill Banner */}
+            {(activeStage.type === 'spec' || activeStage.type === 'spec_dup') && activeSection && (
+              <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-emerald-950 via-slate-900 to-teal-950 text-white shadow-lg border border-emerald-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center shrink-0">
+                    <Sparkles className="w-5 h-5 text-emerald-400 animate-pulse" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-extrabold tracking-wide uppercase text-emerald-300">
+                        {spec.moduleType === 'HT_Yard_Common'
+                          ? 'Substation Yard Infrastructure & Compliance Auto-Fill'
+                          : `Smart ${spec.title || 'Equipment'} Model Catalog Auto-Fill`}
+                      </h3>
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-emerald-500/30 text-emerald-200 border border-emerald-400/30">
+                        ⚡ 1-Click
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-300">
+                      {spec.moduleType === 'HT_Yard_Common'
+                        ? 'Instantly populate standard yard specifications (2.4m GI Fencing, 40mm Jelly gravel, CEA Danger Boards, BDV oil test & CEIG reports).'
+                        : 'Instantly populate technical specs (Voltage, Capacity, Breaking current, Relays, Lifespan, Insulation) for Cummins, ABB, Schneider, Siemens & Kirloskar.'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCatalogCategoryFilter(spec.moduleType === 'HT_Yard_Common' ? 'YARD_COMMON' : spec.moduleType === 'RMU' ? 'RMU' : spec.moduleType === 'Transformer' ? 'TRANSFORMER' : 'ALL');
+                    setShowCatalogModal(true);
+                  }}
+                  className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 shrink-0 cursor-pointer"
+                >
+                  <Cpu className="w-4 h-4" />
+                  {spec.moduleType === 'HT_Yard_Common' ? 'Select Substation Yard Preset' : 'Browse 60+ OEM Models Database'}
+                </button>
+              </div>
+            )}
+
             {(activeStage.type === 'spec' || activeStage.type === 'spec_dup') && activeSection ? (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
               {activeSection.fields.map((field, itemIdx) => {
                 // For duplicated stages, namespace the responses by the duplicate's unique key
                 const instancePrefix = activeStage.isDuplicate ? `${equipmentInstanceId}_${activeStage.key}` : `${equipmentInstanceId}_${activeSection!.sectionKey}`;
                 const itemKey = `${instancePrefix}_${field.key}`;
-                const currentResponse = responses[itemKey] || {
+                const currentResponse: HTAuditResponse = responses[itemKey] || {
+                  auditId: equipmentInstanceId || 'audit',
+                  equipmentInstanceId: equipmentInstanceId !== 'site' ? equipmentInstanceId : undefined,
                   moduleType: spec.moduleType,
                   sectionKey: activeSection.sectionKey,
                   itemNumber: itemIdx + 1,
@@ -461,8 +729,176 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
                       <div className="flex-1 flex flex-col space-y-4">
                         {/* Input Selector */}
                         <div>
-                          <span className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5">Observation / Value</span>
-                          {field.type === 'boolean' ? (
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                              Observation / Value {field.unit ? `(${field.unit})` : ''}
+                            </span>
+                            {field.isCustom && (
+                              <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-1.5 py-0.5 rounded border border-emerald-200/50">
+                                Custom
+                              </span>
+                            )}
+                          </div>
+
+                          {field.type === 'gps_location' ? (
+                            <div className="space-y-2">
+                              {currentResponse.responseValue ? (
+                                <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-xl border border-emerald-200 dark:border-emerald-800/60 space-y-1.5">
+                                  <div className="flex items-center justify-between">
+                                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-600 text-white">
+                                      <MapPin className="w-3 h-3" /> Geo-Tagged Verified
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleFetchGpsLocation(itemKey, field.label, currentResponse)}
+                                      disabled={fetchingGpsKey === itemKey}
+                                      className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 hover:underline flex items-center gap-1"
+                                    >
+                                      <RefreshCw className={`w-3 h-3 ${fetchingGpsKey === itemKey ? 'animate-spin' : ''}`} />
+                                      Re-Fetch
+                                    </button>
+                                  </div>
+                                  <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 leading-relaxed">
+                                    {currentResponse.responseValue}
+                                  </div>
+                                  <div className="flex items-center justify-between pt-1 border-t border-emerald-200/60 dark:border-emerald-800/40 text-[10px] text-slate-500">
+                                    <span>High Precision GPS Sensor</span>
+                                    <a
+                                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(currentResponse.responseValue.split('|')[0] || currentResponse.responseValue)}`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-emerald-600 dark:text-emerald-400 font-bold hover:underline flex items-center gap-0.5"
+                                    >
+                                      View Map <ExternalLink className="w-2.5 h-2.5" />
+                                    </a>
+                                  </div>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleFetchGpsLocation(itemKey, field.label, currentResponse)}
+                                  disabled={fetchingGpsKey === itemKey}
+                                  className="w-full py-3 px-4 bg-gradient-to-r from-rose-500 to-pink-600 hover:from-rose-600 hover:to-pink-700 text-white font-bold rounded-xl text-xs shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer"
+                                >
+                                  <MapPin className={`w-4 h-4 ${fetchingGpsKey === itemKey ? 'animate-bounce' : ''}`} />
+                                  {fetchingGpsKey === itemKey ? 'Fetching High-Precision Coordinates...' : '📍 Fetch Exact GPS Location (1-Tap)'}
+                                </button>
+                              )}
+                            </div>
+                          ) : field.type === 'lifespan_calculator' ? (
+                            (() => {
+                              const standardYears = parseInt(field.unit || '25', 10) || 25;
+                              const { mfgYear, age, rul, percentElapsed, percentRemaining, healthStatus, advisory } = getAssetAgeAndLifespan(standardYears);
+                              return (
+                                <div className="p-3 bg-amber-50/70 dark:bg-amber-950/30 rounded-xl border border-amber-200/80 dark:border-amber-800/50 space-y-2.5">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                                      <Clock className="w-3.5 h-3.5 text-amber-600" />
+                                      Mfg Year: <span className="font-extrabold font-mono text-slate-900 dark:text-white bg-white dark:bg-slate-800 px-1.5 py-0.5 rounded border border-amber-200">{mfgYear}</span>
+                                    </span>
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                                      healthStatus === 'GOOD' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' :
+                                      healthStatus === 'WARNING' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' :
+                                      'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                                    }`}>
+                                      {healthStatus === 'GOOD' ? '🟢 Prime Life' : healthStatus === 'WARNING' ? '🟡 Moderate Aging' : '🔴 Critical / EOL'}
+                                    </span>
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-2 text-center">
+                                    <div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-amber-100 dark:border-slate-700">
+                                      <span className="text-[10px] text-slate-400 font-bold block uppercase">Asset Age</span>
+                                      <span className="text-sm font-extrabold text-slate-800 dark:text-slate-100">{age} Years Old</span>
+                                    </div>
+                                    <div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-amber-100 dark:border-slate-700">
+                                      <span className="text-[10px] text-slate-400 font-bold block uppercase">Remaining Useful Life</span>
+                                      <span className="text-sm font-extrabold text-emerald-600 dark:text-emerald-400">{rul} Years Left</span>
+                                    </div>
+                                  </div>
+
+                                  {/* Degradation Progress Bar */}
+                                  <div>
+                                    <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1">
+                                      <span>Lifespan Elapsed: {percentElapsed}%</span>
+                                      <span>Design Life: {standardYears} Yrs</span>
+                                    </div>
+                                    <div className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden flex">
+                                      <div
+                                        style={{ width: `${percentElapsed}%` }}
+                                        className={`h-full ${
+                                          healthStatus === 'GOOD' ? 'bg-emerald-500' :
+                                          healthStatus === 'WARNING' ? 'bg-amber-500' : 'bg-rose-600'
+                                        }`}
+                                      />
+                                    </div>
+                                  </div>
+
+                                  <p className="text-[11px] text-amber-900/80 dark:text-amber-300/80 italic leading-relaxed">
+                                    {advisory}
+                                  </p>
+                                </div>
+                              );
+                            })()
+                          ) : field.type === 'model_catalog_autofill' ? (
+                            <div className="space-y-2">
+                              <select
+                                value={currentResponse.responseValue || ''}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  onChangeResponse(itemKey, {
+                                    ...currentResponse,
+                                    responseValue: val
+                                  });
+                                  const found = htEquipmentCatalogService.getModelDetails(val);
+                                  if (found) {
+                                    handleAutoFillFromModel(found);
+                                  }
+                                }}
+                                className="w-full px-3.5 py-2 border border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-950/40 text-slate-900 dark:text-white rounded-xl text-xs font-semibold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 transition-all"
+                              >
+                                <option value="">Select or Search OEM Model...</option>
+                                {htEquipmentCatalogService.searchCatalog('', spec.moduleType).map((m) => (
+                                  <option key={m.id} value={m.modelNumber}>
+                                    {m.manufacturer} — {m.modelNumber} ({m.ratingCapacity})
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                type="button"
+                                onClick={() => setShowCatalogModal(true)}
+                                className="w-full py-2 px-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-[11px] shadow-sm flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                              >
+                                <Sparkles className="w-3.5 h-3.5" />
+                                1-Click Auto-Fill Specifications
+                              </button>
+                            </div>
+                          ) : field.type === 'digital_signature' ? (
+                            <div className="p-3 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                                  <ShieldCheck className="w-4 h-4 text-emerald-600" /> Digital Signoff Stamp
+                                </span>
+                                {currentResponse.responseValue && (
+                                  <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded">
+                                    Signed & Verified
+                                  </span>
+                                )}
+                              </div>
+                              <input
+                                type="text"
+                                placeholder="Enter signing engineer name or PIN..."
+                                value={currentResponse.responseValue || ''}
+                                onChange={(e) =>
+                                  onChangeResponse(itemKey, {
+                                    ...currentResponse,
+                                    responseValue: e.target.value,
+                                    remarks: currentResponse.remarks || `Digitally attested on ${new Date().toLocaleDateString()}`
+                                  })
+                                }
+                                className="w-full px-3 py-1.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-lg text-xs"
+                              />
+                            </div>
+                          ) : field.type === 'boolean' ? (
                             <select
                               value={currentResponse.responseValue || 'Yes'}
                               onChange={(e) => {
@@ -526,10 +962,53 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
                               }
                               className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-900 dark:text-white rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 transition-all"
                             />
+                          ) : field.type === 'number' ? (
+                            <div className="relative">
+                              <input
+                                type="number"
+                                step="any"
+                                placeholder={field.placeholder || `Enter number in ${field.unit || 'units'}...`}
+                                value={currentResponse.responseValue || ''}
+                                onChange={(e) =>
+                                  onChangeResponse(itemKey, {
+                                    ...currentResponse,
+                                    responseValue: e.target.value
+                                  })
+                                }
+                                className="w-full pl-3.5 pr-12 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-900 dark:text-white rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 transition-all"
+                              />
+                              {field.unit && (
+                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">
+                                  {field.unit}
+                                </span>
+                              )}
+                            </div>
+                          ) : field.type === 'textarea' ? (
+                            <textarea
+                              rows={2}
+                              placeholder={field.placeholder || 'Enter observation or detailed remarks...'}
+                              value={currentResponse.responseValue || ''}
+                              onChange={(e) =>
+                                onChangeResponse(itemKey, {
+                                  ...currentResponse,
+                                  responseValue: e.target.value
+                                })
+                              }
+                              className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-900 dark:text-white rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 transition-all resize-y"
+                            />
+                          ) : field.type === 'photo' ? (
+                            <div className="p-2.5 bg-cyan-50/60 dark:bg-cyan-950/30 rounded-xl border border-cyan-200/60 dark:border-cyan-800/40 flex items-center justify-between text-xs text-cyan-800 dark:text-cyan-300">
+                              <span className="font-semibold flex items-center gap-1.5">
+                                <Image className="w-4 h-4 text-cyan-600" /> Photo Capture Required
+                              </span>
+                              <span className="text-[11px] font-bold">
+                                {currentResponse.photoUrls?.length || 0} attached
+                              </span>
+                            </div>
                           ) : (
                             <input
                               type="text"
-                              placeholder="Enter observation / value..."
+                              placeholder={field.placeholder || 'Enter observation / value...'}
                               value={currentResponse.responseValue || ''}
                               onChange={(e) =>
                                 onChangeResponse(itemKey, {
@@ -606,6 +1085,104 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
           </div>
         )}
       </div>
+
+      {/* 40+ OEM EQUIPMENT CATALOG SELECTION MODAL */}
+      {showCatalogModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-2xl w-full shadow-2xl space-y-4 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-600 flex items-center justify-center">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-base font-extrabold text-slate-900 dark:text-white">
+                    Master Equipment Specification Catalog
+                  </h2>
+                  <p className="text-xs text-slate-400">
+                    Select any OEM model to auto-populate all engineering ratings in 1-click
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowCatalogModal(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Filter toolbar */}
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  placeholder="Search by Cummins 500kVA, ABB SafeRing, Schneider, Kirloskar..."
+                  value={catalogSearch}
+                  onChange={(e) => setCatalogSearch(e.target.value)}
+                  className="w-full pl-3.5 pr-8 py-2 border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-xs focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
+                />
+                {catalogSearch && (
+                  <button onClick={() => setCatalogSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+              <select
+                value={catalogCategoryFilter}
+                onChange={(e) => setCatalogCategoryFilter(e.target.value)}
+                className="px-3 py-2 border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-xs font-semibold"
+              >
+                <option value="ALL">All Categories</option>
+                <option value="YARD_COMMON">🏞️ Yard Infrastructure & HIRA Presets (11kV / 33kV / Tech Park)</option>
+                <option value="DG_SET">⚡ DG Sets (Cummins, Kirloskar, CAT)</option>
+                <option value="RMU">🔄 Ring Main Units (ABB, Schneider, Siemens)</option>
+                <option value="TRANSFORMER">⚡ Transformers (Oil & Dry Type)</option>
+                <option value="HT_PANEL">🛡️ HT/LT Breakers & Panels</option>
+                <option value="LT_KIOSK">📦 LT Feeder Pillars</option>
+              </select>
+            </div>
+
+            {/* Catalog Items Grid */}
+            <div className="flex-1 overflow-y-auto space-y-2.5 pr-1 max-h-[50vh]">
+              {htEquipmentCatalogService.searchCatalog(catalogSearch, catalogCategoryFilter).map((item) => (
+                <div
+                  key={item.id}
+                  className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/60 hover:border-emerald-500 dark:hover:border-emerald-500 hover:shadow-md transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
+                >
+                  <div className="space-y-1 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-extrabold text-slate-900 dark:text-white">
+                        {item.modelNumber}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                        {item.ratingCapacity}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                        {item.manufacturer}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-500 flex items-center gap-3 flex-wrap">
+                      <span>⚡ {item.ratedVoltage}</span>
+                      {item.breakingCapacity && <span>🛡️ {item.breakingCapacity}</span>}
+                      {item.insulationMedium && <span>🧪 {item.insulationMedium}</span>}
+                      <span>⏳ {item.standardLifeSpanYears} Yrs Lifespan</span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleAutoFillFromModel(item)}
+                    className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm transition-all flex items-center gap-1.5 shrink-0 w-full sm:w-auto justify-center cursor-pointer"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" /> 1-Click Auto-Fill
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

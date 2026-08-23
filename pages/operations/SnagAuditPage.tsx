@@ -30,6 +30,8 @@ import {
   Play,
   RotateCcw,
 } from 'lucide-react';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
+import BlurhashImage from '../../components/ui/BlurhashImage';
 import { useAuthStore } from '../../store/authStore';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
@@ -307,7 +309,13 @@ const SnagForm: React.FC<SnagFormProps> = ({ initialData, onSave, onCancel }) =>
           {imagePreview ? (
             <div className="relative">
               {imagePreview.startsWith('data:image/') || imagePreview.startsWith('http') ? (
-                <img src={imagePreview} alt="Snag" className="max-h-40 mx-auto rounded-lg object-cover" />
+                <BlurhashImage 
+                  src={imagePreview} 
+                  seed={form.snagPictureName || 'snag-preview'}
+                  alt="Snag" 
+                  className="max-h-40 mx-auto rounded-lg" 
+                  imgClassName="max-h-40 mx-auto object-cover"
+                />
               ) : (
                 <div className="flex flex-col items-center justify-center p-4 bg-teal-50 rounded-lg max-w-[200px] mx-auto border border-teal-100">
                   <FileSpreadsheet size={32} className="text-teal-600 mb-2" />
@@ -472,7 +480,13 @@ const SnagDetailView: React.FC<{ entry: SnagEntry; onBack: () => void; onStatusC
                       rel="noopener noreferrer"
                       className="block rounded-xl overflow-hidden border border-gray-100 bg-gray-100 hover:opacity-90 transition-opacity"
                     >
-                      <img src={url.trim()} alt={`Snag ${idx + 1}`} className="w-full h-64 object-contain bg-gray-50" />
+                      <BlurhashImage 
+                        src={url.trim()} 
+                        seed={url.trim()} 
+                        alt={`Snag ${idx + 1}`} 
+                        className="w-full h-64 bg-gray-50" 
+                        imgClassName="w-full h-64 object-contain"
+                      />
                     </a>
                   ))}
                 </div>

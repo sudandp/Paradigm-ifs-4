@@ -16,6 +16,8 @@ import {
   Eye
 } from 'lucide-react';
 import Button from './ui/Button';
+import BlurhashImage from './ui/BlurhashImage';
+import { encodeImageToBlurhash } from '../utils/blurhash';
 
 interface MultiUploadDocumentProps {
   label: string;
@@ -57,13 +59,24 @@ const MultiUploadDocument: React.FC<MultiUploadDocumentProps> = ({
 
             const preview = file.type.startsWith('image/') ? URL.createObjectURL(file) : '';
             
-            newFiles.push({
+            const uploadedFileObj: UploadedFile = {
                 name: file.name,
                 type: file.type,
                 size: file.size,
                 preview,
                 file: file
-            });
+            };
+
+            if (file.type.startsWith('image/')) {
+                encodeImageToBlurhash(file).then(hash => {
+                    if (hash) {
+                        uploadedFileObj.blurhash = hash;
+                        onFilesChange([...newFiles]);
+                    }
+                }).catch(() => {});
+            }
+            
+            newFiles.push(uploadedFileObj);
         }
 
         onFilesChange(newFiles);
@@ -148,9 +161,14 @@ const MultiUploadDocument: React.FC<MultiUploadDocumentProps> = ({
                             <div key={`${file.name}-${idx}`} className="flex items-center gap-3 p-3 bg-card border border-border rounded-xl group animate-in fade-in slide-in-from-bottom-2">
                                 <div className="p-2 bg-accent/10 rounded-lg">
                                     {file.type.startsWith('image/') ? (
-                                        <div className="w-8 h-8 rounded overflow-hidden">
-                                            <img src={file.preview || (file as any).url} alt="preview" className="w-full h-full object-cover" />
-                                        </div>
+                                        <BlurhashImage 
+                                            src={file.preview || (file as any).url} 
+                                            blurhash={file.blurhash}
+                                            seed={file.name}
+                                            alt="preview" 
+                                            className="w-8 h-8 rounded" 
+                                            imgClassName="w-full h-full object-cover"
+                                        />
                                     ) : (
                                         <FileText className="w-8 h-8 text-accent" />
                                     )}

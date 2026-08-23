@@ -58,7 +58,7 @@ export interface StoredPhoto {
 // ─── Schema ──────────────────────────────────────────────────────────────────
 
 const DB_NAME = 'paradigmOfflineDB';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 export interface ParadigmDB {
   snag_audits: {
@@ -72,6 +72,11 @@ export interface ParadigmDB {
   ht_master_options: {
     key: string;
     value: HTMasterOption;
+    indexes: { 'by-category': string };
+  };
+  ht_custom_field_specs: {
+    key: string;
+    value: any;
     indexes: { 'by-category': string };
   };
   ppm_executions: {
@@ -116,6 +121,12 @@ export function getDb(): Promise<IDBPDatabase<ParadigmDB>> {
         if (!db.objectStoreNames.contains('ht_master_options')) {
           const store = db.createObjectStore('ht_master_options', { keyPath: 'id' });
           store.createIndex('by-category', 'category', { unique: false });
+        }
+
+        // ht_custom_field_specs (dynamic field definitions)
+        if (!db.objectStoreNames.contains('ht_custom_field_specs')) {
+          const fieldStore = db.createObjectStore('ht_custom_field_specs', { keyPath: 'id' });
+          fieldStore.createIndex('by-category', 'category', { unique: false });
         }
 
         // ppm_executions

@@ -11,6 +11,7 @@ import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
 import { useDevice } from '../../hooks/useDevice';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import BlurhashImage from '../../components/ui/BlurhashImage';
 
 
 // --- PDF Preview Component ---
@@ -573,7 +574,13 @@ const FieldReports: React.FC = () => {
                                                     <div className="grid grid-cols-2 gap-3">
                                                         {report.evidence && report.evidence.length > 0 ? report.evidence.map((ev, i) => (
                                                             <div key={i} className="group relative aspect-square rounded-xl overflow-hidden border border-border bg-muted/20">
-                                                                <img src={ev.url} alt="Field Evidence" className="w-full h-full object-cover transition-transform group-hover:scale-110" />
+                                                                <BlurhashImage 
+                                                                    src={ev.url} 
+                                                                    seed={ev.url || `ev-${i}`} 
+                                                                    alt="Field Evidence" 
+                                                                    className="w-full h-full" 
+                                                                    imgClassName="w-full h-full object-cover transition-transform group-hover:scale-110" 
+                                                                />
                                                                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-2">
                                                                     <span className="text-[8px] text-white font-medium uppercase">{ev.category} • {format(new Date(ev.timestamp), 'HH:mm')}</span>
                                                                 </div>

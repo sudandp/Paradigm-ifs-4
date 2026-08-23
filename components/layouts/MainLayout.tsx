@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Outlet, NavLink, Navigate, useLocation } from 'react-router-dom';
-import { Bell, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, ChevronRight, ShieldCheck, ClipboardCheck, Map as MapIcon, ClipboardList, User, Briefcase, ListTodo, Building, Users, Shirt, Settings, GitBranch, Calendar, CalendarCheck2, ShieldHalf, FileDigit, GitPullRequest, Home, BriefcaseBusiness, UserPlus, IndianRupee, PackagePlus, LifeBuoy, MapPin, ArrowLeft, Navigation, Cpu, FileText, Smartphone, Baby, Grid3X3, LayoutDashboard, Target, Ticket, Wrench, FileSignature, Wallet, LineChart, History, CheckCircle2, Calculator, Badge, HeartPulse, Archive, CalendarDays, BarChart, BarChart3, Mail, UserX, LayoutTemplate, FileSpreadsheet, Sun, Phone, Car, Zap, Camera, Activity } from 'lucide-react';
+import { Bell, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, ChevronRight, ShieldCheck, ClipboardCheck, Map as MapIcon, ClipboardList, User, Briefcase, ListTodo, Building, Users, Shirt, Settings, GitBranch, Calendar, CalendarCheck2, ShieldHalf, FileDigit, GitPullRequest, Home, BriefcaseBusiness, UserPlus, IndianRupee, PackagePlus, LifeBuoy, MapPin, ArrowLeft, Navigation, Cpu, FileText, Smartphone, Baby, Grid3X3, LayoutDashboard, Target, Ticket, Wrench, FileSignature, Wallet, LineChart, History, CheckCircle2, Calculator, Badge, HeartPulse, Archive, CalendarDays, BarChart, BarChart3, Mail, UserX, LayoutTemplate, FileSpreadsheet, Sun, Phone, Car, Zap, Camera, Activity, QrCode } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
 import { usePermissionsStore } from '../../store/permissionsStore';
@@ -117,6 +117,8 @@ export const allNavLinks: NavLinkConfig[] = [
 
     // Audit & Snag Reports
     { to: '/admin/ht-master-data', label: 'Master Data', icon: Settings, permission: 'view_ht_master_data', category: 'Audit & Snag Reports' },
+    { to: '/operations/ppm-calendar', label: 'PPM Calendar', icon: Calendar, permission: 'view_ppm_audits', category: 'Audit & Snag Reports' },
+    { to: '/operations/asset-qr-center', label: 'Asset QR Tags', icon: QrCode, permission: 'view_ht_yard_audits', category: 'Audit & Snag Reports' },
     { to: '/operations/ppm-audits', label: 'PPM Audits', icon: ShieldCheck, permission: 'view_ppm_audits', category: 'Audit & Snag Reports' },
     { to: '/operations/ht-yard-audits', label: 'Site Audit', icon: Zap, permission: 'view_ht_yard_audits', category: 'Audit & Snag Reports' },
     { to: '/operations/ht-yard-audit-logs', label: 'Audit Change Log', icon: History, permission: 'view_audit_change_log', category: 'Audit & Snag Reports' },
@@ -500,6 +502,7 @@ const MainLayout: React.FC = () => {
     const { fetchNotifications, isPanelOpen, setIsPanelOpen } = useNotificationStore();
     const { permissions } = usePermissionsStore();
     const { autoScrollOnHover } = useUiSettingsStore();
+    const { isImpersonating } = useImpersonationStore();
     const location = useLocation();
     const { isMobile, isTablet, isDesktop } = useDevice();
     const settingsStore = useSettingsStore();
@@ -626,8 +629,6 @@ const MainLayout: React.FC = () => {
     if (!user && !isPublicReferralPath) {
         return <Navigate to="/auth/login" replace />;
     }
-
-    const { isImpersonating } = useImpersonationStore();
 
     return (
         <div className={`flex overflow-hidden ${isImpersonating ? 'h-[calc(100vh-40px)] mt-[40px]' : 'h-screen'} ${isMobile ? 'bg-[#041b0f]' : 'bg-page'}`}>

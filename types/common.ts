@@ -7,4 +7,5 @@ export interface UploadedFile {
   path?: string | null; // Path in Supabase storage bucket
   file?: File;
   progress?: number;
+  blurhash?: string;
 }

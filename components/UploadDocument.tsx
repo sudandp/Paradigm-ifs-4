@@ -10,6 +10,9 @@ import { useAuthStore } from '../store/authStore';
 import ImagePreviewModal from './modals/ImagePreviewModal';
 import Modal from './ui/Modal';
 import { useOnboardingStore } from '../store/onboardingStore';
+import BlurhashImage from './ui/BlurhashImage';
+import { encodeImageToBlurhash } from '../utils/blurhash';
+import { compressImageFile, CLIENT_COMPRESSION_PRESETS } from '../utils/imageCompression';
 
 interface UploadDocumentProps {
   label: string;
@@ -77,25 +80,52 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
         return 'none';
     }, [label]);
     
-    const handleFileSelect = useCallback(async (selectedFile: File, base64FromCapture?: string) => {
-        if (!allowedTypes.includes(selectedFile.type)) {
+    const handleFileSelect = useCallback(async (rawFile: File, base64FromCapture?: string) => {
+        if (!allowedTypes.includes(rawFile.type)) {
             setUploadError(`Invalid file type. Allowed: ${allowedTypes.join(', ')}.`);
-            return;
-        }
-        if (selectedFile.size > 5 * 1024 * 1024) { // 5MB limit
-            setUploadError('File size must be less than 5MB.');
             return;
         }
 
         setUploadError('');
         setIsLoading(true);
 
+        // Pre-compress image if applicable (shrinks 5-15MB phone camera photos to ~150-250KB)
+        let selectedFile = rawFile;
+        try {
+            if (rawFile.type.startsWith('image/')) {
+                selectedFile = await compressImageFile(rawFile, CLIENT_COMPRESSION_PRESETS.DOCUMENT);
+            }
+        } catch (compErr) {
+            console.warn('Image pre-compression fallback:', compErr);
+            selectedFile = rawFile;
+        }
+
+        if (selectedFile.size > 10 * 1024 * 1024) { // 10MB absolute limit
+            setUploadError('File size must be less than 10MB.');
+            setIsLoading(false);
+            return;
+        }
+
         const preview = base64FromCapture ? `data:${selectedFile.type};base64,${base64FromCapture}` : URL.createObjectURL(selectedFile);
         
+        // Asynchronously compute client-side BlurHash for instant placeholders
+        let clientBlurhash: string | undefined = undefined;
+        if (selectedFile.type.startsWith('image/')) {
+            encodeImageToBlurhash(selectedFile).then((hash) => {
+                if (hash) {
+                    clientBlurhash = hash;
+                    onFileChange({
+                        name: selectedFile.name, type: selectedFile.type, size: selectedFile.size,
+                        preview, file: selectedFile, blurhash: hash,
+                    });
+                }
+            }).catch(() => {});
+        }
+
         // Show a local preview immediately while upload + OCR run in background
         const localFileData: UploadedFile = {
             name: selectedFile.name, type: selectedFile.type, size: selectedFile.size,
-            preview, file: selectedFile,
+            preview, file: selectedFile, blurhash: clientBlurhash,
         };
         onFileChange(localFileData);
 
@@ -150,6 +180,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                     preview: getProxyUrl(url),
                     url: getProxyUrl(url),
                     path,
+                    blurhash: clientBlurhash || file?.blurhash,
                     // No 'file' field — signals this is a server-stored file
                 };
                 onFileChange(storedFileData);
@@ -264,19 +295,20 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                         <div className="relative z-10 w-full flex flex-col items-center justify-center group">
                             {file.type.startsWith('image/') && (
                                  <div className={`relative flex items-center justify-center ${label.toLowerCase().includes('photo') ? 'w-32 h-32 rounded-full ring-4 ring-white shadow-xl' : 'w-full'} bg-black/5 overflow-hidden`}>
-                                    <img 
+                                    <BlurhashImage 
                                         src={getProxyUrl(file.preview)} 
+                                        blurhash={file.blurhash}
+                                        seed={file.name || label}
                                         alt="preview" 
-                                        onError={(e) => {
-                                            const target = e.target as HTMLImageElement;
-                                            target.src = 'https://placehold.co/400x200?text=Logo+Not+Found';
-                                            target.className = target.className + ' opacity-50 grayscale';
-                                        }}
+                                        fallbackSrc="https://placehold.co/400x200?text=Image+Not+Found"
                                         className={`
-                                            ${label.toLowerCase().includes('photo') ? 'w-full h-full object-cover' : variant === 'compact' ? 'max-w-full max-h-[100px] object-contain' : 'max-w-full max-h-[180px] object-contain'}
+                                            ${label.toLowerCase().includes('photo') ? 'w-full h-full' : variant === 'compact' ? 'max-w-full max-h-[100px]' : 'max-w-full max-h-[180px]'}
                                             rounded transition-transform duration-500 group-hover:scale-105 shadow-sm
+                                        `}
+                                        imgClassName={`
+                                            ${label.toLowerCase().includes('photo') ? 'w-full h-full object-cover' : variant === 'compact' ? 'max-w-full max-h-[100px] object-contain' : 'max-w-full max-h-[180px] object-contain'}
                                             ${isLoading ? 'opacity-40 blur-[2px]' : 'opacity-100'}
-                                        `} 
+                                        `}
                                     />
                                     {!isLoading && (
                                         <label htmlFor={inputId} className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer">

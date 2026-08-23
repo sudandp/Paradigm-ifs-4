@@ -4,14 +4,16 @@ import { useAuthStore } from '../../store/authStore';
 import { Avatars } from './Avatars';
 import { supabase } from '../../services/supabase';
 import { getProxyUrl } from '../../utils/fileUrl';
+import { BlurhashImage } from './BlurhashImage';
 
 interface ProfilePlaceholderProps {
     className?: string;
     photoUrl?: string | null;
     seed?: string;
+    blurhash?: string | null;
 }
 
-export const ProfilePlaceholder: React.FC<ProfilePlaceholderProps> = ({ className, photoUrl, seed }) => {
+export const ProfilePlaceholder: React.FC<ProfilePlaceholderProps> = ({ className, photoUrl, seed, blurhash }) => {
     const { user } = useAuthStore();
     const [imgError, setImgError] = useState(false);
 
@@ -158,28 +160,32 @@ export const ProfilePlaceholder: React.FC<ProfilePlaceholderProps> = ({ classNam
         };
     }, [resolvedPhoto]);
 
-    // Show the user's photo if we have one and it loaded successfully
-    if (resolvedPhoto && !imgError && !isLoading) {
-        // Escape URL for CSS
-        const escapedUrl = resolvedPhoto.replace(/'/g, "\\'");
+    // Fallback Avatar with deterministic soft background
+    const DefaultAvatar = Avatars[0];
+
+    if (resolvedPhoto && !imgError) {
         return (
-            <div 
-                className={`flex-shrink-0 bg-cover bg-center bg-no-repeat transition-opacity duration-300 ${className || 'w-full h-full'}`}
-                style={{ backgroundImage: `url('${escapedUrl}')` }}
-                aria-label="Profile"
+            <BlurhashImage
+                src={resolvedPhoto}
+                blurhash={blurhash}
+                seed={seed || resolvedPhoto}
+                alt="Profile"
+                className={`flex-shrink-0 rounded-inherit ${className || 'w-full h-full'}`}
+                imgClassName="w-full h-full object-cover"
+                fallbackIcon={<DefaultAvatar className="w-full h-full" />}
             />
         );
     }
 
-
-    // While loading or on error/no photo, show the DefaultAvatar
-    // We can add a subtle pulse effect while loading
-    const DefaultAvatar = Avatars[0];
     return (
-        <div className={`relative ${className || 'w-full h-full'}`}>
+        <div className={`relative overflow-hidden rounded-inherit ${className || 'w-full h-full'}`}>
             <DefaultAvatar className="w-full h-full" />
             {isLoading && (
-                <div className="absolute inset-0 bg-white/10 animate-pulse rounded-inherit" />
+                <BlurhashImage
+                    blurhash={blurhash}
+                    seed={seed || 'loading-avatar'}
+                    className="absolute inset-0 w-full h-full opacity-60 pointer-events-none"
+                />
             )}
         </div>
     );

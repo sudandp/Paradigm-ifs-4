@@ -20,6 +20,8 @@ import { api } from '../../services/api';
 import { useDevice } from '../../hooks/useDevice';
 import { useLogoStore } from '../../store/logoStore';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import { GMCFormReceiptDocument } from '../attendance/PDFReports';
+import { pdf } from '@react-pdf/renderer';
 
 
 

@@ -22,6 +22,13 @@ import FormData from 'form-data';
 import fetch from 'node-fetch';
 import { normalizePhoneNumber } from '../services/phoneUtils.js';
 import { getAttendanceData, getDeviceData, debugMssqlConnection, closeMssqlPool, updateMssqlEmployeeDetails } from './api/controllers/mssql.controller.js';
+import { 
+  compressBase64Image, 
+  compressImageBuffer, 
+  compressAndUploadToSupabase, 
+  COMPRESSION_PRESETS,
+  type ImageCompressionOptions 
+} from './services/imageCompressionService.js';
 
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
@@ -738,6 +745,73 @@ app.get('/api/mssql-debug', authMiddleware, async (req: Request, res: Response) 
     } catch (err: any) {
         console.error('[MSSQL Route] Debug error:', err.message);
         return res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * POST /api/compress-image
+ * Compresses an image payload (base64 or buffer) using sharp.js
+ * Optional direct upload to Supabase storage with automatic WebP conversion.
+ */
+app.post('/api/compress-image', async (req: Request, res: Response) => {
+    try {
+        const { image, preset, options = {}, uploadToBucket, storagePath } = req.body;
+
+        if (!image) {
+            return res.status(400).json({ error: 'Image data is required (base64 string or data URI)' });
+        }
+
+        // Determine compression options (use preset if specified)
+        let resolvedOptions: ImageCompressionOptions = { ...options };
+        if (preset && (COMPRESSION_PRESETS as any)[preset]) {
+            resolvedOptions = { ...(COMPRESSION_PRESETS as any)[preset], ...options };
+        } else if (!resolvedOptions.maxWidth) {
+            // Default to document preset (1600px, 82% quality WebP)
+            resolvedOptions = { ...COMPRESSION_PRESETS.DOCUMENT, ...options };
+        }
+
+        // If direct upload to Supabase is requested
+        if (uploadToBucket && storagePath) {
+            let buffer: Buffer;
+            if (typeof image === 'string') {
+                const cleanBase64 = image.includes(',') ? image.split(',')[1] : image;
+                buffer = Buffer.from(cleanBase64, 'base64');
+            } else {
+                buffer = Buffer.from(image);
+            }
+
+            const uploadResult = await compressAndUploadToSupabase(
+                supabase,
+                uploadToBucket,
+                storagePath,
+                buffer,
+                resolvedOptions
+            );
+
+            return res.status(200).json({
+                success: true,
+                ...uploadResult,
+            });
+        }
+
+        // Otherwise return compressed base64 / data URI
+        const result = await compressBase64Image(image, resolvedOptions);
+
+        return res.status(200).json({
+            success: true,
+            dataUri: result.dataUri,
+            base64: result.base64,
+            mimeType: result.mimeType,
+            originalSize: result.originalSize,
+            compressedSize: result.compressedSize,
+            reductionPercentage: result.reductionPercentage,
+        });
+    } catch (error: any) {
+        console.error('[Server] compress-image error:', error);
+        return res.status(500).json({ 
+            success: false, 
+            error: error.message || 'Image compression failed' 
+        });
     }
 });
 

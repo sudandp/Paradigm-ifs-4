@@ -1,0 +1,44 @@
+name: CI Quality Gate
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - dev
+      - develop
+  pull_request:
+    branches:
+      - main
+      - master
+      - dev
+      - develop
+  workflow_dispatch:
+
+jobs:
+  validate:
+    name: Lint, Typecheck & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Type Check (tsc)
+        run: npm run typecheck
+
+      - name: Run ESLint
+        run: npm run lint
+        continue-on-error: true # Prevents pipeline failure on legacy cosmetic warnings while reporting results
+
+      - name: Verify Production Web Build
+        run: npm run build

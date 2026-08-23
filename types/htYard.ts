@@ -119,14 +119,57 @@ export interface HTHIRAPoint {
   photoUrls?: string[];
 }
 
+export type HTFieldType = 
+  | 'text' 
+  | 'number' 
+  | 'date' 
+  | 'select' 
+  | 'searchable_select' 
+  | 'cascading_select' 
+  | 'boolean' 
+  | 'photo' 
+  | 'textarea' 
+  | 'gps_location' 
+  | 'lifespan_calculator' 
+  | 'model_catalog_autofill' 
+  | 'digital_signature' 
+  | 'sub_fields' 
+  | 'repeater';
+
 export interface FieldSpec {
   key: string;
   label: string;
-  type: 'text' | 'number' | 'date' | 'select' | 'searchable_select' | 'cascading_select' | 'boolean' | 'sub_fields' | 'repeater';
+  type: HTFieldType;
   optionsCategory?: HTMasterCategory;
   optionsFieldKey?: string;
   isManufacturerField?: boolean;
   subFields?: FieldSpec[];
+  isCustom?: boolean;
+  displayOrder?: number;
+  unit?: string;
+  placeholder?: string;
+  options?: string[];
+}
+
+export interface CustomFieldSpec {
+  id?: string;
+  category: HTMasterCategory;
+  moduleType: string;
+  sectionKey: string;
+  sectionTitle: string;
+  fieldKey: string;
+  fieldLabel: string;
+  fieldType: HTFieldType;
+  optionsCategory?: HTMasterCategory;
+  optionsFieldKey?: string;
+  isManufacturerField?: boolean;
+  unit?: string;
+  placeholder?: string;
+  displayOrder?: number;
+  isActive?: boolean;
+  isCustom?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface SectionSpec {

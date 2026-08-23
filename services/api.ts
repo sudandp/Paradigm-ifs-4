@@ -23,6 +23,7 @@ import {
   subDays, subMonths, eachMonthOfInterval, isSameMonth, startOfWeek
 } from 'date-fns';
 import { useAuthStore } from '../store/authStore';
+import { compressImageFile, CLIENT_COMPRESSION_PRESETS } from '../utils/imageCompression';
 export const offlineDb = {
   getCache: async (key?: string) => {
     if (!key || typeof window === 'undefined') return null;
@@ -35,11 +36,17 @@ export const offlineDb = {
     if (!key || typeof window === 'undefined') return;
     try {
       localStorage.setItem(`paradigm_cache_${key}`, JSON.stringify(val));
-    } catch {}
+    } catch (err) {
+      console.debug('Failed to set localStorage cache', err);
+    }
   },
   removeCache: async (key?: string) => {
     if (!key || typeof window === 'undefined') return;
-    try { localStorage.removeItem(`paradigm_cache_${key}`); } catch {}
+    try {
+      localStorage.removeItem(`paradigm_cache_${key}`);
+    } catch (err) {
+      console.debug('Failed to remove localStorage cache', err);
+    }
   },
   addToOutbox: async (val?: any) => {},
   deleteOldDescriptors: async (userId?: string) => {},
@@ -173,7 +180,7 @@ if (keyPool.length === 0) {
 }
 
 // Convenience alias for legacy `if (!ai)` guards
-let ai: GoogleGenAI | null = keyPool[0]?.client ?? null;
+const ai: GoogleGenAI | null = keyPool[0]?.client ?? null;
 
 /**
  * Returns the first key (by index 0→4) that:
@@ -350,7 +357,14 @@ const processFilesForUpload = async (obj: any, userId: string, submissionId: str
   const newObj: any = { ...obj };
   // If the object has a File to upload
   if (newObj.file instanceof File) {
-    const file: File = newObj.file;
+    let file: File = newObj.file;
+    if (file.type.startsWith('image/')) {
+      try {
+        file = await compressImageFile(file, CLIENT_COMPRESSION_PRESETS.DOCUMENT);
+      } catch (e) {
+        console.warn('Document pre-compression fallback:', e);
+      }
+    }
     // Construct a unique storage path using the userId and submissionId
     const filePath = `${userId}/documents/${Date.now()}_${file.name}`;
     // Upload the file to the onboarding documents bucket
@@ -1881,11 +1895,20 @@ export const api = {
   },
 
   uploadDocument: async (
-    file: File,
+    rawFile: File,
     bucket: string = ONBOARDING_DOCS_BUCKET,
     submissionId?: string,
     docName?: string
   ): Promise<{ url: string; path: string; }> => {
+    let file = rawFile;
+    if (file.type.startsWith('image/')) {
+      try {
+        file = await compressImageFile(file, CLIENT_COMPRESSION_PRESETS.DOCUMENT);
+      } catch (err) {
+        console.warn('uploadDocument compression fallback:', err);
+      }
+    }
+
     const { data: { session } } = await supabase.auth.getSession();
     const userId = session?.user?.id || 'anonymous_user';
     const timestamp = Date.now();
@@ -3191,9 +3214,12 @@ export const api = {
       audit_date: auditData.activeAudit.auditDate,
       client_division: auditData.activeAudit.clientDivision,
       status: auditData.activeAudit.status || 'Draft',
+      auditor_name: auditData.activeAudit.auditorName || 'Field Engineer',
       equipment_instances: auditData.equipmentInstances,
       responses: auditData.responses,
       snag_items: auditData.snagItems,
+      duplicated_stages: auditData.activeAudit.duplicatedStages || {},
+      audit_logs: auditData.activeAudit.auditLogs || [],
       updated_at: new Date().toISOString()
     };
 
@@ -3248,7 +3274,10 @@ export const api = {
             auditDate: first.audit_date,
             clientDivision: first.client_division,
             status: first.status,
-            auditorName: (first as any).auditor_name || 'Field Engineer'
+            auditorName: (first as any).auditor_name || 'Field Engineer',
+            duplicatedStages: (first as any).duplicated_stages || {},
+            auditLogs: (first as any).audit_logs || [],
+            updatedAt: (first as any).updated_at
           },
           equipmentInstances: first.equipment_instances || [],
           responses: first.responses || {},
@@ -3275,7 +3304,11 @@ export const api = {
             auditDate: first.audit_date,
             clientDivision: first.client_division,
             status: first.status,
-            auditorName: first.auditor_name || 'Field Engineer'
+            auditorName: first.auditor_name || 'Field Engineer',
+            duplicatedStages: first.duplicated_stages || {},
+            auditLogs: first.audit_logs || [],
+            createdAt: first.created_at,
+            updatedAt: first.updated_at
           },
           equipmentInstances: first.equipment_instances || [],
           responses: first.responses || {},
@@ -3296,7 +3329,10 @@ export const api = {
           auditDate: first.audit_date,
           clientDivision: first.client_division,
           status: first.status,
-          auditorName: first.auditor_name || 'Field Engineer'
+          auditorName: (first as any).auditor_name || 'Field Engineer',
+          duplicatedStages: (first as any).duplicated_stages || {},
+          auditLogs: (first as any).audit_logs || [],
+          updatedAt: (first as any).updated_at
         },
         equipmentInstances: first.equipment_instances || [],
         responses: first.responses || {},
@@ -3342,7 +3378,9 @@ export const api = {
                 localStorage.removeItem('paradigm_ht_yard_active_audit');
               }
             }
-          } catch (e) {}
+          } catch (err) {
+            console.debug('Failed to parse active single audit', err);
+          }
         }
       }
       // ── Offline path ─────────────────────────────────────────────────────────
@@ -3791,7 +3829,7 @@ export const api = {
     }
 
     // Load local points for all requested users
-    let localPoints: RoutePoint[] = [];
+    const localPoints: RoutePoint[] = [];
     for (const userId of userIds) {
       const userLocal = await getLocalRoutePoints(userId, start, end);
       localPoints.push(...userLocal);
@@ -4695,7 +4733,9 @@ export const api = {
       try {
         const err = JSON.parse(text);
         errorMessage = err.error || errorMessage;
-      } catch (e) {}
+      } catch (err) {
+        console.debug('Failed to parse error response text', err);
+      }
       throw new Error(errorMessage);
     }
   },
@@ -5491,7 +5531,7 @@ export const api = {
             } else {
               const startCheckCCL = startOfMonth(effectiveOpeningDateCCL);
               const endCheckCCL = startOfMonth(accrualEndDate);
-              let monthsToTestCCL = eachMonthOfInterval({ start: startCheckCCL, end: endCheckCCL });
+              const monthsToTestCCL = eachMonthOfInterval({ start: startCheckCCL, end: endCheckCCL });
               
               let earnedCCL = 0;
               monthsToTestCCL.forEach(m => {
@@ -7872,14 +7912,14 @@ export const api = {
         // ── DOB: common formats DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD ──────────
         const extractDob = (): string | null => {
             const m =
-                flat.match(/(?:DOB|Date\s*of\s*Birth|D\.O\.B)[:\s]+([0-9]{2}[\/-][0-9]{2}[\/-][0-9]{4})/i) ||
-                flat.match(/([0-9]{2}[\/-][0-9]{2}[\/-][0-9]{4})/) ||
+                flat.match(/(?:DOB|Date\s*of\s*Birth|D\.O\.B)[:\s]+([0-9]{2}[/-][0-9]{2}[/-][0-9]{4})/i) ||
+                flat.match(/([0-9]{2}[/-][0-9]{2}[/-][0-9]{4})/) ||
                 flat.match(/([0-9]{4}-[0-9]{2}-[0-9]{2})/);
             if (!m) return null;
             const raw = m[1];
             // Normalise to YYYY-MM-DD
             if (/^\d{4}-/.test(raw)) return raw;
-            const parts = raw.split(/[\/-]/);
+            const parts = raw.split(/[/-]/);
             if (parts.length !== 3) return null;
             const [d, mo, y] = parts;
             return `${y}-${mo.padStart(2,'0')}-${d.padStart(2,'0')}`;

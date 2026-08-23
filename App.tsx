@@ -99,6 +99,8 @@ const VoipSettings = lazyWithRetry(() => import('./pages/developer/VoipSettings'
 const OperationsDashboard = lazyWithRetry(() => import('./pages/operations/OperationsDashboard'));
 const PPMDashboard = lazyWithRetry(() => import('./pages/operations/PPMDashboard').then(m => ({ default: m.PPMDashboard })));
 const PPMExecution = lazyWithRetry(() => import('./pages/operations/PPMExecution').then(m => ({ default: m.PPMExecution })));
+const PPMCalendarPage = lazyWithRetry(() => import('./pages/operations/PPMCalendarPage'));
+const AssetQRCenterPage = lazyWithRetry(() => import('./pages/operations/AssetQRCenterPage'));
 const HTYardAuditDashboard = lazyWithRetry(() => import('./pages/operations/HTYardAuditDashboard.tsx').then(m => ({ default: m.HTYardAuditDashboard })));
 const HTYardAuditLogsPage = lazyWithRetry(() => import('./pages/operations/HTYardAuditLogsPage.tsx').then(m => ({ default: m.HTYardAuditLogsPage })));
 const HTMasterDataAdmin = lazyWithRetry(() => import('./pages/admin/HTMasterDataAdmin.tsx').then(m => ({ default: m.HTMasterDataAdmin })));
@@ -222,9 +224,10 @@ const AadhaarScannerPage = lazyWithRetry(() => import('./pages/onboarding/Aadhaa
 const DeboardingInitiate = lazyWithRetry(() => import('./pages/onboarding/DeboardingInitiate'));
 const PCCDashboard = lazyWithRetry(() => import('./pages/onboarding/PCCDashboard'));
 
-// Public Forms
+// Public Forms & Digital Twin Passports
 const FormsSelection = lazyWithRetry(() => import('./pages/public/FormsSelection'));
 const GMCForm = lazyWithRetry(() => import('./pages/public/GMCForm'));
+const HTAssetPublicPassport = lazyWithRetry(() => import('./pages/public/HTAssetPublicPassport'));
 
 // Image Viewer
 const DocumentViewerPage = lazyWithRetry(() => import('./pages/DocumentViewerPage'));
@@ -1100,7 +1103,9 @@ const App: React.FC = () => {
             if (notification.channelId === 'break_reminders' || notification.channelId === 'insistent_break_alarms') {
                 try {
                     await LocalNotifications.cancel({ notifications: [{ id: notification.id }] });
-                } catch (e) {}
+                } catch (err) {
+                    console.debug('Failed to cancel notification', err);
+                }
                 
                 const { breakReminderInterval } = useAuthStore.getState();
                 const elapsed: number = (notification as any).extra?.elapsedMinutes ?? breakReminderInterval ?? 5;
@@ -1419,10 +1424,8 @@ const App: React.FC = () => {
           }
         }
 
-        let { data: { session }, error } = await supabase.auth.getSession();
-        if (sessionFromOAuth) {
-          session = sessionFromOAuth;
-        }
+        const { data: sessionData, error } = await supabase.auth.getSession();
+        let session = sessionFromOAuth || sessionData.session;
         console.log('[Auth Debug] Initial session check complete. Active user:', session?.user?.email || 'None');
         if (error) {
           console.error('Error fetching initial session:', error.message);
@@ -1470,7 +1473,9 @@ const App: React.FC = () => {
               try {
                 localStorage.setItem('paradigm:cachedUser', JSON.stringify(appUser));
                 localStorage.setItem('paradigm:lastOnlineTimestamp', String(Date.now()));
-              } catch {}
+              } catch (err) {
+                console.debug('Failed to cache user', err);
+              }
 
               // Initialize push notifications on initial session load
               pushNotificationService.init();
@@ -1530,7 +1535,9 @@ const App: React.FC = () => {
                 try {
                   localStorage.setItem('paradigm:cachedUser', JSON.stringify(appUser));
                   localStorage.setItem('paradigm:lastOnlineTimestamp', String(Date.now()));
-                } catch {}
+                } catch (err) {
+                  console.debug('Failed to cache user', err);
+                }
               }
             } catch (err) {
               console.error('Failed to fetch profile on SIGNED_IN:', err);
@@ -1845,6 +1852,7 @@ const App: React.FC = () => {
 
         <Route path="/public/forms" element={<FormsSelection />} />
         <Route path="/public/forms/gmc" element={<GMCForm />} />
+        <Route path="/public/asset-passport/:assetId" element={<HTAssetPublicPassport />} />
 
         {/* Gate Attendance Kiosk — standalone public route for security guard device */}
         <Route path="/gate" element={<GateKiosk />} />
@@ -1966,12 +1974,14 @@ const App: React.FC = () => {
             <Route path="operations/team-activity" element={<TeamActivity />} />
           </Route>
           <Route element={<ProtectedRoute requiredPermission="view_ht_yard_audits" />}>
+            <Route path="operations/asset-qr-center" element={<AssetQRCenterPage />} />
             <Route path="operations/ht-yard-audits" element={<HTYardAuditDashboard />} />
           </Route>
           <Route element={<ProtectedRoute requiredPermission="view_audit_change_log" />}>
             <Route path="operations/ht-yard-audit-logs" element={<HTYardAuditLogsPage />} />
           </Route>
           <Route element={<ProtectedRoute requiredPermission="view_ppm_audits" />}>
+            <Route path="operations/ppm-calendar" element={<PPMCalendarPage />} />
             <Route path="operations/ppm-audits" element={<PPMDashboard />} />
             <Route path="operations/ppm-audits/:categoryId" element={<PPMExecution />} />
           </Route>
