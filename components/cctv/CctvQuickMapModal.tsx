@@ -16,6 +16,7 @@ export interface UserOptionItem {
   location?: string | null;
   biometricId: string | null;
   photoUrl?: string | null;
+  isFaceEnrolled?: boolean;
 }
 
 export interface SiteLocationItem {

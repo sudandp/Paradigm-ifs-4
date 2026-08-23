@@ -286,6 +286,7 @@ const RegisteredUsersTab: React.FC<{
 }> = ({ userOptions, logs }) => {
   const [search, setSearch] = React.useState('');
   const [expandedId, setExpandedId] = React.useState<string | null>(null);
+  const [filterTab, setFilterTab] = React.useState<'enrolled' | 'all' | 'active' | 'unmapped'>('enrolled');
 
   // Group logs by userId
   const logsByUser = React.useMemo(() => {
@@ -302,17 +303,31 @@ const RegisteredUsersTab: React.FC<{
     return map;
   }, [logs]);
 
+  const enrolledCount = React.useMemo(() => userOptions.filter(u => u.isFaceEnrolled).length, [userOptions]);
+  const activeCount = React.useMemo(() => userOptions.filter(u => logsByUser[u.id]?.length).length, [userOptions, logsByUser]);
+  const unmappedCount = React.useMemo(() => userOptions.filter(u => !u.isFaceEnrolled).length, [userOptions]);
+
   const filtered = React.useMemo(() => {
+    let list = userOptions;
+
+    if (filterTab === 'enrolled') {
+      list = list.filter(u => u.isFaceEnrolled);
+    } else if (filterTab === 'active') {
+      list = list.filter(u => logsByUser[u.id]?.length);
+    } else if (filterTab === 'unmapped') {
+      list = list.filter(u => !u.isFaceEnrolled);
+    }
+
     const q = search.toLowerCase().trim();
-    if (!q) return userOptions;
-    return userOptions.filter(u =>
+    if (!q) return list;
+    return list.filter(u =>
       u.name.toLowerCase().includes(q) ||
       (u.email || '').toLowerCase().includes(q) ||
       (u.role || '').toLowerCase().includes(q) ||
       (u.location || '').toLowerCase().includes(q) ||
       (u.biometricId || '').toLowerCase().includes(q)
     );
-  }, [userOptions, search]);
+  }, [userOptions, search, filterTab, logsByUser]);
 
   // Sort: active users first
   const sorted = React.useMemo(() =>
@@ -330,8 +345,6 @@ const RegisteredUsersTab: React.FC<{
     return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
   };
 
-  const activeCount = userOptions.filter(u => logsByUser[u.id]?.length).length;
-
   return (
     <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
       {/* Header */}
@@ -339,10 +352,10 @@ const RegisteredUsersTab: React.FC<{
         <div>
           <h3 className="font-bold text-primary-text flex items-center gap-2 text-sm">
             <UserCheck className="h-4 w-4 text-emerald-600" />
-            Registered Users — Gate Log View
+            CCTV Registered Users — Gate Log View
           </h3>
           <p className="text-[11px] text-muted mt-0.5">
-            {activeCount} active today · {userOptions.length} total enrolled · Click a user to expand their logs
+            {enrolledCount} Face-Enrolled for CCTV · {activeCount} active today · {userOptions.length} total staff
           </p>
         </div>
         <div className="relative max-w-xs w-full">
@@ -357,27 +370,43 @@ const RegisteredUsersTab: React.FC<{
         </div>
       </div>
 
-      {/* Stats bar */}
-      <div className="grid grid-cols-3 divide-x divide-border border-b border-border">
-        <div className="px-4 py-2.5 text-center">
-          <p className="text-base font-black text-emerald-600">{userOptions.length}</p>
-          <p className="text-[9px] text-muted uppercase tracking-widest font-semibold">Enrolled</p>
-        </div>
-        <div className="px-4 py-2.5 text-center">
+      {/* Filter Tabs / Stats bar */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-border border-b border-border bg-slate-50/50">
+        <button
+          onClick={() => setFilterTab('enrolled')}
+          className={`px-4 py-2.5 text-center transition-all ${filterTab === 'enrolled' ? 'bg-emerald-50 border-b-2 border-emerald-600' : 'hover:bg-slate-100/60'}`}
+        >
+          <p className="text-base font-black text-emerald-600">{enrolledCount}</p>
+          <p className="text-[9px] text-emerald-950 uppercase tracking-widest font-bold">Face Enrolled</p>
+        </button>
+        <button
+          onClick={() => setFilterTab('active')}
+          className={`px-4 py-2.5 text-center transition-all ${filterTab === 'active' ? 'bg-blue-50 border-b-2 border-blue-600' : 'hover:bg-slate-100/60'}`}
+        >
           <p className="text-base font-black text-blue-600">{activeCount}</p>
-          <p className="text-[9px] text-muted uppercase tracking-widest font-semibold">Active Today</p>
-        </div>
-        <div className="px-4 py-2.5 text-center">
-          <p className="text-base font-black text-slate-600">{logs.filter(l => l.userId).length}</p>
-          <p className="text-[9px] text-muted uppercase tracking-widest font-semibold">Total Events</p>
-        </div>
+          <p className="text-[9px] text-blue-950 uppercase tracking-widest font-bold">Active Today</p>
+        </button>
+        <button
+          onClick={() => setFilterTab('unmapped')}
+          className={`px-4 py-2.5 text-center transition-all ${filterTab === 'unmapped' ? 'bg-amber-50 border-b-2 border-amber-600' : 'hover:bg-slate-100/60'}`}
+        >
+          <p className="text-base font-black text-amber-600">{unmappedCount}</p>
+          <p className="text-[9px] text-amber-950 uppercase tracking-widest font-bold">Pending Face</p>
+        </button>
+        <button
+          onClick={() => setFilterTab('all')}
+          className={`px-4 py-2.5 text-center transition-all ${filterTab === 'all' ? 'bg-slate-100 border-b-2 border-slate-600' : 'hover:bg-slate-100/60'}`}
+        >
+          <p className="text-base font-black text-slate-700">{userOptions.length}</p>
+          <p className="text-[9px] text-slate-700 uppercase tracking-widest font-bold">All Employees</p>
+        </button>
       </div>
 
       {/* List */}
       {sorted.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-muted">
           <UserCheck className="h-10 w-10 opacity-20 mb-3" />
-          <p className="text-sm font-medium">No users match your search.</p>
+          <p className="text-sm font-medium">No users match the selected filter or search.</p>
         </div>
       ) : (
         <div className="divide-y divide-border/60">
@@ -413,7 +442,18 @@ const RegisteredUsersTab: React.FC<{
 
                   {/* Name / role / location */}
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm text-primary-text truncate">{u.name}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-sm text-primary-text truncate">{u.name}</p>
+                      {u.isFaceEnrolled ? (
+                        <span className="hidden md:inline-flex items-center gap-1 text-[9px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-full">
+                          <Sparkles className="h-2.5 w-2.5 text-emerald-600" /> Face Enrolled
+                        </span>
+                      ) : (
+                        <span className="hidden md:inline-flex items-center gap-1 text-[9px] font-medium bg-slate-100 text-slate-500 border border-slate-200 px-2 py-0.5 rounded-full">
+                          No Face Vector
+                        </span>
+                      )}
+                    </div>
                     <p className="text-[10px] text-muted truncate capitalize">
                       {u.role ? u.role.replace(/_/g, ' ') : ''}
                       {u.location ? ` · ${u.location}` : ''}
@@ -888,6 +928,12 @@ const CctvDashboard: React.FC = () => {
           location: u.location || null,
           biometricId: u.biometricId || u.biometric_id || null,
           photoUrl: u.photoUrl || u.photo_url || null,
+          isFaceEnrolled: Boolean(
+            (Array.isArray(u.faceEmbedding512) && u.faceEmbedding512.length > 0) ||
+            (Array.isArray(u.face_embedding_512) && u.face_embedding_512.length > 0) ||
+            u.faceEmbedding512 ||
+            u.face_embedding_512
+          ),
         })));
       }
 
@@ -1649,7 +1695,7 @@ const CctvDashboard: React.FC = () => {
               : 'text-gray-600 hover:text-emerald-700 hover:bg-white/80'
           }`}
         >
-          <UserCheck className="h-4 w-4" /> Registered Users ({userOptions.length})
+          <UserCheck className="h-4 w-4" /> Face Enrolled Users ({userOptions.filter(u => u.isFaceEnrolled).length}/{userOptions.length})
         </button>
       </div>
 
