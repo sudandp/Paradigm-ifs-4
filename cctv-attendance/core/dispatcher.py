@@ -435,9 +435,24 @@ class EventDispatcher:
         camera_name: str,
         timestamp: float,
         snapshot_url: Optional[str] = None,
+        det_score: float = 0.0,
     ) -> bool:
-        """Push an unknown face to the cloud enrollment queue and cctv_attendance_logs."""
+        """Push an unknown face to the cloud enrollment queue and cctv_attendance_logs.
+        
+        Only pushes to enrollment queue if det_score >= 0.60 (confidence gate)
+        to prevent low-confidence false positives (vehicle lights, foliage) from
+        flooding the admin dashboard.
+        """
         if not self._session or not self.config.cloud_enabled:
+            return False
+
+        # ── Confidence Gate: Skip low-confidence unknowns ──
+        min_unknown_confidence = 0.60
+        if det_score < min_unknown_confidence:
+            logger.debug(
+                f"[Dispatcher] Unknown face skipped — det_score {det_score:.3f} "
+                f"< {min_unknown_confidence} confidence gate"
+            )
             return False
 
         try:
@@ -460,18 +475,18 @@ class EventDispatcher:
             url = f"{self.config.supabase_url}/rest/v1/cctv_enrollment_queue"
             async with self._session.post(url, json=payload) as resp:
                 if resp.status < 400:
-                    logger.info("[Dispatcher] Unknown face pushed to enrollment queue")
+                    logger.info(f"[Dispatcher] Unknown face pushed to enrollment queue (score={det_score:.3f})")
                 else:
                     body = await resp.text()
                     logger.warning(f"[Dispatcher] Unknown face push failed ({resp.status}): {body}")
 
-            # Also push to cctv_attendance_logs
+            # Also push to cctv_attendance_logs with actual detection score
             cctv_log_payload = {
                 'user_id': None,
                 'user_name': 'Unknown Person',
                 'camera_name': loc_name,
                 'direction': 'entry',
-                'confidence': 0.5,
+                'confidence': round(det_score, 4),
                 'detected_at': iso_dt,
                 'snapshot_url': snapshot_url,
                 'edge_device_id': self.config.edge_device_id,

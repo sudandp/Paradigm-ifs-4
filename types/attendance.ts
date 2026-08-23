@@ -44,9 +44,11 @@ export interface AttendanceEvent {
   ipAddress?: string;
   networkType?: string;
   networkProvider?: string;
-  source?: string;
+  source?: 'app' | 'biometric' | 'cctv' | 'manual' | 'web' | string;
   isCached?: boolean;
   steps?: number;
+  /** Optional reference to the CCTV detection log if generated via CCTV recognition */
+  cctvLogId?: string | null;
 
   /** GPS-recorded travel distance in kilometres for this event leg. */
   travelDistance?: number | null;

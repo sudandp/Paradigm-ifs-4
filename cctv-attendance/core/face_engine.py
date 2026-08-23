@@ -64,7 +64,7 @@ class FaceEngine:
     def __init__(
         self,
         models_dir: Path = Path('./models'),
-        detection_threshold: float = 0.45,
+        detection_threshold: float = 0.55,
         det_size: tuple[int, int] = (960, 960),
     ):
         self.models_dir = models_dir
@@ -135,7 +135,17 @@ class FaceEngine:
         kps: Optional[np.ndarray] = None,
     ) -> tuple[bool, dict]:
         """Multi-stage validation optimized for multi-person crowd & stairway surveillance:
-        Rejects background foliage without rejecting real people in crowds or under night lighting.
+        Rejects background foliage, vehicle lights, and non-human objects
+        without rejecting real people in crowds or under night lighting.
+
+        Rejection checks (in order):
+          1. Minimum size (22×22px)
+          2. Aspect ratio (0.45–1.85)
+          3. Foliage green filter (HSV green > 35%)
+          4. Red/orange vehicle light filter (HSV red > 25%)
+          5. Skin tone minimum (YCrCb, reject if < 12%)
+          6. Texture complexity (Laplacian variance < 15.0)
+          7. Facial landmark topology (inter-pupillary distance < 8px)
         """
         diag = {
             "bbox": [int(v) for v in bbox],
@@ -143,7 +153,9 @@ class FaceEngine:
             "height": 0,
             "aspect_ratio": 0.0,
             "green_ratio_pct": 0.0,
+            "red_light_ratio_pct": 0.0,
             "skin_ratio_pct": 0.0,
+            "texture_variance": 0.0,
             "eye_distance_px": 0.0,
             "in_exclusion_roi": False,
             "status": "REJECTED",
@@ -175,20 +187,61 @@ class FaceEngine:
                 diag["reason"] = "Empty frame crop"
                 return False, diag
 
+            total_pixels = float(crop.shape[0] * crop.shape[1])
+
             # ── Check 1: Pure Foliage Green Filter (HSV) ──
-            # Only reject if almost the ENTIRE crop is pure plant chlorophyll green (>35%)
+            # Reject if crop is dominated by plant chlorophyll green (>35%)
             hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
             hue = hsv[:, :, 0]
             sat = hsv[:, :, 1]
             green_mask = (hue >= 35) & (hue <= 85) & (sat >= 50)
-            green_ratio = float(np.sum(green_mask)) / float(crop.shape[0] * crop.shape[1])
+            green_ratio = float(np.sum(green_mask)) / total_pixels
             diag["green_ratio_pct"] = round(green_ratio * 100.0, 1)
 
-            if green_ratio > 0.38:
-                diag["reason"] = f"High vegetation green content ({green_ratio*100:.1f}% > 38%)"
+            if green_ratio > 0.35:
+                diag["reason"] = f"High vegetation green content ({green_ratio*100:.1f}% > 35%)"
                 return False, diag
 
-            # ── Check 2: 5-Point Facial Landmark Topology Check (if landmarks available) ──
+            # ── Check 2: Red/Orange Vehicle Light Rejection (HSV) ──
+            # Catches tail lights, brake lights, reflectors, indicator LEDs
+            # Red wraps around in HSV: H ∈ [0,10] ∪ [160,180], S > 100, V > 100
+            val = hsv[:, :, 2]
+            red_low = (hue <= 10) & (sat >= 100) & (val >= 100)
+            red_high = (hue >= 160) & (sat >= 100) & (val >= 100)
+            red_mask = red_low | red_high
+            red_ratio = float(np.sum(red_mask)) / total_pixels
+            diag["red_light_ratio_pct"] = round(red_ratio * 100.0, 1)
+
+            if red_ratio > 0.25:
+                diag["reason"] = f"Red/orange vehicle light detected ({red_ratio*100:.1f}% > 25%)"
+                return False, diag
+
+            # ── Check 3: Skin Tone Minimum (YCrCb chrominance) ──
+            # Robust across all skin tones under varying lighting
+            # Standard skin range: Cr ∈ [133, 173], Cb ∈ [77, 127]
+            ycrcb = cv2.cvtColor(crop, cv2.COLOR_BGR2YCrCb)
+            cr = ycrcb[:, :, 1]
+            cb = ycrcb[:, :, 2]
+            skin_mask = (cr >= 133) & (cr <= 173) & (cb >= 77) & (cb <= 127)
+            skin_ratio = float(np.sum(skin_mask)) / total_pixels
+            diag["skin_ratio_pct"] = round(skin_ratio * 100.0, 1)
+
+            if skin_ratio < 0.12:
+                diag["reason"] = f"No human skin detected ({skin_ratio*100:.1f}% < 12%)"
+                return False, diag
+
+            # ── Check 4: Texture Complexity (Laplacian variance) ──
+            # Flat-colored blobs (lights, signs, paint) have very low texture
+            # Real faces always have texture from eyes, nose, skin pores
+            gray_crop = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+            laplacian_var = float(cv2.Laplacian(gray_crop, cv2.CV_64F).var())
+            diag["texture_variance"] = round(laplacian_var, 1)
+
+            if laplacian_var < 15.0:
+                diag["reason"] = f"Low texture / flat blob ({laplacian_var:.1f} < 15.0)"
+                return False, diag
+
+            # ── Check 5: 5-Point Facial Landmark Topology Check ──
             if kps is not None and len(kps) >= 5:
                 lex, ley = kps[0]
                 rex, rey = kps[1]

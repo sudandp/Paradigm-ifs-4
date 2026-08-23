@@ -16,6 +16,7 @@ import {
   ChevronLeft, ChevronRight, ChevronDown, Edit2, MapPin
 } from 'lucide-react';
 import { CctvQuickMapModal, UserOptionItem, SiteLocationItem, QuickMapTargetLog } from '../../components/cctv/CctvQuickMapModal';
+import { cctvAttendanceBridgeService } from '../../services/cctvAttendanceBridge';
 
 // Fallback URL used ONLY when Supabase has no ngrok_url yet (first boot before heartbeat).
 const NGROK_PROXY_FALLBACK = 'https://cctv.cctv.rest';
@@ -644,6 +645,93 @@ const CctvDashboard: React.FC = () => {
     setToast({ message: `Exported ${logs.length} attendance logs to CSV`, type: 'success' });
   };
 
+  const [isSyncingBridge, setIsSyncingBridge] = useState(false);
+  const handleSyncToAttendance = async () => {
+    setIsSyncingBridge(true);
+    try {
+      const result = await cctvAttendanceBridgeService.syncUnbridgedLogs();
+      setToast({
+        message: `CCTV Attendance Bridge: ${result.bridged} bridged, ${result.merged} merged with existing attendance, ${result.skipped} skipped.`,
+        type: 'success',
+      });
+      fetchLogs();
+    } catch (err: any) {
+      setToast({ message: `Bridge sync failed: ${err.message}`, type: 'error' });
+    } finally {
+      setIsSyncingBridge(false);
+    }
+  };
+
+  const [bridgeDiagState, setBridgeDiagState] = useState<{
+    isRunning: boolean;
+    results: { name: string; status: 'pass' | 'fail' | 'warn'; detail: string }[] | null;
+    statusData: { total: number; bridged: number; unbridged: number } | null;
+  }>({
+    isRunning: false,
+    results: null,
+    statusData: null,
+  });
+
+  const [showSqlFixModal, setShowSqlFixModal] = useState(false);
+
+  const runBridgeSelfTest = async () => {
+    setBridgeDiagState(prev => ({ ...prev, isRunning: true, results: null }));
+    const results: { name: string; status: 'pass' | 'fail' | 'warn'; detail: string }[] = [];
+
+    // 1. Check CCTV logs schema
+    try {
+      const { error: logsErr } = await supabase
+        .from('cctv_attendance_logs')
+        .select('id, bridged, bridged_at, location_id')
+        .limit(1);
+      if (!logsErr) {
+        results.push({ name: 'CCTV Logs Bridge Schema', status: 'pass', detail: 'Columns (bridged, bridged_at, location_id) verified in DB' });
+      } else {
+        results.push({ name: 'CCTV Logs Bridge Schema', status: 'fail', detail: logsErr.message });
+      }
+    } catch (e: any) {
+      results.push({ name: 'CCTV Logs Bridge Schema', status: 'fail', detail: e.message });
+    }
+
+    // 2. Check attendance_events columns
+    try {
+      const { error: attErr } = await supabase
+        .from('attendance_events')
+        .select('id, cctv_log_id, source')
+        .limit(1);
+      if (!attErr) {
+        results.push({ name: 'Attendance Events Bridge Columns', status: 'pass', detail: 'Columns (cctv_log_id, source) verified in DB' });
+      } else {
+        results.push({ name: 'Attendance Events Bridge Columns', status: 'fail', detail: attErr.message });
+      }
+    } catch (e: any) {
+      results.push({ name: 'Attendance Events Bridge Columns', status: 'fail', detail: e.message });
+    }
+
+    // 3. Check RPC Procedure
+    try {
+      const { error: rpcErr } = await supabase.rpc('backfill_cctv_attendance_bridge', {
+        p_limit: 5,
+        p_min_confidence: 0.70,
+      });
+      if (!rpcErr) {
+        results.push({ name: 'Stored Procedure (backfill_cctv_attendance_bridge)', status: 'pass', detail: 'SQL Procedure executed successfully' });
+      } else {
+        results.push({ name: 'Stored Procedure (backfill_cctv_attendance_bridge)', status: 'warn', detail: rpcErr.message });
+      }
+    } catch (e: any) {
+      results.push({ name: 'Stored Procedure (backfill_cctv_attendance_bridge)', status: 'warn', detail: e.message });
+    }
+
+    // 4. Check bridge stats
+    const statusData = await cctvAttendanceBridgeService.getBridgeStatus();
+
+    setBridgeDiagState({
+      isRunning: false,
+      results,
+      statusData,
+    });
+  };
 
   const fetchLogs = useCallback(async () => {
     try {
@@ -662,6 +750,8 @@ const CctvDashboard: React.FC = () => {
         supabase
           .from('cctv_enrollment_queue')
           .select('*')
+          .eq('status', 'pending')
+          .gte('detected_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
           .order('detected_at', { ascending: false })
           .limit(50),
         api.getUsers().catch(async () => {
@@ -677,7 +767,18 @@ const CctvDashboard: React.FC = () => {
       if (logsError) console.warn('[CCTV] Supabase logs error:', logsError);
       if (unknownError) console.warn('[CCTV] Supabase queue error:', unknownError);
 
-      let mergedLogs: CctvLog[] = (logsData || []).map((l: any) => ({
+      // Auto-cleanup: silently dismiss stale pending unknowns older than 24 hours
+      const staleThreshold = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      supabase
+        .from('cctv_enrollment_queue')
+        .delete()
+        .eq('status', 'pending')
+        .lt('detected_at', staleThreshold)
+        .then(({ error: cleanupErr }) => {
+          if (cleanupErr) console.debug('[CCTV] Stale cleanup warning:', cleanupErr.message);
+        });
+
+      const mergedLogs: CctvLog[] = (logsData || []).map((l: any) => ({
         id: l.id,
         edgeLogId: null,
         userId: l.user_id,
@@ -1068,10 +1169,26 @@ const CctvDashboard: React.FC = () => {
         }
       }
 
+      // Also create a cctv_attendance_logs entry so attendance bridge captures this punch
+      try {
+        await supabase.from('cctv_attendance_logs').insert({
+          user_id: targetUserId,
+          user_name: selectedUserObj?.name || 'Employee',
+          camera_name: targetItem.cameraName || 'Main Gate',
+          direction: 'entry',
+          confidence: 0.95,
+          detected_at: targetItem.detectedAt || new Date().toISOString(),
+          snapshot_url: targetItem.snapshotUrl || null,
+          edge_device_id: targetItem.edgeDeviceId || 'cctv-edge-main',
+        });
+      } catch (attLogErr) {
+        console.warn('[CCTV Enroll] Attendance log insertion note:', attLogErr);
+      }
+
       setEnrollStep('done');
       setUnknownQueue(prev => prev.filter(u => u.id !== targetItem.id));
       setToast({
-        message: `Success! ${selectedUserObj?.name || 'Employee'} assigned and face vector synced!`,
+        message: `Success! ${selectedUserObj?.name || 'Employee'} assigned and attendance credited!`,
         type: 'success',
       });
       setSelectedUnknown(null);
@@ -1554,6 +1671,15 @@ const CctvDashboard: React.FC = () => {
               <span className="text-xs text-muted font-medium">Showing {filteredLogs.length} events today</span>
               <Button
                 variant="outline"
+                onClick={handleSyncToAttendance}
+                disabled={isSyncingBridge}
+                className="text-xs h-8 px-3 border-emerald-500 bg-emerald-50 text-emerald-900 hover:bg-emerald-100 flex items-center gap-1.5 font-semibold"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${isSyncingBridge ? 'animate-spin' : ''}`} />
+                {isSyncingBridge ? 'Syncing...' : 'Sync to Attendance'}
+              </Button>
+              <Button
+                variant="outline"
                 onClick={exportToCsv}
                 className="text-xs h-8 px-3 border-emerald-300 text-emerald-800 hover:bg-emerald-50 flex items-center gap-1.5"
               >
@@ -1767,6 +1893,88 @@ const CctvDashboard: React.FC = () => {
       {/* Tab 3: AI Diagnostics & Real-Time Debugger */}
       {activeTab === 'debugger' && (
         <div className="space-y-6">
+          {/* ── CCTV Attendance Bridge Live Diagnostics Card ── */}
+          <div className="bg-card rounded-2xl border border-emerald-300 dark:border-emerald-800 p-5 shadow-sm bg-gradient-to-r from-emerald-500/5 via-teal-500/5 to-emerald-500/5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-emerald-200 dark:border-emerald-800">
+              <div>
+                <h3 className="font-bold text-primary-text text-base flex items-center gap-2">
+                  <Activity className="h-5 w-5 text-emerald-600" /> CCTV Attendance Bridge Live Health & Diagnostics
+                </h3>
+                <p className="text-xs text-muted mt-1">
+                  Verifies database triggers, deduplication guards, and real-time syncing from <code>cctv_attendance_logs</code> to <code>attendance_events</code>.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={runBridgeSelfTest}
+                  disabled={bridgeDiagState.isRunning}
+                  className="text-xs h-9 bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 font-bold shadow-xs"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${bridgeDiagState.isRunning ? 'animate-spin' : ''}`} />
+                  {bridgeDiagState.isRunning ? 'Testing...' : 'Run Bridge Self-Test'}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowSqlFixModal(true)}
+                  className="text-xs h-9 border-emerald-400 text-emerald-800 hover:bg-emerald-50 flex items-center gap-1.5"
+                >
+                  <Sliders className="h-3.5 w-3.5" /> View SQL Function
+                </Button>
+              </div>
+            </div>
+
+            {/* Bridge Status Summary */}
+            {bridgeDiagState.statusData && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
+                <div className="p-3 rounded-xl bg-background border border-border">
+                  <span className="text-[11px] font-semibold text-muted block">Total CCTV Detections</span>
+                  <span className="text-xl font-bold text-primary-text mt-0.5 block">{bridgeDiagState.statusData.total}</span>
+                </div>
+                <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800">
+                  <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 block">Bridged into Attendance Events</span>
+                  <span className="text-xl font-bold text-emerald-700 dark:text-emerald-300 mt-0.5 block">{bridgeDiagState.statusData.bridged}</span>
+                </div>
+                <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800">
+                  <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-300 block">Pending / Unbridged</span>
+                  <span className="text-xl font-bold text-amber-700 dark:text-amber-300 mt-0.5 block">{bridgeDiagState.statusData.unbridged}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Test Results Output */}
+            {bridgeDiagState.results && (
+              <div className="mt-4 space-y-2">
+                <h4 className="text-xs font-bold text-primary-text uppercase tracking-wider">Self-Test Diagnostic Results:</h4>
+                <div className="space-y-1.5">
+                  {bridgeDiagState.results.map((res, i) => (
+                    <div
+                      key={i}
+                      className={`p-2.5 rounded-lg border text-xs flex items-start gap-2.5 ${
+                        res.status === 'pass'
+                          ? 'bg-emerald-50 border-emerald-200 text-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200'
+                          : res.status === 'warn'
+                          ? 'bg-amber-50 border-amber-200 text-amber-900 dark:bg-amber-950/30 dark:text-amber-200'
+                          : 'bg-rose-50 border-rose-200 text-rose-900 dark:bg-rose-950/30 dark:text-rose-200'
+                      }`}
+                    >
+                      {res.status === 'pass' ? (
+                        <CheckCircle className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                      ) : res.status === 'warn' ? (
+                        <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                      ) : (
+                        <XCircle className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
+                      )}
+                      <div>
+                        <span className="font-bold">{res.name}: </span>
+                        <span>{res.detail}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="bg-card rounded-2xl border border-border p-5 shadow-sm">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-border">
               <div>
@@ -1841,7 +2049,9 @@ const CctvDashboard: React.FC = () => {
                         <th className="py-3 px-3">Status</th>
                         <th className="py-3 px-3">Confidence Score</th>
                         <th className="py-3 px-3">Green Foliage %</th>
+                        <th className="py-3 px-3">Red Light %</th>
                         <th className="py-3 px-3">Human Skin %</th>
+                        <th className="py-3 px-3">Texture</th>
                         <th className="py-3 px-3">Face Dimensions</th>
                         <th className="py-3 px-3">Analysis / Rejection Reason</th>
                       </tr>
@@ -1869,8 +2079,18 @@ const CctvDashboard: React.FC = () => {
                             </span>
                           </td>
                           <td className="py-3 px-3 font-mono">
+                            <span className={(c.red_light_ratio_pct ?? 0) > 15 ? 'text-rose-600 font-bold' : 'text-emerald-700'}>
+                              {c.red_light_ratio_pct ?? 0}% {(c.red_light_ratio_pct ?? 0) > 15 ? '🚗 (Vehicle Light)' : ''}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 font-mono">
                             <span className={c.skin_ratio_pct < 15 ? 'text-rose-600 font-bold' : 'text-emerald-700'}>
                               {c.skin_ratio_pct}% {c.skin_ratio_pct < 15 ? '(No Skin)' : '✅'}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 font-mono">
+                            <span className={(c.texture_variance ?? 0) < 20 ? 'text-rose-600 font-bold' : 'text-emerald-700'}>
+                              {(c.texture_variance ?? 0).toFixed(0)} {(c.texture_variance ?? 0) < 20 ? '(Flat)' : '✅'}
                             </span>
                           </td>
                           <td className="py-3 px-3 font-mono text-muted">
@@ -2257,6 +2477,245 @@ const CctvDashboard: React.FC = () => {
               ))}
             </select>
           </div>
+        </div>
+      </Modal>
+
+      {/* ── SQL Bridge Trigger Fix Code Modal ── */}
+      <Modal
+        isOpen={showSqlFixModal}
+        onClose={() => setShowSqlFixModal(false)}
+        title="Live CCTV Bridge SQL Function (Run in Supabase SQL Editor)"
+        confirmButtonText="Copy SQL to Clipboard"
+        onConfirm={() => {
+          const sqlText = `-- ─── Real-Time CCTV Attendance Bridge Trigger (Updated UUID Safe) ───
+CREATE OR REPLACE FUNCTION public.trg_fn_bridge_cctv_attendance()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE
+    v_window_interval INTERVAL := INTERVAL '15 minutes';
+    v_min_confidence FLOAT := 0.70;
+    v_event_type TEXT;
+    v_location_name TEXT;
+    v_location_id UUID;
+    v_device_uuid UUID := NULL;
+    v_existing_event_id UUID;
+    v_inserted_event_id UUID;
+BEGIN
+    IF NEW.user_id IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    IF NEW.bridged = TRUE AND NEW.attendance_event_id IS NOT NULL THEN
+        RETURN NEW;
+    END IF;
+
+    IF COALESCE(NEW.confidence, 0) < v_min_confidence THEN
+        NEW.bridge_error := 'Skipped: Confidence below threshold (' || ROUND((COALESCE(NEW.confidence, 0) * 100)::numeric, 1)::text || '% < ' || (v_min_confidence * 100)::text || '%)';
+        RETURN NEW;
+    END IF;
+
+    IF NEW.direction = 'entry' THEN
+        v_event_type := 'punch-in';
+    ELSE
+        v_event_type := 'punch-out';
+    END IF;
+
+    IF NEW.edge_device_id IS NOT NULL THEN
+        SELECT cd.id, cd.location_name, cd.location_id
+        INTO v_device_uuid, v_location_name, v_location_id
+        FROM public.cctv_devices cd
+        WHERE cd.edge_device_id = NEW.edge_device_id
+        LIMIT 1;
+    END IF;
+
+    IF v_location_name IS NULL THEN
+        v_location_name := COALESCE(NEW.camera_name, 'CCTV Gate');
+    END IF;
+
+    IF NEW.location_id IS NOT NULL THEN
+        v_location_id := NEW.location_id;
+    END IF;
+
+    SELECT id INTO v_existing_event_id
+    FROM public.attendance_events
+    WHERE user_id = NEW.user_id
+      AND type = v_event_type
+      AND timestamp >= (NEW.detected_at - v_window_interval)
+      AND timestamp <= (NEW.detected_at + v_window_interval)
+    ORDER BY ABS(EXTRACT(EPOCH FROM (timestamp - NEW.detected_at))) ASC
+    LIMIT 1;
+
+    IF v_existing_event_id IS NOT NULL THEN
+        NEW.attendance_event_id := v_existing_event_id;
+        NEW.bridged := TRUE;
+        NEW.bridged_at := now();
+        NEW.bridge_error := 'Merged with existing event ' || v_existing_event_id::text;
+        RETURN NEW;
+    END IF;
+
+    INSERT INTO public.attendance_events (
+        user_id,
+        timestamp,
+        type,
+        location_name,
+        location_id,
+        source,
+        device_id,
+        device_name,
+        cctv_log_id,
+        is_manual
+    ) VALUES (
+        NEW.user_id,
+        NEW.detected_at,
+        v_event_type,
+        v_location_name,
+        v_location_id,
+        'cctv',
+        v_device_uuid,
+        COALESCE(NEW.edge_device_id, 'CCTV Edge Server'),
+        NEW.id,
+        FALSE
+    ) RETURNING id INTO v_inserted_event_id;
+
+    NEW.attendance_event_id := v_inserted_event_id;
+    NEW.bridged := TRUE;
+    NEW.bridged_at := now();
+    NEW.bridge_error := NULL;
+
+    RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+    NEW.bridge_error := 'Bridge error: ' || SQLERRM;
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_cctv_attendance_bridge ON public.cctv_attendance_logs;
+CREATE TRIGGER trg_cctv_attendance_bridge
+    BEFORE INSERT OR UPDATE OF user_id ON public.cctv_attendance_logs
+    FOR EACH ROW
+    WHEN (NEW.user_id IS NOT NULL)
+    EXECUTE FUNCTION public.trg_fn_bridge_cctv_attendance();
+
+CREATE OR REPLACE FUNCTION public.backfill_cctv_attendance_bridge(
+    p_limit INTEGER DEFAULT 500,
+    p_min_confidence FLOAT DEFAULT 0.70
+)
+RETURNS TABLE (
+    processed_count INTEGER,
+    bridged_count INTEGER,
+    merged_count INTEGER,
+    skipped_count INTEGER
+) LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE
+    r RECORD;
+    v_proc INTEGER := 0;
+    v_bridged INTEGER := 0;
+    v_merged INTEGER := 0;
+    v_skipped INTEGER := 0;
+    v_window_interval INTERVAL := INTERVAL '15 minutes';
+    v_event_type TEXT;
+    v_existing_event_id UUID;
+    v_inserted_event_id UUID;
+    v_location_name TEXT;
+    v_location_id UUID;
+BEGIN
+    FOR r IN (
+        SELECT l.*, cd.id as device_uuid, cd.location_name as device_loc_name, cd.location_id as device_loc_id
+        FROM public.cctv_attendance_logs l
+        LEFT JOIN public.cctv_devices cd ON cd.edge_device_id = l.edge_device_id
+        WHERE l.user_id IS NOT NULL 
+          AND (l.bridged IS NULL OR l.bridged = FALSE)
+        ORDER BY l.detected_at ASC
+        LIMIT p_limit
+    ) LOOP
+        v_proc := v_proc + 1;
+
+        IF COALESCE(r.confidence, 0) < p_min_confidence THEN
+            UPDATE public.cctv_attendance_logs
+            SET bridge_error = 'Skipped: Confidence below threshold (' || ROUND((COALESCE(r.confidence, 0) * 100)::numeric, 1)::text || '%)'
+            WHERE id = r.id;
+            v_skipped := v_skipped + 1;
+            CONTINUE;
+        END IF;
+
+        IF r.direction = 'entry' THEN
+            v_event_type := 'punch-in';
+        ELSE
+            v_event_type := 'punch-out';
+        END IF;
+
+        v_location_name := COALESCE(r.device_loc_name, r.camera_name, 'CCTV Gate');
+        v_location_id := COALESCE(r.location_id, r.device_loc_id);
+
+        SELECT id INTO v_existing_event_id
+        FROM public.attendance_events
+        WHERE user_id = r.user_id
+          AND type = v_event_type
+          AND timestamp >= (r.detected_at - v_window_interval)
+          AND timestamp <= (r.detected_at + v_window_interval)
+        ORDER BY ABS(EXTRACT(EPOCH FROM (timestamp - r.detected_at))) ASC
+        LIMIT 1;
+
+        IF v_existing_event_id IS NOT NULL THEN
+            UPDATE public.cctv_attendance_logs
+            SET attendance_event_id = v_existing_event_id,
+                bridged = TRUE,
+                bridged_at = now(),
+                bridge_error = 'Merged with existing event ' || v_existing_event_id::text
+            WHERE id = r.id;
+            v_merged := v_merged + 1;
+        ELSE
+            INSERT INTO public.attendance_events (
+                user_id,
+                timestamp,
+                type,
+                location_name,
+                location_id,
+                source,
+                device_id,
+                device_name,
+                cctv_log_id,
+                is_manual
+            ) VALUES (
+                r.user_id,
+                r.detected_at,
+                v_event_type,
+                v_location_name,
+                v_location_id,
+                'cctv',
+                r.device_uuid,
+                COALESCE(r.edge_device_id, 'CCTV Edge Server'),
+                r.id,
+                FALSE
+            ) RETURNING id INTO v_inserted_event_id;
+
+            UPDATE public.cctv_attendance_logs
+            SET attendance_event_id = v_inserted_event_id,
+                bridged = TRUE,
+                bridged_at = now(),
+                bridge_error = NULL
+            WHERE id = r.id;
+            v_bridged := v_bridged + 1;
+        END IF;
+    END LOOP;
+
+    RETURN QUERY SELECT v_proc, v_bridged, v_merged, v_skipped;
+END;
+$$;`;
+          navigator.clipboard.writeText(sqlText);
+          setToast({ message: 'SQL trigger function copied to clipboard! Paste and run in Supabase SQL Editor.', type: 'success' });
+          setShowSqlFixModal(false);
+        }}
+      >
+        <div className="space-y-3 py-2 text-xs">
+          <p className="text-slate-600 dark:text-slate-300">
+            Paste and run this updated SQL function in your <strong>Supabase Dashboard &rarr; SQL Editor</strong> to ensure <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded">device_id</code> (UUID) compatibility:
+          </p>
+          <pre className="p-3 bg-slate-950 text-emerald-400 font-mono text-[11px] rounded-xl overflow-x-auto max-h-60">
+{`CREATE OR REPLACE FUNCTION public.trg_fn_bridge_cctv_attendance()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER AS $$
+...
+-- Casts cd.id to UUID and edge_device_id to device_name`}
+          </pre>
         </div>
       </Modal>
     </div>

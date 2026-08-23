@@ -212,27 +212,99 @@ class AttendancePipeline:
         self.db.close()
         logger.info("[Pipeline] Stopped")
 
+    @staticmethod
+    def _bbox_overlap_ratio(face_bbox: list[int], vehicle_bbox: list[int]) -> float:
+        """Calculate what fraction of the face bbox overlaps with a vehicle bbox.
+        Returns 0.0 if no overlap, up to 1.0 if face is fully inside vehicle.
+        """
+        fx1, fy1, fx2, fy2 = face_bbox
+        vx1, vy1, vx2, vy2 = vehicle_bbox
+
+        # Intersection
+        ix1 = max(fx1, vx1)
+        iy1 = max(fy1, vy1)
+        ix2 = min(fx2, vx2)
+        iy2 = min(fy2, vy2)
+
+        if ix2 <= ix1 or iy2 <= iy1:
+            return 0.0
+
+        intersection_area = (ix2 - ix1) * (iy2 - iy1)
+        face_area = max(1, (fx2 - fx1) * (fy2 - fy1))
+        return intersection_area / face_area
+
     async def _process_frame(self, captured: CapturedFrame) -> None:
         """Process a single frame with concurrent multi-face recognition:
         
-        1. InsightFace SCRFD detects ALL faces in the frame simultaneously (Image 1 style)
-        2. Matches every detected face against enrolled employee embeddings
-        3. Real-time tracks updated with green bounding box and name tag for each person
-        4. Attendance events pushed for matched employees; unknown faces queued
+        1. (Optional) YOLO detects vehicles → builds exclusion zones
+        2. InsightFace SCRFD detects ALL faces in the frame simultaneously
+        3. Faces inside vehicle zones are suppressed (headlights/reflectors)
+        4. Matches every remaining face against enrolled employee embeddings
+        5. Attendance events pushed for matched employees; unknown faces queued
         """
         self._stats.frames_processed += 1
         loop = asyncio.get_event_loop()
         current_tracks: list[dict] = []
         enrolled_snapshot = list(self._enrolled)
 
-        # ── Concurrent Multi-Face Detection (Full-Frame InsightFace) ────────
+        # ── Layer 1: YOLO Vehicle Zone Detection (if available) ────────
+        vehicle_bboxes: list[list[int]] = []
+        if self.object_detector.is_ready:
+            try:
+                objects: list[DetectedObject] = await loop.run_in_executor(
+                    None, self.object_detector.detect, captured.frame
+                )
+                for obj in objects:
+                    if not obj.is_person:
+                        # Collect all vehicle/non-person bounding boxes
+                        vehicle_bboxes.append(obj.bbox)
+                        self._stats.vehicles_detected += 1
+                        current_tracks.append({
+                            'bbox':        obj.bbox,
+                            'object_type': obj.label,
+                            'label':       obj.label,
+                            'user_name':   obj.label,
+                            'user_id':     None,
+                            'confidence':  obj.confidence,
+                            'is_match':    False,
+                            'direction':   captured.direction.upper(),
+                            'timestamp':   time.time(),
+                        })
+            except Exception as e:
+                logger.debug(f"[Pipeline] YOLO detection error (non-fatal): {e}")
+
+        # ── Layer 2: Concurrent Multi-Face Detection (Full-Frame InsightFace) ────────
         faces: list[DetectedFace] = await loop.run_in_executor(
             None, self.face_engine.detect_faces, captured.frame
         )
 
         if faces:
             self._stats.faces_detected += len(faces)
-            
+
+            # ── Vehicle Zone Suppression ──
+            # Remove faces whose bbox overlaps >50% with any vehicle bbox
+            filtered_faces: list[DetectedFace] = []
+            for face in faces:
+                face_bbox = [int(v) for v in face.bbox]
+                in_vehicle_zone = False
+
+                for vbox in vehicle_bboxes:
+                    overlap = self._bbox_overlap_ratio(face_bbox, vbox)
+                    if overlap > 0.50:
+                        in_vehicle_zone = True
+                        self._stats.vehicle_suppressed += 1
+                        logger.debug(
+                            f"[Pipeline] 🚗 Face suppressed — inside vehicle zone "
+                            f"(overlap={overlap:.0%}) @ {captured.camera_name}"
+                        )
+                        break
+
+                if not in_vehicle_zone:
+                    filtered_faces.append(face)
+
+            faces = filtered_faces
+
+        if faces:
             # Vectorized Batch Matching: Match all detected faces in one fast BLAS matrix multiplication (<1ms)
             face_embeddings = [f.embedding for f in faces]
             matches: list[Optional[MatchResult]] = await loop.run_in_executor(
@@ -268,7 +340,11 @@ class AttendancePipeline:
             self.latest_tracks[captured.camera_name] = current_tracks
         else:
             # Immediately clear tracks when no face is in view so no stale box lingers
-            self.latest_tracks[captured.camera_name] = []
+            if vehicle_bboxes:
+                # Keep vehicle tracks visible even when no faces
+                self.latest_tracks[captured.camera_name] = current_tracks
+            else:
+                self.latest_tracks[captured.camera_name] = []
 
     async def _process_frame_faces_only(
         self,
@@ -435,6 +511,7 @@ class AttendancePipeline:
                 camera_name=captured.camera_name,
                 timestamp=captured.timestamp,
                 snapshot_url=snapshot_data_url,
+                det_score=face.detection_score,
             )
 
             self._stats.unknown_faces += 1
@@ -588,6 +665,7 @@ class AttendancePipeline:
             'matches':            self._stats.matches,
             'unknown_faces':      self._stats.unknown_faces,
             'cooldown_skips':     self._stats.cooldown_skips,
+            'vehicle_suppressed': self._stats.vehicle_suppressed,
             'errors':             self._stats.errors,
             'enrolled_count':     len(self._enrolled),
             'object_detector_on': self.object_detector.is_ready,
@@ -607,5 +685,6 @@ class PipelineStats:
         self.matches: int = 0
         self.unknown_faces: int = 0
         self.cooldown_skips: int = 0
+        self.vehicle_suppressed: int = 0  # Faces suppressed inside vehicle zones
         self.errors: int = 0
         self.started_at: float = time.time()

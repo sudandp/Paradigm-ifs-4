@@ -346,17 +346,34 @@ export const CctvQuickMapModal: React.FC<CctvQuickMapModalProps> = ({
       if (recordAttendancePunch) {
         try {
           const eventType = targetLog.direction === 'entry' ? 'punch-in' : 'punch-out';
+          const validLogId = isUuid(targetLog.id) ? targetLog.id : null;
 
-          await supabase.from('attendance_events').insert({
-            user_id: finalUserId,
-            timestamp: targetLog.detectedAt || new Date().toISOString(),
-            type: eventType,
-            location_name: chosenLocationName,
-            location_id: selectedLocationObj?.id || null,
-            source: 'cctv',
-            device_id: targetLog.edgeDeviceId || 'cctv-edge-main',
-            is_manual: false,
-          });
+          const { data: insertedEvent } = await supabase
+            .from('attendance_events')
+            .insert({
+              user_id: finalUserId,
+              timestamp: targetLog.detectedAt || new Date().toISOString(),
+              type: eventType,
+              location_name: chosenLocationName,
+              location_id: selectedLocationObj?.id || null,
+              source: 'cctv',
+              device_id: targetLog.edgeDeviceId || 'cctv-edge-main',
+              cctv_log_id: validLogId,
+              is_manual: false,
+            })
+            .select('id')
+            .single();
+
+          if (validLogId && insertedEvent?.id) {
+            await supabase
+              .from('cctv_attendance_logs')
+              .update({
+                attendance_event_id: insertedEvent.id,
+                bridged: true,
+                bridged_at: new Date().toISOString(),
+              })
+              .eq('id', validLogId);
+          }
         } catch (punchErr) {
           console.warn('[CCTV Quick Map] Attendance punch insert note:', punchErr);
         }

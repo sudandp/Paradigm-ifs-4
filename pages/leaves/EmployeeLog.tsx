@@ -268,21 +268,6 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
         setSelectedDate(newDate);
     };
 
-    const getDateRangeText = () => {
-        switch (selectedRange) {
-            case 'day':
-                return format(selectedDate, 'dd MMM, yyyy');
-            case 'week':
-                const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
-                const weekEnd = endOfWeek(selectedDate, { weekStartsOn: 1 });
-                return `${format(weekStart, 'dd MMM')} - ${format(weekEnd, 'dd MMM, yyyy')}`;
-            case 'month':
-                return format(selectedDate, 'MMMM yyyy');
-        }
-    };
-
-    if (!user) return null;
-
     const monthlyMissedPunches = useMemo(() => {
         let count = 0;
         groupedByDate.forEach(group => {
@@ -294,6 +279,22 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
         });
         return count;
     }, [groupedByDate]);
+
+    const getDateRangeText = () => {
+        switch (selectedRange) {
+            case 'day':
+                return format(selectedDate, 'dd MMM, yyyy');
+            case 'week': {
+                const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
+                const weekEnd = endOfWeek(selectedDate, { weekStartsOn: 1 });
+                return `${format(weekStart, 'dd MMM')} - ${format(weekEnd, 'dd MMM, yyyy')}`;
+            }
+            case 'month':
+                return format(selectedDate, 'MMMM yyyy');
+        }
+    };
+
+    if (!user) return null;
 
     return (
         <div className="border-0 shadow-none md:bg-card md:p-6 md:rounded-xl md:shadow-card w-full">
@@ -543,6 +544,16 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                                                                 {durationBadge && (
                                                                     <span className={`text-[10px] font-semibold px-1.5 py-0.2 rounded-md ${durationBadge.bgClass} ${durationBadge.textClass}`}>
                                                                         ⏱ {durationBadge.text}
+                                                                    </span>
+                                                                )}
+                                                                {event.source === 'cctv' && (
+                                                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800 flex items-center gap-1">
+                                                                        📹 CCTV Verified
+                                                                    </span>
+                                                                )}
+                                                                {event.source === 'biometric' && (
+                                                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 border border-indigo-300 dark:bg-indigo-950 dark:text-indigo-300 dark:border-indigo-800 flex items-center gap-1">
+                                                                        🔐 Biometric
                                                                     </span>
                                                                 )}
                                                             </div>

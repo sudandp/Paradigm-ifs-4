@@ -3580,7 +3580,7 @@ export const api = {
     if (status.connected) {
       try {
         const query = supabase.from('attendance_events')
-          .select('id, user_id, timestamp, type, work_type, latitude, longitude, location_id, location_name, device_id, checkout_note, attachment_url, is_manual, created_by, reason, is_ot, battery_level, device_name, ip_address, network_type, source, steps, travel_distance')
+          .select('id, user_id, timestamp, type, work_type, latitude, longitude, location_id, location_name, device_id, checkout_note, attachment_url, is_manual, created_by, reason, is_ot, battery_level, device_name, ip_address, network_type, source, steps, travel_distance, cctv_log_id')
           .in('user_id', userIds)
           .gte('timestamp', start)
           .lte('timestamp', end)
@@ -3637,6 +3637,10 @@ export const api = {
       }
     } catch (err) {
       console.warn('[addAttendanceEvent] Failed to resolve current device info:', err);
+    }
+
+    if (!event.source) {
+      event.source = 'app';
     }
 
     const status = await Network.getStatus();

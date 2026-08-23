@@ -13,7 +13,7 @@ import {
   Camera, Plus, Trash2, Wifi, WifiOff, RefreshCw,
   Activity, Shield, AlertCircle, MapPin, UserPlus, Upload, X, CheckCircle,
   Maximize2, Minimize2, Video, Download, Sliders, Cpu, Server, Check, Copy, Sparkles,
-  SwitchCamera, Image as ImageIcon, RotateCw
+  SwitchCamera, Image as ImageIcon, RotateCw, Users, Loader2
 } from 'lucide-react';
 
 interface CctvDevice {
@@ -21,6 +21,7 @@ interface CctvDevice {
   edgeDeviceId: string;
   siteName: string;
   locationName: string;
+  locationId: string | null;
   organizationId: string;
   cameras: any[];
   status: 'online' | 'offline' | 'error';
@@ -307,6 +308,7 @@ interface NewDeviceForm {
   deviceSecret: string;
   siteName: string;
   locationName: string;
+  locationId: string;
   organizationId: string;
   matchThreshold: string;
   cooldownSeconds: string;
@@ -317,6 +319,7 @@ const DEFAULT_FORM: NewDeviceForm = {
   deviceSecret: '',
   siteName: '',
   locationName: '',
+  locationId: '',
   organizationId: '',
   matchThreshold: '0.45',
   cooldownSeconds: '300',
@@ -329,6 +332,7 @@ const ManageCctvDevices: React.FC = () => {
   const [ngrokProxy, setNgrokProxy] = useState(NGROK_PROXY_FALLBACK);
   const [devices, setDevices] = useState<CctvDevice[]>([]);
   const [organizations, setOrganizations] = useState<{ id: string; shortName: string }[]>([]);
+  const [availableLocations, setAvailableLocations] = useState<{ id: string; name: string }[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'devices' | 'enroll' | 'setup'>('devices');
@@ -347,6 +351,10 @@ const ManageCctvDevices: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [copiedKey, setCopiedKey] = useState(false);
 
+  // Bulk Face Sync state
+  const [isBulkSyncing, setIsBulkSyncing] = useState(false);
+  const [bulkSyncProgress, setBulkSyncProgress] = useState<{ current: number; total: number; success: number; failed: number } | null>(null);
+
   // Live Webcam state & refs
   const [isWebcamActive, setIsWebcamActive] = useState(false);
   const [webcamFacingMode, setWebcamFacingMode] = useState<'user' | 'environment'>('user');
@@ -358,7 +366,7 @@ const ManageCctvDevices: React.FC = () => {
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [{ data: devicesData }, { data: orgsData }] = await Promise.all([
+      const [{ data: devicesData }, { data: orgsData }, { data: locsData }] = await Promise.all([
         supabase
           .from('cctv_devices')
           .select('*')
@@ -367,7 +375,16 @@ const ManageCctvDevices: React.FC = () => {
           .from('organizations')
           .select('id, short_name')
           .eq('is_active', true),
+        supabase
+          .from('locations')
+          .select('id, name')
+          .order('name', { ascending: true })
+          .limit(500),
       ]);
+
+      if (locsData) {
+        setAvailableLocations(locsData);
+      }
 
       setDevices(
         (devicesData || []).map((d: any) => ({
@@ -375,6 +392,7 @@ const ManageCctvDevices: React.FC = () => {
           edgeDeviceId: d.edge_device_id,
           siteName: d.site_name || '',
           locationName: d.location_name || '',
+          locationId: d.location_id || null,
           organizationId: d.organization_id || '',
           cameras: d.cameras || [],
           status: d.status || 'offline',
@@ -458,6 +476,7 @@ const ManageCctvDevices: React.FC = () => {
         device_secret: form.deviceSecret.trim() || null,
         site_name: form.siteName.trim(),
         location_name: form.locationName.trim(),
+        location_id: form.locationId || null,
         organization_id: form.organizationId || null,
         match_threshold: parseFloat(form.matchThreshold),
         cooldown_seconds: parseInt(form.cooldownSeconds, 10),
@@ -657,6 +676,75 @@ const ManageCctvDevices: React.FC = () => {
       setEnrollResult({ success: false, message: `Enrollment failed: ${err.message}` });
     } finally {
       setIsEnrolling(false);
+    }
+  };
+
+  const handleBulkSyncUserPhotos = async () => {
+    if (!confirm('This will fetch profile photos for all registered employees from Supabase and enroll them into the CCTV Edge AI server. Proceed?')) return;
+    setIsBulkSyncing(true);
+    setBulkSyncProgress({ current: 0, total: 0, success: 0, failed: 0 });
+
+    try {
+      const { data: usersWithPhotos, error } = await supabase
+        .from('users')
+        .select('id, name, biometric_id, department, photo_url, organization_id')
+        .not('photo_url', 'is', null);
+
+      if (error || !usersWithPhotos || usersWithPhotos.length === 0) {
+        setToast({ message: 'No employees with profile photos found in Supabase.', type: 'error' });
+        return;
+      }
+
+      const total = usersWithPhotos.length;
+      let success = 0;
+      let failed = 0;
+      setBulkSyncProgress({ current: 0, total, success: 0, failed: 0 });
+
+      for (let i = 0; i < total; i++) {
+        const u = usersWithPhotos[i];
+        setBulkSyncProgress({ current: i + 1, total, success, failed });
+        try {
+          if (!u.photo_url) continue;
+          const imgRes = await fetch(u.photo_url);
+          if (!imgRes.ok) throw new Error('Failed to fetch photo');
+          const imgBlob = await imgRes.blob();
+
+          const formData = new FormData();
+          formData.append('user_id', u.id);
+          formData.append('user_name', u.name || 'Employee');
+          formData.append('biometric_id', u.biometric_id || '');
+          formData.append('department', u.department || 'General');
+          formData.append('organization_id', u.organization_id || '');
+          formData.append('photo', new File([imgBlob], 'face.jpg', { type: 'image/jpeg' }));
+
+          const res = await fetch(`${ngrokProxy}/camera/enroll`, {
+            method: 'POST',
+            headers: {
+              'ngrok-skip-browser-warning': '1',
+              'x-api-key': 'paradigm-attendance-secret-2024',
+            },
+            body: formData,
+            signal: AbortSignal.timeout(15000),
+          });
+
+          if (res.ok) {
+            success++;
+          } else {
+            failed++;
+          }
+        } catch {
+          failed++;
+        }
+      }
+
+      setToast({
+        message: `Batch face sync complete: ${success} enrolled successfully, ${failed} failed or skipped.`,
+        type: success > 0 ? 'success' : 'error',
+      });
+    } catch (err: any) {
+      setToast({ message: `Bulk enrollment error: ${err.message}`, type: 'error' });
+    } finally {
+      setIsBulkSyncing(false);
     }
   };
 
@@ -971,6 +1059,39 @@ const ManageCctvDevices: React.FC = () => {
       {activeTab === 'enroll' && (
         <div className="bg-card rounded-2xl border border-border p-6 md:p-8 shadow-sm">
           <div className="max-w-4xl">
+            {/* ── Bulk Face Sync Card ── */}
+            <div className="mb-6 p-4 rounded-xl bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-emerald-500/10 border border-emerald-300 dark:border-emerald-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="h-10 w-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                  <Users className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-primary-text flex items-center gap-2">
+                    Batch Face Vector Sync
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-600 text-white font-semibold">1-Click Auto</span>
+                  </h3>
+                  <p className="text-xs text-muted mt-0.5">
+                    Sync profile photos for all registered employees from Supabase to the CCTV Edge AI model for automatic gate attendance recognition.
+                  </p>
+                  {bulkSyncProgress && (
+                    <div className="mt-2 text-xs font-semibold text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Syncing {bulkSyncProgress.current} of {bulkSyncProgress.total} ({bulkSyncProgress.success} enrolled, {bulkSyncProgress.failed} skipped)...
+                    </div>
+                  )}
+                </div>
+              </div>
+              <Button
+                variant="primary"
+                onClick={handleBulkSyncUserPhotos}
+                disabled={isBulkSyncing}
+                className="shrink-0 text-xs px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-2"
+              >
+                {isBulkSyncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                {isBulkSyncing ? 'Syncing Photos...' : 'Sync All Employee Photos'}
+              </Button>
+            </div>
+
             <div className="flex items-center gap-3 mb-6 pb-4 border-b border-border">
               <div className="h-10 w-10 rounded-xl bg-emerald-500/10 flex items-center justify-center">
                 <UserPlus className="h-5 w-5 text-emerald-600" />
@@ -1326,6 +1447,15 @@ const ManageCctvDevices: React.FC = () => {
             value={form.locationName}
             onChange={e => setForm(f => ({ ...f, locationName: e.target.value }))}
           />
+
+          <Select
+            label="Site Geofenced Location"
+            value={form.locationId}
+            onChange={e => setForm(f => ({ ...f, locationId: e.target.value }))}
+          >
+            <option value="">-- Select Client Site Location (Optional) --</option>
+            {availableLocations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+          </Select>
 
           <Select
             label="Assign Organization"
