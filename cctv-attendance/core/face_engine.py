@@ -13,7 +13,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 
 import cv2
 import numpy as np
@@ -63,11 +63,16 @@ class FaceEngine:
 
     def __init__(
         self,
-        models_dir: Path = Path('./models'),
+        models_dir: Any = Path('./models'),
         detection_threshold: float = 0.55,
         det_size: tuple[int, int] = (960, 960),
     ):
-        self.models_dir = models_dir
+        if hasattr(models_dir, 'models_dir'):
+            self.models_dir = Path(models_dir.models_dir)
+        elif isinstance(models_dir, str):
+            self.models_dir = Path(models_dir)
+        else:
+            self.models_dir = models_dir
         self.detection_threshold = detection_threshold
         self.det_size = det_size
         self._app: Optional[FaceAnalysis] = None
@@ -394,8 +399,6 @@ class FaceEngine:
 
         if best_match and best_match.is_match:
             return best_match
-        return None
-        
         return None
 
     def generate_embedding(self, face_image: np.ndarray) -> Optional[np.ndarray]:

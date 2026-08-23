@@ -71,4 +71,11 @@ _backups/
 .env*.local
 public/firebase-messaging-sw.js
 
-.vercel
+# CCTV Attendance Edge Server
+cctv-attendance/models/
+cctv-attendance/data/
+cctv-attendance/snapshots/
+cctv-attendance/logs/
+cctv-attendance/.env
+*.onnx
+*.db

@@ -327,7 +327,7 @@ def create_admin_app(
                     det_score = float(f.det_score)
                     is_valid, diag = pipeline.face_engine.is_authentic_human_face_with_diagnostics(frame, bbox, kps)
                     diag["det_score"] = round(det_score, 3)
-                    diag["confidence_pass"] = bool(det_score >= 0.75)
+                    diag["confidence_pass"] = (det_score >= 0.75)
                     diag["is_human_verified"] = is_valid
                     candidates.append(diag)
             except Exception as e:
@@ -478,19 +478,21 @@ def create_admin_app(
                 pass
 
             candidates = stream._get_candidate_urls() if hasattr(stream, '_get_candidate_urls') else [raw_url]
+            active_url = getattr(stream, 'active_rtsp_url', None) or raw_url or ''
+            active_rtsp_display = active_url.split('@')[-1] if '@' in active_url else active_url
 
             results[c_name] = {
                 "camera_name": c_name,
                 "is_connected": stream.is_connected,
                 "frame_count": stream.frame_count,
                 "last_error": getattr(stream, 'last_error', ''),
-                "active_rtsp_url": getattr(stream, 'active_rtsp_url', raw_url).split('@')[-1],
+                "active_rtsp_url": active_rtsp_display,
                 "configured_host": host,
                 "configured_port": port,
                 "port_554_open": sock_open,
                 "host_pingable": ping_ok,
                 "socket_error": sock_error,
-                "candidate_urls_tested": [c.split('@')[-1] for c in candidates],
+                "candidate_urls_tested": [c.split('@')[-1] if (c and '@' in c) else (c or '') for c in candidates],
             }
 
         return {
@@ -694,6 +696,20 @@ def create_admin_app(
             raise HTTPException(500, str(e))
         finally:
             await dispatcher.close()
+
+    @app.post("/map/profile-photos")
+    async def trigger_profile_photo_mapping(force: bool = False):
+        """Extract ArcFace 512-dim embeddings from all Supabase profile photos and sync to edge."""
+        import sys
+        from pathlib import Path
+        script_dir = Path(__file__).resolve().parent.parent
+        sys.path.insert(0, str(script_dir))
+        from map_user_faces import run_batch_mapping
+        try:
+            res = run_batch_mapping(force=force, sync_edge=True)
+            return res
+        except Exception as e:
+            raise HTTPException(500, str(e))
 
     @app.post("/sync/queue")
     async def trigger_queue_drain():
