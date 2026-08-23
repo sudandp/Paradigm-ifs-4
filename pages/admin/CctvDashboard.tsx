@@ -794,10 +794,15 @@ const CctvDashboard: React.FC = () => {
           .gte('detected_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
           .order('detected_at', { ascending: false })
           .limit(50),
-        api.getUsers().catch(async () => {
-          const { data } = await supabase.from('users').select('*').limit(500);
-          return data || [];
-        }),
+        supabase
+          .from('users')
+          .select('id, name, email, role:roles(display_name), role_id, location, biometric_id, photo_url, face_embedding_512, organization_name, company')
+          .order('name', { ascending: true })
+          .limit(500)
+          .then(({ data, error }) => {
+            if (error) console.warn('[CCTV] Supabase users fetch error:', error);
+            return data || [];
+          }),
         api.getLocations().catch(async () => {
           const { data } = await supabase.from('locations').select('*').limit(1000);
           return data || [];
@@ -919,22 +924,24 @@ const CctvDashboard: React.FC = () => {
       setLogs(dedupedLogs);
 
       if (Array.isArray(usersResult) && usersResult.length > 0) {
-        setUserOptions(usersResult.map((u: any) => ({
-          id: u.id,
-          name: u.name || 'Unnamed Employee',
-          email: u.email || null,
-          role: u.role || u.roleId || null,
-          company: u.organizationName || u.organization_name || u.company || 'PARADIGM INTEGRATED FACILITY SERVICES PVT LTD',
-          location: u.location || null,
-          biometricId: u.biometricId || u.biometric_id || null,
-          photoUrl: u.photoUrl || u.photo_url || null,
-          isFaceEnrolled: Boolean(
-            (Array.isArray(u.faceEmbedding512) && u.faceEmbedding512.length > 0) ||
-            (Array.isArray(u.face_embedding_512) && u.face_embedding_512.length > 0) ||
-            u.faceEmbedding512 ||
-            u.face_embedding_512
-          ),
-        })));
+        setUserOptions(usersResult.map((u: any) => {
+          const emb = u.face_embedding_512 || u.faceEmbedding_512 || u.faceEmbedding512;
+          const isEnrolled = Boolean(
+            emb && (Array.isArray(emb) ? emb.length > 0 : true)
+          );
+          const roleDisplay = (Array.isArray(u.role) ? u.role[0]?.display_name : u.role?.display_name) || u.role_id || u.role || '';
+          return {
+            id: u.id,
+            name: u.name || 'Unnamed Employee',
+            email: u.email || null,
+            role: roleDisplay,
+            company: u.organizationName || u.organization_name || u.company || 'PARADIGM INTEGRATED FACILITY SERVICES PVT LTD',
+            location: u.location || null,
+            biometricId: u.biometricId || u.biometric_id || null,
+            photoUrl: u.photoUrl || u.photo_url || null,
+            isFaceEnrolled: isEnrolled,
+          };
+        }));
       }
 
       if (Array.isArray(locationsResult) && locationsResult.length > 0) {
