@@ -13,8 +13,9 @@ import {
   Camera, Plus, Trash2, Wifi, WifiOff, RefreshCw,
   Activity, Shield, AlertCircle, MapPin, UserPlus, Upload, X, CheckCircle,
   Maximize2, Minimize2, Video, Download, Sliders, Cpu, Server, Check, Copy, Sparkles,
-  SwitchCamera, Image as ImageIcon, RotateCw, Users, Loader2
+  SwitchCamera, Image as ImageIcon, RotateCw, Users, Loader2, Crosshair
 } from 'lucide-react';
+import { CctvActionZoneModal, ActionZonePoint } from '../../components/cctv/CctvActionZoneModal';
 
 interface CctvDevice {
   id: string;
@@ -362,6 +363,11 @@ const ManageCctvDevices: React.FC = () => {
   const [isCapturing, setIsCapturing] = useState(false);
   const webcamVideoRef = useRef<HTMLVideoElement>(null);
   const webcamStreamRef = useRef<MediaStream | null>(null);
+
+  // Action Zone (ROI) modal state
+  const [showActionZoneModal, setShowActionZoneModal] = useState(false);
+  const [selectedActionZoneCamera, setSelectedActionZoneCamera] = useState('main_gate_entry');
+  const [selectedActionZoneLocation, setSelectedActionZoneLocation] = useState('Paradigm Office');
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
@@ -1007,7 +1013,19 @@ const ManageCctvDevices: React.FC = () => {
 
                         {/* Bottom Actions & Heartbeat */}
                         <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-border/70">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <button
+                              onClick={() => {
+                                const camName = device.cameras?.[0]?.name || 'main_gate_entry';
+                                setSelectedActionZoneCamera(camName);
+                                setSelectedActionZoneLocation(device.locationName || device.siteName || 'Paradigm Office');
+                                setShowActionZoneModal(true);
+                              }}
+                              className="px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 font-semibold text-xs transition-colors flex items-center gap-1.5"
+                              title="Configure polygon area for face capture"
+                            >
+                              <Crosshair className="h-3.5 w-3.5 text-rose-600" /> Action Zone (ROI)
+                            </button>
                             <button
                               onClick={() => setActiveTab('enroll')}
                               className="px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-semibold text-xs transition-colors flex items-center gap-1.5"
@@ -1488,6 +1506,23 @@ const ManageCctvDevices: React.FC = () => {
           </div>
         </div>
       </Modal>
+
+      {/* Action Zone (ROI) Configuration Modal */}
+      <CctvActionZoneModal
+        isOpen={showActionZoneModal}
+        onClose={() => setShowActionZoneModal(false)}
+        cameraName={selectedActionZoneCamera}
+        locationName={selectedActionZoneLocation}
+        proxyUrl={ngrokProxy}
+        onSaved={(newPoly, enabled) => {
+          setToast({
+            message: enabled
+              ? 'Action Zone updated and active! Face capture is now restricted to the defined area.'
+              : 'Action Zone disabled. Full camera view is active.',
+            type: 'success',
+          });
+        }}
+      />
     </div>
   );
 };

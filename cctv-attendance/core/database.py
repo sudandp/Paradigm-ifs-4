@@ -114,6 +114,14 @@ class LocalDatabase:
                 updated_at      REAL DEFAULT (strftime('%s', 'now'))
             );
 
+            -- Camera Action Zones (ROI polygon bounds)
+            CREATE TABLE IF NOT EXISTS camera_action_zones (
+                camera_name     TEXT PRIMARY KEY,
+                polygon         TEXT NOT NULL,            -- JSON array of [[x, y], ...]
+                enabled         INTEGER DEFAULT 1,
+                updated_at      REAL DEFAULT (strftime('%s', 'now'))
+            );
+
             -- Indexes
             CREATE INDEX IF NOT EXISTS idx_detection_timestamp ON detection_log(timestamp);
             CREATE INDEX IF NOT EXISTS idx_detection_user ON detection_log(user_id);
@@ -361,3 +369,54 @@ class LocalDatabase:
                 updated_at = excluded.updated_at
         """, (key, value, time.time()))
         self.conn.commit()
+
+    # ─── Camera Action Zones (ROI) ───────────────────────────────────────────
+
+    def set_action_zone(self, camera_name: str, polygon: list[list[float]], enabled: bool = True) -> None:
+        """Save or update camera Action Zone polygon (list of normalized [x, y] coordinates)."""
+        poly_json = json.dumps(polygon)
+        self.conn.execute("""
+            INSERT INTO camera_action_zones (camera_name, polygon, enabled, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(camera_name) DO UPDATE SET
+                polygon = excluded.polygon,
+                enabled = excluded.enabled,
+                updated_at = excluded.updated_at
+        """, (camera_name, poly_json, 1 if enabled else 0, time.time()))
+        self.conn.commit()
+
+    def get_action_zone(self, camera_name: str) -> Optional[dict]:
+        """Get the defined action zone for a specific camera."""
+        row = self.conn.execute(
+            "SELECT polygon, enabled, updated_at FROM camera_action_zones WHERE camera_name = ?",
+            (camera_name,)
+        ).fetchone()
+        if not row:
+            return None
+        try:
+            poly = json.loads(row['polygon'])
+            return {
+                "camera_name": camera_name,
+                "polygon": poly,
+                "enabled": bool(row['enabled']),
+                "updated_at": row['updated_at'],
+            }
+        except Exception:
+            return None
+
+    def get_all_action_zones(self) -> dict[str, dict]:
+        """Get all defined camera action zones."""
+        rows = self.conn.execute(
+            "SELECT camera_name, polygon, enabled, updated_at FROM camera_action_zones"
+        ).fetchall()
+        result = {}
+        for r in rows:
+            try:
+                result[r['camera_name']] = {
+                    "polygon": json.loads(r['polygon']),
+                    "enabled": bool(r['enabled']),
+                    "updated_at": r['updated_at'],
+                }
+            except Exception:
+                continue
+        return result

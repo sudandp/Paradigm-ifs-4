@@ -24,10 +24,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from loguru import logger
 from PIL import Image
+from pydantic import BaseModel
 
 from .config import AppConfig
 from .database import LocalDatabase
 from .face_engine import FaceEngine
+
+
+class ActionZonePayload(BaseModel):
+    polygon: list[list[float]] = []
+    enabled: bool = True
 
 
 def _make_reconnecting_frame(cam_name: str = "main_gate_entry", status_text: str = "", width: int = 800, height: int = 450) -> "np.ndarray":
@@ -142,6 +148,42 @@ def _draw_ai_tracking_overlay(frame: np.ndarray, tracks: list[dict]) -> np.ndarr
     return frame
 
 
+def _draw_action_zone_overlay(frame: np.ndarray, polygon: list[list[float]]) -> np.ndarray:
+    """Draw red action zone (ROI) polygon overlay onto video frame."""
+    if not polygon or len(polygon) < 3:
+        return frame
+    try:
+        h, w = frame.shape[:2]
+        pts = np.array(
+            [[round(p[0] * w), round(p[1] * h)] for p in polygon],
+            dtype=np.int32
+        )
+        # Semi-transparent red fill overlay
+        overlay = frame.copy()
+        cv2.fillPoly(overlay, [pts], (20, 20, 220))  # BGR Red
+        cv2.addWeighted(overlay, 0.12, frame, 0.88, 0, frame)
+
+        # Crisp 2px solid/dashed red border
+        cv2.polylines(frame, [pts], isClosed=True, color=(0, 40, 255), thickness=2, lineType=cv2.LINE_AA)
+
+        # Corner vertex markers
+        for i, (px, py) in enumerate(pts):
+            cv2.circle(frame, (px, py), 5, (0, 30, 255), -1)
+            cv2.circle(frame, (px, py), 2, (255, 255, 255), -1)
+
+        # Badge tag near highest vertex
+        top_pt = min(pts, key=lambda p: p[1])
+        tag_x = max(10, min(w - 180, top_pt[0] - 50))
+        tag_y = max(24, top_pt[1] - 8)
+        cv2.rectangle(frame, (tag_x - 4, tag_y - 14), (tag_x + 160, tag_y + 4), (0, 0, 0), -1)
+        cv2.putText(
+            frame, "ACTION ZONE: ACTIVE",
+            (tag_x, tag_y),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.38, (0, 60, 255), 1, cv2.LINE_AA
+        )
+    except Exception as e:
+        logger.debug(f"[AdminServer] Action zone draw error: {e}")
+    return frame
 
 
 def create_admin_app(
@@ -317,6 +359,8 @@ def create_admin_app(
         frame = captured.frame
         h, w = frame.shape[:2]
 
+        cam_action_zone = pipeline.action_zones.get(camera_name) if pipeline and hasattr(pipeline, 'action_zones') else None
+
         candidates = []
         if pipeline.face_engine and pipeline.face_engine.is_ready:
             try:
@@ -325,7 +369,9 @@ def create_admin_app(
                     bbox = f.bbox.astype(int)
                     kps = getattr(f, 'kps', None)
                     det_score = float(f.det_score)
-                    is_valid, diag = pipeline.face_engine.is_authentic_human_face_with_diagnostics(frame, bbox, kps)
+                    is_valid, diag = pipeline.face_engine.is_authentic_human_face_with_diagnostics(
+                        frame, bbox, kps, action_zone=cam_action_zone
+                    )
                     diag["det_score"] = round(det_score, 3)
                     diag["confidence_pass"] = (det_score >= 0.75)
                     diag["is_human_verified"] = is_valid
@@ -337,6 +383,8 @@ def create_admin_app(
             "camera_name": camera_name,
             "resolution": f"{w}x{h}",
             "timestamp": time.time(),
+            "action_zone_active": bool(cam_action_zone and len(cam_action_zone) >= 3),
+            "action_zone_vertices": cam_action_zone or [],
             "candidate_count": len(candidates),
             "accepted_count": sum(1 for c in candidates if c.get("is_human_verified")),
             "rejected_count": sum(1 for c in candidates if not c.get("is_human_verified")),
@@ -351,6 +399,36 @@ def create_admin_app(
             return {"status": "success", "message": "Purged false unknown records", "count": purged}
         except Exception as e:
             return {"status": "error", "message": str(e)}
+
+    # ─── Camera Action Zone (ROI) Configuration ──────────────────────────────
+
+    @app.get("/camera/action-zone/{camera_name}")
+    async def get_camera_action_zone(camera_name: str):
+        """Get user-configured Action Zone (ROI polygon) for a camera."""
+        zone_data = db.get_action_zone(camera_name)
+        if not zone_data:
+            return {
+                "camera_name": camera_name,
+                "polygon": [],
+                "enabled": False,
+                "updated_at": None,
+            }
+        return zone_data
+
+    @app.post("/camera/action-zone/{camera_name}")
+    async def set_camera_action_zone(camera_name: str, payload: ActionZonePayload):
+        """Save and immediately activate Action Zone (ROI polygon) for a camera."""
+        if pipeline:
+            pipeline.set_camera_action_zone(camera_name, payload.polygon, payload.enabled)
+        else:
+            db.set_action_zone(camera_name, payload.polygon, payload.enabled)
+        return {
+            "status": "success",
+            "message": f"Action Zone updated for camera '{camera_name}'",
+            "camera_name": camera_name,
+            "polygon": payload.polygon,
+            "enabled": payload.enabled,
+        }
 
     @app.get("/camera/stream/{camera_name}")
     async def camera_mjpeg_stream(camera_name: str):
@@ -373,12 +451,13 @@ def create_admin_app(
                     captured = stream.get_frame()
                     if captured is not None and captured.frame is not None:
                         frame_img = captured.frame
-                        # Render AI object + face tracking overlay (short 0.45s expiry)
+
+                        # Render AI multi-face tracking overlay for all 5-10 people simultaneously (clean stream, no zone box)
                         if pipeline and hasattr(pipeline, 'latest_tracks'):
                             now = time.time()
                             tracks = [
                                 t for t in pipeline.latest_tracks.get(camera_name, [])
-                                if now - t.get('timestamp', 0) < 0.45
+                                if now - t.get('timestamp', 0) < 0.85
                             ]
                             if tracks:
                                 frame_img = frame_img.copy()

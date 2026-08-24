@@ -64,7 +64,7 @@ class FaceEngine:
     def __init__(
         self,
         models_dir: Any = Path('./models'),
-        detection_threshold: float = 0.55,
+        detection_threshold: float = 0.45,
         det_size: tuple[int, int] = (960, 960),
     ):
         if hasattr(models_dir, 'models_dir'):
@@ -138,12 +138,14 @@ class FaceEngine:
         frame: np.ndarray,
         bbox: np.ndarray | list[int],
         kps: Optional[np.ndarray] = None,
+        action_zone: Optional[list[list[float]]] = None,
     ) -> tuple[bool, dict]:
         """Multi-stage validation optimized for multi-person crowd & stairway surveillance:
-        Rejects background foliage, vehicle lights, and non-human objects
+        Rejects background foliage, vehicle lights, non-human objects, and out-of-zone faces
         without rejecting real people in crowds or under night lighting.
 
         Rejection checks (in order):
+          0. Action Zone ROI boundary check (if configured by user)
           1. Minimum size (22×22px)
           2. Aspect ratio (0.45–1.85)
           3. Foliage green filter (HSV green > 35%)
@@ -163,6 +165,7 @@ class FaceEngine:
             "texture_variance": 0.0,
             "eye_distance_px": 0.0,
             "in_exclusion_roi": False,
+            "in_action_zone": True,
             "status": "REJECTED",
             "reason": "Unknown",
         }
@@ -176,9 +179,18 @@ class FaceEngine:
             diag["width"] = fw
             diag["height"] = fh
 
-            # Minimum size check (22x22px for distant crowd / stair depth)
-            if fw < 22 or fh < 22:
-                diag["reason"] = f"Face dimensions too small ({fw}x{fh}px < 22x22px)"
+            # ── Check 0: Action Zone (User-Defined ROI Polygon) ──
+            if action_zone and len(action_zone) >= 3:
+                in_zone = FaceEngine.is_bbox_in_action_zone(bbox, (h, w), action_zone)
+                diag["in_action_zone"] = in_zone
+                if not in_zone:
+                    fcx, fcy = (x1 + x2) // 2, (y1 + y2) // 2
+                    diag["reason"] = f"Face position ({fcx},{fcy}px) is outside defined Action Zone"
+                    return False, diag
+
+            # Minimum size check (18x18px for distant crowd / stair depth)
+            if fw < 18 or fh < 18:
+                diag["reason"] = f"Face dimensions too small ({fw}x{fh}px < 18x18px)"
                 return False, diag
 
             aspect = fw / float(max(1, fh))
@@ -195,7 +207,7 @@ class FaceEngine:
             total_pixels = float(crop.shape[0] * crop.shape[1])
 
             # ── Check 1: Pure Foliage Green Filter (HSV) ──
-            # Reject if crop is dominated by plant chlorophyll green (>35%)
+            # Reject if crop is dominated by plant chlorophyll green (>38%)
             hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
             hue = hsv[:, :, 0]
             sat = hsv[:, :, 1]
@@ -203,13 +215,12 @@ class FaceEngine:
             green_ratio = float(np.sum(green_mask)) / total_pixels
             diag["green_ratio_pct"] = round(green_ratio * 100.0, 1)
 
-            if green_ratio > 0.35:
-                diag["reason"] = f"High vegetation green content ({green_ratio*100:.1f}% > 35%)"
+            if green_ratio > 0.38:
+                diag["reason"] = f"High vegetation green content ({green_ratio*100:.1f}% > 38%)"
                 return False, diag
 
             # ── Check 2: Red/Orange Vehicle Light Rejection (HSV) ──
             # Catches tail lights, brake lights, reflectors, indicator LEDs
-            # Red wraps around in HSV: H ∈ [0,10] ∪ [160,180], S > 100, V > 100
             val = hsv[:, :, 2]
             red_low = (hue <= 10) & (sat >= 100) & (val >= 100)
             red_high = (hue >= 160) & (sat >= 100) & (val >= 100)
@@ -217,13 +228,12 @@ class FaceEngine:
             red_ratio = float(np.sum(red_mask)) / total_pixels
             diag["red_light_ratio_pct"] = round(red_ratio * 100.0, 1)
 
-            if red_ratio > 0.25:
-                diag["reason"] = f"Red/orange vehicle light detected ({red_ratio*100:.1f}% > 25%)"
+            if red_ratio > 0.30:
+                diag["reason"] = f"Red/orange vehicle light detected ({red_ratio*100:.1f}% > 30%)"
                 return False, diag
 
             # ── Check 3: Skin Tone Minimum (YCrCb chrominance) ──
-            # Robust across all skin tones under varying lighting
-            # Standard skin range: Cr ∈ [133, 173], Cb ∈ [77, 127]
+            # Robust across all skin tones under varying lighting & stairs depth
             ycrcb = cv2.cvtColor(crop, cv2.COLOR_BGR2YCrCb)
             cr = ycrcb[:, :, 1]
             cb = ycrcb[:, :, 2]
@@ -231,19 +241,20 @@ class FaceEngine:
             skin_ratio = float(np.sum(skin_mask)) / total_pixels
             diag["skin_ratio_pct"] = round(skin_ratio * 100.0, 1)
 
-            if skin_ratio < 0.12:
-                diag["reason"] = f"No human skin detected ({skin_ratio*100:.1f}% < 12%)"
+            min_skin = 0.05 if (kps is not None and len(kps) >= 5) else 0.08
+            if skin_ratio < min_skin:
+                diag["reason"] = f"No human skin detected ({skin_ratio*100:.1f}% < {min_skin*100:.0f}%)"
                 return False, diag
 
             # ── Check 4: Texture Complexity (Laplacian variance) ──
             # Flat-colored blobs (lights, signs, paint) have very low texture
-            # Real faces always have texture from eyes, nose, skin pores
             gray_crop = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
             laplacian_var = float(cv2.Laplacian(gray_crop, cv2.CV_64F).var())
             diag["texture_variance"] = round(laplacian_var, 1)
 
-            if laplacian_var < 15.0:
-                diag["reason"] = f"Low texture / flat blob ({laplacian_var:.1f} < 15.0)"
+            min_texture = 10.0 if (kps is not None and len(kps) >= 5) else 13.0
+            if laplacian_var < min_texture:
+                diag["reason"] = f"Low texture / flat blob ({laplacian_var:.1f} < {min_texture:.1f})"
                 return False, diag
 
             # ── Check 5: 5-Point Facial Landmark Topology Check ──
@@ -261,7 +272,7 @@ class FaceEngine:
                     return False, diag
 
             diag["status"] = "ACCEPTED"
-            diag["reason"] = "Authentic Human Face Verified"
+            diag["reason"] = "Authentic Human Face Verified (Inside Action Zone)"
             return True, diag
 
         except Exception as e:
@@ -269,20 +280,72 @@ class FaceEngine:
             return True, diag
 
     @staticmethod
+    def is_bbox_in_action_zone(
+        bbox: np.ndarray | list[int],
+        frame_shape: tuple[int, ...],
+        action_zone: Optional[list[list[float]]],
+    ) -> bool:
+        """Check if face bounding box is inside user-configured Action Zone polygon.
+        
+        Args:
+            bbox: [x1, y1, x2, y2] in pixel coords
+            frame_shape: (H, W) or (H, W, C)
+            action_zone: list of normalized points [[x, y], ...] where 0.0 <= x,y <= 1.0
+        """
+        if not action_zone or len(action_zone) < 3:
+            return True
+
+        try:
+            h, w = frame_shape[:2]
+            x1, y1, x2, y2 = [int(v) for v in bbox]
+            
+            # Key sample points of face: center, chin, top
+            fcx = float(x1 + x2) / 2.0
+            fcy = float(y1 + y2) / 2.0
+            chin_y = float(y2)
+            
+            # Pixel polygon array
+            poly_pts = np.array(
+                [[round(p[0] * w), round(p[1] * h)] for p in action_zone],
+                dtype=np.int32
+            )
+
+            # Test face center
+            dist_center = cv2.pointPolygonTest(poly_pts, (fcx, fcy), False)
+            if dist_center >= 0:
+                return True
+
+            # Test chin point (for people entering the zone)
+            dist_chin = cv2.pointPolygonTest(poly_pts, (fcx, chin_y), False)
+            if dist_chin >= 0:
+                return True
+
+            return False
+        except Exception as e:
+            logger.error(f"[FaceEngine] Error checking action zone: {e}")
+            return True
+
+    @staticmethod
     def is_authentic_human_face(
         frame: np.ndarray,
         bbox: np.ndarray | list[int],
         kps: Optional[np.ndarray] = None,
+        action_zone: Optional[list[list[float]]] = None,
     ) -> bool:
         """Boolean wrapper for biometric authenticity check."""
-        is_valid, _ = FaceEngine.is_authentic_human_face_with_diagnostics(frame, bbox, kps)
+        is_valid, _ = FaceEngine.is_authentic_human_face_with_diagnostics(frame, bbox, kps, action_zone=action_zone)
         return is_valid
 
-    def detect_faces(self, frame: np.ndarray) -> list[DetectedFace]:
+    def detect_faces(
+        self,
+        frame: np.ndarray,
+        action_zone: Optional[list[list[float]]] = None,
+    ) -> list[DetectedFace]:
         """Detect ALL faces in a frame simultaneously and generate embeddings.
         
         Args:
             frame: BGR image (OpenCV format)
+            action_zone: Optional normalized polygon [[x, y], ...] defining capture zone.
             
         Returns:
             List of DetectedFace with bounding boxes, embeddings, and scores.
@@ -304,8 +367,8 @@ class FaceEngine:
                 bbox = face.bbox.astype(int)
                 kps = getattr(face, 'kps', None)
 
-                # 2. Authentic Face Validation
-                if not self.is_authentic_human_face(frame, bbox, kps):
+                # 2. Authentic Face & Action Zone Validation
+                if not self.is_authentic_human_face(frame, bbox, kps, action_zone=action_zone):
                     continue
 
                 face_crop, sharpness = self.extract_high_res_portrait(frame, bbox)

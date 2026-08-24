@@ -73,6 +73,10 @@ class AttendancePipeline:
         # is_match, direction, timestamp, object_type, label
         self.latest_tracks: dict[str, list[dict]] = {}
 
+        # Configured camera Action Zones (ROI polygon bounds)
+        # Structure: {camera_name: [[x1, y1], [x2, y2], ...]} (normalized 0.0-1.0 coords)
+        self.action_zones: dict[str, list[list[float]]] = {}
+
         # Unknown face cooldown — prevent same person creating duplicate queue entries
         # Structure: {camera_name: [(embedding_vec, last_seen_timestamp), ...]}
         # Compares cosine similarity — if > 0.78 within cooldown window → skip
@@ -93,6 +97,13 @@ class AttendancePipeline:
         # 1. Database
         self.db.connect()
         logger.info(f"[Pipeline] Database: {self.config.db_path}")
+
+        # 1.1 Load Camera Action Zones (ROI Polygons)
+        zones_map = self.db.get_all_action_zones()
+        for cname, zdata in zones_map.items():
+            if zdata.get('enabled') and zdata.get('polygon'):
+                self.action_zones[cname] = zdata['polygon']
+        logger.info(f"[Pipeline] Loaded {len(self.action_zones)} active camera Action Zones")
 
         # 2. Object Detector (YOLO Layer 1)
         obj_ready = self.object_detector.initialize()
@@ -137,6 +148,7 @@ class AttendancePipeline:
         logger.info(
             f"[Pipeline] Ready — {connected} cameras, "
             f"{len(self._enrolled)} enrolled faces, "
+            f"action_zones={len(self.action_zones)}, "
             f"object_detector={'ON' if obj_ready else 'OFF (face-only)'}"
         )
         return True
@@ -273,9 +285,10 @@ class AttendancePipeline:
             except Exception as e:
                 logger.debug(f"[Pipeline] YOLO detection error (non-fatal): {e}")
 
-        # ── Layer 2: Concurrent Multi-Face Detection (Full-Frame InsightFace) ────────
+        # ── Layer 2: Concurrent Multi-Face Detection (InsightFace within Action Zone) ────────
+        cam_action_zone = self.action_zones.get(captured.camera_name)
         faces: list[DetectedFace] = await loop.run_in_executor(
-            None, self.face_engine.detect_faces, captured.frame
+            None, self.face_engine.detect_faces, captured.frame, cam_action_zone
         )
 
         if faces:
@@ -354,8 +367,9 @@ class AttendancePipeline:
     ) -> None:
         """Fallback path when YOLO is unavailable — run InsightFace on full frame."""
         loop = asyncio.get_event_loop()
+        cam_action_zone = self.action_zones.get(captured.camera_name)
         faces: list[DetectedFace] = await loop.run_in_executor(
-            None, self.face_engine.detect_faces, captured.frame
+            None, self.face_engine.detect_faces, captured.frame, cam_action_zone
         )
 
         if not faces:
@@ -653,6 +667,27 @@ class AttendancePipeline:
         cv2.imwrite(str(filepath), face_crop, [cv2.IMWRITE_JPEG_QUALITY, 92])
         return str(filepath)
 
+
+    def set_camera_action_zone(
+        self,
+        camera_name: str,
+        polygon: list[list[float]],
+        enabled: bool = True,
+    ) -> None:
+        """Update and persist Action Zone polygon for a camera at runtime."""
+        self.db.set_action_zone(camera_name, polygon, enabled)
+        if enabled and polygon and len(polygon) >= 3:
+            self.action_zones[camera_name] = polygon
+        else:
+            self.action_zones.pop(camera_name, None)
+        logger.info(
+            f"[Pipeline] Action Zone updated for camera '{camera_name}' "
+            f"(enabled={enabled}, vertices={len(polygon) if polygon else 0})"
+        )
+
+    def get_camera_action_zone(self, camera_name: str) -> Optional[dict]:
+        """Get action zone configuration for a camera."""
+        return self.db.get_action_zone(camera_name)
 
     def get_stats(self) -> dict:
         """Get current pipeline statistics."""

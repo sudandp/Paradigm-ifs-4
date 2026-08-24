@@ -10,12 +10,13 @@ import AdminPageHeader from '../../components/admin/AdminPageHeader';
 import { ProfilePlaceholder } from '../../components/ui/ProfilePlaceholder';
 import {
   Activity, ArrowRight, ArrowLeft, AlertTriangle, RefreshCw,
-  Camera, CheckCircle, XCircle, Eye, UserPlus, UserCheck,
+  Camera, CheckCircle, XCircle, Eye, EyeOff, UserPlus, UserCheck,
   Maximize2, Minimize2, Video, Download, Shield, Cpu, Clock, Search,
   ZoomIn, ZoomOut, RotateCcw, User, Layers, Sparkles, SplitSquareVertical, Sliders,
-  ChevronLeft, ChevronRight, ChevronDown, Edit2, MapPin
+  ChevronLeft, ChevronRight, ChevronDown, Edit2, MapPin, Crosshair
 } from 'lucide-react';
 import { CctvQuickMapModal, UserOptionItem, SiteLocationItem, QuickMapTargetLog } from '../../components/cctv/CctvQuickMapModal';
+import { CctvActionZoneModal, ActionZonePoint, resampleToFixed20Points } from '../../components/cctv/CctvActionZoneModal';
 import { cctvAttendanceBridgeService } from '../../services/cctvAttendanceBridge';
 
 // Fallback URL used ONLY when Supabase has no ngrok_url yet (first boot before heartbeat).
@@ -77,7 +78,19 @@ const NvrCameraStream: React.FC<{
   camName: string;
   proxyUrl: string;
   locationName?: string;
-}> = ({ camName, proxyUrl, locationName }) => {
+  actionZone?: ActionZonePoint[];
+  isActionZoneEnabled?: boolean;
+  showZoneOverlay?: boolean;
+  onOpenActionZoneModal?: () => void;
+}> = ({
+  camName,
+  proxyUrl,
+  locationName,
+  actionZone,
+  isActionZoneEnabled = true,
+  showZoneOverlay = true,
+  onOpenActionZoneModal,
+}) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isConnected, setIsConnected] = useState(true);
   const [hasError, setHasError] = useState(false);
@@ -145,6 +158,11 @@ const NvrCameraStream: React.FC<{
     }
   };
 
+  const hasValidActionZone = isActionZoneEnabled && actionZone && actionZone.length >= 3;
+  const actionZoneSvgPoints = hasValidActionZone
+    ? actionZone!.map(p => `${p.x * 100},${p.y * 100}`).join(' ')
+    : '';
+
   return (
     <>
       <div
@@ -180,6 +198,44 @@ const NvrCameraStream: React.FC<{
           className={`w-full h-full object-cover block ${hasError ? 'opacity-0' : 'opacity-100'}`}
         />
 
+        {/* Action Zone (ROI) Polygon Live Stream HUD Overlay */}
+        {showZoneOverlay && hasValidActionZone && !hasError && (
+          <div className="absolute inset-0 pointer-events-none z-15">
+            <svg
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+              className="w-full h-full"
+            >
+              {/* Semi-transparent red capture zone */}
+              <polygon
+                points={actionZoneSvgPoints}
+                fill="rgba(239, 68, 68, 0.15)"
+                stroke="#ef4444"
+                strokeWidth="0.8"
+                strokeDasharray="2, 1"
+              />
+              <polygon
+                points={actionZoneSvgPoints}
+                fill="none"
+                stroke="#ff4d4f"
+                strokeWidth="0.4"
+              />
+            </svg>
+            {/* Corner Pin Badges */}
+            {actionZone!.map((p, i) => (
+              <div
+                key={i}
+                style={{ left: `${p.x * 100}%`, top: `${p.y * 100}%` }}
+                className="absolute -translate-x-1/2 -translate-y-1/2 flex items-center justify-center pointer-events-none"
+              >
+                <span className="h-3 w-3 rounded-full bg-rose-600 border border-white text-[7px] font-bold text-white flex items-center justify-center shadow-xs">
+                  {i + 1}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Top OSD Bar */}
         <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none z-20">
           <div className="flex items-center gap-2">
@@ -191,9 +247,17 @@ const NvrCameraStream: React.FC<{
               CAM-01 • {locationName || 'Paradigm Office (Main Gate)'}
             </span>
           </div>
-          <span className="text-[11px] font-mono text-neutral-300 bg-neutral-900/80 border border-white/10 px-2.5 py-1 rounded-full backdrop-blur-md">
-            {currentTime}
-          </span>
+          <div className="flex items-center gap-2">
+            {hasValidActionZone && showZoneOverlay && (
+              <span className="text-[10px] font-bold text-rose-300 bg-rose-950/80 border border-rose-500/40 px-2 py-0.5 rounded-full backdrop-blur-md flex items-center gap-1">
+                <span className="h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse" />
+                ZONE FILTER: ACTIVE
+              </span>
+            )}
+            <span className="text-[11px] font-mono text-neutral-300 bg-neutral-900/80 border border-white/10 px-2.5 py-1 rounded-full backdrop-blur-md">
+              {currentTime}
+            </span>
+          </div>
         </div>
 
         {/* Bottom OSD Bar */}
@@ -207,6 +271,15 @@ const NvrCameraStream: React.FC<{
             </span>
           </div>
           <div className="flex items-center gap-1.5 pointer-events-auto opacity-0 group-hover:opacity-100 transition-opacity">
+            {onOpenActionZoneModal && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onOpenActionZoneModal(); }}
+                className="p-2 bg-neutral-900/85 hover:bg-neutral-800 text-rose-400 hover:text-rose-300 rounded-xl border border-white/15 backdrop-blur-md transition-all shadow-sm flex items-center gap-1"
+                title="Define Action Zone (Face Capture Area)"
+              >
+                <Crosshair className="h-3.5 w-3.5" />
+              </button>
+            )}
             <button
               onClick={handleDownloadSnapshot}
               className="p-2 bg-neutral-900/85 hover:bg-neutral-800 text-white rounded-xl border border-white/15 backdrop-blur-md transition-all shadow-sm"
@@ -256,15 +329,45 @@ const NvrCameraStream: React.FC<{
                 imageRendering: 'auto',
               }}
             />
+            {/* Fullscreen Action Zone Overlay */}
+            {showZoneOverlay && hasValidActionZone && (
+              <svg
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+                className="absolute inset-0 w-full h-full pointer-events-none"
+              >
+                <polygon
+                  points={actionZoneSvgPoints}
+                  fill="rgba(239, 68, 68, 0.12)"
+                  stroke="#ef4444"
+                  strokeWidth="0.6"
+                  strokeDasharray="2, 1"
+                />
+              </svg>
+            )}
             <div className="absolute top-4 left-4 text-emerald-400 text-xs font-mono bg-black/70 px-3 py-2 rounded-xl border border-emerald-500/20 pointer-events-none flex items-center gap-2 backdrop-blur-sm">
               <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
               AI FACE RECOGNITION ACTIVE • INSIGHTFACE 512D
             </div>
+            {hasValidActionZone && (
+              <div className="absolute top-4 right-4 text-rose-400 text-xs font-mono bg-black/70 px-3 py-2 rounded-xl border border-rose-500/30 pointer-events-none flex items-center gap-2 backdrop-blur-sm">
+                <Crosshair className="h-3.5 w-3.5 text-rose-500 animate-pulse" />
+                ACTION ZONE (ROI) ACTIVE
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-between px-6 py-3 bg-black/80 border-t border-white/10 text-xs text-slate-400 font-mono flex-shrink-0" onClick={e => e.stopPropagation()}>
             <span>Paradigm IFS • Real-Time CCTV AI Attendance • RTSP TCP</span>
             <div className="flex gap-3">
+              {onOpenActionZoneModal && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setIsFullscreen(false); onOpenActionZoneModal(); }}
+                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold flex items-center gap-2"
+                >
+                  <Crosshair className="h-4 w-4" /> Edit Action Zone
+                </button>
+              )}
               <button onClick={handleDownloadSnapshot} className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-semibold flex items-center gap-2">
                 <Download className="h-4 w-4" /> Save Snapshot
               </button>
@@ -566,6 +669,18 @@ const CctvDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'live' | 'unknown' | 'debugger' | 'registered'>('live');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Action Zone (ROI) state
+  const [showActionZoneModal, setShowActionZoneModal] = useState(false);
+  const [actionZonePolygon, setActionZonePolygon] = useState<ActionZonePoint[]>([
+    { x: 0.24, y: 0.70 }, { x: 0.27, y: 0.65 }, { x: 0.31, y: 0.60 }, { x: 0.35, y: 0.56 },
+    { x: 0.40, y: 0.52 }, { x: 0.45, y: 0.48 }, { x: 0.49, y: 0.46 }, { x: 0.53, y: 0.46 },
+    { x: 0.58, y: 0.50 }, { x: 0.64, y: 0.56 }, { x: 0.69, y: 0.62 }, { x: 0.74, y: 0.67 },
+    { x: 0.71, y: 0.72 }, { x: 0.65, y: 0.76 }, { x: 0.58, y: 0.80 }, { x: 0.51, y: 0.83 },
+    { x: 0.44, y: 0.85 }, { x: 0.37, y: 0.85 }, { x: 0.31, y: 0.81 }, { x: 0.26, y: 0.76 }
+  ]);
+  const [isActionZoneEnabled, setIsActionZoneEnabled] = useState(true);
+  const [showStreamZoneOverlay, setShowStreamZoneOverlay] = useState(false);
 
   const formatCameraLocation = (camName?: string | null) => {
     if (!camName) return 'Paradigm Office (Main Gate)';
@@ -995,23 +1110,50 @@ const CctvDashboard: React.FC = () => {
     }
   };
 
-  // Fetch the live ngrok_url from cctv_devices once on mount
+  // Fetch the live ngrok_url & action_zones from cctv_devices once on mount
   useEffect(() => {
     const loadProxyUrl = async () => {
       try {
         const { data } = await supabase
           .from('cctv_devices')
-          .select('ngrok_url')
-          .not('ngrok_url', 'is', null)
+          .select('ngrok_url, action_zones')
           .order('updated_at', { ascending: false })
           .limit(1)
           .maybeSingle();
+
         if (data?.ngrok_url) {
           setNgrokProxy(data.ngrok_url.replace(/\/$/, ''));
           setManualStreamInput(data.ngrok_url.replace(/\/$/, ''));
         }
+
+        // Load saved Action Zone configuration (always ensuring exactly 20 points)
+        if (data?.action_zones && data.action_zones['main_gate_entry']) {
+          const zoneObj = data.action_zones['main_gate_entry'];
+          if (Array.isArray(zoneObj.polygon) && zoneObj.polygon.length >= 3) {
+            const rawPts = zoneObj.polygon.map((p: any) =>
+              Array.isArray(p) ? { x: p[0], y: p[1] } : { x: p.x, y: p.y }
+            );
+            setActionZonePolygon(resampleToFixed20Points(rawPts));
+            setIsActionZoneEnabled(zoneObj.enabled !== false);
+          }
+        } else {
+          // Check localStorage cache
+          try {
+            const cached = localStorage.getItem('cctv_action_zone_main_gate_entry');
+            if (cached) {
+              const parsed = JSON.parse(cached);
+              if (Array.isArray(parsed.polygon) && parsed.polygon.length >= 3) {
+                const rawPts = parsed.polygon.map((p: any) =>
+                  Array.isArray(p) ? { x: p[0], y: p[1] } : { x: p.x, y: p.y }
+                );
+                setActionZonePolygon(resampleToFixed20Points(rawPts));
+                setIsActionZoneEnabled(parsed.enabled !== false);
+              }
+            }
+          } catch { /* ignore */ }
+        }
       } catch {
-        // Supabase unavailable — keep fallback
+        // Supabase unavailable — keep fallback & cache
       }
     };
     loadProxyUrl();
@@ -1420,6 +1562,27 @@ const CctvDashboard: React.FC = () => {
               </div>
               <div className="flex items-center gap-2">
                 <button
+                  onClick={() => setShowActionZoneModal(true)}
+                  className="px-2.5 py-1 text-[11px] font-bold rounded-md bg-rose-50 hover:bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-200 border border-rose-300 dark:border-rose-800 transition-all flex items-center gap-1.5 shadow-2xs"
+                  title="Define Face Capture Action Zone (ROI)"
+                >
+                  <Crosshair className="h-3.5 w-3.5 text-rose-600 animate-pulse" />
+                  <span>Action Zone</span>
+                  <span className={`h-1.5 w-1.5 rounded-full ${isActionZoneEnabled ? 'bg-rose-500' : 'bg-gray-400'}`} />
+                </button>
+                <button
+                  onClick={() => setShowStreamZoneOverlay(prev => !prev)}
+                  className={`px-2 py-1 text-[11px] font-bold rounded-md border transition-all flex items-center gap-1 ${
+                    showStreamZoneOverlay 
+                      ? 'bg-rose-100/70 border-rose-300 text-rose-900 dark:bg-rose-950 dark:text-rose-200' 
+                      : 'bg-neutral-100 dark:bg-neutral-800 border-border text-muted'
+                  }`}
+                  title={showStreamZoneOverlay ? 'Hide Zone Outline Box' : 'Show Zone Outline Box'}
+                >
+                  {showStreamZoneOverlay ? <Eye className="h-3 w-3 text-rose-600" /> : <EyeOff className="h-3 w-3 text-gray-400" />}
+                  <span>{showStreamZoneOverlay ? 'Zone ON' : 'Zone OFF'}</span>
+                </button>
+                <button
                   onClick={() => setShowStreamInspector(prev => !prev)}
                   className="px-2.5 py-1 text-[11px] font-bold rounded-md bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 text-primary-text border border-border transition-all flex items-center gap-1"
                 >
@@ -1482,7 +1645,15 @@ const CctvDashboard: React.FC = () => {
             )}
 
             <div className="aspect-video w-full rounded-xl overflow-hidden shadow-inner">
-              <NvrCameraStream camName="main_gate_entry" proxyUrl={ngrokProxy} locationName={`${selectedSiteLocation || 'Paradigm Office'} (Main Gate)`} />
+              <NvrCameraStream
+                camName="main_gate_entry"
+                proxyUrl={ngrokProxy}
+                locationName={`${selectedSiteLocation || 'Paradigm Office'} (Main Gate)`}
+                actionZone={actionZonePolygon}
+                isActionZoneEnabled={isActionZoneEnabled}
+                showZoneOverlay={showStreamZoneOverlay}
+                onOpenActionZoneModal={() => setShowActionZoneModal(true)}
+              />
             </div>
 
             <div className="flex items-center justify-between text-xs text-muted mt-3 px-1 pt-2 border-t border-border/70">
@@ -2771,6 +2942,27 @@ RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER AS $$
           </pre>
         </div>
       </Modal>
+
+      {/* Action Zone (ROI) Configuration Modal */}
+      <CctvActionZoneModal
+        isOpen={showActionZoneModal}
+        onClose={() => setShowActionZoneModal(false)}
+        cameraName="main_gate_entry"
+        locationName={`${selectedSiteLocation || 'Paradigm Office'} (Main Gate)`}
+        proxyUrl={ngrokProxy}
+        initialPolygon={actionZonePolygon}
+        initialEnabled={isActionZoneEnabled}
+        onSaved={(newPoly, enabled) => {
+          setActionZonePolygon(newPoly);
+          setIsActionZoneEnabled(enabled);
+          setToast({
+            message: enabled
+              ? 'Action Zone activated! Face capture is now restricted to the defined area.'
+              : 'Action Zone disabled. Full camera view is active.',
+            type: 'success',
+          });
+        }}
+      />
     </div>
   );
 };
