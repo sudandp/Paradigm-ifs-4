@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, Loader2, Calendar as CalendarIcon, Clock, User, FileText } from 'lucide-react';
 import { supabase } from '../../services/supabase';
-import { format } from 'date-fns';
+import { format, addDays, parseISO } from 'date-fns';
 import { User as UserType } from '../../types';
 import { api } from '../../services/api';
 import { getStaffCategory } from '../../utils/attendanceCalculations';
@@ -32,6 +32,7 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
     const [status, setStatus] = useState<string>('Present'); // Present, W/H, On Leave
     const [checkInTime, setCheckInTime] = useState<string>('09:00');
     const [checkOutTime, setCheckOutTime] = useState<string>('19:30');
+    const [checkOutNextDay, setCheckOutNextDay] = useState<boolean>(false);
     const [locationName, setLocationName] = useState<string>('Office');
     const [reason, setReason] = useState<string>('');
     const [breakInTime, setBreakInTime] = useState<string>('13:00');
@@ -67,6 +68,7 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
             setStatus('Present');
             setCheckInTime('09:00');
             setCheckOutTime('19:30');
+            setCheckOutNextDay(false);
             setBreakInTime('13:00');
             setBreakOutTime('14:00');
             setIncludeBreak(false);
@@ -121,8 +123,13 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
 
             setIsLoadingExisting(true);
             try {
-                const startDate = `${date}T00:00:00Z`;
-                const endDate = `${date}T23:59:59Z`;
+                // Use IST-aware range: from midnight IST on the selected date
+                // through noon IST the following day, so overnight punch-outs are included.
+                // IST = UTC+05:30  →  midnight IST = 18:30Z previous day
+                const dayStart = parseISO(`${date}T00:00:00+05:30`);
+                const dayEnd = addDays(parseISO(`${date}T12:00:00+05:30`), 1); // next-day noon IST
+                const startDate = dayStart.toISOString();
+                const endDate = dayEnd.toISOString();
 
                 const { data, error: fetchError } = await supabase
                     .from('attendance_events')
@@ -144,9 +151,14 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                     const siteOtIn = data.find(e => e.type === 'site-ot-in');
                     const siteOtOut = data.find(e => e.type === 'site-ot-out');
 
-                    // Populate times
+                    // Populate times — detect next-day checkout
                     if (punchIn) setCheckInTime(format(new Date(punchIn.timestamp), 'HH:mm'));
-                    if (punchOut) setCheckOutTime(format(new Date(punchOut.timestamp), 'HH:mm'));
+                    if (punchOut) {
+                        const outTime = format(new Date(punchOut.timestamp), 'HH:mm');
+                        const outDate = format(new Date(punchOut.timestamp), 'yyyy-MM-dd');
+                        setCheckOutTime(outTime);
+                        setCheckOutNextDay(outDate !== date);
+                    }
 
                     const fieldIns = data.filter(e => e.type === 'punch-in' && e.work_type === 'field').sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
                     const fieldOuts = data.filter(e => e.type === 'punch-out' && e.work_type === 'field').sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
@@ -263,7 +275,8 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
 
             if (status === 'Present' || status === 'W/H' || status === 'Site Visit') {
                 // A. Main Attendance Session (Always needed for overall duration)
-                const mainInDate = new Date(`${timestampBase}T${checkInTime}:00`);
+                // Parse using IST offset so the user-entered local time is preserved correctly
+                const mainInDate = parseISO(`${timestampBase}T${checkInTime}:00+05:30`);
                 
                 eventsToInsert.push({
                     user_id: selectedUserId,
@@ -277,7 +290,11 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                 });
 
                 if (checkOutTime && checkOutTime.trim() !== '') {
-                    const mainOutDate = new Date(`${timestampBase}T${checkOutTime}:00`);
+                    // If checkOutNextDay is toggled, stamp the punch-out on the following calendar date
+                    const checkOutBase = checkOutNextDay
+                        ? format(addDays(parseISO(timestampBase), 1), 'yyyy-MM-dd')
+                        : timestampBase;
+                    const mainOutDate = parseISO(`${checkOutBase}T${checkOutTime}:00+05:30`);
                     eventsToInsert.push({
                         user_id: selectedUserId,
                         timestamp: mainOutDate.toISOString(),
@@ -464,12 +481,13 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                 await api.markCorrectionAsMade(correctionRequestId, currentUserId);
             }
 
-            onSuccess();
-            // Show local success before closing to give immediate feedback
+            // Show local success feedback first
             setToast({ message: 'Manual entry saved successfully!', type: 'success' });
+            // Small delay ensures Supabase write is visible before parent re-fetches
             setTimeout(() => {
+                onSuccess();
                 onClose();
-            }, 1000);
+            }, 500);
         } catch (err: any) {
             console.error('Manual attendance error:', err);
             let msg = 'Failed to save manual entry.';
@@ -485,321 +503,353 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
-                <div className="flex justify-between items-center p-5 border-b border-gray-100 bg-gray-50/50">
-                    <div>
-                        <h2 className="text-xl font-bold text-gray-800">Manual Attendance Entry</h2>
-                        <p className="text-xs text-gray-500 mt-1">Add missing attendance records</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-6 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[92vh] border border-gray-100">
+                {/* Modal Header */}
+                <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100 bg-slate-50/80">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2.5 bg-blue-600/10 text-blue-600 rounded-xl">
+                            <Clock className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <h2 className="text-lg font-bold text-gray-900 leading-tight">Manual Attendance Entry</h2>
+                            <p className="text-xs text-gray-500">Add or correct employee attendance records</p>
+                        </div>
                     </div>
                     <button 
                         onClick={onClose}
-                        className="text-gray-400 hover:text-gray-600 transition-colors p-1 hover:bg-gray-100 rounded-full"
+                        className="text-gray-400 hover:text-gray-600 transition-colors p-1.5 hover:bg-gray-200/60 rounded-full"
                     >
                         <X size={20} />
                     </button>
                 </div>
 
-                <div className="p-6 overflow-y-auto custom-scrollbar relative">
+                {/* Modal Body with 2-Column Grid */}
+                <div className="p-6 overflow-y-auto custom-scrollbar relative flex-1 bg-slate-50/30">
                     {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
                     {isLoadingExisting && (
-                        <div className="absolute inset-0 z-10 bg-white/50 backdrop-blur-[1px] flex items-center justify-center">
+                        <div className="absolute inset-0 z-10 bg-white/70 backdrop-blur-[2px] flex items-center justify-center rounded-xl">
                             <div className="flex flex-col items-center">
                                 <Loader2 className="w-8 h-8 text-blue-600 animate-spin mb-2" />
-                                <p className="text-sm font-medium text-gray-600">Loading existing logs...</p>
+                                <p className="text-sm font-semibold text-gray-700">Loading existing logs...</p>
                             </div>
                         </div>
                     )}
 
-                    <form onSubmit={handleSubmit} className="space-y-5">
-                        {/* Employee Selection */}
-                        <div className="space-y-1.5">
-                            <label className="text-sm font-semibold text-gray-700 flex items-center">
-                                <User className="w-3.5 h-3.5 mr-1.5 text-blue-600" /> Employee <span className="text-red-500">*</span>
-                            </label>
-                            <select
-                                value={selectedUserId}
-                                onChange={(e) => setSelectedUserId(e.target.value)}
-                                className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-gray-50/30 text-sm"
-                                required
-                            >
-                                <option value="">Select Employee</option>
-                                {[...users].sort((a, b) => a.name.localeCompare(b.name)).map(user => (
-                                    <option key={user.id} value={user.id}>{user.name}</option>
-                                ))}
-                            </select>
-                        </div>
+                    <form onSubmit={handleSubmit} id="manual-attendance-form" className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* LEFT COLUMN: Core Details & Attendance Session */}
+                        <div className="space-y-5">
+                            {/* Employee Selection */}
+                            <div className="bg-white p-4 rounded-xl border border-gray-200/80 shadow-sm space-y-3">
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center">
+                                        <User className="w-3.5 h-3.5 mr-1.5 text-blue-600" /> Employee <span className="text-red-500 ml-0.5">*</span>
+                                    </label>
+                                    <select
+                                        value={selectedUserId}
+                                        onChange={(e) => setSelectedUserId(e.target.value)}
+                                        className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-white text-sm font-medium"
+                                        required
+                                    >
+                                        <option value="">Select Employee</option>
+                                        {[...users].sort((a, b) => a.name.localeCompare(b.name)).map(user => (
+                                            <option key={user.id} value={user.id}>{user.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
 
-                        {/* Date and Status Row */}
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-1.5">
-                                <label className="text-sm font-semibold text-gray-700 flex items-center">
-                                    <CalendarIcon className="w-3.5 h-3.5 mr-1.5 text-blue-600" /> Date <span className="text-red-500">*</span>
+                                {/* Date and Status Row */}
+                                <div className="grid grid-cols-2 gap-3 pt-1">
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center">
+                                            <CalendarIcon className="w-3.5 h-3.5 mr-1.5 text-blue-600" /> Date <span className="text-red-500 ml-0.5">*</span>
+                                        </label>
+                                        <input
+                                            type="date"
+                                            value={date}
+                                            onChange={(e) => setDate(e.target.value)}
+                                            className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-white text-sm"
+                                            required
+                                        />
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center">
+                                            <FileText className="w-3.5 h-3.5 mr-1.5 text-blue-600" /> Status <span className="text-red-500 ml-0.5">*</span>
+                                        </label>
+                                        <select
+                                            value={status}
+                                            onChange={(e) => setStatus(e.target.value)}
+                                            className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-white text-sm font-medium"
+                                        >
+                                            <option value="Present">Present (Office)</option>
+                                            <option value="Site Visit">Site Visit (Field)</option>
+                                            <option value="W/H">Work From Home</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* 1. Main Attendance Row (First In / Last Out) */}
+                            <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100 shadow-sm space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-xs font-bold text-blue-900 uppercase tracking-wider flex items-center">
+                                        <Clock className="w-4 h-4 mr-1.5 text-blue-600" /> Overall Attendance Session
+                                    </h3>
+                                    {existingEventIds.length > 0 && (
+                                        <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] rounded-full uppercase tracking-wider font-bold">
+                                            Edit Mode
+                                        </span>
+                                    )}
+                                </div>
+                                
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-semibold text-gray-700 flex items-center">
+                                            First Punch In <span className="text-red-500 ml-0.5">*</span>
+                                        </label>
+                                        <input
+                                            type="time"
+                                            value={checkInTime}
+                                            onChange={(e) => setCheckInTime(e.target.value)}
+                                            className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-white text-sm font-medium"
+                                            required
+                                        />
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-semibold text-gray-700 flex items-center justify-between">
+                                            <span>Last Punch Out</span>
+                                            <label className="flex items-center gap-1.5 cursor-pointer group">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={checkOutNextDay}
+                                                    onChange={(e) => setCheckOutNextDay(e.target.checked)}
+                                                    className="w-3.5 h-3.5 rounded border-gray-400 text-orange-500 focus:ring-orange-400"
+                                                />
+                                                <span className="text-xs font-semibold text-orange-600 group-hover:text-orange-700">Next Day</span>
+                                            </label>
+                                        </label>
+                                        <input
+                                            type="time"
+                                            value={checkOutTime}
+                                            onChange={(e) => setCheckOutTime(e.target.value)}
+                                            placeholder="Optional"
+                                            className={`w-full p-2.5 border rounded-lg focus:ring-2 focus:border-blue-500 transition-all bg-white text-sm font-medium ${checkOutNextDay ? 'border-orange-400 focus:ring-orange-400/20' : 'border-gray-300 focus:ring-blue-500/20'}`}
+                                        />
+                                        {checkOutNextDay && (
+                                            <p className="text-xs text-orange-600 font-medium">
+                                                ↳ Punch-out will be stamped on the next calendar day
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Reason / Notes */}
+                            <div className="bg-white p-4 rounded-xl border border-gray-200/80 shadow-sm space-y-2">
+                                <label className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center">
+                                    <FileText className="w-3.5 h-3.5 mr-1.5 text-gray-500" /> Reason / Approval Remarks <span className="text-red-500 ml-0.5">*</span>
                                 </label>
-                                <input
-                                    type="date"
-                                    value={date}
-                                    onChange={(e) => setDate(e.target.value)}
-                                    className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-gray-50/30 text-sm"
+                                <textarea
+                                    value={reason}
+                                    onChange={(e) => setReason(e.target.value)}
+                                    placeholder="e.g. Manual entry approved by Pradeep sir"
+                                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-white text-sm h-20 resize-none font-medium"
                                     required
                                 />
                             </div>
-
-                            <div className="space-y-1.5">
-                                <label className="text-sm font-semibold text-gray-700 flex items-center">
-                                    <FileText className="w-3.5 h-3.5 mr-1.5 text-blue-600" /> Status <span className="text-red-500">*</span>
-                                </label>
-                                <select
-                                    value={status}
-                                    onChange={(e) => setStatus(e.target.value)}
-                                    className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-gray-50/30 text-sm"
-                                >
-                                    <option value="Present">Present (Office)</option>
-                                    <option value="Site Visit">Site Visit (Field)</option>
-                                    <option value="W/H">Work From Home</option>
-                                </select>
-                            </div>
                         </div>
 
-                        {/* 1. Main Attendance Row (First In / Last Out) */}
-                        <div className="space-y-4 pt-1">
-                            <h3 className="text-sm font-bold text-gray-800 flex items-center">
-                                <Clock className="w-4 h-4 mr-2 text-blue-600" /> Attendance Session 
-                                {existingEventIds.length > 0 && <span className="ml-2 px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[10px] rounded uppercase tracking-wider font-bold">Edit Mode</span>}
-                            </h3>
-                            <div className="grid grid-cols-2 gap-4 bg-blue-50/40 p-4 rounded-xl border border-blue-100/50">
-                                <div className="space-y-1.5">
-                                    <label className="text-xs font-bold text-gray-600 uppercase tracking-tighter flex items-center">
-                                        First Punch In <span className="text-red-500 ml-1">*</span>
-                                    </label>
-                                    <input
-                                        type="time"
-                                        value={checkInTime}
-                                        onChange={(e) => setCheckInTime(e.target.value)}
-                                        className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-white text-sm"
-                                        required
-                                    />
-                                </div>
-
-                                <div className="space-y-1.5">
-                                    <label className="text-xs font-bold text-gray-600 uppercase tracking-tighter flex items-center">
-                                        Last Punch Out
-                                    </label>
-                                    <input
-                                        type="time"
-                                        value={checkOutTime}
-                                        onChange={(e) => setCheckOutTime(e.target.value)}
-                                        placeholder="Optional if unpunched"
-                                        className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-white text-sm"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* 2. Site Visit Section */}
-                        <div className="space-y-4 pt-2 border-t border-gray-100">
-                            <div className="flex items-center justify-between">
-                                <h3 className="text-sm font-bold text-gray-800 flex items-center">
-                                    <FileText className="w-4 h-4 mr-2 text-green-600" /> Site Deployment Details
-                                </h3>
-                                <div className="flex items-center">
-                                    <input
-                                        type="checkbox"
-                                        id="includeSiteVisit"
-                                        checked={includeSiteVisit || status === 'Site Visit'}
-                                        onChange={(e) => setIncludeSiteVisit(e.target.checked)}
-                                        className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
-                                    />
-                                    <label htmlFor="includeSiteVisit" className="ml-2 text-xs font-bold text-gray-500 uppercase tracking-wider">
-                                        {(includeSiteVisit || status === 'Site Visit') ? 'Remove' : 'Add Site Visit'}
-                                    </label>
-                                </div>
-                            </div>
-
-                            {(includeSiteVisit || status === 'Site Visit' || userCategory !== 'office') && (
-                                <div className="space-y-4 bg-green-50/40 p-4 rounded-xl border border-green-100/50">
-                                    {siteVisits.map((visit, idx) => (
-                                        <div key={idx} className="flex items-end gap-3 p-3 bg-white border border-gray-200 rounded-md">
-                                            <div className="flex-1 space-y-1.5">
-                                                <label className="text-xs font-bold text-gray-600 uppercase tracking-tighter flex items-center">
-                                                    Site Check In
-                                                </label>
-                                                <input
-                                                    type="time"
-                                                    value={visit.in}
-                                                    onChange={(e) => updateSiteVisit(idx, 'in', e.target.value)}
-                                                    className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500/20 focus:border-green-500 transition-all bg-white text-sm"
-                                                />
-                                            </div>
-
-                                            <div className="flex-1 space-y-1.5">
-                                                <label className="text-xs font-bold text-gray-600 uppercase tracking-tighter flex items-center">
-                                                    Site Check Out
-                                                </label>
-                                                <input
-                                                    type="time"
-                                                    value={visit.out}
-                                                    onChange={(e) => updateSiteVisit(idx, 'out', e.target.value)}
-                                                    className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500/20 focus:border-green-500 transition-all bg-white text-sm"
-                                                />
-                                            </div>
-                                            {siteVisits.length > 1 && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => removeSiteVisit(idx)}
-                                                    className="mb-1 p-2 text-red-500 hover:bg-red-50 rounded"
-                                                >
-                                                    <X className="w-5 h-5" />
-                                                </button>
-                                            )}
-                                        </div>
-                                    ))}
-                                    
-                                    <button
-                                        type="button"
-                                        onClick={addSiteVisit}
-                                        className="text-xs font-bold text-green-600 hover:text-green-800 tracking-wide uppercase"
-                                    >
-                                        + Add Another Site Visit
-                                    </button>
-
-                                    <div className="space-y-1.5 pt-2 border-t border-green-200/50">
-                                        <label className="text-xs font-bold text-gray-600 uppercase tracking-tighter">Site Name / Location</label>
-                                        <input
-                                            type="text"
-                                            value={locationName}
-                                            onChange={(e) => setLocationName(e.target.value)}
-                                            placeholder="e.g. Prestige Shantiniketan, Brigade Tech Park"
-                                            className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-white text-sm"
-                                        />
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* 3. Break Selection */}
-                        <div className="space-y-4 pt-2 border-t border-gray-100">
-                            <div className="flex items-center justify-between">
-                                <h3 className="text-sm font-bold text-gray-800">Lunch Break</h3>
-                                <div className="flex items-center">
-                                    <input
-                                        type="checkbox"
-                                        id="includeBreak"
-                                        checked={includeBreak}
-                                        onChange={(e) => setIncludeBreak(e.target.checked)}
-                                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                                    />
-                                    <label htmlFor="includeBreak" className="ml-2 text-xs font-bold text-gray-500 uppercase tracking-wider">
-                                        {includeBreak ? 'Remove' : 'Add Break'}
-                                    </label>
-                                </div>
-                            </div>
-
-                            {includeBreak && (
-                                <div className="grid grid-cols-2 gap-4 bg-amber-50/40 p-4 rounded-xl border border-amber-100/50">
-                                    <div className="space-y-1.5">
-                                        <label className="text-xs font-bold text-gray-600 uppercase tracking-tighter flex items-center">
-                                            Break In
-                                        </label>
-                                        <input
-                                            type="time"
-                                            value={breakInTime}
-                                            onChange={(e) => setBreakInTime(e.target.value)}
-                                            className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all bg-white text-sm"
-                                        />
-                                    </div>
-
-                                    <div className="space-y-1.5">
-                                        <label className="text-xs font-bold text-gray-600 uppercase tracking-tighter flex items-center">
-                                            Break Out
-                                        </label>
-                                        <input
-                                            type="time"
-                                            value={breakOutTime}
-                                            onChange={(e) => setBreakOutTime(e.target.value)}
-                                            className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all bg-white text-sm"
-                                        />
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* 4. Site OT Selection */}
-                        {(status === 'Site Visit' || userCategory !== 'office') && (
-                            <div className="space-y-4 pt-2 border-t border-gray-100">
+                        {/* RIGHT COLUMN: Site Deployments, Lunch Breaks, Overtime */}
+                        <div className="space-y-4">
+                            {/* 2. Site Deployment Section */}
+                            <div className="bg-white p-4 rounded-xl border border-gray-200/80 shadow-sm space-y-3">
                                 <div className="flex items-center justify-between">
-                                    <h3 className="text-sm font-bold text-gray-800">Site Overtime</h3>
-                                    <div className="flex items-center">
+                                    <h3 className="text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center">
+                                        <FileText className="w-3.5 h-3.5 mr-1.5 text-emerald-600" /> Site Deployment Details
+                                    </h3>
+                                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
                                         <input
                                             type="checkbox"
-                                            id="includeSiteOt"
-                                            checked={includeSiteOt}
-                                            onChange={(e) => setIncludeSiteOt(e.target.checked)}
-                                            className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                                            id="includeSiteVisit"
+                                            checked={includeSiteVisit || status === 'Site Visit'}
+                                            onChange={(e) => setIncludeSiteVisit(e.target.checked)}
+                                            className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500"
                                         />
-                                        <label htmlFor="includeSiteOt" className="ml-2 text-xs font-bold text-gray-500 uppercase tracking-wider">
-                                            {includeSiteOt ? 'Remove' : 'Add OT'}
-                                        </label>
-                                    </div>
+                                        <span className="text-xs font-semibold text-gray-600">
+                                            {(includeSiteVisit || status === 'Site Visit') ? 'Enabled' : 'Add Details'}
+                                        </span>
+                                    </label>
                                 </div>
 
-                                {includeSiteOt && (
-                                    <div className="grid grid-cols-2 gap-4 bg-purple-50/40 p-4 rounded-xl border border-purple-100/50">
-                                        <div className="space-y-1.5">
-                                            <label className="text-xs font-bold text-gray-600 uppercase tracking-tighter flex items-center">
-                                                OT Start
-                                            </label>
-                                            <input
-                                                type="time"
-                                                value={siteOtInTime}
-                                                onChange={(e) => setSiteOtInTime(e.target.value)}
-                                                className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all bg-white text-sm"
-                                            />
+                                {(includeSiteVisit || status === 'Site Visit' || userCategory !== 'office') && (
+                                    <div className="space-y-3 bg-emerald-50/40 p-3 rounded-lg border border-emerald-100">
+                                        {siteVisits.map((visit, idx) => (
+                                            <div key={idx} className="flex items-end gap-2 p-2.5 bg-white border border-gray-200 rounded-lg shadow-2xs">
+                                                <div className="flex-1 space-y-1">
+                                                    <label className="text-[11px] font-semibold text-gray-600">
+                                                        Site Check In
+                                                    </label>
+                                                    <input
+                                                        type="time"
+                                                        value={visit.in}
+                                                        onChange={(e) => updateSiteVisit(idx, 'in', e.target.value)}
+                                                        className="w-full p-1.5 border border-gray-300 rounded-md focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 bg-white text-xs font-medium"
+                                                    />
+                                                </div>
+
+                                                <div className="flex-1 space-y-1">
+                                                    <label className="text-[11px] font-semibold text-gray-600">
+                                                        Site Check Out
+                                                    </label>
+                                                    <input
+                                                        type="time"
+                                                        value={visit.out}
+                                                        onChange={(e) => updateSiteVisit(idx, 'out', e.target.value)}
+                                                        className="w-full p-1.5 border border-gray-300 rounded-md focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 bg-white text-xs font-medium"
+                                                    />
+                                                </div>
+                                                {siteVisits.length > 1 && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeSiteVisit(idx)}
+                                                        className="p-1.5 text-red-500 hover:bg-red-50 rounded-md transition-colors"
+                                                    >
+                                                        <X className="w-4 h-4" />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        ))}
+                                        
+                                        <div className="flex items-center justify-between pt-1">
+                                            <button
+                                                type="button"
+                                                onClick={addSiteVisit}
+                                                className="text-xs font-bold text-emerald-600 hover:text-emerald-700 tracking-wide"
+                                            >
+                                                + Add Another Visit
+                                            </button>
                                         </div>
 
-                                        <div className="space-y-1.5">
-                                            <label className="text-xs font-bold text-gray-600 uppercase tracking-tighter flex items-center">
-                                                OT End
-                                            </label>
+                                        <div className="space-y-1 pt-2 border-t border-emerald-100">
+                                            <label className="text-[11px] font-semibold text-gray-700">Site Name / Location</label>
                                             <input
-                                                type="time"
-                                                value={siteOtOutTime}
-                                                onChange={(e) => setSiteOtOutTime(e.target.value)}
-                                                className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all bg-white text-sm"
+                                                type="text"
+                                                value={locationName}
+                                                onChange={(e) => setLocationName(e.target.value)}
+                                                placeholder="e.g. Prestige Shantiniketan / Sarjapura Road"
+                                                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-white text-xs"
                                             />
                                         </div>
                                     </div>
                                 )}
                             </div>
-                        )}
 
-                        {/* 5. Reason / Notes */}
-                        <div className="space-y-1.5 pt-2 border-t border-gray-100">
-                            <label className="text-sm font-bold text-gray-800 flex items-center">
-                                <FileText className="w-4 h-4 mr-2 text-gray-500" /> Reason / Notes <span className="text-red-500 ml-1">*</span>
-                            </label>
-                            <textarea
-                                value={reason}
-                                onChange={(e) => setReason(e.target.value)}
-                                placeholder="Why is this being edited? e.g. 'Forgot to punch in', 'Biometric issue'"
-                                className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-gray-50/30 text-sm h-24 resize-none"
-                                required
-                            />
+                            {/* 3. Break Selection */}
+                            <div className="bg-white p-4 rounded-xl border border-gray-200/80 shadow-sm space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-xs font-bold text-gray-800 uppercase tracking-wider">Lunch Break</h3>
+                                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                                        <input
+                                            type="checkbox"
+                                            id="includeBreak"
+                                            checked={includeBreak}
+                                            onChange={(e) => setIncludeBreak(e.target.checked)}
+                                            className="w-4 h-4 text-amber-600 border-gray-300 rounded focus:ring-amber-500"
+                                        />
+                                        <span className="text-xs font-semibold text-gray-600">
+                                            {includeBreak ? 'Enabled' : 'Add Break'}
+                                        </span>
+                                    </label>
+                                </div>
+
+                                {includeBreak && (
+                                    <div className="grid grid-cols-2 gap-3 bg-amber-50/40 p-3 rounded-lg border border-amber-100">
+                                        <div className="space-y-1">
+                                            <label className="text-[11px] font-semibold text-gray-600">Break In</label>
+                                            <input
+                                                type="time"
+                                                value={breakInTime}
+                                                onChange={(e) => setBreakInTime(e.target.value)}
+                                                className="w-full p-1.5 border border-gray-300 rounded-md focus:ring-1 focus:ring-amber-500 bg-white text-xs font-medium"
+                                            />
+                                        </div>
+
+                                        <div className="space-y-1">
+                                            <label className="text-[11px] font-semibold text-gray-600">Break Out</label>
+                                            <input
+                                                type="time"
+                                                value={breakOutTime}
+                                                onChange={(e) => setBreakOutTime(e.target.value)}
+                                                className="w-full p-1.5 border border-gray-300 rounded-md focus:ring-1 focus:ring-amber-500 bg-white text-xs font-medium"
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* 4. Site Overtime Selection */}
+                            {(status === 'Site Visit' || userCategory !== 'office') && (
+                                <div className="bg-white p-4 rounded-xl border border-gray-200/80 shadow-sm space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="text-xs font-bold text-gray-800 uppercase tracking-wider">Site Overtime (OT)</h3>
+                                        <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                                            <input
+                                                type="checkbox"
+                                                id="includeSiteOt"
+                                                checked={includeSiteOt}
+                                                onChange={(e) => setIncludeSiteOt(e.target.checked)}
+                                                className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                                            />
+                                            <span className="text-xs font-semibold text-gray-600">
+                                                {includeSiteOt ? 'Enabled' : 'Add OT'}
+                                            </span>
+                                        </label>
+                                    </div>
+
+                                    {includeSiteOt && (
+                                        <div className="grid grid-cols-2 gap-3 bg-purple-50/40 p-3 rounded-lg border border-purple-100">
+                                            <div className="space-y-1">
+                                                <label className="text-[11px] font-semibold text-gray-600">OT Start</label>
+                                                <input
+                                                    type="time"
+                                                    value={siteOtInTime}
+                                                    onChange={(e) => setSiteOtInTime(e.target.value)}
+                                                    className="w-full p-1.5 border border-gray-300 rounded-md focus:ring-1 focus:ring-purple-500 bg-white text-xs font-medium"
+                                                />
+                                            </div>
+
+                                            <div className="space-y-1">
+                                                <label className="text-[11px] font-semibold text-gray-600">OT End</label>
+                                                <input
+                                                    type="time"
+                                                    value={siteOtOutTime}
+                                                    onChange={(e) => setSiteOtOutTime(e.target.value)}
+                                                    className="w-full p-1.5 border border-gray-300 rounded-md focus:ring-1 focus:ring-purple-500 bg-white text-xs font-medium"
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
-
                     </form>
                 </div>
 
-                <div className="p-5 border-t border-gray-100 bg-gray-50/50 flex justify-end gap-3">
+                {/* Modal Footer */}
+                <div className="px-6 py-4 border-t border-gray-100 bg-slate-50/80 flex justify-end items-center gap-3">
                     <button
+                        type="button"
                         onClick={onClose}
-                        className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors shadow-sm"
+                        className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors shadow-xs"
                         disabled={isSubmitting}
                     >
                         Cancel
                     </button>
                     <button
-                        onClick={handleSubmit}
+                        type="submit"
+                        form="manual-attendance-form"
                         disabled={isSubmitting}
                         className="px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                     >

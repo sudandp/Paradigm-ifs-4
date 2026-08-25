@@ -1061,6 +1061,7 @@ const AttendanceDashboard: React.FC = () => {
     const [recentlyActiveUserIds, setRecentlyActiveUserIds] = useState<Set<string>>(new Set());
     const [isLoading, setIsLoading] = useState(true);
     const [isReportLoading, setIsReportLoading] = useState(false);
+    const [manualRefreshKey, setManualRefreshKey] = useState(0); // bumped after every manual entry to force re-fetch
     const [isInitialLoadComplete, setIsInitialLoadComplete] = useState(false);
     const [scopedSettings, setScopedSettings] = useState<any[]>([]);
     const [exportedMonthlyData, setExportedMonthlyData] = useState<EmployeeMonthlyData[]>([]);
@@ -2720,7 +2721,8 @@ const AttendanceDashboard: React.FC = () => {
         if (dateRange.startDate && dateRange.endDate) {
             fetchDashboardData(dateRange.startDate, dateRange.endDate);
         }
-    }, [dateRange, fetchDashboardData, selectedCompany, selectedSite, selectedLocation, selectedRole, selectedUser, users]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [dateRange, fetchDashboardData, selectedCompany, selectedSite, selectedLocation, selectedRole, selectedUser, users, manualRefreshKey]);
 
     const availableRoles = useMemo(() => {
         const roles = new Set(users.map(u => u.role).filter(Boolean));
@@ -4574,10 +4576,8 @@ const AttendanceDashboard: React.FC = () => {
                 onClose={() => setIsManualEntryModalOpen(false)}
                 onSuccess={() => {
                     setToast({ message: 'Manual entry added successfully', type: 'success' });
-                    // Refresh data
-                    if (dateRange.startDate && dateRange.endDate) {
-                        fetchDashboardData(dateRange.startDate, dateRange.endDate);
-                    }
+                    // Increment refresh key to guarantee a fresh data re-fetch
+                    setManualRefreshKey(k => k + 1);
                     if (reportType === 'audit') {
                          fetchAuditLogs();
                     }
