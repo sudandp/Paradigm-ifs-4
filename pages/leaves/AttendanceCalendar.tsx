@@ -581,7 +581,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                 };
                             } else if (workingHours >= shiftThreshold) {
                                 if (status === 'holiday-present') {
-                                    overlayText = (isPoolHoliday && !isFemale) ? 'BL/P' : 'H/P';
+                                    overlayText = 'H/P';
                                 } else if (status === 'weekend-present') {
                                     overlayText = holidayName === 'Blue Leave' ? 'BL/P' : (holidayName === 'Pink Leave' ? 'PL/P' : 'W/P');
                                 } else {
@@ -590,7 +590,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                 if (status === 'holiday-present' || status === 'weekend-present') {
                                     let leftColor = '#38bdf8'; // sky-400
                                     if (status === 'holiday-present') {
-                                        leftColor = (isPoolHoliday && !isFemale) ? '#1d4ed8' : '#38bdf8';
+                                        leftColor = '#38bdf8';
                                     } else if (status === 'weekend-present') {
                                         leftColor = holidayName === 'Blue Leave' ? '#1d4ed8' : (holidayName === 'Pink Leave' ? '#ec4899' : '#fda4af');
                                     }
@@ -611,10 +611,10 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                 }
 
                                 const prefix = holidayName === 'Blue Leave' ? 'BL' : (holidayName === 'Pink Leave' ? 'PL' : 'W');
-                                overlayText = status === 'holiday-present' ? `${(isPoolHoliday && !isFemale) ? 'BL' : 'H'}/${fractionText}` : status === 'weekend-present' ? `${prefix}/${fractionText}` : fractionText;
+                                overlayText = status === 'holiday-present' ? `H/${fractionText}` : status === 'weekend-present' ? `${prefix}/${fractionText}` : fractionText;
                                 let leftColor = '#10b981';
                                 if (status === 'holiday-present') {
-                                    leftColor = (isPoolHoliday && !isFemale) ? '#1d4ed8' : '#38bdf8';
+                                    leftColor = '#38bdf8';
                                 } else if (status === 'weekend-present') {
                                     leftColor = holidayName === 'Blue Leave' ? '#1d4ed8' : (holidayName === 'Pink Leave' ? '#ec4899' : '#fda4af');
                                 }

@@ -2180,31 +2180,50 @@ export const api = {
     const since14d = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
     const todayStr = new Date().toISOString().split('T')[0];
 
+    const CHUNK_SIZE = 30;
+    const chunks: string[][] = [];
+    for (let i = 0; i < fieldUserIds.length; i += CHUNK_SIZE) {
+      chunks.push(fieldUserIds.slice(i, i + CHUNK_SIZE));
+    }
+
+    const activeByPunch = new Set<string>();
+    const activeByLeave = new Set<string>();
+
     try {
-      // Query 1: any attendance event in last 14 days
-      const { data: events } = await supabase
-        .from('attendance_events')
-        .select('user_id')
-        .in('user_id', fieldUserIds)
-        .gte('timestamp', since14d);
+      await Promise.all(chunks.map(async (chunk) => {
+        const [eventsRes, leavesRes] = await Promise.all([
+          supabase
+            .from('attendance_events')
+            .select('user_id')
+            .in('user_id', chunk)
+            .gte('timestamp', since14d),
+          supabase
+            .from('leave_requests')
+            .select('user_id')
+            .in('user_id', chunk)
+            .in('status', ['approved', 'pending'])
+            .gte('end_date', since14d.split('T')[0])
+            .lte('start_date', todayStr)
+        ]);
 
-      const activeByPunch = new Set((events || []).map((e: any) => e.user_id));
+        if (eventsRes.error) {
+          console.warn('[API] getUsersActivityStatus events error:', eventsRes.error);
+        } else if (eventsRes.data) {
+          eventsRes.data.forEach((e: any) => activeByPunch.add(e.user_id));
+        }
 
-      // Query 2: any approved/pending leave overlapping the last 14 days
-      const { data: leaves } = await supabase
-        .from('leave_requests')
-        .select('user_id')
-        .in('user_id', fieldUserIds)
-        .in('status', ['approved', 'pending'])
-        .gte('end_date', since14d.split('T')[0])
-        .lte('start_date', todayStr);
-
-      const activeByLeave = new Set((leaves || []).map((l: any) => l.user_id));
+        if (leavesRes.error) {
+          console.warn('[API] getUsersActivityStatus leaves error:', leavesRes.error);
+        } else if (leavesRes.data) {
+          leavesRes.data.forEach((l: any) => activeByLeave.add(l.user_id));
+        }
+      }));
 
       for (const uid of fieldUserIds) {
         result[uid] = (activeByPunch.has(uid) || activeByLeave.has(uid)) ? 'active' : 'inactive';
       }
-    } catch {
+    } catch (err) {
+      console.error('[API] getUsersActivityStatus failed:', err);
       // On error, default all to unknown (graceful degradation)
       for (const uid of fieldUserIds) {
         result[uid] = 'unknown';

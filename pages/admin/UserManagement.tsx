@@ -550,11 +550,13 @@ const UserManagement: React.FC = () => {
         fetchUsers();
     }, [fetchUsers]);
 
-    // Batch-fetch activity status after users load (2 queries, not per-user)
+    // Batch-fetch activity status after users load (2 queries, chunked per 30 users)
     useEffect(() => {
         if (users.length === 0) return;
         api.getUsersActivityStatus(users.map(u => ({ id: u.id, role: u.role })))
-            .then(setActivityMap)
+            .then(newMap => {
+                setActivityMap(prev => ({ ...prev, ...newMap }));
+            })
             .catch(() => {}); // fail silently — dots just won't show
     }, [users]);
 
