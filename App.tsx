@@ -1592,6 +1592,19 @@ const App: React.FC = () => {
         ).catch(err => {
           console.warn('[AppResume] Notification refresh notice:', err?.message || err);
         });
+
+        // 3b. Recalculate attendance hours using current time.
+        // When the app is backgrounded, JS timers freeze. On resume, the UI
+        // shows stale working hours because setInterval in ProfilePage was paused.
+        // Calling checkAttendanceStatus() here re-runs processDailyEvents(events, new Date())
+        // which recalculates totalWorkingDurationToday against the actual current time.
+        withTimeout(
+          useAuthStore.getState().checkAttendanceStatus(),
+          8000,
+          'Attendance status refresh on resume timed out'
+        ).catch(err => {
+          console.warn('[AppResume] Attendance refresh notice:', err?.message || err);
+        });
       }
 
       // 4. Verify & silently refresh session if near expiry (with strict timeout)
