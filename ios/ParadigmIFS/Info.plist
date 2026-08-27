@@ -39,6 +39,17 @@
 	<string>Paradigm IFS uses Bluetooth for beacon site proximity verification.</string>
 	<key>NSContactsUsageDescription</key>
 	<string>Paradigm IFS uses contacts to invite field supervisors and team members.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Used to count your steps during working hours for field staff attendance.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+		<string>fetch</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.paradigm.ifs.attendance-sync</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

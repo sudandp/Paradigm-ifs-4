@@ -104,6 +104,16 @@ public class TrackingService extends Service implements SensorEventListener {
     private LocationCallback locationCallback;
     private ExecutorService networkExecutor;
 
+    // ── Live attendance hours poll ─────────────────────────────────────────
+    // Polls Supabase attendance_events every ATTENDANCE_POLL_INTERVAL_MS to compute
+    // live work hours natively and update the foreground notification.
+    private Handler attendancePollHandler;
+    private Runnable attendancePollRunnable;
+    private static final long ATTENDANCE_POLL_INTERVAL_MS = 15 * 60 * 1000L; // 15 minutes
+    // Last known computed values — persisted so notification stays meaningful if poll fails
+    private String lastWorkHoursLabel = "";
+    private int    lastStepsToday     = 0;
+
     // Runtime config (set from Intent or SharedPrefs fallback)
     private String userId               = null;
     private String supabaseUrl          = null;
@@ -227,6 +237,9 @@ public class TrackingService extends Service implements SensorEventListener {
         // ── Start GPS location updates ────────────────────────────────────
         startLocationUpdates();
 
+        // ── Start live attendance poll ────────────────────────────────────
+        startAttendancePoll();
+
         Log.i(TAG, "TrackingService started — userId=" + userId + " interval=" + intervalMinutes + "m");
         return START_STICKY;
     }
@@ -235,6 +248,7 @@ public class TrackingService extends Service implements SensorEventListener {
     public void onDestroy() {
         stopLocationUpdates();
         stopActivityTransitionUpdates();
+        stopAttendancePoll();
         if (sensorManager != null) sensorManager.unregisterListener(this);
         if (networkExecutor != null) networkExecutor.shutdownNow();
         if (activityTransitionReceiver != null) {
@@ -535,6 +549,32 @@ public class TrackingService extends Service implements SensorEventListener {
         }
     }
 
+    /**
+     * Updates the foreground notification text in-place without restarting the service.
+     * Call this whenever live work hours or steps change.
+     */
+    private void updateNotification(String contentText) {
+        try {
+            Intent notificationIntent = new Intent(this, MainActivity.class);
+            PendingIntent pendingIntent = PendingIntent.getActivity(this, 0,
+                    notificationIntent, PendingIntent.FLAG_IMMUTABLE);
+
+            Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
+                    .setContentTitle("Paradigm Services — Tracking Active")
+                    .setContentText(contentText)
+                    .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+                    .setContentIntent(pendingIntent)
+                    .setOngoing(true)
+                    .setPriority(NotificationCompat.PRIORITY_LOW)
+                    .build();
+
+            NotificationManager nm = getSystemService(NotificationManager.class);
+            if (nm != null) nm.notify(NOTIFICATION_ID, notification);
+        } catch (Exception e) {
+            Log.w(TAG, "updateNotification: " + e.getMessage());
+        }
+    }
+
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(
@@ -543,6 +583,205 @@ public class TrackingService extends Service implements SensorEventListener {
             NotificationManager nm = getSystemService(NotificationManager.class);
             if (nm != null) nm.createNotificationChannel(channel);
         }
+    }
+
+    // ── Live Attendance Hours Poll ─────────────────────────────────────────
+
+    /**
+     * Starts a periodic Handler-based poll that:
+     * 1. GETs today's attendance_events from Supabase REST (no WebSocket needed)
+     * 2. Computes net work minutes natively in Java
+     * 3. Updates the foreground notification with "Working: Xh Ym | Steps: N"
+     *
+     * This runs entirely in native Java — no JavaScript/WebView needed.
+     */
+    private void startAttendancePoll() {
+        if (attendancePollHandler != null) return; // Already running
+        attendancePollHandler = new Handler(Looper.getMainLooper());
+        attendancePollRunnable = new Runnable() {
+            @Override
+            public void run() {
+                networkExecutor.execute(() -> fetchAttendanceHoursAndUpdateNotification());
+                // Schedule next poll
+                attendancePollHandler.postDelayed(this, ATTENDANCE_POLL_INTERVAL_MS);
+            }
+        };
+        // Run immediately on start, then every 15 minutes
+        attendancePollHandler.post(attendancePollRunnable);
+        Log.i(TAG, "Live attendance poll started (every " + (ATTENDANCE_POLL_INTERVAL_MS / 60000) + " min)");
+    }
+
+    private void stopAttendancePoll() {
+        if (attendancePollHandler != null && attendancePollRunnable != null) {
+            attendancePollHandler.removeCallbacks(attendancePollRunnable);
+            attendancePollHandler = null;
+            attendancePollRunnable = null;
+            Log.i(TAG, "Live attendance poll stopped");
+        }
+    }
+
+    /**
+     * Fetches today's attendance events from Supabase REST API and computes
+     * net working minutes purely in Java. Updates the foreground notification.
+     *
+     * Algorithm mirrors processDailyEvents() in attendanceCalculations.ts:
+     *   - Sort events chronologically
+     *   - Accumulate time when punched-in and not on break
+     *   - For an open session (last event is punch-in), accumulate from last event to now
+     */
+    private void fetchAttendanceHoursAndUpdateNotification() {
+        if (userId == null || supabaseUrl == null || supabaseAnonKey == null) return;
+        if (isAuthPaused) return;
+
+        try {
+            // Build today's date range in UTC
+            SimpleDateFormat dayFmt = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
+            dayFmt.setTimeZone(TimeZone.getTimeZone("UTC"));
+            String today = dayFmt.format(new Date());
+            String startOfDay = today + "T00:00:00.000Z";
+            String endOfDay   = today + "T23:59:59.999Z";
+
+            // GET /rest/v1/attendance_events?user_id=eq.{id}&timestamp=gte.{start}&timestamp=lte.{end}&order=timestamp.asc
+            String base = supabaseUrl.endsWith("/") ? supabaseUrl : supabaseUrl + "/";
+            String endpoint = base + "rest/v1/attendance_events"
+                    + "?user_id=eq." + userId
+                    + "&timestamp=gte." + startOfDay
+                    + "&timestamp=lte." + endOfDay
+                    + "&order=timestamp.asc"
+                    + "&select=type,timestamp,work_type";
+
+            URL url = new URL(endpoint);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("apikey",        supabaseAnonKey);
+            conn.setRequestProperty("Authorization", "Bearer " + (supabaseAccessToken != null ? supabaseAccessToken : supabaseAnonKey));
+            conn.setRequestProperty("Accept",        "application/json");
+            conn.setConnectTimeout(10_000);
+            conn.setReadTimeout(10_000);
+
+            int code = conn.getResponseCode();
+            if (code == 401) {
+                Log.w(TAG, "[AttendancePoll] 401 — attempting token refresh");
+                conn.disconnect();
+                boolean refreshed = attemptTokenRefresh();
+                if (!refreshed) { isAuthPaused = true; return; }
+                // Retry once after refresh
+                fetchAttendanceHoursAndUpdateNotification();
+                return;
+            }
+
+            if (code != 200) {
+                Log.w(TAG, "[AttendancePoll] HTTP " + code + " — skipping notification update");
+                conn.disconnect();
+                return;
+            }
+
+            BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) sb.append(line);
+            reader.close();
+            conn.disconnect();
+
+            // Parse JSON array of events
+            org.json.JSONArray events = new org.json.JSONArray(sb.toString());
+            long netWorkMinutes = computeNetWorkMinutes(events);
+
+            // Format as "Xh Ym"
+            long hours = netWorkMinutes / 60;
+            long mins  = netWorkMinutes % 60;
+            lastWorkHoursLabel = hours + "h " + mins + "m";
+
+            // Read today's steps from SharedPrefs (updated by onSensorChanged)
+            lastStepsToday = prefs.getInt(KEY_STEPS_TODAY, 0);
+
+            String notifText = "Working: " + lastWorkHoursLabel + "  |  Steps: " + String.format(Locale.US, "%,d", lastStepsToday);
+            Log.i(TAG, "[AttendancePoll] " + notifText);
+
+            // Update notification on main thread
+            new Handler(Looper.getMainLooper()).post(() -> updateNotification(notifText));
+
+        } catch (Exception e) {
+            Log.w(TAG, "[AttendancePoll] Failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Computes net working minutes from a JSON array of attendance events.
+     * Mirrors the core logic of calculateWorkingHours() in attendanceCalculations.ts.
+     *
+     * State machine:
+     *   punch-in / site-in / site-ot-in  → isWorking = true
+     *   punch-out / site-out / site-ot-out → isWorking = false, isOnBreak = false
+     *   break-in  → isOnBreak = true
+     *   break-out → isOnBreak = false
+     *
+     * Accumulates minutes only when (isWorking && !isOnBreak).
+     * For open sessions (last event is a check-in), accumulates from last event to now.
+     */
+    private long computeNetWorkMinutes(org.json.JSONArray events) {
+        final long MAX_INTERVAL_MINUTES = 30 * 60; // 30 hours safety cap
+        long netWorkMinutes = 0;
+        boolean isWorking = false;
+        boolean isOnBreak = false;
+        long lastEventMs  = 0;
+
+        SimpleDateFormat iso = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US);
+        iso.setTimeZone(TimeZone.getTimeZone("UTC"));
+
+        for (int i = 0; i < events.length(); i++) {
+            try {
+                org.json.JSONObject ev = events.getJSONObject(i);
+                String type = ev.optString("type", "");
+                String tsStr = ev.optString("timestamp", "");
+                // Trim fractional seconds and Z for parsing
+                if (tsStr.length() > 19) tsStr = tsStr.substring(0, 19);
+                Date evDate = iso.parse(tsStr);
+                if (evDate == null) continue;
+                long evMs = evDate.getTime();
+
+                if (lastEventMs > 0) {
+                    long elapsedMinutes = (evMs - lastEventMs) / 60_000L;
+                    if (elapsedMinutes > MAX_INTERVAL_MINUTES) elapsedMinutes = 0;
+                    if (isWorking && !isOnBreak) netWorkMinutes += elapsedMinutes;
+                }
+
+                // Update state for next interval
+                switch (type) {
+                    case "punch-in":
+                    case "site-in":
+                    case "site-ot-in":
+                        isWorking = true;
+                        break;
+                    case "punch-out":
+                    case "site-out":
+                    case "site-ot-out":
+                        isWorking = false;
+                        isOnBreak = false;
+                        break;
+                    case "break-in":
+                        isOnBreak = true;
+                        break;
+                    case "break-out":
+                        isOnBreak = false;
+                        break;
+                }
+                lastEventMs = evMs;
+            } catch (Exception e) {
+                Log.w(TAG, "[AttendancePoll] Event parse error: " + e.getMessage());
+            }
+        }
+
+        // Open session: accumulate from last event to now
+        if (isWorking && !isOnBreak && lastEventMs > 0) {
+            long nowMs = System.currentTimeMillis();
+            long elapsedMinutes = (nowMs - lastEventMs) / 60_000L;
+            if (elapsedMinutes <= MAX_INTERVAL_MINUTES) {
+                netWorkMinutes += elapsedMinutes;
+            }
+        }
+
+        return netWorkMinutes;
     }
 
     // ── Step counter ───────────────────────────────────────────────────────
