@@ -1,6 +1,5 @@
 import { api } from './api';
 import { getPrecisePosition } from '../utils/locationUtils';
-import { useAuthStore } from '../store/authStore';
 import { Device } from '@capacitor/device';
 import { Network } from '@capacitor/network';
 import { registerPlugin, Capacitor } from '@capacitor/core';
@@ -23,13 +22,15 @@ interface TrackingPlugin {
     supabaseToken: string;
     supabaseRefreshToken?: string;
   }): Promise<void>;
+  isBatteryOptimizationIgnored(): Promise<{ isIgnored: boolean }>;
+  requestIgnoreBatteryOptimization(): Promise<void>;
+  openAppSettings(): Promise<void>;
 }
 
-
-const Tracking = registerPlugin<TrackingPlugin>('Tracking');
+export const Tracking = registerPlugin<TrackingPlugin>('Tracking');
 
 class RouteTrackingService {
-  private intervalId: any = null;
+  private intervalId: ReturnType<typeof setInterval> | null = null;
   private isTracking: boolean = false;
   private isRecording: boolean = false;
 
@@ -216,6 +217,39 @@ class RouteTrackingService {
 
   public isActive(): boolean {
     return this.isTracking;
+  }
+
+  public async isBatteryOptimizationIgnored(): Promise<boolean> {
+    if (Capacitor.getPlatform() === 'android') {
+      try {
+        const res = await Tracking.isBatteryOptimizationIgnored();
+        return res?.isIgnored ?? true;
+      } catch (err) {
+        console.warn('[RouteTracking] Error checking battery optimization:', err);
+        return true;
+      }
+    }
+    return true;
+  }
+
+  public async requestIgnoreBatteryOptimization(): Promise<void> {
+    if (Capacitor.getPlatform() === 'android') {
+      try {
+        await Tracking.requestIgnoreBatteryOptimization();
+      } catch (err) {
+        console.warn('[RouteTracking] Error requesting battery optimization exemption:', err);
+      }
+    }
+  }
+
+  public async openAppSettings(): Promise<void> {
+    if (Capacitor.getPlatform() === 'android') {
+      try {
+        await Tracking.openAppSettings();
+      } catch (err) {
+        console.warn('[RouteTracking] Error opening app settings:', err);
+      }
+    }
   }
 }
 

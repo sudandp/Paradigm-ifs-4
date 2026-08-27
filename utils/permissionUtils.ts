@@ -1,13 +1,27 @@
-import { LocalNotifications } from '@capacitor/local-notifications';
+import { LocalNotifications, LocalNotificationSchema } from '@capacitor/local-notifications';
 import { Camera } from '@capacitor/camera';
 import { Geolocation } from '@capacitor/geolocation';
 import { Contacts } from '@capacitor-community/contacts';
-import { BleClient } from '@capacitor-community/bluetooth-le';
 import { Capacitor } from '@capacitor/core';
 import { pushNotificationService } from '../services/pushNotificationService';
 import { stepCounterService } from '../services/stepCounterService';
+import { routeTrackingService } from '../services/routeTrackingService';
 import { useAlertToneStore } from '../store/alertToneStore';
 import { scheduleBreakAlarm, cancelBreakAlarm } from '../plugins/breakAlarmPlugin';
+
+interface CordovaPermissions {
+    BLUETOOTH_SCAN?: string;
+    BLUETOOTH_CONNECT?: string;
+    BLUETOOTH_ADVERTISE?: string;
+    READ_MEDIA_AUDIO?: string;
+    hasPermission: (permission: string, callback: (status: { hasPermission: boolean }) => void) => void;
+    requestPermission: (permission: string, success: (status: unknown) => void, error: (err: unknown) => void) => void;
+    requestPermissions: (permissions: string[], success: (status: unknown) => void, error: (err: unknown) => void) => void;
+}
+
+const getCordovaPermissions = (): CordovaPermissions | undefined => {
+    return (window as unknown as { plugins?: { permissions?: CordovaPermissions } }).plugins?.permissions;
+};
 
 // Notification IDs to ensure we can cancel them specifically
 const NOTIFICATION_IDS = {
@@ -56,7 +70,7 @@ const safePermissionQuery = async (name: string): Promise<PermissionState | null
         }
         const result = await navigator.permissions.query({ name: name as PermissionName });
         return result.state;
-    } catch (_e) {
+    } catch {
         return null;
     }
 };
@@ -89,7 +103,7 @@ export const checkRequiredPermissions = async () => {
         if (locStatus !== null && locStatus !== 'granted') missing.push('Location');
 
         // 3. Notifications check (Unified)
-        const notifPermission = (window as any).Notification?.permission || 'default';
+        const notifPermission = typeof Notification !== 'undefined' ? Notification.permission : 'default';
         
         // Notifications are NON-BLOCKING on Web (Browsers/PWA)
         // because browsers often suppress prompts in Incognito or specific contexts.
@@ -133,10 +147,10 @@ export const checkRequiredPermissions = async () => {
 
         // 6. Bluetooth (Nearby Devices)
         if (isAndroid) {
-            const permissions = (window as any).plugins?.permissions;
-            if (permissions) {
-                const results = await new Promise<any>((resolve) => {
-                    permissions.hasPermission(permissions.BLUETOOTH_SCAN, (status: any) => resolve(status));
+            const permissions = getCordovaPermissions();
+            if (permissions && permissions.BLUETOOTH_SCAN) {
+                const results = await new Promise<{ hasPermission: boolean }>((resolve) => {
+                    permissions.hasPermission(permissions.BLUETOOTH_SCAN!, (status) => resolve(status));
                 });
                 if (!results?.hasPermission) missing.push('Bluetooth');
             }
@@ -144,10 +158,10 @@ export const checkRequiredPermissions = async () => {
 
         // 7. Music & Audio (Android 13+)
         if (isAndroid) {
-            const permissions = (window as any).plugins?.permissions;
+            const permissions = getCordovaPermissions();
             if (permissions && permissions.READ_MEDIA_AUDIO) {
-                const results = await new Promise<any>((resolve) => {
-                    permissions.hasPermission(permissions.READ_MEDIA_AUDIO, (status: any) => resolve(status));
+                const results = await new Promise<{ hasPermission: boolean }>((resolve) => {
+                    permissions.hasPermission(permissions.READ_MEDIA_AUDIO!, (status) => resolve(status));
                 });
                 if (!results?.hasPermission) missing.push('Music');
             }
@@ -201,7 +215,7 @@ export const requestAllPermissions = async (onProgress?: (id: string, missing: s
 
         // 1. Notifications
         try {
-            const notifPermission = (window as any).Notification?.permission || 'default';
+            const notifPermission = typeof Notification !== 'undefined' ? Notification.permission : 'default';
             if (notifPermission !== 'granted' && notifPermission !== 'denied') {
                 if (onProgress) onProgress('Notifications', (await checkRequiredPermissions()).missing);
                 try {
@@ -209,7 +223,7 @@ export const requestAllPermissions = async (onProgress?: (id: string, missing: s
                         pushNotificationService.init(),
                         new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000))
                     ]);
-                } catch (e) {
+                } catch {
                     console.warn('[PermissionUtils] Notification request suppressed or timed out');
                 }
                 await reCheck('Notifications');
@@ -219,7 +233,7 @@ export const requestAllPermissions = async (onProgress?: (id: string, missing: s
         
         // 2. Camera
         try {
-            let { missing } = await checkRequiredPermissions();
+            const { missing } = await checkRequiredPermissions();
             if (missing.includes('Camera')) {
                 if (onProgress) onProgress('Camera', missing);
                 const stream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -233,7 +247,7 @@ export const requestAllPermissions = async (onProgress?: (id: string, missing: s
         // On iOS Safari (in-browser), requesting this will show the native prompt.
         // We NEVER call this in iOS standalone mode (handled by early return above).
         try {
-            let { missing } = await checkRequiredPermissions();
+            const { missing } = await checkRequiredPermissions();
             if (missing.includes('Location')) {
                 if (onProgress) onProgress('Location', missing);
                 await new Promise((resolve, reject) => {
@@ -256,7 +270,7 @@ export const requestAllPermissions = async (onProgress?: (id: string, missing: s
 
     // 1. Camera
     try {
-        let { missing } = await checkRequiredPermissions();
+        const { missing } = await checkRequiredPermissions();
         if (missing.includes('Camera')) {
             if (onProgress) onProgress('Camera', missing);
             await Camera.requestPermissions({ permissions: ['camera'] });
@@ -267,7 +281,7 @@ export const requestAllPermissions = async (onProgress?: (id: string, missing: s
 
     // 2. Photos & Videos
     try {
-        let { missing } = await checkRequiredPermissions();
+        const { missing } = await checkRequiredPermissions();
         if (missing.includes('Photos/Videos')) {
             if (onProgress) onProgress('Photos/Videos', missing);
             await Camera.requestPermissions({ permissions: ['photos'] });
@@ -278,7 +292,7 @@ export const requestAllPermissions = async (onProgress?: (id: string, missing: s
 
     // 3. Location
     try {
-        let { missing } = await checkRequiredPermissions();
+        const { missing } = await checkRequiredPermissions();
         if (missing.includes('Location')) {
             if (onProgress) onProgress('Location', missing);
             await Geolocation.requestPermissions();
@@ -293,7 +307,7 @@ export const requestAllPermissions = async (onProgress?: (id: string, missing: s
 
     // 4. Notifications
     try {
-        let { missing } = await checkRequiredPermissions();
+        const { missing } = await checkRequiredPermissions();
         if (missing.includes('Notifications')) {
             if (onProgress) onProgress('Notifications', missing);
             await LocalNotifications.requestPermissions();
@@ -304,7 +318,7 @@ export const requestAllPermissions = async (onProgress?: (id: string, missing: s
 
     // 5. Contacts
     try {
-        let { missing } = await checkRequiredPermissions();
+        const { missing } = await checkRequiredPermissions();
         if (missing.includes('Contacts')) {
             if (onProgress) onProgress('Contacts', missing);
             await Contacts.requestPermissions();
@@ -315,16 +329,16 @@ export const requestAllPermissions = async (onProgress?: (id: string, missing: s
 
     // 6. Bluetooth
     try {
-        let { missing } = await checkRequiredPermissions();
+        const { missing } = await checkRequiredPermissions();
         if (missing.includes('Bluetooth')) {
             if (onProgress) onProgress('Bluetooth', missing);
-            const permissions = (window as any).plugins?.permissions;
-            if (permissions) {
+            const permissions = getCordovaPermissions();
+            if (permissions && permissions.BLUETOOTH_SCAN && permissions.BLUETOOTH_CONNECT && permissions.BLUETOOTH_ADVERTISE) {
                 await new Promise((resolve) => {
                     permissions.requestPermissions([
-                        permissions.BLUETOOTH_SCAN,
-                        permissions.BLUETOOTH_CONNECT,
-                        permissions.BLUETOOTH_ADVERTISE
+                        permissions.BLUETOOTH_SCAN!,
+                        permissions.BLUETOOTH_CONNECT!,
+                        permissions.BLUETOOTH_ADVERTISE!
                     ], resolve, resolve);
                 });
             }
@@ -335,13 +349,13 @@ export const requestAllPermissions = async (onProgress?: (id: string, missing: s
 
     // 7. Music
     try {
-        let { missing } = await checkRequiredPermissions();
+        const { missing } = await checkRequiredPermissions();
         if (missing.includes('Music')) {
             if (onProgress) onProgress('Music', missing);
-            const permissions = (window as any).plugins?.permissions;
+            const permissions = getCordovaPermissions();
             if (permissions && permissions.READ_MEDIA_AUDIO) {
                 await new Promise((resolve) => {
-                    permissions.requestPermission(permissions.READ_MEDIA_AUDIO, resolve, resolve);
+                    permissions.requestPermission(permissions.READ_MEDIA_AUDIO!, resolve, resolve);
                 });
             }
             await reCheck('Music');
@@ -352,7 +366,7 @@ export const requestAllPermissions = async (onProgress?: (id: string, missing: s
     // 8. Physical Activity (Android 10+ — ACTIVITY_RECOGNITION)
     if (Capacitor.getPlatform() === 'android') {
         try {
-            let { missing } = await checkRequiredPermissions();
+            const { missing } = await checkRequiredPermissions();
             if (missing.includes('Physical Activity')) {
                 if (onProgress) onProgress('Physical Activity', missing);
                 console.log('[PermissionUtils] Requesting Physical Activity permission...');
@@ -361,6 +375,15 @@ export const requestAllPermissions = async (onProgress?: (id: string, missing: s
                 await delay(reqDelay);
             }
         } catch (e) { console.error('Physical Activity req failed', e); }
+
+        // 9. Battery Optimization (for reliable background tracking)
+        try {
+            const isIgnored = await routeTrackingService.isBatteryOptimizationIgnored();
+            if (!isIgnored) {
+                console.log('[PermissionUtils] Requesting Battery Optimization exemption...');
+                await routeTrackingService.requestIgnoreBatteryOptimization();
+            }
+        } catch (e) { console.error('Battery optimization req failed', e); }
     }
 
     if (onProgress) onProgress('', (await checkRequiredPermissions()).missing);
@@ -436,7 +459,11 @@ export const updateBreakReminderChannelSound = async () => {
 
         // Delete and recreate the channel so the new sound takes effect.
         // Android does NOT allow updating the sound of an existing channel once created.
-        try { await LocalNotifications.deleteChannel({ id: 'break_reminders' }); } catch (_) {}
+        try { 
+            await LocalNotifications.deleteChannel({ id: 'break_reminders' }); 
+        } catch { 
+            // channel might not exist yet, safe to ignore
+        }
         await LocalNotifications.createChannel({
             id: 'break_reminders',
             name: 'Break Status Reminders',
@@ -515,11 +542,11 @@ export const requestMusicAudioPermissions = async () => {
     if (!isAndroid) return;
  
     try {
-        const permissions = (window as any).plugins?.permissions;
+        const permissions = getCordovaPermissions();
         if (permissions && permissions.READ_MEDIA_AUDIO) {
             console.log('[PermissionUtils] REQUESTING: Media Audio');
             await new Promise((resolve) => {
-                permissions.requestPermission(permissions.READ_MEDIA_AUDIO, (s: any) => resolve(s), (err: any) => resolve(err));
+                permissions.requestPermission(permissions.READ_MEDIA_AUDIO!, (s) => resolve(s), (err) => resolve(err));
             });
         }
     } catch (error) {
@@ -685,7 +712,7 @@ export const scheduleStepBreakReminders = async (startTime: Date, intervalMinute
         // Get user's selected alert tone
         const toneFilename = useAlertToneStore.getState().getNativeFilename();
 
-        const notifications: any[] = [];
+        const notifications: LocalNotificationSchema[] = [];
         for (let i = 1; i <= 8; i++) {
             const triggerTime = new Date(startTime.getTime() + (i * intervalMinutes * 60 * 1000));
             if (triggerTime <= new Date()) continue;
@@ -695,7 +722,7 @@ export const scheduleStepBreakReminders = async (startTime: Date, intervalMinute
                 ? `${Math.round(elapsedMins * 60)} seconds`
                 : `${Math.round(elapsedMins)} minute${Math.round(elapsedMins) !== 1 ? 's' : ''}`;
 
-            const notificationPayload: any = {
+            const notificationPayload: LocalNotificationSchema = {
                 title: '🔔 Break Reminder',
                 body: `You've been on break for ${displayTime}. Still on break or returning to work?`,
                 id: NOTIFICATION_IDS.RECURRING_BREAK + i,

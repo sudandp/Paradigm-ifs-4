@@ -6,12 +6,30 @@ import Logo from '../ui/Logo';
 import { pdfLogoLocalPath } from '../ui/logoData';
 import type { AppliedFilters } from './ReportHTMLViews';
 
+interface AuditLogDetails {
+    date?: string;
+    status?: string;
+    checkIn?: string;
+    checkOut?: string;
+    includeSiteVisit?: boolean;
+    siteVisits?: Array<{ in?: string; out?: string }>;
+    includeBreak?: boolean;
+    breakIn?: string;
+    breakOut?: string;
+    includeSiteOt?: boolean;
+    siteOtIn?: string;
+    siteOtOut?: string;
+    locationName?: string;
+    reason?: string;
+    [key: string]: unknown;
+}
+
 interface AuditLog {
     id: string;
     action: string;
     performed_by: string;
     target_user_id: string;
-    details: any;
+    details: AuditLogDetails;
     created_at: string;
     performer_name?: string;
     performer_photo?: string | null;
@@ -165,6 +183,12 @@ const AttendanceAuditReport: React.FC<AttendanceAuditReportProps> = ({ logs, gen
                                             {log.details.checkOut && log.details.checkOut !== 'N/A' && (
                                                 <span>Out: <span className="text-gray-900 font-medium">{log.details.checkOut}</span></span>
                                             )}
+                                            {log.details.includeSiteVisit && Array.isArray(log.details.siteVisits) && log.details.siteVisits.map((sv, svIdx) => (
+                                                <React.Fragment key={svIdx}>
+                                                    {sv.in && <span>Site In: <span className="text-emerald-700 font-medium">{sv.in}</span></span>}
+                                                    {sv.out && <span>Site Out: <span className="text-emerald-700 font-medium">{sv.out}</span></span>}
+                                                </React.Fragment>
+                                            ))}
                                             {log.details.includeBreak && (
                                                 <>
                                                     {log.details.breakIn && log.details.breakIn !== 'N/A' && (
@@ -175,7 +199,22 @@ const AttendanceAuditReport: React.FC<AttendanceAuditReportProps> = ({ logs, gen
                                                     )}
                                                 </>
                                             )}
+                                            {log.details.includeSiteOt && (
+                                                <>
+                                                    {log.details.siteOtIn && log.details.siteOtIn !== 'N/A' && (
+                                                        <span>OT In: <span className="text-purple-700 font-medium">{log.details.siteOtIn}</span></span>
+                                                    )}
+                                                    {log.details.siteOtOut && log.details.siteOtOut !== 'N/A' && (
+                                                        <span>OT Out: <span className="text-purple-700 font-medium">{log.details.siteOtOut}</span></span>
+                                                    )}
+                                                </>
+                                            )}
                                         </div>
+                                        {log.details.locationName && log.details.locationName !== 'Office' && (
+                                            <span className="text-[10px] text-gray-500 font-medium">
+                                                Loc: <span className="text-gray-800">{log.details.locationName}</span>
+                                            </span>
+                                        )}
                                         {log.details.reason && (
                                             <span className="flex items-start text-[11px] italic text-gray-500 mt-1 line-clamp-2" title={log.details.reason}>
                                                 <FileText className="w-3 h-3 mr-1.5 mt-0.5 flex-shrink-0" /> {log.details.reason}

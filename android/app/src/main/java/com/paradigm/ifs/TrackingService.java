@@ -278,8 +278,9 @@ public class TrackingService extends Service implements SensorEventListener {
         long intervalMs = (long) intervalMinutes * 60 * 1000L;
 
         LocationRequest request = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, intervalMs)
-                .setMinUpdateIntervalMillis(intervalMs / 2)
-                .setMaxUpdateDelayMillis(intervalMs + 30_000L)  // allow slight delay batching
+                .setMinUpdateIntervalMillis(Math.min(intervalMs / 2, 30_000L))
+                .setMaxUpdateDelayMillis(0)
+                .setWaitForAccurateLocation(false)
                 .build();
 
         locationCallback = new LocationCallback() {
@@ -296,6 +297,15 @@ public class TrackingService extends Service implements SensorEventListener {
         try {
             fusedLocationClient.requestLocationUpdates(request, locationCallback, Looper.getMainLooper());
             Log.i(TAG, "GPS updates requested every " + intervalMinutes + " min(s)");
+
+            // Immediately capture initial location on service start
+            fusedLocationClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
+                .addOnSuccessListener(location -> {
+                    if (location != null) {
+                        Log.i(TAG, "Initial GPS location acquired: " + location.getLatitude() + ", " + location.getLongitude());
+                        uploadLocationToSupabase(location);
+                    }
+                });
         } catch (SecurityException e) {
             Log.e(TAG, "GPS permission error", e);
         }
@@ -499,15 +509,29 @@ public class TrackingService extends Service implements SensorEventListener {
                 .build();
 
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (Build.VERSION.SDK_INT >= 34) { // Android 14+
+                startForeground(NOTIFICATION_ID, notification,
+                        android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION |
+                        android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH);
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(NOTIFICATION_ID, notification,
                         android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
             } else {
                 startForeground(NOTIFICATION_ID, notification);
             }
         } catch (Exception e) {
-            Log.e(TAG, "Failed to start foreground", e);
-            stopSelf();
+            Log.e(TAG, "Failed to start combined foreground service", e);
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    startForeground(NOTIFICATION_ID, notification,
+                            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
+                } else {
+                    startForeground(NOTIFICATION_ID, notification);
+                }
+            } catch (Exception ex) {
+                Log.e(TAG, "Fallback startForeground also failed", ex);
+                stopSelf();
+            }
         }
     }
 
@@ -526,13 +550,6 @@ public class TrackingService extends Service implements SensorEventListener {
     @Override
     public void onSensorChanged(SensorEvent event) {
         if (event.sensor.getType() != Sensor.TYPE_STEP_COUNTER) return;
-
-        // Only count steps when user is actually walking or running.
-        // Skips sensor events caused by vehicle/bike vibration.
-        if (!isUserWalking) {
-            Log.d(TAG, "Step sensor fired but user is not walking — skipping broadcast.");
-            return;
-        }
 
         float rawCumulativeSteps = event.values[0];
         String todayDate   = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(new Date());

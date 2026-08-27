@@ -42,7 +42,6 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
     const [isLoadingExisting, setIsLoadingExisting] = useState(false);
     const [existingEventIds, setExistingEventIds] = useState<string[]>([]);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-    const isToday = date === format(new Date(), 'yyyy-MM-dd');
 
     // Enhanced State
     const [userCategory, setUserCategory] = useState<'office' | 'field' | 'site'>('office');
@@ -103,7 +102,7 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                 fetchCorrectionRequest();
             }
         }
-    }, [isOpen, correctionRequestId]);
+    }, [isOpen, correctionRequestId, currentUserRole]);
 
     useEffect(() => {
         const fetchExistingLogs = async () => {
@@ -144,8 +143,9 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                     setExistingEventIds(data.map(e => e.id));
                     
                     // Find granular segments
-                    const punchIn = data.find(e => e.type === 'punch-in' && e.work_type === 'office');
-                    const punchOut = data.find(e => e.type === 'punch-out' && e.work_type === 'office');
+                    // 1. Main session punch in/out
+                    const punchIn = data.find(e => e.type === 'punch-in' && (!e.work_type || e.work_type === 'office')) || data.find(e => e.type === 'punch-in');
+                    const punchOut = data.find(e => e.type === 'punch-out' && (!e.work_type || e.work_type === 'office')) || data.find(e => e.type === 'punch-out');
                     const breakIn = data.find(e => e.type === 'break-in');
                     const breakOut = data.find(e => e.type === 'break-out');
                     const siteOtIn = data.find(e => e.type === 'site-ot-in');
@@ -160,8 +160,9 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                         setCheckOutNextDay(outDate !== date);
                     }
 
-                    const fieldIns = data.filter(e => e.type === 'punch-in' && e.work_type === 'field').sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-                    const fieldOuts = data.filter(e => e.type === 'punch-out' && e.work_type === 'field').sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                    // 2. Field/Site Visits (site-in/site-out or punch-in with field work_type)
+                    const fieldIns = data.filter(e => (e.type === 'site-in' || (e.type === 'punch-in' && e.work_type === 'field'))).sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                    const fieldOuts = data.filter(e => (e.type === 'site-out' || (e.type === 'punch-out' && e.work_type === 'field'))).sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
                     if (fieldIns.length > 0 || fieldOuts.length > 0) {
                         const visits = [];
@@ -173,8 +174,10 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                             });
                         }
                         setSiteVisits(visits);
+                        setIncludeSiteVisit(true);
                     } else {
                         setSiteVisits([{in: '09:00', out: '18:00'}]);
+                        setIncludeSiteVisit(false);
                     }
 
                     if (breakIn || breakOut) {
@@ -195,7 +198,7 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
 
                     // Set status/location context
                     const firstEvent = data[0];
-                    const hasFieldEvent = data.some(e => e.work_type === 'field' || e.type === 'site-ot-in');
+                    const hasFieldEvent = data.some(e => e.work_type === 'field' || e.type === 'site-in' || e.type === 'site-ot-in');
 
                     if (hasFieldEvent) {
                         setStatus('Site Visit');
@@ -218,6 +221,7 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                     setSiteOtOutTime('21:30');
                     setIncludeBreak(false);
                     setIncludeSiteOt(false);
+                    setIncludeSiteVisit(false);
                     
                     const selectedUser = users.find(u => u.id === selectedUserId);
                     const category = selectedUser ? getStaffCategory(selectedUser.roleId) : 'office';
@@ -233,7 +237,7 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
         };
 
         fetchExistingLogs();
-    }, [selectedUserId, date, isOpen]);
+    }, [selectedUserId, date, isOpen, users, status]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -248,9 +252,9 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
 
         if (includeBreak) {
             if (breakInTime && breakOutTime) {
-                const checkInDate = new Date(`${date}T${checkInTime}:00`);
-                const breakInDate = new Date(`${date}T${breakInTime}:00`);
-                const breakOutDate = new Date(`${date}T${breakOutTime}:00`);
+                const checkInDate = parseISO(`${date}T${checkInTime}:00+05:30`);
+                const breakInDate = parseISO(`${date}T${breakInTime}:00+05:30`);
+                const breakOutDate = parseISO(`${date}T${breakOutTime}:00+05:30`);
 
                 if (breakInDate <= checkInDate) {
                     setToast({ message: 'Break in time must be after punch in.', type: 'error' });
@@ -311,11 +315,11 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                 if (status === 'Site Visit' || userCategory !== 'office' || includeSiteVisit) {
                     siteVisits.forEach(visit => {
                         if (visit.in && visit.in.trim() !== '') {
-                            const siteInDate = new Date(`${timestampBase}T${visit.in}:00`);
+                            const siteInDate = parseISO(`${timestampBase}T${visit.in}:00+05:30`);
                             eventsToInsert.push({
                                 user_id: selectedUserId,
                                 timestamp: siteInDate.toISOString(),
-                                type: 'punch-in',
+                                type: 'site-in',
                                 location_name: locationName || 'Site Location',
                                 work_type: 'field',
                                 is_manual: true,
@@ -325,11 +329,11 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                         }
 
                         if (visit.out && visit.out.trim() !== '') {
-                            const siteOutDate = new Date(`${timestampBase}T${visit.out}:00`);
+                            const siteOutDate = parseISO(`${timestampBase}T${visit.out}:00+05:30`);
                             eventsToInsert.push({
                                 user_id: selectedUserId,
                                 timestamp: siteOutDate.toISOString(),
-                                type: 'punch-out',
+                                type: 'site-out',
                                 location_name: locationName || 'Site Location',
                                 work_type: 'field',
                                 is_manual: true,
@@ -343,7 +347,7 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                 // C. Site Overtime (Optional)
                 if (includeSiteOt) {
                     if (siteOtInTime && siteOtInTime.trim() !== '') {
-                        const otInDate = new Date(`${timestampBase}T${siteOtInTime}:00`);
+                        const otInDate = parseISO(`${timestampBase}T${siteOtInTime}:00+05:30`);
                         eventsToInsert.push({
                             user_id: selectedUserId,
                             timestamp: otInDate.toISOString(),
@@ -357,7 +361,7 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                     }
 
                     if (siteOtOutTime && siteOtOutTime.trim() !== '') {
-                        const otOutDate = new Date(`${timestampBase}T${siteOtOutTime}:00`);
+                        const otOutDate = parseISO(`${timestampBase}T${siteOtOutTime}:00+05:30`);
                         eventsToInsert.push({
                             user_id: selectedUserId,
                             timestamp: otOutDate.toISOString(),
@@ -374,7 +378,7 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                 // D. Break Events
                 if (includeBreak) {
                     if (breakInTime && breakInTime.trim() !== '') {
-                        const breakInDate = new Date(`${timestampBase}T${breakInTime}:00`);
+                        const breakInDate = parseISO(`${timestampBase}T${breakInTime}:00+05:30`);
                         eventsToInsert.push({
                             user_id: selectedUserId,
                             timestamp: breakInDate.toISOString(),
@@ -388,7 +392,7 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                     }
 
                     if (breakOutTime && breakOutTime.trim() !== '') {
-                        const breakOutDate = new Date(`${timestampBase}T${breakOutTime}:00`);
+                        const breakOutDate = parseISO(`${timestampBase}T${breakOutTime}:00+05:30`);
                         eventsToInsert.push({
                             user_id: selectedUserId,
                             timestamp: breakOutDate.toISOString(),
@@ -422,6 +426,7 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
             }
 
             // 2. Insert Audit Log
+            const hasSiteDetails = Boolean(includeSiteVisit || status === 'Site Visit' || userCategory !== 'office');
             const auditLog = {
                 action: 'MANUAL_ENTRY_ADDED',
                 performed_by: currentUserId,
@@ -430,15 +435,16 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                     date,
                     status,
                     checkIn: (status === 'Present' || status === 'W/H' || status === 'Site Visit') ? checkInTime : 'N/A',
-                    checkOut: (status === 'Present' || status === 'W/H' || status === 'Site Visit') ? checkOutTime : 'N/A',
-                    includeSiteVisit: userCategory !== 'office' && status === 'Site Visit',
-                    siteVisits: (userCategory !== 'office' && status === 'Site Visit') ? siteVisits : [],
+                    checkOut: (status === 'Present' || status === 'W/H' || status === 'Site Visit') ? (checkOutTime || 'N/A') : 'N/A',
+                    includeSiteVisit: hasSiteDetails,
+                    siteVisits: hasSiteDetails ? siteVisits : [],
                     includeSiteOt,
                     siteOtIn: includeSiteOt ? siteOtInTime : 'N/A',
                     siteOtOut: includeSiteOt ? siteOtOutTime : 'N/A',
                     includeBreak,
                     breakIn: includeBreak ? breakInTime : 'N/A',
                     breakOut: includeBreak ? breakOutTime : 'N/A',
+                    locationName: locationName || 'Office',
                     workType: userCategory,
                     reason,
                     userName: selectedUser?.name
@@ -488,12 +494,15 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                 onSuccess();
                 onClose();
             }, 500);
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error('Manual attendance error:', err);
             let msg = 'Failed to save manual entry.';
-            if (err.message) msg = err.message;
-            if (err.details) msg += ` (${err.details})`;
-            if (err.hint) msg += ` Hint: ${err.hint}`;
+            if (err && typeof err === 'object') {
+                const e = err as { message?: string; details?: string; hint?: string };
+                if (e.message) msg = e.message;
+                if (e.details) msg += ` (${e.details})`;
+                if (e.hint) msg += ` Hint: ${e.hint}`;
+            }
             setToast({ message: msg, type: 'error' });
         } finally {
             setIsSubmitting(false);

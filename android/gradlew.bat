@@ -39,7 +39,11 @@ for %%i in ("%APP_HOME%") do set APP_HOME=%%~fi
 set DEFAULT_JVM_OPTS="-Xmx64m" "-Xms64m"
 
 @rem Override JAVA_HOME to force JDK 17 for this project
-set JAVA_HOME=C:\Program Files\Eclipse Adoptium\jdk-17.0.18.8-hotspot
+if exist "C:\Program Files\Eclipse Adoptium\jdk-17.0.20.8-hotspot" (
+    set JAVA_HOME=C:\Program Files\Eclipse Adoptium\jdk-17.0.20.8-hotspot
+) else if exist "C:\Program Files\Android\Android Studio\jbr" (
+    set JAVA_HOME=C:\Program Files\Android\Android Studio\jbr
+)
 
 @rem Find java.exe
 if defined JAVA_HOME goto findJavaFromJavaHome
