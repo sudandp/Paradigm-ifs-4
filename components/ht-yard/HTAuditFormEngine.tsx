@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   CheckCircle2, HelpCircle, Check, Plus, Minus, Pencil, X, Calendar, 
   Image, Hash, AlignLeft, MapPin, Sparkles, Clock, ExternalLink, 
-  Activity, Cpu, Layers, ShieldCheck, Sliders, RefreshCw, AlertTriangle 
+  Activity, Cpu, Layers, ShieldCheck, Sliders, RefreshCw, AlertTriangle,
+  Trash2, Settings2, Tag
 } from 'lucide-react';
 import { ModuleSpec, HTAuditResponse } from '../../types/htYard';
 import { htYardMasterDataService } from '../../services/htYardMasterDataService';
@@ -63,6 +64,52 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
   const [editingTitleValue, setEditingTitleValue] = useState('');
   const titleInputRef = useRef<HTMLInputElement>(null);
 
+  // Field Editing Modal State
+  const [editingField, setEditingField] = useState<{
+    sectionKey: string;
+    sectionTitle: string;
+    fieldKey: string;
+    fieldLabel: string;
+    fieldType: string;
+    unit: string;
+    placeholder: string;
+    optionsCategory?: string;
+    optionsFieldKey?: string;
+    isCustom?: boolean;
+  } | null>(null);
+  const [fieldModalChoices, setFieldModalChoices] = useState<any[]>([]);
+  const [quickAddChoiceInput, setQuickAddChoiceInput] = useState('');
+  const [isSavingField, setIsSavingField] = useState(false);
+
+  // Add Field to Section Modal State
+  const [showAddFieldModal, setShowAddFieldModal] = useState(false);
+  const [newFieldLabel, setNewFieldLabel] = useState('');
+  const [newFieldType, setNewFieldType] = useState('select');
+  const [newFieldUnit, setNewFieldUnit] = useState('');
+  const [newFieldChoices, setNewFieldChoices] = useState('');
+  const [isAddingField, setIsAddingField] = useState(false);
+
+  const MODULE_TO_CAT_MAP: Record<string, string> = {
+    'RMU': 'RMUMD',
+    'Transformer': 'TRMaster Data',
+    'LT_Kiosk': 'LTKMD',
+    'HT_Yard_Common': 'HTYardCommon'
+  };
+
+  // Load choices when editing a field
+  useEffect(() => {
+    if (editingField && (editingField.fieldType === 'select' || editingField.fieldType === 'searchable_select')) {
+      const cat = (editingField.optionsCategory || MODULE_TO_CAT_MAP[spec.moduleType] || 'LTKMD') as any;
+      const targetKey = editingField.optionsFieldKey || editingField.fieldKey;
+      htYardMasterDataService.getMasterOptions(cat).then(opts => {
+        const matching = opts.filter(o => (o.fieldKey === targetKey || o.fieldKey === editingField.fieldKey) && o.isActive !== false);
+        setFieldModalChoices(matching);
+      }).catch(() => setFieldModalChoices([]));
+    } else {
+      setFieldModalChoices([]);
+    }
+  }, [editingField, spec.moduleType]);
+
   useEffect(() => {
     if (propsDuplicatedStages) {
       setDuplicatedStages(propsDuplicatedStages);
@@ -73,6 +120,142 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
     setDuplicatedStages(newStages);
     if (onDuplicatedStagesChange) {
       onDuplicatedStagesChange(newStages);
+    }
+  };
+
+  // Save changes to field configuration
+  const handleSaveFieldConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingField || !editingField.fieldLabel.trim()) return;
+    setIsSavingField(true);
+    try {
+      const cat = (editingField.optionsCategory || MODULE_TO_CAT_MAP[spec.moduleType] || 'LTKMD') as any;
+      await htYardFieldSpecService.saveFieldSpec({
+        category: cat,
+        moduleType: spec.moduleType,
+        sectionKey: editingField.sectionKey,
+        sectionTitle: editingField.sectionTitle,
+        fieldKey: editingField.fieldKey,
+        fieldLabel: editingField.fieldLabel.trim(),
+        fieldType: editingField.fieldType as any,
+        optionsCategory: cat,
+        optionsFieldKey: editingField.fieldKey,
+        unit: editingField.unit.trim() || undefined,
+        placeholder: editingField.placeholder.trim() || undefined,
+        isCustom: editingField.isCustom ?? true
+      });
+      toast.success(`Updated question "${editingField.fieldLabel}"!`);
+      setEditingField(null);
+      await loadMergedSpec();
+      await loadCategoryOptions();
+    } catch (err) {
+      toast.error('Failed to update question');
+    } finally {
+      setIsSavingField(false);
+    }
+  };
+
+  // Add new field to the active section
+  const handleAddNewFieldToSection = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newFieldLabel.trim()) return;
+    setIsAddingField(true);
+    try {
+      const cat = (MODULE_TO_CAT_MAP[spec.moduleType] || 'LTKMD') as any;
+      const cleanKey = `custom_${newFieldLabel.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${Date.now().toString().slice(-4)}`;
+      const activeStage = allStages.find(s => s.key === activeSectionKey);
+      const sectionKey = (activeStage?.type === 'spec' || activeStage?.type === 'spec_dup') && activeStage.section ? activeStage.section.sectionKey : activeSectionKey;
+      const sectionTitle = activeStage?.title || 'Equipment Details';
+
+      await htYardFieldSpecService.saveFieldSpec({
+        category: cat,
+        moduleType: spec.moduleType,
+        sectionKey: sectionKey,
+        sectionTitle: sectionTitle,
+        fieldKey: cleanKey,
+        fieldLabel: newFieldLabel.trim(),
+        fieldType: newFieldType as any,
+        optionsCategory: cat,
+        optionsFieldKey: cleanKey,
+        unit: newFieldUnit.trim() || undefined,
+        isCustom: true
+      });
+
+      // If initial choices provided
+      if (newFieldChoices.trim() && (newFieldType === 'select' || newFieldType === 'searchable_select')) {
+        const choiceItems = newFieldChoices.split(/[,\n]/).map(c => c.trim()).filter(Boolean);
+        for (const choice of choiceItems) {
+          await htYardMasterDataService.saveMasterOption({
+            category: cat,
+            fieldKey: cleanKey,
+            optionValue: choice,
+            isActive: true
+          });
+        }
+      }
+
+      toast.success(`Added question "${newFieldLabel.trim()}" to ${sectionTitle}!`);
+      setShowAddFieldModal(false);
+      setNewFieldLabel('');
+      setNewFieldUnit('');
+      setNewFieldChoices('');
+      setNewFieldType('select');
+      await loadMergedSpec();
+      await loadCategoryOptions();
+    } catch (err) {
+      toast.error('Failed to add question');
+    } finally {
+      setIsAddingField(false);
+    }
+  };
+
+  // Delete/remove field from active section
+  const handleDeleteFieldFromSection = async (fieldKey: string, fieldLabel: string) => {
+    if (!window.confirm(`Are you sure you want to remove question "${fieldLabel}" from this section?`)) return;
+    try {
+      const cat = (MODULE_TO_CAT_MAP[spec.moduleType] || 'LTKMD') as any;
+      const activeStage = allStages.find(s => s.key === activeSectionKey);
+      const sectionKey = (activeStage?.type === 'spec' || activeStage?.type === 'spec_dup') && activeStage.section ? activeStage.section.sectionKey : activeSectionKey;
+      await htYardFieldSpecService.deleteFieldSpec(cat, fieldKey, sectionKey);
+      toast.success(`Removed question "${fieldLabel}"!`);
+      await loadMergedSpec();
+      await loadCategoryOptions();
+    } catch (err) {
+      toast.error('Failed to remove question');
+    }
+  };
+
+  // Add choice option to dropdown when editing field
+  const handleAddChoiceToField = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingField || !quickAddChoiceInput.trim()) return;
+    try {
+      const cat = (editingField.optionsCategory || MODULE_TO_CAT_MAP[spec.moduleType] || 'LTKMD') as any;
+      const targetKey = editingField.optionsFieldKey || editingField.fieldKey;
+      const created = await htYardMasterDataService.saveMasterOption({
+        category: cat,
+        fieldKey: targetKey,
+        optionValue: quickAddChoiceInput.trim(),
+        isActive: true
+      });
+      setFieldModalChoices(prev => [...prev, created]);
+      setQuickAddChoiceInput('');
+      toast.success(`Added option "${quickAddChoiceInput.trim()}"`);
+      await loadCategoryOptions();
+    } catch (err) {
+      toast.error('Failed to add choice option');
+    }
+  };
+
+  // Delete choice option from dropdown
+  const handleDeleteChoiceOption = async (optId: string, optValue: string) => {
+    try {
+      await htYardMasterDataService.deleteMasterOption(optId);
+      setFieldModalChoices(prev => prev.filter(o => o.id !== optId));
+      toast.success(`Removed option "${optValue}"`);
+      await loadCategoryOptions();
+    } catch (err) {
+      toast.error('Failed to remove option');
     }
   };
 
@@ -579,40 +762,78 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
       <div className="flex-1 flex flex-col bg-white dark:bg-slate-900">
         {activeStage ? (
           <div className="p-6 md:p-8 flex-1 flex flex-col">
-            {/* Right panel header — editable for duplicates */}
-            <div className="mb-6 border-b border-slate-100 dark:border-slate-800 pb-4 flex items-center gap-3">
-              {activeStage.isDuplicate && editingTitleId === activeStage.key ? (
+            {/* Right panel header — editable for copied and regular stages */}
+            <div className="mb-6 border-b border-slate-100 dark:border-slate-800 pb-4 flex flex-wrap items-center justify-between gap-3">
+              {editingTitleId === activeStage.key ? (
                 // Inline editable title input
-                <input
-                  ref={titleInputRef}
-                  type="text"
-                  value={editingTitleValue}
-                  onChange={e => handleTitleChange(e.target.value, activeStage.originalKey!, activeStage.key)}
-                  onBlur={handleTitleBlur}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' || e.key === 'Escape') (e.target as HTMLInputElement).blur();
-                  }}
-                  className="flex-1 text-xl font-extrabold text-slate-800 dark:text-slate-100 uppercase tracking-wide bg-transparent border-b-2 border-emerald-500 outline-none pb-0.5 min-w-0"
-                />
+                <div className="flex items-center gap-2 flex-1 max-w-xl">
+                  <input
+                    ref={titleInputRef}
+                    type="text"
+                    value={editingTitleValue}
+                    onChange={e => handleTitleChange(e.target.value, activeStage.originalKey || activeStage.key, activeStage.key)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') handleTitleBlur();
+                      if (e.key === 'Escape') setEditingTitleId(null);
+                    }}
+                    placeholder="Enter section heading..."
+                    className="flex-1 text-lg font-extrabold text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-800 px-3 py-1.5 rounded-xl border-2 border-emerald-500 outline-none"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={handleTitleBlur}
+                    className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs cursor-pointer"
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingTitleId(null)}
+                    className="px-3.5 py-1.5 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-xl cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                </div>
               ) : (
-                <h2 className="text-xl font-extrabold text-slate-800 dark:text-slate-100 uppercase tracking-wide flex-1">
-                  {activeStage.title}
-                </h2>
+                <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                  <h2 className="text-xl font-extrabold text-slate-800 dark:text-slate-100 uppercase tracking-wide truncate">
+                    {activeStage.title}
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingTitleId(activeStage.key);
+                      setEditingTitleValue(activeStage.title);
+                      setTimeout(() => titleInputRef.current?.focus(), 30);
+                    }}
+                    className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-emerald-50 dark:bg-slate-800 dark:hover:bg-emerald-950 text-slate-600 hover:text-emerald-700 dark:text-slate-300 text-xs font-bold transition-all flex items-center gap-1 border border-slate-200 dark:border-slate-700 shadow-2xs cursor-pointer shrink-0"
+                    title="Rename Section Heading"
+                  >
+                    <Pencil className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Rename Heading</span>
+                  </button>
+                </div>
               )}
-              {/* Pencil to re-open editor for duplicate stages */}
-              {activeStage.isDuplicate && editingTitleId !== activeStage.key && (
+
+              {/* Action Buttons on Right: + Add Question to this Section */}
+              <div className="flex items-center gap-2">
                 <button
+                  type="button"
                   onClick={() => {
-                    setEditingTitleId(activeStage.key);
-                    setEditingTitleValue(activeStage.title);
-                    setTimeout(() => titleInputRef.current?.focus(), 30);
+                    setNewFieldLabel('');
+                    setNewFieldUnit('');
+                    setNewFieldChoices('');
+                    setNewFieldType('select');
+                    setShowAddFieldModal(true);
                   }}
-                  className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-emerald-600 transition-colors shrink-0"
-                  title="Rename this stage"
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer shrink-0"
+                  title={`Add a new question directly to "${activeStage.title}"`}
                 >
-                  <Pencil className="w-4 h-4" />
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>+ Add Question to Section</span>
                 </button>
-              )}
+              </div>
             </div>
 
             {/* Top Smart OEM / Yard Preset Auto-Fill Banner */}
@@ -655,8 +876,9 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
             )}
 
             {(activeStage.type === 'spec' || activeStage.type === 'spec_dup') && activeSection ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-              {activeSection.fields.map((field, itemIdx) => {
+              <div>
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {activeSection.fields.map((field, itemIdx) => {
                 // For duplicated stages, namespace the responses by the duplicate's unique key
                 const instancePrefix = activeStage.isDuplicate ? `${equipmentInstanceId}_${activeStage.key}` : `${equipmentInstanceId}_${activeSection!.sectionKey}`;
                 const itemKey = `${instancePrefix}_${field.key}`;
@@ -678,7 +900,7 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
                 if (field.optionsCategory) {
                   const categoryOptions = masterOptionsMap[field.optionsCategory] || [];
                   const targetFieldKey = field.optionsFieldKey || (field.isManufacturerField ? 'mfr_name' : field.key);
-                  const matching = categoryOptions.filter(o => o.fieldKey === targetFieldKey && o.isActive !== false);
+                  const matching = categoryOptions.filter(o => (o.fieldKey === targetFieldKey || o.fieldKey === field.key) && o.isActive !== false);
                   if (matching.length > 0) {
                     optionsList = matching.map(o => o.optionValue);
                   } else {
@@ -698,31 +920,62 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
                 return (
                   <div key={field.key} className="flex flex-col p-4 rounded-xl border border-slate-100 dark:border-slate-800/60 bg-slate-50/30 dark:bg-slate-800/20 shadow-[0_2px_4px_rgba(0,0,0,0.01)] hover:shadow-md transition-shadow">
                     <div className="flex items-start justify-between gap-3 mb-4">
-                      <label className="text-sm font-semibold text-slate-800 dark:text-slate-200 leading-snug">
-                        {field.label}
-                      </label>
-                      <label className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer font-medium shrink-0 pt-0.5">
-                        <input
-                          type="checkbox"
-                          checked={currentResponse.isNotApplicable || false}
-                          onChange={(e) => {
-                            const isNA = e.target.checked;
-                            onChangeResponse(itemKey, {
-                              ...currentResponse,
-                              isNotApplicable: isNA
+                      <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                        <label className="text-sm font-bold text-slate-800 dark:text-slate-200 leading-snug truncate">
+                          {field.label}
+                        </label>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {/* Edit Field Question Button */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingField({
+                              sectionKey: activeSection.sectionKey,
+                              sectionTitle: activeStage.title,
+                              fieldKey: field.key,
+                              fieldLabel: field.label,
+                              fieldType: field.type || 'text',
+                              unit: field.unit || '',
+                              placeholder: field.placeholder || '',
+                              optionsCategory: field.optionsCategory,
+                              optionsFieldKey: field.optionsFieldKey,
+                              isCustom: field.isCustom
                             });
-                            if (onLogAction) {
-                              onLogAction({
-                                actionType: 'EDIT',
-                                target: field.label,
-                                details: `${isNA ? 'Marked' : 'Unmarked'} N/A for "${field.label}"`
-                              });
-                            }
                           }}
-                          className="rounded text-emerald-600 focus:ring-emerald-500/20 w-3.5 h-3.5"
-                        />
-                        Mark N/A
-                      </label>
+                          className="p-1.5 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-950 text-slate-400 hover:text-emerald-600 transition-colors border border-slate-200/60 dark:border-slate-700/60 cursor-pointer"
+                          title={`Edit Question "${field.label}"`}
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+
+                        {/* Delete Field Question Button */}
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteFieldFromSection(field.key, field.label)}
+                          className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950 text-slate-400 hover:text-rose-600 transition-colors border border-slate-200/60 dark:border-slate-700/60 cursor-pointer"
+                          title={`Delete Question "${field.label}"`}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+
+                        {/* Mark N/A checkbox */}
+                        <label className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer font-medium pt-0.5 ml-1">
+                          <input
+                            type="checkbox"
+                            checked={currentResponse.isNotApplicable || false}
+                            onChange={(e) => {
+                              const isNA = e.target.checked;
+                              onChangeResponse(itemKey, {
+                                ...currentResponse,
+                                isNotApplicable: isNA
+                              });
+                            }}
+                            className="rounded text-emerald-600 focus:ring-emerald-500/20 w-3.5 h-3.5"
+                          />
+                        </label>
+                      </div>
                     </div>
 
                     {!currentResponse.isNotApplicable ? (
@@ -1060,6 +1313,37 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
                   </div>
                 );
               })}
+              </div>
+
+              {/* Bottom Add Question Banner for Active Section */}
+              <div className="mt-8 p-4 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-slate-50/50 dark:bg-slate-900/50">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-extrabold shrink-0 border border-emerald-200/50">
+                    <Plus className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-extrabold text-slate-800 dark:text-slate-200">
+                      Need another question or checklist point in {activeStage.title}?
+                    </h4>
+                    <p className="text-[11px] text-slate-400">
+                      Add custom questions, breaker details, ratings, or dropdown lists directly to this section.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewFieldLabel('');
+                    setNewFieldUnit('');
+                    setNewFieldChoices('');
+                    setNewFieldType('select');
+                    setShowAddFieldModal(true);
+                  }}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 shrink-0 cursor-pointer w-full sm:w-auto justify-center"
+                >
+                  <Plus className="w-3.5 h-3.5" /> + Add Question
+                </button>
+              </div>
             </div>
             ) : (activeStage.type === 'custom' || activeStage.type === 'custom_dup') ? (
               <div className="w-full">
@@ -1183,6 +1467,274 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
           </div>
         </div>
       )}
+
+      {/* EDIT QUESTION / CONFIGURE FIELD MODAL */}
+      {editingField && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-600 flex items-center justify-center">
+                  <Pencil className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-base font-extrabold text-slate-900 dark:text-white">
+                    Edit Question Specification
+                  </h2>
+                  <p className="text-xs text-slate-400">
+                    Customize the question title, answer format, unit, or choices
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingField(null)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveFieldConfig} className="space-y-4 overflow-y-auto pr-1 flex-1">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Question / Checkpoint Label <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editingField.fieldLabel}
+                  onChange={(e) => setEditingField({ ...editingField, fieldLabel: e.target.value })}
+                  placeholder="e.g. Incomer MCCB/ACB Rating & Details"
+                  className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Answer Format / Type
+                  </label>
+                  <select
+                    value={editingField.fieldType}
+                    onChange={(e) => setEditingField({ ...editingField, fieldType: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 outline-none"
+                  >
+                    <option value="select">🔘 Select from Dropdown List</option>
+                    <option value="text">📝 Short Text Input</option>
+                    <option value="textarea">📄 Multi-line Detailed Remarks</option>
+                    <option value="number">🔢 Number / Measurement Value</option>
+                    <option value="date">📅 Calendar Date</option>
+                    <option value="boolean">🔘 Yes / No Switch</option>
+                    <option value="photo">📷 Photo Attachment</option>
+                    <option value="gps_location">📍 GPS Location Verified</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Unit / Suffix (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={editingField.unit}
+                    onChange={(e) => setEditingField({ ...editingField, unit: e.target.value })}
+                    placeholder="e.g. A, V, kVA, Deg C, mm"
+                    className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* If dropdown type: show & manage options */}
+              {(editingField.fieldType === 'select' || editingField.fieldType === 'searchable_select') && (
+                <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                      <Tag className="w-3.5 h-3.5 text-emerald-600" />
+                      Dropdown Choices ({fieldModalChoices.length})
+                    </span>
+                    <span className="text-[10px] text-slate-400">Manage selectable choices</span>
+                  </div>
+
+                  {/* List of choices */}
+                  <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
+                    {fieldModalChoices.length === 0 ? (
+                      <p className="text-xs text-slate-400 italic py-1">No choices added yet. Add below.</p>
+                    ) : (
+                      fieldModalChoices.map((opt) => (
+                        <div
+                          key={opt.id}
+                          className="flex items-center justify-between px-2.5 py-1.5 bg-white dark:bg-slate-800 rounded-xl border border-slate-200/80 dark:border-slate-700/80 text-xs text-slate-800 dark:text-slate-200"
+                        >
+                          <span className="font-semibold">{opt.optionValue}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteChoiceOption(opt.id, opt.optionValue)}
+                            className="text-slate-400 hover:text-rose-500 p-1 rounded-lg"
+                            title="Delete choice"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Quick Add choice input */}
+                  <div className="flex items-center gap-2 pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
+                    <input
+                      type="text"
+                      value={quickAddChoiceInput}
+                      onChange={(e) => setQuickAddChoiceInput(e.target.value)}
+                      placeholder="Type a new choice option..."
+                      className="flex-1 px-3 py-1.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-xs outline-none focus:border-emerald-600"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddChoiceToField}
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shrink-0 cursor-pointer shadow-2xs"
+                    >
+                      + Add
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setEditingField(null)}
+                  className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingField}
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer disabled:opacity-50"
+                >
+                  {isSavingField ? 'Saving...' : 'Save Question Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ADD QUESTION TO SECTION MODAL */}
+      {showAddFieldModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-600 flex items-center justify-center">
+                  <Plus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-base font-extrabold text-slate-900 dark:text-white">
+                    Add New Question to Section
+                  </h2>
+                  <p className="text-xs text-slate-400">
+                    Add a new checkpoint directly into <span className="font-bold text-slate-600 dark:text-slate-200">{activeStage.title}</span>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddFieldModal(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddNewFieldToSection} className="space-y-4 overflow-y-auto pr-1 flex-1">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Question / Checkpoint Label <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newFieldLabel}
+                  onChange={(e) => setNewFieldLabel(e.target.value)}
+                  placeholder="e.g. MCCB Breaking Capacity / Make"
+                  className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 outline-none"
+                  autoFocus
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Answer Format / Type
+                  </label>
+                  <select
+                    value={newFieldType}
+                    onChange={(e) => setNewFieldType(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 outline-none"
+                  >
+                    <option value="select">🔘 Select from Dropdown List</option>
+                    <option value="text">📝 Short Text Input</option>
+                    <option value="textarea">📄 Multi-line Detailed Remarks</option>
+                    <option value="number">🔢 Number / Measurement Value</option>
+                    <option value="date">📅 Calendar Date</option>
+                    <option value="boolean">🔘 Yes / No Switch</option>
+                    <option value="photo">📷 Photo Attachment</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Unit / Suffix (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={newFieldUnit}
+                    onChange={(e) => setNewFieldUnit(e.target.value)}
+                    placeholder="e.g. A, V, kVA, mm"
+                    className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* If dropdown type: allow entering initial choices */}
+              {(newFieldType === 'select' || newFieldType === 'searchable_select') && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Initial Dropdown Choices (Comma or new-line separated)
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={newFieldChoices}
+                    onChange={(e) => setNewFieldChoices(e.target.value)}
+                    placeholder="e.g. Siemens 630A, ABB 800A, Schneider 1000A, L&T 400A"
+                    className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 outline-none resize-none"
+                  />
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowAddFieldModal(false)}
+                  className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isAddingField}
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer disabled:opacity-50"
+                >
+                  {isAddingField ? 'Adding...' : 'Add Question to Section'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
