@@ -172,21 +172,39 @@ export const HT_YARD_FIELD_SPECS: Record<string, ModuleSpec> = {
         fields: [
           { key: 'incomer_mccb', label: '5. Incomer MCCB/COS/ACB Details', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'incomer_mccb_make' },
           { key: 'single_phase_preventor', label: '6. Single Phase Preventor & Logic Circuit', type: 'boolean' },
-          { key: 'earth_leakage_relay', label: '7. Earth Leakage Relay Make', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'earth_leakage_relay' },
+          { 
+            key: 'earth_leakage_relay', 
+            label: '7. Earth Leakage Relay Make', 
+            type: 'select', 
+            optionsCategory: 'LTKMD', 
+            optionsFieldKey: 'earth_leakage_relay',
+            subFields: [
+              { key: 'status', label: 'Status', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'status', parentFieldKey: 'earth_leakage_relay' },
+              { key: 'time_in_sec', label: 'Time in Sec', type: 'text', optionsCategory: 'LTKMD', optionsFieldKey: 'time_in_sec', parentFieldKey: 'earth_leakage_relay' }
+            ]
+          },
           { key: 'voltmeter', label: '8. Volt Meter', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'voltmeter' },
           { key: 'ammeter', label: '9. Ammeter', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'ammeter' },
           { key: 'mf_meter', label: '10. Multi Function Meter', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'mf_meter' },
           { key: 'selector_switch_make', label: '11. Selector Switch Make', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'selector_switch_make' },
           { key: 'phase_lamps', label: '12. Phase Indicating Lamps', type: 'boolean' },
           { key: 'trip_lamps', label: '13. Trip Indicating Lamps', type: 'boolean' },
-          { key: 'bescom_master_meter', label: '14. BESCOM Master Meter Details', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'bescom_master_meter' },
-          { key: 'bus_coupler_details', label: '15. Bus Coupler Details', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'bus_coupler' },
-          { key: 'bescom_seal', label: '16. BESCOM Seal', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'bescom_seal', parentFieldKey: 'bescom_master_meter' },
-          { key: 'ct_ratio', label: '17. CT Ratio', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'ct_ratio', parentFieldKey: 'bescom_master_meter' },
-          { key: 'ct_constant', label: '18. CT Constant', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'ct_constant', parentFieldKey: 'bescom_master_meter' },
-          { key: 'ct_va', label: '19. CT VA', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'ct_va', parentFieldKey: 'bescom_master_meter' },
-          { key: 'ct_cl', label: '20. CT CL', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'ct_cl', parentFieldKey: 'bescom_master_meter' },
-          { key: 'ct_classification', label: '21. CT Classification', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'ct_classification', parentFieldKey: 'bescom_master_meter' }
+          { 
+            key: 'bescom_master_meter', 
+            label: '14. BESCOM Master Meter Details', 
+            type: 'select', 
+            optionsCategory: 'LTKMD', 
+            optionsFieldKey: 'bescom_master_meter',
+            subFields: [
+              { key: 'bescom_seal', label: 'BESCOM Seal', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'bescom_seal', parentFieldKey: 'bescom_master_meter' },
+              { key: 'ct_ratio', label: 'CT Ratio', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'ct_ratio', parentFieldKey: 'bescom_master_meter' },
+              { key: 'ct_constant', label: 'CT Constant', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'ct_constant', parentFieldKey: 'bescom_master_meter' },
+              { key: 'ct_va', label: 'CT VA', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'ct_va', parentFieldKey: 'bescom_master_meter' },
+              { key: 'ct_cl', label: 'CT CL', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'ct_cl', parentFieldKey: 'bescom_master_meter' },
+              { key: 'ct_classification', label: 'CT Classification', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'ct_classification', parentFieldKey: 'bescom_master_meter' }
+            ]
+          },
+          { key: 'bus_coupler_details', label: '15. Bus Coupler Details', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'bus_coupler' }
         ]
       },
       {
@@ -256,6 +274,285 @@ export const HT_YARD_FIELD_SPECS: Record<string, ModuleSpec> = {
           { key: 'bescom_feasibility', label: '15. BESCOM Feasibility Report Availability', type: 'boolean' },
           { key: 'ceig_drawing', label: '16. CEIG Approved Drawing Availability', type: 'boolean' },
           { key: 'last_service_report', label: '17. Last Service Report Availability', type: 'boolean' }
+        ]
+      }
+    ]
+  },
+
+  VCB: {
+    moduleType: 'VCB',
+    title: 'VCB (Vacuum Circuit Breaker) Audit Report',
+    description: 'Indoor / Outdoor Vacuum Circuit Breaker inspection checklist',
+    repeatsPerSite: true,
+    sections: [
+      {
+        sectionKey: 'equipment_details',
+        title: 'Equipment Details',
+        fields: [
+          { key: 'mfr_name', label: '1. Manufacturer Name', type: 'searchable_select', optionsCategory: 'VCB', isManufacturerField: true },
+          { key: 'mfg_year', label: '2. Year of Manufacturing', type: 'date' },
+          { key: 'serial_no', label: '3. Serial No.', type: 'text' },
+          { key: 'capacity', label: '4. Rated Current / Capacity', type: 'select', optionsCategory: 'VCB', optionsFieldKey: 'capacity' },
+          { key: 'model_no', label: '5. Model No.', type: 'text' },
+          { key: 'breaking_capacity', label: '6. Rated Short Circuit Breaking (kA)', type: 'select', optionsCategory: 'VCB', optionsFieldKey: 'breaking_capacity' }
+        ]
+      },
+      {
+        sectionKey: 'vcb_control_components',
+        title: 'VCB Control & Protection Components',
+        fields: [
+          { key: 'protection_relay', label: '7. Protection Relay Details', type: 'select', optionsCategory: 'VCB', optionsFieldKey: 'protection_relay' },
+          { key: 'tc_supervision_relay', label: '8. Trip Circuit Supervision Relay', type: 'select', optionsCategory: 'VCB', optionsFieldKey: 'tc_supervision_relay' },
+          { key: 'master_trip_relay', label: '9. Master Trip Relay', type: 'select', optionsCategory: 'VCB', optionsFieldKey: 'master_trip_relay' },
+          { key: 'control_mcb', label: '10. Control MCBs', type: 'select', optionsCategory: 'VCB', optionsFieldKey: 'control_mcb' },
+          { key: 'mf_meter', label: '11. Multi Function Meter', type: 'select', optionsCategory: 'VCB', optionsFieldKey: 'mf_meter' },
+          { key: 'voltmeter', label: '12. Volt Meter', type: 'select', optionsCategory: 'VCB', optionsFieldKey: 'voltmeter' },
+          { key: 'ammeter', label: '13. Ammeter', type: 'select', optionsCategory: 'VCB', optionsFieldKey: 'ammeter' },
+          { key: 'power_indicator', label: '14. Power Line / Phase Indicating Lamps', type: 'select', optionsCategory: 'VCB', optionsFieldKey: 'power_indicator' },
+          { key: 'vacuum_status', label: '15. Vacuum Interrupter / Bottle Condition', type: 'select', optionsCategory: 'VCB', optionsFieldKey: 'vacuum_status' }
+        ]
+      },
+      {
+        sectionKey: 'installation_condition',
+        title: 'Installation Condition & Safety',
+        fields: [
+          { key: 'foundation_cond', label: '16. Condition of Foundation', type: 'select', optionsCategory: 'VCB', optionsFieldKey: 'foundation_cond' },
+          { key: 'cable_laying', label: '17. Laying of Cables', type: 'select', optionsCategory: 'VCB', optionsFieldKey: 'cable_laying' },
+          { key: 'gland_condition', label: '18. Cable Gland & Earthing', type: 'select', optionsCategory: 'VCB', optionsFieldKey: 'gland_condition' },
+          { key: 'body_condition', label: '19. Body Condition & Enclosure', type: 'select', optionsCategory: 'VCB', optionsFieldKey: 'body_condition' },
+          { key: 'earth_pit_location', label: '20. Location of Earthing Pits (m)', type: 'text' },
+          { key: 'labelling', label: '21. Labelling & Danger Notice', type: 'select', optionsCategory: 'VCB', optionsFieldKey: 'labelling' }
+        ]
+      },
+      {
+        sectionKey: 'operation_maintenance',
+        title: 'Operation & Maintenance',
+        fields: [
+          { key: 'door_condition', label: '22. Condition of Doors & Safety Interlocks', type: 'select', optionsCategory: 'VCB', optionsFieldKey: 'door_condition' },
+          { key: 'operating_levers', label: '23. Availability of Operating Handles / Levers', type: 'boolean' },
+          { key: 'test_service_pos', label: '24. Test / Service Position Racking Mechanism', type: 'boolean' }
+        ]
+      }
+    ]
+  },
+
+  Switchgear: {
+    moduleType: 'Switchgear',
+    title: 'Switchgear Audit Report',
+    description: 'MV/HT Switchgear and Busbar panel inspection checklist',
+    repeatsPerSite: true,
+    sections: [
+      {
+        sectionKey: 'equipment_details',
+        title: 'Equipment Details',
+        fields: [
+          { key: 'mfr_name', label: '1. Manufacturer Name', type: 'searchable_select', optionsCategory: 'Switchgear', isManufacturerField: true },
+          { key: 'mfg_year', label: '2. Year of Manufacturing', type: 'date' },
+          { key: 'serial_no', label: '3. Serial No.', type: 'text' },
+          { key: 'capacity', label: '4. Rated Busbar Current / Capacity', type: 'select', optionsCategory: 'Switchgear', optionsFieldKey: 'capacity' },
+          { key: 'model_no', label: '5. Model / Panel Type', type: 'text' },
+          { key: 'no_of_panels', label: '6. No. of Panels / Incomers', type: 'select', optionsCategory: 'Switchgear', optionsFieldKey: 'no_of_panels' }
+        ]
+      },
+      {
+        sectionKey: 'components_relays',
+        title: 'Switchgear Components & Relays',
+        fields: [
+          { key: 'protection_relay', label: '7. Protection Relay Details', type: 'select', optionsCategory: 'Switchgear', optionsFieldKey: 'protection_relay' },
+          { key: 'mf_meter', label: '8. Multi Function Meter', type: 'select', optionsCategory: 'Switchgear', optionsFieldKey: 'mf_meter' },
+          { key: 'control_mcb', label: '9. Control MCBs', type: 'select', optionsCategory: 'Switchgear', optionsFieldKey: 'control_mcb' },
+          { key: 'annunciator', label: '10. Annunciator Panel', type: 'select', optionsCategory: 'Switchgear', optionsFieldKey: 'annunciator' },
+          { key: 'selector_switch', label: '11. Selector Switch Details', type: 'select', optionsCategory: 'Switchgear', optionsFieldKey: 'selector_switch' },
+          { key: 'power_indicator', label: '12. Phase Indicating Lamps', type: 'select', optionsCategory: 'Switchgear', optionsFieldKey: 'power_indicator' }
+        ]
+      },
+      {
+        sectionKey: 'installation_condition',
+        title: 'Installation Condition & Safety',
+        fields: [
+          { key: 'foundation_cond', label: '13. Condition of Foundation', type: 'select', optionsCategory: 'Switchgear', optionsFieldKey: 'foundation_cond' },
+          { key: 'cable_laying', label: '14. Laying of Cables', type: 'select', optionsCategory: 'Switchgear', optionsFieldKey: 'cable_laying' },
+          { key: 'body_condition', label: '15. Body Condition & IP Enclosure', type: 'select', optionsCategory: 'Switchgear', optionsFieldKey: 'body_condition' },
+          { key: 'body_earth_terminals', label: '16. Earthing Copper Bus Connections', type: 'select', optionsCategory: 'Switchgear', optionsFieldKey: 'body_earth_terminals' },
+          { key: 'rubber_mat', label: '17. Provision of Insulated Rubber Mat', type: 'boolean' },
+          { key: 'labelling', label: '18. Labelling & Mimic Bus', type: 'select', optionsCategory: 'Switchgear', optionsFieldKey: 'labelling' }
+        ]
+      },
+      {
+        sectionKey: 'operation_maintenance',
+        title: 'Operation & Maintenance',
+        fields: [
+          { key: 'door_condition', label: '19. Condition of Doors & Interlocks', type: 'select', optionsCategory: 'Switchgear', optionsFieldKey: 'door_condition' },
+          { key: 'operating_levers', label: '20. Availability of Operating Levers', type: 'boolean' }
+        ]
+      }
+    ]
+  },
+
+  HT_Panel: {
+    moduleType: 'HT_Panel',
+    title: 'HT Panel Audit Report',
+    description: 'High Tension incoming / distribution panel checklist',
+    repeatsPerSite: true,
+    sections: [
+      {
+        sectionKey: 'equipment_details',
+        title: 'Equipment Details',
+        fields: [
+          { key: 'mfr_name', label: '1. Manufacturer Name', type: 'searchable_select', optionsCategory: 'HT_Panel', isManufacturerField: true },
+          { key: 'mfg_year', label: '2. Year of Manufacturing', type: 'date' },
+          { key: 'serial_no', label: '3. Serial No.', type: 'text' },
+          { key: 'capacity', label: '4. Rated Voltage / Capacity', type: 'select', optionsCategory: 'HT_Panel', optionsFieldKey: 'capacity' },
+          { key: 'breaker_type', label: '5. Breaker Mechanism (VCB / SF6 / ACB)', type: 'select', optionsCategory: 'HT_Panel', optionsFieldKey: 'breaker_type' },
+          { key: 'model_no', label: '6. Model No.', type: 'text' }
+        ]
+      },
+      {
+        sectionKey: 'protection_metering',
+        title: 'Protection & Metering',
+        fields: [
+          { key: 'protection_relay', label: '7. Overcurrent & Earth Fault Relay', type: 'select', optionsCategory: 'HT_Panel', optionsFieldKey: 'protection_relay' },
+          { key: 'master_trip_relay', label: '8. Master Trip Relay', type: 'select', optionsCategory: 'HT_Panel', optionsFieldKey: 'master_trip_relay' },
+          { key: 'mf_meter', label: '9. Multi Function Meter', type: 'select', optionsCategory: 'HT_Panel', optionsFieldKey: 'mf_meter' },
+          { key: 'control_mcb', label: '10. Control MCBs', type: 'select', optionsCategory: 'HT_Panel', optionsFieldKey: 'control_mcb' },
+          { key: 'power_pack_battery_backup', label: '11. Power Pack / Battery Backup', type: 'select', optionsCategory: 'HT_Panel', optionsFieldKey: 'power_pack_battery_backup' },
+          { key: 'power_indicator', label: '12. Line Charge / Indication Lamps', type: 'select', optionsCategory: 'HT_Panel', optionsFieldKey: 'power_indicator' }
+        ]
+      },
+      {
+        sectionKey: 'installation_condition',
+        title: 'Installation Condition & Grounding',
+        fields: [
+          { key: 'foundation_cond', label: '13. Foundation Plinth Condition', type: 'select', optionsCategory: 'HT_Panel', optionsFieldKey: 'foundation_cond' },
+          { key: 'cable_laying', label: '14. Laying of Cables', type: 'select', optionsCategory: 'HT_Panel', optionsFieldKey: 'cable_laying' },
+          { key: 'gland_earthing', label: '15. Cable Gland & Double Earthing', type: 'select', optionsCategory: 'HT_Panel', optionsFieldKey: 'gland_earthing' },
+          { key: 'body_condition', label: '16. Body Condition & Powder Coating', type: 'select', optionsCategory: 'HT_Panel', optionsFieldKey: 'body_condition' },
+          { key: 'body_earth_terminals', label: '17. Earthing Busbar Connection', type: 'select', optionsCategory: 'HT_Panel', optionsFieldKey: 'body_earth_terminals' },
+          { key: 'labelling', label: '18. Danger Notice & Labelling', type: 'select', optionsCategory: 'HT_Panel', optionsFieldKey: 'labelling' }
+        ]
+      },
+      {
+        sectionKey: 'operation_maintenance',
+        title: 'Operation & Maintenance',
+        fields: [
+          { key: 'door_condition', label: '19. Door Gaskets & Locks Condition', type: 'select', optionsCategory: 'HT_Panel', optionsFieldKey: 'door_condition' },
+          { key: 'operating_levers', label: '20. Availability of Operating Levers', type: 'boolean' }
+        ]
+      }
+    ]
+  },
+
+  Meter_Cubicle: {
+    moduleType: 'Meter_Cubicle',
+    title: 'HT Metering Cubicle Audit Report',
+    description: 'Utility / HT revenue metering cubicle & CT/PT inspection checklist',
+    repeatsPerSite: true,
+    sections: [
+      {
+        sectionKey: 'equipment_details',
+        title: 'Equipment Details',
+        fields: [
+          { key: 'mfr_name', label: '1. Manufacturer Name', type: 'searchable_select', optionsCategory: 'Meter_Cubicle', isManufacturerField: true },
+          { key: 'mfg_year', label: '2. Year of Manufacturing', type: 'date' },
+          { key: 'serial_no', label: '3. Serial No.', type: 'text' },
+          { key: 'capacity', label: '4. Voltage Class / Ratio', type: 'select', optionsCategory: 'Meter_Cubicle', optionsFieldKey: 'capacity' },
+          { key: 'bescom_tc_no', label: '5. BESCOM / Utility TC No.', type: 'text' }
+        ]
+      },
+      {
+        sectionKey: 'metering_ct_pt_seals',
+        title: 'Metering CT/PT & Seals',
+        fields: [
+          { key: 'bescom_master_meter', label: '6. Master Meter Make & Model', type: 'select', optionsCategory: 'Meter_Cubicle', optionsFieldKey: 'bescom_master_meter' },
+          { key: 'bescom_seal', label: '7. Metering Seal Condition (Intact/Broken)', type: 'select', optionsCategory: 'Meter_Cubicle', optionsFieldKey: 'bescom_seal' },
+          { key: 'ct_ratio', label: '8. CT Ratio', type: 'select', optionsCategory: 'Meter_Cubicle', optionsFieldKey: 'ct_ratio' },
+          { key: 'ct_constant', label: '9. CT Constant', type: 'select', optionsCategory: 'Meter_Cubicle', optionsFieldKey: 'ct_constant' },
+          { key: 'ct_cl', label: '10. Accuracy Class', type: 'select', optionsCategory: 'Meter_Cubicle', optionsFieldKey: 'ct_cl' },
+          { key: 'ct_va', label: '11. CT Burden (VA)', type: 'select', optionsCategory: 'Meter_Cubicle', optionsFieldKey: 'ct_va' },
+          { key: 'mf_meter', label: '12. Multi Function Check Meter', type: 'select', optionsCategory: 'Meter_Cubicle', optionsFieldKey: 'mf_meter' }
+        ]
+      },
+      {
+        sectionKey: 'installation_condition',
+        title: 'Installation Condition & Safety',
+        fields: [
+          { key: 'foundation_cond', label: '13. Condition of Foundation', type: 'select', optionsCategory: 'Meter_Cubicle', optionsFieldKey: 'foundation_cond' },
+          { key: 'cable_laying', label: '14. Laying of Cables', type: 'select', optionsCategory: 'Meter_Cubicle', optionsFieldKey: 'cable_laying' },
+          { key: 'body_condition', label: '15. Body Condition & Sealing Loop', type: 'select', optionsCategory: 'Meter_Cubicle', optionsFieldKey: 'body_condition' },
+          { key: 'body_earth_terminals', label: '16. Dual Body Grounding Terminals', type: 'select', optionsCategory: 'Meter_Cubicle', optionsFieldKey: 'body_earth_terminals' },
+          { key: 'labelling', label: '17. Labelling & Danger Caution Notice', type: 'select', optionsCategory: 'Meter_Cubicle', optionsFieldKey: 'labelling' }
+        ]
+      },
+      {
+        sectionKey: 'operation_maintenance',
+        title: 'Operation & Maintenance',
+        fields: [
+          { key: 'door_condition', label: '18. Door Condition & Glass Viewing Port', type: 'select', optionsCategory: 'Meter_Cubicle', optionsFieldKey: 'door_condition' },
+          { key: 'rain_shade', label: '19. Provision of Rain Canopy / Shade', type: 'boolean' }
+        ]
+      }
+    ]
+  },
+
+  CSS: {
+    moduleType: 'CSS',
+    title: 'CSS (Compact Secondary Substation) Audit Report',
+    description: 'Packaged Compact Substation (MV + Transformer + LV + APFC) inspection checklist',
+    repeatsPerSite: true,
+    sections: [
+      {
+        sectionKey: 'equipment_details',
+        title: 'Equipment Details',
+        fields: [
+          { key: 'mfr_name', label: '1. Manufacturer Name', type: 'searchable_select', optionsCategory: 'CSS', isManufacturerField: true },
+          { key: 'mfg_year', label: '2. Year of Manufacturing', type: 'date' },
+          { key: 'serial_no', label: '3. Serial No.', type: 'text' },
+          { key: 'capacity', label: '4. Transformer Rating (kVA)', type: 'select', optionsCategory: 'CSS', optionsFieldKey: 'capacity' },
+          { key: 'model_no', label: '5. Package Model / Type', type: 'text' },
+          { key: 'coil_material', label: '6. Transformer Winding Material', type: 'select', optionsCategory: 'CSS', optionsFieldKey: 'coil_material' }
+        ]
+      },
+      {
+        sectionKey: 'mv_transformer_section',
+        title: 'MV & Transformer Section',
+        fields: [
+          { key: 'sf6_status', label: '7. MV RMU / Breaker Gas Status', type: 'select', optionsCategory: 'CSS', optionsFieldKey: 'sf6_status' },
+          { key: 'protection_relay', label: '8. Protection Relay Details', type: 'select', optionsCategory: 'CSS', optionsFieldKey: 'protection_relay' },
+          { key: 'oil_temp_indicator', label: '9. Oil Temperature Indicator', type: 'select', optionsCategory: 'CSS', optionsFieldKey: 'oil_temp_indicator' },
+          { key: 'prv', label: '10. Pressure Relief Device (PRV)', type: 'select', optionsCategory: 'CSS', optionsFieldKey: 'prv' },
+          { key: 'air_breather', label: '11. Silica Gel Breather Condition', type: 'select', optionsCategory: 'CSS', optionsFieldKey: 'air_breather' }
+        ]
+      },
+      {
+        sectionKey: 'lv_capacitor_section',
+        title: 'LV & Capacitor Section',
+        fields: [
+          { key: 'incomer_mccb', label: '12. Incomer ACB / MCCB Rating & Make', type: 'select', optionsCategory: 'CSS', optionsFieldKey: 'incomer_mccb_make' },
+          { key: 'cap_bank_sizes', label: '13. APFC / Capacitor Bank Sizes', type: 'select', optionsCategory: 'CSS', optionsFieldKey: 'cap_bank_sizes' },
+          { key: 'mf_meter', label: '14. Multi Function Meter', type: 'select', optionsCategory: 'CSS', optionsFieldKey: 'mf_meter' },
+          { key: 'voltmeter', label: '15. Volt Meter', type: 'select', optionsCategory: 'CSS', optionsFieldKey: 'voltmeter' },
+          { key: 'ammeter', label: '16. Ammeter', type: 'select', optionsCategory: 'CSS', optionsFieldKey: 'ammeter' },
+          { key: 'control_mcb', label: '17. Control MCBs', type: 'select', optionsCategory: 'CSS', optionsFieldKey: 'control_mcb' }
+        ]
+      },
+      {
+        sectionKey: 'installation_condition',
+        title: 'Enclosure, Foundation & Safety',
+        fields: [
+          { key: 'foundation_cond', label: '18. Plinth Foundation & Oil Sump', type: 'select', optionsCategory: 'CSS', optionsFieldKey: 'foundation_cond' },
+          { key: 'cable_laying', label: '19. Laying of MV / LV Cables', type: 'select', optionsCategory: 'CSS', optionsFieldKey: 'cable_laying' },
+          { key: 'body_condition', label: '20. Kiosk Enclosure Paint & IP Seal', type: 'select', optionsCategory: 'CSS', optionsFieldKey: 'body_condition' },
+          { key: 'body_earth_terminals', label: '21. Earthing Terminals & Ground Grid', type: 'select', optionsCategory: 'CSS', optionsFieldKey: 'body_earth_terminals' },
+          { key: 'rubber_mat', label: '22. Insulated Rubber Mat in LV Room', type: 'boolean' },
+          { key: 'labelling', label: '23. Danger Board & Signage', type: 'select', optionsCategory: 'CSS', optionsFieldKey: 'labelling' }
+        ]
+      },
+      {
+        sectionKey: 'operation_maintenance',
+        title: 'Operation & Maintenance',
+        fields: [
+          { key: 'door_condition', label: '24. Condition of Louvers, Doors & Locks', type: 'select', optionsCategory: 'CSS', optionsFieldKey: 'door_condition' },
+          { key: 'operating_levers', label: '25. Availability of Operating Levers', type: 'boolean' }
         ]
       }
     ]

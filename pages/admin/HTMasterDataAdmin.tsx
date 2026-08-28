@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, Edit2, Trash2, Box, RefreshCw, RotateCcw, Plus, Eye, X, Layers, List, Check, Tag, ChevronDown, Maximize2, Minimize2, Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle2, FileText, BookOpen, Lock, Settings2, Calendar, QrCode } from 'lucide-react';
 import { HTMasterOption, HTMasterCategory, HTFieldTarget, CustomFieldSpec, HTFieldType } from '../../types/htYard';
@@ -99,6 +99,8 @@ const INITIAL_FIELD_TARGETS_MAP: Record<HTMasterCategory, HTFieldTarget[]> = {
     // 2. Equipment Accessories
     { key: 'incomer_mccb_make', label: 'Incomer MCCB Make', section: 'Equipment Accessories' },
     { key: 'earth_leakage_relay', label: 'Earth Leakage Relay Make', section: 'Equipment Accessories' },
+    { key: 'status', label: 'Status', section: 'Equipment Accessories', parentFieldKey: 'earth_leakage_relay' },
+    { key: 'time_in_sec', label: 'Time in Sec', section: 'Equipment Accessories', parentFieldKey: 'earth_leakage_relay' },
     { key: 'voltmeter', label: 'Volt Meter', section: 'Equipment Accessories' },
     { key: 'ammeter', label: 'Ammeter', section: 'Equipment Accessories' },
     { key: 'mf_meter', label: 'Multi Function Meter', section: 'Equipment Accessories' },
@@ -130,6 +132,100 @@ const INITIAL_FIELD_TARGETS_MAP: Record<HTMasterCategory, HTFieldTarget[]> = {
   'HTYardCommon': [
     { key: 'yard_cleanliness', label: 'Yard Cleanliness', section: 'Stage 1: Yard Infrastructure & Environment' },
     { key: 'fire_extinguishers', label: 'Fire Extinguishers', section: 'Stage 2: Safety & Initial Reports' }
+  ],
+  'VCB': [
+    { key: 'mfr_name', label: 'Manufacturer Name', section: 'Equipment Details' },
+    { key: 'capacity', label: 'Rated Current / Capacity', section: 'Equipment Details' },
+    { key: 'breaking_capacity', label: 'Rated Short Circuit Breaking', section: 'Equipment Details' },
+    { key: 'protection_relay', label: 'Protection Relay Details', section: 'VCB Control & Protection Components' },
+    { key: 'tc_supervision_relay', label: 'Trip Circuit Supervision Relay', section: 'VCB Control & Protection Components' },
+    { key: 'master_trip_relay', label: 'Master Trip Relay', section: 'VCB Control & Protection Components' },
+    { key: 'control_mcb', label: 'Control MCBs', section: 'VCB Control & Protection Components' },
+    { key: 'mf_meter', label: 'Multi Function Meter', section: 'VCB Control & Protection Components' },
+    { key: 'voltmeter', label: 'Volt Meter', section: 'VCB Control & Protection Components' },
+    { key: 'ammeter', label: 'Ammeter', section: 'VCB Control & Protection Components' },
+    { key: 'power_indicator', label: 'Power Line / Phase Indicating Lamps', section: 'VCB Control & Protection Components' },
+    { key: 'vacuum_status', label: 'Vacuum Interrupter / Bottle Condition', section: 'VCB Control & Protection Components' },
+    { key: 'foundation_cond', label: 'Condition of Foundation', section: 'Installation Condition & Safety' },
+    { key: 'cable_laying', label: 'Laying of Cables', section: 'Installation Condition & Safety' },
+    { key: 'gland_condition', label: 'Cable Gland & Earthing', section: 'Installation Condition & Safety' },
+    { key: 'body_condition', label: 'Body Condition & Enclosure', section: 'Installation Condition & Safety' },
+    { key: 'labelling', label: 'Labelling & Danger Notice', section: 'Installation Condition & Safety' },
+    { key: 'door_condition', label: 'Condition of Doors & Safety Interlocks', section: 'Operation & Maintenance' }
+  ],
+  'Switchgear': [
+    { key: 'mfr_name', label: 'Manufacturer Name', section: 'Equipment Details' },
+    { key: 'capacity', label: 'Rated Busbar Current / Capacity', section: 'Equipment Details' },
+    { key: 'no_of_panels', label: 'No. of Panels / Incomers', section: 'Equipment Details' },
+    { key: 'protection_relay', label: 'Protection Relay Details', section: 'Switchgear Components & Relays' },
+    { key: 'mf_meter', label: 'Multi Function Meter', section: 'Switchgear Components & Relays' },
+    { key: 'control_mcb', label: 'Control MCBs', section: 'Switchgear Components & Relays' },
+    { key: 'annunciator', label: 'Annunciator Panel', section: 'Switchgear Components & Relays' },
+    { key: 'selector_switch', label: 'Selector Switch Details', section: 'Switchgear Components & Relays' },
+    { key: 'power_indicator', label: 'Phase Indicating Lamps', section: 'Switchgear Components & Relays' },
+    { key: 'foundation_cond', label: 'Condition of Foundation', section: 'Installation Condition & Safety' },
+    { key: 'cable_laying', label: 'Laying of Cables', section: 'Installation Condition & Safety' },
+    { key: 'body_condition', label: 'Body Condition & IP Enclosure', section: 'Installation Condition & Safety' },
+    { key: 'body_earth_terminals', label: 'Earthing Copper Bus Connections', section: 'Installation Condition & Safety' },
+    { key: 'labelling', label: 'Labelling & Mimic Bus', section: 'Installation Condition & Safety' },
+    { key: 'door_condition', label: 'Condition of Doors & Interlocks', section: 'Operation & Maintenance' }
+  ],
+  'HT_Panel': [
+    { key: 'mfr_name', label: 'Manufacturer Name', section: 'Equipment Details' },
+    { key: 'capacity', label: 'Rated Voltage / Capacity', section: 'Equipment Details' },
+    { key: 'breaker_type', label: 'Breaker Mechanism', section: 'Equipment Details' },
+    { key: 'protection_relay', label: 'Overcurrent & Earth Fault Relay', section: 'Protection & Metering' },
+    { key: 'master_trip_relay', label: 'Master Trip Relay', section: 'Protection & Metering' },
+    { key: 'mf_meter', label: 'Multi Function Meter', section: 'Protection & Metering' },
+    { key: 'control_mcb', label: 'Control MCBs', section: 'Protection & Metering' },
+    { key: 'power_pack_battery_backup', label: 'Power Pack / Battery Backup', section: 'Protection & Metering' },
+    { key: 'power_indicator', label: 'Line Charge / Indication Lamps', section: 'Protection & Metering' },
+    { key: 'foundation_cond', label: 'Foundation Plinth Condition', section: 'Installation Condition & Grounding' },
+    { key: 'cable_laying', label: 'Laying of Cables', section: 'Installation Condition & Grounding' },
+    { key: 'gland_earthing', label: 'Cable Gland & Double Earthing', section: 'Installation Condition & Grounding' },
+    { key: 'body_condition', label: 'Body Condition & Powder Coating', section: 'Installation Condition & Grounding' },
+    { key: 'body_earth_terminals', label: 'Earthing Busbar Connection', section: 'Installation Condition & Grounding' },
+    { key: 'labelling', label: 'Danger Notice & Labelling', section: 'Installation Condition & Grounding' },
+    { key: 'door_condition', label: 'Door Gaskets & Locks Condition', section: 'Operation & Maintenance' }
+  ],
+  'Meter_Cubicle': [
+    { key: 'mfr_name', label: 'Manufacturer Name', section: 'Equipment Details' },
+    { key: 'capacity', label: 'Voltage Class / Ratio', section: 'Equipment Details' },
+    { key: 'bescom_master_meter', label: 'Master Meter Make & Model', section: 'Metering CT/PT & Seals' },
+    { key: 'bescom_seal', label: 'Metering Seal Condition', section: 'Metering CT/PT & Seals' },
+    { key: 'ct_ratio', label: 'CT Ratio', section: 'Metering CT/PT & Seals' },
+    { key: 'ct_constant', label: 'CT Constant', section: 'Metering CT/PT & Seals' },
+    { key: 'ct_cl', label: 'Accuracy Class', section: 'Metering CT/PT & Seals' },
+    { key: 'ct_va', label: 'CT Burden (VA)', section: 'Metering CT/PT & Seals' },
+    { key: 'mf_meter', label: 'Multi Function Check Meter', section: 'Metering CT/PT & Seals' },
+    { key: 'foundation_cond', label: 'Condition of Foundation', section: 'Installation Condition & Safety' },
+    { key: 'cable_laying', label: 'Laying of Cables', section: 'Installation Condition & Safety' },
+    { key: 'body_condition', label: 'Body Condition & Sealing Loop', section: 'Installation Condition & Safety' },
+    { key: 'body_earth_terminals', label: 'Dual Body Grounding Terminals', section: 'Installation Condition & Safety' },
+    { key: 'labelling', label: 'Labelling & Danger Caution Notice', section: 'Installation Condition & Safety' },
+    { key: 'door_condition', label: 'Door Condition & Glass Viewing Port', section: 'Operation & Maintenance' }
+  ],
+  'CSS': [
+    { key: 'mfr_name', label: 'Manufacturer Name', section: 'Equipment Details' },
+    { key: 'capacity', label: 'Transformer Rating (kVA)', section: 'Equipment Details' },
+    { key: 'coil_material', label: 'Transformer Winding Material', section: 'Equipment Details' },
+    { key: 'sf6_status', label: 'MV RMU / Breaker Gas Status', section: 'MV & Transformer Section' },
+    { key: 'protection_relay', label: 'Protection Relay Details', section: 'MV & Transformer Section' },
+    { key: 'oil_temp_indicator', label: 'Oil Temperature Indicator', section: 'MV & Transformer Section' },
+    { key: 'prv', label: 'Pressure Relief Device (PRV)', section: 'MV & Transformer Section' },
+    { key: 'air_breather', label: 'Silica Gel Breather Condition', section: 'MV & Transformer Section' },
+    { key: 'incomer_mccb_make', label: 'Incomer ACB / MCCB Rating & Make', section: 'LV & Capacitor Section' },
+    { key: 'cap_bank_sizes', label: 'APFC / Capacitor Bank Sizes', section: 'LV & Capacitor Section' },
+    { key: 'mf_meter', label: 'Multi Function Meter', section: 'LV & Capacitor Section' },
+    { key: 'voltmeter', label: 'Volt Meter', section: 'LV & Capacitor Section' },
+    { key: 'ammeter', label: 'Ammeter', section: 'LV & Capacitor Section' },
+    { key: 'control_mcb', label: 'Control MCBs', section: 'LV & Capacitor Section' },
+    { key: 'foundation_cond', label: 'Plinth Foundation & Oil Sump', section: 'Enclosure, Foundation & Safety' },
+    { key: 'cable_laying', label: 'Laying of MV / LV Cables', section: 'Enclosure, Foundation & Safety' },
+    { key: 'body_condition', label: 'Kiosk Enclosure Paint & IP Seal', section: 'Enclosure, Foundation & Safety' },
+    { key: 'body_earth_terminals', label: 'Earthing Terminals & Ground Grid', section: 'Enclosure, Foundation & Safety' },
+    { key: 'labelling', label: 'Danger Board & Signage', section: 'Enclosure, Foundation & Safety' },
+    { key: 'door_condition', label: 'Condition of Louvers, Doors & Locks', section: 'Operation & Maintenance' }
   ]
 };
 
@@ -236,6 +332,26 @@ export const HTMasterDataAdmin: React.FC = () => {
   const [newTargetParentKey, setNewTargetParentKey] = useState<string | undefined>(undefined);
   const [parentFieldLabel, setParentFieldLabel] = useState<string>('');
   const [newCategoryName, setNewCategoryName] = useState('');
+
+  // Category Dropdown State
+  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
+  const [categorySearchQuery, setCategorySearchQuery] = useState('');
+  const categoryDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close category dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(event.target as Node)) {
+        setIsCategoryDropdownOpen(false);
+      }
+    };
+    if (isCategoryDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isCategoryDropdownOpen]);
 
   // Viewing Choices Modal State
   const [viewingTargetKey, setViewingTargetKey] = useState<string | null>(null);
@@ -578,7 +694,7 @@ export const HTMasterDataAdmin: React.FC = () => {
   };
 
   // Dynamic Categories State
-  const defaultCategories: HTMasterCategory[] = ['RMUMD', 'TRMaster Data', 'LTKMD', 'Cable Details', 'HTYardCommon'];
+  const defaultCategories: HTMasterCategory[] = ['RMUMD', 'TRMaster Data', 'LTKMD', 'Cable Details', 'HTYardCommon', 'VCB', 'Switchgear', 'HT_Panel', 'Meter_Cubicle', 'CSS'];
   const [categories, setCategories] = useState<HTMasterCategory[]>(() => {
     try {
       const saved = localStorage.getItem('ht_custom_categories');
@@ -1274,6 +1390,44 @@ export const HTMasterDataAdmin: React.FC = () => {
     return groupedFields.find(g => g.fieldKey === viewingTargetKey) || null;
   }, [viewingTargetKey, groupedFields]);
 
+  // Category helpers for custom dropdown
+  const getCategoryIcon = (cat: string) => {
+    if (cat === 'RMUMD') return '🔄';
+    if (cat === 'TRMaster Data') return '⚡';
+    if (cat === 'LTKMD') return '📦';
+    if (cat === 'Cable Details') return '🔌';
+    if (cat === 'HTYardCommon') return '🏞️';
+    if (cat === 'VCB' || cat === 'VCBMD') return '🔘';
+    if (cat === 'Switchgear') return '🎛️';
+    if (cat === 'HT_Panel' || cat === 'HT Panel') return '🚪';
+    if (cat === 'Meter_Cubicle' || cat === 'Meter Cubicle') return '⏱️';
+    if (cat === 'CSS') return '🏬';
+    return '📁';
+  };
+
+  const getCategoryFriendlyLabel = (cat: string) => {
+    if (cat === 'RMUMD') return 'Ring Main Unit (RMU)';
+    if (cat === 'TRMaster Data') return 'Transformer';
+    if (cat === 'LTKMD') return 'LT Kiosk';
+    if (cat === 'Cable Details') return 'Cable Details';
+    if (cat === 'HTYardCommon') return 'Yard Common';
+    if (cat === 'VCB' || cat === 'VCBMD') return 'Vacuum Circuit Breaker (VCB)';
+    if (cat === 'Switchgear') return 'Switchgear';
+    if (cat === 'HT_Panel' || cat === 'HT Panel') return 'HT Panel';
+    if (cat === 'Meter_Cubicle' || cat === 'Meter Cubicle') return 'Meter Cubicle';
+    if (cat === 'CSS') return 'Compact Substation (CSS)';
+    return cat;
+  };
+
+  const filteredCategories = useMemo(() => {
+    if (!categorySearchQuery.trim()) return categories;
+    const q = categorySearchQuery.toLowerCase();
+    return categories.filter(c => 
+      c.toLowerCase().includes(q) || 
+      getCategoryFriendlyLabel(c).toLowerCase().includes(q)
+    );
+  }, [categories, categorySearchQuery]);
+
   return (
     <div className="min-h-screen bg-white dark:bg-slate-950 p-6 lg:p-10 font-sans">
       
@@ -1408,45 +1562,134 @@ export const HTMasterDataAdmin: React.FC = () => {
           </div>
         </div>
 
-        {/* Tier 2: Sleek Interactive Category Switcher Strip */}
-        <div className="mt-4 pt-2 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none flex-1 min-w-0">
-            <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 shrink-0 mr-1">
-              Category:
-            </span>
+        {/* Tier 2: Sleek Interactive Category Dropdown Picker */}
+        <div className="mt-4 pt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-t border-slate-100 dark:border-slate-800/80">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 shrink-0 flex items-center gap-1.5">
+                <Layers className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                Category:
+              </span>
 
-            {categories.map((c) => {
-              const isActive = activeTab === c;
-              const catIcon = c === 'RMUMD' ? '🔄' : c === 'TRMaster Data' ? '⚡' : c === 'LTKMD' ? '📦' : c === 'HTYardCommon' ? '🏞️' : '📁';
-              const friendlyLabel = c === 'RMUMD' ? 'Ring Main Unit (RMU)' : c === 'TRMaster Data' ? 'Transformer' : c === 'LTKMD' ? 'LT Kiosk' : c === 'HTYardCommon' ? 'Yard Common' : c;
-
-              return (
+              {/* Category Dropdown Picker */}
+              <div className="relative" ref={categoryDropdownRef}>
                 <button
-                  key={c}
-                  onClick={() => setActiveTab(c as HTMasterCategory)}
-                  className={`px-3.5 py-2 rounded-2xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 shrink-0 cursor-pointer ${
-                    isActive
-                      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20 border border-emerald-500'
-                      : 'bg-slate-100 hover:bg-slate-200/80 dark:bg-slate-800 dark:hover:bg-slate-700/80 text-slate-700 dark:text-slate-300 border border-transparent'
-                  }`}
+                  type="button"
+                  onClick={() => setIsCategoryDropdownOpen(prev => !prev)}
+                  className="flex items-center gap-2.5 px-3.5 py-2 bg-slate-50 hover:bg-slate-100/90 dark:bg-slate-800/90 dark:hover:bg-slate-700/80 border border-slate-200/80 dark:border-slate-700 rounded-2xl text-xs font-bold text-slate-800 dark:text-white shadow-2xs transition-all cursor-pointer min-w-[240px] justify-between focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                  aria-haspopup="listbox"
+                  aria-expanded={isCategoryDropdownOpen}
                 >
-                  <span>{catIcon}</span>
-                  <span>{friendlyLabel}</span>
-                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-extrabold ${
-                    isActive ? 'bg-white/25 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
-                  }`}>
-                    {c}
-                  </span>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-base leading-none">{getCategoryIcon(activeTab)}</span>
+                    <span className="truncate text-slate-900 dark:text-slate-100 font-extrabold text-xs">
+                      {getCategoryFriendlyLabel(activeTab)}
+                    </span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-md font-mono font-bold bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 shrink-0 border border-emerald-200/60 dark:border-emerald-800/60">
+                      {activeTab}
+                    </span>
+                  </div>
+                  <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0 ${isCategoryDropdownOpen ? 'rotate-180 text-emerald-600' : ''}`} />
                 </button>
-              );
-            })}
 
+                {/* Dropdown Menu Panel */}
+                {isCategoryDropdownOpen && (
+                  <div className="absolute left-0 top-full mt-2 w-80 max-w-[90vw] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl shadow-slate-900/10 dark:shadow-black/40 py-2 z-50 animate-in fade-in zoom-in-95 duration-150">
+                    {/* Search inside category dropdown if more than 3 categories */}
+                    {categories.length > 3 && (
+                      <div className="px-3 pb-2 pt-1 border-b border-slate-100 dark:border-slate-800">
+                        <div className="relative">
+                          <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                          <input
+                            type="text"
+                            placeholder="Search categories..."
+                            value={categorySearchQuery}
+                            onChange={(e) => setCategorySearchQuery(e.target.value)}
+                            className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
+                            autoFocus
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="max-h-64 overflow-y-auto p-1.5 space-y-1 scrollbar-thin">
+                      {filteredCategories.map((c) => {
+                        const isActive = activeTab === c;
+                        const icon = getCategoryIcon(c);
+                        const label = getCategoryFriendlyLabel(c);
+                        const isCustom = !defaultCategories.includes(c);
+
+                        return (
+                          <div
+                            key={c}
+                            onClick={() => {
+                              setActiveTab(c as HTMasterCategory);
+                              setIsCategoryDropdownOpen(false);
+                              setCategorySearchQuery('');
+                            }}
+                            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer group ${
+                              isActive
+                                ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-900 dark:text-emerald-200 font-bold border border-emerald-200/60 dark:border-emerald-800/60'
+                                : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <span className="text-base shrink-0">{icon}</span>
+                              <div className="min-w-0 text-left">
+                                <div className="truncate font-bold flex items-center gap-1.5">
+                                  {label}
+                                  {isCustom && (
+                                    <span className="text-[9px] px-1 py-0.2 rounded bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 font-normal">
+                                      Custom
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[10px] font-mono text-slate-400 dark:text-slate-500 truncate">
+                                  {c}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                              {isActive && (
+                                <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {filteredCategories.length === 0 && (
+                        <div className="px-3 py-4 text-center text-xs text-slate-400">
+                          No category found for "{categorySearchQuery}"
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Footer inside dropdown */}
+                    <div className="px-2 pt-1.5 mt-1 border-t border-slate-100 dark:border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsCategoryDropdownOpen(false);
+                          setShowAddCategoryModal(true);
+                        }}
+                        className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-colors cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> + New Category
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Quick Action Button next to dropdown */}
             <button
               onClick={() => setShowAddCategoryModal(true)}
-              className="px-3 py-2 rounded-2xl text-xs font-bold border border-dashed border-emerald-400/80 dark:border-emerald-600/80 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors whitespace-nowrap flex items-center gap-1.5 cursor-pointer shrink-0"
+              className="px-3 py-2 rounded-2xl text-xs font-bold border border-dashed border-emerald-400/80 dark:border-emerald-600/80 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors whitespace-nowrap flex items-center gap-1.5 cursor-pointer shadow-2xs"
               title="Create a new equipment category"
             >
-              <Plus className="w-3.5 h-3.5" /> + New Category
+              <Plus className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> + New Category
             </button>
           </div>
 
@@ -1454,7 +1697,7 @@ export const HTMasterDataAdmin: React.FC = () => {
           <div className="flex items-center gap-2 shrink-0 justify-end">
             <button
               onClick={(e) => promptDeleteCategory(activeTab, e)}
-              className="px-3 py-1.5 rounded-xl text-xs font-bold text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors flex items-center gap-1 cursor-pointer"
+              className="px-3.5 py-2 rounded-2xl text-xs font-bold text-rose-600 hover:text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-transparent hover:border-rose-200 dark:hover:border-rose-900/40 transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
               title={`Delete Category "${activeTab}"`}
             >
               <Trash2 className="w-3.5 h-3.5" /> Delete Category

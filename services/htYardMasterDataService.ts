@@ -52,7 +52,9 @@ export const htYardMasterDataService = {
             ? cached.filter((o) => !o.manufacturer || o.manufacturer === manufacturer)
             : cached;
         }
-      } catch (e) {}
+      } catch {
+        /* ignore IDB cache read error */
+      }
     }
 
     // ── Local Storage Fallback items ──
@@ -62,7 +64,9 @@ export const htYardMasterDataService = {
       if (stored) {
         localOptions = JSON.parse(stored);
       }
-    } catch (e) {}
+    } catch {
+      /* ignore localStorage read error */
+    }
 
     // ── Seed items ──
     const seedOptions = getInitialSeedOptions(category, manufacturer);
@@ -187,7 +191,7 @@ export const htYardMasterDataService = {
 
   // Reset category or all to initial seed data
   async resetToInitialSeed(category?: HTMasterCategory): Promise<void> {
-    const cats: HTMasterCategory[] = category ? [category] : ['RMUMD', 'TRMaster Data', 'LTKMD', 'Cable Details', 'HTYardCommon'];
+    const cats: HTMasterCategory[] = category ? [category] : ['RMUMD', 'TRMaster Data', 'LTKMD', 'Cable Details', 'HTYardCommon', 'VCB', 'Switchgear', 'HT_Panel', 'Meter_Cubicle', 'CSS'];
     for (const cat of cats) {
       localStorage.removeItem(`ht_master_options_${cat}`);
     }
@@ -607,6 +611,11 @@ function getInitialSeedOptions(category: HTMasterCategory, manufacturer?: string
       seed.push({ id: `seed-ltk-elr-${idx}`, category: 'LTKMD', fieldKey: 'earth_leakage_relay', optionValue: elr, isActive: true });
     });
 
+    const elrStatus = ['Working', 'Not Working'];
+    elrStatus.forEach((st, idx) => {
+      seed.push({ id: `seed-ltk-elr-st-${idx}`, category: 'LTKMD', fieldKey: 'status', parentFieldKey: 'earth_leakage_relay', optionValue: st, isActive: true });
+    });
+
     const voltmeters = ['Schneider', 'Elmeasure'];
     voltmeters.forEach((vm, idx) => {
       seed.push({ id: `seed-ltk-vm-${idx}`, category: 'LTKMD', fieldKey: 'voltmeter', optionValue: vm, isActive: true });
@@ -699,6 +708,347 @@ function getInitialSeedOptions(category: HTMasterCategory, manufacturer?: string
     const fireExtOptions = ['CO2 Type Available & Valid', 'DCP / ABC Powder Type Available & Valid', 'FOAM Type Available', 'Available but Expired', 'Not Available'];
     fireExtOptions.forEach((val, idx) => {
       seed.push({ id: `seed-fe-${idx}`, category: 'HTYardCommon', fieldKey: 'fire_extinguishers', optionValue: val, isActive: true });
+    });
+  } else if (category === 'VCB' || category === 'VCBMD') {
+    const vcbmfrs = ['ABB', 'Siemens', 'Schneider Electric', 'L & T', 'C & S Electric', 'BHEL', 'Crompton Greaves', 'Megawin Switchgear', 'Jyoti Ltd'];
+    vcbmfrs.forEach((mfr, idx) => {
+      seed.push({ id: `seed-vcb-mfr-${idx}`, category: category, fieldKey: 'mfr_name', optionValue: mfr, isActive: true });
+    });
+    const vcbCapacities = ['630 A', '800 A', '1250 A', '1600 A', '2000 A', '2500 A', '3150 A'];
+    vcbCapacities.forEach((cap, idx) => {
+      seed.push({ id: `seed-vcb-cap-${idx}`, category: category, fieldKey: 'capacity', optionValue: cap, isActive: true });
+    });
+    const breakingCapacities = ['13.1 kA', '20 kA', '25 kA', '26.3 kA', '31.5 kA', '40 kA'];
+    breakingCapacities.forEach((bc, idx) => {
+      seed.push({ id: `seed-vcb-bc-${idx}`, category: category, fieldKey: 'breaking_capacity', optionValue: bc, isActive: true });
+    });
+    const vcbRelays = ['Schneider Micom P122', 'ABB REF615', 'Siemens 7SJ82', 'C & S C5DPR', 'ASHIDA Numerical Relay', 'L & T CSPR'];
+    vcbRelays.forEach((r, idx) => {
+      seed.push({ id: `seed-vcb-relay-${idx}`, category: category, fieldKey: 'protection_relay', optionValue: r, isActive: true });
+    });
+    const tcRelays = ['Alstom XR102', 'ABB SPER 1B1 C4', 'Siemens 7PA26', 'Schneider Micom'];
+    tcRelays.forEach((tc, idx) => {
+      seed.push({ id: `seed-vcb-tc-${idx}`, category: category, fieldKey: 'tc_supervision_relay', optionValue: tc, isActive: true });
+    });
+    const masterTrips = ['Alstom VAJH13', 'ABB RXMS1', 'Siemens 7PA30', 'ER High Speed 86'];
+    masterTrips.forEach((mt, idx) => {
+      seed.push({ id: `seed-vcb-mt-${idx}`, category: category, fieldKey: 'master_trip_relay', optionValue: mt, isActive: true });
+    });
+    const vcbMeters = ['Schneider EM6400NG', 'Elmeasure EN8400', 'Secure Elite 440', 'Rish Master 3440'];
+    vcbMeters.forEach((m, idx) => {
+      seed.push({ id: `seed-vcb-mfm-${idx}`, category: category, fieldKey: 'mf_meter', optionValue: m, isActive: true });
+    });
+    const vcbVoltmeters = ['Rishabh', 'Elmeasure', 'Secure', 'Schneider', 'L & T', 'AE'];
+    vcbVoltmeters.forEach((vm, idx) => {
+      seed.push({ id: `seed-vcb-vm-${idx}`, category: category, fieldKey: 'voltmeter', optionValue: vm, isActive: true });
+    });
+    const vcbAmmeters = ['Rishabh', 'Elmeasure', 'Secure', 'Schneider', 'L & T', 'AE'];
+    vcbAmmeters.forEach((am, idx) => {
+      seed.push({ id: `seed-vcb-am-${idx}`, category: category, fieldKey: 'ammeter', optionValue: am, isActive: true });
+    });
+    const vcbMcbs = ['Schneider', 'Siemens', 'ABB', 'L & T', 'Legrand', 'C & S'];
+    vcbMcbs.forEach((mcb, idx) => {
+      seed.push({ id: `seed-vcb-mcb-${idx}`, category: category, fieldKey: 'control_mcb', optionValue: mcb, isActive: true });
+    });
+    const vcbIndicators = ['ANDA-DXN2', 'Schneider IEC61958', 'EAPL Indication', 'LED Cluster (R-Y-B)'];
+    vcbIndicators.forEach((ind, idx) => {
+      seed.push({ id: `seed-vcb-ind-${idx}`, category: category, fieldKey: 'power_indicator', optionValue: ind, isActive: true });
+    });
+    const vacuumStatuses = ['Healthy / Vacuum Intact', 'Pressure Normal', 'Degraded', 'Requires Hi-Pot Test'];
+    vacuumStatuses.forEach((vs, idx) => {
+      seed.push({ id: `seed-vcb-vs-${idx}`, category: category, fieldKey: 'vacuum_status', optionValue: vs, isActive: true });
+    });
+    const foundations = ['Good RCC Plinth', 'Minor Cracks', 'Settlement Observed', 'Needs Civil Repair'];
+    foundations.forEach((f, idx) => {
+      seed.push({ id: `seed-vcb-fnd-${idx}`, category: category, fieldKey: 'foundation_cond', optionValue: f, isActive: true });
+    });
+    const cableLayings = ['Properly Supported with Trefoil Clamps', 'Directly in Trench', 'Clamping Loose', 'Dressed Properly'];
+    cableLayings.forEach((cl, idx) => {
+      seed.push({ id: `seed-vcb-cl-${idx}`, category: category, fieldKey: 'cable_laying', optionValue: cl, isActive: true });
+    });
+    const glandConds = ['Brass Compression Gland with Earth Tag', 'Adequate & Tight', 'Loose Gland', 'Missing Earthing Tag'];
+    glandConds.forEach((gc, idx) => {
+      seed.push({ id: `seed-vcb-gc-${idx}`, category: category, fieldKey: 'gland_condition', optionValue: gc, isActive: true });
+    });
+    const bodyConds = ['Good / No Rust', 'Minor Paint Peeling', 'Corrosion Observed', 'IP54 Enclosure Intact'];
+    bodyConds.forEach((bc, idx) => {
+      seed.push({ id: `seed-vcb-bc-${idx}`, category: category, fieldKey: 'body_condition', optionValue: bc, isActive: true });
+    });
+    const labellings = ['Yes, Clear Caution & Feeder Name', 'Faded Labels', 'Not Done', 'CEA Danger Board Posted'];
+    labellings.forEach((lbl, idx) => {
+      seed.push({ id: `seed-vcb-lbl-${idx}`, category: category, fieldKey: 'labelling', optionValue: lbl, isActive: true });
+    });
+    const doorConds = ['Good / Door Interlock Functioning', 'Gasket Damaged', 'Lock Defective', 'Earthing Jumper Secure'];
+    doorConds.forEach((dc, idx) => {
+      seed.push({ id: `seed-vcb-dc-${idx}`, category: category, fieldKey: 'door_condition', optionValue: dc, isActive: true });
+    });
+  } else if (category === 'Switchgear') {
+    const swmfrs = ['ABB', 'Siemens', 'Schneider Electric', 'L & T', 'C & S Electric', 'BHEL', 'Pace Switchgear', 'Electri Fab'];
+    swmfrs.forEach((mfr, idx) => {
+      seed.push({ id: `seed-sw-mfr-${idx}`, category: category, fieldKey: 'mfr_name', optionValue: mfr, isActive: true });
+    });
+    const swCaps = ['630 A', '800 A', '1250 A', '1600 A', '2000 A', '2500 A', '3150 A', '4000 A'];
+    swCaps.forEach((cap, idx) => {
+      seed.push({ id: `seed-sw-cap-${idx}`, category: category, fieldKey: 'capacity', optionValue: cap, isActive: true });
+    });
+    const panelNos = ['2 Panels (1 I/C + 1 O/G)', '3 Panels (1 I/C + 2 O/G)', '4 Panels', '5 Panels', '6 Panels'];
+    panelNos.forEach((pn, idx) => {
+      seed.push({ id: `seed-sw-pn-${idx}`, category: category, fieldKey: 'no_of_panels', optionValue: pn, isActive: true });
+    });
+    const swRelays = ['ABB REF615', 'Schneider Micom P141', 'Siemens 7SJ85', 'ASHIDA Numerical'];
+    swRelays.forEach((r, idx) => {
+      seed.push({ id: `seed-sw-relay-${idx}`, category: category, fieldKey: 'protection_relay', optionValue: r, isActive: true });
+    });
+    const annunciators = ['Minilec', 'Procon', 'Alan', 'EAPL 8-Window', 'EAPL 12-Window'];
+    annunciators.forEach((ann, idx) => {
+      seed.push({ id: `seed-sw-ann-${idx}`, category: category, fieldKey: 'annunciator', optionValue: ann, isActive: true });
+    });
+    const selectorSwitches = ['Local / Remote', 'Auto / Manual', 'Trip / Neutral / Close (TNC)', 'Ammeter Selector (OFF-R-Y-B)', 'Voltmeter Selector (OFF-RY-YB-BR)'];
+    selectorSwitches.forEach((ss, idx) => {
+      seed.push({ id: `seed-sw-ss-${idx}`, category: category, fieldKey: 'selector_switch', optionValue: ss, isActive: true });
+    });
+    const swMeters = ['Schneider EM6400NG', 'Elmeasure EN8400', 'Secure Elite 440', 'Rish Master 3440'];
+    swMeters.forEach((m, idx) => {
+      seed.push({ id: `seed-sw-mfm-${idx}`, category: category, fieldKey: 'mf_meter', optionValue: m, isActive: true });
+    });
+    const swMcbs = ['Schneider', 'Siemens', 'ABB', 'L & T', 'C & S'];
+    swMcbs.forEach((mcb, idx) => {
+      seed.push({ id: `seed-sw-mcb-${idx}`, category: category, fieldKey: 'control_mcb', optionValue: mcb, isActive: true });
+    });
+    const swIndicators = ['R-Y-B Phase Lamps Available', 'LED Cluster Indicator', 'Defective Phase Lamp'];
+    swIndicators.forEach((ind, idx) => {
+      seed.push({ id: `seed-sw-ind-${idx}`, category: category, fieldKey: 'power_indicator', optionValue: ind, isActive: true });
+    });
+    const foundations = ['Good Condition', 'Level Plinth Foundation', 'Minor Settlement', 'Needs Grouting'];
+    foundations.forEach((f, idx) => {
+      seed.push({ id: `seed-sw-fnd-${idx}`, category: category, fieldKey: 'foundation_cond', optionValue: f, isActive: true });
+    });
+    const cableLayings = ['Trench with GI Perforated Tray', 'Direct on Plinth', 'Needs Cable Dressing'];
+    cableLayings.forEach((cl, idx) => {
+      seed.push({ id: `seed-sw-cl-${idx}`, category: category, fieldKey: 'cable_laying', optionValue: cl, isActive: true });
+    });
+    const bodyConds = ['Good Powder Coating', 'Corrosion Free', 'Dust Ingress Observed', 'IP4X Verified'];
+    bodyConds.forEach((bc, idx) => {
+      seed.push({ id: `seed-sw-bc-${idx}`, category: category, fieldKey: 'body_condition', optionValue: bc, isActive: true });
+    });
+    const earthTerminals = ['Double Earth Connected to Main Grid', 'Single Earth Connected', 'Loose Terminal Connection'];
+    earthTerminals.forEach((et, idx) => {
+      seed.push({ id: `seed-sw-et-${idx}`, category: category, fieldKey: 'body_earth_terminals', optionValue: et, isActive: true });
+    });
+    const labellings = ['Mimic Diagram & Feeder Name Done', 'SLD Posted on Panel', 'Labelling Missing'];
+    labellings.forEach((lbl, idx) => {
+      seed.push({ id: `seed-sw-lbl-${idx}`, category: category, fieldKey: 'labelling', optionValue: lbl, isActive: true });
+    });
+    const doorConds = ['Interlocked with Breaker / Good Gaskets', 'Defective Key Interlock', 'Smooth Door Hinges'];
+    doorConds.forEach((dc, idx) => {
+      seed.push({ id: `seed-sw-dc-${idx}`, category: category, fieldKey: 'door_condition', optionValue: dc, isActive: true });
+    });
+  } else if (category === 'HT_Panel' || category === 'HT Panel') {
+    const htmfrs = ['ABB', 'Schneider Electric', 'Siemens', 'L & T', 'C & S Electric', 'Kirloskar', 'Electri Fab'];
+    htmfrs.forEach((mfr, idx) => {
+      seed.push({ id: `seed-ht-mfr-${idx}`, category: category, fieldKey: 'mfr_name', optionValue: mfr, isActive: true });
+    });
+    const htCaps = ['11 kV / 630 A', '11 kV / 1250 A', '22 kV / 630 A', '33 kV / 1250 A', '33 kV / 2000 A'];
+    htCaps.forEach((cap, idx) => {
+      seed.push({ id: `seed-ht-cap-${idx}`, category: category, fieldKey: 'capacity', optionValue: cap, isActive: true });
+    });
+    const breakerTypes = ['VCB (Vacuum Circuit Breaker)', 'SF6 Gas Breaker', 'ACB (Air Circuit Breaker)'];
+    breakerTypes.forEach((bt, idx) => {
+      seed.push({ id: `seed-ht-bt-${idx}`, category: category, fieldKey: 'breaker_type', optionValue: bt, isActive: true });
+    });
+    const htRelays = ['Overcurrent & Earth Fault (50/51, 50N/51N)', 'Differential Relay (87)', 'Under/Over Voltage (27/59)', 'Schneider Micom', 'ABB Relion'];
+    htRelays.forEach((r, idx) => {
+      seed.push({ id: `seed-ht-relay-${idx}`, category: category, fieldKey: 'protection_relay', optionValue: r, isActive: true });
+    });
+    const masterTrips = ['High Speed Tripping 86 Relay Present', 'Electromechanical 86', 'Integrated Numerical Trip'];
+    masterTrips.forEach((mt, idx) => {
+      seed.push({ id: `seed-ht-mt-${idx}`, category: category, fieldKey: 'master_trip_relay', optionValue: mt, isActive: true });
+    });
+    const htMeters = ['Schneider EM6400NG', 'Elmeasure EN8400', 'Secure Elite 440', 'L & T Quasar'];
+    htMeters.forEach((m, idx) => {
+      seed.push({ id: `seed-ht-mfm-${idx}`, category: category, fieldKey: 'mf_meter', optionValue: m, isActive: true });
+    });
+    const htMcbs = ['Schneider C60N', 'Siemens 5SY', 'ABB S200', 'L & T Exora'];
+    htMcbs.forEach((mcb, idx) => {
+      seed.push({ id: `seed-ht-mcb-${idx}`, category: category, fieldKey: 'control_mcb', optionValue: mcb, isActive: true });
+    });
+    const powerPacks = ['24V DC Power Pack with Float-Boost Charger', '110V DC Battery Bank', '230V AC Direct (No DC Backup)', 'Healthy Battery Condition'];
+    powerPacks.forEach((pp, idx) => {
+      seed.push({ id: `seed-ht-pp-${idx}`, category: category, fieldKey: 'power_pack_battery_backup', optionValue: pp, isActive: true });
+    });
+    const htIndicators = ['R-Y-B LED Line Indication', 'Indication Lamps Working', 'Bulb Blown / Needs Replacement'];
+    htIndicators.forEach((ind, idx) => {
+      seed.push({ id: `seed-ht-ind-${idx}`, category: category, fieldKey: 'power_indicator', optionValue: ind, isActive: true });
+    });
+    const foundations = ['RCC Channel Base (Level)', 'Plinth Foundation Good', 'Grouting Needed'];
+    foundations.forEach((f, idx) => {
+      seed.push({ id: `seed-ht-fnd-${idx}`, category: category, fieldKey: 'foundation_cond', optionValue: f, isActive: true });
+    });
+    const cableLayings = ['Cable Trench with Cover Slabs', 'Cable Trays Clamped', 'Needs Sealing against Rodents'];
+    cableLayings.forEach((cl, idx) => {
+      seed.push({ id: `seed-ht-cl-${idx}`, category: category, fieldKey: 'cable_laying', optionValue: cl, isActive: true });
+    });
+    const glandEarthings = ['Brass Glands with 25x3 Copper Earth Strip', 'Double Earthing Verified', 'Earthing Disconnected'];
+    glandEarthings.forEach((ge, idx) => {
+      seed.push({ id: `seed-ht-ge-${idx}`, category: category, fieldKey: 'gland_earthing', optionValue: ge, isActive: true });
+    });
+    const bodyConds = ['IP54 Enclosure / Good Condition', 'Clean Interior', 'Rust Spots Near Bottom'];
+    bodyConds.forEach((bc, idx) => {
+      seed.push({ id: `seed-ht-bc-${idx}`, category: category, fieldKey: 'body_condition', optionValue: bc, isActive: true });
+    });
+    const earthTerminals = ['2 Distinct Earth Points Connected to Ground Ring', 'Single Earth Only'];
+    earthTerminals.forEach((et, idx) => {
+      seed.push({ id: `seed-ht-et-${idx}`, category: category, fieldKey: 'body_earth_terminals', optionValue: et, isActive: true });
+    });
+    const labellings = ['CEA Caution Board Displayed', 'Danger 11kV / 33kV Plate Affixed', 'Feeder Tagged'];
+    labellings.forEach((lbl, idx) => {
+      seed.push({ id: `seed-ht-lbl-${idx}`, category: category, fieldKey: 'labelling', optionValue: lbl, isActive: true });
+    });
+    const doorConds = ['Padlockable with Neoprene Gasket', 'Door Earthing Braid Intact', 'Key Available'];
+    doorConds.forEach((dc, idx) => {
+      seed.push({ id: `seed-ht-dc-${idx}`, category: category, fieldKey: 'door_condition', optionValue: dc, isActive: true });
+    });
+  } else if (category === 'Meter_Cubicle' || category === 'Meter Cubicle') {
+    const mcMfrs = ['ABB', 'Schneider', 'Siemens', 'L & T', 'Secure Meters', 'Visiontek', 'Genus Power', 'Capital Power'];
+    mcMfrs.forEach((mfr, idx) => {
+      seed.push({ id: `seed-mc-mfr-${idx}`, category: category, fieldKey: 'mfr_name', optionValue: mfr, isActive: true });
+    });
+    const mcCaps = ['11 kV Class', '22 kV Class', '33 kV Class', '11kV / √3 : 110V / √3 PT'];
+    mcCaps.forEach((cap, idx) => {
+      seed.push({ id: `seed-mc-cap-${idx}`, category: category, fieldKey: 'capacity', optionValue: cap, isActive: true });
+    });
+    const masterMeters = ['Secure Premier 300 (0.2s Class)', 'L & T ER300P (0.2s Class)', 'Schneider ION7400', 'Genus TOD Meter'];
+    masterMeters.forEach((mm, idx) => {
+      seed.push({ id: `seed-mc-mm-${idx}`, category: category, fieldKey: 'bescom_master_meter', optionValue: mm, isActive: true });
+    });
+    const bescomSeals = ['Intact & Serial Number Verified', 'Lead Seal Tampered / Missing', 'Paper Seal Intact', 'Optical Port Sealed'];
+    bescomSeals.forEach((bs, idx) => {
+      seed.push({ id: `seed-mc-bs-${idx}`, category: category, fieldKey: 'bescom_seal', optionValue: bs, isActive: true });
+    });
+    const ctRatios = ['10/5 A', '20/5 A', '30/5 A', '50/5 A', '100/5 A', '200/5 A', '300/5 A', '400/5 A'];
+    ctRatios.forEach((cr, idx) => {
+      seed.push({ id: `seed-mc-cr-${idx}`, category: category, fieldKey: 'ct_ratio', optionValue: cr, isActive: true });
+    });
+    const ctConstants = ['1.0', '0.5', '0.2S', '0.2'];
+    ctConstants.forEach((cc, idx) => {
+      seed.push({ id: `seed-mc-cc-${idx}`, category: category, fieldKey: 'ct_constant', optionValue: cc, isActive: true });
+    });
+    const ctClasses = ['Class 0.2S (Revenue Grade)', 'Class 0.5S', 'Class 0.2', 'Class 0.5'];
+    ctClasses.forEach((ccl, idx) => {
+      seed.push({ id: `seed-mc-ccl-${idx}`, category: category, fieldKey: 'ct_cl', optionValue: ccl, isActive: true });
+    });
+    const ctVas = ['5 VA', '10 VA', '15 VA', '30 VA'];
+    ctVas.forEach((va, idx) => {
+      seed.push({ id: `seed-mc-va-${idx}`, category: category, fieldKey: 'ct_va', optionValue: va, isActive: true });
+    });
+    const mcMeters = ['Check Meter Present & Synchronized', 'Multi Function Display Ok', 'CT/PT Secondary Connected to TTB'];
+    mcMeters.forEach((m, idx) => {
+      seed.push({ id: `seed-mc-mfm-${idx}`, category: category, fieldKey: 'mf_meter', optionValue: m, isActive: true });
+    });
+    const foundations = ['Good Foundation Plinth', 'Vibration Free', 'Water Ingress Protected'];
+    foundations.forEach((f, idx) => {
+      seed.push({ id: `seed-mc-fnd-${idx}`, category: category, fieldKey: 'foundation_cond', optionValue: f, isActive: true });
+    });
+    const cableLayings = ['HT Incomer in Conduit / Trench', 'Secondary Wiring Sealed & Shielded'];
+    cableLayings.forEach((cl, idx) => {
+      seed.push({ id: `seed-mc-cl-${idx}`, category: category, fieldKey: 'cable_laying', optionValue: cl, isActive: true });
+    });
+    const bodyConds = ['Weatherproof Outdoor Cubicle (IP55)', 'Sealing Holes Intact', 'No Rust'];
+    bodyConds.forEach((bc, idx) => {
+      seed.push({ id: `seed-mc-bc-${idx}`, category: category, fieldKey: 'body_condition', optionValue: bc, isActive: true });
+    });
+    const earthTerminals = ['Dual Earth Terminals Connected to Grid', 'Neutral Point Grounded'];
+    earthTerminals.forEach((et, idx) => {
+      seed.push({ id: `seed-mc-et-${idx}`, category: category, fieldKey: 'body_earth_terminals', optionValue: et, isActive: true });
+    });
+    const labellings = ['Consumer RR No. & BESCOM Meter ID Displayed', 'Danger Notice Affixed'];
+    labellings.forEach((lbl, idx) => {
+      seed.push({ id: `seed-mc-lbl-${idx}`, category: category, fieldKey: 'labelling', optionValue: lbl, isActive: true });
+    });
+    const doorConds = ['Viewing Glass Clean & Intact', 'Padlocked by Utility / BESCOM', 'Double Door Sealed'];
+    doorConds.forEach((dc, idx) => {
+      seed.push({ id: `seed-mc-dc-${idx}`, category: category, fieldKey: 'door_condition', optionValue: dc, isActive: true });
+    });
+  } else if (category === 'CSS') {
+    const cssMfrs = ['ABB (Compact Secondary Substation)', 'Schneider Electric (Biosco CSS)', 'Siemens', 'L & T', 'Raychem RPG', 'Tavrida Electric'];
+    cssMfrs.forEach((mfr, idx) => {
+      seed.push({ id: `seed-css-mfr-${idx}`, category: category, fieldKey: 'mfr_name', optionValue: mfr, isActive: true });
+    });
+    const cssCaps = ['250 kVA', '500 kVA', '630 kVA', '750 kVA', '1000 kVA', '1250 kVA', '1500 kVA', '2000 kVA'];
+    cssCaps.forEach((cap, idx) => {
+      seed.push({ id: `seed-css-cap-${idx}`, category: category, fieldKey: 'capacity', optionValue: cap, isActive: true });
+    });
+    const coilMaterials = ['Copper Winding (Class F/H)', 'Aluminum Winding (Class F)'];
+    coilMaterials.forEach((cm, idx) => {
+      seed.push({ id: `seed-css-cm-${idx}`, category: category, fieldKey: 'coil_material', optionValue: cm, isActive: true });
+    });
+    const sf6Statuses = ['Gas Pressure in Green Zone (Normal)', 'Gas Pressure Low (Alarm)', 'Vacuum RMU Section Healthy'];
+    sf6Statuses.forEach((sf, idx) => {
+      seed.push({ id: `seed-css-sf-${idx}`, category: category, fieldKey: 'sf6_status', optionValue: sf, isActive: true });
+    });
+    const cssRelays = ['Numerical OC/EF Relay (Micom / REF615)', 'Integrated Self-Powered Relay (WIC1)'];
+    cssRelays.forEach((r, idx) => {
+      seed.push({ id: `seed-css-relay-${idx}`, category: category, fieldKey: 'protection_relay', optionValue: r, isActive: true });
+    });
+    const oilTempIndicators = ['OTI In Range (< 65°C)', 'OTI High', 'WTI Normal', 'Dry Type RTD Sensors Working'];
+    oilTempIndicators.forEach((oti, idx) => {
+      seed.push({ id: `seed-css-oti-${idx}`, category: category, fieldKey: 'oil_temp_indicator', optionValue: oti, isActive: true });
+    });
+    const prvs = ['Pressure Relief Valve Normal / No Trip', 'Oil Seepage Observed at PRV'];
+    prvs.forEach((prv, idx) => {
+      seed.push({ id: `seed-css-prv-${idx}`, category: category, fieldKey: 'prv', optionValue: prv, isActive: true });
+    });
+    const airBreathers = ['Silica Gel Deep Blue (Dry & Active)', 'Silica Gel Pink (Needs Replacement)', 'Oil Cup Clean & Filled'];
+    airBreathers.forEach((ab, idx) => {
+      seed.push({ id: `seed-css-ab-${idx}`, category: category, fieldKey: 'air_breather', optionValue: ab, isActive: true });
+    });
+    const incomerMccbs = ['Schneider ACB / MCCB', 'ABB Emax / Tmax', 'L & T Omega', 'Siemens 3WL'];
+    incomerMccbs.forEach((inm, idx) => {
+      seed.push({ id: `seed-css-inm-${idx}`, category: category, fieldKey: 'incomer_mccb_make', optionValue: inm, isActive: true });
+    });
+    const capBanks = ['50 kVAR APFC', '100 kVAR APFC', '150 kVAR APFC', '200 kVAR APFC', '250 kVAR APFC', '300 kVAR APFC'];
+    capBanks.forEach((cb, idx) => {
+      seed.push({ id: `seed-css-cb-${idx}`, category: category, fieldKey: 'cap_bank_sizes', optionValue: cb, isActive: true });
+    });
+    const cssMeters = ['Schneider EM6400NG', 'Elmeasure EN8400', 'Secure Elite 440', 'Rishabh 3440'];
+    cssMeters.forEach((m, idx) => {
+      seed.push({ id: `seed-css-mfm-${idx}`, category: category, fieldKey: 'mf_meter', optionValue: m, isActive: true });
+    });
+    const cssVoltmeters = ['Rishabh', 'Elmeasure', 'Secure', 'Schneider', 'L & T'];
+    cssVoltmeters.forEach((vm, idx) => {
+      seed.push({ id: `seed-css-vm-${idx}`, category: category, fieldKey: 'voltmeter', optionValue: vm, isActive: true });
+    });
+    const cssAmmeters = ['Rishabh', 'Elmeasure', 'Secure', 'Schneider', 'L & T'];
+    cssAmmeters.forEach((am, idx) => {
+      seed.push({ id: `seed-css-am-${idx}`, category: category, fieldKey: 'ammeter', optionValue: am, isActive: true });
+    });
+    const cssMcbs = ['Schneider', 'Siemens', 'ABB', 'L & T', 'C & S'];
+    cssMcbs.forEach((mcb, idx) => {
+      seed.push({ id: `seed-css-mcb-${idx}`, category: category, fieldKey: 'control_mcb', optionValue: mcb, isActive: true });
+    });
+    const foundations = ['Engineered Concrete Foundation Plinth with Oil Catchment Sump', 'Plinth Level & Drained'];
+    foundations.forEach((f, idx) => {
+      seed.push({ id: `seed-css-fnd-${idx}`, category: category, fieldKey: 'foundation_cond', optionValue: f, isActive: true });
+    });
+    const cableLayings = ['Bottom Entry MV / LV Cable Trenches with Fire Stop Sealing', 'Cables Properly Clamped'];
+    cableLayings.forEach((cl, idx) => {
+      seed.push({ id: `seed-css-cl-${idx}`, category: category, fieldKey: 'cable_laying', optionValue: cl, isActive: true });
+    });
+    const bodyConds = ['Outdoor Canopy & Galvanized Steel Enclosure (IP54 / Class 10/20)', 'Clean Paint, No Corrosion'];
+    bodyConds.forEach((bc, idx) => {
+      seed.push({ id: `seed-css-bc-${idx}`, category: category, fieldKey: 'body_condition', optionValue: bc, isActive: true });
+    });
+    const earthTerminals = ['CSS Internal Copper Ring Bonded to Main Yard Earth Grid', 'Dual Earth Pits Verified'];
+    earthTerminals.forEach((et, idx) => {
+      seed.push({ id: `seed-css-et-${idx}`, category: category, fieldKey: 'body_earth_terminals', optionValue: et, isActive: true });
+    });
+    const labellings = ['Complete Single Line Diagram, Danger Caution & Rating Plates Mounted'];
+    labellings.forEach((lbl, idx) => {
+      seed.push({ id: `seed-css-lbl-${idx}`, category: category, fieldKey: 'labelling', optionValue: lbl, isActive: true });
+    });
+    const doorConds = ['Ventilation Louvers with Wire Mesh / All 3 Compartment Doors Padlocked'];
+    doorConds.forEach((dc, idx) => {
+      seed.push({ id: `seed-css-dc-${idx}`, category: category, fieldKey: 'door_condition', optionValue: dc, isActive: true });
     });
   }
 

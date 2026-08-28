@@ -266,73 +266,96 @@ const ProfilePage: React.FC = () => {
     const [isMetricsLoading, setIsMetricsLoading] = useState(true);
     const [monthlyMissedPunchesCount, setMonthlyMissedPunchesCount] = useState(0);
 
-    useEffect(() => {
+    const [currentDate, setCurrentDate] = useState<Date>(new Date());
+
+    const fetchTodayMetrics = useCallback(async () => {
         if (!user?.id) return;
-        let cancelled = false;
-        const fetchTodayMetrics = async () => {
-            setIsMetricsLoading(true);
-            try {
-                const today = new Date();
-                const start = startOfDay(today).toISOString();
-                const end = endOfDay(today).toISOString();
+        setIsMetricsLoading(true);
+        try {
+            const today = new Date();
+            setCurrentDate(today);
+            const start = startOfDay(today).toISOString();
+            const end = endOfDay(today).toISOString();
 
-                // Fetch both attendance events AND continuous GPS route points (same sources as Route View)
-                const [events, routePoints] = await Promise.all([
-                    api.getAttendanceEvents(user.id, start, end),
-                    api.getRoutePoints(user.id, start, end).catch(() => [])
-                ]);
+            // Fetch both attendance events AND continuous GPS route points (same sources as Route View)
+            const [events, routePoints] = await Promise.all([
+                api.getAttendanceEvents(user.id, start, end),
+                api.getRoutePoints(user.id, start, end).catch(() => [])
+            ]);
 
-                if (cancelled) return;
-
-                if (events.length === 0 && routePoints.length === 0) {
-                    setTodayMetrics({
-                        totalDistance: '0.00',
-                        travelTime: '0h 0m',
-                        totalSteps: 0
-                    });
-                    return;
-                }
-
-                // Calculate travel distance + duration using the same algorithm as Route View:
-                // merges attendance events + route_history GPS pings, sorts chronologically,
-                // deduplicates points within 5m, and sums the cumulative path distance.
-                const { distance, duration } = calculateDailyPathTravelKm(events, routePoints);
-
-                // Steps are captured on check-out events only (saved by stepCounterService on check-out)
-                const totalSteps = events
-                    .filter(e => (e.type === 'punch-out' || e.type === 'site-ot-out' || e.type === 'site-out') && e.steps != null)
-                    .reduce((sum, e) => sum + (e.steps || 0), 0);
-
+            if (events.length === 0 && routePoints.length === 0) {
                 setTodayMetrics({
-                    totalDistance: distance.toFixed(2),
-                    travelTime: `${Math.floor(duration / 60)}h ${duration % 60}m`,
-                    totalSteps
+                    totalDistance: '0.00',
+                    travelTime: '0h 0m',
+                    totalSteps: 0
                 });
-            } catch (err) {
-                console.error('Failed to load today metrics:', err);
-            } finally {
-                if (!cancelled) setIsMetricsLoading(false);
+                return;
             }
-        };
 
-        const fetchMonthlyMissedPunches = async () => {
-            try {
-                const start = startOfMonth(new Date()).toISOString();
-                const end = endOfMonth(new Date()).toISOString();
-                const events = await api.getAttendanceEvents(user.id, start, end);
-                if (cancelled) return;
-                
-                const count = events.filter(e => e.checkoutNote && e.checkoutNote.includes('user clicked for punch out with out applying correction this is the record of punch out')).length;
-                setMonthlyMissedPunchesCount(count);
-            } catch (err) {
-                console.error('Failed to load monthly missed punches:', err);
-            }
-        };
+            // Calculate travel distance + duration using the same algorithm as Route View:
+            // merges attendance events + route_history GPS pings, sorts chronologically,
+            // deduplicates points within 5m, and sums the cumulative path distance.
+            const { distance, duration } = calculateDailyPathTravelKm(events, routePoints);
 
+            // Calculate total steps from attendance events stored in Supabase for today
+            const closedSessionSteps = events
+                .filter(e => (e.type === 'punch-out' || e.type === 'site-ot-out' || e.type === 'site-out') && e.steps != null)
+                .reduce((sum, e) => sum + (e.steps || 0), 0);
+
+            const activeOpenPunchIn = events.find(e => (e.type === 'punch-in' || e.type === 'site-in' || e.type === 'site-ot-in') && e.steps != null && e.steps > 0);
+            const hasMatchingPunchOut = activeOpenPunchIn ? events.some(e => (e.type === 'punch-out' || e.type === 'site-ot-out' || e.type === 'site-out') && new Date(e.timestamp) > new Date(activeOpenPunchIn.timestamp)) : false;
+
+            const totalSteps = closedSessionSteps + (!hasMatchingPunchOut && activeOpenPunchIn ? (activeOpenPunchIn.steps || 0) : 0);
+
+            setTodayMetrics({
+                totalDistance: distance.toFixed(2),
+                travelTime: `${Math.floor(duration / 60)}h ${duration % 60}m`,
+                totalSteps
+            });
+        } catch (err) {
+            console.error('Failed to load today metrics:', err);
+        } finally {
+            setIsMetricsLoading(false);
+        }
+    }, [user?.id]);
+
+    const fetchMonthlyMissedPunches = useCallback(async () => {
+        if (!user?.id) return;
+        try {
+            const start = startOfMonth(new Date()).toISOString();
+            const end = endOfMonth(new Date()).toISOString();
+            const events = await api.getAttendanceEvents(user.id, start, end);
+            
+            const count = events.filter(e => e.checkoutNote && e.checkoutNote.includes('user clicked for punch out with out applying correction this is the record of punch out')).length;
+            setMonthlyMissedPunchesCount(count);
+        } catch (err) {
+            console.error('Failed to load monthly missed punches:', err);
+        }
+    }, [user?.id]);
+
+    useEffect(() => {
         fetchTodayMetrics();
         fetchMonthlyMissedPunches();
-        return () => { cancelled = true; };
-    }, [user?.id, isCheckedIn, isFieldCheckedIn, isSiteOtCheckedIn, isOnBreak]);
+
+        const handleResumeRefresh = () => {
+            console.log('[ProfilePage] App resumed from background — refreshing metrics & checking attendance...');
+            setCurrentDate(new Date());
+            checkAttendanceStatus(true);
+            fetchTodayMetrics();
+            fetchMonthlyMissedPunches();
+        };
+
+        window.addEventListener('app-resumed-refresh', handleResumeRefresh);
+        const handleVisChange = () => {
+            if (document.visibilityState === 'visible') handleResumeRefresh();
+        };
+        document.addEventListener('visibilitychange', handleVisChange);
+
+        return () => {
+            window.removeEventListener('app-resumed-refresh', handleResumeRefresh);
+            document.removeEventListener('visibilitychange', handleVisChange);
+        };
+    }, [user?.id, isCheckedIn, isFieldCheckedIn, isSiteOtCheckedIn, isOnBreak, fetchTodayMetrics, fetchMonthlyMissedPunches, checkAttendanceStatus]);
 
     const locationParams = useLocation();
     const queryParams = new URLSearchParams(locationParams.search);
@@ -1406,7 +1429,7 @@ const ProfilePage: React.FC = () => {
                                     )}
                                 </div>
                                 <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest bg-white/5 px-2 py-1 rounded">
-                                    {format(new Date(), 'dd MMM yyyy')}
+                                    {format(currentDate, 'dd MMM yyyy')}
                                 </div>
                             </div>
 

@@ -538,6 +538,9 @@ const App: React.FC = () => {
   const setIsOffline = useAuthStore(state => state.setIsOffline);
   const isOffline = useAuthStore(state => state.isOffline);
 
+  // Track when the app went to background so we can detect long gaps on resume
+  const backgroundedAtRef = React.useRef<number | null>(null);
+
   // ── IMPERSONATION SESSION PERSISTENCE SYNC ────────────────────────────────
   // Enforce target user in authStore on initial mount if an active impersonation session exists in localStorage
   useEffect(() => {
@@ -761,20 +764,105 @@ const App: React.FC = () => {
         await verifyInternetAndSetState(status.connected);
       }, 8000);
 
-      // Pause network pinging when the app is in the background to prevent battery drain and 
-      // network errors (like geofencing settings fetch failing) due to OS restrictions.
-      const appStateListener = CapacitorApp.addListener('appStateChange', ({ isActive }) => {
-        console.log(`[FLICKER_DEBUG] appStateChange isActive: ${isActive}`);
+      // Handle app resume & background transitions
+      const appStateListener = CapacitorApp.addListener('appStateChange', async ({ isActive }) => {
+        console.log(`[AppState] appStateChange isActive: ${isActive}`);
         if (!isActive) {
+          // Record when we went to background
+          backgroundedAtRef.current = Date.now();
           if (nativePingTimer) {
-            console.log('[FLICKER_DEBUG] Pausing nativePingTimer');
+            console.log('[AppState] Pausing nativePingTimer in background');
             clearInterval(nativePingTimer);
             nativePingTimer = null;
           }
         } else {
+          const bgDurationMs = backgroundedAtRef.current ? Date.now() - backgroundedAtRef.current : 0;
+          const bgMinutes = Math.round(bgDurationMs / 60000);
+          const isLongBackground = bgDurationMs > 10 * 60 * 1000; // 10+ minutes
+          console.log(`[AppState] App returned to foreground after ${bgMinutes}m. Long gap: ${isLongBackground}`);
+          backgroundedAtRef.current = null;
+
+          // ── STEP 1: If long background, force Supabase session refresh FIRST ────
+          // After 6+ hours, Android Doze kills the Supabase internal token refresh
+          // timer. All subsequent API calls would fail with 401 silently.
+          // We do a SINGLE controlled refresh here BEFORE any other API calls start.
+          if (isLongBackground) {
+            console.log('[AppState] Long background detected — refreshing Supabase session...');
+            try {
+              const { data: sessionData } = await supabase.auth.getSession();
+              if (sessionData?.session) {
+                // Session still valid (or auto-refreshed). All good.
+                console.log('[AppState] ✅ Session valid after resume.');
+              } else {
+                // No valid session — try refresh from stored token
+                const { secureGet: _secureGet } = await import('./utils/secureStorage');
+                const storedToken = await _secureGet('supabase.auth.rememberMe');
+                if (storedToken) {
+                  const { data: refreshData, error: refreshErr } = await supabase.auth.refreshSession({ refresh_token: storedToken });
+                  if (refreshErr) {
+                    console.warn('[AppState] Session refresh failed on resume:', refreshErr.message);
+                  } else if (refreshData?.session) {
+                    console.log('[AppState] ✅ Session refreshed successfully on resume.');
+                  }
+                }
+              }
+            } catch (sessionErr) {
+              console.warn('[AppState] Session check on resume failed:', sessionErr);
+            }
+
+            // ── STEP 2: Reconnect dead Supabase WebSocket (zombie channels) ─────────
+            console.log('[AppState] Reconnecting Supabase realtime (clearing zombie sockets)...');
+            reconnectSupabaseRealtime();
+
+            // ── STEP 3: Re-subscribe to attendance channels (they died in background) ─
+            // Wait 200ms for realtime to reconnect, then re-subscribe
+            setTimeout(() => {
+              try {
+                const authState = useAuthStore.getState();
+                if (authState.user) {
+                  console.log('[AppState] Re-subscribing attendance channels after long background...');
+                  const unsubscribeFn = authState.subscribeToAttendance();
+                  // Store the unsubscribe so we don't leak channels
+                  // (previous cleanup registered in the user effect handles this)
+                }
+              } catch (e) {
+                console.warn('[AppState] Re-subscribe error:', e);
+              }
+            }, 300);
+          }
+
+          // ── STEP 4: Drain queued offline items to Supabase ──────────────────────
+          try {
+            const { offlineSyncEngine } = await import('./services/offlineSyncEngine');
+            offlineSyncEngine.drainQueue().catch(err => console.warn('[AppState] Offline queue drain err:', err));
+          } catch (e) {
+            console.warn('[AppState] offlineSyncEngine import error:', e);
+          }
+
+          // ── STEP 5: Refresh active attendance session and sync live steps ────────
+          // Small delay to let session refresh settle before making API calls
+          const apiDelay = isLongBackground ? 400 : 0;
+          setTimeout(async () => {
+            const authState = useAuthStore.getState();
+            if (authState.user) {
+              authState.checkAttendanceStatus(true).catch(err => console.warn('[AppState] checkAttendanceStatus err:', err));
+              if (authState.isCheckedIn || authState.isFieldCheckedIn || authState.isSiteOtCheckedIn) {
+                import('./services/stepCounterService').then(async ({ stepCounterService }) => {
+                  const steps = await stepCounterService.getStepCountFromNative();
+                  if (steps > 0) {
+                    authState.setLiveSteps(steps);
+                    authState.syncLiveSteps(steps);
+                  }
+                }).catch(() => {});
+              }
+            }
+          }, apiDelay);
+
+          // ── STEP 6: Dispatch global resume event so open views refresh immediately
+          window.dispatchEvent(new CustomEvent('app-resumed-refresh', { detail: { timestamp: Date.now(), bgMinutes } }));
+
           if (!nativePingTimer) {
-            console.log('[FLICKER_DEBUG] Resuming nativePingTimer');
-            // Check immediately on resume, then restart interval
+            console.log('[AppState] Resuming nativePingTimer');
             Network.getStatus().then(status => verifyInternetAndSetState(status.connected));
             nativePingTimer = setInterval(async () => {
               const status = await Network.getStatus();
@@ -783,6 +871,43 @@ const App: React.FC = () => {
           }
         }
       });
+
+      // Browser visibility change for PWA and Web View lifecycle
+      const handleVisibilityChange = async () => {
+        if (document.visibilityState === 'visible') {
+          const bgDurationMs = backgroundedAtRef.current ? Date.now() - backgroundedAtRef.current : 0;
+          const isLongBackground = bgDurationMs > 10 * 60 * 1000;
+          console.log(`[Visibility] App returned to visible. Long gap: ${isLongBackground}`);
+          backgroundedAtRef.current = null;
+
+          if (isLongBackground) {
+            // Force session refresh after a long gap to prevent stale-token API failures
+            try {
+              await supabase.auth.getSession();
+            } catch (_e) {
+              /* non-fatal session refresh error */
+            }
+            reconnectSupabaseRealtime();
+          }
+
+          try {
+            const { offlineSyncEngine } = await import('./services/offlineSyncEngine');
+            offlineSyncEngine.drainQueue().catch(() => {});
+          } catch {
+            /* offline drain queue optional */
+          }
+
+          const authState = useAuthStore.getState();
+          if (authState.user) {
+            authState.checkAttendanceStatus(true).catch(() => {});
+          }
+          window.dispatchEvent(new CustomEvent('app-resumed-refresh', { detail: { timestamp: Date.now() } }));
+        } else {
+          // Going to background — record timestamp
+          backgroundedAtRef.current = Date.now();
+        }
+      };
+      document.addEventListener('visibilitychange', handleVisibilityChange);
 
       return () => {
         console.log('[FLICKER_DEBUG] Network useEffect UNMOUNTING, clearing timers');

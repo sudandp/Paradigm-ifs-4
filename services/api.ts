@@ -3739,11 +3739,12 @@ export const api = {
     const today = new Date();
     const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0).toISOString();
     
+    // Find the latest active punch-in / site-in or current day event
     const { data: events, error: fetchError } = await supabase
       .from('attendance_events')
-      .select('id')
+      .select('id, type')
       .eq('user_id', userId)
-      .in('type', ['punch-in', 'site-ot-in'])
+      .in('type', ['punch-in', 'site-in', 'site-ot-in', 'punch-out', 'site-out', 'site-ot-out'])
       .gte('timestamp', startOfDay)
       .order('timestamp', { ascending: false })
       .limit(1);

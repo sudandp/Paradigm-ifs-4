@@ -243,12 +243,16 @@ const getActiveImpersonationTargetUser = () => {
         if (parsed && parsed.isImpersonating && parsed.targetUser) {
             return parsed.targetUser;
         }
-    } catch {}
+    } catch {
+        /* ignore impersonation read failure */
+    }
     return null;
 };
 
 let lastSyncedSteps = 0;
 let lastSyncTime = 0;
+// Mutex: prevents concurrent toggleCheckInStatus calls (e.g. rapid double-tap, or tap during resume refresh)
+let isToggling = false;
 
 export const useAuthStore = create<AuthState>()(
 
@@ -385,19 +389,17 @@ export const useAuthStore = create<AuthState>()(
             const { user } = get();
             if (!user) return;
 
-            if (Capacitor.getPlatform() !== 'android') return;
-
             const now = Date.now();
             const timeElapsed = now - lastSyncTime;
             const stepsChanged = steps !== lastSyncedSteps;
 
-            // Sync every 10s (was 60s) so the web app sees nearly real-time step data
-            if (stepsChanged && (timeElapsed > 10000 || lastSyncTime === 0)) {
+            // Sync immediately whenever steps change (immediate or max 2s debounce)
+            if (stepsChanged && (timeElapsed > 2000 || lastSyncTime === 0)) {
                 lastSyncTime = now;
                 lastSyncedSteps = steps;
                 try {
                     await api.updateActiveSessionSteps(user.id, steps);
-                    console.log(`[authStore] Synced live steps to database: ${steps}`);
+                    console.log(`[authStore] Synced live steps immediately to Supabase: ${steps}`);
                 } catch (err) {
                     console.warn('[authStore] Failed to sync live steps to database:', err);
                 }
@@ -406,7 +408,7 @@ export const useAuthStore = create<AuthState>()(
 
         setUser: (user) => {
             const activeTarget = getActiveImpersonationTargetUser();
-            let companyToSave = user?.societyName || user?.organizationName || get().lastCompany;
+            const companyToSave = user?.societyName || user?.organizationName || get().lastCompany;
             if (activeTarget && user && user.id !== activeTarget.id) {
                 console.log(`[authStore] Impersonation active. Preserving target user ${activeTarget.name} instead of setting ${user.name}`);
                 set({ user: activeTarget, lastCompany: companyToSave, error: null, loading: false });
@@ -1178,15 +1180,41 @@ export const useAuthStore = create<AuthState>()(
         },
 
         toggleCheckInStatus: async (note?: string, attachmentUrl?: string | null, workType?: 'office' | 'field', fieldReportId?: string, forcedType?: string, breakInterval?: number, overrideTimestamp?: string) => {
-            const { user, isCheckedIn, geofencingSettings, dailyPunchCount } = get();
-            if (!user) return { success: false, message: 'User not found' };
+            // ── Mutex guard: prevent concurrent toggle calls (double-tap, race with resume refresh) ──
+            if (isToggling) {
+                console.warn('[authStore] toggleCheckInStatus: already in progress, ignoring duplicate call.');
+                return { success: false, message: 'Action already in progress. Please wait.' };
+            }
+            isToggling = true;
+
+            const { user, isCheckedIn, isFieldCheckedIn, isSiteOtCheckedIn, geofencingSettings, dailyPunchCount, isAttendanceLoading } = get();
+            if (!user) { isToggling = false; return { success: false, message: 'User not found' }; }
+
+            // ── Stale-state guard: if attendance is still loading from a resume refresh,
+            // wait up to 3s for it to settle before proceeding so we read the correct isCheckedIn ──
+            if (isAttendanceLoading) {
+                console.log('[authStore] toggleCheckInStatus: waiting for attendance refresh to settle...');
+                await new Promise<void>(resolve => {
+                    let waited = 0;
+                    const poll = setInterval(() => {
+                        waited += 100;
+                        if (!get().isAttendanceLoading || waited >= 3000) {
+                            clearInterval(poll);
+                            resolve();
+                        }
+                    }, 100);
+                });
+            }
+
+            // Re-read state after possible wait (so we use the freshest values)
+            const freshState = get();
             
             // Explicitly determine the type. If forcedType is missing, use toggle logic.
-            const newType = (forcedType || (isCheckedIn ? 'punch-out' : 'punch-in')) as AttendanceEventType;
-            console.log('[authStore] toggleCheckInStatus:', { newType, workType, forcedType });
+            const newType = (forcedType || (freshState.isCheckedIn ? 'punch-out' : 'punch-in')) as AttendanceEventType;
+            console.log('[authStore] toggleCheckInStatus:', { newType, workType, forcedType, isCheckedIn: freshState.isCheckedIn });
 
             // Check field staff restriction for office punch-in
-            if (user.role === 'field_staff' && newType === 'punch-in' && (!workType || workType === 'office')) {
+            if (freshState.user?.role === 'field_staff' && newType === 'punch-in' && (!workType || workType === 'office')) {
                 // If they have already punched in today (count >= 1), block unless overrides exist
                 // The current request is to allow "based on request to reporting manager", implying an approval workflow.
                 // For now, allow subsequent punches ONLY if explicitly requested (e.g., manual override flag, or maybe we enforce the limit here).
@@ -1697,6 +1725,8 @@ export const useAuthStore = create<AuthState>()(
                 if (newType === 'break-out') {
                     get().setIsBreakingOut(false);
                 }
+                // Always release the mutex
+                isToggling = false;
             }
         },
 

@@ -148,9 +148,23 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
     };
 
     useEffect(() => {
-        // Only fetch if we don't have events or if range/date changed
-        // Exception: on first mount, if initialEvents is provided for current month, we already handled it
         fetchAttendanceEvents();
+
+        const handleResume = () => {
+            console.log('[EmployeeLog] App resumed from background — refreshing log events...');
+            fetchAttendanceEvents();
+        };
+
+        window.addEventListener('app-resumed-refresh', handleResume);
+        const handleVis = () => {
+            if (document.visibilityState === 'visible') handleResume();
+        };
+        document.addEventListener('visibilitychange', handleVis);
+
+        return () => {
+            window.removeEventListener('app-resumed-refresh', handleResume);
+            document.removeEventListener('visibilitychange', handleVis);
+        };
     }, [user, selectedRange, selectedDate, isCheckedIn, dailyPunchCount]);
 
     // Update internal events if initialEvents changes (e.g. parent refetch).
@@ -317,32 +331,32 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
             </div>
 
             {/* Filter Controls */}
-            <div className="mb-6 space-y-4">
+            <div className="mb-6 space-y-3">
                 {/* Range Selector */}
-                <div className="flex gap-2">
+                <div className="flex gap-2 p-1 bg-slate-100 dark:bg-slate-800/90 rounded-2xl border border-slate-200/80 dark:border-slate-700">
                     <button
                         onClick={() => handleRangeChange('day')}
-                        className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${selectedRange === 'day'
-                            ? 'bg-indigo-600 text-white shadow-md'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200 max-md:bg-emerald-950/60 max-md:text-emerald-200 max-md:border max-md:border-emerald-800/40'
+                        className={`flex-1 px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${selectedRange === 'day'
+                            ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
+                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                             }`}
                     >
                         Day
                     </button>
                     <button
                         onClick={() => handleRangeChange('week')}
-                        className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${selectedRange === 'week'
-                            ? 'bg-indigo-600 text-white shadow-md'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200 max-md:bg-emerald-950/60 max-md:text-emerald-200 max-md:border max-md:border-emerald-800/40'
+                        className={`flex-1 px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${selectedRange === 'week'
+                            ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
+                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                             }`}
                     >
                         Week
                     </button>
                     <button
                         onClick={() => handleRangeChange('month')}
-                        className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${selectedRange === 'month'
-                            ? 'bg-indigo-600 text-white shadow-md'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200 max-md:bg-emerald-950/60 max-md:text-emerald-200 max-md:border max-md:border-emerald-800/40'
+                        className={`flex-1 px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${selectedRange === 'month'
+                            ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
+                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                             }`}
                     >
                         Month
@@ -350,22 +364,24 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                 </div>
 
                 {/* Date Navigator */}
-                <div className="flex items-center justify-between bg-gray-50 max-md:bg-[#041b0f] max-md:border max-md:border-white/10 rounded-lg p-3">
+                <div className="flex items-center justify-between bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 shadow-2xs">
                     <button
                         onClick={() => handleDateChange('prev')}
-                        className="p-1.5 bg-white max-md:bg-emerald-950/80 rounded-md shadow-sm hover:bg-gray-100 transition-colors flex items-center justify-center border border-gray-200 max-md:border-emerald-800/50"
+                        className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-xl transition-colors flex items-center justify-center text-slate-700 dark:text-slate-300 cursor-pointer"
+                        title="Previous"
                     >
-                        <ChevronLeft className="h-5 w-5 text-gray-600 max-md:text-emerald-200" />
+                        <ChevronLeft className="h-4 w-4" />
                     </button>
-                    <div className="flex items-center gap-2 font-semibold text-gray-900 max-md:text-white">
-                        <Calendar className="h-4 w-4 max-md:text-emerald-400" />
+                    <div className="flex items-center gap-2 font-extrabold text-sm text-slate-900 dark:text-white">
+                        <Calendar className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                         <span>{getDateRangeText()}</span>
                     </div>
                     <button
                         onClick={() => handleDateChange('next')}
-                        className="p-1.5 bg-white max-md:bg-emerald-950/80 rounded-md shadow-sm hover:bg-gray-100 transition-colors flex items-center justify-center border border-gray-200 max-md:border-emerald-800/50"
+                        className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-xl transition-colors flex items-center justify-center text-slate-700 dark:text-slate-300 cursor-pointer"
+                        title="Next"
                     >
-                        <ChevronRight className="h-5 w-5 text-gray-600 max-md:text-emerald-200" />
+                        <ChevronRight className="h-4 w-4" />
                     </button>
                 </div>
             </div>
@@ -386,37 +402,31 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                     groupedByDate.map((group) => (
                         <div
                             key={group.date}
-                            className="bg-gradient-to-br from-white to-gray-50 rounded-xl border border-gray-200 overflow-hidden"
+                            className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-md overflow-hidden"
                         >
                             {/* Date Header */}
-                            <div className="bg-[#5a54f9] px-3 md:px-4 py-3 flex justify-between items-center">
-                                <div className="flex items-center gap-2.5 text-white">
-                                    <Calendar className="h-4 w-4 opacity-75" />
-                                    <div className="font-bold leading-[1.15] flex flex-col">
-                                        <span className="text-[13px]">{format(new Date(group.date), 'EEEE, d')}</span>
-                                        <span className="text-[13px]">{format(new Date(group.date), 'MMMM yyyy')}</span>
+                            <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 px-4 py-3 flex justify-between items-center text-white shadow-sm">
+                                <div className="flex items-center gap-2.5">
+                                    <Calendar className="h-4 w-4 text-emerald-100" />
+                                    <div className="font-bold leading-tight flex flex-col">
+                                        <span className="text-sm font-extrabold">{format(new Date(group.date), 'EEEE, d')}</span>
+                                        <span className="text-xs text-emerald-100 font-semibold">{format(new Date(group.date), 'MMMM yyyy')}</span>
                                     </div>
                                 </div>
                                 <div className="flex gap-2">
-                                    <div className="text-white bg-white/10 px-2 py-1 rounded-lg flex items-center gap-1.5 justify-center shadow-sm">
-                                        <span className="opacity-90 text-[11px] font-medium tracking-wide">Work:</span> 
-                                        <div className="flex flex-col leading-[1.1] text-[11px] font-bold text-right">
-                                            <span>{Math.floor(Math.round(group.totalWorkMinutes) / 60)}h</span>
-                                            <span>{Math.round(group.totalWorkMinutes) % 60}m</span>
-                                        </div>
+                                    <div className="bg-white/20 border border-white/30 text-white px-2.5 py-1 rounded-xl flex items-center gap-1.5 shadow-2xs">
+                                        <span className="text-[11px] font-medium text-emerald-100">Work:</span> 
+                                        <span className="text-xs font-extrabold">{Math.floor(Math.round(group.totalWorkMinutes) / 60)}h {Math.round(group.totalWorkMinutes) % 60}m</span>
                                     </div>
-                                    <div className="text-white bg-black/10 px-2 py-1 rounded-lg flex items-center gap-1.5 justify-center shadow-sm">
-                                        <span className="opacity-80 text-[11px] font-medium tracking-wide">Break:</span> 
-                                        <div className="flex flex-col leading-[1.1] text-[11px] font-bold text-right">
-                                            <span>{Math.floor(Math.round(group.totalBreakMinutes) / 60)}h</span>
-                                            <span>{Math.round(group.totalBreakMinutes) % 60}m</span>
-                                        </div>
+                                    <div className="bg-black/25 border border-white/20 text-white px-2.5 py-1 rounded-xl flex items-center gap-1.5 shadow-2xs">
+                                        <span className="text-[11px] font-medium text-slate-200">Break:</span> 
+                                        <span className="text-xs font-extrabold">{Math.floor(Math.round(group.totalBreakMinutes) / 60)}h {Math.round(group.totalBreakMinutes) % 60}m</span>
                                     </div>
                                 </div>
                             </div>
 
                              {/* Events List */}
-                            <div className="p-4 space-y-3">
+                            <div className="p-3.5 md:p-4 space-y-3 bg-slate-50/50 dark:bg-slate-900/50">
                                 {(() => {
                                     const sortedEvents = [...group.events].sort(
                                         (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
@@ -453,7 +463,7 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                                                 durationBadge = {
                                                     text: durText,
                                                     bgClass: 'bg-amber-100 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-700/60',
-                                                    textClass: 'text-amber-800 dark:text-amber-300'
+                                                    textClass: 'text-amber-900 dark:text-amber-200'
                                                 };
                                             }
                                         } else if (
@@ -485,7 +495,7 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                                                 durationBadge = {
                                                     text: durText,
                                                     bgClass: 'bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700/60',
-                                                    textClass: 'text-emerald-800 dark:text-emerald-300'
+                                                    textClass: 'text-emerald-900 dark:text-emerald-200'
                                                 };
                                             }
                                         }
@@ -493,37 +503,37 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                                         return (
                                         <div
                                             key={`${event.timestamp}-${index}`}
-                                            className={`p-3 rounded-lg border-l-4 ${
-                                                (event.type === 'punch-in' || event.type === 'site-ot-in') ? 'bg-emerald-50 border-emerald-500' :
-                                                (event.type === 'punch-out' || event.type === 'site-ot-out') ? 'bg-rose-50 border-rose-500' :
-                                                event.type === 'break-in' ? 'bg-amber-50 border-amber-500' :
-                                                event.type.includes('site-ot') ? 'bg-indigo-50 border-indigo-500' :
-                                                'bg-sky-50 border-sky-500'
+                                            className={`p-3.5 rounded-xl border-l-4 shadow-xs transition-all ${
+                                                (event.type === 'punch-in' || event.type === 'site-ot-in') ? 'bg-emerald-50/90 dark:bg-emerald-950/30 border-emerald-500 border border-emerald-200/60 dark:border-emerald-800/40' :
+                                                (event.type === 'punch-out' || event.type === 'site-ot-out') ? 'bg-rose-50/90 dark:bg-rose-950/30 border-rose-500 border border-rose-200/60 dark:border-rose-800/40' :
+                                                event.type === 'break-in' ? 'bg-amber-50/90 dark:bg-amber-950/30 border-amber-500 border border-amber-200/60 dark:border-amber-800/40' :
+                                                event.type.includes('site-ot') ? 'bg-indigo-50/90 dark:bg-indigo-950/30 border-indigo-500 border border-indigo-200/60 dark:border-indigo-800/40' :
+                                                'bg-sky-50/90 dark:bg-sky-950/30 border-sky-500 border border-sky-200/60 dark:border-sky-800/40'
                                             }`}
                                         >
-                                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+                                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5">
 
                                                 {/* Row 1 (Mobile) / Col 1 (Desktop): Punch In & Time */}
-                                                <div className="flex items-center justify-between md:justify-start gap-3 flex-shrink-0 md:w-[190px]">
+                                                <div className="flex items-center justify-between md:justify-start gap-3 flex-shrink-0 md:w-[200px]">
                                                     <div className="flex items-center gap-3">
                                                         <div
-                                                            className={`p-2 rounded-lg flex-shrink-0 ${
-                                                                (event.type === 'punch-in' || event.type === 'site-ot-in') ? 'bg-emerald-100 text-emerald-700' :
-                                                                (event.type === 'punch-out' || event.type === 'site-ot-out') ? 'bg-rose-100 text-rose-700' :
-                                                                event.type === 'break-in' ? 'bg-amber-100 text-amber-700' :
-                                                                event.type.includes('site-ot') ? 'bg-indigo-100 text-indigo-700' :
-                                                                'bg-sky-100 text-sky-700'
+                                                            className={`p-2 rounded-xl flex-shrink-0 shadow-2xs ${
+                                                                (event.type === 'punch-in' || event.type === 'site-ot-in') ? 'bg-emerald-600 text-white' :
+                                                                (event.type === 'punch-out' || event.type === 'site-ot-out') ? 'bg-rose-600 text-white' :
+                                                                event.type === 'break-in' ? 'bg-amber-500 text-white' :
+                                                                event.type.includes('site-ot') ? 'bg-indigo-600 text-white' :
+                                                                'bg-sky-600 text-white'
                                                             }`}
                                                         >
                                                             <Clock className="h-4 w-4" />
                                                         </div>
                                                         <div>
-                                                            <div className={`font-semibold capitalize text-sm md:text-sm ${
-                                                                (event.type === 'punch-in' || event.type === 'site-ot-in') ? 'text-emerald-900 max-md:text-emerald-300' :
-                                                                (event.type === 'punch-out' || event.type === 'site-ot-out') ? 'text-rose-900 max-md:text-rose-300' :
-                                                                event.type === 'break-in' ? 'text-amber-900 max-md:text-amber-300' :
-                                                                event.type.includes('site-ot') ? 'text-indigo-900 max-md:text-indigo-300' :
-                                                                'text-sky-900 max-md:text-sky-300'
+                                                            <div className={`font-extrabold capitalize text-sm ${
+                                                                (event.type === 'punch-in' || event.type === 'site-ot-in') ? 'text-emerald-950 dark:text-emerald-200' :
+                                                                (event.type === 'punch-out' || event.type === 'site-ot-out') ? 'text-rose-950 dark:text-rose-200' :
+                                                                event.type === 'break-in' ? 'text-amber-950 dark:text-amber-200' :
+                                                                event.type.includes('site-ot') ? 'text-indigo-950 dark:text-indigo-200' :
+                                                                'text-sky-950 dark:text-sky-200'
                                                             }`}>
                                                                 {event.type === 'punch-in' ? (event.workType === 'field' ? 'Site Check In' : 'Punch In') :
                                                                  event.type === 'punch-out' ? (event.workType === 'field' ? 'Site Check Out' : 'Punch Out') :
@@ -531,18 +541,18 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                                                                  event.type === 'site-ot-out' ? 'Site OT Out' :
                                                                  event.type.replace('-', ' ')}
                                                             </div>
-                                                            <div className="flex items-center gap-1.5 flex-wrap">
-                                                                <span className={`text-xs md:text-sm font-medium ${
-                                                                    (event.type === 'punch-in' || event.type === 'site-ot-in') ? 'text-emerald-700 max-md:text-emerald-400' :
-                                                                    (event.type === 'punch-out' || event.type === 'site-ot-out') ? 'text-rose-700 max-md:text-rose-400' :
-                                                                    event.type === 'break-in' ? 'text-amber-700 max-md:text-amber-400' :
-                                                                    event.type.includes('site-ot') ? 'text-indigo-700 max-md:text-indigo-400' :
-                                                                    'text-sky-700 max-md:text-sky-400'
+                                                            <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                                                                <span className={`text-xs font-bold ${
+                                                                    (event.type === 'punch-in' || event.type === 'site-ot-in') ? 'text-emerald-800 dark:text-emerald-300' :
+                                                                    (event.type === 'punch-out' || event.type === 'site-ot-out') ? 'text-rose-800 dark:text-rose-300' :
+                                                                    event.type === 'break-in' ? 'text-amber-800 dark:text-amber-300' :
+                                                                    event.type.includes('site-ot') ? 'text-indigo-800 dark:text-indigo-300' :
+                                                                    'text-sky-800 dark:text-sky-300'
                                                                 }`}>
                                                                     {format(new Date(event.timestamp), 'hh:mm a')}
                                                                 </span>
                                                                 {durationBadge && (
-                                                                    <span className={`text-[10px] font-semibold px-1.5 py-0.2 rounded-md ${durationBadge.bgClass} ${durationBadge.textClass}`}>
+                                                                    <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md ${durationBadge.bgClass} ${durationBadge.textClass}`}>
                                                                         ⏱ {durationBadge.text}
                                                                     </span>
                                                                 )}
@@ -558,7 +568,7 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                                                                 )}
                                                             </div>
                                                             {(event.checkoutNote || event.source === 'auto_system') && (
-                                                                <div className="text-[11px] font-medium text-slate-500 italic mt-0.5 max-w-[200px] leading-tight">
+                                                                <div className="text-[11px] font-medium text-slate-600 dark:text-slate-400 italic mt-1 max-w-[200px] leading-tight">
                                                                     Note: "{
                                                                         event.source === 'auto_system' || (event.checkoutNote && event.checkoutNote.toLowerCase().includes('auto punch-out'))
                                                                             ? 'User was working - Auto punched out by AI as per work hour policy'
@@ -586,27 +596,27 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                                                 {/* Row 2 (Mobile) / Col 2 (Desktop): Centered Distance Badge */}
                                                 <div className="flex-1 flex items-center justify-center my-1 md:my-0">
                                                     {distInfo.isUnregistered && (
-                                                         <div className="flex items-center gap-1.5 bg-amber-50 max-md:bg-[#2c1d06] px-3 py-1.5 rounded-lg border border-amber-300 max-md:border-amber-700/60 shadow-sm w-fit max-w-full">
+                                                         <div className="flex items-center gap-1.5 bg-amber-100 dark:bg-amber-950/70 px-3 py-1.5 rounded-xl border border-amber-300 dark:border-amber-700/80 shadow-2xs w-fit max-w-full">
                                                              {distInfo.isHome ? (
-                                                                 <Home className="h-3.5 w-3.5 text-amber-600 max-md:text-amber-400 flex-shrink-0" />
+                                                                 <Home className="h-3.5 w-3.5 text-amber-700 dark:text-amber-400 flex-shrink-0" />
                                                              ) : (
-                                                                 <AlertTriangle className="h-3.5 w-3.5 text-amber-600 max-md:text-amber-400 flex-shrink-0" />
+                                                                 <AlertTriangle className="h-3.5 w-3.5 text-amber-700 dark:text-amber-400 flex-shrink-0" />
                                                              )}
                                                              <div className="flex flex-col text-center md:text-left">
-                                                                 <span className="text-xs font-bold text-amber-900 max-md:text-amber-200 leading-tight">
+                                                                 <span className="text-xs font-extrabold text-amber-950 dark:text-amber-200 leading-tight">
                                                                      {distInfo.distanceKm} km · ~{distInfo.durationMin} min drive
                                                                  </span>
-                                                                 <span className="text-[10px] font-medium text-amber-700 max-md:text-amber-400 leading-tight">
+                                                                 <span className="text-[10px] font-bold text-amber-800 dark:text-amber-400 leading-tight">
                                                                      from {distInfo.targetSiteName || 'registered location'}
                                                                  </span>
                                                              </div>
                                                          </div>
                                                      )}
                                                     {event.source === 'auto_system' && (
-                                                        <div className="flex items-center gap-1.5 bg-rose-50 max-md:bg-[#2c0e15] px-3 py-1.5 rounded-lg border border-rose-200 max-md:border-rose-900/50 w-fit max-w-full">
-                                                            <Clock className="h-3.5 w-3.5 text-rose-400 max-md:text-rose-500 md:text-rose-600 flex-shrink-0" />
-                                                            <span className="text-xs text-rose-700 max-md:text-rose-300 font-medium">
-                                                                User working - Auto punched out by AI (Work hour policy)
+                                                        <div className="flex items-center gap-1.5 bg-rose-100 dark:bg-rose-950/70 px-3 py-1.5 rounded-xl border border-rose-300 dark:border-rose-800 w-fit max-w-full">
+                                                            <Clock className="h-3.5 w-3.5 text-rose-700 dark:text-rose-400 flex-shrink-0" />
+                                                            <span className="text-xs text-rose-950 dark:text-rose-200 font-bold">
+                                                                Auto punched out by AI (Work hour policy)
                                                             </span>
                                                         </div>
                                                     )}
@@ -634,9 +644,9 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                                                         const locationFallback = cleanLocationName || shiftSiteName || (isAutoOut ? 'Auto Check-out' : undefined);
 
                                                         return displayLocation ? (
-                                                            <div className="flex items-start gap-1.5 bg-white max-md:bg-[#041b0f] px-3 py-1.5 rounded-lg border border-gray-200 max-md:border-white/10 w-full md:max-w-[210px]">
-                                                                <MapPin className="h-3.5 w-3.5 text-indigo-400 max-md:text-emerald-400 md:text-indigo-600 flex-shrink-0 mt-0.5" />
-                                                                <span className="text-xs text-gray-700 max-md:text-gray-200 leading-tight break-words">
+                                                            <div className="flex items-start gap-1.5 bg-white/95 dark:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs w-full md:max-w-[210px]">
+                                                                <MapPin className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
+                                                                <span className="text-xs font-semibold text-slate-800 dark:text-slate-100 leading-tight break-words">
                                                                     {hasCoords ? (
                                                                         <AddressResolver
                                                                             lat={event.latitude!}
@@ -673,53 +683,53 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                             </div>
 
                             {/* Summary Footer */}
-                            <div className="bg-gray-50 px-4 py-3 border-t border-gray-200">
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
-                                    <div className="flex items-center">
-                                        <span className="text-gray-500">Punch Ins:</span>
-                                        <span className="ml-1 font-bold text-emerald-600">
+                            <div className="bg-slate-50 dark:bg-slate-800/80 px-4 py-3 border-t border-slate-200 dark:border-slate-800">
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                                    <div className="flex items-center justify-between p-1.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
+                                        <span className="text-slate-600 dark:text-slate-400 font-semibold">Punches:</span>
+                                        <span className="font-extrabold text-emerald-700 dark:text-emerald-400">
                                             {group.events.filter(e => e.type === 'punch-in' && e.workType !== 'field').length}
                                         </span>
                                     </div>
-                                    <div className="flex items-center">
-                                        <span className="text-gray-500">Punch Outs:</span>
-                                        <span className="ml-1 font-bold text-rose-600">
+                                    <div className="flex items-center justify-between p-1.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
+                                        <span className="text-slate-600 dark:text-slate-400 font-semibold">Punch Outs:</span>
+                                        <span className="font-extrabold text-rose-700 dark:text-rose-400">
                                             {group.events.filter(e => e.type === 'punch-out' && e.workType !== 'field').length}
                                         </span>
                                     </div>
-                                    <div className="flex items-center">
-                                        <span className="text-gray-500">Site Check Ins:</span>
-                                        <span className="ml-1 font-bold text-emerald-600">
+                                    <div className="flex items-center justify-between p-1.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
+                                        <span className="text-slate-600 dark:text-slate-400 font-semibold">Site Check Ins:</span>
+                                        <span className="font-extrabold text-emerald-700 dark:text-emerald-400">
                                             {group.events.filter(e => (e.type === 'punch-in' && e.workType === 'field') || e.type === 'site-in').length}
                                         </span>
                                     </div>
-                                    <div className="flex items-center">
-                                        <span className="text-gray-500">Site Check Outs:</span>
-                                        <span className="ml-1 font-bold text-rose-600">
+                                    <div className="flex items-center justify-between p-1.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
+                                        <span className="text-slate-600 dark:text-slate-400 font-semibold">Site Check Outs:</span>
+                                        <span className="font-extrabold text-rose-700 dark:text-rose-400">
                                             {group.events.filter(e => (e.type === 'punch-out' && e.workType === 'field') || e.type === 'site-out').length}
                                         </span>
                                     </div>
-                                    <div className="flex items-center">
-                                        <span className="text-gray-500">Site OT In:</span>
-                                        <span className="ml-1 font-bold text-indigo-600">
+                                    <div className="flex items-center justify-between p-1.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
+                                        <span className="text-slate-600 dark:text-slate-400 font-semibold">Site OT In:</span>
+                                        <span className="font-extrabold text-indigo-700 dark:text-indigo-400">
                                             {group.events.filter(e => e.type === 'site-ot-in').length}
                                         </span>
                                     </div>
-                                    <div className="flex items-center">
-                                        <span className="text-gray-500">Site OT Out:</span>
-                                        <span className="ml-1 font-bold text-indigo-600">
+                                    <div className="flex items-center justify-between p-1.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
+                                        <span className="text-slate-600 dark:text-slate-400 font-semibold">Site OT Out:</span>
+                                        <span className="font-extrabold text-indigo-700 dark:text-indigo-400">
                                             {group.events.filter(e => e.type === 'site-ot-out').length}
                                         </span>
                                     </div>
-                                    <div className="flex items-center">
-                                        <span className="text-gray-500">Breaks In:</span>
-                                        <span className="ml-1 font-bold text-amber-600">
+                                    <div className="flex items-center justify-between p-1.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
+                                        <span className="text-slate-600 dark:text-slate-400 font-semibold">Breaks In:</span>
+                                        <span className="font-extrabold text-amber-700 dark:text-amber-400">
                                             {group.events.filter(e => e.type === 'break-in').length}
                                         </span>
                                     </div>
-                                    <div className="flex items-center">
-                                        <span className="text-gray-500">Breaks Out:</span>
-                                        <span className="ml-1 font-bold text-sky-600">
+                                    <div className="flex items-center justify-between p-1.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
+                                        <span className="text-slate-600 dark:text-slate-400 font-semibold">Breaks Out:</span>
+                                        <span className="font-extrabold text-sky-700 dark:text-sky-400">
                                             {group.events.filter(e => e.type === 'break-out').length}
                                         </span>
                                     </div>

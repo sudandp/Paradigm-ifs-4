@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { ModuleSpec, HTAuditResponse } from '../../types/htYard';
 import { htYardMasterDataService } from '../../services/htYardMasterDataService';
-import { htYardFieldSpecService } from '../../services/htYardFieldSpecService';
+import { htYardFieldSpecService, resolveCategoryForModule } from '../../services/htYardFieldSpecService';
 import { htEquipmentCatalogService, EquipmentCatalogItem } from '../../services/htEquipmentCatalogService';
 import { reverseGeocode } from '../../utils/locationUtils';
 import { Geolocation } from '@capacitor/geolocation';
@@ -93,13 +93,18 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
     'RMU': 'RMUMD',
     'Transformer': 'TRMaster Data',
     'LT_Kiosk': 'LTKMD',
+    'VCB': 'VCB',
+    'Switchgear': 'Switchgear',
+    'HT_Panel': 'HT_Panel',
+    'Meter_Cubicle': 'Meter_Cubicle',
+    'CSS': 'CSS',
     'HT_Yard_Common': 'HTYardCommon'
   };
 
   // Load choices when editing a field
   useEffect(() => {
     if (editingField && (editingField.fieldType === 'select' || editingField.fieldType === 'searchable_select')) {
-      const cat = (editingField.optionsCategory || MODULE_TO_CAT_MAP[spec.moduleType] || 'LTKMD') as any;
+      const cat = (editingField.optionsCategory || resolveCategoryForModule(spec.moduleType) || 'RMUMD') as any;
       const targetKey = editingField.optionsFieldKey || editingField.fieldKey;
       htYardMasterDataService.getMasterOptions(cat).then(opts => {
         const matching = opts.filter(o => (o.fieldKey === targetKey || o.fieldKey === editingField.fieldKey) && o.isActive !== false);
@@ -209,6 +214,15 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
     }
   };
 
+  // Add Sub-Question to Field Modal State
+  const [showAddSubQuestionModal, setShowAddSubQuestionModal] = useState(false);
+  const [targetParentField, setTargetParentField] = useState<{ key: string; label: string; sectionKey: string; sectionTitle: string } | null>(null);
+  const [subQuestionLabel, setSubQuestionLabel] = useState('');
+  const [subQuestionType, setSubQuestionType] = useState('select');
+  const [subQuestionUnit, setSubQuestionUnit] = useState('');
+  const [subQuestionChoices, setSubQuestionChoices] = useState('');
+  const [isAddingSubQuestion, setIsAddingSubQuestion] = useState(false);
+
   // Delete/remove field from active section
   const handleDeleteFieldFromSection = async (fieldKey: string, fieldLabel: string) => {
     if (!window.confirm(`Are you sure you want to remove question "${fieldLabel}" from this section?`)) return;
@@ -222,6 +236,112 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
       await loadCategoryOptions();
     } catch (err) {
       toast.error('Failed to remove question');
+    }
+  };
+
+  // Add new sub-question directly inside target parent field
+  const handleAddNewSubQuestionToField = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!targetParentField || !subQuestionLabel.trim()) return;
+    setIsAddingSubQuestion(true);
+    try {
+      const cat = (MODULE_TO_CAT_MAP[spec.moduleType] || 'LTKMD') as any;
+      const cleanKey = `sub_${subQuestionLabel.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${Date.now().toString().slice(-4)}`;
+
+      // 1. Save field spec with parentFieldKey
+      await htYardFieldSpecService.saveFieldSpec({
+        category: cat,
+        moduleType: spec.moduleType,
+        sectionKey: targetParentField.sectionKey,
+        sectionTitle: targetParentField.sectionTitle,
+        fieldKey: cleanKey,
+        fieldLabel: subQuestionLabel.trim(),
+        fieldType: subQuestionType as any,
+        optionsCategory: cat,
+        optionsFieldKey: cleanKey,
+        unit: subQuestionUnit.trim() || undefined,
+        parentFieldKey: targetParentField.key,
+        isCustom: true
+      });
+
+      // 2. Also register in ht_custom_field_targets
+      try {
+        const raw = localStorage.getItem('ht_custom_field_targets') || '{}';
+        const parsed = JSON.parse(raw);
+        const list = parsed[cat] || [];
+        if (!list.some((t: any) => t.key === cleanKey)) {
+          list.push({
+            key: cleanKey,
+            label: subQuestionLabel.trim(),
+            section: targetParentField.sectionTitle,
+            parentFieldKey: targetParentField.key
+          });
+          parsed[cat] = list;
+          localStorage.setItem('ht_custom_field_targets', JSON.stringify(parsed));
+        }
+      } catch (err) {
+        console.debug('Failed to update ht_custom_field_targets', err);
+      }
+
+      // 3. Save initial choices if select type
+      if (subQuestionChoices.trim() && (subQuestionType === 'select' || subQuestionType === 'searchable_select')) {
+        const choiceItems = subQuestionChoices.split(/[,\n]/).map(c => c.trim()).filter(Boolean);
+        for (const choice of choiceItems) {
+          await htYardMasterDataService.saveMasterOption({
+            category: cat,
+            fieldKey: cleanKey,
+            parentFieldKey: targetParentField.key,
+            optionValue: choice,
+            isActive: true
+          });
+        }
+      }
+
+      toast.success(`Added question "${subQuestionLabel.trim()}" inside "${targetParentField.label}"!`);
+      setShowAddSubQuestionModal(false);
+      setTargetParentField(null);
+      setSubQuestionLabel('');
+      setSubQuestionUnit('');
+      setSubQuestionChoices('');
+      setSubQuestionType('select');
+
+      await loadMergedSpec();
+      await loadCategoryOptions();
+    } catch (err) {
+      toast.error('Failed to add sub-question');
+    } finally {
+      setIsAddingSubQuestion(false);
+    }
+  };
+
+  // Delete sub-question from parent field
+  const handleDeleteSubQuestion = async (subKey: string, subLabel: string) => {
+    if (!window.confirm(`Are you sure you want to remove follow-up question "${subLabel}"?`)) return;
+    try {
+      const cat = (MODULE_TO_CAT_MAP[spec.moduleType] || 'LTKMD') as any;
+      const activeStage = allStages.find(s => s.key === activeSectionKey);
+      const sectionKey = (activeStage?.type === 'spec' || activeStage?.type === 'spec_dup') && activeStage.section ? activeStage.section.sectionKey : activeSectionKey;
+      await htYardFieldSpecService.deleteFieldSpec(cat, subKey, sectionKey);
+
+      // Also clean from ht_custom_field_targets
+      try {
+        const raw = localStorage.getItem('ht_custom_field_targets');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed[cat]) {
+            parsed[cat] = parsed[cat].filter((t: any) => t.key !== subKey);
+            localStorage.setItem('ht_custom_field_targets', JSON.stringify(parsed));
+          }
+        }
+      } catch (e) {
+        console.debug('Failed to remove from targets', e);
+      }
+
+      toast.success(`Removed follow-up question "${subLabel}"!`);
+      await loadMergedSpec();
+      await loadCategoryOptions();
+    } catch (err) {
+      toast.error('Failed to remove sub-question');
     }
   };
 
@@ -378,6 +498,25 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
 
   const loadCategoryOptions = async () => {
     const categoriesNeeded = new Set<string>();
+    // Standard HT categories
+    ['RMUMD', 'TRMaster Data', 'LTKMD', 'Cable Details', 'HTYardCommon', 'VCB', 'Switchgear', 'HT_Panel', 'Meter_Cubicle', 'CSS'].forEach(c => categoriesNeeded.add(c));
+    
+    const moduleCat = resolveCategoryForModule(spec.moduleType);
+    if (moduleCat) categoriesNeeded.add(moduleCat);
+    if (spec.moduleType) categoriesNeeded.add(spec.moduleType);
+
+    // Custom categories from localStorage
+    try {
+      const storedCats = localStorage.getItem('ht_custom_categories');
+      if (storedCats) {
+        const parsed = JSON.parse(storedCats);
+        if (Array.isArray(parsed)) parsed.forEach(c => categoriesNeeded.add(c));
+      }
+    } catch {
+      /* ignore custom categories storage error */
+    }
+
+    // Categories referenced in active fields
     activeSpecState.sections.forEach((sec) => {
       sec.fields.forEach((f) => {
         if (f.optionsCategory) categoriesNeeded.add(f.optionsCategory);
@@ -897,16 +1036,30 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
                 };
 
                 let optionsList: string[] = [];
-                if (field.optionsCategory) {
-                  const categoryOptions = masterOptionsMap[field.optionsCategory] || [];
-                  const targetFieldKey = field.optionsFieldKey || (field.isManufacturerField ? 'mfr_name' : field.key);
-                  const matching = categoryOptions.filter(o => (o.fieldKey === targetFieldKey || o.fieldKey === field.key) && o.isActive !== false);
-                  if (matching.length > 0) {
-                    optionsList = matching.map(o => o.optionValue);
-                  } else {
-                    const fallback = categoryOptions.filter(o => o.fieldKey === 'generic' && o.isActive !== false);
-                    optionsList = fallback.map(o => o.optionValue);
+                const primaryCategory = (field.optionsCategory || resolveCategoryForModule(spec.moduleType) || 'RMUMD') as string;
+                const targetFieldKey = field.optionsFieldKey || (field.isManufacturerField ? 'mfr_name' : field.key);
+
+                // 1. Direct match in field's specified category or module category
+                const categoryOptions = masterOptionsMap[primaryCategory] || masterOptionsMap[spec.moduleType] || [];
+                let matching = categoryOptions.filter(o => (o.fieldKey === targetFieldKey || o.fieldKey === field.key) && o.isActive !== false);
+
+                // 2. Fallback search across all loaded categories in masterOptionsMap if no match in primary category
+                if (matching.length === 0) {
+                  for (const catKey of Object.keys(masterOptionsMap)) {
+                    const catOpts = masterOptionsMap[catKey] || [];
+                    const found = catOpts.filter(o => (o.fieldKey === targetFieldKey || o.fieldKey === field.key) && o.isActive !== false);
+                    if (found.length > 0) {
+                      matching = found;
+                      break;
+                    }
                   }
+                }
+
+                if (matching.length > 0) {
+                  optionsList = matching.map(o => o.optionValue);
+                } else {
+                  const fallback = categoryOptions.filter(o => o.fieldKey === 'generic' && o.isActive !== false);
+                  optionsList = fallback.map(o => o.optionValue);
                 }
                 const cleanOptionsList = Array.from(
                   new Set(
@@ -927,6 +1080,24 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
                       </div>
 
                       <div className="flex items-center gap-1.5 shrink-0">
+                        {/* + Add Follow-up Sub-Question inside this Card */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTargetParentField({
+                              key: field.key,
+                              label: field.label,
+                              sectionKey: activeSection.sectionKey,
+                              sectionTitle: activeStage.title
+                            });
+                            setShowAddSubQuestionModal(true);
+                          }}
+                          className="p-1.5 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-950 text-slate-400 hover:text-emerald-600 transition-colors border border-slate-200/60 dark:border-slate-700/60 cursor-pointer"
+                          title={`+ Add Follow-up Question inside "${field.label}"`}
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+
                         {/* Edit Field Question Button */}
                         <button
                           type="button"
@@ -1291,6 +1462,201 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
                           />
                         </div>
 
+                        {/* Sub-Questions & Follow-up Details (e.g. Status, Time in Sec, CT parameters, etc.) */}
+                        {(() => {
+                          const seenSubKeys = new Set<string>();
+                          const uniqueSubFields = (field.subFields || []).filter(sf => {
+                            if (!sf.key || seenSubKeys.has(sf.key)) return false;
+                            seenSubKeys.add(sf.key);
+                            return true;
+                          });
+
+                          if (uniqueSubFields.length === 0) return null;
+
+                          return (
+                            <div className="pt-3 border-t border-slate-100 dark:border-slate-800/80 space-y-3">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                                  <Layers className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                                  Follow-up Questions & Details ({uniqueSubFields.length})
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setTargetParentField({
+                                      key: field.key,
+                                      label: field.label,
+                                      sectionKey: activeSection.sectionKey,
+                                      sectionTitle: activeStage.title
+                                    });
+                                    setShowAddSubQuestionModal(true);
+                                  }}
+                                  className="text-[10px] font-bold text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Plus className="w-3 h-3" /> Add Detail
+                                </button>
+                              </div>
+
+                              <div className="space-y-3">
+                                {uniqueSubFields.map((subField, sIdx) => {
+                                  const subItemKey = `${instancePrefix}_${subField.key}`;
+                                  const subResponse: HTAuditResponse = responses[subItemKey] || {
+                                    auditId: equipmentInstanceId || 'audit',
+                                    equipmentInstanceId: equipmentInstanceId !== 'site' ? equipmentInstanceId : undefined,
+                                    moduleType: spec.moduleType,
+                                    sectionKey: activeSection.sectionKey,
+                                    itemNumber: sIdx + 1,
+                                    fieldKey: subField.key,
+                                    fieldLabel: subField.label,
+                                    responseValue: '',
+                                    remarks: '',
+                                    photoUrls: [],
+                                    isNotApplicable: false
+                                  };
+
+                                  // Resolve options for sub-field
+                                  const subPrimaryCat = (subField.optionsCategory || primaryCategory) as string;
+                                  const subTargetFieldKey = subField.optionsFieldKey || subField.key;
+                                  let subOptions: string[] = [];
+                                  const subCatOpts = masterOptionsMap[subPrimaryCat] || masterOptionsMap[spec.moduleType] || [];
+                                  let subMatching = subCatOpts.filter(o => (o.fieldKey === subTargetFieldKey || o.fieldKey === subField.key) && o.isActive !== false);
+
+                                  if (subMatching.length === 0) {
+                                    for (const catK of Object.keys(masterOptionsMap)) {
+                                      const cOpts = masterOptionsMap[catK] || [];
+                                      const found = cOpts.filter(o => (o.fieldKey === subTargetFieldKey || o.fieldKey === subField.key) && o.isActive !== false);
+                                      if (found.length > 0) {
+                                        subMatching = found;
+                                        break;
+                                      }
+                                    }
+                                  }
+
+                                  if (subMatching.length > 0) {
+                                    subOptions = subMatching.map(o => o.optionValue);
+                                  } else if (subField.options && subField.options.length > 0) {
+                                    subOptions = subField.options;
+                                  }
+
+                                  const cleanSubOptions = Array.from(
+                                    new Set(
+                                      subOptions
+                                        .map(o => (o || '').trim())
+                                        .filter(Boolean)
+                                        .map(o => (o.toLowerCase() === 'other' ? 'Other — Specify in Remarks' : o))
+                                    )
+                                  );
+
+                                  const isSelectType = subField.type === 'select' || subField.type === 'searchable_select' || cleanSubOptions.length > 0;
+
+                                  return (
+                                    <div key={subField.key} className="space-y-1">
+                                      <div className="flex items-center justify-between">
+                                        <span className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                                          {subField.label}
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeleteSubQuestion(subField.key, subField.label)}
+                                          className="text-slate-300 hover:text-rose-500 p-0.5 rounded cursor-pointer transition-colors"
+                                          title={`Remove follow-up question "${subField.label}"`}
+                                        >
+                                          <Trash2 className="w-3 h-3" />
+                                        </button>
+                                      </div>
+
+                                      {isSelectType ? (
+                                        <select
+                                          value={subResponse.responseValue || ''}
+                                          onChange={(e) => {
+                                            const val = e.target.value;
+                                            onChangeResponse(subItemKey, {
+                                              ...subResponse,
+                                              responseValue: val
+                                            });
+                                            if (onLogAction) {
+                                              onLogAction({
+                                                actionType: 'EDIT',
+                                                target: `${field.label} → ${subField.label}`,
+                                                details: `Selected "${val}" for "${subField.label}"`
+                                              });
+                                            }
+                                          }}
+                                          className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-900 dark:text-white rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 transition-all"
+                                        >
+                                          <option value="">Select option...</option>
+                                          {cleanSubOptions.map((opt, optIdx) => (
+                                            <option key={optIdx} value={opt}>
+                                              {opt}
+                                            </option>
+                                          ))}
+                                          {!cleanSubOptions.some(opt => opt.toLowerCase().includes('other')) && cleanSubOptions.length > 0 && (
+                                            <option value="Other — Specify in Remarks">Other — Specify in Remarks</option>
+                                          )}
+                                        </select>
+                                      ) : subField.type === 'number' ? (
+                                        <div className="relative">
+                                          <input
+                                            type="number"
+                                            step="any"
+                                            placeholder={subField.placeholder || `Enter number${subField.unit ? ` in ${subField.unit}` : ''}...`}
+                                            value={subResponse.responseValue || ''}
+                                            onChange={(e) =>
+                                              onChangeResponse(subItemKey, {
+                                                ...subResponse,
+                                                responseValue: e.target.value
+                                              })
+                                            }
+                                            className="w-full pl-3.5 pr-12 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-900 dark:text-white rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 transition-all"
+                                          />
+                                          {subField.unit && (
+                                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">
+                                              {subField.unit}
+                                            </span>
+                                          )}
+                                        </div>
+                                      ) : subField.type === 'boolean' ? (
+                                        <div className="flex items-center gap-3 py-1">
+                                          {['Yes / Compliant', 'No / Defect', 'N/A'].map((bVal) => (
+                                            <label key={bVal} className="flex items-center gap-1.5 text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
+                                              <input
+                                                type="radio"
+                                                name={`sub_radio_${subItemKey}`}
+                                                checked={subResponse.responseValue === bVal}
+                                                onChange={() =>
+                                                  onChangeResponse(subItemKey, {
+                                                    ...subResponse,
+                                                    responseValue: bVal
+                                                  })
+                                                }
+                                                className="text-emerald-600 focus:ring-emerald-500/20 w-3.5 h-3.5"
+                                              />
+                                              <span>{bVal}</span>
+                                            </label>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <input
+                                          type="text"
+                                          placeholder={subField.placeholder || `Enter ${subField.label.toLowerCase()}...`}
+                                          value={subResponse.responseValue || ''}
+                                          onChange={(e) =>
+                                            onChangeResponse(subItemKey, {
+                                              ...subResponse,
+                                              responseValue: e.target.value
+                                            })
+                                          }
+                                          className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-900 dark:text-white rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 transition-all"
+                                        />
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })()}
+
                         {/* Photo */}
                         <div className="mt-auto pt-2">
                           <HTPhotoCaptureWidget
@@ -1341,7 +1707,7 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
                   }}
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 shrink-0 cursor-pointer w-full sm:w-auto justify-center"
                 >
-                  <Plus className="w-3.5 h-3.5" /> + Add Question
+                  <Plus className="w-3.5 h-3.5" /> + Add Question to Section
                 </button>
               </div>
             </div>
@@ -1349,7 +1715,17 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
               <div className="w-full">
                 {activeStage.content}
               </div>
-            ) : null}
+            ) : (
+              <div className="p-12 text-center text-slate-400 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
+                <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto" />
+                <p className="font-bold text-sm text-slate-700 dark:text-slate-300">
+                  No questions found for this stage.
+                </p>
+                <p className="text-xs text-slate-400">
+                  Click "+ Add Question to Section" below to start configuring items.
+                </p>
+              </div>
+            )}
 
             {/* Next Button / Footer */}
             {activeStageIndex < allStages.length - 1 && (
@@ -1734,7 +2110,114 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
           </div>
         </div>
       )}
+
+      {/* Add Sub-Question directly inside Question Card Modal */}
+      {showAddSubQuestionModal && targetParentField && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Layers className="w-5 h-5 text-emerald-600" /> Add Follow-up Question
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Adding inside: <strong className="text-emerald-700 dark:text-emerald-300">{targetParentField.label}</strong>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddSubQuestionModal(false)}
+                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddNewSubQuestionToField} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Follow-up Question Title / Parameter <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={subQuestionLabel}
+                  onChange={(e) => setSubQuestionLabel(e.target.value)}
+                  placeholder="e.g. Status, Operating Time in Sec, CT Ratio, Burden..."
+                  className="w-full px-3.5 py-2.5 border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 outline-none"
+                  autoFocus
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Input / Response Type
+                  </label>
+                  <select
+                    value={subQuestionType}
+                    onChange={(e) => setSubQuestionType(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 outline-none"
+                  >
+                    <option value="select">🔘 Select from Dropdown List</option>
+                    <option value="text">📝 Short Text Input</option>
+                    <option value="number">🔢 Number / Measurement Value</option>
+                    <option value="boolean">🔘 Yes / No Switch</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Unit / Suffix (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={subQuestionUnit}
+                    onChange={(e) => setSubQuestionUnit(e.target.value)}
+                    placeholder="e.g. Sec, A, V, VA, mm"
+                    className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* If dropdown type: allow entering initial choices */}
+              {(subQuestionType === 'select' || subQuestionType === 'searchable_select') && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Dropdown Choices (Comma or new-line separated)
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={subQuestionChoices}
+                    onChange={(e) => setSubQuestionChoices(e.target.value)}
+                    placeholder="e.g. Working, Not Working, Healthy, Tripped"
+                    className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 outline-none resize-none"
+                  />
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowAddSubQuestionModal(false)}
+                  className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isAddingSubQuestion}
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer disabled:opacity-50"
+                >
+                  {isAddingSubQuestion ? 'Adding...' : `Add Question inside ${targetParentField.label}`}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
 

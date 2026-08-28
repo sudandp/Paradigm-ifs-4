@@ -1,15 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { 
   Plus, FileSpreadsheet, FileText, Zap, Layers, AlertTriangle, 
   CheckCircle2, Activity, Cpu, ShieldCheck, Search, 
   ArrowUpRight, Sparkles, Save, ChevronDown, Check, Trash2,
   RefreshCw, Bug, Play, RotateCcw, X, History, User,
-  FolderOpen, Copy, Eye, EyeOff, Calendar, QrCode, Tag
+  FolderOpen, Copy, Eye, EyeOff, Calendar, QrCode, Tag,
+  ChevronLeft, ChevronRight, LayoutGrid, Filter, CheckCircle, Clock
 } from 'lucide-react';
-import { HTAuditHeader, HTEquipmentInstance, HTAuditResponse, HTSnagItem, HTEquipmentModuleType, HTAuditLogEntry } from '../../types/htYard';
+import { HTAuditHeader, HTEquipmentInstance, HTAuditResponse, HTSnagItem, HTEquipmentModuleType, HTAuditLogEntry, ModuleSpec } from '../../types/htYard';
 import { useAuthStore } from '../../store/authStore';
 import { HT_YARD_FIELD_SPECS } from '../../config/htYardFieldSpecs';
+import { htYardFieldSpecService, resolveCategoryForModule } from '../../services/htYardFieldSpecService';
 import { HTAuditFormEngine } from '../../components/ht-yard/HTAuditFormEngine';
 import { HTFeederRepeater } from '../../components/ht-yard/HTFeederRepeater';
 import { HTEarthPitRegister } from '../../components/ht-yard/HTEarthPitRegister';
@@ -748,6 +750,74 @@ export const HTYardAuditDashboard: React.FC = () => {
   const [activeDashboardView, setActiveDashboardView] = useState<'AUDIT_EXECUTION' | 'PPM_CALENDAR'>('AUDIT_EXECUTION');
   const [showQrPrintModal, setShowQrPrintModal] = useState<boolean>(false);
 
+  // Add Equipment Dropdown State
+  const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
+  const addMenuRef = useRef<HTMLDivElement>(null);
+
+  // Click outside listener for Add Equipment Dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (addMenuRef.current && !addMenuRef.current.contains(event.target as Node)) {
+        setIsAddMenuOpen(false);
+      }
+    };
+    if (isAddMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isAddMenuOpen]);
+
+  // ─── High-Volume Equipment Navigation & Matrix Visualizer State (Up to 1000+ Units) ───
+  const [equipmentTypeFilter, setEquipmentTypeFilter] = useState<string>('ALL');
+  const [equipmentSearchQuery, setEquipmentSearchQuery] = useState<string>('');
+  const [showEquipmentGridModal, setShowEquipmentGridModal] = useState<boolean>(false);
+  const equipmentScrollRef = useRef<HTMLDivElement>(null);
+
+  const scrollEquipmentTabs = (direction: 'left' | 'right') => {
+    if (equipmentScrollRef.current) {
+      const scrollAmount = direction === 'left' ? -280 : 280;
+      equipmentScrollRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+    }
+  };
+
+  // Grouped counts by equipment module type
+  const equipmentTypeCounts = React.useMemo(() => {
+    const counts: Record<string, number> = {};
+    equipmentInstances.forEach(inst => {
+      counts[inst.moduleType] = (counts[inst.moduleType] || 0) + 1;
+    });
+    return counts;
+  }, [equipmentInstances]);
+
+  // Unique module types present in current audit
+  const presentEquipmentTypes = React.useMemo(() => {
+    return Object.keys(equipmentTypeCounts);
+  }, [equipmentTypeCounts]);
+
+  // Filtered equipment instances for carousel display
+  const filteredEquipmentInstances = React.useMemo(() => {
+    return equipmentInstances.filter(inst => {
+      const matchesType = equipmentTypeFilter === 'ALL' || inst.moduleType === equipmentTypeFilter;
+      const q = equipmentSearchQuery.trim().toLowerCase();
+      const matchesSearch = !q || 
+        inst.instanceName.toLowerCase().includes(q) || 
+        inst.moduleType.toLowerCase().includes(q) ||
+        (inst.metadata?.manufacturer && inst.metadata.manufacturer.toLowerCase().includes(q)) ||
+        (inst.metadata?.serialNumber && inst.metadata.serialNumber.toLowerCase().includes(q));
+      return matchesType && matchesSearch;
+    });
+  }, [equipmentInstances, equipmentTypeFilter, equipmentSearchQuery]);
+
+  // Equipment Completion Stats for Matrix Modal
+  const getEquipmentCompletionPercent = React.useCallback((instId: string) => {
+    const instResponses = Object.values(responses).filter(r => r.equipmentInstanceId === instId);
+    if (instResponses.length === 0) return 0;
+    const answeredCount = instResponses.filter(r => (r.responseValue && r.responseValue.trim() !== '') || r.isNotApplicable).length;
+    return Math.min(100, Math.round((answeredCount / 12) * 100));
+  }, [responses]);
+
   // ─── Change Audit Logging State ──────────────────────────────────────────
   const [auditLogs, setAuditLogs] = useState<HTAuditLogEntry[]>([]);
   const [showLogModal, setShowLogModal] = useState<boolean>(false);
@@ -1216,6 +1286,39 @@ export const HTYardAuditDashboard: React.FC = () => {
     toast.success(`Added ${newInst.instanceName}`);
   };
 
+  const handleRemoveEquipmentInstance = (instId: string, instName: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm(`Are you sure you want to remove "${instName}" and its recorded audit data?`)) return;
+
+    const updatedInstances = equipmentInstances.filter(inst => inst.id !== instId);
+    setEquipmentInstances(updatedInstances);
+
+    // Clean up responses associated with this equipment instance
+    setResponses(prev => {
+      const next = { ...prev };
+      Object.keys(next).forEach(key => {
+        if (next[key]?.equipmentInstanceId === instId || key.startsWith(`${instId}_`)) {
+          delete next[key];
+        }
+      });
+      return next;
+    });
+
+    // If removing the currently active unit, switch to site_common or another unit
+    if (activeInstanceId === instId) {
+      setActiveInstanceId(updatedInstances.length > 0 ? updatedInstances[0].id : 'site_common');
+    }
+
+    addAuditLog({ actionType: 'DELETE', target: instName, details: `Removed equipment unit "${instName}"` });
+    toast.success(`Removed ${instName}`);
+  };
+
+  const handleUpdateInstanceFeederCount = (instId: string, newCount: number) => {
+    setEquipmentInstances(prev => prev.map(inst => 
+      inst.id === instId ? { ...inst, feederWayCount: Math.max(1, newCount) } : inst
+    ));
+  };
+
   const handleResponseChange = (key: string, val: Partial<HTAuditResponse>) => {
     setResponses((prev) => ({
       ...prev,
@@ -1236,7 +1339,62 @@ export const HTYardAuditDashboard: React.FC = () => {
   };
 
   const activeInstance = equipmentInstances.find(i => i.id === activeInstanceId);
-  const activeSpec = activeInstance ? HT_YARD_FIELD_SPECS[activeInstance.moduleType] : null;
+  const activeSpec: ModuleSpec | null = React.useMemo(() => {
+    if (!activeInstance) return null;
+    const directSpec = HT_YARD_FIELD_SPECS[activeInstance.moduleType] || HT_YARD_FIELD_SPECS[activeInstance.moduleType.replace(/\s+/g, '_')];
+    if (directSpec) return directSpec;
+    const cat = resolveCategoryForModule(activeInstance.moduleType);
+    const fallbackSpec: ModuleSpec = {
+      moduleType: activeInstance.moduleType,
+      title: `${activeInstance.moduleType.replace(/_/g, ' ')} Audit Report`,
+      description: `${activeInstance.moduleType.replace(/_/g, ' ')} inspection checklist`,
+      repeatsPerSite: true,
+      sections: [
+        {
+          sectionKey: 'equipment_details',
+          title: 'Equipment Details',
+          fields: [
+            { key: 'mfr_name', label: '1. Manufacturer Name', type: 'searchable_select', optionsCategory: cat, isManufacturerField: true },
+            { key: 'mfg_year', label: '2. Year of Manufacturing', type: 'date' },
+            { key: 'serial_no', label: '3. Serial No.', type: 'text' },
+            { key: 'capacity', label: '4. Capacity / Rating', type: 'select', optionsCategory: cat, optionsFieldKey: 'capacity' },
+            { key: 'model_no', label: '5. Model No.', type: 'text' }
+          ]
+        },
+        {
+          sectionKey: 'equipment_accessories',
+          title: 'Equipment Accessories & Relays',
+          fields: [
+            { key: 'protection_relay', label: '6. Protection Relay Details', type: 'select', optionsCategory: cat, optionsFieldKey: 'protection_relay' },
+            { key: 'mf_meter', label: '7. Multi Function Meter', type: 'select', optionsCategory: cat, optionsFieldKey: 'mf_meter' },
+            { key: 'control_mcb', label: '8. Control MCBs', type: 'select', optionsCategory: cat, optionsFieldKey: 'control_mcb' },
+            { key: 'voltmeter', label: '9. Volt Meter', type: 'select', optionsCategory: cat, optionsFieldKey: 'voltmeter' },
+            { key: 'ammeter', label: '10. Ammeter', type: 'select', optionsCategory: cat, optionsFieldKey: 'ammeter' }
+          ]
+        },
+        {
+          sectionKey: 'installation_condition',
+          title: 'Installation Condition & Safety',
+          fields: [
+            { key: 'foundation_cond', label: '11. Condition of Foundation', type: 'select', optionsCategory: cat, optionsFieldKey: 'foundation_cond' },
+            { key: 'cable_laying', label: '12. Laying of Cables', type: 'select', optionsCategory: cat, optionsFieldKey: 'cable_laying' },
+            { key: 'body_condition', label: '13. Body Condition', type: 'select', optionsCategory: cat, optionsFieldKey: 'body_condition' },
+            { key: 'earth_pit_location', label: '14. Earthing Terminals & Grounding', type: 'text' },
+            { key: 'labelling', label: '15. Labelling & Danger Board', type: 'select', optionsCategory: cat, optionsFieldKey: 'labelling' }
+          ]
+        },
+        {
+          sectionKey: 'operation_maintenance',
+          title: 'Operation & Maintenance',
+          fields: [
+            { key: 'door_condition', label: '16. Condition of Doors & Locks', type: 'select', optionsCategory: cat, optionsFieldKey: 'door_condition' },
+            { key: 'operating_levers', label: '17. Availability of Operating Handles / Levers', type: 'boolean' }
+          ]
+        }
+      ]
+    };
+    return fallbackSpec;
+  }, [activeInstance]);
 
   // Stats calculation
   const totalResponses = Object.keys(responses).length;
@@ -1770,54 +1928,486 @@ export const HTYardAuditDashboard: React.FC = () => {
             </div>
           </div>
 
-      {/* Equipment Navigation Toolbar (Matching CRM Tab Filters) */}
-      <div className="bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 max-w-full">
-          <button
-            onClick={() => setActiveInstanceId('site_common')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 ${
-              activeInstanceId === 'site_common'
-                ? 'bg-emerald-600 text-white shadow-sm'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5" /> Yard Common & HIRA
-          </button>
-
-          {equipmentInstances.map((inst) => (
+      {/* Equipment Navigation Toolbar (High-Volume Responsive Multi-Tier Visualizer) */}
+      <div className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3">
+        {/* Tier 1: Category Filtering Strip, Quick Search, Matrix Visualizer & Add Dropdown */}
+        <div className="flex flex-wrap items-center justify-between gap-2.5 pb-2 border-b border-slate-100 dark:border-slate-800/80">
+          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5 max-w-full">
+            {/* Pinned Yard Common Tab */}
             <button
-              key={inst.id}
-              onClick={() => setActiveInstanceId(inst.id)}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 ${
-                activeInstanceId === inst.id
-                  ? 'bg-emerald-600 text-white shadow-sm'
+              onClick={() => setActiveInstanceId('site_common')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 shrink-0 ${
+                activeInstanceId === 'site_common'
+                  ? 'bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-500/50'
                   : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
               }`}
             >
-              <Cpu className="w-3.5 h-3.5" /> {inst.instanceName}
+              <Layers className="w-3.5 h-3.5" /> Yard Common & HIRA
             </button>
-          ))}
-        </div>
 
-        {/* Add Equipment Dropdown Button */}
-        <div className="relative group ml-auto">
-          <button className="px-3.5 py-2 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all">
-            <Plus className="w-4 h-4" /> Add Equipment Unit
-          </button>
-          <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl hidden group-hover:block z-30 p-1.5 space-y-1">
-            {(['RMU', 'Transformer', 'LT_Kiosk', 'VCB', 'Switchgear', 'HT_Panel', 'Meter_Cubicle', 'CSS'] as HTEquipmentModuleType[]).map((type) => (
+            {equipmentInstances.length > 0 && (
+              <>
+                <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 mx-1 shrink-0"></div>
+                {/* Filter: All Units */}
+                <button
+                  onClick={() => setEquipmentTypeFilter('ALL')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all whitespace-nowrap flex items-center gap-1.5 shrink-0 ${
+                    equipmentTypeFilter === 'ALL'
+                      ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-xs'
+                      : 'bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <span>All Units</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+                    equipmentTypeFilter === 'ALL' ? 'bg-white/20 dark:bg-slate-900/20' : 'bg-slate-200 dark:bg-slate-700'
+                  }`}>
+                    {equipmentInstances.length}
+                  </span>
+                </button>
+
+                {/* Filter by each present equipment module type */}
+                {presentEquipmentTypes.map((type) => {
+                  const count = equipmentTypeCounts[type] || 0;
+                  const isFilterActive = equipmentTypeFilter === type;
+                  const getIcon = (t: string) => {
+                    if (t === 'RMU') return '🔄';
+                    if (t === 'Transformer') return '⚡';
+                    if (t === 'LT_Kiosk') return '📦';
+                    if (t === 'VCB') return '🔘';
+                    if (t === 'Switchgear') return '🎛️';
+                    if (t === 'HT_Panel') return '🚪';
+                    if (t === 'Meter_Cubicle') return '⏱️';
+                    if (t === 'CSS') return '🏬';
+                    return '📁';
+                  };
+
+                  return (
+                    <button
+                      key={type}
+                      onClick={() => setEquipmentTypeFilter(type)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all whitespace-nowrap flex items-center gap-1.5 shrink-0 ${
+                        isFilterActive
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      <span className="text-xs">{getIcon(type)}</span>
+                      <span>{type.replace(/_/g, ' ')}</span>
+                      <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+                        isFilterActive ? 'bg-white/20' : 'bg-slate-200 dark:bg-slate-700'
+                      }`}>
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </>
+            )}
+          </div>
+
+          {/* Right Action Tools: Search, Matrix Grid Visualizer & Add Button */}
+          <div className="flex items-center gap-2 ml-auto shrink-0">
+            {/* Quick Search Input */}
+            {equipmentInstances.length > 3 && (
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Filter units..."
+                  value={equipmentSearchQuery}
+                  onChange={(e) => setEquipmentSearchQuery(e.target.value)}
+                  className="pl-8 pr-7 py-1.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-200 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 w-36 sm:w-44 transition-all"
+                />
+                {equipmentSearchQuery && (
+                  <button
+                    onClick={() => setEquipmentSearchQuery('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Visualizer: Browse All Units Matrix Modal */}
+            <button
+              type="button"
+              onClick={() => setShowEquipmentGridModal(true)}
+              className="px-3 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+              title="Open Equipment Grid Matrix View"
+            >
+              <LayoutGrid className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span className="hidden sm:inline">Browse Matrix</span>
+              <span className="text-[10px] bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-1.5 py-0.2 rounded-md font-mono font-bold">
+                {equipmentInstances.length}
+              </span>
+            </button>
+
+            {/* Add Equipment Dropdown Button */}
+            <div ref={addMenuRef} className="relative">
               <button
-                key={type}
-                onClick={() => addEquipmentInstance(type)}
-                className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors flex items-center justify-between"
+                type="button"
+                onClick={() => setIsAddMenuOpen(prev => !prev)}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm select-none ${
+                  isAddMenuOpen
+                    ? 'bg-emerald-600 text-white shadow-emerald-500/20 ring-2 ring-emerald-500/30'
+                    : 'bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800'
+                }`}
               >
-                <span>+ Add {type.replace('_', ' ')}</span>
-                <span className="text-[10px] text-slate-400 font-mono">Unit</span>
+                <Plus className={`w-4 h-4 transition-transform duration-200 ${isAddMenuOpen ? 'rotate-45' : ''}`} />
+                <span>Add Equipment Unit</span>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isAddMenuOpen ? 'rotate-180' : ''}`} />
               </button>
-            ))}
+
+              {isAddMenuOpen && (
+                <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl z-50 p-2 space-y-1 max-h-80 overflow-y-auto scrollbar-thin animate-in fade-in-0 zoom-in-95 duration-150">
+                  <div className="px-2.5 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Select Equipment Type</div>
+                  {(
+                    [
+                      { type: 'RMU', label: 'RMU (Ring Main Unit)', icon: '🔄' },
+                      { type: 'Transformer', label: 'Transformer', icon: '⚡' },
+                      { type: 'LT_Kiosk', label: 'LT Kiosk', icon: '📦' },
+                      { type: 'VCB', label: 'VCB (Vacuum Circuit Breaker)', icon: '🔘' },
+                      { type: 'Switchgear', label: 'Switchgear', icon: '🎛️' },
+                      { type: 'HT_Panel', label: 'HT Panel', icon: '🚪' },
+                      { type: 'Meter_Cubicle', label: 'Meter Cubicle', icon: '⏱️' },
+                      { type: 'CSS', label: 'CSS (Compact Substation)', icon: '🏬' }
+                    ] as { type: HTEquipmentModuleType; label: string; icon: string }[]
+                  ).map(item => (
+                    <button
+                      key={item.type}
+                      type="button"
+                      onClick={() => {
+                        addEquipmentInstance(item.type);
+                        setIsAddMenuOpen(false);
+                      }}
+                      className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors flex items-center justify-between cursor-pointer group"
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className="text-sm">{item.icon}</span>
+                        <span className="group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">{item.label}</span>
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-mono bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">Unit</span>
+                    </button>
+                  ))}
+
+                  {(() => {
+                    try {
+                      const raw = localStorage.getItem('ht_custom_categories');
+                      if (raw) {
+                        const parsed: string[] = JSON.parse(raw);
+                        const standardKeys = new Set([
+                          'rmu', 'transformer', 'lt_kiosk', 'vcb', 'switchgear', 'ht_panel', 'meter_cubicle', 'css',
+                          'rmumd', 'trmaster data', 'ltkmd', 'cable details', 'htyardcommon'
+                        ]);
+                        const customs = parsed.filter(
+                          c => !standardKeys.has(c.toLowerCase()) && !standardKeys.has(c.toLowerCase().replace(/\s+/g, '_'))
+                        );
+                        if (customs.length > 0) {
+                          return (
+                            <>
+                              <div className="border-t border-slate-100 dark:border-slate-800 my-1"></div>
+                              <div className="px-2.5 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Custom Master Categories</div>
+                              {customs.map(cat => (
+                                <button
+                                  key={cat}
+                                  type="button"
+                                  onClick={() => {
+                                    addEquipmentInstance(cat as any);
+                                    setIsAddMenuOpen(false);
+                                  }}
+                                  className="w-full text-left px-3 py-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-lg transition-colors flex items-center justify-between cursor-pointer group"
+                                >
+                                  <span className="flex items-center gap-2">
+                                    <span className="text-sm">📁</span>
+                                    <span className="group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">{cat}</span>
+                                  </span>
+                                  <span className="text-[9px] bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 px-1.5 py-0.5 rounded font-mono font-bold">Custom</span>
+                                </button>
+                              ))}
+                            </>
+                          );
+                        }
+                      }
+                    } catch {
+                      /* ignore custom category reading error */
+                    }
+                    return null;
+                  })()}
+                </div>
+              )}
+            </div>
           </div>
         </div>
+
+        {/* Tier 2: Carousel Slider with Left/Right Chevrons for Large Lists */}
+        {equipmentInstances.length > 0 && (
+          <div className="relative flex items-center gap-1.5">
+            {/* Scroll Left Button */}
+            <button
+              onClick={() => scrollEquipmentTabs('left')}
+              className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-all shrink-0 cursor-pointer shadow-2xs"
+              title="Scroll left"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+
+            {/* Scrollable Tabs Carousel */}
+            <div
+              ref={equipmentScrollRef}
+              className="flex items-center gap-2 overflow-x-auto scrollbar-none py-1 px-0.5 w-full scroll-smooth"
+            >
+              {filteredEquipmentInstances.length === 0 ? (
+                <div className="text-xs text-slate-400 dark:text-slate-500 py-1.5 px-3 italic flex items-center gap-2">
+                  <span>No equipment units matching filter &quot;{equipmentSearchQuery}&quot;</span>
+                  <button
+                    onClick={() => {
+                      setEquipmentSearchQuery('');
+                      setEquipmentTypeFilter('ALL');
+                    }}
+                    className="text-emerald-600 underline font-semibold cursor-pointer"
+                  >
+                    Reset Filter
+                  </button>
+                </div>
+              ) : (
+                filteredEquipmentInstances.map((inst) => {
+                  const isActive = activeInstanceId === inst.id;
+                  const completion = getEquipmentCompletionPercent(inst.id);
+
+                  return (
+                    <div
+                      key={inst.id}
+                      onClick={() => setActiveInstanceId(inst.id)}
+                      className={`group/tab px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 cursor-pointer select-none shrink-0 ${
+                        isActive
+                          ? 'bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-500/50'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      <Cpu className="w-3.5 h-3.5 shrink-0" />
+                      <span>{inst.instanceName}</span>
+                      {completion > 0 && (
+                        <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-mono ${
+                          isActive ? 'bg-emerald-700 text-emerald-100' : 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                        }`}>
+                          {completion}%
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        title={`Remove ${inst.instanceName}`}
+                        onClick={(e) => handleRemoveEquipmentInstance(inst.id, inst.instanceName, e)}
+                        className={`p-0.5 rounded-md transition-all cursor-pointer ${
+                          isActive
+                            ? 'text-emerald-200 hover:text-white hover:bg-emerald-700/80'
+                            : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40'
+                        }`}
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Scroll Right Button */}
+            <button
+              onClick={() => scrollEquipmentTabs('right')}
+              className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-all shrink-0 cursor-pointer shadow-2xs"
+              title="Scroll right"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
       </div>
+
+      {/* ─── Equipment Matrix / Visualizer Modal for 1000+ Units ─── */}
+      {showEquipmentGridModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in-0 duration-200">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 flex items-center justify-center text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/40">
+                  <LayoutGrid className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                    Equipment Unit Matrix Visualizer
+                    <span className="text-xs bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 px-2 py-0.5 rounded-full font-mono">
+                      {equipmentInstances.length} Units Total
+                    </span>
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    High-volume visual grid: click any equipment card to jump directly into its inspection checklist.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowEquipmentGridModal(false)}
+                className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Filter Toolbar inside Modal */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-950/40 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2 flex-1 min-w-[240px]">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search across all 1000+ units by name, category, or make..."
+                    value={equipmentSearchQuery}
+                    onChange={(e) => setEquipmentSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-8 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-200 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20"
+                  />
+                  {equipmentSearchQuery && (
+                    <button
+                      onClick={() => setEquipmentSearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none">
+                <button
+                  onClick={() => setEquipmentTypeFilter('ALL')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    equipmentTypeFilter === 'ALL'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'
+                  }`}
+                >
+                  All ({equipmentInstances.length})
+                </button>
+                {presentEquipmentTypes.map(t => (
+                  <button
+                    key={t}
+                    onClick={() => setEquipmentTypeFilter(t)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                      equipmentTypeFilter === t
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'
+                    }`}
+                  >
+                    {t.replace(/_/g, ' ')} ({equipmentTypeCounts[t]})
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Grid of Equipment Cards */}
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-190px)] scrollbar-thin">
+              {filteredEquipmentInstances.length === 0 ? (
+                <div className="py-16 text-center">
+                  <Cpu className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-700 mb-3" />
+                  <p className="text-sm font-bold text-slate-700 dark:text-slate-300">No equipment units found</p>
+                  <p className="text-xs text-slate-400 mt-1">Try refining your search keyword or selecting a different category filter.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5">
+                  {filteredEquipmentInstances.map((inst) => {
+                    const isActive = activeInstanceId === inst.id;
+                    const completion = getEquipmentCompletionPercent(inst.id);
+
+                    return (
+                      <div
+                        key={inst.id}
+                        onClick={() => {
+                          setActiveInstanceId(inst.id);
+                          setShowEquipmentGridModal(false);
+                        }}
+                        className={`p-4 rounded-2xl border transition-all cursor-pointer text-left relative group ${
+                          isActive
+                            ? 'border-emerald-500 bg-emerald-50/40 dark:bg-emerald-950/20 shadow-md ring-2 ring-emerald-500/20'
+                            : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-emerald-300 dark:hover:border-emerald-700 hover:shadow-md'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-sm font-bold">
+                              {inst.moduleType === 'RMU' && '🔄'}
+                              {inst.moduleType === 'Transformer' && '⚡'}
+                              {inst.moduleType === 'LT_Kiosk' && '📦'}
+                              {inst.moduleType === 'VCB' && '🔘'}
+                              {inst.moduleType === 'Switchgear' && '🎛️'}
+                              {inst.moduleType === 'HT_Panel' && '🚪'}
+                              {inst.moduleType === 'Meter_Cubicle' && '⏱️'}
+                              {inst.moduleType === 'CSS' && '🏬'}
+                              {!['RMU', 'Transformer', 'LT_Kiosk', 'VCB', 'Switchgear', 'HT_Panel', 'Meter_Cubicle', 'CSS'].includes(inst.moduleType) && '📁'}
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-black text-slate-800 dark:text-slate-200 truncate max-w-[140px]">
+                                {inst.instanceName}
+                              </h4>
+                              <span className="text-[10px] text-slate-400 font-mono">
+                                {inst.moduleType.replace(/_/g, ' ')}
+                              </span>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            title={`Remove ${inst.instanceName}`}
+                            onClick={(e) => handleRemoveEquipmentInstance(inst.id, inst.instanceName, e)}
+                            className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Progress Bar */}
+                        <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800/80">
+                          <div className="flex items-center justify-between text-[10px] text-slate-500 font-semibold mb-1">
+                            <span>Audit Completion</span>
+                            <span className="font-mono text-emerald-600 dark:text-emerald-400">{completion}%</span>
+                          </div>
+                          <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-emerald-500 rounded-full transition-all duration-300"
+                              style={{ width: `${completion}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="mt-3 flex items-center justify-between text-[11px] text-emerald-600 dark:text-emerald-400 font-bold group-hover:translate-x-0.5 transition-transform">
+                          <span>Open Checklist →</span>
+                          {isActive && (
+                            <span className="text-[9px] bg-emerald-600 text-white px-1.5 py-0.2 rounded font-medium">Active</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-950/40 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <span className="text-xs text-slate-500 font-medium">
+                Showing {filteredEquipmentInstances.length} of {equipmentInstances.length} units
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowEquipmentGridModal(false)}
+                className="px-4 py-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl text-xs font-bold hover:bg-slate-800 transition-all cursor-pointer"
+              >
+                Close Matrix View
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Workspace Section */}
       {activeInstanceId === 'site_common' ? (
@@ -1868,12 +2458,12 @@ export const HTYardAuditDashboard: React.FC = () => {
             duplicatedStages={activeAudit?.duplicatedStages}
             onDuplicatedStagesChange={handleDuplicatedStagesChange}
             customStages={[
-              ...((activeInstance.moduleType === 'RMU' || activeInstance.moduleType === 'VCB' || activeInstance.moduleType === 'LT_Kiosk')
+              ...((activeInstance.moduleType === 'RMU' || activeInstance.moduleType === 'VCB' || activeInstance.moduleType === 'LT_Kiosk' || activeInstance.moduleType === 'Switchgear' || activeInstance.moduleType === 'HT_Panel' || activeInstance.moduleType === 'CSS')
                 ? [
                     {
                       key: 'feeder_sections',
                       title: 'Feeder & Section Blocks',
-                      subtitle: `${activeInstance.feederWayCount || 4} Ways Configured`,
+                      subtitle: `${activeInstance.feederWayCount || 4} Outgoing Feeders Configured`,
                       content: (
                         <HTFeederRepeater
                           moduleType={activeInstance.moduleType}
@@ -1881,6 +2471,8 @@ export const HTYardAuditDashboard: React.FC = () => {
                           equipmentInstanceId={activeInstance.id}
                           responses={responses}
                           onChangeResponse={handleResponseChange}
+                          onUpdateFeederCount={(newCount) => handleUpdateInstanceFeederCount(activeInstance.id, newCount)}
+                          onLogAction={addAuditLog}
                         />
                       )
                     }
