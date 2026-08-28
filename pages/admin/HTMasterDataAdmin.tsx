@@ -233,6 +233,8 @@ export const HTMasterDataAdmin: React.FC = () => {
   const [newTargetType, setNewTargetType] = useState<HTFieldType>('select');
   const [newTargetChoices, setNewTargetChoices] = useState('');
   const [newTargetUnit, setNewTargetUnit] = useState('');
+  const [newTargetParentKey, setNewTargetParentKey] = useState<string | undefined>(undefined);
+  const [parentFieldLabel, setParentFieldLabel] = useState<string>('');
   const [newCategoryName, setNewCategoryName] = useState('');
 
   // Viewing Choices Modal State
@@ -799,14 +801,16 @@ export const HTMasterDataAdmin: React.FC = () => {
 
   const handleCreateNewTargetField = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTargetLabel.trim() || !newTargetKey.trim()) {
-      toast.error('Both field name and technical key are required');
+    const label = newTargetLabel.trim();
+    if (!label) {
+      toast.error('Question name is required');
       return;
     }
 
-    const cleanKey = newTargetKey.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
-    const label = newTargetLabel.trim();
-    const sectionTitle = newTargetSection.trim() || 'Equipment Details';
+    // Auto-generate technical key from question name if not provided
+    const autoKey = label.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || `field_${Date.now()}`;
+    const cleanKey = (newTargetKey.trim() || autoKey).toLowerCase().replace(/[^a-z0-9_]/g, '_');
+    const sectionTitle = newTargetSection.trim() || 'Equipment Accessories';
     const sectionKey = sectionTitle.toLowerCase().replace(/[^a-z0-9]/g, '_');
     const moduleType = CATEGORY_TO_MODULE_MAP[activeTab] || 'RMU';
 
@@ -823,6 +827,7 @@ export const HTMasterDataAdmin: React.FC = () => {
         unit: newTargetUnit.trim() || undefined,
         optionsCategory: activeTab,
         optionsFieldKey: cleanKey,
+        parentFieldKey: newTargetParentKey,
         isCustom: true,
         isActive: true
       };
@@ -846,8 +851,8 @@ export const HTMasterDataAdmin: React.FC = () => {
         const currentList = prev[activeTab] || [];
         const exists = currentList.some(t => t.key === cleanKey);
         const updatedList = exists
-          ? currentList.map(t => t.key === cleanKey ? { key: cleanKey, label, section: sectionTitle } : t)
-          : [...currentList, { key: cleanKey, label, section: sectionTitle }];
+          ? currentList.map(t => t.key === cleanKey ? { key: cleanKey, label, section: sectionTitle, parentFieldKey: newTargetParentKey } : t)
+          : [...currentList, { key: cleanKey, label, section: sectionTitle, parentFieldKey: newTargetParentKey }];
 
         const updated = {
           ...prev,
@@ -862,8 +867,10 @@ export const HTMasterDataAdmin: React.FC = () => {
       });
 
       logMasterDataActivity('CREATE', label, `Created new target field "${label}" (${cleanKey}) [Type: ${newTargetType}] in section "${sectionTitle}" for category "${activeTab}"`);
-      toast.success(`Target field "${label}" [${newTargetType}] created!`);
+      toast.success(newTargetParentKey ? `Sub-question "${label}" added inside card!` : `Question "${label}" created!`);
       setShowAddTargetModal(false);
+      setNewTargetParentKey(undefined);
+      setParentFieldLabel('');
       setNewTargetLabel('');
       setNewTargetKey('');
       setNewTargetSection('');
@@ -1118,9 +1125,9 @@ export const HTMasterDataAdmin: React.FC = () => {
 
   const availableFieldTargets = fieldTargetsMap[activeTab] || [];
 
-  // Group options by field target key with full baseline + custom field spec merge
+  // Group options by field target key with full baseline + custom field spec merge and hierarchical sub-questions
   const groupedFields = useMemo(() => {
-    const map = new Map<string, { 
+    type GroupItem = { 
       fieldKey: string; 
       label: string; 
       section?: string; 
@@ -1129,8 +1136,11 @@ export const HTMasterDataAdmin: React.FC = () => {
       unit?: string;
       placeholder?: string;
       isCustom?: boolean;
-      items: HTMasterOption[] 
-    }>();
+      parentFieldKey?: string;
+      items: HTMasterOption[];
+      subQuestions: GroupItem[];
+    };
+    const map = new Map<string, GroupItem>();
 
     // 1. Module Spec baseline fields from HT_YARD_FIELD_SPECS for this category
     const moduleType = CATEGORY_TO_MODULE_MAP[activeTab] || 'RMU';
@@ -1146,8 +1156,10 @@ export const HTMasterDataAdmin: React.FC = () => {
             fieldType: f.type || 'text',
             unit: f.unit,
             placeholder: f.placeholder,
+            parentFieldKey: f.parentFieldKey,
             isCustom: false,
-            items: []
+            items: [],
+            subQuestions: []
           });
         });
       });
@@ -1162,12 +1174,15 @@ export const HTMasterDataAdmin: React.FC = () => {
           section: t.section,
           category: activeTab,
           fieldType: 'select',
+          parentFieldKey: t.parentFieldKey,
           isCustom: true,
-          items: []
+          items: [],
+          subQuestions: []
         });
-      } else if (t.section) {
+      } else {
         const existing = map.get(t.key)!;
-        existing.section = t.section;
+        if (t.section) existing.section = t.section;
+        if (t.parentFieldKey) existing.parentFieldKey = t.parentFieldKey;
       }
     });
 
@@ -1185,8 +1200,10 @@ export const HTMasterDataAdmin: React.FC = () => {
         fieldType: cs.fieldType || 'select',
         unit: cs.unit,
         placeholder: cs.placeholder,
+        parentFieldKey: cs.parentFieldKey,
         isCustom: cs.isCustom ?? true,
-        items: []
+        items: map.get(cs.fieldKey)?.items || [],
+        subQuestions: []
       });
     });
 
@@ -1201,20 +1218,40 @@ export const HTMasterDataAdmin: React.FC = () => {
           section: friendly?.section || opt.section,
           category: activeTab,
           fieldType: 'select',
+          parentFieldKey: opt.parentFieldKey,
           isCustom: true,
-          items: []
+          items: [],
+          subQuestions: []
         });
       }
       map.get(key)!.items.push(opt);
     });
 
-    return Array.from(map.values()).filter(g => {
+    // 5. Build hierarchy: nest items with parentFieldKey under their parent question
+    const rootList: GroupItem[] = [];
+    const allItems = Array.from(map.values());
+    allItems.forEach(item => { item.subQuestions = []; });
+
+    allItems.forEach(item => {
+      if (item.parentFieldKey && map.has(item.parentFieldKey) && item.parentFieldKey !== item.fieldKey) {
+        map.get(item.parentFieldKey)!.subQuestions.push(item);
+      } else {
+        rootList.push(item);
+      }
+    });
+
+    return rootList.filter(g => {
       const matchesSearch = searchQuery === '' || 
         g.label.toLowerCase().includes(searchQuery.toLowerCase()) || 
         g.fieldKey.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (g.section && g.section.toLowerCase().includes(searchQuery.toLowerCase())) ||
         g.fieldType.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        g.items.some(i => i.optionValue.toLowerCase().includes(searchQuery.toLowerCase()));
+        g.items.some(i => i.optionValue.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        g.subQuestions.some(sub => 
+          sub.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          sub.fieldKey.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          sub.items.some(i => i.optionValue.toLowerCase().includes(searchQuery.toLowerCase()))
+        );
 
       const matchesFieldKey = selectedFieldKey === 'All' || g.fieldKey === selectedFieldKey;
       const matchesSection = selectedSection === 'All' || g.section === selectedSection;
@@ -1649,6 +1686,27 @@ export const HTMasterDataAdmin: React.FC = () => {
                     </div>
 
                     <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                      {/* Add Follow-up Question Button in Card Header */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setNewTargetParentKey(group.fieldKey);
+                          setParentFieldLabel(group.label);
+                          setNewTargetSection(group.section || 'Equipment Accessories');
+                          setNewTargetLabel('');
+                          setNewTargetKey('');
+                          setNewTargetType('select');
+                          setNewTargetChoices('');
+                          setNewTargetUnit('');
+                          setShowAddTargetModal(true);
+                        }}
+                        className="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-bold transition-all flex items-center gap-1 shadow-2xs cursor-pointer"
+                        title={`Add a follow-up question directly under "${group.label}"`}
+                      >
+                        <Plus className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                        <span className="hidden md:inline">+ Add Follow-up Question</span>
+                      </button>
+
                       {/* Edit Field Settings Button */}
                       <button
                         onClick={(e) => {
@@ -1748,7 +1806,7 @@ export const HTMasterDataAdmin: React.FC = () => {
                             />
                             <button
                               type="submit"
-                              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 shrink-0"
+                              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 shrink-0 cursor-pointer"
                             >
                               <Plus className="w-3.5 h-3.5" /> Add Choice
                             </button>
@@ -1763,7 +1821,7 @@ export const HTMasterDataAdmin: React.FC = () => {
                                   setViewingTargetKey(group.fieldKey);
                                   setListModalSearch('');
                                 }}
-                                className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1"
+                                className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
                               >
                                 <Eye className="w-3.5 h-3.5" /> View List Modal
                               </button>
@@ -1817,7 +1875,7 @@ export const HTMasterDataAdmin: React.FC = () => {
                                         const data = await htYardMasterDataService.getMasterOptions(activeTab);
                                         setOptions(data);
                                       }}
-                                      className="p-1 text-emerald-600 hover:text-emerald-700 font-bold text-xs"
+                                      className="p-1 text-emerald-600 hover:text-emerald-700 font-bold text-xs cursor-pointer"
                                     >
                                       Save
                                     </button>
@@ -1828,7 +1886,7 @@ export const HTMasterDataAdmin: React.FC = () => {
                                           setInlineEditingId(opt.id);
                                           setInlineEditingValue(opt.optionValue);
                                         }}
-                                        className="p-1 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 rounded-lg transition-colors"
+                                        className="p-1 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 rounded-lg transition-colors cursor-pointer"
                                         title="Quick Edit"
                                       >
                                         <Edit2 className="w-3.5 h-3.5" />
@@ -1857,10 +1915,26 @@ export const HTMasterDataAdmin: React.FC = () => {
                           </div>
                           <div>
                             <h4 className="font-bold text-xs text-slate-900 dark:text-white uppercase tracking-wider">
-                              Control Type: {group.fieldType}
+                              Answer Format: {
+                                group.fieldType === 'date' ? '📅 Calendar Date' :
+                                group.fieldType === 'boolean' ? '🔘 Yes / No Switch' :
+                                group.fieldType === 'number' ? `🔢 Number (${group.unit || 'Measurement'})` :
+                                group.fieldType === 'textarea' ? '📝 Detailed Notes' :
+                                group.fieldType === 'photo' ? '📷 Photo Upload' :
+                                group.fieldType === 'digital_signature' ? '✍️ Digital Signature' :
+                                group.fieldType === 'gps_location' ? '📍 GPS Location' :
+                                '🔤 Short Text'
+                              }
                             </h4>
                             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                              This field is configured as a <strong className="text-emerald-600 dark:text-emerald-400">{group.fieldType}</strong> input on the RMU/Site Audit form. You can convert it into a Dropdown with selectable choices, or adjust label, units, and placeholder.
+                              Auditors will answer this checkpoint using {
+                                group.fieldType === 'date' ? 'a calendar date picker' :
+                                group.fieldType === 'boolean' ? 'a Yes/No toggle switch' :
+                                group.fieldType === 'number' ? 'a numeric measurement input' :
+                                group.fieldType === 'textarea' ? 'a multi-line observation notes box' :
+                                group.fieldType === 'photo' ? 'a camera photo capture' :
+                                'a text input box'
+                              } during site audits. You can convert this into a Dropdown with selectable choices anytime.
                             </p>
                           </div>
                         </div>
@@ -1887,10 +1961,207 @@ export const HTMasterDataAdmin: React.FC = () => {
                           }}
                           className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 shrink-0 cursor-pointer"
                         >
-                          <Plus className="w-3.5 h-3.5" /> Convert to Dropdown
+                          <Plus className="w-3.5 h-3.5" /> Convert to Dropdown List
                         </button>
                       </div>
                     )}
+
+                    {/* NESTED SUB-QUESTIONS / FOLLOW-UP QUESTIONS SECTION */}
+                    <div className="mt-6 pt-5 border-t border-slate-200 dark:border-slate-800 space-y-4">
+                      <div className="flex items-center justify-between gap-3 bg-emerald-50/70 dark:bg-emerald-950/30 p-3.5 rounded-2xl border border-emerald-500/20 flex-wrap">
+                        <div className="flex items-center gap-2">
+                          <Layers className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                          <div>
+                            <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                              Follow-up Questions & Details ({(group.subQuestions || []).length})
+                            </h4>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                              Extra questions or measurements answered under {group.label} (e.g. CT Ratio, Seal Status, Condition, etc.).
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setNewTargetParentKey(group.fieldKey);
+                            setParentFieldLabel(group.label);
+                            setNewTargetSection(group.section || 'Equipment Accessories');
+                            setNewTargetLabel('');
+                            setNewTargetKey('');
+                            setNewTargetType('select');
+                            setNewTargetChoices('');
+                            setNewTargetUnit('');
+                            setShowAddTargetModal(true);
+                          }}
+                          className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 shrink-0 cursor-pointer"
+                          title={`Add a follow-up question under ${group.label}`}
+                        >
+                          <Plus className="w-3.5 h-3.5" /> + Add Follow-up Question
+                        </button>
+                      </div>
+
+                      {(group.subQuestions || []).length === 0 ? (
+                        <div className="p-4 text-center text-xs text-slate-400 dark:text-slate-500 italic bg-white dark:bg-slate-900/60 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800">
+                          No follow-up questions added under <strong className="text-slate-700 dark:text-slate-300">{group.label}</strong> yet. Click <strong className="text-emerald-600 dark:text-emerald-400">+ Add Follow-up Question</strong> above to add one (e.g. CT Ratio, CT Constant, etc.) right here!
+                        </div>
+                      ) : (
+                        <div className="space-y-3 pl-2 sm:pl-4 border-l-2 border-emerald-500/40">
+                          {(group.subQuestions || []).map((sub) => (
+                            <div
+                              key={sub.fieldKey}
+                              className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 shadow-xs space-y-3"
+                            >
+                              {/* Sub-Question Header */}
+                              <div className="flex items-center justify-between gap-3 flex-wrap">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="w-7 h-7 rounded-xl bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-bold text-xs flex items-center justify-center">
+                                    ↳
+                                  </div>
+                                  <div>
+                                    <h5 className="font-bold text-xs text-slate-900 dark:text-white">
+                                      {sub.label}
+                                    </h5>
+                                    <span className="text-[10px] text-slate-400">
+                                      {sub.fieldType === 'select' || sub.fieldType === 'searchable_select' ? `Dropdown (${sub.items.length} choices)` : sub.fieldType}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    onClick={() => {
+                                      const sectionTitle = sub.section || group.section || 'Equipment Details';
+                                      const sectionKey = sectionTitle.toLowerCase().replace(/[^a-z0-9]/g, '_');
+                                      const moduleType = CATEGORY_TO_MODULE_MAP[activeTab] || 'RMU';
+                                      setConfiguringField({
+                                        category: activeTab,
+                                        moduleType: moduleType,
+                                        sectionKey: sectionKey,
+                                        sectionTitle: sectionTitle,
+                                        fieldKey: sub.fieldKey,
+                                        fieldLabel: sub.label,
+                                        fieldType: sub.fieldType,
+                                        unit: sub.unit || '',
+                                        placeholder: sub.placeholder || '',
+                                        isCustom: sub.isCustom,
+                                        initialChoice: ''
+                                      });
+                                      setShowConfigureFieldModal(true);
+                                    }}
+                                    className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950 text-slate-700 dark:text-slate-300 text-xs font-semibold flex items-center gap-1 border border-slate-200 dark:border-slate-700 cursor-pointer"
+                                  >
+                                    <Edit2 className="w-3 h-3 text-emerald-600" /> Edit
+                                  </button>
+                                  <button
+                                    onClick={() => promptDeleteField(sub.fieldKey, sub.label, sub.section)}
+                                    className="p-1 text-slate-400 hover:text-rose-600 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-rose-50 cursor-pointer"
+                                    title={`Delete Question "${sub.label}"`}
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Sub-Question Choices if Dropdown */}
+                              {(sub.fieldType === 'select' || sub.fieldType === 'searchable_select') && (
+                                <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2">
+                                  <form
+                                    onSubmit={async (e) => {
+                                      e.preventDefault();
+                                      const val = (quickAddInputs[sub.fieldKey] || '').trim();
+                                      if (!val) return;
+                                      try {
+                                        await htYardMasterDataService.saveMasterOption({
+                                          category: activeTab,
+                                          fieldKey: sub.fieldKey,
+                                          optionValue: val,
+                                          isActive: true
+                                        });
+                                        toast.success(`Added "${val}" to ${sub.label}!`);
+                                        setQuickAddInputs(prev => ({ ...prev, [sub.fieldKey]: '' }));
+                                        const data = await htYardMasterDataService.getMasterOptions(activeTab);
+                                        setOptions(data);
+                                      } catch (err: any) {
+                                        toast.error('Failed to add option');
+                                      }
+                                    }}
+                                    className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/60 p-1.5 rounded-xl border border-slate-200/80 dark:border-slate-700/80"
+                                  >
+                                    <input
+                                      type="text"
+                                      placeholder={`Type choice for ${sub.label} and hit Enter...`}
+                                      value={quickAddInputs[sub.fieldKey] || ''}
+                                      onChange={(e) => setQuickAddInputs(prev => ({ ...prev, [sub.fieldKey]: e.target.value }))}
+                                      className="flex-1 bg-transparent px-2.5 py-1 text-xs font-semibold text-slate-900 dark:text-white focus:outline-none placeholder-slate-400"
+                                    />
+                                    <button
+                                      type="submit"
+                                      className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-2xs flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <Plus className="w-3 h-3" /> Add Choice
+                                    </button>
+                                  </form>
+
+                                  {/* Sub-question choices pills */}
+                                  <div className="flex flex-wrap gap-1.5 pt-1">
+                                    {sub.items.map((opt) => (
+                                      <div
+                                        key={opt.id}
+                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-lg text-xs font-medium border border-slate-200/80 dark:border-slate-700/80"
+                                      >
+                                        {inlineEditingId === opt.id ? (
+                                          <input
+                                            type="text"
+                                            autoFocus
+                                            value={inlineEditingValue}
+                                            onChange={(e) => setInlineEditingValue(e.target.value)}
+                                            onKeyDown={async (e) => {
+                                              if (e.key === 'Enter') {
+                                                if (!inlineEditingValue.trim()) return;
+                                                await htYardMasterDataService.saveMasterOption({ ...opt, optionValue: inlineEditingValue.trim() });
+                                                toast.success('Updated choice!');
+                                                setInlineEditingId(null);
+                                                const data = await htYardMasterDataService.getMasterOptions(activeTab);
+                                                setOptions(data);
+                                              } else if (e.key === 'Escape') {
+                                                setInlineEditingId(null);
+                                              }
+                                            }}
+                                            className="w-24 bg-white dark:bg-slate-900 px-1 py-0.5 text-xs font-bold rounded border border-emerald-500 focus:outline-none"
+                                          />
+                                        ) : (
+                                          <span>{opt.optionValue}</span>
+                                        )}
+
+                                        <button
+                                          onClick={() => {
+                                            if (inlineEditingId === opt.id) {
+                                              setInlineEditingId(null);
+                                            } else {
+                                              setInlineEditingId(opt.id);
+                                              setInlineEditingValue(opt.optionValue);
+                                            }
+                                          }}
+                                          className="text-slate-400 hover:text-emerald-600 cursor-pointer"
+                                        >
+                                          <Edit2 className="w-3 h-3" />
+                                        </button>
+                                        <button
+                                          onClick={() => promptDeleteOption(opt.id, opt.optionValue)}
+                                          className="text-slate-400 hover:text-rose-600 cursor-pointer"
+                                        >
+                                          <Trash2 className="w-3 h-3" />
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
                 </div>
@@ -2218,48 +2489,70 @@ export const HTMasterDataAdmin: React.FC = () => {
         </div>
       )}
 
-      {/* CREATE TARGET FIELD MODAL */}
+      {/* CREATE QUESTION / FIELD MODAL (100% User-Friendly) */}
       {showAddTargetModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <Tag className="w-5 h-5 text-emerald-600" />
-                Add New Field to {activeTab}
-              </h2>
-              <button onClick={() => setShowAddTargetModal(false)} className="text-slate-400 hover:text-slate-600">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Tag className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                  {parentFieldLabel ? `Add Sub-Question to "${parentFieldLabel}"` : 'Add New Question / Checkpoint'}
+                </h2>
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    Category: <strong className="text-emerald-600 dark:text-emerald-400">{activeTab}</strong>
+                  </span>
+                  {parentFieldLabel && (
+                    <span className="bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded-lg border border-emerald-200 dark:border-emerald-800 text-[11px] font-bold flex items-center gap-1">
+                      ↳ Nested inside: {parentFieldLabel}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <button 
+                onClick={() => {
+                  setShowAddTargetModal(false);
+                  setNewTargetParentKey(undefined);
+                  setParentFieldLabel('');
+                }} 
+                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl transition-colors cursor-pointer"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleCreateNewTargetField} className="space-y-4">
+              {/* Question Name */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Field Display Name *
+                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                  Question / Checkpoint Name <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. RMU Operating Status, Serial No, Commissioning Date"
+                  autoFocus
+                  placeholder="e.g. CT Ratio, BESCOM Seal Condition, Transformer Oil Level..."
                   value={newTargetLabel}
                   onChange={(e) => {
                     setNewTargetLabel(e.target.value);
                     if (!newTargetKey) {
-                      setNewTargetKey(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '_'));
+                      setNewTargetKey(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_'));
                     }
                   }}
-                  className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
+                  className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 font-medium"
                 />
               </div>
 
+              {/* Section / Group Selection */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Audit Stage / Section (Where on Audit Form?)
+                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                  Section / Group
                 </label>
                 <input
                   type="text"
                   list="target-section-suggestions"
-                  placeholder="e.g. Equipment Details, Incoming OD 1 Details"
+                  placeholder="e.g. Equipment Accessories, Equipment Details..."
                   value={newTargetSection}
                   onChange={(e) => setNewTargetSection(e.target.value)}
                   className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
@@ -2267,66 +2560,51 @@ export const HTMasterDataAdmin: React.FC = () => {
                 <datalist id="target-section-suggestions">
                   {availableSections.map(s => <option key={s} value={s} />)}
                 </datalist>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Which section on the audit form this question belongs to.
+                </p>
               </div>
 
+              {/* How Auditors Will Answer (Input Type) */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Technical Field Key (snake_case) *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. rmu_status, serial_no, test_date"
-                  value={newTargetKey}
-                  onChange={(e) => setNewTargetKey(e.target.value)}
-                  className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-sm font-mono focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
-                />
-              </div>
-
-              {/* Control Type Selector */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Control / Input Type *
+                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                  How should auditors answer this question? <span className="text-rose-500">*</span>
                 </label>
                 <select
                   value={newTargetType}
                   onChange={(e) => setNewTargetType(e.target.value as HTFieldType)}
-                  className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-sm font-semibold focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
+                  className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-sm font-semibold focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 cursor-pointer"
                 >
-                  <optgroup label="🌟 Smart Automated Controls (10-Year Future-Proof)">
-                    <option value="gps_location">📍 GPS Location (1-Tap Auto-Fetch Live Coordinates & Address)</option>
-                    <option value="lifespan_calculator">⏳ Equipment Life Span & Health Analyzer (Calculates Age & RUL)</option>
-                    <option value="model_catalog_autofill">🤖 Smart Catalog Auto-Fill (OEM Model Specifications Database)</option>
-                    <option value="digital_signature">✍️ Digital Signature (Auditor & Client Signoff)</option>
-                  </optgroup>
-                  <optgroup label="📋 Standard Form Controls">
-                    <option value="select">📋 Dropdown Choices (Select from options)</option>
-                    <option value="searchable_select">🔍 Searchable Select (Typeahead filter)</option>
-                    <option value="text">🔤 Standard Text Input</option>
-                    <option value="date">📅 Date Picker (Calendar dd-mm-yyyy)</option>
-                    <option value="number">🔢 Numeric Input (with engineering units)</option>
-                    <option value="photo">📷 Photo Field (Camera capture & watermark)</option>
-                    <option value="textarea">📝 Multiline Remarks / Observations</option>
-                    <option value="boolean">🔘 Toggle / Boolean (Yes / No / Compliant)</option>
-                  </optgroup>
+                  <option value="select">📋 Dropdown List (Select from options / choices)</option>
+                  <option value="boolean">🔘 Yes / No / Done (Toggle Switch)</option>
+                  <option value="text">🔤 Short Text (Single-line typing)</option>
+                  <option value="number">🔢 Number / Rating (Measurement with unit)</option>
+                  <option value="textarea">📝 Detailed Notes / Observations</option>
+                  <option value="date">📅 Date (Calendar picker)</option>
+                  <option value="photo">📷 Photo Capture & Upload</option>
+                  <option value="digital_signature">✍️ Digital Signature</option>
+                  <option value="gps_location">📍 GPS Location (Auto-capture coordinates)</option>
                 </select>
               </div>
 
-              {/* If Dropdown chosen, initial choices input */}
+              {/* If Dropdown chosen, enter choices */}
               {(newTargetType === 'select' || newTargetType === 'searchable_select') && (
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Initial Dropdown Choices (Comma-separated)
+                <div className="p-3.5 bg-emerald-50/60 dark:bg-emerald-950/40 rounded-2xl border border-emerald-200 dark:border-emerald-800/60 space-y-1.5">
+                  <label className="block text-xs font-bold text-emerald-900 dark:text-emerald-200">
+                    Dropdown Choices / Options
                   </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Working, Not Working, Under Maintenance, Standby"
+                  <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                    Enter the choices separated by commas:
+                  </p>
+                  <textarea
+                    rows={2}
+                    placeholder="e.g. 600/5, 400/5, 800/5, 500/5, 1600/5, Not Applicable"
                     value={newTargetChoices}
                     onChange={(e) => setNewTargetChoices(e.target.value)}
-                    className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-700 text-slate-900 dark:text-white rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500/30 focus:outline-none"
                   />
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    Separate multiple choices with commas. You can also add more choices anytime from the cards below.
+                  <p className="text-[10px] text-emerald-600/80 dark:text-emerald-400/80 italic">
+                    💡 You can also add, edit, or delete choices anytime later right on the question card.
                   </p>
                 </div>
               )}
@@ -2334,8 +2612,8 @@ export const HTMasterDataAdmin: React.FC = () => {
               {/* If Numeric chosen, engineering unit */}
               {newTargetType === 'number' && (
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Engineering Unit (Optional)
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                    Measurement Unit (Optional)
                   </label>
                   <input
                     type="text"
@@ -2347,19 +2625,45 @@ export const HTMasterDataAdmin: React.FC = () => {
                 </div>
               )}
 
-              <div className="flex justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+              {/* Collapsible Advanced Settings for Technical Keys */}
+              <details className="group pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
+                <summary className="cursor-pointer font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 flex items-center gap-1.5 select-none py-1">
+                  <span>⚙️ Advanced Settings (System Key)</span>
+                </summary>
+                <div className="mt-2.5 p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/60 dark:border-slate-700/60 space-y-1">
+                  <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+                    System Identifier (Auto-generated)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Auto-generated from question name"
+                    value={newTargetKey}
+                    onChange={(e) => setNewTargetKey(e.target.value)}
+                    className="w-full px-3 py-1.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-900 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-mono focus:outline-none"
+                  />
+                  <p className="text-[10px] text-slate-400">
+                    Used internally by the database and PDF generator.
+                  </p>
+                </div>
+              </details>
+
+              <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
-                  onClick={() => setShowAddTargetModal(false)}
-                  className="px-4 py-2 text-sm font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors"
+                  onClick={() => {
+                    setShowAddTargetModal(false);
+                    setNewTargetParentKey(undefined);
+                    setParentFieldLabel('');
+                  }}
+                  className="px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-sm transition-all flex items-center gap-1.5"
+                  className="px-5 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
                 >
-                  <Plus className="w-4 h-4" /> Create Field
+                  <Plus className="w-4 h-4" /> {parentFieldLabel ? 'Save Sub-Question & Choices' : 'Save Question & Choices'}
                 </button>
               </div>
             </form>
@@ -2367,55 +2671,53 @@ export const HTMasterDataAdmin: React.FC = () => {
         </div>
       )}
 
-      {/* CONFIGURE CONTROL TYPE & FIELD SETTINGS MODAL */}
+      {/* EDIT QUESTION / FIELD SETTINGS MODAL (100% User-Friendly) */}
       {showConfigureFieldModal && configuringField && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <Settings2 className="w-5 h-5 text-emerald-600" />
-                Configure Field: {configuringField.fieldLabel}
-              </h2>
-              <button onClick={() => { setShowConfigureFieldModal(false); setConfiguringField(null); }} className="text-slate-400 hover:text-slate-600">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Settings2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                  Edit Question: {configuringField.fieldLabel}
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Category: <span className="font-bold text-emerald-600 dark:text-emerald-400">{configuringField.category}</span>
+                </p>
+              </div>
+              <button 
+                onClick={() => { setShowConfigureFieldModal(false); setConfiguringField(null); }} 
+                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl transition-colors cursor-pointer"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleSaveFieldConfiguration} className="space-y-4">
-              <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] uppercase font-extrabold text-slate-400 tracking-wider">Technical Key</span>
-                  <div className="text-xs font-mono font-bold text-slate-800 dark:text-slate-200">{configuringField.fieldKey}</div>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-extrabold text-slate-400 tracking-wider">Category</span>
-                  <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400">{configuringField.category}</div>
-                </div>
-              </div>
-
+              {/* Question Name */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Field Display Label *
+                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                  Question / Checkpoint Name <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Manufacturer Name, Breaker Make..."
+                  placeholder="e.g. CT Ratio, Manufacturer Name, Breaker Make..."
                   value={configuringField.fieldLabel}
                   onChange={(e) => setConfiguringField({ ...configuringField, fieldLabel: e.target.value })}
                   className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 font-semibold"
                 />
               </div>
 
-              {/* Target Section Selection / Edit */}
+              {/* Section Selection */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Section / Group Name *
+                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                  Section / Group Name <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Equipment Details, HT Control Components..."
+                  placeholder="e.g. Equipment Accessories, Equipment Details..."
                   value={configuringField.sectionTitle || ''}
                   onChange={(e) => setConfiguringField({ ...configuringField, sectionTitle: e.target.value })}
                   list="field-sections-datalist"
@@ -2426,89 +2728,42 @@ export const HTMasterDataAdmin: React.FC = () => {
                     <option key={sec} value={sec} />
                   ))}
                 </datalist>
-                <p className="text-[11px] text-slate-400 mt-1">
-                  Select an existing section or type a new section name to organize this field.
-                </p>
               </div>
 
-              {/* Change Control Type */}
+              {/* Answer Type Selection */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Control / Input Type on Site Audit Form *
+                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                  How should auditors answer this question? <span className="text-rose-500">*</span>
                 </label>
                 <select
                   value={configuringField.fieldType}
                   onChange={(e) => setConfiguringField({ ...configuringField, fieldType: e.target.value as HTFieldType })}
-                  className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-sm font-semibold focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
+                  className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-sm font-semibold focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 cursor-pointer"
                 >
-                  <optgroup label="🌟 Smart Automated Controls">
-                    <option value="gps_location">📍 GPS Location (1-Tap Auto-Fetch Live Coordinates & Address)</option>
-                    <option value="lifespan_calculator">⏳ Equipment Life Span & Health Analyzer (Calculates Age & RUL)</option>
-                    <option value="model_catalog_autofill">🤖 Smart Catalog Auto-Fill (OEM Model Specifications Database)</option>
-                    <option value="digital_signature">✍️ Digital Signature (Auditor & Client Signoff)</option>
-                  </optgroup>
-                  <optgroup label="📋 Standard Controls">
-                    <option value="select">📋 Dropdown Choices (Select from options)</option>
-                    <option value="searchable_select">🔍 Searchable Select (Typeahead filter)</option>
-                    <option value="text">🔤 Standard Text Box</option>
-                    <option value="date">📅 Date Picker (Calendar dd-mm-yyyy)</option>
-                    <option value="number">🔢 Numeric Input</option>
-                    <option value="photo">📷 Photo Field</option>
-                    <option value="textarea">📝 Multiline Remarks</option>
-                    <option value="boolean">🔘 Toggle / Boolean (Yes / No / Compliant)</option>
-                  </optgroup>
+                  <option value="select">📋 Dropdown List (Select from options / choices)</option>
+                  <option value="boolean">🔘 Yes / No / Done (Toggle Switch)</option>
+                  <option value="text">🔤 Short Text (Single-line typing)</option>
+                  <option value="number">🔢 Number / Rating (Measurement with unit)</option>
+                  <option value="textarea">📝 Detailed Notes / Observations</option>
+                  <option value="date">📅 Date (Calendar picker)</option>
+                  <option value="photo">📷 Photo Capture & Upload</option>
+                  <option value="digital_signature">✍️ Digital Signature</option>
+                  <option value="gps_location">📍 GPS Location (Auto-capture coordinates)</option>
                 </select>
-
-                {/* Dynamic Smart Help text based on selected type */}
-                {configuringField.fieldType === 'gps_location' && (
-                  <div className="mt-2 p-3 bg-rose-50 dark:bg-rose-950/40 rounded-xl border border-rose-200/60 dark:border-rose-800/40 text-xs text-rose-800 dark:text-rose-300 space-y-1">
-                    <p className="font-bold flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
-                      1-Tap GPS Geo-Tagging Active
-                    </p>
-                    <p className="text-[11px] text-rose-700 dark:text-rose-400">
-                      Engineers on the audit form will see a prominent <strong>"📍 Fetch Exact GPS Location"</strong> button. Clicking it automatically captures device GPS coordinates, precision accuracy, and reverse-geocoded physical address with OpenStreetMap/Google Maps integration.
-                    </p>
-                  </div>
-                )}
-
-                {configuringField.fieldType === 'lifespan_calculator' && (
-                  <div className="mt-2 p-3 bg-amber-50 dark:bg-amber-950/40 rounded-xl border border-amber-200/60 dark:border-amber-800/40 text-xs text-amber-800 dark:text-amber-300 space-y-1">
-                    <p className="font-bold flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                      Asset Life Span & Health Analyzer Active
-                    </p>
-                    <p className="text-[11px] text-amber-700 dark:text-amber-400">
-                      Derives asset age from Manufacturing / Commissioning Year, computes <strong>Remaining Useful Life (RUL)</strong> against standard lifespan (25/30 yrs), and displays a visual Degradation Health Index with maintenance advisories.
-                    </p>
-                  </div>
-                )}
-
-                {configuringField.fieldType === 'model_catalog_autofill' && (
-                  <div className="mt-2 p-3 bg-indigo-50 dark:bg-indigo-950/40 rounded-xl border border-indigo-200/60 dark:border-indigo-800/40 text-xs text-indigo-800 dark:text-indigo-300 space-y-1">
-                    <p className="font-bold flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
-                      OEM Catalog 1-Click Auto-Fill Active
-                    </p>
-                    <p className="text-[11px] text-indigo-700 dark:text-indigo-400">
-                      Provides pre-calibrated engineering specs for <strong>Cummins, ABB, Schneider, Siemens, Kirloskar, CAT</strong>, etc. Selecting a model automatically populates Voltage, Capacity, Breaking Capacity, Insulation Medium, and Lifespan in one click!
-                    </p>
-                  </div>
-                )}
               </div>
 
-              {/* If converting to Dropdown, option to add choices */}
+              {/* If Dropdown, add new choices */}
               {(configuringField.fieldType === 'select' || configuringField.fieldType === 'searchable_select') && (
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Add New Option Choices (Comma-separated)
+                <div className="p-3.5 bg-emerald-50/60 dark:bg-emerald-950/40 rounded-2xl border border-emerald-200 dark:border-emerald-800/60 space-y-1.5">
+                  <label className="block text-xs font-bold text-emerald-900 dark:text-emerald-200">
+                    Add New Dropdown Choices
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. ABB-SN-001, ABB-SN-002, Siemens-SN-100"
+                    placeholder="e.g. 100/5, 200/5, 400/5 (Comma-separated)"
                     value={configuringField.initialChoice || ''}
                     onChange={(e) => setConfiguringField({ ...configuringField, initialChoice: e.target.value })}
-                    className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-700 text-slate-900 dark:text-white rounded-xl text-xs focus:ring-2 focus:ring-emerald-500/20 focus:outline-none"
                   />
                 </div>
               )}
@@ -2516,30 +2771,40 @@ export const HTMasterDataAdmin: React.FC = () => {
               {/* Unit & Placeholder */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Engineering Unit (Optional)
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                    Measurement Unit (Optional)
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. A, kVA, kV, mm, Years"
+                    placeholder="e.g. A, kVA, kV, mm, °C"
                     value={configuringField.unit || ''}
                     onChange={(e) => setConfiguringField({ ...configuringField, unit: e.target.value })}
                     className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
                     Placeholder Hint (Optional)
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. Enter serial number..."
+                    placeholder="e.g. Select ratio..."
                     value={configuringField.placeholder || ''}
                     onChange={(e) => setConfiguringField({ ...configuringField, placeholder: e.target.value })}
                     className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
                   />
                 </div>
               </div>
+
+              {/* Advanced System Info */}
+              <details className="group pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
+                <summary className="cursor-pointer font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 flex items-center gap-1.5 select-none py-1">
+                  <span>⚙️ Advanced (System Key: {configuringField.fieldKey})</span>
+                </summary>
+                <div className="mt-2 p-2.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/60 dark:border-slate-700/60 text-xs text-slate-500">
+                  Technical Key: <code className="font-mono font-bold text-emerald-600 dark:text-emerald-400">{configuringField.fieldKey}</code>
+                </div>
+              </details>
 
               <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <button
@@ -2552,24 +2817,24 @@ export const HTMasterDataAdmin: React.FC = () => {
                     promptDeleteField(fKey, fLabel, fSec);
                   }}
                   className="px-3.5 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer border border-rose-200/80 dark:border-rose-900/60"
-                  title="Delete this entire field & all choices"
+                  title="Delete this entire question & all choices"
                 >
-                  <Trash2 className="w-4 h-4" /> Delete Field
+                  <Trash2 className="w-4 h-4" /> Delete Question
                 </button>
 
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => { setShowConfigureFieldModal(false); setConfiguringField(null); }}
-                    className="px-4 py-2 text-sm font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                    className="px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+                    className="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
                   >
-                    <Check className="w-4 h-4" /> Save Field Settings
+                    <Check className="w-4 h-4" /> Save Changes
                   </button>
                 </div>
               </div>

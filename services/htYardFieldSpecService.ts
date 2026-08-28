@@ -51,6 +51,7 @@ export const htYardFieldSpecService = {
             displayOrder: row.display_order,
             isActive: row.is_active,
             isCustom: row.is_custom,
+            parentFieldKey: row.parent_field_key,
             createdAt: row.created_at,
             updatedAt: row.updated_at
           }));
@@ -97,6 +98,7 @@ export const htYardFieldSpecService = {
       display_order: spec.displayOrder ?? 0,
       is_active: spec.isActive ?? true,
       is_custom: spec.isCustom ?? true,
+      parent_field_key: spec.parentFieldKey || null,
       updated_at: new Date().toISOString()
     };
 

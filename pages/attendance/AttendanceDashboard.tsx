@@ -3283,21 +3283,49 @@ const AttendanceDashboard: React.FC = () => {
                 (e.type === 'site-ot-in' || e.type === 'site-ot-out')
             ).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
+            const usedOutEventIds = new Set<string>();
+
             // Process sessions
             for (let i = 0; i < userEvents.length; i++) {
                 const event = userEvents[i];
                 if (event.type === 'site-ot-in') {
-                    const nextEvent = userEvents[i + 1];
+                    // Look for the next unused site-ot-out after this site-ot-in
+                    const nextOutEvent = userEvents.find((e, idx) => 
+                        idx > i && 
+                        e.type === 'site-ot-out' && 
+                        !usedOutEventIds.has(e.id) &&
+                        new Date(e.timestamp).getTime() > new Date(event.timestamp).getTime()
+                    );
+                    
                     let siteOtOut: string | null = null;
                     let duration: string | null = null;
                     
-                    if (nextEvent && nextEvent.type === 'site-ot-out') {
-                        siteOtOut = format(new Date(nextEvent.timestamp), 'HH:mm');
-                        const diffInMins = differenceInMinutes(new Date(nextEvent.timestamp), new Date(event.timestamp));
+                    if (nextOutEvent) {
+                        usedOutEventIds.add(nextOutEvent.id);
+                        siteOtOut = format(new Date(nextOutEvent.timestamp), 'HH:mm');
+                        const diffInMins = differenceInMinutes(new Date(nextOutEvent.timestamp), new Date(event.timestamp));
                         const hours = Math.floor(diffInMins / 60);
                         const mins = diffInMins % 60;
                         duration = `${hours}h ${mins}m`;
-                        i++; // Skip the next event
+                    } else {
+                        // Fallback for legacy entries saved on the same date with an earlier clock time (e.g. in: 20:19, out: 08:47)
+                        const eventDateStr = format(new Date(event.timestamp), 'yyyy-MM-dd');
+                        const sameDayOut = userEvents.find(e => 
+                            e.type === 'site-ot-out' && 
+                            !usedOutEventIds.has(e.id) &&
+                            format(new Date(e.timestamp), 'yyyy-MM-dd') === eventDateStr
+                        );
+                        if (sameDayOut) {
+                            usedOutEventIds.add(sameDayOut.id);
+                            siteOtOut = format(new Date(sameDayOut.timestamp), 'HH:mm');
+                            let diffInMins = differenceInMinutes(new Date(sameDayOut.timestamp), new Date(event.timestamp));
+                            if (diffInMins < 0) {
+                                diffInMins += 24 * 60; // Overnight shift
+                            }
+                            const hours = Math.floor(diffInMins / 60);
+                            const mins = diffInMins % 60;
+                            duration = `${hours}h ${mins}m`;
+                        }
                     }
 
                     const eventDateStr = format(new Date(event.timestamp), 'yyyy-MM-dd');

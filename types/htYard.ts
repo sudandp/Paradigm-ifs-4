@@ -96,6 +96,7 @@ export interface HTFieldTarget {
   key: string;
   label: string;
   section?: string;
+  parentFieldKey?: string;
 }
 
 export interface HTMasterOption {
@@ -106,6 +107,7 @@ export interface HTMasterOption {
   optionValue: string;
   isActive: boolean;
   section?: string;
+  parentFieldKey?: string;
   updatedBy?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -144,6 +146,7 @@ export interface FieldSpec {
   optionsFieldKey?: string;
   isManufacturerField?: boolean;
   subFields?: FieldSpec[];
+  parentFieldKey?: string;
   isCustom?: boolean;
   displayOrder?: number;
   unit?: string;
@@ -168,6 +171,7 @@ export interface CustomFieldSpec {
   displayOrder?: number;
   isActive?: boolean;
   isCustom?: boolean;
+  parentFieldKey?: string;
   createdAt?: string;
   updatedAt?: string;
 }

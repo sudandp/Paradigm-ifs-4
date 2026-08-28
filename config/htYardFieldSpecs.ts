@@ -180,7 +180,13 @@ export const HT_YARD_FIELD_SPECS: Record<string, ModuleSpec> = {
           { key: 'phase_lamps', label: '12. Phase Indicating Lamps', type: 'boolean' },
           { key: 'trip_lamps', label: '13. Trip Indicating Lamps', type: 'boolean' },
           { key: 'bescom_master_meter', label: '14. BESCOM Master Meter Details', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'bescom_master_meter' },
-          { key: 'bus_coupler_details', label: '15. Bus Coupler Details', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'bus_coupler' }
+          { key: 'bus_coupler_details', label: '15. Bus Coupler Details', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'bus_coupler' },
+          { key: 'bescom_seal', label: '16. BESCOM Seal', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'bescom_seal', parentFieldKey: 'bescom_master_meter' },
+          { key: 'ct_ratio', label: '17. CT Ratio', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'ct_ratio', parentFieldKey: 'bescom_master_meter' },
+          { key: 'ct_constant', label: '18. CT Constant', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'ct_constant', parentFieldKey: 'bescom_master_meter' },
+          { key: 'ct_va', label: '19. CT VA', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'ct_va', parentFieldKey: 'bescom_master_meter' },
+          { key: 'ct_cl', label: '20. CT CL', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'ct_cl', parentFieldKey: 'bescom_master_meter' },
+          { key: 'ct_classification', label: '21. CT Classification', type: 'select', optionsCategory: 'LTKMD', optionsFieldKey: 'ct_classification', parentFieldKey: 'bescom_master_meter' }
         ]
       },
       {

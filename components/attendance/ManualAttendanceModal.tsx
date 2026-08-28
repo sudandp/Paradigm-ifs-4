@@ -48,6 +48,7 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
     const [includeSiteVisit, setIncludeSiteVisit] = useState<boolean>(false);
     const [siteOtInTime, setSiteOtInTime] = useState<string>('19:30');
     const [siteOtOutTime, setSiteOtOutTime] = useState<string>('21:30');
+    const [siteOtNextDay, setSiteOtNextDay] = useState<boolean>(false);
     const [includeSiteOt, setIncludeSiteOt] = useState<boolean>(false);
     const [siteVisits, setSiteVisits] = useState<{in: string, out: string}[]>([{in: '09:00', out: '18:00'}]);
 
@@ -191,9 +192,14 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                     if (siteOtIn || siteOtOut) {
                         setIncludeSiteOt(true);
                         if (siteOtIn) setSiteOtInTime(format(new Date(siteOtIn.timestamp), 'HH:mm'));
-                        if (siteOtOut) setSiteOtOutTime(format(new Date(siteOtOut.timestamp), 'HH:mm'));
+                        if (siteOtOut) {
+                            setSiteOtOutTime(format(new Date(siteOtOut.timestamp), 'HH:mm'));
+                            const otOutDate = format(new Date(siteOtOut.timestamp), 'yyyy-MM-dd');
+                            setSiteOtNextDay(otOutDate !== date);
+                        }
                     } else {
                         setIncludeSiteOt(false);
+                        setSiteOtNextDay(false);
                     }
 
                     // Set status/location context
@@ -361,7 +367,9 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                     }
 
                     if (siteOtOutTime && siteOtOutTime.trim() !== '') {
-                        const otOutDate = parseISO(`${timestampBase}T${siteOtOutTime}:00+05:30`);
+                        const baseOtOut = parseISO(`${timestampBase}T${siteOtOutTime}:00+05:30`);
+                        const isNextDay = siteOtNextDay || (siteOtInTime && siteOtOutTime < siteOtInTime);
+                        const otOutDate = isNextDay ? addDays(baseOtOut, 1) : baseOtOut;
                         eventsToInsert.push({
                             user_id: selectedUserId,
                             timestamp: otOutDate.toISOString(),
@@ -830,13 +838,35 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                                             </div>
 
                                             <div className="space-y-1">
-                                                <label className="text-[11px] font-semibold text-gray-600">OT End</label>
+                                                <label className="text-[11px] font-semibold text-gray-600 flex items-center justify-between">
+                                                    <span>OT End</span>
+                                                    <label className="flex items-center gap-1 cursor-pointer group">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={siteOtNextDay}
+                                                            onChange={(e) => setSiteOtNextDay(e.target.checked)}
+                                                            className="w-3 h-3 rounded border-gray-400 text-purple-600 focus:ring-purple-500"
+                                                        />
+                                                        <span className="text-[10px] font-semibold text-purple-600 group-hover:text-purple-700">Next Day</span>
+                                                    </label>
+                                                </label>
                                                 <input
                                                     type="time"
                                                     value={siteOtOutTime}
-                                                    onChange={(e) => setSiteOtOutTime(e.target.value)}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        setSiteOtOutTime(val);
+                                                        if (siteOtInTime && val && val < siteOtInTime) {
+                                                            setSiteOtNextDay(true);
+                                                        }
+                                                    }}
                                                     className="w-full p-1.5 border border-gray-300 rounded-md focus:ring-1 focus:ring-purple-500 bg-white text-xs font-medium"
                                                 />
+                                                {siteOtNextDay && (
+                                                    <p className="text-[10px] text-purple-600 font-medium mt-0.5">
+                                                        ↳ Overtime ends on next calendar day
+                                                    </p>
+                                                )}
                                             </div>
                                         </div>
                                     )}
