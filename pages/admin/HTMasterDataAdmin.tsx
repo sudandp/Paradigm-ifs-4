@@ -872,6 +872,11 @@ export const HTMasterDataAdmin: React.FC = () => {
       console.debug('Failed to save ht_custom_categories', err);
     }
 
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('ht_categories_updated', { detail: { category: catName } }));
+      window.dispatchEvent(new CustomEvent('ht_field_specs_updated', { detail: { category: catName } }));
+    }
+
     logMasterDataActivity('CREATE', catName, `Created new Master Data Category "${catName}"`);
     setActiveTab(catName);
     toast.success(`Category "${catName}" created!`);
@@ -1167,6 +1172,10 @@ export const HTMasterDataAdmin: React.FC = () => {
           localStorage.setItem('ht_custom_categories', JSON.stringify(customOnly));
         } catch (err) {
           console.debug('Failed to save ht_custom_categories', err);
+        }
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('ht_categories_updated', { detail: { category: catName } }));
+          window.dispatchEvent(new CustomEvent('ht_field_specs_updated', { detail: { category: catName } }));
         }
         if (activeTab === catName) {
           setActiveTab(updated[0] || 'RMUMD');

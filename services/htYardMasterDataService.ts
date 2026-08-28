@@ -115,6 +115,10 @@ export const htYardMasterDataService = {
         if (!error && data) {
           // Invalidate IDB cache so next read re-fetches fresh data
           invalidateMasterOptions(data.category).catch(() => {});
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('ht_field_specs_updated', { detail: { category: data.category, fieldKey: data.field_key } }));
+            window.dispatchEvent(new CustomEvent('ht_master_options_updated', { detail: { category: data.category, fieldKey: data.field_key } }));
+          }
           return {
             id: data.id,
             category: data.category as HTMasterCategory,
@@ -133,6 +137,10 @@ export const htYardMasterDataService = {
         if (!error && data) {
           // Invalidate IDB cache so next read gets the new row
           invalidateMasterOptions(data.category).catch(() => {});
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('ht_field_specs_updated', { detail: { category: data.category, fieldKey: data.field_key } }));
+            window.dispatchEvent(new CustomEvent('ht_master_options_updated', { detail: { category: data.category, fieldKey: data.field_key } }));
+          }
           return {
             id: data.id,
             category: data.category as HTMasterCategory,
@@ -163,6 +171,12 @@ export const htYardMasterDataService = {
     const updated = currentOptions.filter(o => o.id !== newId);
     updated.unshift(newOption);
     localStorage.setItem(`ht_master_options_${category}`, JSON.stringify(updated));
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('ht_field_specs_updated', { detail: { category, fieldKey: option.fieldKey } }));
+      window.dispatchEvent(new CustomEvent('ht_master_options_updated', { detail: { category, fieldKey: option.fieldKey } }));
+    }
+
     return newOption;
   },
 
@@ -185,6 +199,10 @@ export const htYardMasterDataService = {
       const currentOptions = await this.getMasterOptions(category);
       const updated = currentOptions.filter(o => o.id !== id);
       localStorage.setItem(`ht_master_options_${category}`, JSON.stringify(updated));
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('ht_field_specs_updated', { detail: { category } }));
+        window.dispatchEvent(new CustomEvent('ht_master_options_updated', { detail: { category } }));
+      }
     }
     return true;
   },
@@ -194,6 +212,10 @@ export const htYardMasterDataService = {
     const cats: HTMasterCategory[] = category ? [category] : ['RMUMD', 'TRMaster Data', 'LTKMD', 'Cable Details', 'HTYardCommon', 'VCB', 'Switchgear', 'HT_Panel', 'Meter_Cubicle', 'CSS'];
     for (const cat of cats) {
       localStorage.removeItem(`ht_master_options_${cat}`);
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('ht_field_specs_updated', { detail: { category } }));
+      window.dispatchEvent(new CustomEvent('ht_master_options_updated', { detail: { category } }));
     }
   }
 };

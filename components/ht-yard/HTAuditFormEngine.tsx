@@ -392,7 +392,7 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
     }
   };
 
-  // When spec changes or custom field definitions update, reload
+  // When spec changes, master data options update, or custom field definitions update, reload
   useEffect(() => {
     loadMergedSpec();
     loadCategoryOptions();
@@ -402,7 +402,13 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
       loadCategoryOptions();
     };
     window.addEventListener('ht_field_specs_updated', handleSpecUpdate);
-    return () => window.removeEventListener('ht_field_specs_updated', handleSpecUpdate);
+    window.addEventListener('ht_master_options_updated', handleSpecUpdate);
+    window.addEventListener('ht_categories_updated', handleSpecUpdate);
+    return () => {
+      window.removeEventListener('ht_field_specs_updated', handleSpecUpdate);
+      window.removeEventListener('ht_master_options_updated', handleSpecUpdate);
+      window.removeEventListener('ht_categories_updated', handleSpecUpdate);
+    };
   }, [spec.moduleType, selectedManufacturer]);
 
   useEffect(() => {
