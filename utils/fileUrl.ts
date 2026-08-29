@@ -27,17 +27,32 @@ const SUPABASE_STORAGE_PREFIX = `${PROJECT_URL.replace(/\/$/, '')}${STORAGE_ENDP
 export function getProxyUrl(supabaseUrl: string): string {
   if (!supabaseUrl || typeof supabaseUrl !== 'string') return supabaseUrl;
   
+  // If it's a blob: or data: URL, return as-is
+  if (supabaseUrl.startsWith('blob:') || supabaseUrl.startsWith('data:')) {
+    return supabaseUrl;
+  }
+
   // Clean the input URL - remove any double slashes after the protocol
   const sanitizedUrl = supabaseUrl.replace(/([^:]\/)\/+/g, '$1');
   
   // On native platforms, skip proxy — no Express server available on device.
-  // The WebView can load Supabase public URLs directly over the internet.
   const isNative = Capacitor.isNativePlatform() || 
                   (typeof navigator !== 'undefined' && navigator.userAgent.includes('ParadigmApp'));
   
+  const isDev = Boolean((import.meta.env as any)?.DEV) || 
+                (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'));
+
+  // If incoming URL is an /api/view-file/ proxy path and we are in dev/native, convert back to direct Supabase public URL
+  if (sanitizedUrl.startsWith('/api/view-file/')) {
+    const relativePath = sanitizedUrl.replace(/^\/api\/view-file\//, '');
+    if (isDev || isNative) {
+      return `${SUPABASE_STORAGE_PREFIX}/${relativePath}`;
+    }
+  }
+
   if (sanitizedUrl.startsWith(SUPABASE_STORAGE_PREFIX)) {
-    if (isNative) {
-      // Return the raw public URL — the native WebView loads it directly
+    if (isNative || isDev) {
+      // Return the raw public URL — the native WebView and dev server load it directly
       return sanitizedUrl;
     }
     
@@ -47,9 +62,9 @@ export function getProxyUrl(supabaseUrl: string): string {
       storagePath = storagePath.substring(1);
     }
 
-    // EXCEPTION: Public buckets should not be proxied on web because <img> tags 
+    // Public buckets should not be proxied on web because <img> tags 
     // do not send the Authorization header, causing 401 errors from the proxy.
-    const publicBuckets = ['avatars', 'logo', 'background', 'public'];
+    const publicBuckets = ['avatars', 'logo', 'background', 'public', 'onboarding-documents', 'documents', 'company-assets'];
     const bucket = storagePath.split('/')[0];
     
     if (publicBuckets.includes(bucket)) {
@@ -59,8 +74,7 @@ export function getProxyUrl(supabaseUrl: string): string {
     return `/api/view-file/${storagePath}`;
   }
   
-  // Not a Supabase URL — return as-is (e.g. blob: URLs during upload)
-  return supabaseUrl;
+  return sanitizedUrl;
 }
 
 

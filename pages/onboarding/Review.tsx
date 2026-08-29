@@ -10,6 +10,7 @@ import type { VerificationResult, EducationRecord, UploadedFile } from '../../ty
 import { useAuthStore } from '../../store/authStore';
 import DraftSaveIndicator, { type DraftSaveStatus } from '../../components/onboarding/DraftSaveIndicator';
 import ESignFlow from '../../components/onboarding/ESignFlow';
+import OnboardingBookletModal from '../../components/onboarding/OnboardingBookletModal';
 
 
 const DetailItem: React.FC<{ label: string; value?: string | number | null }> = ({ label, value }) => (
@@ -42,11 +43,12 @@ const MobileDetailItem: React.FC<{ label: string; value?: string | number | null
 const Review = () => {
     const { onSubmit, isSubmitting } = useOutletContext<{ onSubmit: () => Promise<void>; isSubmitting: boolean }>();
     const { user } = useAuthStore();
-    const { data, logVerificationUsage, setPersonalVerifiedStatus, setBankVerifiedStatus, setUanVerifiedStatus } = useOnboardingStore();
+    const { data, logVerificationUsage, setPersonalVerifiedStatus, setBankVerifiedStatus, setUanVerifiedStatus, setFormsGenerated } = useOnboardingStore();
     const { perfiosApi } = useSettingsStore();
     const navigate = useNavigate();
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
     const [esignDocUrl, setEsignDocUrl] = useState<string | null>(null);
+    const [isBookletModalOpen, setIsBookletModalOpen] = useState(false);
 
     useEffect(() => {
         const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -65,7 +67,10 @@ const Review = () => {
     const handleSaveAsDraft = useCallback(async () => {
         setDraftSaveStatus('saving');
         try {
-            await api.saveDraft(data);
+            const { draftId } = await api.saveDraft(data);
+            if (draftId && draftId !== data.id) {
+                useOnboardingStore.getState().setData({ ...data, id: draftId });
+            }
             setDraftSaveStatus('saved');
             setLastSavedAt(new Date());
         } catch {
@@ -73,12 +78,11 @@ const Review = () => {
         }
     }, [data]);
 
-    const uploadedFingerprints = useMemo(() => Object.entries(data.biometrics.fingerprints)
-        .filter(([, value]) => value !== null)
-        .map(([key]) => {
-            // Convert camelCase key to a readable name like "Left Thumb"
-            return key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
-        }), [data.biometrics.fingerprints]);
+    const uploadedFingerprints = useMemo(() => {
+        return Object.entries(data.biometrics.fingerprints || {})
+            .filter(([_, value]) => !!value)
+            .map(([fingerName]) => fingerName.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()));
+    }, [data.biometrics.fingerprints]);
 
     const handleVerification = async () => {
         setVerificationState('verifying');
@@ -86,33 +90,30 @@ const Review = () => {
         let allSuccess = true;
         const messages: string[] = [];
 
-        const resolvedAadhaar = data.personal.aadhaarNumber || (/^\d{12}$/.test(data.personal.idProofNumber || '') ? data.personal.idProofNumber : '');
-        const resolvedPan = data.personal.panNumber || (/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/i.test(data.personal.idProofNumber || '') ? data.personal.idProofNumber : '');
-
         try {
             // 1. Bank Verification
-            logVerificationUsage('Bank AC Verification Advanced');
-            // FIX: The object passed to verifyBankAccountWithPerfios was incorrect.
-            // It has been updated to match the 'PerfiosVerificationData' type definition.
-            const bankResult = await api.verifyBankAccountWithPerfios({
-                name: data.bank.accountHolderName,
-                dob: data.personal.dob,
-                aadhaar: resolvedAadhaar || null,
-                pan: resolvedPan || null,
-                bank: {
-                    accountNumber: data.bank.accountNumber,
-                    ifsc: data.bank.ifscCode,
-                },
-                uan: data.uan.uanNumber || null,
-                esi: data.esi.esiNumber || null,
-            });
-            messages.push(`Bank: ${bankResult.message}`);
-            setBankVerifiedStatus({
-                accountNumber: bankResult.verifiedFields.accountNumber,
-                accountHolderName: bankResult.verifiedFields.accountHolderName,
-            });
-            if (!bankResult.success) allSuccess = false;
-            
+            if (data.bank.accountNumber && data.bank.ifscCode) {
+                logVerificationUsage('Bank AC Verification Advanced');
+                const bankResult = await api.verifyBankAccountWithPerfios({
+                    name: data.bank.accountHolderName || `${data.personal.firstName} ${data.personal.lastName}`,
+                    dob: data.personal.dob || '',
+                    aadhaar: resolvedAadhaar || null,
+                    pan: resolvedPan || null,
+                    bank: {
+                        accountNumber: data.bank.accountNumber,
+                        ifsc: data.bank.ifscCode,
+                    },
+                    uan: data.uan.uanNumber || null,
+                    esi: data.esi.esiNumber || null,
+                });
+                messages.push(`Bank: ${bankResult.message}`);
+                setBankVerifiedStatus({
+                    accountNumber: bankResult.verifiedFields.accountNumber,
+                    accountHolderName: bankResult.verifiedFields.accountHolderName,
+                });
+                if (!bankResult.success) allSuccess = false;
+            }
+
             // 2. Aadhaar Verification
             const aadhaarToVerify = resolvedAadhaar || (data.personal.idProofType === 'Aadhaar' ? data.personal.idProofNumber : '');
             if (aadhaarToVerify) {
@@ -128,7 +129,6 @@ const Review = () => {
                 logVerificationUsage('EPF UAN Lookup');
                 const uanResult = await api.lookupUan(data.uan.uanNumber);
                 messages.push(`UAN: ${uanResult.message}`);
-                // Fix: The verifiedFields object from the API uses 'uan', not 'uanNumber'.
                 setUanVerifiedStatus({ uanNumber: uanResult.verifiedFields.uan });
                 if (!uanResult.success) allSuccess = false;
             }
@@ -146,7 +146,21 @@ const Review = () => {
     };
 
     const handleGenerateForms = () => {
-        navigate(`/onboarding/pdf/${data.id || 'draft'}`);
+        setIsBookletModalOpen(true);
+    };
+
+    const handleConfirmBooklet = async () => {
+        setFormsGenerated(true);
+        const updated = { ...data, formsGenerated: true };
+        useOnboardingStore.getState().setData(updated);
+        if (data.id && !data.id.startsWith('draft_')) {
+            try {
+                await api.updateOnboarding(updated);
+            } catch (e) {
+                console.warn("Could not sync formsGenerated status:", e);
+            }
+        }
+        setIsBookletModalOpen(false);
     };
 
     const canSubmit = (verificationState === 'success' || !perfiosApi.enabled) && data.formsGenerated && !!esignDocUrl;
@@ -213,6 +227,58 @@ const Review = () => {
                         )}
                     </section>
                 </div>
+
+                <div className="mt-8 pt-6 border-t border-slate-700">
+                    <h3 className="text-base font-semibold text-white mb-2">Generate Official Forms</h3>
+                    <div className="p-4 bg-black/20 rounded-xl border border-slate-700/50 flex flex-col gap-3">
+                        <div>
+                            <p className="font-medium text-sm text-slate-200">Review official employee onboarding forms.</p>
+                            <p className="text-xs text-slate-400">Mandatory before final submission.</p>
+                        </div>
+                        {data.formsGenerated ? (
+                            <div className="flex items-center gap-2 font-semibold text-emerald-400 text-sm">
+                                <CheckCircle className="h-5 w-5"/>
+                                <span>Forms Generated & Confirmed</span>
+                            </div>
+                        ) : (
+                            <Button type="button" onClick={handleGenerateForms} className="w-full">
+                                <FileText className="mr-2 h-4 w-4" /> Generate & Review Forms
+                            </Button>
+                        )}
+                    </div>
+                </div>
+
+                {data.formsGenerated && (
+                    <div className="mt-6 pt-6 border-t border-slate-700">
+                        <h3 className="text-base font-semibold text-white mb-1">Digital Signature</h3>
+                        <p className="text-xs text-slate-400 mb-4">
+                            Worker must sign the employment agreement digitally before submission.
+                        </p>
+                        {esignDocUrl ? (
+                            <div className="flex items-center gap-2 text-emerald-400 font-semibold text-sm">
+                                <CheckCircle className="h-5 w-5" />
+                                Agreement signed — ready to submit
+                            </div>
+                        ) : (
+                            <ESignFlow
+                                employeeId={data.id}
+                                employeeName={`${data.personal.firstName} ${data.personal.lastName}`}
+                                mobile={data.personal.mobile}
+                                signerEmail={data.personal.email}
+                                baseContractUrl={import.meta.env.VITE_EMPLOYMENT_AGREEMENT_PDF_URL ?? ''}
+                                clientSiteId={data.organization.site ?? data.organization.organizationName}
+                                onSigned={(url) => setEsignDocUrl(url)}
+                            />
+                        )}
+                    </div>
+                )}
+
+                <OnboardingBookletModal 
+                    isOpen={isBookletModalOpen}
+                    onClose={() => setIsBookletModalOpen(false)}
+                    onConfirm={handleConfirmBooklet}
+                    employeeData={data}
+                />
             </form>
         );
     }
@@ -340,7 +406,7 @@ const Review = () => {
                             <span>Forms Generated & Confirmed</span>
                         </div>
                     ) : (
-                        <Button onClick={handleGenerateForms}>
+                        <Button type="button" onClick={handleGenerateForms}>
                             <FileText className="mr-2 h-4 w-4" /> Generate & Review Forms
                         </Button>
                     )}
@@ -415,6 +481,14 @@ const Review = () => {
                     </div>
                 </div>
             </div>
+
+            {/* In-Page Official Forms Booklet Modal */}
+            <OnboardingBookletModal 
+                isOpen={isBookletModalOpen}
+                onClose={() => setIsBookletModalOpen(false)}
+                onConfirm={handleConfirmBooklet}
+                employeeData={data}
+            />
         </form>
     );
 };

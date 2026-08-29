@@ -25,7 +25,7 @@ import Input from '../../components/ui/Input';
 import Logo from '../../components/ui/Logo';
 import NotificationBell from '../../components/notifications/NotificationBell';
 
-// Per-field mandatory override state
+// Per-field mandatory state determined by Admin Enrollment Rules
 interface MandatoryFieldState {
     idProofFront: boolean;
     idProofBack: boolean;
@@ -38,54 +38,30 @@ interface MandatoryFieldState {
     photo: boolean;
 }
 
-interface MandatoryToggleProps {
-    fieldKey: keyof MandatoryFieldState;
-    label: string;
-    checked: boolean;
-    onChange: (key: keyof MandatoryFieldState, value: boolean) => void;
-}
-
-const MandatoryToggle: React.FC<MandatoryToggleProps> = ({ fieldKey, label, checked, onChange }) => (
-    <div className="flex items-center gap-2 mb-2">
-        <label className="flex items-center gap-2 cursor-pointer select-none group">
-            <div className="relative">
-                <input
-                    type="checkbox"
-                    id={`mandatory-${fieldKey}`}
-                    checked={checked}
-                    onChange={(e) => onChange(fieldKey, e.target.checked)}
-                    className="sr-only peer"
-                />
-                <div className={`w-9 h-5 rounded-full transition-colors duration-200 ${
-                    checked ? 'bg-emerald-500' : 'bg-gray-300'
-                }`} />
-                <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 ${
-                    checked ? 'translate-x-4' : 'translate-x-0'
-                }`} />
-            </div>
-            <span className={`text-xs font-medium transition-colors ${
-                checked ? 'text-emerald-600' : 'text-gray-400'
-            }`}>
-                {checked ? 'Mandatory' : 'Optional'}
-            </span>
-        </label>
-    </div>
+const FieldRequirementBadge: React.FC<{ isMandatory: boolean }> = ({ isMandatory }) => (
+    <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider select-none shrink-0 ${
+        isMandatory
+            ? 'bg-rose-500/10 text-rose-500 border border-rose-500/25 dark:bg-rose-950/30 dark:text-rose-400 dark:border-rose-800/40'
+            : 'bg-slate-100 text-slate-500 border border-slate-200 dark:bg-white/5 dark:text-slate-400 dark:border-white/10'
+    }`}>
+        {isMandatory ? '* Mandatory' : 'Optional'}
+    </span>
 );
-
 
 const defaultDesignationRules = {
     documents: {
+        photo: true,
         aadhaar: true,
-        pan: true,
+        pan: false,
         bankProof: true,
-        educationCertificate: true,
-        salarySlip: true,
-        uanProof: true,
-        familyAadhaar: true,
+        educationCertificate: false,
+        salarySlip: false,
+        uanProof: false,
+        familyAadhaar: false,
     },
     verifications: {
-        requireBengaluruAddress: true,
-        requireDobVerification: true,
+        requireBengaluruAddress: false,
+        requireDobVerification: false,
     }
 };
 
@@ -118,7 +94,9 @@ const getValidationSchema = (
     });
 
     return yup.object({
-        photo: yup.mixed<UploadedFile | null>().optional().nullable(),
+        photo: mandatory.photo
+            ? yup.mixed<UploadedFile | null>().nonNullable("Profile photo is required.")
+            : yup.mixed<UploadedFile | null>().optional().nullable(),
         aadhaarLinkedMobile: yup.string().required('Aadhaar-linked mobile number is required.').matches(/^[6-9][0-9]{9}$/, 'Must be a valid 10-digit number'),
         alternateMobile: yup.string().optional().nullable().matches(/^[6-9][0-9]{9}$/, { message: 'Must be a valid 10-digit number', excludeEmptyString: true }),
         idProofType: yup.string().oneOf(['Aadhaar', 'PAN', 'Voter ID', '']).required(),
@@ -208,39 +186,28 @@ const PreUpload = () => {
     const draftDebounceRef = React.useRef<number | null>(null);
 
     const designation = store.data.organization.designation;
-    const currentRules = useMemo(() =>
-        (designation && rulesByDesignation[designation])
-            ? rulesByDesignation[designation]
-            : defaultDesignationRules,
-        [designation, rulesByDesignation]);
+    const currentRules = useMemo(() => {
+        if (designation && rulesByDesignation[designation]) {
+            return rulesByDesignation[designation];
+        }
+        if (rulesByDesignation['Default (All Roles)']) {
+            return rulesByDesignation['Default (All Roles)'];
+        }
+        return defaultDesignationRules;
+    }, [designation, rulesByDesignation]);
 
-    // Per-field mandatory toggles — driven by enrollment rules but user-overridable
-    const [mandatoryFields, setMandatoryFields] = useState<MandatoryFieldState>({
-        idProofFront: true,
-        idProofBack: true,
-        bankProof: true,
-        uanProof: false,          // UAN Proof is optional by default
-        panCard: currentRules.documents.pan,
-        salarySlip: currentRules.documents.salarySlip,
-        familyAadhaar: currentRules.documents.familyAadhaar,
-        educationCertificate: currentRules.documents.educationCertificate,
-        photo: true,
-    });
-
-    // Sync with enrollment rules when designation changes
-    useEffect(() => {
-        setMandatoryFields(prev => ({
-            ...prev,
-            panCard: currentRules.documents.pan,
-            salarySlip: currentRules.documents.salarySlip,
-            familyAadhaar: currentRules.documents.familyAadhaar,
-            educationCertificate: currentRules.documents.educationCertificate,
-        }));
-    }, [currentRules]);
-
-    const handleMandatoryToggle = useCallback((key: keyof MandatoryFieldState, value: boolean) => {
-        setMandatoryFields(prev => ({ ...prev, [key]: value }));
-    }, []);
+    // Mandatory fields strictly defined by Admin Enrollment Rules (no user overrides)
+    const mandatoryFields: MandatoryFieldState = useMemo(() => ({
+        photo: currentRules.documents.photo ?? true,
+        idProofFront: currentRules.documents.aadhaar ?? true,
+        idProofBack: currentRules.documents.aadhaar ?? true,
+        bankProof: currentRules.documents.bankProof ?? true,
+        uanProof: currentRules.documents.uanProof ?? false,
+        panCard: currentRules.documents.pan ?? false,
+        salarySlip: currentRules.documents.salarySlip ?? false,
+        familyAadhaar: currentRules.documents.familyAadhaar ?? false,
+        educationCertificate: currentRules.documents.educationCertificate ?? false,
+    }), [currentRules]);
 
     const validationSchema = useMemo(() =>
         getValidationSchema(currentRules, mandatoryFields),
@@ -372,17 +339,17 @@ const PreUpload = () => {
     const handleImmediateOcr = async (docType: string, extractedData: any, index?: number) => {
         try {
             const currentData = store.data;
-            let personalUpdate: Partial<PersonalDetails> = {};
-            let personalVerified: Partial<PersonalDetails['verifiedStatus']> = {};
-            let bankUpdate: Partial<BankDetails> = {};
-            let bankVerified: Partial<BankDetails['verifiedStatus']> = {};
-            let uanUpdate: Partial<UanDetails> = {};
-            let uanVerified: Partial<UanDetails['verifiedStatus']> = {};
-            let esiUpdate: Partial<EsiDetails> = {};
-            let esiVerified: Partial<EsiDetails['verifiedStatus']> = {};
+            const personalUpdate: Partial<PersonalDetails> = {};
+            const personalVerified: Partial<PersonalDetails['verifiedStatus']> = {};
+            const bankUpdate: Partial<BankDetails> = {};
+            const bankVerified: Partial<BankDetails['verifiedStatus']> = {};
+            const uanUpdate: Partial<UanDetails> = {};
+            const uanVerified: Partial<UanDetails['verifiedStatus']> = {};
+            const esiUpdate: Partial<EsiDetails> = {};
+            const esiVerified: Partial<EsiDetails['verifiedStatus']> = {};
             let addressUpdate: any = currentData.address;
-            let familyUpdate = [...currentData.family];
-            let educationUpdate = [...currentData.education];
+            const familyUpdate = [...currentData.family];
+            const educationUpdate = [...currentData.education];
 
             const docName = docType === 'idFront'
                 ? (idProofType ? `${idProofType} Front` : 'ID Proof Front')
@@ -446,7 +413,14 @@ const PreUpload = () => {
                     personalUpdate.preferredName = personalUpdate.firstName;
                     personalVerified.name = true;
                 }
-                if (idData.dob) { try { personalUpdate.dob = format(new Date(idData.dob.replace(/[-./]/g, '/')), 'yyyy-MM-dd'); personalVerified.dob = true; } catch (e) { } }
+                if (idData.dob) {
+                    try {
+                        personalUpdate.dob = format(new Date(idData.dob.replace(/[-./]/g, '/')), 'yyyy-MM-dd');
+                        personalVerified.dob = true;
+                    } catch {
+                        /* ignore unparseable date */
+                    }
+                }
                 if (idData.gender) {
                     const genderLower = idData.gender.toLowerCase().trim();
                     if (genderLower.includes('female') || genderLower.includes('mahila') || genderLower.startsWith('fem') || genderLower === 'f') personalUpdate.gender = 'Female';
@@ -542,7 +516,14 @@ const PreUpload = () => {
                         personalUpdate.preferredName = personalUpdate.firstName;
                         personalVerified.name = true;
                     }
-                    if (!currentData.personal.dob && panData.dob) { try { personalUpdate.dob = format(new Date(panData.dob.replace(/[-./]/g, '/')), 'yyyy-MM-dd'); personalVerified.dob = true; } catch (e) { } }
+                    if (!currentData.personal.dob && panData.dob) {
+                        try {
+                            personalUpdate.dob = format(new Date(panData.dob.replace(/[-./]/g, '/')), 'yyyy-MM-dd');
+                            personalVerified.dob = true;
+                        } catch {
+                            /* ignore unparseable date */
+                        }
+                    }
                 }
                 if (panData.email && panData.email.includes('@')) {
                     personalUpdate.email = panData.email.toLowerCase().trim();
@@ -631,7 +612,13 @@ const PreUpload = () => {
                 setToast({ message: `${docType === 'salary' ? 'Salary slip' : 'UAN'} details extracted and saved.`, type: 'success' });
             } else if (docType === 'familyAadhaar' && index !== undefined) {
                 let dobString = '';
-                if (extractedData.dob) { try { dobString = format(new Date(extractedData.dob.replace(/[-./]/g, '/')), 'yyyy-MM-dd'); } catch (e) { } }
+                if (extractedData.dob) {
+                    try {
+                        dobString = format(new Date(extractedData.dob.replace(/[-./]/g, '/')), 'yyyy-MM-dd');
+                    } catch {
+                        /* ignore unparseable date */
+                    }
+                }
                 
                 let extractedPhone = '';
                 if (extractedData.phone) {
@@ -1056,12 +1043,15 @@ const PreUpload = () => {
                         <div className="pb-6 mb-6 border-b border-white/10 md:border-border">
                             <p className="text-xs font-bold text-white/40 md:text-muted uppercase tracking-widest mb-4">Profile & Contact</p>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
-                                <div className="flex flex-col gap-2">
-                                    <MandatoryToggle fieldKey="photo" label="Profile Photo" checked={mandatoryFields.photo} onChange={handleMandatoryToggle} />
-                                    <Controller name="photo" control={control} render={({ field }) => <UploadDocument label={`Profile Photo${mandatoryFields.photo ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} allowCapture allowedTypes={['image/jpeg', 'image/png', 'image/webp']} />} />
+                                <div className="flex flex-col gap-1.5">
+                                    <div className="flex items-center justify-between mb-0.5">
+                                        <span className="text-xs font-semibold text-white/90 md:text-primary-text">Profile Photo</span>
+                                        <FieldRequirementBadge isMandatory={mandatoryFields.photo} />
+                                    </div>
+                                    <Controller name="photo" control={control} render={({ field }) => <UploadDocument label={`Candidate Photo${mandatoryFields.photo ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} allowCapture allowedTypes={['image/jpeg', 'image/png', 'image/webp']} />} />
                                 </div>
-                                <div className="flex flex-col gap-5 md:pt-8">
-                                    <Controller name="aadhaarLinkedMobile" control={control} render={({ field, fieldState }) => (<Input label="Aadhaar Linked Mobile Number" type="tel" {...field} error={fieldState.error?.message} />)} />
+                                <div className="flex flex-col gap-5 md:pt-6">
+                                    <Controller name="aadhaarLinkedMobile" control={control} render={({ field, fieldState }) => (<Input label="Aadhaar Linked Mobile Number *" type="tel" {...field} error={fieldState.error?.message} />)} />
                                     <Controller name="alternateMobile" control={control} render={({ field, fieldState }) => (<Input label="Alternative Mobile Number (Optional)" type="tel" {...field} error={fieldState.error?.message} />)} />
                                 </div>
                             </div>
@@ -1080,12 +1070,18 @@ const PreUpload = () => {
                             </div>
                             <p className="text-xs text-white/40 md:text-muted mb-5">Tip: Use "Upload Zip" or "Scan QR" for instant auto-fill, or switch to Auto AI for automatic extraction.</p>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                                <div className="flex flex-col gap-2">
-                                    <MandatoryToggle fieldKey="idProofFront" label="Aadhaar Front" checked={mandatoryFields.idProofFront} onChange={handleMandatoryToggle} />
+                                <div className="flex flex-col gap-1.5">
+                                    <div className="flex items-center justify-between mb-0.5">
+                                        <span className="text-xs font-semibold text-white/90 md:text-primary-text">Aadhaar Front Side</span>
+                                        <FieldRequirementBadge isMandatory={mandatoryFields.idProofFront} />
+                                    </div>
                                     <Controller name="idProofFront" control={control} render={({ field }) => <UploadDocument label={`Aadhaar (Front Side)${mandatoryFields.idProofFront ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.idProofFront?.message as string} allowCapture verificationStatus={store.data.personal.verifiedStatus?.idProofNumber} ocrSchema={idFrontSchema} onOcrComplete={(data) => handleImmediateOcr('idFront', data)} docType={idProofType} setToast={setToast} />} />
                                 </div>
-                                <div className="flex flex-col gap-2">
-                                    <MandatoryToggle fieldKey="idProofBack" label="Aadhaar Back" checked={mandatoryFields.idProofBack} onChange={handleMandatoryToggle} />
+                                <div className="flex flex-col gap-1.5">
+                                    <div className="flex items-center justify-between mb-0.5">
+                                        <span className="text-xs font-semibold text-white/90 md:text-primary-text">Aadhaar Back Side</span>
+                                        <FieldRequirementBadge isMandatory={mandatoryFields.idProofBack} />
+                                    </div>
                                     <Controller name="idProofBack" control={control} render={({ field }) => <UploadDocument label={`Aadhaar (Back Side)${mandatoryFields.idProofBack ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.idProofBack?.message as string} allowCapture verificationStatus={store.data.personal.verifiedStatus?.idProofNumber} ocrSchema={addressSchema} onOcrComplete={(data) => handleImmediateOcr('idBack', data)} docType={idProofType} setToast={setToast} />} />
                                 </div>
                             </div>
@@ -1097,23 +1093,35 @@ const PreUpload = () => {
                                 <p className="text-xs font-bold text-white/40 md:text-muted uppercase tracking-widest">Financial Documents</p>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                                <div className="flex flex-col gap-2">
-                                    <MandatoryToggle fieldKey="bankProof" label="Bank Proof" checked={mandatoryFields.bankProof} onChange={handleMandatoryToggle} />
+                                <div className="flex flex-col gap-1.5">
+                                    <div className="flex items-center justify-between mb-0.5">
+                                        <span className="text-xs font-semibold text-white/90 md:text-primary-text">Bank Proof</span>
+                                        <FieldRequirementBadge isMandatory={mandatoryFields.bankProof} />
+                                    </div>
                                     <Controller name="bankProof" control={control} render={({ field }) => <UploadDocument label={`Bank Proof (Passbook/Cancelled Cheque)${mandatoryFields.bankProof ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.bankProof?.message as string} allowCapture verificationStatus={store.data.bank.verifiedStatus?.accountNumber} ocrSchema={bankProofSchema} onOcrComplete={(data) => handleImmediateOcr('bank', data)} docType="Bank" setToast={setToast} />} />
                                 </div>
-                                <div className="flex flex-col gap-2">
-                                    <MandatoryToggle fieldKey="uanProof" label="UAN Proof" checked={mandatoryFields.uanProof} onChange={handleMandatoryToggle} />
+                                <div className="flex flex-col gap-1.5">
+                                    <div className="flex items-center justify-between mb-0.5">
+                                        <span className="text-xs font-semibold text-white/90 md:text-primary-text">UAN Proof</span>
+                                        <FieldRequirementBadge isMandatory={mandatoryFields.uanProof} />
+                                    </div>
                                     <Controller name="uanProof" control={control} render={({ field }) => <UploadDocument label={`UAN Proof Document${mandatoryFields.uanProof ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.uanProof?.message as string} allowCapture verificationStatus={store.data.uan.verifiedStatus?.uanNumber} ocrSchema={uanProofSchema} onOcrComplete={(data) => handleImmediateOcr('uan', data)} docType="UAN" setToast={setToast} />} />
                                 </div>
                                 {currentRules.documents.pan && (
-                                    <div className="flex flex-col gap-2">
-                                        <MandatoryToggle fieldKey="panCard" label="PAN Card" checked={mandatoryFields.panCard} onChange={handleMandatoryToggle} />
+                                    <div className="flex flex-col gap-1.5">
+                                        <div className="flex items-center justify-between mb-0.5">
+                                            <span className="text-xs font-semibold text-white/90 md:text-primary-text">PAN Card</span>
+                                            <FieldRequirementBadge isMandatory={mandatoryFields.panCard} />
+                                        </div>
                                         <Controller name="panCard" control={control} render={({ field }) => <UploadDocument label={`PAN Card${mandatoryFields.panCard ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.panCard?.message as string} allowCapture ocrSchema={panSchema} onOcrComplete={(data) => handleImmediateOcr('pan', data)} docType="PAN" setToast={setToast} />} />
                                     </div>
                                 )}
                                 {currentRules.documents.salarySlip && (
-                                    <div className="flex flex-col gap-2">
-                                        <MandatoryToggle fieldKey="salarySlip" label="Salary Slip" checked={mandatoryFields.salarySlip} onChange={handleMandatoryToggle} />
+                                    <div className="flex flex-col gap-1.5">
+                                        <div className="flex items-center justify-between mb-0.5">
+                                            <span className="text-xs font-semibold text-white/90 md:text-primary-text">Latest Salary Slip</span>
+                                            <FieldRequirementBadge isMandatory={mandatoryFields.salarySlip} />
+                                        </div>
                                         <Controller name="salarySlip" control={control} render={({ field }) => <UploadDocument label={`Latest Salary Slip${mandatoryFields.salarySlip ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.salarySlip?.message as string} allowCapture ocrSchema={salarySlipSchema} onOcrComplete={(data) => handleImmediateOcr('salary', data)} docType="Salary" setToast={setToast} />} />
                                     </div>
                                 )}
@@ -1125,7 +1133,7 @@ const PreUpload = () => {
                             <div className="pb-6 mb-6 border-b border-white/10 md:border-border">
                                 <div className="flex items-center justify-between mb-4">
                                     <p className="text-xs font-bold text-white/40 md:text-muted uppercase tracking-widest">Education Certificates</p>
-                                    <MandatoryToggle fieldKey="educationCertificate" label="Education Certificate" checked={mandatoryFields.educationCertificate} onChange={handleMandatoryToggle} />
+                                    <FieldRequirementBadge isMandatory={mandatoryFields.educationCertificate} />
                                 </div>
                                 <div className="space-y-4">
                                     {educationFields.map((field, index) => (
@@ -1150,7 +1158,7 @@ const PreUpload = () => {
                                                 )} />
                                                 <div className="md:col-span-3">
                                                     <Controller name={`education.${index}.document`} control={control} render={({ field: controllerField, fieldState }) => (
-                                                        <UploadDocument label="Upload Certificate" file={controllerField.value} onFileChange={controllerField.onChange} error={fieldState.error?.message} allowCapture ocrSchema={educationSchema} onOcrComplete={(data) => handleImmediateOcr('education', data, index)} docType="Education" setToast={setToast} />
+                                                        <UploadDocument label={`Upload Certificate${mandatoryFields.educationCertificate ? ' *' : ' (Optional)'}`} file={controllerField.value} onFileChange={controllerField.onChange} error={fieldState.error?.message} allowCapture ocrSchema={educationSchema} onOcrComplete={(data) => handleImmediateOcr('education', data, index)} docType="Education" setToast={setToast} />
                                                     )} />
                                                 </div>
                                             </div>
@@ -1171,7 +1179,7 @@ const PreUpload = () => {
                             <div className="pb-6 mb-6 border-b border-white/10 md:border-border">
                                 <div className="flex items-center justify-between mb-4">
                                     <p className="text-xs font-bold text-white/40 md:text-muted uppercase tracking-widest">Family Member Documents</p>
-                                    <MandatoryToggle fieldKey="familyAadhaar" label="Family Aadhaar" checked={mandatoryFields.familyAadhaar} onChange={handleMandatoryToggle} />
+                                    <FieldRequirementBadge isMandatory={mandatoryFields.familyAadhaar} />
                                 </div>
                                 <div className="space-y-4">
                                     {familyFields.map((field, index) => {
@@ -1183,7 +1191,7 @@ const PreUpload = () => {
                                                     <Controller name={`family.${index}.relation`} control={control} render={({ field, fieldState }) => (<Select label="Relation" error={fieldState.error?.message} {...field}> <option value="">Select</option><option>Spouse</option><option>Child</option><option>Father</option><option>Mother</option> </Select>)} />
                                                     <Controller name={`family.${index}.phone`} control={control} render={({ field, fieldState }) => (<Input label={`Phone Number${isChild ? ' (Optional)' : ''}`} type="tel" {...field} error={fieldState.error?.message} />)} />
                                                     <div className="md:col-span-2">
-                                                        <Controller name={`family.${index}.idProof`} control={control} render={({ field, fieldState }) => (<UploadDocument label="Aadhaar Card" file={field.value} onFileChange={field.onChange} error={fieldState.error?.message} allowCapture ocrSchema={familyAadhaarSchema} onOcrComplete={(data) => handleImmediateOcr('familyAadhaar', data, index)} docType="Aadhaar" setToast={setToast} />)} />
+                                                        <Controller name={`family.${index}.idProof`} control={control} render={({ field, fieldState }) => (<UploadDocument label={`Aadhaar Card${mandatoryFields.familyAadhaar ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={fieldState.error?.message} allowCapture ocrSchema={familyAadhaarSchema} onOcrComplete={(data) => handleImmediateOcr('familyAadhaar', data, index)} docType="Aadhaar" setToast={setToast} />)} />
                                                     </div>
                                                 </div>
                                                 <Button type="button" variant="icon" size="sm" onClick={() => removeFamily(index)} className="!absolute top-3 right-3"><Trash2 className="h-4 w-4 text-red-500" /></Button>

@@ -353,13 +353,13 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                 <>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
                     <div className="md:col-span-2">
-                        <Input label="Company / LLP / Partnership / Society Name" id="name" registration={register('name')} error={errors.name?.message} />
+                        <Input label="Company / LLP / Partnership / Society Name" id="name" registration={register('name')} error={errors.name?.message} requiredIndicator />
                     </div>
                     <div>
-                        <Input label="Location (Select or Type New)" id="location" list="existing-locations" registration={register('location')} error={errors.location?.message} />
+                        <Input label="Location (Select or Type New)" id="location" list="existing-locations" registration={register('location')} error={errors.location?.message} requiredIndicator />
                         <datalist id="existing-locations">{existingLocations.map(l => <option key={l} value={l} />)}</datalist>
                     </div>
-                    <Input label="Registered Address" id="address" registration={register('address')} error={errors.address?.message} />
+                    <Input label="Registered Address" id="address" registration={register('address')} error={errors.address?.message} requiredIndicator />
                     
                     <div className="md:col-span-2 mt-4 overflow-hidden border border-border/50 rounded-2xl bg-page/40 shadow-sm">
                         <button 
@@ -374,7 +374,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                         {expandedSections.registration && (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 pt-0 animate-in slide-in-from-top-2 duration-300">
                                 <div>
-                                    <Select label="Registration Type" id="registrationType" registration={register('registrationType')} error={errors.registrationType?.message}>
+                                    <Select label="Registration Type" id="registrationType" registration={register('registrationType')} error={errors.registrationType?.message} requiredIndicator>
                                         <option value="">Select Type</option>
                                         <option value="ROC">ROC</option>
                                         <option value="ROF">ROF</option>
@@ -382,7 +382,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                                         <option value="Trust">Trust</option>
                                     </Select>
                                 </div>
-                                <Input label="Registration Number" id="registrationNumber" registration={register('registrationNumber')} error={errors.registrationNumber?.message} />
+                                <Input label="Registration Number" id="registrationNumber" registration={register('registrationNumber')} error={errors.registrationNumber?.message} requiredIndicator />
 
                                 <div className="space-y-4">
                                     <Input label="CIN Number" id="cinNumber" registration={register('cinNumber')} error={errors.cinNumber?.message} />
@@ -415,7 +415,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                                     )} />
                                 </div>
                                 <div className="space-y-4">
-                                    <Input label="GST Number" id="gstNumber" registration={register('gstNumber')} error={errors.gstNumber?.message} />
+                                    <Input label="GST Number" id="gstNumber" registration={register('gstNumber')} error={errors.gstNumber?.message} requiredIndicator />
                                     <Controller name="gstDocUrl" control={control} render={({ field }) => (
                                         <UploadDocument 
                                             label="GST Attachment" 
@@ -425,7 +425,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                                     )} />
                                 </div>
                                 <div className="space-y-4">
-                                    <Input label="PAN Number" id="panNumber" registration={register('panNumber')} error={errors.panNumber?.message} />
+                                    <Input label="PAN Number" id="panNumber" registration={register('panNumber')} error={errors.panNumber?.message} requiredIndicator />
                                     <Controller name="panDocUrl" control={control} render={({ field }) => (
                                         <UploadDocument 
                                             label="PAN Attachment" 

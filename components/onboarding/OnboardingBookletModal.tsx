@@ -1,102 +1,31 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import Button from '../../components/ui/Button';
+import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { OnboardingData } from '../../types';
-import { api } from '../../services/api';
-import { Download, Loader2, ArrowLeft, Printer, CheckCircle2, Building, User, Phone, MapPin, CreditCard, ShieldCheck, FileCheck, Calendar, Briefcase, GraduationCap, Users, Shirt, HeartPulse } from 'lucide-react';
-import { useOnboardingStore } from '../../store/onboardingStore';
+import Button from '../ui/Button';
+import { Download, Loader2, Printer, CheckCircle2, ShieldCheck, User, MapPin, CreditCard, GraduationCap, Users, Shirt, X } from 'lucide-react';
 import { useLogoStore } from '../../store/logoStore';
 import { useAuthStore } from '../../store/authStore';
-import LoadingScreen from '../../components/ui/LoadingScreen';
 import { getProxyUrl } from '../../utils/fileUrl';
 
-const OnboardingPdfOutput: React.FC = () => {
-    const { id } = useParams<{ id: string }>();
-    const navigate = useNavigate();
-    const [employeeData, setEmployeeData] = useState<OnboardingData | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
-    const { data: storeData, setFormsGenerated } = useOnboardingStore();
-    const user = useAuthStore((state) => state.user);
+interface OnboardingBookletModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    onConfirm: () => void;
+    employeeData: OnboardingData;
+}
+
+export const OnboardingBookletModal: React.FC<OnboardingBookletModalProps> = ({
+    isOpen,
+    onClose,
+    onConfirm,
+    employeeData
+}) => {
     const logo = useLogoStore((state) => state.currentLogo);
+    const user = useAuthStore((state) => state.user);
     const [isGenerating, setIsGenerating] = useState(false);
     const [isConfirming, setIsConfirming] = useState(false);
 
-    useEffect(() => {
-        const fetchData = async () => {
-            setIsLoading(true);
-            if (id && !id.startsWith('draft_')) {
-                try {
-                    const data = await api.getOnboardingDataById(id);
-                    setEmployeeData(data || storeData);
-                } catch (err) {
-                    setEmployeeData(storeData);
-                }
-            } else {
-                setEmployeeData(storeData);
-            }
-            setIsLoading(false);
-        };
-        fetchData();
-    }, [id, storeData]);
-
-    const handleExport = async () => {
-        if (!employeeData) return;
-        setIsGenerating(true);
-        try {
-            const [{ pdf }, { EmployeeOnboardingDocument }] = await Promise.all([
-                import('@react-pdf/renderer'),
-                import('../../pages/attendance/PDFReports')
-            ]);
-            const doc = <EmployeeOnboardingDocument data={employeeData} logoUrl={logo} />;
-            const blob = await pdf(doc).toBlob();
-            if (blob) {
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `Onboarding_Forms_${employeeData.personal.employeeId || 'employee'}.pdf`;
-                link.click();
-                URL.revokeObjectURL(url);
-            }
-        } catch (error) {
-            console.error("PDF generation failed:", error);
-            window.print();
-        } finally {
-            setIsGenerating(false);
-        }
-    };
-
-    const handleConfirm = async () => {
-        if (!employeeData) return;
-        setIsConfirming(true);
-        try {
-            setFormsGenerated(true);
-            const updated = { ...employeeData, formsGenerated: true };
-            useOnboardingStore.getState().setData(updated);
-            if (id && !id.startsWith('draft_')) {
-                try {
-                    await api.updateOnboarding(updated);
-                } catch (err) {
-                    console.warn("Could not sync formsGenerated to database:", err);
-                }
-            }
-            navigate(`/onboarding/add/review${id ? `?id=${id}` : ''}`);
-        } finally {
-            setIsConfirming(false);
-        }
-    };
-
-    if (isLoading) {
-        return <LoadingScreen message="Compiling official employee onboarding forms..." />;
-    }
-
-    if (!employeeData) {
-        return (
-            <div className="text-center p-12 bg-card rounded-2xl m-6">
-                <p className="text-rose-500 font-bold mb-4">Could not find employee onboarding records.</p>
-                <Button onClick={() => navigate('/onboarding/add/review')}>Return to Review</Button>
-            </div>
-        );
-    }
+    if (!isOpen || !employeeData) return null;
 
     const d = employeeData;
     const fullName = `${d.personal.firstName} ${d.personal.middleName || ''} ${d.personal.lastName}`.replace(/\s+/g, ' ').trim();
@@ -112,65 +41,99 @@ const OnboardingPdfOutput: React.FC = () => {
     const photoUrl = d.personal.photo?.preview || (d.personal.photo as any)?.url || '';
     const signatureUrl = d.biometrics?.signatureImage?.preview || (d.biometrics?.signatureImage as any)?.url || '';
 
-    return (
-        <div className="bg-slate-100 min-h-screen py-6 px-3 sm:px-6">
-            <div className="max-w-4xl mx-auto">
-                {/* ── Top Header Toolbar ── */}
-                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 mb-6 sticky top-4 z-20 print:hidden flex flex-col sm:flex-row justify-between items-center gap-4">
-                    <Button 
-                        type="button" 
-                        onClick={() => navigate(-1)} 
-                        variant="secondary"
-                        className="w-full sm:w-auto"
-                    >
-                        <ArrowLeft className="mr-2 h-4 w-4" /> Go Back
-                    </Button>
+    const handleExport = async () => {
+        setIsGenerating(true);
+        try {
+            const [{ pdf }, { EmployeeOnboardingDocument }] = await Promise.all([
+                import('@react-pdf/renderer'),
+                import('../../pages/attendance/PDFReports')
+            ]);
+            const doc = <EmployeeOnboardingDocument data={employeeData} logoUrl={logo} />;
+            const blob = await pdf(doc).toBlob();
+            if (blob) {
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `Onboarding_Forms_${d.personal.employeeId || 'employee'}.pdf`;
+                link.click();
+                URL.revokeObjectURL(url);
+            }
+        } catch (error) {
+            console.error("PDF generation failed:", error);
+            window.print();
+        } finally {
+            setIsGenerating(false);
+        }
+    };
 
-                    <div className="text-center">
-                        <div className="flex items-center justify-center gap-2">
-                            <ShieldCheck className="h-5 w-5 text-emerald-600" />
-                            <h2 className="font-bold text-base sm:text-lg text-slate-800">Official Onboarding Dossier</h2>
-                        </div>
-                        <p className="text-xs text-slate-500">Ref: ONB-{d.personal.employeeId} • Review before final submission</p>
+    const handleConfirm = async () => {
+        setIsConfirming(true);
+        try {
+            await onConfirm();
+        } finally {
+            setIsConfirming(false);
+        }
+    };
+
+    return createPortal(
+        <div className="fixed inset-0 z-[1000] flex flex-col bg-slate-900/80 backdrop-blur-sm animate-fade-in" role="dialog" aria-modal="true">
+            {/* Top Modal Navigation Bar */}
+            <header className="flex-shrink-0 bg-white border-b border-slate-200 px-4 py-3 sm:px-6 flex flex-col sm:flex-row justify-between items-center gap-3 shadow-sm">
+                <div className="flex items-center gap-3 w-full sm:w-auto">
+                    <div className="p-2 bg-emerald-50 text-emerald-700 rounded-xl border border-emerald-200 flex-shrink-0">
+                        <ShieldCheck className="h-5 w-5" />
                     </div>
-
-                    <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                        <Button 
-                            type="button" 
-                            onClick={() => window.print()} 
-                            variant="outline" 
-                            size="sm"
-                            title="Print Booklet"
-                            className="hidden md:flex"
-                        >
-                            <Printer className="h-4 w-4 mr-1.5" /> Print
-                        </Button>
-                        <Button 
-                            type="button" 
-                            onClick={handleExport} 
-                            variant="outline" 
-                            disabled={isGenerating}
-                            size="sm"
-                            className="flex-1 sm:flex-none"
-                        >
-                            {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin text-emerald-600" /> : <Download className="mr-2 h-4 w-4" />}
-                            {isGenerating ? 'Generating...' : 'Download PDF'}
-                        </Button>
-                        <Button 
-                            type="button" 
-                            onClick={handleConfirm}
-                            disabled={isConfirming}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex-1 sm:flex-none shadow-md"
-                        >
-                            {isConfirming ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-                            Confirm & Continue
-                        </Button>
+                    <div>
+                        <h3 className="font-bold text-base text-slate-900 leading-tight">Official Onboarding Dossier</h3>
+                        <p className="text-xs text-slate-500">Ref: ONB-{d.personal.employeeId || 'DRAFT'} • Verify all candidate details</p>
                     </div>
                 </div>
 
-                {/* ── Official Employee Onboarding Booklet ── */}
-                <div className="space-y-6">
-                    {/* PAGE 1: Personal Dossier & Identity Record */}
+                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                    <Button 
+                        type="button" 
+                        onClick={() => window.print()} 
+                        variant="outline" 
+                        size="sm"
+                        className="hidden md:flex"
+                    >
+                        <Printer className="h-4 w-4 mr-1.5" /> Print
+                    </Button>
+                    <Button 
+                        type="button" 
+                        onClick={handleExport} 
+                        variant="outline" 
+                        disabled={isGenerating}
+                        size="sm"
+                        className="flex-1 sm:flex-none"
+                    >
+                        {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin text-emerald-600" /> : <Download className="mr-2 h-4 w-4" />}
+                        {isGenerating ? 'Generating...' : 'Download PDF'}
+                    </Button>
+                    <Button 
+                        type="button" 
+                        onClick={handleConfirm}
+                        disabled={isConfirming}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex-1 sm:flex-none shadow-md"
+                        size="sm"
+                    >
+                        {isConfirming ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                        Confirm & Continue
+                    </Button>
+                    <button 
+                        type="button" 
+                        onClick={onClose} 
+                        className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors ml-1"
+                        aria-label="Close modal"
+                    >
+                        <X className="h-5 w-5" />
+                    </button>
+                </div>
+            </header>
+
+            {/* Scrollable Booklet Content */}
+            <main className="flex-1 overflow-y-auto p-3 sm:p-6 lg:p-8 bg-slate-100">
+                <div className="max-w-4xl mx-auto space-y-6">
                     <div className="bg-white rounded-2xl border border-slate-300 shadow-xl p-6 sm:p-10 text-slate-800 text-xs sm:text-sm">
                         {/* Company Header */}
                         <div className="border-b-2 border-emerald-700 pb-4 mb-6 flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -193,7 +156,7 @@ const OnboardingPdfOutput: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* Top Card: Photo + Core Badges */}
+                        {/* Top Profile Card: Photo + Core Details */}
                         <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-6 flex flex-col sm:flex-row items-center gap-6">
                             <div className="w-24 h-28 bg-slate-200 rounded-lg overflow-hidden flex-shrink-0 border-2 border-slate-300 flex items-center justify-center shadow-inner">
                                 {photoUrl ? (
@@ -222,7 +185,7 @@ const OnboardingPdfOutput: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* Section: Personal Particulars */}
+                        {/* Section 1: Personal Particulars */}
                         <div className="mb-6">
                             <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-md mb-3 flex items-center gap-2">
                                 <User className="h-3.5 w-3.5" /> 1. Personal Particulars & Identity
@@ -240,7 +203,7 @@ const OnboardingPdfOutput: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* Section: Contact & Addresses */}
+                        {/* Section 2: Residential Addresses */}
                         <div className="mb-6">
                             <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-md mb-3 flex items-center gap-2">
                                 <MapPin className="h-3.5 w-3.5" /> 2. Residential & Communication Addresses
@@ -265,7 +228,7 @@ const OnboardingPdfOutput: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* Section: Statutory PF & ESI Details */}
+                        {/* Section 3: Statutory Compliance */}
                         <div className="mb-6">
                             <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-md mb-3 flex items-center gap-2">
                                 <ShieldCheck className="h-3.5 w-3.5" /> 3. Statutory Compliance (PF Form 11 & ESI)
@@ -278,7 +241,7 @@ const OnboardingPdfOutput: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* Section: Bank Mandate */}
+                        {/* Section 4: Bank Mandate */}
                         <div className="mb-6">
                             <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-md mb-3 flex items-center gap-2">
                                 <CreditCard className="h-3.5 w-3.5" /> 4. Bank Mandate & Salary Disbursal Account
@@ -291,7 +254,7 @@ const OnboardingPdfOutput: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* Section: Dependents & Education */}
+                        {/* Section 5: Education & Family */}
                         {hasEducationOrFamily && (
                             <div className={`mb-6 grid gap-4 ${validEducation.length > 0 && validFamily.length > 0 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
                                 {validEducation.length > 0 && (
@@ -331,7 +294,7 @@ const OnboardingPdfOutput: React.FC = () => {
                             </div>
                         )}
 
-                        {/* Section: Uniform Allocation (if any) */}
+                        {/* Section 6: Uniform Allotment (if any) */}
                         {validUniforms.length > 0 && (
                             <div className="mb-6">
                                 <h4 className="text-xs font-bold uppercase text-slate-600 mb-2 flex items-center gap-1.5"><Shirt className="h-3.5 w-3.5 text-emerald-700" /> Uniform Allotment Docket</h4>
@@ -372,25 +335,10 @@ const OnboardingPdfOutput: React.FC = () => {
                         </div>
                     </div>
                 </div>
-
-                {/* Bottom Action Strip */}
-                <div className="mt-6 flex justify-between items-center print:hidden">
-                    <Button type="button" onClick={() => navigate(-1)} variant="secondary">
-                        <ArrowLeft className="mr-2 h-4 w-4" /> Return to Review
-                    </Button>
-                    <Button 
-                        type="button" 
-                        onClick={handleConfirm}
-                        disabled={isConfirming}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-lg text-sm px-6 py-2.5"
-                    >
-                        {isConfirming ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-                        Confirm & Proceed to e-Signature
-                    </Button>
-                </div>
-            </div>
-        </div>
+            </main>
+        </div>,
+        document.body
     );
 };
 
-export default OnboardingPdfOutput;
+export default OnboardingBookletModal;

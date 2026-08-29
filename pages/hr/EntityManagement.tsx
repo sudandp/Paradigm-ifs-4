@@ -5,7 +5,7 @@ import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import { api } from '../../services/api';
 import type { OrganizationGroup, Entity, Company, RegistrationType, Organization, SiteConfiguration, UploadedFile } from '../../types';
-import { Plus, Save, Edit, Trash2, Building, ChevronRight, Eye, CheckCircle, AlertCircle, Search, ClipboardList, Settings, Calculator, Users, Badge, HeartPulse, Archive, Wrench, Shirt, FileText, CalendarDays, BarChart, Mail, Sun, UserX, IndianRupee, ChevronLeft, HelpCircle, Loader2, Clock, Zap, SlidersHorizontal } from 'lucide-react';
+import { Plus, Save, Edit, Trash2, Building, ChevronRight, Eye, CheckCircle, AlertCircle, Search, ClipboardList, Settings, Calculator, Users, Badge, HeartPulse, Archive, Wrench, Shirt, FileText, CalendarDays, BarChart, Mail, Sun, UserX, IndianRupee, ChevronLeft, HelpCircle, Loader2, Clock, Zap, SlidersHorizontal, LayoutGrid, List, MapPin, Building2, Layers, ChevronDown, ChevronUp, Sparkles, Filter } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import EntityForm from '../../components/hr/EntityForm';
@@ -36,6 +36,7 @@ import SalaryLineItemConfig from '../../components/hr/SalaryLineItemConfig';
 import CompanyHolidaySelectionConfig from '../../components/hr/CompanyHolidaySelectionConfig';
 import TemplatesHub from '../../components/hr/TemplatesHub';
 import AutoSiteConfig from '../../components/hr/AutoSiteConfig';
+import { getProxyUrl } from '../../utils/fileUrl';
 
 
 const NameInputModal: React.FC<{
@@ -80,6 +81,78 @@ const NameInputModal: React.FC<{
     );
 };
 
+const renderLocationBadge = (location?: string, size: 'xs' | 'sm' | 'md' = 'sm') => {
+    if (!location) return null;
+    const lower = location.toLowerCase().trim();
+    const isBlr = lower.includes('bang') || lower.includes('beng');
+    const isHyd = lower.includes('hyd') || lower.includes('secunder');
+    const isChennai = lower.includes('chennai') || lower.includes('mds');
+    const isMumbai = lower.includes('mumbai') || lower.includes('pune') || lower.includes('bombay');
+    const isDelhi = lower.includes('delhi') || lower.includes('noida') || lower.includes('gurgaon');
+
+    let badgeTheme = {
+        bg: 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
+        dot: 'bg-slate-400',
+        text: 'text-slate-700 dark:text-slate-300',
+        label: location
+    };
+
+    if (isBlr) {
+        badgeTheme = {
+            bg: 'bg-emerald-50 text-emerald-800 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-700',
+            dot: 'bg-emerald-600 dark:bg-emerald-400',
+            text: 'text-emerald-800 dark:text-emerald-200 font-bold',
+            label: 'Bangalore'
+        };
+    } else if (isHyd) {
+        badgeTheme = {
+            bg: 'bg-sky-50 text-sky-800 border-sky-300 dark:bg-sky-950/60 dark:text-sky-300 dark:border-sky-700',
+            dot: 'bg-sky-600 dark:bg-sky-400',
+            text: 'text-sky-800 dark:text-sky-200 font-bold',
+            label: 'Hyderabad'
+        };
+    } else if (isChennai) {
+        badgeTheme = {
+            bg: 'bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-700',
+            dot: 'bg-amber-600 dark:bg-amber-400',
+            text: 'text-amber-800 dark:text-amber-200 font-bold',
+            label: location
+        };
+    } else if (isMumbai || isDelhi) {
+        badgeTheme = {
+            bg: 'bg-indigo-50 text-indigo-800 border-indigo-300 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-700',
+            dot: 'bg-indigo-600 dark:bg-indigo-400',
+            text: 'text-indigo-800 dark:text-indigo-200 font-bold',
+            label: location
+        };
+    }
+
+    if (size === 'md') {
+        return (
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold border shadow-xs tracking-tight ${badgeTheme.bg}`}>
+                <span className={`h-2 w-2 rounded-full shadow-xs ${badgeTheme.dot}`} />
+                <span className={badgeTheme.text}>{location}</span>
+            </span>
+        );
+    }
+
+    if (size === 'xs') {
+        return (
+            <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border shadow-2xs ${badgeTheme.bg}`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${badgeTheme.dot}`} />
+                <span className={badgeTheme.text}>{location}</span>
+            </span>
+        );
+    }
+
+    return (
+        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wider border shadow-2xs ${badgeTheme.bg}`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${badgeTheme.dot}`} />
+            <span className={badgeTheme.text}>{location}</span>
+        </span>
+    );
+};
+
 const subcategories = [
     { key: 'client_structure', label: 'Client Structure', icon: ClipboardList },
     { key: 'site_configuration', label: 'Site Configuration', icon: Settings },
@@ -114,6 +187,42 @@ const EntityManagement: React.FC = () => {
     const [viewingClients, setViewingClients] = useState<{ companyName: string; clients: Entity[] } | null>(null);
     const [isInstructionsOpen, setIsInstructionsOpen] = useState(false);
     const isMobile = useMediaQuery('(max-width: 767px)');
+    const [structureViewMode, setStructureViewMode] = useState<'grid' | 'table'>('grid');
+    const [companySearchTerms, setCompanySearchTerms] = useState<Record<string, string>>({});
+
+    const structureStats = useMemo(() => {
+        const totalGroups = groups.length;
+        let totalCompanies = 0;
+        let totalEntities = 0;
+        let blrCount = 0;
+        let hydCount = 0;
+
+        groups.forEach(g => {
+            totalCompanies += g.companies.length;
+            g.companies.forEach(c => {
+                totalEntities += c.entities.length;
+                c.entities.forEach(e => {
+                    const loc = (e.location || c.location || '').toLowerCase();
+                    if (loc.includes('bang') || loc.includes('beng')) blrCount++;
+                    else if (loc.includes('hyd')) hydCount++;
+                });
+            });
+        });
+
+        return { totalGroups, totalCompanies, totalEntities, blrCount, hydCount };
+    }, [groups]);
+
+    const toggleExpandAll = () => {
+        const anyExpanded = Object.values(expanded).some(Boolean);
+        const newExpanded: Record<string, boolean> = {};
+        groups.forEach(g => {
+            newExpanded[g.id] = !anyExpanded;
+            g.companies.forEach(c => {
+                newExpanded[c.id] = !anyExpanded;
+            });
+        });
+        setExpanded(newExpanded);
+    };
 
     // ── Manual / Auto config mode state ─────────────────────────────────────
     // Tracks 'manual' | 'auto' per site ID. Seeded from entity.configMode, defaults to 'manual'.
@@ -169,16 +278,24 @@ const EntityManagement: React.FC = () => {
     }, [groups]);
 
 
+    const [staffUsers, setStaffUsers] = useState<Array<{ id: string; name: string; photo_url?: string | null }>>([]);
+
     useEffect(() => {
         const fetchData = async () => {
             setIsLoading(true);
             try {
-                const [structure, orgs] = await Promise.all([
+                const [structure, orgs, usersRes] = await Promise.all([
                     api.getOrganizationStructure(),
-                    api.getOrganizations()
+                    api.getOrganizations(),
+                    api.getUsers({ fetchAll: true }).catch(() => [])
                 ]);
                 setGroups(structure);
                 setOrganizations(orgs);
+                if (Array.isArray(usersRes)) {
+                    setStaffUsers(usersRes.map((u: any) => ({ id: u.id, name: u.name, photo_url: u.photo_url || u.avatar_url })));
+                } else if (usersRes && Array.isArray((usersRes as any).users)) {
+                    setStaffUsers((usersRes as any).users.map((u: any) => ({ id: u.id, name: u.name, photo_url: u.photo_url || u.avatar_url })));
+                }
             } catch (error) {
                 setToast({ message: "Failed to load data.", type: 'error' });
             } finally {
@@ -187,6 +304,53 @@ const EntityManagement: React.FC = () => {
         };
         fetchData();
     }, []);
+
+    const getOpsManagerInfo = useCallback((kamName: string | undefined) => {
+        if (!kamName || !kamName.trim()) return null;
+        const cleanKam = kamName.toLowerCase().replace(/[^a-z0-9]/g, ' ').trim();
+        const kamWords = cleanKam.split(/\s+/).filter(w => w.length >= 3);
+        if (kamWords.length === 0) return { displayName: kamName, photoUrl: null };
+
+        let bestMatch: { id: string; name: string; photo_url?: string | null } | null = null;
+        let highestScore = 0;
+
+        for (const u of staffUsers) {
+            if (!u.name) continue;
+            const cleanUser = u.name.toLowerCase().replace(/[^a-z0-9]/g, ' ').trim();
+            const userWords = cleanUser.split(/\s+/).filter(Boolean);
+            
+            let score = 0;
+            if (cleanUser === cleanKam) {
+                score += 100;
+            }
+            
+            for (const kw of kamWords) {
+                if (userWords.includes(kw)) {
+                    score += 50;
+                } else if (userWords.some(uw => uw.startsWith(kw) || (kw.length >= 4 && kw.startsWith(uw)))) {
+                    score += 30;
+                }
+            }
+            
+            if (score > 0 && u.photo_url) {
+                score += 10;
+            }
+            
+            if (score > highestScore) {
+                highestScore = score;
+                bestMatch = u;
+            }
+        }
+
+        if (highestScore >= 30 && bestMatch) {
+            return {
+                displayName: bestMatch.name || kamName,
+                photoUrl: bestMatch.photo_url ? getProxyUrl(bestMatch.photo_url) : null
+            };
+        }
+
+        return { displayName: kamName, photoUrl: null };
+    }, [staffUsers]);
 
     const filteredGroups = useMemo(() => {
         const lowerSearch = searchTerm.toLowerCase().trim();
@@ -484,7 +648,7 @@ const EntityManagement: React.FC = () => {
             if (groupIndex === -1) return;
 
             setToast({ message: 'Saving company & uploading files...', type: 'success' });
-            let updatedData = { ...data };
+            const updatedData = { ...data };
             
             // 1. Upload Logo if present
             if (pendingFiles['logo'] && !Array.isArray(pendingFiles['logo'])) {
@@ -683,96 +847,378 @@ const EntityManagement: React.FC = () => {
 
     const renderContent = () => {
         switch (activeSubcategory) {
-            case 'client_structure':
+            case 'client_structure': {
+                const isAnyExpanded = Object.values(expanded).some(Boolean);
                 return (
                     <div className="space-y-6">
-                        <div className="flex justify-between items-center border-b border-border pb-4">
-                            <div>
-                                <h4 className="text-xl font-bold text-primary-text">Client Structure</h4>
-                                <p className="text-sm text-muted">Manage your organizational hierarchy, companies, and societies.</p>
+                        {/* Executive KPI Summary Cards */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+                            <div className="bg-card border border-border/80 rounded-xl p-3.5 shadow-xs flex items-center gap-3">
+                                <div className="p-2.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-lg shrink-0">
+                                    <Layers className="h-5 w-5" />
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="text-[11px] font-medium text-muted uppercase tracking-wider">Total Groups</div>
+                                    <div className="text-lg font-extrabold text-primary-text">{structureStats.totalGroups}</div>
+                                </div>
                             </div>
-                            <Button 
-                                onClick={() => navigate('/hr/entity-management/add-group')} 
-                                style={{ backgroundColor: '#006B3F', color: '#FFFFFF', borderColor: '#005632' }} 
-                                className="border hover:opacity-90 text-white shadow-md hover:shadow-lg transition-all duration-300"
-                            >
-                                <Plus className="mr-2 h-5 w-5" /> Add New Group
-                            </Button>
+
+                            <div className="bg-card border border-border/80 rounded-xl p-3.5 shadow-xs flex items-center gap-3">
+                                <div className="p-2.5 bg-sky-500/10 text-sky-600 dark:text-sky-400 rounded-lg shrink-0">
+                                    <Building2 className="h-5 w-5" />
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="text-[11px] font-medium text-muted uppercase tracking-wider">Companies</div>
+                                    <div className="text-lg font-extrabold text-primary-text">{structureStats.totalCompanies}</div>
+                                </div>
+                            </div>
+
+                            <div className="bg-card border border-border/80 rounded-xl p-3.5 shadow-xs flex items-center gap-3">
+                                <div className="p-2.5 bg-teal-500/10 text-teal-600 dark:text-teal-400 rounded-lg shrink-0">
+                                    <Building className="h-5 w-5" />
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="text-[11px] font-medium text-muted uppercase tracking-wider">Total Societies</div>
+                                    <div className="text-lg font-extrabold text-primary-text">{structureStats.totalEntities}</div>
+                                </div>
+                            </div>
+
+                            <div className="bg-card border border-border/80 rounded-xl p-3.5 shadow-xs flex items-center gap-3">
+                                <div className="p-2.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-lg shrink-0">
+                                    <MapPin className="h-5 w-5" />
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="text-[11px] font-medium text-muted uppercase tracking-wider">Regional Hubs</div>
+                                    <div className="text-xs font-bold text-primary-text flex items-center gap-1.5 mt-0.5">
+                                        <span className="text-emerald-700 dark:text-emerald-300 font-bold">{structureStats.blrCount} BLR</span>
+                                        <span className="text-muted">•</span>
+                                        <span className="text-sky-700 dark:text-sky-300 font-bold">{structureStats.hydCount} HYD</span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
-                        <div className="space-y-4">
+                        {/* Top Hierarchy Header & Global Actions */}
+                        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 bg-card border border-border/70 p-4 rounded-xl shadow-xs">
+                            <div>
+                                <h4 className="text-lg font-bold text-primary-text">Organizational Hierarchy</h4>
+                                <p className="text-xs text-muted">Groups, operating entities, and managed residential/commercial societies</p>
+                            </div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                                {/* View mode toggle */}
+                                <div className="inline-flex rounded-lg border border-border bg-page/40 p-0.5">
+                                    <button
+                                        type="button"
+                                        onClick={() => setStructureViewMode('grid')}
+                                        className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
+                                            structureViewMode === 'grid'
+                                                ? 'bg-card text-primary-text shadow-xs font-bold'
+                                                : 'text-muted hover:text-primary-text'
+                                        }`}
+                                        title="Card Grid View"
+                                    >
+                                        <LayoutGrid className="h-3.5 w-3.5" />
+                                        Cards
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setStructureViewMode('table')}
+                                        className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
+                                            structureViewMode === 'table'
+                                                ? 'bg-card text-primary-text shadow-xs font-bold'
+                                                : 'text-muted hover:text-primary-text'
+                                        }`}
+                                        title="Compact Table View"
+                                    >
+                                        <List className="h-3.5 w-3.5" />
+                                        Table
+                                    </button>
+                                </div>
+
+                                {/* Expand/Collapse All */}
+                                <Button 
+                                    size="sm" 
+                                    variant="outline" 
+                                    onClick={toggleExpandAll}
+                                    className="text-xs font-semibold h-8"
+                                >
+                                    {isAnyExpanded ? <ChevronUp className="mr-1.5 h-3.5 w-3.5" /> : <ChevronDown className="mr-1.5 h-3.5 w-3.5" />}
+                                    {isAnyExpanded ? 'Collapse All' : 'Expand All'}
+                                </Button>
+
+                                {/* Add Group */}
+                                <Button 
+                                    onClick={() => navigate('/hr/entity-management/add-group')} 
+                                    size="sm"
+                                    style={{ backgroundColor: '#006B3F', color: '#FFFFFF', borderColor: '#005632' }} 
+                                    className="border hover:opacity-90 text-white text-xs font-semibold h-8 shadow-xs"
+                                >
+                                    <Plus className="mr-1.5 h-4 w-4" /> Add Group
+                                </Button>
+                            </div>
+                        </div>
+
+                        {/* Groups & Companies Tree */}
+                        <div className="space-y-5">
                             {filteredGroups.length === 0 ? (
                                 <div className="text-center py-12 bg-page/30 rounded-xl border border-dashed border-border">
                                     <p className="text-muted">No groups found matching your search.</p>
                                 </div>
                             ) : (
                                 filteredGroups.map(group => (
-                                    <div key={group.id} className="bg-card border border-border shadow-md rounded-xl overflow-hidden">
-                                        <div className="p-4 flex items-center justify-between bg-page/5">
+                                    <div key={group.id} className="bg-card border border-border shadow-sm rounded-xl overflow-hidden border-t-4 border-t-[#006B3F]">
+                                        <div className="p-4 flex items-center justify-between bg-page/20 border-b border-border/60">
                                             <div className="flex items-center gap-3">
                                                 <button onClick={() => toggleExpand(group.id)} className="p-1 hover:bg-page rounded-md transition-colors">
                                                     <ChevronRight className={`h-5 w-5 text-accent transition-transform duration-200 ${expanded[group.id] ? 'rotate-90' : ''}`} />
                                                 </button>
-                                                <Building className="h-5 w-5 text-muted" />
+                                                <Building className="h-5 w-5 text-emerald-700 dark:text-emerald-400" />
                                                 <span className="font-bold text-lg text-primary-text">{group.name}</span>
+                                                <span className="text-xs font-medium text-muted bg-page px-2 py-0.5 rounded-full border border-border/60">
+                                                    {group.companies.length} {group.companies.length === 1 ? 'Company' : 'Companies'}
+                                                </span>
                                             </div>
                                             <div className="flex items-center gap-2">
-                                                <Button size="sm" variant="outline" className="h-9 px-3 border-accent/20 text-accent hover:bg-accent/5 font-bold" onClick={() => setCompanyFormState({ isOpen: true, mode: 'add', groupId: group.id, groupName: group.name, initialData: null })}>
-                                                    <Plus className="mr-2 h-4 w-4" /> Add Company
+                                                <Button size="sm" variant="outline" className="h-8 px-2.5 border-accent/20 text-accent hover:bg-accent/5 font-semibold text-xs" onClick={() => setCompanyFormState({ isOpen: true, mode: 'add', groupId: group.id, groupName: group.name, initialData: null })}>
+                                                    <Plus className="mr-1.5 h-3.5 w-3.5" /> Add Company
                                                 </Button>
-                                                <Button variant="icon" className="h-9 w-9 hover:bg-blue-500/10 text-blue-600" onClick={() => setNameModalState({ isOpen: true, mode: 'edit', type: 'group', id: group.id, initialName: group.name, title: 'Edit Group Name', label: 'Group Name' })}>
-                                                    <Edit className="h-4 w-4" />
+                                                <Button variant="icon" className="h-8 w-8 hover:bg-blue-500/10 text-blue-600" onClick={() => setNameModalState({ isOpen: true, mode: 'edit', type: 'group', id: group.id, initialName: group.name, title: 'Edit Group Name', label: 'Group Name' })}>
+                                                    <Edit className="h-3.5 w-3.5" />
                                                 </Button>
-                                                <Button variant="icon" className="h-9 w-9 hover:bg-red-500/10 text-red-500" onClick={() => handleDeleteClick('group', group.id, group.name)}>
-                                                    <Trash2 className="h-4 w-4" />
+                                                <Button variant="icon" className="h-8 w-8 hover:bg-red-500/10 text-red-500" onClick={() => handleDeleteClick('group', group.id, group.name)}>
+                                                    <Trash2 className="h-3.5 w-3.5" />
                                                 </Button>
                                             </div>
                                         </div>
                                         {expanded[group.id] && (
-                                            <div className="px-4 pb-4 space-y-3">
-                                                {group.companies.map(company => (
-                                                    <div key={company.id} className="border border-border/60 rounded-lg overflow-hidden">
-                                                        <div className="p-3 flex items-center justify-between bg-page/10">
-                                                            <div className="flex items-center gap-3">
-                                                                <button onClick={() => toggleExpand(company.id)} className="p-1 hover:bg-page rounded-md transition-colors">
-                                                                    <ChevronRight className={`h-4 w-4 text-muted transition-transform duration-200 ${expanded[company.id] ? 'rotate-90' : ''}`} />
-                                                                </button>
-                                                                <span className="font-semibold text-primary-text">
-                                                                    {company.name} 
-                                                                    {company.location && <span className="text-xs font-normal text-muted ml-2 bg-page px-2 py-0.5 rounded-full border border-border">{company.location}</span>}
-                                                                </span>
-                                                                <span className="text-xs text-muted ml-2">({company.entities.length} societies)</span>
-                                                            </div>
-                                                            <div className="flex items-center gap-2">
-                                                                <Button variant="icon" size="sm" className="h-8 w-8 hover:bg-accent/10 text-accent" onClick={() => setViewingClients({ companyName: company.name, clients: company.entities })}><Eye className="h-4 w-4" /></Button>
-                                                                <Button variant="icon" size="sm" className="h-8 w-8 hover:bg-accent/10 text-accent" onClick={() => handleAddClient(company.name, company.id)}><Plus className="h-4 w-4" /></Button>
-                                                                <Button variant="icon" size="sm" className="h-8 w-8 hover:bg-blue-500/5 text-blue-500" onClick={() => setCompanyFormState({ isOpen: true, mode: 'edit', groupId: group.id, groupName: group.name, initialData: company })}><Edit className="h-4 w-4" /></Button>
-                                                                <Button variant="icon" size="sm" className="h-8 w-8 hover:bg-red-500/5 text-red-500" onClick={() => handleDeleteClick('company', company.id, company.name)}><Trash2 className="h-4 w-4" /></Button>
-                                                            </div>
-                                                        </div>
-                                                        {expanded[company.id] && (
-                                                            <div className="p-2 space-y-1 bg-page/5">
-                                                                {company.entities.length === 0 ? (
-                                                                    <p className="text-xs text-muted text-center py-2">No societies added yet.</p>
-                                                                ) : (
-                                                                    company.entities.map(client => (
-                                                                        <div key={client.id} className="px-3 py-2 flex items-center justify-between hover:bg-page rounded-md group transition-colors">
-                                                                            <span className="text-sm text-primary-text flex items-center gap-2">
-                                                                                <Building className="h-3.5 w-3.5 text-muted/60" />
-                                                                                {client.name}
-                                                                                {(client.location || company.location) && <span className="text-[10px] text-muted uppercase tracking-tight ml-1 font-medium bg-page/50 px-1.5 py-0.5 rounded border border-border/40">{client.location || company.location}</span>}
-                                                                            </span>
-                                                                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                                <Button variant="icon" size="sm" className="h-7 w-7 hover:bg-blue-500/10 text-blue-500" onClick={() => handleEditClient(client, company.name, company.id)}><Edit className="h-3.5 w-3.5" /></Button>
-                                                                                <Button variant="icon" size="sm" className="h-7 w-7 hover:bg-red-500/10 text-red-500" onClick={() => handleDeleteClick('client', client.id, client.name)}><Trash2 className="h-3.5 w-3.5" /></Button>
-                                                                            </div>
+                                            <div className="p-4 space-y-4 bg-page/10">
+                                                {group.companies.map(company => {
+                                                    const compSearch = (companySearchTerms[company.id] || '').toLowerCase().trim();
+                                                    const visibleEntities = compSearch 
+                                                        ? company.entities.filter(e => e.name.toLowerCase().includes(compSearch) || (e.siteManagement?.keyAccountManager || '').toLowerCase().includes(compSearch))
+                                                        : company.entities;
+
+                                                    return (
+                                                        <div key={company.id} className="border border-border/80 rounded-xl overflow-hidden shadow-2xs bg-card transition-all">
+                                                            {/* Company Header Bar */}
+                                                            <div className="p-3.5 flex flex-wrap items-center justify-between gap-3 bg-page/30 hover:bg-page/50 transition-colors border-b border-border/60">
+                                                                <div className="flex items-center gap-3 flex-wrap">
+                                                                    <button 
+                                                                        onClick={() => toggleExpand(company.id)} 
+                                                                        className="p-1 hover:bg-card rounded-md transition-colors text-muted hover:text-primary-text"
+                                                                    >
+                                                                        <ChevronRight className={`h-4 w-4 transition-transform duration-200 ${expanded[company.id] ? 'rotate-90 text-emerald-600' : ''}`} />
+                                                                    </button>
+                                                                    
+                                                                    <span className="font-bold text-sm sm:text-base text-primary-text tracking-tight">
+                                                                        {company.name}
+                                                                    </span>
+                                                                    {company.location && renderLocationBadge(company.location, 'md')}
+                                                                    
+                                                                    <span className="text-xs font-semibold text-slate-600 bg-slate-100 dark:bg-slate-800 dark:text-slate-300 px-2.5 py-0.5 rounded-full border border-slate-200 dark:border-slate-700">
+                                                                        {company.entities.length} {company.entities.length === 1 ? 'society' : 'societies'}
+                                                                    </span>
+                                                                </div>
+
+                                                                <div className="flex items-center gap-2">
+                                                                    {/* In-company search filter */}
+                                                                    {expanded[company.id] && company.entities.length > 5 && (
+                                                                        <div className="relative">
+                                                                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted" />
+                                                                            <input
+                                                                                type="text"
+                                                                                placeholder="Filter societies..."
+                                                                                value={companySearchTerms[company.id] || ''}
+                                                                                onChange={e => setCompanySearchTerms({ ...companySearchTerms, [company.id]: e.target.value })}
+                                                                                className="text-xs pl-8 pr-3 py-1 bg-page/80 border border-border/80 rounded-lg focus:outline-none focus:border-emerald-500 w-36 sm:w-44 transition-all"
+                                                                            />
                                                                         </div>
-                                                                    ))
-                                                                )}
+                                                                    )}
+
+                                                                    <Button variant="icon" size="sm" className="h-8 w-8 hover:bg-emerald-500/10 text-emerald-600" title="View Summary" onClick={() => setViewingClients({ companyName: company.name, clients: company.entities })}>
+                                                                        <Eye className="h-4 w-4" />
+                                                                    </Button>
+                                                                    <Button variant="icon" size="sm" className="h-8 w-8 hover:bg-emerald-500/10 text-emerald-600" title="Add Society" onClick={() => handleAddClient(company.name, company.id)}>
+                                                                        <Plus className="h-4 w-4" />
+                                                                    </Button>
+                                                                    <Button variant="icon" size="sm" className="h-8 w-8 hover:bg-blue-500/10 text-blue-500" title="Edit Company" onClick={() => setCompanyFormState({ isOpen: true, mode: 'edit', groupId: group.id, groupName: group.name, initialData: company })}>
+                                                                        <Edit className="h-4 w-4" />
+                                                                    </Button>
+                                                                    <Button variant="icon" size="sm" className="h-8 w-8 hover:bg-red-500/10 text-red-500" title="Delete Company" onClick={() => handleDeleteClick('company', company.id, company.name)}>
+                                                                        <Trash2 className="h-4 w-4" />
+                                                                    </Button>
+                                                                </div>
                                                             </div>
-                                                        )}
-                                                    </div>
-                                                ))}
+
+                                                            {/* Societies Body */}
+                                                            {expanded[company.id] && (
+                                                                <div className="p-3.5 bg-page/5">
+                                                                    {visibleEntities.length === 0 ? (
+                                                                        <div className="text-center py-6 text-xs text-muted">
+                                                                            {compSearch ? `No societies matching "${compSearch}" in ${company.name}` : 'No societies added yet.'}
+                                                                        </div>
+                                                                    ) : structureViewMode === 'grid' ? (
+                                                                        /* Modern Responsive Card Grid */
+                                                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                                                            {visibleEntities.map(client => {
+                                                                                const kam = client.siteManagement?.keyAccountManager;
+                                                                                const units = client.siteManagement?.unitCount;
+                                                                                const cycle = (client.billingControls as any)?.billingCycle || (client.billingControls as any)?.billingCycleStart;
+
+                                                                                return (
+                                                                                    <div 
+                                                                                        key={client.id} 
+                                                                                        className="group relative bg-card hover:bg-card/90 border border-border/80 hover:border-emerald-500/40 rounded-xl p-3 shadow-2xs hover:shadow-xs transition-all duration-200 flex flex-col justify-between"
+                                                                                    >
+                                                                                        <div>
+                                                                                            {/* Top row */}
+                                                                                            <div className="flex items-start justify-between gap-2 mb-2">
+                                                                                                <div className="flex items-center gap-2 min-w-0">
+                                                                                                    <div className="p-1.5 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 rounded-lg shrink-0">
+                                                                                                        <Building className="h-4 w-4" />
+                                                                                                    </div>
+                                                                                                    <span className="font-bold text-xs sm:text-sm text-primary-text truncate group-hover:text-emerald-700 dark:group-hover:text-emerald-400 transition-colors" title={client.name}>
+                                                                                                        {client.name}
+                                                                                                    </span>
+                                                                                                </div>
+                                                                                                <div className="shrink-0">
+                                                                                                    {renderLocationBadge(client.location || company.location, 'xs')}
+                                                                                                </div>
+                                                                                            </div>
+
+                                                                                            {/* Metadata chips */}
+                                                                                            <div className="flex items-center gap-1.5 flex-wrap text-[10px] text-muted mb-2">
+                                                                                                {units ? (
+                                                                                                    <span className="bg-page px-1.5 py-0.5 rounded border border-border/60 font-medium text-primary-text">
+                                                                                                        🏢 {units} Units
+                                                                                                    </span>
+                                                                                                ) : null}
+                                                                                                {kam ? (() => {
+                                                                    const ops = getOpsManagerInfo(kam);
+                                                                    return (
+                                                                        <div 
+                                                                            className="inline-flex items-center gap-1.5 bg-page px-2 py-0.5 rounded-full border border-border/80 text-[10px] font-semibold text-primary-text shadow-2xs hover:border-emerald-500/50 transition-all max-w-[170px]" 
+                                                                            title={`Operations Manager / KAM: ${ops?.displayName || kam}`}
+                                                                        >
+                                                                            {ops?.photoUrl ? (
+                                                                                <img 
+                                                                                    src={ops.photoUrl} 
+                                                                                    alt={ops.displayName} 
+                                                                                    className="h-4 w-4 rounded-full object-cover ring-1 ring-emerald-500/40 shrink-0" 
+                                                                                    onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                                                                                />
+                                                                            ) : (
+                                                                                <div className="h-4 w-4 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-bold text-[9px] flex items-center justify-center shrink-0">
+                                                                                    {(ops?.displayName || kam).charAt(0).toUpperCase()}
+                                                                                </div>
+                                                                            )}
+                                                                            <span className="truncate">{ops?.displayName || kam}</span>
+                                                                        </div>
+                                                                    );
+                                                                })() : null}
+                                                                {cycle ? (
+                                                                    <span className="bg-page px-1.5 py-0.5 rounded border border-border/60 font-medium text-slate-600 dark:text-slate-400">
+                                                                        📄 {cycle.replace(' Billing Cycle', '')}
+                                                                    </span>
+                                                                ) : null}
+                                                                                            </div>
+                                                                                        </div>
+
+                                                                                        {/* Bottom Row */}
+                                                                                        <div className="pt-2 border-t border-border/40 flex items-center justify-between text-[11px] text-muted">
+                                                                                            <span className="text-[10px] font-mono text-muted/80 truncate max-w-[130px]">
+                                                                                                {client.gstNumber ? `GST: ${client.gstNumber.slice(0, 10)}...` : 'ID: ' + client.id.slice(0, 12)}
+                                                                                            </span>
+                                                                                            <div className="flex items-center gap-1">
+                                                                                                <button 
+                                                                                                    onClick={() => handleEditClient(client, company.name, company.id)}
+                                                                                                    className="p-1 text-muted hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded transition-colors"
+                                                                                                    title="Edit Society"
+                                                                                                >
+                                                                                                    <Edit className="h-3.5 w-3.5" />
+                                                                                                </button>
+                                                                                                <button 
+                                                                                                    onClick={() => handleDeleteClick('client', client.id, client.name)}
+                                                                                                    className="p-1 text-muted hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded transition-colors"
+                                                                                                    title="Delete Society"
+                                                                                                >
+                                                                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                                                                </button>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+                                                                    ) : (
+                                                                        /* Compact Table View */
+                                                                        <div className="overflow-x-auto border border-border/70 rounded-xl bg-card">
+                                                                            <table className="w-full text-left text-xs">
+                                                                                <thead className="bg-page/40 text-muted uppercase tracking-wider text-[10px] border-b border-border/60">
+                                                                                    <tr>
+                                                                                        <th className="px-3 py-2.5">Society Name</th>
+                                                                                        <th className="px-3 py-2.5">Location</th>
+                                                                                        <th className="px-3 py-2.5">Key Account Manager</th>
+                                                                                        <th className="px-3 py-2.5">Units / Flats</th>
+                                                                                        <th className="px-3 py-2.5">Billing Cycle</th>
+                                                                                        <th className="px-3 py-2.5 text-right">Actions</th>
+                                                                                    </tr>
+                                                                                </thead>
+                                                                                <tbody className="divide-y divide-border/40">
+                                                                                    {visibleEntities.map(client => (
+                                                                                        <tr key={client.id} className="hover:bg-page/50 transition-colors">
+                                                                                            <td className="px-3 py-2.5 font-bold text-primary-text flex items-center gap-2">
+                                                                                                <Building className="h-3.5 w-3.5 text-emerald-600/70 shrink-0" />
+                                                                                                {client.name}
+                                                                                            </td>
+                                                                                            <td className="px-3 py-2.5">
+                                                                                                {renderLocationBadge(client.location || company.location, 'xs')}
+                                                                                            </td>
+                                                                                            <td className="px-3 py-2.5 text-muted">
+                                                                {client.siteManagement?.keyAccountManager ? (() => {
+                                                                    const ops = getOpsManagerInfo(client.siteManagement.keyAccountManager);
+                                                                    return (
+                                                                        <div className="inline-flex items-center gap-2">
+                                                                            {ops?.photoUrl ? (
+                                                                                <img 
+                                                                                    src={ops.photoUrl} 
+                                                                                    alt={ops.displayName} 
+                                                                                    className="h-5 w-5 rounded-full object-cover ring-1 ring-emerald-500/40 shrink-0" 
+                                                                                    onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                                                                                />
+                                                                            ) : (
+                                                                                <div className="h-5 w-5 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-bold text-[10px] flex items-center justify-center shrink-0">
+                                                                                    {(ops?.displayName || client.siteManagement.keyAccountManager).charAt(0).toUpperCase()}
+                                                                                </div>
+                                                                            )}
+                                                                            <span className="font-semibold text-primary-text">{ops?.displayName || client.siteManagement.keyAccountManager}</span>
+                                                                        </div>
+                                                                    );
+                                                                })() : '—'}
+                                                            </td>
+                                                                                            <td className="px-3 py-2.5 text-muted">
+                                                                                                {client.siteManagement?.unitCount ? `${client.siteManagement.unitCount} Units` : '—'}
+                                                                                            </td>
+                                                                                            <td className="px-3 py-2.5 text-muted">
+                                                                                                {(client.billingControls as any)?.billingCycle || (client.billingControls as any)?.billingCycleStart || '-'}
+                                                                                            </td>
+                                                                                            <td className="px-3 py-2.5 text-right">
+                                                                                                <div className="flex items-center justify-end gap-1">
+                                                                                                    <Button variant="icon" size="sm" className="h-7 w-7 hover:bg-blue-500/10 text-blue-500" onClick={() => handleEditClient(client, company.name, company.id)} title="Edit"><Edit className="h-3.5 w-3.5" /></Button>
+                                                                                                    <Button variant="icon" size="sm" className="h-7 w-7 hover:bg-red-500/10 text-red-500" onClick={() => handleDeleteClick('client', client.id, client.name)} title="Delete"><Trash2 className="h-3.5 w-3.5" /></Button>
+                                                                                                </div>
+                                                                                            </td>
+                                                                                        </tr>
+                                                                                    ))}
+                                                                                </tbody>
+                                                                            </table>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
                                         )}
                                     </div>
@@ -781,7 +1227,8 @@ const EntityManagement: React.FC = () => {
                         </div>
                     </div>
                 );
-            case 'site_configuration':
+            }
+            case 'site_configuration': {
                 const siteConfigEntities = allClients.filter(client => {
                     const matchesSearch = searchTerm.trim() ? client.name.toLowerCase().includes(searchTerm.toLowerCase()) : true;
                     const matchesLocation = selectedLocation ? client.location === selectedLocation : true;
@@ -832,18 +1279,25 @@ const EntityManagement: React.FC = () => {
                                                                 <Building className="h-5 w-5" />
                                                             </div>
                                                             <div className="flex flex-col">
-                                                                <span>{entity.name}</span>
-                                                                <span className="text-xs font-normal text-muted mt-0.5">{entity.location || 'Default Region'}</span>
+                                                                <span className="text-sm font-bold text-primary-text">{entity.name}</span>
+                                                                <div className="mt-1 flex items-center gap-2 flex-wrap">
+                                                                    {renderLocationBadge(entity.location || 'Bangalore', 'xs')}
+                                                                    {entity.billingName && (
+                                                                        <span className="text-[11px] text-muted truncate max-w-xs font-normal" title={entity.billingName}>
+                                                                            • {entity.billingName}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
                                                                 {/* Mode badge */}
                                                                 {getSiteMode(entity) === 'auto' ? (
                                                                     <span
-                                                                        className="mt-1 self-start inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full text-white"
+                                                                        className="mt-1.5 self-start inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full text-white"
                                                                         style={{ background: 'linear-gradient(135deg,#0ea5e9,#6366f1)' }}
                                                                     >
                                                                         <Zap className="h-2.5 w-2.5" /> Auto Config
                                                                     </span>
                                                                 ) : (
-                                                                    <span className="mt-1 self-start inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full bg-[#006B3F]/10 text-[#006B3F] border border-[#006B3F]/20">
+                                                                    <span className="mt-1.5 self-start inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full bg-[#006B3F]/10 text-[#006B3F] border border-[#006B3F]/20">
                                                                         <SlidersHorizontal className="h-2.5 w-2.5" /> Manual Config
                                                                     </span>
                                                                 )}
@@ -923,6 +1377,7 @@ const EntityManagement: React.FC = () => {
                         )}
                     </div>
                 );
+            }
             case 'costing_resource': return <CostingResourceConfig sites={allClients} />;
             case 'backoffice_heads': return <BackofficeHeadsConfig />;
             case 'staff_designation': return <StaffDesignationConfig />;
@@ -948,9 +1403,10 @@ const EntityManagement: React.FC = () => {
             case 'attendance_bulk': return <TemplatesHub restrictToTemplateId="attendance_bulk" initialTemplateId="attendance_bulk" />;
             case 'attendance_monthly_bulk': return <TemplatesHub restrictToTemplateId="attendance_monthly_bulk" initialTemplateId="attendance_monthly_bulk" />;
             case 'templates_hub': return <TemplatesHub />;
-            default:
+            default: {
                 const activeItem = subcategories.find(sc => sc.key === activeSubcategory);
                 return <PlaceholderView title={activeItem?.label || 'Configuration'} />;
+            }
         }
     };
 

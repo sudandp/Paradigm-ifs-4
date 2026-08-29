@@ -372,7 +372,7 @@ const DatePicker: React.FC<DatePickerProps> = ({
       {label && (
         <label htmlFor={id} className={labelClassName || "block text-sm font-medium text-muted mb-1.5"}>
           {label}
-          {requiredIndicator && <span className="text-red-500 ml-1 font-bold">*</span>}
+          {(requiredIndicator || props.required) && <span className="text-red-500 ml-1 font-bold">*</span>}
         </label>
       )}
       {description && <p className="text-xs text-muted mb-1">{description}</p>}

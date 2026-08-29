@@ -180,11 +180,11 @@ const MultiUploadDocument: React.FC<MultiUploadDocumentProps> = ({
                                     </p>
                                 </div>
                                 <div className="flex items-center gap-1">
-                                    {(file.url || (file.preview && !file.preview.startsWith('blob:'))) && (
+                                    {(file.url || file.preview) && (
                                         <button 
                                             type="button" 
                                             onClick={() => {
-                                                const rawUrl = file.url || (file.preview && !file.preview.startsWith('blob:') ? file.preview : '');
+                                                const rawUrl = file.url || file.preview || '';
                                                 const proxyUrl = getProxyUrl(rawUrl);
                                                 const cleanName = getCleanFilename(file.name || rawUrl);
                                                 const params = new URLSearchParams({
@@ -193,7 +193,7 @@ const MultiUploadDocument: React.FC<MultiUploadDocumentProps> = ({
                                                 });
                                                 navigate(`/document-viewer?${params.toString()}`);
                                             }}
-                                            className="p-1.5 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                                            className="p-1.5 text-sky-600 hover:text-sky-800 hover:bg-sky-50 rounded-lg transition-colors"
                                             title="View Document"
                                         >
                                             <Eye className="w-4 h-4" />

@@ -50,7 +50,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(({
       {label && (
         <label htmlFor={selectId} className={labelClassName || "block text-sm font-medium text-muted"}>
           {label}
-          {requiredIndicator && <span className="text-red-500 ml-1 font-bold">*</span>}
+          {(requiredIndicator || props.required) && <span className="text-red-500 ml-1 font-bold">*</span>}
         </label>
       )}
       <div className={label ? "mt-1" : ""}>

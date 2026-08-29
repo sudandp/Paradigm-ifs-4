@@ -590,11 +590,19 @@ const VerificationDashboard: React.FC = () => {
         if (!submissions) return [];
         return submissions.filter(s => {
             const siteName = s.organizationName || s.organization?.organizationName || '';
+            const query = searchTerm.toLowerCase().trim();
+            if (!query) return true;
+            const first = s.personal?.firstName?.toLowerCase() || '';
+            const last = s.personal?.lastName?.toLowerCase() || '';
+            const empId = s.personal?.employeeId?.toLowerCase() || '';
+            const mobile = s.personal?.mobile?.toLowerCase() || '';
+            
             return (
-                s.personal.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                s.personal.lastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                s.personal.employeeId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                siteName.toLowerCase().includes(searchTerm.toLowerCase())
+                first.includes(query) ||
+                last.includes(query) ||
+                empId.includes(query) ||
+                mobile.includes(query) ||
+                siteName.toLowerCase().includes(query)
             );
         });
     }, [submissions, searchTerm]);
@@ -764,13 +772,14 @@ const VerificationDashboard: React.FC = () => {
         }
     };
 
-    const filterTabs = ['all', 'pending', 'verified', 'rejected'];
+    const filterTabs = ['all', 'draft', 'pending', 'verified', 'rejected'];
     const colSpan = statusFilter === 'verified' ? 7 : 8;
 
     // Calculate counts for each status
     const counts = useMemo(() => {
         return {
             all: submissions.length,
+            draft: submissions.filter(s => s.status === 'draft').length,
             pending: submissions.filter(s => s.status === 'pending').length,
             verified: submissions.filter(s => s.status === 'verified').length,
             rejected: submissions.filter(s => s.status === 'rejected').length
@@ -837,7 +846,7 @@ const VerificationDashboard: React.FC = () => {
             </div>
 
             {/* Metric KPI Cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4">
                 <div 
                     onClick={() => setStatusFilter('all')}
                     className={`cursor-pointer bg-white p-4 rounded-2xl border transition-all duration-200 shadow-xs hover:shadow-md ${
@@ -845,12 +854,32 @@ const VerificationDashboard: React.FC = () => {
                     }`}
                 >
                     <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Submissions</span>
+                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total</span>
                         <div className="p-2 bg-emerald-50 rounded-xl text-emerald-600">
                             <Users className="w-4 h-4" />
                         </div>
                     </div>
                     <div className="text-2xl font-black text-slate-900 mt-2">{counts.all}</div>
+                </div>
+
+                <div 
+                    onClick={() => setStatusFilter('draft')}
+                    className={`cursor-pointer bg-white p-4 rounded-2xl border transition-all duration-200 shadow-xs hover:shadow-md ${
+                        statusFilter === 'draft' ? 'border-slate-600 ring-2 ring-slate-600/20' : 'border-slate-200/80 hover:border-slate-300'
+                    }`}
+                >
+                    <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Drafts</span>
+                        <div className="p-2 bg-slate-100 rounded-xl text-slate-600">
+                            <Edit2 className="w-4 h-4" />
+                        </div>
+                    </div>
+                    <div className="flex items-baseline justify-between mt-2">
+                        <span className="text-2xl font-black text-slate-900">{counts.draft}</span>
+                        {counts.draft > 0 && (
+                            <span className="text-[10px] font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-full">In Progress</span>
+                        )}
+                    </div>
                 </div>
 
                 <div 
@@ -860,7 +889,7 @@ const VerificationDashboard: React.FC = () => {
                     }`}
                 >
                     <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Pending Review</span>
+                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Pending</span>
                         <div className="p-2 bg-amber-50 rounded-xl text-amber-600">
                             <Clock className="w-4 h-4" />
                         </div>
@@ -963,26 +992,31 @@ const VerificationDashboard: React.FC = () => {
                                 </div>
                             </div>
                         ) : (
-                            filteredSubmissions.map((s) => (
-                                <div key={s.id} className={`bg-white border ${s.requiresManualVerification ? 'border-amber-300 bg-amber-50/30' : 'border-slate-200/80'} rounded-2xl p-4 shadow-xs flex flex-col gap-3 relative overflow-hidden transition-all duration-300 hover:shadow-md`}>
+                            filteredSubmissions.map((s) => {
+                                const empDisplayName = [s.personal?.firstName, s.personal?.lastName].filter(Boolean).join(' ') || (s.personal?.mobile ? `Draft (${s.personal.mobile})` : (s.personal?.employeeId ? `Draft (${s.personal.employeeId})` : 'Draft Applicant'));
+                                const empInitials = ((s.personal?.firstName?.[0] || '') + (s.personal?.lastName?.[0] || '')) || 'DR';
+                                const isDraft = s.status === 'draft';
+
+                                return (
+                                <div key={s.id} className={`bg-white border ${s.requiresManualVerification ? 'border-amber-300 bg-amber-50/30' : isDraft ? 'border-slate-300 bg-slate-50/30' : 'border-slate-200/80'} rounded-2xl p-4 shadow-xs flex flex-col gap-3 relative overflow-hidden transition-all duration-300 hover:shadow-md`}>
                                     {s.requiresManualVerification && (
                                         <div className="absolute top-0 left-0 w-1.5 h-full bg-amber-500"></div>
                                     )}
                                     <div className="flex justify-between items-start">
                                         <div className="flex items-center gap-3">
-                                            <div className="h-11 w-11 rounded-full bg-gradient-to-br from-emerald-500 to-teal-700 text-white flex items-center justify-center font-black text-sm shadow-xs border-2 border-white">
-                                                {s.personal.firstName?.[0]}{s.personal.lastName?.[0]}
+                                            <div className={`h-11 w-11 rounded-full ${isDraft ? 'bg-slate-700' : 'bg-gradient-to-br from-emerald-500 to-teal-700'} text-white flex items-center justify-center font-black text-sm shadow-xs border-2 border-white`}>
+                                                {empInitials}
                                             </div>
                                             <div className="flex flex-col">
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-sm font-bold text-slate-900 capitalize">
-                                                        {s.personal.firstName} {s.personal.lastName}
+                                                        {empDisplayName}
                                                     </span>
                                                     {s.requiresManualVerification && (
                                                         <AlertTriangle className="h-4 w-4 text-amber-500" />
                                                     )}
                                                 </div>
-                                                <div className="font-mono text-xs text-slate-500 mt-0.5">{s.personal.employeeId}</div>
+                                                <div className="font-mono text-xs text-slate-500 mt-0.5">{s.personal.employeeId || 'ID: Pending'}</div>
                                             </div>
                                         </div>
                                         {statusFilter !== 'verified' && (
@@ -1038,6 +1072,15 @@ const VerificationDashboard: React.FC = () => {
                                     </div>
 
                                     <div className="flex items-center justify-end gap-2 mt-1 pt-3 border-t border-slate-100 flex-wrap">
+                                        {isDraft && (
+                                            <button 
+                                                onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)}
+                                                className="px-3 py-1.5 text-white bg-slate-800 hover:bg-slate-900 rounded-lg text-xs font-bold transition-all duration-200 flex items-center gap-1.5 shadow-xs"
+                                                title="Resume Incomplete Enrollment"
+                                            >
+                                                <Play className="h-3 w-3 fill-current" /> Resume
+                                            </button>
+                                        )}
                                         <button 
                                             onClick={() => navigate(`/onboarding/add/review?id=${s.id}`)}
                                             className="px-3 py-1.5 text-slate-600 hover:text-emerald-700 bg-slate-100 hover:bg-emerald-50 rounded-lg text-xs font-bold transition-all duration-200 flex items-center gap-1 border border-slate-200 hover:border-emerald-200"
@@ -1097,7 +1140,8 @@ const VerificationDashboard: React.FC = () => {
                                         )}
                                     </div>
                                 </div>
-                            ))
+                                );
+                            })
                         )}
                     </div>
                 ) : (
@@ -1139,18 +1183,23 @@ const VerificationDashboard: React.FC = () => {
                                     </div>
                                 </td></tr>
                             ) : (
-                                filteredSubmissions.map((s) => (
-                                    <tr key={s.id} className={`group hover:bg-emerald-50/40 transition-colors duration-150 ${s.requiresManualVerification ? 'bg-amber-50/60' : ''}`}>
+                                filteredSubmissions.map((s) => {
+                                    const empDisplayName = [s.personal?.firstName, s.personal?.lastName].filter(Boolean).join(' ') || (s.personal?.mobile ? `Draft (${s.personal.mobile})` : (s.personal?.employeeId ? `Draft (${s.personal.employeeId})` : 'Draft Applicant'));
+                                    const empInitials = ((s.personal?.firstName?.[0] || '') + (s.personal?.lastName?.[0] || '')) || 'DR';
+                                    const isDraft = s.status === 'draft';
+
+                                    return (
+                                    <tr key={s.id} className={`group hover:bg-emerald-50/40 transition-colors duration-150 ${s.requiresManualVerification ? 'bg-amber-50/60' : isDraft ? 'bg-slate-50/30' : ''}`}>
                                         {/* Employee */}
                                         <td className="px-5 py-3.5 whitespace-nowrap">
                                             <div className="flex items-center gap-3">
-                                                <div className="h-10 w-10 rounded-full bg-gradient-to-br from-emerald-500 to-teal-700 text-white font-black text-xs flex items-center justify-center shadow-xs border-2 border-white flex-shrink-0">
-                                                    {s.personal.firstName?.[0]}{s.personal.lastName?.[0]}
+                                                <div className={`h-10 w-10 rounded-full ${isDraft ? 'bg-slate-700' : 'bg-gradient-to-br from-emerald-500 to-teal-700'} text-white font-black text-xs flex items-center justify-center shadow-xs border-2 border-white flex-shrink-0`}>
+                                                    {empInitials}
                                                 </div>
                                                 <div className="flex flex-col">
                                                     <div className="flex items-center gap-1.5">
                                                         <span className="text-sm font-bold text-slate-900 hover:text-emerald-700 transition-colors capitalize">
-                                                            {s.personal.firstName} {s.personal.lastName}
+                                                            {empDisplayName}
                                                         </span>
                                                         {s.requiresManualVerification && (
                                                             <span title="Manual verification required">
@@ -1160,7 +1209,7 @@ const VerificationDashboard: React.FC = () => {
                                                     </div>
                                                     <div className="flex items-center gap-2 mt-0.5">
                                                         <span className="font-mono text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200/60">
-                                                            {s.personal.employeeId}
+                                                            {s.personal.employeeId || 'ID: Pending'}
                                                         </span>
                                                         <SyncStatusBadge pending={(s as any).pending} failed={(s as any).failed} />
                                                     </div>
@@ -1256,6 +1305,15 @@ const VerificationDashboard: React.FC = () => {
                                         {/* Actions */}
                                         <td className="px-5 py-3.5 whitespace-nowrap text-center">
                                             <div className="flex items-center justify-center gap-1">
+                                                {isDraft && (
+                                                    <button 
+                                                        onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)}
+                                                        className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold shadow-xs transition-all duration-200 flex items-center gap-1"
+                                                        title="Resume & Complete Enrollment"
+                                                    >
+                                                        <Play className="h-3 w-3 fill-current" /> Resume
+                                                    </button>
+                                                )}
                                                 <button 
                                                     onClick={() => navigate(`/onboarding/add/review?id=${s.id}`)}
                                                     className="p-2 text-slate-500 hover:text-emerald-700 bg-slate-100/80 hover:bg-emerald-50 rounded-lg transition-all duration-200 border border-slate-200/60 hover:border-emerald-200"
@@ -1288,21 +1346,21 @@ const VerificationDashboard: React.FC = () => {
                                                 {s.status === 'pending' && (
                                                     <div className="flex items-center gap-1 border-l border-slate-200 ml-1 pl-1.5">
                                                         <button 
-                                                            onClick={() => handleAction('approve', s.id!)}
-                                                            className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs transition-all duration-200 flex items-center gap-1"
-                                                            title="Verify & Approve"
-                                                        >
-                                                            <CheckSquare className="h-3.5 w-3.5" /> Approve
-                                                        </button>
-                                                        <button 
-                                                            onClick={() => handleAction('reject', s.id!)}
-                                                            className="px-2.5 py-1.5 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 rounded-lg text-xs font-bold transition-all duration-200 flex items-center gap-1"
-                                                            title="Reject & Request Changes"
-                                                        >
-                                                            <XSquare className="h-3.5 w-3.5" /> Reject
-                                                        </button>
-                                                    </div>
-                                                )}
+                                                             onClick={() => handleAction('approve', s.id!)}
+                                                             className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs transition-all duration-200 flex items-center gap-1"
+                                                             title="Verify & Approve"
+                                                         >
+                                                             <CheckSquare className="h-3.5 w-3.5" /> Approve
+                                                         </button>
+                                                         <button 
+                                                             onClick={() => handleAction('reject', s.id!)}
+                                                             className="px-2.5 py-1.5 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 rounded-lg text-xs font-bold transition-all duration-200 flex items-center gap-1"
+                                                             title="Reject & Request Changes"
+                                                         >
+                                                             <XSquare className="h-3.5 w-3.5" /> Reject
+                                                         </button>
+                                                     </div>
+                                                 )}
 
                                                 {s.status === 'verified' && (s.portalSyncStatus === 'pending_sync' || s.portalSyncStatus === 'failed') && (
                                                     <Button 
@@ -1319,7 +1377,8 @@ const VerificationDashboard: React.FC = () => {
                                             </div>
                                         </td>
                                     </tr>
-                                ))
+                                    );
+                                })
                             )}
                         </tbody>
                     </table>

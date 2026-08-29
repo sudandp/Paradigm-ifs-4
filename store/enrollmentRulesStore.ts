@@ -1,11 +1,31 @@
 import { create } from 'zustand';
-import type { EnrollmentRules } from '../types';
-import { api } from '../services/api';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import type { EnrollmentRules, DocumentRules, VerificationRules } from '../types';
 
 interface EnrollmentRulesState extends EnrollmentRules {
   init: (rules: EnrollmentRules) => void;
   updateRules: (settings: Partial<EnrollmentRules>) => void;
 }
+
+export const defaultDesignationRules: {
+  documents: DocumentRules;
+  verifications: VerificationRules;
+} = {
+  documents: {
+    photo: true,
+    aadhaar: true,
+    pan: false,
+    bankProof: true,
+    educationCertificate: false,
+    salarySlip: false,
+    uanProof: false,
+    familyAadhaar: false,
+  },
+  verifications: {
+    requireBengaluruAddress: false,
+    requireDobVerification: false,
+  }
+};
 
 const emptyRules: EnrollmentRules = {
   esiCtcThreshold: 21000,
@@ -18,18 +38,25 @@ const emptyRules: EnrollmentRules = {
   enableEsiRule: false,
   enableGmcRule: false,
   enforceFamilyValidation: true,
-  rulesByDesignation: {},
+  rulesByDesignation: {
+    'Default (All Roles)': defaultDesignationRules,
+  },
 };
 
-// Fix: Removed generic type argument from create() to avoid untyped function call error.
 export const useEnrollmentRulesStore = create<EnrollmentRulesState>()(
+  persist(
     (set) => ({
       ...emptyRules,
       init: (rules) => {
         if (rules) {
-            set(rules);
+          set(rules);
         }
       },
       updateRules: (settings) => set((state) => ({ ...state, ...settings })),
-    })
+    }),
+    {
+      name: 'paradigm-enrollment-rules',
+      storage: createJSONStorage(() => localStorage),
+    }
+  )
 );

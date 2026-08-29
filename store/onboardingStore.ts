@@ -116,6 +116,61 @@ const getInitialState = (): OnboardingData => ({
   verificationUsage: [],
 });
 
+// Helper to recursively strip transient base64 image data from drafts before saving to localStorage
+const stripHeavyData = (obj: any): any => {
+  if (!obj || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(stripHeavyData);
+
+  const clean: Record<string, any> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (typeof value === 'string' && value.startsWith('data:') && value.length > 2048) {
+      // Omit large base64 image strings from persistent localStorage draft
+      clean[key] = undefined;
+    } else if (typeof value === 'object' && value !== null) {
+      if (typeof File !== 'undefined' && value instanceof File) {
+        continue;
+      }
+      clean[key] = stripHeavyData(value);
+    } else {
+      clean[key] = value;
+    }
+  }
+  return clean;
+};
+
+// Safe storage wrapper that gracefully catches QuotaExceededError and prevents state crashes
+const safeLocalStorage = {
+  getItem: (name: string): string | null => {
+    try {
+      return localStorage.getItem(name);
+    } catch (err) {
+      console.warn('[Storage] Failed to read from localStorage:', err);
+      return null;
+    }
+  },
+  setItem: (name: string, value: string): void => {
+    try {
+      localStorage.setItem(name, value);
+    } catch (err) {
+      console.warn('[Storage] LocalStorage quota warning — sanitizing draft storage:', err);
+      try {
+        const parsed = JSON.parse(value);
+        const stripped = stripHeavyData(parsed);
+        localStorage.setItem(name, JSON.stringify(stripped));
+      } catch (fallbackErr) {
+        console.warn('[Storage] LocalStorage full, retaining state in memory safely.');
+      }
+    }
+  },
+  removeItem: (name: string): void => {
+    try {
+      localStorage.removeItem(name);
+    } catch {
+      /* ignore */
+    }
+  }
+};
+
 // Fix: Removed generic type argument from create() to avoid untyped function call error.
 export const useOnboardingStore = create<OnboardingState>()(
   persist(
@@ -162,24 +217,27 @@ export const useOnboardingStore = create<OnboardingState>()(
       updateOrganization: (org) => set((state) => ({ data: { ...state.data, organization: { ...state.data.organization, ...org } } })),
       updateUniforms: (uniforms) => set((state) => ({ data: { ...state.data, uniforms } })),
       updateBiometrics: (biometrics) => set((state) => ({ data: { ...state.data, biometrics: { ...state.data.biometrics, ...biometrics } } })),
-      setSalaryChangeRequest: (request) => set((state) => ({ data: { ...state.data, salaryChangeRequest: request } })),
-      setRequiresManualVerification: (requires) => set((state) => ({ data: { ...state.data, requiresManualVerification: requires } })),
-      setFormsGenerated: (generated) => set((state) => ({ data: { ...state.data, formsGenerated: generated } })),
-      logVerificationUsage: (serviceName) => set((state) => {
-          const newUsage: VerificationUsageItem[] = JSON.parse(JSON.stringify(state.data.verificationUsage || []));
-          const existing = newUsage.find(item => item.name === serviceName);
-          if (existing) {
-            existing.count += 1;
-          } else {
-            newUsage.push({ name: serviceName, count: 1 });
-          }
-          return { data: { ...state.data, verificationUsage: newUsage } };
-        }),
+      setSalaryChangeRequest: (salaryChangeRequest) => set((state) => ({ data: { ...state.data, salaryChangeRequest } })),
+      setRequiresManualVerification: (requiresManualVerification) => set((state) => ({ data: { ...state.data, requiresManualVerification } })),
+      setFormsGenerated: (formsGenerated) => set((state) => ({ data: { ...state.data, formsGenerated } })),
+      logVerificationUsage: (serviceName: string) => set((state) => ({
+        data: {
+          ...state.data,
+          verificationUsage: [
+            ...state.data.verificationUsage,
+            {
+              serviceName,
+              timestamp: new Date().toISOString(),
+              cost: 0,
+            }
+          ]
+        }
+      })),
       reset: () => set({ data: getInitialState() }),
       addFamilyMember: () => set((state) => ({
         data: {
           ...state.data,
-          family: [...state.data.family, { id: `fam_${Date.now()}`, relation: '', name: '', dob: '', gender: '', occupation: '', dependent: false, idProof: null, phone: '' }]
+          family: [...state.data.family, { id: `fam_${Date.now()}`, name: '', relation: 'Spouse', dob: '', gender: '', occupation: '', dependent: true, idProof: null, phone: '' }]
         }
       })),
       updateFamilyMember: (id, updates) => set((state) => ({
@@ -257,7 +315,10 @@ export const useOnboardingStore = create<OnboardingState>()(
     }),
     {
       name: 'paradigm_onboarding_draft',
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() => safeLocalStorage),
+      partialize: (state: any) => ({
+        data: stripHeavyData(state.data),
+      }),
     }
   )
 );

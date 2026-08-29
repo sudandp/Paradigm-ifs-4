@@ -687,9 +687,9 @@ export const GMCFormReceiptDocument: React.FC<{ data: any; logoUrl?: string }> =
 export const EmployeeOnboardingDocument: React.FC<{ data: any; logoUrl?: string }> = ({ data, logoUrl }) => {
   const d = data;
   const fullName = `${d.personal.firstName} ${d.personal.middleName || ''} ${d.personal.lastName}`.replace(/\s+/g, ' ').trim();
-  const fatherName = d.family.find((f: any) => f.relation === 'Father')?.name || '';
-  const spouseName = d.family.find((f: any) => f.relation === 'Spouse')?.name || '';
-  const motherName = d.family.find((f: any) => f.relation === 'Mother')?.name || '';
+  const fatherName = d.family?.find((f: any) => f.relation === 'Father')?.name || '';
+  const spouseName = d.family?.find((f: any) => f.relation === 'Spouse')?.name || '';
+  const motherName = d.family?.find((f: any) => f.relation === 'Mother')?.name || '';
 
   return (
     <Document>

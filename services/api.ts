@@ -1462,11 +1462,9 @@ export const api = {
 
     const cacheKey = `verification_submissions_${status || 'all'}_${organizationId || 'all'}_${managerId || 'all'}`;
     return fetchWithCache(cacheKey, async () => {
-      const { data: { session } } = await supabase.auth.getSession();
       let query = supabase.from('onboarding_submissions').select('*, user:user_id(reporting_manager_id)');
-      if (session?.user?.id) query = query.eq('user_id', session.user.id);
-      if (status) query = query.eq('status', status);
-      if (organizationId) query = query.eq('organization_id', organizationId);
+      if (status && status !== 'all') query = query.eq('status', status);
+      if (organizationId && organizationId !== 'all') query = query.eq('organization_id', organizationId);
       const { data, error } = await query.order('created_at', { ascending: false }).limit(5000);
       if (error) throw error;
       

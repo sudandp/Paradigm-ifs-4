@@ -50,6 +50,7 @@ export type OnboardingStep = 'personal' | 'address' | 'organization' | 'family' 
 
 
 export interface DocumentRules {
+  photo?: boolean;
   aadhaar: boolean;
   pan: boolean;
   bankProof: boolean;
@@ -62,6 +63,8 @@ export interface DocumentRules {
 export interface VerificationRules {
   requireBengaluruAddress: boolean;
   requireDobVerification: boolean;
+  requireBankNameMatch?: boolean;
+  requireUanVerification?: boolean;
 }
 
 export interface EnrollmentRules {
@@ -75,6 +78,10 @@ export interface EnrollmentRules {
   enableEsiRule: boolean;
   enableGmcRule: boolean;
   enforceFamilyValidation?: boolean;
+  requireDigitalSignature?: boolean;
+  requireOfficerAttestation?: boolean;
+  requireBookletReview?: boolean;
+  maxFamilyDependents?: number;
   rulesByDesignation: {
     [designation: string]: {
       documents: DocumentRules;

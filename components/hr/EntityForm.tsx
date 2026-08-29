@@ -838,16 +838,16 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
             {activeTab === 'General' && (
                 <div className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <Input label="Society Name" id="name" registration={register('name')} error={errors.name?.message} />
+                        <Input label="Society Name" id="name" registration={register('name')} error={errors.name?.message} requiredIndicator />
                         {!companyName && companies && (
-                            <Select label="Select Company" id="companyId" registration={register('companyId')} error={errors.companyId?.message}>
+                            <Select label="Select Company" id="companyId" registration={register('companyId')} error={errors.companyId?.message} requiredIndicator>
                                 <option value="">Select Company</option>
                                 {companies.map(c => (
                                     <option key={c.id} value={c.id}>{c.name}</option>
                                 ))}
                             </Select>
                         )}
-                        <Input label="Billing Name (As Per Documents)" id="billingName" registration={register('billingName')} error={errors.billingName?.message} />
+                        <Input label="Billing Name (As Per Documents)" id="billingName" registration={register('billingName')} error={errors.billingName?.message} requiredIndicator />
                         <Input 
                             label="Location / City" 
                             id="location" 
@@ -855,14 +855,15 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                             error={errors.location?.message} 
                             disabled={isBangaloreBased}
                             placeholder={isBangaloreBased ? "Bangalore (Fixed for this company)" : "e.g. Bangalore"}
+                            requiredIndicator
                         />
                         <Input label="Latitude" id="latitude" registration={register('latitude')} error={errors.latitude?.message} placeholder="e.g. 12.9716" />
                         <Input label="Longitude" id="longitude" registration={register('longitude')} error={errors.longitude?.message} placeholder="e.g. 77.5946" />
                         <Controller name="siteTakeoverDate" control={control} render={({ field }) => (
-                            <Input type="date" label="Site Takeover Date" id="siteTakeoverDate" value={field.value} onChange={field.onChange} error={errors.siteTakeoverDate?.message} />
+                            <Input type="date" label="Site Takeover Date" id="siteTakeoverDate" value={field.value} onChange={field.onChange} error={errors.siteTakeoverDate?.message} requiredIndicator />
                         )} />
                     </div>
-                    <Input label="Registered Address" id="registeredAddress" registration={register('registeredAddress')} error={errors.registeredAddress?.message} />
+                    <Input label="Registered Address" id="registeredAddress" registration={register('registeredAddress')} error={errors.registeredAddress?.message} requiredIndicator />
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <Controller
@@ -1202,7 +1203,7 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 bg-accent/5 border border-accent/20 rounded-xl">
                         <Input label="Key Account Manager (Ops Manager)" id="keyAccountManager" registration={register('siteManagement.keyAccountManager')} error={errors.siteManagement?.keyAccountManager?.message} />
                         <Controller name="siteManagement.kamEffectiveDate" control={control} render={({ field }) => (
-                            <Input type="date" label="KAM Effective Date" id="kamEffectiveDate" value={field.value} onChange={field.onChange} error={errors.siteManagement?.kamEffectiveDate?.message} />
+                            <Input type="date" label="KAM Effective Date" id="kamEffectiveDate" value={field.value} onChange={field.onChange} error={errors.siteManagement?.kamEffectiveDate?.message} requiredIndicator={!!watch('siteManagement.keyAccountManager')} />
                         )} />
                     </div>
 
