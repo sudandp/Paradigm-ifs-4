@@ -19,6 +19,8 @@ export interface OnboardingData {
   id?: string;
   createdAt?: string;
   created_at?: string;
+  updatedAt?: string;
+  updated_at?: string;
   status: 'draft' | 'pending' | 'verified' | 'rejected';
   portalSyncStatus?: 'pending_sync' | 'synced' | 'failed';
   organizationId?: string;
@@ -44,6 +46,16 @@ export interface OnboardingData {
   verifiedAt?: string | null;
   verificationMode?: 'auto' | 'manual' | null;
   submissionMode?: 'manual' | 'auto_ai' | null;
+  rejectionReason?: string | null;
+  rejection_reason?: string | null;
+  rejectedBy?: string | null;
+  rejected_by?: string | null;
+  rejectedAt?: string | null;
+  rejected_at?: string | null;
+  createdBy?: string | null;
+  created_by?: string | null;
+  submittedBy?: string | null;
+  submitted_by?: string | null;
 }
 
 export type OnboardingStep = 'personal' | 'address' | 'organization' | 'family' | 'education' | 'bank' | 'uan' | 'esi' | 'gmc' | 'uniform' | 'biometrics' | 'documents' | 'review';

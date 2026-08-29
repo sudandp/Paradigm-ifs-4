@@ -13,6 +13,7 @@ import { syncEngine } from '@/services/offline/syncEngine';
 import * as outbox from '@/services/offline/outbox';
 import { getDb } from '@/services/offline/db';
 import hotToast from 'react-hot-toast';
+import { RejectReasonModal } from '@/components/onboarding/RejectReasonModal';
 
 const SyncStatusBadge: React.FC<{ pending?: boolean; failed?: boolean }> = ({ pending, failed }) => {
   if (failed) {
@@ -494,6 +495,8 @@ const VerificationDashboard: React.FC = () => {
     const [pendingOrFailedCount, setPendingOrFailedCount] = useState(0);
     const [isSyncing, setIsSyncing] = useState(false);
     const [showDebugModal, setShowDebugModal] = useState(false);
+    const [rejectModalSubmission, setRejectModalSubmission] = useState<OnboardingData | null>(null);
+    const [isRejecting, setIsRejecting] = useState(false);
 
     const updateOutboxCount = useCallback(async () => {
       try {
@@ -607,30 +610,62 @@ const VerificationDashboard: React.FC = () => {
         });
     }, [submissions, searchTerm]);
 
-    const handleAction = async (action: 'approve' | 'reject', id: string) => {
+    const handleApprove = async (id: string) => {
         const verifierName = (user as any)?.user_metadata?.full_name || (user as any)?.user_metadata?.name || user?.email?.split('@')[0] || 'HR Admin';
         const verifierPhoto = (user as any)?.user_metadata?.avatar_url || (user as any)?.user_metadata?.picture || null;
 
         // Optimistic update for UI responsiveness
         setSubmissions(prev => prev.map(s => s.id === id ? { 
             ...s, 
-            status: action === 'approve' ? 'verified' : 'rejected', 
-            portalSyncStatus: action === 'approve' ? 'pending_sync' : undefined,
-            verificationMode: action === 'approve' ? 'manual' : s.verificationMode,
-            verifiedBy: action === 'approve' ? verifierName : s.verifiedBy,
-            verifiedByPhoto: action === 'approve' ? verifierPhoto : s.verifiedByPhoto,
-            verifiedAt: action === 'approve' ? new Date().toISOString() : s.verifiedAt
+            status: 'verified', 
+            portalSyncStatus: 'pending_sync',
+            verificationMode: 'manual',
+            verifiedBy: verifierName,
+            verifiedByPhoto: verifierPhoto,
+            verifiedAt: new Date().toISOString()
         } : s));
 
         try {
-            if (action === 'approve') {
-                await api.verifySubmission(id, 'manual');
-            } else {
-                await api.requestChanges(id, 'Changes requested by admin.');
-            }
+            await api.verifySubmission(id, 'manual');
+            hotToast.success('Submission verified & approved successfully!');
         } catch (error) {
-            console.error(`Failed to ${action} submission`, error);
-            // On error, the real-time listener will revert the UI automatically by re-fetching
+            console.error('Failed to approve submission', error);
+            hotToast.error('Failed to approve submission.');
+        }
+    };
+
+    const handleOpenRejectModal = (submission: OnboardingData) => {
+        setRejectModalSubmission(submission);
+    };
+
+    const handleConfirmReject = async (reason: string) => {
+        if (!rejectModalSubmission || !rejectModalSubmission.id) return;
+        const id = rejectModalSubmission.id;
+        const verifierName = (user as any)?.user_metadata?.full_name || (user as any)?.user_metadata?.name || user?.email?.split('@')[0] || 'HR Admin';
+        const rejectedAt = new Date().toISOString();
+
+        setIsRejecting(true);
+        // Optimistic update
+        setSubmissions(prev => prev.map(s => s.id === id ? { 
+            ...s, 
+            status: 'rejected',
+            rejectionReason: reason,
+            rejection_reason: reason,
+            rejectedBy: verifierName,
+            rejected_by: verifierName,
+            rejectedAt: rejectedAt,
+            rejected_at: rejectedAt,
+        } : s));
+
+        try {
+            await api.requestChanges(id, reason);
+            hotToast.success(`❌ Rejected: ${reason}. Submitter has been alerted!`, { duration: 4500 });
+            setRejectModalSubmission(null);
+        } catch (error) {
+            console.error('Failed to reject submission', error);
+            hotToast.error('Failed to reject submission.');
+        } finally {
+            setIsRejecting(false);
         }
     };
 
@@ -1020,7 +1055,17 @@ const VerificationDashboard: React.FC = () => {
                                             </div>
                                         </div>
                                         {statusFilter !== 'verified' && (
-                                            <StatusChip status={s.status} />
+                                            <div>
+                                                <StatusChip status={s.status} />
+                                                {s.status === 'rejected' && (
+                                                    <div className="mt-1.5 flex items-center gap-1.5 text-[11px] font-bold text-rose-800 bg-rose-50 border border-rose-200 px-2 py-1 rounded-md shadow-2xs" title={s.rejectionReason || (s as any).rejection_reason || s.personal?.rejectionReason || 'Profile Photo Mismatch'}>
+                                                        <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                                                        <span className="truncate max-w-[180px]">
+                                                            {s.rejectionReason || (s as any).rejection_reason || s.personal?.rejectionReason || 'Profile Photo Mismatch'}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </div>
                                         )}
                                     </div>
                                     
@@ -1069,6 +1114,22 @@ const VerificationDashboard: React.FC = () => {
                                                 </div>
                                             </>
                                         )}
+                                        {s.status === 'rejected' && (
+                                            <>
+                                                <div className="w-full h-px bg-slate-200/60"></div>
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">Rejected By</span>
+                                                    <span className="text-xs font-bold text-rose-900">{s.rejectedBy || (s as any).rejected_by || s.personal?.rejectedBy || 'HR Admin'}</span>
+                                                </div>
+                                                <div className="w-full h-px bg-slate-200/60"></div>
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-[11px] text-rose-600 font-bold uppercase tracking-wider">Rejection Reason</span>
+                                                    <span className="text-xs font-extrabold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                                                        {s.rejectionReason || (s as any).rejection_reason || s.personal?.rejectionReason || 'Profile Photo Mismatch'}
+                                                    </span>
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
 
                                     <div className="flex items-center justify-end gap-2 mt-1 pt-3 border-t border-slate-100 flex-wrap">
@@ -1113,16 +1174,35 @@ const VerificationDashboard: React.FC = () => {
                                         {s.status === 'pending' && (
                                             <>
                                                 <button 
-                                                    onClick={() => handleAction('approve', s.id!)}
+                                                    onClick={() => handleApprove(s.id!)}
                                                     className="px-3 py-1.5 text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg text-xs font-bold transition-all duration-200 shadow-xs flex items-center gap-1"
                                                 >
                                                     <CheckSquare className="h-3.5 w-3.5" /> Approve
                                                 </button>
                                                 <button 
-                                                    onClick={() => handleAction('reject', s.id!)}
+                                                    onClick={() => handleOpenRejectModal(s)}
                                                     className="px-3 py-1.5 text-rose-600 bg-white hover:bg-rose-50 border border-rose-200 rounded-lg text-xs font-bold transition-all duration-200 flex items-center gap-1"
                                                 >
                                                     <XSquare className="h-3.5 w-3.5" /> Reject
+                                                </button>
+                                            </>
+                                        )}
+
+                                        {s.status === 'rejected' && (
+                                            <>
+                                                <button 
+                                                    onClick={() => handleOpenRejectModal(s)}
+                                                    className="px-3 py-1.5 text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg text-xs font-bold transition-all duration-200 flex items-center gap-1"
+                                                    title="Update Rejection Reason"
+                                                >
+                                                    <Edit2 className="h-3.5 w-3.5" /> Reason
+                                                </button>
+                                                <button 
+                                                    onClick={() => handleApprove(s.id!)}
+                                                    className="px-3 py-1.5 text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg text-xs font-bold transition-all duration-200 shadow-xs flex items-center gap-1"
+                                                    title="Approve Submission"
+                                                >
+                                                    <CheckSquare className="h-3.5 w-3.5" /> Approve
                                                 </button>
                                             </>
                                         )}
@@ -1145,16 +1225,16 @@ const VerificationDashboard: React.FC = () => {
                         )}
                     </div>
                 ) : (
-                    <table className="w-full min-w-[1200px] border-separate border-spacing-0">
+                    <table className="w-full min-w-[1260px] border-separate border-spacing-0">
                         <thead>
                             <tr className="bg-slate-50/90 border-b border-slate-200">
-                                <th scope="col" className="px-4 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Employee</th>
-                                <th scope="col" className="px-3 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Site Location</th>
+                                <th scope="col" className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200 w-[220px]">Employee</th>
+                                <th scope="col" className="px-3 py-3.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200 w-[170px]">Site Location</th>
                                 {statusFilter !== 'verified' && (
-                                    <th scope="col" className="px-3 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Status</th>
+                                    <th scope="col" className="px-3 py-3.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200 w-[170px]">Status</th>
                                 )}
-                                <th scope="col" className="px-3 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Designation</th>
-                                <th scope="col" className="px-3 py-3 text-center border-b border-slate-200 w-[155px]">
+                                <th scope="col" className="px-3 py-3.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200 w-[140px]">Designation</th>
+                                <th scope="col" className="px-3 py-3.5 text-center border-b border-slate-200 w-[150px]">
                                     <div className="flex flex-col items-center gap-1">
                                         <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Verified Documents</span>
                                         <div className="flex items-center gap-1 mt-0.5">
@@ -1166,9 +1246,9 @@ const VerificationDashboard: React.FC = () => {
                                         </div>
                                     </div>
                                 </th>
-                                <th scope="col" className="px-3 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Approved By</th>
-                                <th scope="col" className="px-3 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Created Date/Time</th>
-                                <th scope="col" className="sticky right-0 bg-slate-50/95 backdrop-blur-xs z-20 px-4 py-3 text-right text-[11px] font-bold text-slate-600 uppercase tracking-wider border-b border-slate-200 shadow-[-6px_0_10px_-2px_rgba(0,0,0,0.06)] w-[270px] min-w-[270px]">Actions</th>
+                                <th scope="col" className="px-3 py-3.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200 w-[180px]">Verified / Rejected By</th>
+                                <th scope="col" className="px-3 py-3.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200 w-[150px]">Created Date/Time</th>
+                                <th scope="col" className="sticky right-0 bg-slate-50/95 backdrop-blur-xs z-20 px-4 py-3.5 text-right text-[11px] font-bold text-slate-600 uppercase tracking-wider border-b border-slate-200 shadow-[-6px_0_10px_-2px_rgba(0,0,0,0.06)] w-[280px] min-w-[280px]">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 bg-white">
@@ -1187,16 +1267,19 @@ const VerificationDashboard: React.FC = () => {
                                     const empDisplayName = [s.personal?.firstName, s.personal?.lastName].filter(Boolean).join(' ') || (s.personal?.mobile ? `Draft (${s.personal.mobile})` : (s.personal?.employeeId ? `Draft (${s.personal.employeeId})` : 'Draft Applicant'));
                                     const empInitials = ((s.personal?.firstName?.[0] || '') + (s.personal?.lastName?.[0] || '')) || 'DR';
                                     const isDraft = s.status === 'draft';
+                                    const currentRejectionReason = s.rejectionReason || (s as any).rejection_reason || s.personal?.rejectionReason || 'Profile Photo Mismatch';
+                                    const currentRejectedBy = s.rejectedBy || (s as any).rejected_by || s.personal?.rejectedBy || 'HR Admin';
+                                    const currentRejectedAt = s.rejectedAt || (s as any).rejected_at || s.personal?.rejectedAt;
 
                                     return (
-                                    <tr key={s.id} className={`group hover:bg-emerald-50/40 transition-colors duration-150 ${s.requiresManualVerification ? 'bg-amber-50/60' : isDraft ? 'bg-slate-50/30' : ''}`}>
+                                    <tr key={s.id} className={`group hover:bg-emerald-50/40 transition-colors duration-150 ${s.requiresManualVerification ? 'bg-amber-50/60' : isDraft ? 'bg-slate-50/30' : s.status === 'rejected' ? 'bg-rose-50/20' : ''}`}>
                                         {/* Employee */}
-                                        <td className="px-4 py-3 whitespace-nowrap">
+                                        <td className="px-4 py-3.5 whitespace-nowrap align-middle">
                                             <div className="flex items-center gap-2.5">
-                                                <div className={`h-9 w-9 rounded-full ${isDraft ? 'bg-slate-700' : 'bg-gradient-to-br from-emerald-500 to-teal-700'} text-white font-black text-xs flex items-center justify-center shadow-xs border-2 border-white flex-shrink-0`}>
+                                                <div className={`h-9 w-9 rounded-full ${isDraft ? 'bg-slate-700' : s.status === 'rejected' ? 'bg-gradient-to-br from-rose-500 to-rose-700' : 'bg-gradient-to-br from-emerald-500 to-teal-700'} text-white font-black text-xs flex items-center justify-center shadow-xs border-2 border-white flex-shrink-0`}>
                                                     {empInitials}
                                                 </div>
-                                                <div className="flex flex-col">
+                                                <div className="flex flex-col justify-center">
                                                     <div className="flex items-center gap-1.5">
                                                         <span className="text-xs font-bold text-slate-900 hover:text-emerald-700 transition-colors capitalize">
                                                             {empDisplayName}
@@ -1218,7 +1301,7 @@ const VerificationDashboard: React.FC = () => {
                                         </td>
 
                                         {/* Site */}
-                                        <td className="px-3 py-3 whitespace-nowrap">
+                                        <td className="px-3 py-3.5 whitespace-nowrap align-middle">
                                             <div className="flex items-center gap-1 text-xs font-semibold text-slate-700">
                                                 <MapPin className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
                                                 <span>{s.organizationName || s.organization?.organizationName || '-'}</span>
@@ -1227,13 +1310,24 @@ const VerificationDashboard: React.FC = () => {
 
                                         {/* Status */}
                                         {statusFilter !== 'verified' && (
-                                            <td className="px-3 py-3 whitespace-nowrap">
-                                                <StatusChip status={s.status} />
+                                            <td className="px-3 py-3.5 whitespace-nowrap align-middle">
+                                                <div className="flex flex-col gap-1 items-start">
+                                                    <StatusChip status={s.status} />
+                                                    {s.status === 'rejected' && (
+                                                        <div 
+                                                            className="inline-flex items-center gap-1.5 text-[10.5px] font-bold text-rose-800 bg-rose-50 border border-rose-200/90 px-2 py-0.5 rounded-md shadow-2xs max-w-[170px]" 
+                                                            title={currentRejectionReason}
+                                                        >
+                                                            <AlertTriangle className="w-3 h-3 text-rose-600 shrink-0" />
+                                                            <span className="truncate">{currentRejectionReason}</span>
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </td>
                                         )}
 
                                         {/* Designation */}
-                                        <td className="px-3 py-3 whitespace-nowrap">
+                                        <td className="px-3 py-3.5 whitespace-nowrap align-middle">
                                             <div className="flex items-center gap-1 text-xs font-semibold text-slate-700">
                                                 <Briefcase className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
                                                 <span>{s.organization?.designation || '-'}</span>
@@ -1241,61 +1335,77 @@ const VerificationDashboard: React.FC = () => {
                                         </td>
 
                                         {/* Verified Documents */}
-                                        <td className="px-3 py-3 whitespace-nowrap text-center">
+                                        <td className="px-3 py-3.5 whitespace-nowrap text-center align-middle">
                                             <DocumentVerificationBadges submission={s} onToggleDoc={(key) => handleToggleDocVerification(s.id!, key)} hideLabels />
                                         </td>
 
-                                        {/* Approved By */}
-                                        <td className="px-3 py-3 whitespace-nowrap">
+                                        {/* Approved / Rejected By */}
+                                        <td className="px-3 py-3.5 whitespace-nowrap align-middle">
                                             {s.status === 'verified' ? (
                                                 s.verificationMode === 'auto' || s.verifiedBy === 'Paradigm AI Agent' ? (
-                                                    <div className="flex items-center gap-1.5">
-                                                        <div className="h-6 w-6 rounded-full bg-gradient-to-tr from-violet-600 to-indigo-600 text-white flex items-center justify-center shadow-2xs flex-shrink-0 border border-violet-300">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="h-7 w-7 rounded-full bg-gradient-to-tr from-violet-600 to-indigo-600 text-white flex items-center justify-center shadow-2xs flex-shrink-0 border border-violet-300">
                                                             <Bot className="h-3.5 w-3.5 text-white" />
                                                         </div>
                                                         <div className="flex flex-col">
-                                                            <span className="text-[11px] font-bold text-violet-950 flex items-center gap-1">
+                                                            <span className="text-xs font-bold text-violet-950 flex items-center gap-1">
                                                                 Verified by AI Agent
                                                                 <Sparkles className="h-2.5 w-2.5 text-amber-500 fill-amber-400 flex-shrink-0" />
                                                             </span>
                                                             {s.verifiedAt && (
-                                                                <span className="text-[9.5px] text-slate-400 font-medium">
+                                                                <span className="text-[10px] text-slate-400 font-medium">
                                                                     {formatCreatedDate(s.verifiedAt)}
                                                                 </span>
                                                             )}
                                                         </div>
                                                     </div>
                                                 ) : (
-                                                    <div className="flex items-center gap-1.5">
+                                                    <div className="flex items-center gap-2">
                                                         {s.verifiedByPhoto ? (
-                                                            <img src={s.verifiedByPhoto} alt={s.verifiedBy || 'HR'} className="h-6 w-6 rounded-full object-cover border-2 border-emerald-500 shadow-2xs flex-shrink-0" />
+                                                            <img src={s.verifiedByPhoto} alt={s.verifiedBy || 'HR'} className="h-7 w-7 rounded-full object-cover border-2 border-emerald-500 shadow-2xs flex-shrink-0" />
                                                         ) : (
-                                                            <div className="h-6 w-6 rounded-full bg-gradient-to-br from-emerald-500 to-teal-700 text-white font-black text-[10px] flex items-center justify-center shadow-2xs border border-emerald-400 flex-shrink-0 uppercase">
+                                                            <div className="h-7 w-7 rounded-full bg-gradient-to-br from-emerald-500 to-teal-700 text-white font-black text-[10px] flex items-center justify-center shadow-2xs border border-emerald-400 flex-shrink-0 uppercase">
                                                                 {s.verifiedBy ? s.verifiedBy.split(' ').map(n => n[0]).join('').slice(0, 2) : 'HR'}
                                                             </div>
                                                         )}
                                                         <div className="flex flex-col">
                                                             <div className="flex items-center gap-1">
-                                                                <span className="text-[11px] font-bold text-slate-800 capitalize">
+                                                                <span className="text-xs font-bold text-slate-800 capitalize">
                                                                     {s.verifiedBy || 'HR Admin'}
                                                                 </span>
-                                                                <UserCheck className="h-3 w-3 text-emerald-600 flex-shrink-0" />
+                                                                <UserCheck className="h-3.5 w-3.5 text-emerald-600 flex-shrink-0" />
                                                             </div>
                                                             {s.verifiedAt && (
-                                                                <span className="text-[9.5px] text-slate-400 font-medium">
+                                                                <span className="text-[10px] text-slate-400 font-medium">
                                                                     {formatCreatedDate(s.verifiedAt)}
                                                                 </span>
                                                             )}
                                                         </div>
                                                     </div>
                                                 )
+                                            ) : s.status === 'rejected' ? (
+                                                <div className="flex items-center gap-2">
+                                                    <div className="h-7 w-7 rounded-full bg-rose-100 text-rose-700 border border-rose-300 flex items-center justify-center flex-shrink-0">
+                                                        <XCircle className="h-4 w-4 text-rose-600" />
+                                                    </div>
+                                                    <div className="flex flex-col">
+                                                        <span className="text-xs font-bold text-rose-950">
+                                                            Rejected by {currentRejectedBy}
+                                                        </span>
+                                                        {currentRejectedAt && (
+                                                            <span className="text-[10px] text-slate-400 font-medium">
+                                                                {formatCreatedDate(currentRejectedAt)}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
                                             ) : (
-                                                <span className="text-[11px] text-slate-400 italic">—</span>
+                                                <span className="text-xs text-slate-400 italic">—</span>
                                             )}
                                         </td>
 
                                         {/* Created Date/Time */}
-                                        <td className="px-3 py-3 whitespace-nowrap">
+                                        <td className="px-3 py-3.5 whitespace-nowrap align-middle">
                                             <div className="flex items-center gap-1 text-[11px] font-medium text-slate-600">
                                                 <Calendar className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
                                                 <span>{formatCreatedDate(s.createdAt || s.created_at || s.enrollmentDate)}</span>
@@ -1303,63 +1413,87 @@ const VerificationDashboard: React.FC = () => {
                                         </td>
 
                                         {/* Sticky Actions Column */}
-                                        <td className={`sticky right-0 z-10 px-4 py-3 whitespace-nowrap text-right shadow-[-6px_0_10px_-2px_rgba(0,0,0,0.06)] border-b border-slate-100 ${
+                                        <td className={`sticky right-0 z-10 px-4 py-3.5 whitespace-nowrap text-right shadow-[-6px_0_10px_-2px_rgba(0,0,0,0.06)] border-b border-slate-100 align-middle ${
                                             s.requiresManualVerification ? 'bg-amber-50 group-hover:bg-amber-100/70' : isDraft ? 'bg-slate-50 group-hover:bg-slate-100/70' : 'bg-white group-hover:bg-emerald-50/70'
                                         }`}>
-                                            <div className="flex items-center justify-end gap-1">
+                                            <div className="flex items-center justify-end gap-1.5">
+                                                {/* Toolbar utility icons */}
+                                                <div className="flex items-center gap-1 bg-slate-50/80 p-0.5 rounded-lg border border-slate-200/60 shadow-2xs">
+                                                    <button 
+                                                        onClick={() => navigate(`/onboarding/add/review?id=${s.id}`)}
+                                                        className="w-7 h-7 flex items-center justify-center text-slate-500 hover:text-emerald-700 bg-white hover:bg-emerald-50 rounded-md transition-all duration-200 border border-slate-200/50 hover:border-emerald-200 shrink-0"
+                                                        title="View Summary Details"
+                                                    >
+                                                        <Eye className="h-3.5 w-3.5" />
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)}
+                                                        className="w-7 h-7 flex items-center justify-center text-slate-500 hover:text-blue-700 bg-white hover:bg-blue-50 rounded-md transition-all duration-200 border border-slate-200/50 hover:border-blue-200 shrink-0"
+                                                        title="Edit Application"
+                                                    >
+                                                        <Edit2 className="h-3.5 w-3.5" />
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => navigate(`/onboarding/pdf/${s.id}`)}
+                                                        className="w-7 h-7 flex items-center justify-center text-slate-500 hover:text-teal-700 bg-white hover:bg-teal-50 rounded-md transition-all duration-200 border border-slate-200/50 hover:border-teal-200 shrink-0"
+                                                        title="Download Official Forms"
+                                                    >
+                                                        <FileText className="h-3.5 w-3.5" />
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => handleDelete(s.id!)}
+                                                        className="w-7 h-7 flex items-center justify-center text-slate-500 hover:text-rose-700 bg-white hover:bg-rose-50 rounded-md transition-all duration-200 border border-slate-200/50 hover:border-rose-200 shrink-0"
+                                                        title="Delete Application"
+                                                    >
+                                                        <Trash2 className="h-3.5 w-3.5" />
+                                                    </button>
+                                                </div>
+
+                                                {/* Contextual Primary Actions */}
                                                 {isDraft && (
                                                     <button 
                                                         onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)}
-                                                        className="px-2.5 py-1.5 bg-slate-900 hover:bg-black text-white rounded-lg text-xs font-bold shadow-xs transition-all duration-200 flex items-center gap-1 shrink-0 mr-1"
+                                                        className="h-7 px-2.5 bg-slate-900 hover:bg-black text-white rounded-lg text-xs font-bold shadow-xs transition-all duration-200 flex items-center gap-1 shrink-0 ml-0.5"
                                                         title="Resume Incomplete Enrollment"
                                                     >
                                                         <Play className="h-3 w-3 fill-current" /> Resume
                                                     </button>
                                                 )}
-                                                <button 
-                                                    onClick={() => navigate(`/onboarding/add/review?id=${s.id}`)}
-                                                    className="w-7 h-7 flex items-center justify-center text-slate-500 hover:text-emerald-700 bg-slate-100/80 hover:bg-emerald-50 rounded-lg transition-all duration-200 border border-slate-200/60 hover:border-emerald-200 shrink-0"
-                                                    title="View Summary Details"
-                                                >
-                                                    <Eye className="h-3.5 w-3.5" />
-                                                </button>
-                                                <button 
-                                                    onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)}
-                                                    className="w-7 h-7 flex items-center justify-center text-slate-500 hover:text-blue-700 bg-slate-100/80 hover:bg-blue-50 rounded-lg transition-all duration-200 border border-slate-200/60 hover:border-blue-200 shrink-0"
-                                                    title="Edit Application"
-                                                >
-                                                    <Edit2 className="h-3.5 w-3.5" />
-                                                </button>
-                                                <button 
-                                                    onClick={() => navigate(`/onboarding/pdf/${s.id}`)}
-                                                    className="w-7 h-7 flex items-center justify-center text-slate-500 hover:text-teal-700 bg-slate-100/80 hover:bg-teal-50 rounded-lg transition-all duration-200 border border-slate-200/60 hover:border-teal-200 shrink-0"
-                                                    title="Download Official Forms"
-                                                >
-                                                    <FileText className="h-3.5 w-3.5" />
-                                                </button>
-                                                <button 
-                                                    onClick={() => handleDelete(s.id!)}
-                                                    className="w-7 h-7 flex items-center justify-center text-slate-500 hover:text-rose-700 bg-slate-100/80 hover:bg-rose-50 rounded-lg transition-all duration-200 border border-slate-200/60 hover:border-rose-200 shrink-0"
-                                                    title="Delete Application"
-                                                >
-                                                    <Trash2 className="h-3.5 w-3.5" />
-                                                </button>
 
                                                 {s.status === 'pending' && (
-                                                    <div className="flex items-center gap-1 pl-1.5 ml-0.5 border-l border-slate-200 shrink-0">
+                                                    <div className="flex items-center gap-1 pl-1 ml-0.5 border-l border-slate-200 shrink-0">
                                                         <button 
-                                                            onClick={() => handleAction('approve', s.id!)}
-                                                            className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs transition-all duration-200 flex items-center gap-1 shrink-0"
+                                                            onClick={() => handleApprove(s.id!)}
+                                                            className="h-7 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs transition-all duration-200 flex items-center gap-1 shrink-0"
                                                             title="Verify & Approve"
                                                         >
                                                             <CheckSquare className="h-3.5 w-3.5" /> Approve
                                                         </button>
                                                         <button 
-                                                            onClick={() => handleAction('reject', s.id!)}
-                                                            className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-bold transition-all duration-200 flex items-center gap-1 shrink-0"
+                                                            onClick={() => handleOpenRejectModal(s)}
+                                                            className="h-7 px-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-bold transition-all duration-200 flex items-center gap-1 shrink-0"
                                                             title="Reject & Request Changes"
                                                         >
                                                             <XSquare className="h-3.5 w-3.5" /> Reject
+                                                        </button>
+                                                    </div>
+                                                )}
+
+                                                {s.status === 'rejected' && (
+                                                    <div className="flex items-center gap-1 pl-1 ml-0.5 border-l border-slate-200 shrink-0">
+                                                        <button 
+                                                            onClick={() => handleOpenRejectModal(s)}
+                                                            className="h-7 px-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-bold transition-all duration-200 flex items-center gap-1 shrink-0"
+                                                            title="Update Rejection Reason"
+                                                        >
+                                                            <Edit2 className="h-3 w-3" /> Reason
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => handleApprove(s.id!)}
+                                                            className="h-7 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs transition-all duration-200 flex items-center gap-1 shrink-0"
+                                                            title="Verify & Approve"
+                                                        >
+                                                            <CheckSquare className="h-3.5 w-3.5" /> Approve
                                                         </button>
                                                     </div>
                                                 )}
@@ -1391,6 +1525,13 @@ const VerificationDashboard: React.FC = () => {
               isOpen={showDebugModal}
               onClose={() => setShowDebugModal(false)}
               onRefreshList={() => fetchSubmissions(false)}
+            />
+            <RejectReasonModal
+              isOpen={!!rejectModalSubmission}
+              submission={rejectModalSubmission}
+              onClose={() => setRejectModalSubmission(null)}
+              onConfirm={handleConfirmReject}
+              isSubmitting={isRejecting}
             />
         </div>
     );

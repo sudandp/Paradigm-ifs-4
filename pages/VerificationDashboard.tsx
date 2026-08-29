@@ -8,6 +8,8 @@ import { Search, Eye, FileText, Send, RefreshCw, AlertTriangle, Loader2, CheckSq
 import Toast from '@/components/ui/Toast';
 import { useAuthStore } from '@/store/authStore';
 import { triggerEnterpriseHandshake } from '@/services/enterpriseHandshake';
+import { RejectReasonModal } from '@/components/onboarding/RejectReasonModal';
+import hotToast from 'react-hot-toast';
 
 
 const VerificationChecks: React.FC<{ submission: OnboardingData; isSyncing: boolean }> = ({ submission, isSyncing }) => {
@@ -63,6 +65,8 @@ const VerificationDashboard: React.FC = () => {
     const [syncingId, setSyncingId] = useState<string | null>(null);
     const [deployingId, setDeployingId] = useState<string | null>(null);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+    const [rejectModalSubmission, setRejectModalSubmission] = useState<OnboardingData | null>(null);
+    const [isRejecting, setIsRejecting] = useState(false);
     const { user } = useAuthStore();
     const navigate = useNavigate();
 
@@ -100,20 +104,27 @@ const VerificationDashboard: React.FC = () => {
         });
     }, [submissions, searchTerm]);
 
-    const handleAction = async (action: 'approve' | 'reject', id: string) => {
-        const originalSubmissions = [...submissions];
+    const handleConfirmReject = async (reason: string) => {
+        if (!rejectModalSubmission || !rejectModalSubmission.id) return;
+        const id = rejectModalSubmission.id;
+        setIsRejecting(true);
 
-        setSubmissions(prev => prev.map(s => s.id === id ? { ...s, status: action === 'approve' ? 'verified' : 'rejected', portalSyncStatus: action === 'approve' ? 'pending_sync' : undefined } : s));
+        setSubmissions(prev => prev.map(s => s.id === id ? { 
+            ...s, 
+            status: 'rejected',
+            rejectionReason: reason,
+            rejection_reason: reason
+        } : s));
 
         try {
-            if (action === 'approve') {
-                await api.verifySubmission(id);
-            } else {
-                await api.requestChanges(id, 'Changes requested by admin.');
-            }
+            await api.requestChanges(id, reason);
+            hotToast.success(`❌ Rejected: ${reason}. Submitter has been alerted!`);
+            setRejectModalSubmission(null);
         } catch (error) {
-            console.error(`Failed to ${action} submission`, error);
-            setSubmissions(originalSubmissions);
+            console.error(`Failed to reject submission`, error);
+            hotToast.error('Failed to reject submission.');
+        } finally {
+            setIsRejecting(false);
         }
     };
 
@@ -161,25 +172,27 @@ const VerificationDashboard: React.FC = () => {
         }
     };
 
-    const filterTabs = ['all', 'pending', 'verified', 'rejected'];
-    const colSpan = statusFilter === 'verified' ? 4 : 5;
-
     return (
-        <div className="p-4 border-0 shadow-none md:bg-card md:p-6 md:rounded-xl md:shadow-card">
+        <div className="p-4 md:p-6 bg-page min-h-screen">
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
-            <h2 className="text-2xl font-semibold text-primary-text mb-6">Onboarding Forms</h2>
+            <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6">
+                <div>
+                    <h2 className="text-2xl font-bold text-primary-text">Verification Dashboard</h2>
+                    <p className="text-muted">Review and verify onboarding submissions</p>
+                </div>
+            </div>
 
-            <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
+            <div className="flex flex-col sm:flex-row justify-between items-center my-6 gap-4">
                 <div className="w-full sm:w-auto border-b border-border">
                     <nav className="-mb-px flex space-x-6" aria-label="Tabs">
-                        {filterTabs.map(tab => (
+                        {['all', 'pending', 'verified', 'rejected'].map(tab => (
                             <button
                                 key={tab}
                                 onClick={() => setStatusFilter(tab)}
                                 className={`${statusFilter === tab
-                                        ? 'border-accent text-accent-dark'
-                                        : 'border-transparent text-muted hover:text-accent-dark hover:border-accent'
-                                    } whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm capitalize`}
+                                    ? 'border-emerald-500 text-emerald-700'
+                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                    } whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm capitalize transition-colors duration-200`}
                             >
                                 {tab}
                             </button>
@@ -192,16 +205,16 @@ const VerificationDashboard: React.FC = () => {
                     </div>
                     <input
                         type="text"
-                        placeholder="Search by name, ID, site..."
+                        placeholder="Search by name, ID, or site..."
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
-                        className="form-input block w-full !pl-10 pr-3 py-2 border-border rounded-lg leading-5 placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-accent focus:border-accent sm:text-sm"
+                        className="block w-full !pl-10 pr-3 py-2 border border-border rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-accent focus:border-accent sm:text-sm"
                     />
                 </div>
             </div>
 
-            <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-border responsive-table">
+            <div className="overflow-x-auto bg-card rounded-xl shadow-card border border-border">
+                <table className="min-w-full responsive-table">
                     <thead className="bg-page">
                         <tr>
                             <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Employee</th>
@@ -213,19 +226,19 @@ const VerificationDashboard: React.FC = () => {
                             <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Actions</th>
                         </tr>
                     </thead>
-                    <tbody className="bg-card md:divide-y-0">
+                    <tbody>
                         {isLoading ? (
-                            <tr><td colSpan={colSpan} className="text-center py-10 text-muted">Loading submissions...</td></tr>
+                            <tr><td colSpan={5} className="text-center py-10 text-muted">Loading submissions...</td></tr>
                         ) : filteredSubmissions.length === 0 ? (
-                            <tr><td colSpan={colSpan} className="text-center py-10 text-muted">No submissions found.</td></tr>
+                            <tr><td colSpan={5} className="text-center py-10 text-muted">No submissions found.</td></tr>
                         ) : (
                             filteredSubmissions.map((s) => (
-                                <tr key={s.id} className={s.requiresManualVerification ? 'bg-orange-50' : ''}>
+                                <tr key={s.id}>
                                     <td data-label="Employee" className="px-6 py-4 whitespace-nowrap">
-                                        <div className="flex items-center">
+                                        <div className="flex items-center gap-3">
                                             {s.requiresManualVerification && (
-                                                <span title="Manual verification required due to data mismatch.">
-                                                    <AlertTriangle className="h-4 w-4 text-orange-500 mr-2 flex-shrink-0" />
+                                                <span title="Manual verification required">
+                                                    <AlertTriangle className="h-4 w-4 text-orange-500" />
                                                 </span>
                                             )}
                                             <div>
@@ -238,6 +251,12 @@ const VerificationDashboard: React.FC = () => {
                                     {statusFilter !== 'verified' && (
                                         <td data-label="Status" className="px-6 py-4 whitespace-nowrap">
                                             <StatusChip status={s.status} />
+                                            {s.status === 'rejected' && (
+                                                <div className="mt-1.5 flex items-center gap-1.5 text-[11px] font-bold text-rose-800 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md shadow-2xs max-w-[180px]" title={s.rejectionReason || (s as any).rejection_reason || s.personal?.rejectionReason || 'Profile Photo Mismatch'}>
+                                                    <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                                                    <span className="truncate">{s.rejectionReason || (s as any).rejection_reason || s.personal?.rejectionReason || 'Profile Photo Mismatch'}</span>
+                                                </div>
+                                            )}
                                         </td>
                                     )}
                                     <td data-label="Designation" className="px-6 py-4 whitespace-nowrap">
@@ -258,7 +277,7 @@ const VerificationDashboard: React.FC = () => {
                                                         {deployingId !== s.id && <CheckSquare className="h-4 w-4 mr-1 text-green-600" />}
                                                         Approve & Deploy
                                                     </Button>
-                                                    <Button variant="icon" size="sm" onClick={() => handleAction('reject', s.id!)} title="Request Changes" aria-label={`Request changes for ${s.personal.firstName}`}><XSquare className="h-4 w-4 text-red-600" /></Button>
+                                                    <Button variant="icon" size="sm" onClick={() => setRejectModalSubmission(s)} title="Request Changes / Reject" aria-label={`Reject ${s.personal.firstName}`}><XSquare className="h-4 w-4 text-red-600" /></Button>
                                                 </>
                                             )}
                                             {s.status === 'verified' && (s.portalSyncStatus === 'pending_sync' || s.portalSyncStatus === 'failed') && (
@@ -275,6 +294,14 @@ const VerificationDashboard: React.FC = () => {
                     </tbody>
                 </table>
             </div>
+
+            <RejectReasonModal
+                isOpen={!!rejectModalSubmission}
+                submission={rejectModalSubmission}
+                onClose={() => setRejectModalSubmission(null)}
+                onConfirm={handleConfirmReject}
+                isSubmitting={isRejecting}
+            />
         </div>
     );
 };

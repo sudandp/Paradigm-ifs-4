@@ -216,6 +216,12 @@ export interface PersonalDetails {
   isQrVerified?: boolean;
   spokenLanguages?: string[];
   writtenLanguages?: string[];
+  rejectionReason?: string | null;
+  rejection_reason?: string | null;
+  rejectedBy?: string | null;
+  rejected_by?: string | null;
+  rejectedAt?: string | null;
+  rejected_at?: string | null;
 }
 
 export interface Address {

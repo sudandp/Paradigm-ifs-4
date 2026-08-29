@@ -8,7 +8,7 @@ import Toast from '../../components/ui/Toast';
 import { api } from '../../services/api';
 import type { OnboardingStep } from '../../types';
 import type { Step } from '../../types/stepper';
-import { Loader2, User, MapPin, Building, Users, GraduationCap, IndianRupee, BadgeCheck, ShieldPlus, HeartPulse, Files, FileCheck, Trash2, CheckCircle, X, ArrowLeft, Shirt, Fingerprint, Home, Save } from 'lucide-react';
+import { Loader2, User, MapPin, Building, Users, GraduationCap, IndianRupee, BadgeCheck, ShieldPlus, HeartPulse, Files, FileCheck, Trash2, CheckCircle, X, ArrowLeft, Shirt, Fingerprint, Home, Save, AlertCircle, XCircle } from 'lucide-react';
 import Modal from '../../components/ui/Modal';
 import { useEnrollmentRulesStore } from '../../store/enrollmentRulesStore';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
@@ -389,6 +389,26 @@ const AddEmployee: React.FC = () => {
                 <Stepper steps={steps} currentStepIndex={currentStepIndex} onStepClick={handleStepClick} highestStepReached={highestStepReached} isMobileOptimized={true} />
                 
                 <main className="flex-1 overflow-y-auto p-4 pb-[30px]" onKeyDown={handleKeyDown}>
+                    {data.status === 'rejected' && (
+                        <div className="mb-4 p-3.5 rounded-xl bg-rose-950/80 border border-rose-500/50 text-rose-200 shadow-md">
+                            <div className="flex items-start gap-2.5">
+                                <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+                                <div>
+                                    <h4 className="text-xs font-black text-rose-100 uppercase tracking-wider">
+                                        Application Rejected & Changes Requested
+                                    </h4>
+                                    <p className="text-xs text-rose-200 mt-1 font-medium">
+                                        Reason: <strong className="text-white font-bold">{data.rejectionReason || (data as any).rejection_reason || 'Please correct details and re-submit.'}</strong>
+                                    </p>
+                                    {data.rejectedBy && (
+                                        <p className="text-[10px] text-rose-300/80 mt-0.5">
+                                            Rejected by {data.rejectedBy}
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
                      <div className="bg-card p-6 rounded-2xl">
                         <Outlet context={{ onValidated, onSubmit: handleSubmit, isSubmitting, setToast } satisfies OutletContext} />
                     </div>
@@ -454,6 +474,30 @@ const AddEmployee: React.FC = () => {
                 </Modal>
                 <Stepper steps={steps} currentStepIndex={currentStepIndex} onStepClick={handleStepClick} highestStepReached={highestStepReached} isMobileOptimized={isMobile} />
                 
+                {data.status === 'rejected' && (
+                    <div className="mt-6 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 shadow-sm flex items-start gap-3.5">
+                        <div className="p-2 bg-rose-100 rounded-xl text-rose-700 shrink-0">
+                            <AlertCircle className="w-5 h-5" />
+                        </div>
+                        <div className="flex-1">
+                            <h4 className="text-sm font-extrabold text-rose-950 flex items-center gap-2">
+                                <span>Application Rejected & Changes Requested</span>
+                                {data.rejectedBy && (
+                                    <span className="text-xs font-normal text-rose-700 bg-rose-100/80 px-2 py-0.5 rounded-md">
+                                        by {data.rejectedBy}
+                                    </span>
+                                )}
+                            </h4>
+                            <p className="text-xs text-rose-900 mt-1 font-semibold">
+                                Rejection Reason: <span className="font-bold text-rose-700">{data.rejectionReason || (data as any).rejection_reason || 'Please correct the highlighted documents and re-submit.'}</span>
+                            </p>
+                            <p className="text-[11px] text-rose-600 mt-0.5">
+                                Please review and update the required section(s), then proceed to the Review step to re-submit.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
                 <div className="mt-8 bg-card p-6 sm:p-8 rounded-xl shadow-card" onKeyDown={handleKeyDown}>
                      <Outlet context={{ onValidated, onSubmit: handleSubmit, isSubmitting, setToast } satisfies OutletContext} />
                 </div>

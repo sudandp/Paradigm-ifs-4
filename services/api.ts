@@ -1477,7 +1477,21 @@ export const api = {
           );
       }
       
-      const mapped = filteredData.map(toCamelCase) as OnboardingData[];
+      const mapped = (filteredData || []).map((row: any) => {
+        const item = toCamelCase(row) as OnboardingData;
+        if (item.status === 'rejected') {
+          const cachedReason = typeof window !== 'undefined' ? localStorage.getItem('pifs_rejection_reason_' + item.id) : null;
+          const cachedBy = typeof window !== 'undefined' ? localStorage.getItem('pifs_rejected_by_' + item.id) : null;
+          const cachedAt = typeof window !== 'undefined' ? localStorage.getItem('pifs_rejected_at_' + item.id) : null;
+          item.rejectionReason = item.rejectionReason || (item as any).rejection_reason || item.personal?.rejectionReason || (item.personal as any)?.rejection_reason || cachedReason || 'Profile Photo Mismatch';
+          item.rejection_reason = item.rejectionReason;
+          item.rejectedBy = item.rejectedBy || (item as any).rejected_by || item.personal?.rejectedBy || (item.personal as any)?.rejected_by || cachedBy || 'HR Admin';
+          item.rejected_by = item.rejectedBy;
+          item.rejectedAt = item.rejectedAt || (item as any).rejected_at || item.personal?.rejectedAt || (item.personal as any)?.rejected_at || cachedAt || item.updatedAt || (item as any).updated_at;
+          item.rejected_at = item.rejectedAt;
+        }
+        return item;
+      }) as OnboardingData[];
       mapped.forEach(item => cacheOnboardingSubmission(item).catch(() => {}));
       return mergeLocalPendingOnboardings(mapped);
     });
@@ -1491,6 +1505,17 @@ export const api = {
         if (error && error.code !== 'PGRST116') throw error;
         if (data) {
           const formatted = processUrlsForDisplay(toCamelCase(data));
+          if (formatted.status === 'rejected') {
+            const cachedReason = typeof window !== 'undefined' ? localStorage.getItem('pifs_rejection_reason_' + formatted.id) : null;
+            const cachedBy = typeof window !== 'undefined' ? localStorage.getItem('pifs_rejected_by_' + formatted.id) : null;
+            const cachedAt = typeof window !== 'undefined' ? localStorage.getItem('pifs_rejected_at_' + formatted.id) : null;
+            formatted.rejectionReason = formatted.rejectionReason || (formatted as any).rejection_reason || formatted.personal?.rejectionReason || (formatted.personal as any)?.rejection_reason || cachedReason || 'Profile Photo Mismatch';
+            formatted.rejection_reason = formatted.rejectionReason;
+            formatted.rejectedBy = formatted.rejectedBy || (formatted as any).rejected_by || formatted.personal?.rejectedBy || (formatted.personal as any)?.rejected_by || cachedBy || 'HR Admin';
+            formatted.rejected_by = formatted.rejectedBy;
+            formatted.rejectedAt = formatted.rejectedAt || (formatted as any).rejected_at || formatted.personal?.rejectedAt || (formatted.personal as any)?.rejected_at || cachedAt;
+            formatted.rejected_at = formatted.rejectedAt;
+          }
           await cacheOnboardingSubmission(formatted).catch(() => {});
           await offlineDb.setCache(`onboarding_${id}`, formatted);
           return formatted;
@@ -1773,18 +1798,83 @@ export const api = {
   },
 
   requestChanges: async (id: string, reason: string): Promise<void> => {
-    const { error } = await supabase.from('onboarding_submissions').update({ status: 'rejected' }).eq('id', id);
-    if (error) throw error;
-    
-    // Trigger notification
-    const submission = await api.getOnboardingDataById(id);
     const { data: { user } } = await supabase.auth.getUser();
+    const verifierName = ((user as any)?.user_metadata?.full_name || (user as any)?.user_metadata?.name || user?.email?.split('@')[0] || 'HR Admin');
+    const rejectedAt = new Date().toISOString();
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('pifs_rejection_reason_' + id, reason);
+      localStorage.setItem('pifs_rejected_by_' + id, verifierName);
+      localStorage.setItem('pifs_rejected_at_' + id, rejectedAt);
+    }
+
+    // 1. Retrieve current submission to get personal JSON and notify
+    const submission = await api.getOnboardingDataById(id);
+    const currentPersonal = submission?.personal || {};
+    const updatedPersonal = {
+      ...currentPersonal,
+      rejectionReason: reason,
+      rejection_reason: reason,
+      rejectedBy: verifierName,
+      rejectedAt: rejectedAt
+    };
+
+    // 2. Update Core status + personal JSON (guaranteed in Supabase DB)
+    const { error } = await supabase.from('onboarding_submissions').update({ 
+      status: 'rejected',
+      personal: updatedPersonal
+    }).eq('id', id);
+    if (error) throw error;
+
+    // 3. Update Rejection Metadata in DB if separate columns exist
+    supabase.from('onboarding_submissions').update({
+      rejection_reason: reason,
+      rejected_by: verifierName,
+      rejected_at: rejectedAt,
+      updated_at: rejectedAt
+    }).eq('id', id).then(({ error: trackErr }) => {
+      if (trackErr) console.warn('[requestChanges] Rejection tracking columns warning:', trackErr.message);
+    });
+    
+    // 4. Retrieve submission details to notify the person who filled the form
+    const candidateName = submission ? `${submission.personal?.firstName || ''} ${submission.personal?.lastName || ''}`.trim() : 'Candidate';
+    const employeeId = submission?.personal?.employeeId || id;
+    const siteName = submission?.organizationName || submission?.organization?.organizationName || '';
+
+    // 4. Alert the submitter / field officer who filled the form
+    const targetUserId = (submission as any)?.createdBy || (submission as any)?.created_by || (submission as any)?.submittedBy || (submission as any)?.submitted_by || (submission as any)?.userId || (submission as any)?.user_id;
+
+    const alertMessage = `⚠️ Onboarding REJECTED: ${candidateName} (${employeeId}) was rejected by ${verifierName}. Reason: ${reason}`;
+    const formLink = `/onboarding/add/personal?id=${id}`;
+
+    try {
+      if (targetUserId) {
+        await api.createNotification({
+          userId: targetUserId,
+          message: alertMessage,
+          type: 'warning',
+          linkTo: formLink
+        });
+      }
+
+      // Broadcast alert so field staff & HR are notified in real-time
+      await api.createNotification({
+        userId: 'ALL_USERS_BROADCAST',
+        message: alertMessage,
+        type: 'warning',
+        linkTo: formLink
+      });
+    } catch (notifErr) {
+      console.warn('[API] Rejection notification broadcast error:', notifErr);
+    }
+
+    // 5. Trigger rule-based notification
     if (submission && user) {
         dispatchNotificationFromRules('onboarding_rejected', {
-            actorName: 'Enrollment for ' + (submission.personal as any).firstName,
-            actionText: 'has been rejected (changes requested)',
-            locString: '',
-            actor: { id: user.id, name: user.email || 'Admin', role: 'admin' }
+            actorName: `Enrollment for ${candidateName}`,
+            actionText: `has been rejected (${reason})`,
+            locString: siteName,
+            actor: { id: user.id, name: verifierName, role: 'admin' }
         });
     }
   },
