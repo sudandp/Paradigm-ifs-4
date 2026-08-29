@@ -11,6 +11,7 @@ import LoadingScreen from '../../components/ui/LoadingScreen';
 import { getProxyUrl } from '../../utils/fileUrl';
 
 import { generatePifsCompliancePdf, savePifsCompliancePdfToServer } from '../../services/pifsCompliancePdfService';
+import { downloadOnboardingAckSlipPdf } from '../../services/pifsAckSlipPdfService';
 
 const OnboardingPdfOutput: React.FC = () => {
     const { id } = useParams<{ id: string }>();
@@ -21,6 +22,7 @@ const OnboardingPdfOutput: React.FC = () => {
     const user = useAuthStore((state) => state.user);
     const logo = useLogoStore((state) => state.currentLogo);
     const [isGenerating, setIsGenerating] = useState(false);
+    const [isGeneratingAck, setIsGeneratingAck] = useState(false);
     const [isConfirming, setIsConfirming] = useState(false);
 
     useEffect(() => {
@@ -40,6 +42,19 @@ const OnboardingPdfOutput: React.FC = () => {
         };
         fetchData();
     }, [id, storeData]);
+
+    const handleExportAckSlip = async () => {
+        if (!employeeData) return;
+        setIsGeneratingAck(true);
+        try {
+            await downloadOnboardingAckSlipPdf(employeeData);
+        } catch (error) {
+            console.error("Ack Slip PDF generation failed:", error);
+            alert(`Could not generate Ack Slip PDF: ${(error as any)?.message || error}`);
+        } finally {
+            setIsGeneratingAck(false);
+        }
+    };
 
     const handleExport = async () => {
         if (!employeeData) return;
@@ -148,7 +163,7 @@ const OnboardingPdfOutput: React.FC = () => {
                         <p className="text-xs text-slate-500">Ref: ONB-{d.personal.employeeId} • Review before final submission</p>
                     </div>
 
-                    <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                    <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
                         <Button 
                             type="button" 
                             onClick={() => window.print()} 
@@ -161,14 +176,27 @@ const OnboardingPdfOutput: React.FC = () => {
                         </Button>
                         <Button 
                             type="button" 
+                            onClick={handleExportAckSlip} 
+                            variant="outline" 
+                            disabled={isGeneratingAck}
+                            size="sm"
+                            title="Download Onboarding Acknowledgement Slip PDF"
+                            className="flex-1 sm:flex-none border-emerald-300 text-emerald-800 hover:bg-emerald-50 font-semibold"
+                        >
+                            {isGeneratingAck ? <Loader2 className="mr-2 h-4 w-4 animate-spin text-emerald-600" /> : <FileCheck className="mr-2 h-4 w-4 text-emerald-600" />}
+                            {isGeneratingAck ? 'Generating...' : 'Download Ack Slip'}
+                        </Button>
+                        <Button 
+                            type="button" 
                             onClick={handleExport} 
                             variant="outline" 
                             disabled={isGenerating}
                             size="sm"
+                            title="Download 21-Page Official Statutory Compliance Data Sheet"
                             className="flex-1 sm:flex-none"
                         >
                             {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin text-emerald-600" /> : <Download className="mr-2 h-4 w-4" />}
-                            {isGenerating ? 'Generating...' : 'Download PDF'}
+                            {isGenerating ? 'Generating...' : 'Download PIFS Data Sheet'}
                         </Button>
                         <Button 
                             type="button" 

@@ -8,6 +8,8 @@ import { useAuthStore } from '../../store/authStore';
 import { getProxyUrl } from '../../utils/fileUrl';
 
 import { generatePifsCompliancePdf, savePifsCompliancePdfToServer } from '../../services/pifsCompliancePdfService';
+import { downloadOnboardingAckSlipPdf } from '../../services/pifsAckSlipPdfService';
+import { FileCheck } from 'lucide-react';
 
 interface OnboardingBookletModalProps {
     isOpen: boolean;
@@ -25,6 +27,7 @@ export const OnboardingBookletModal: React.FC<OnboardingBookletModalProps> = ({
     const logo = useLogoStore((state) => state.currentLogo);
     const user = useAuthStore((state) => state.user);
     const [isGenerating, setIsGenerating] = useState(false);
+    const [isGeneratingAck, setIsGeneratingAck] = useState(false);
     const [isConfirming, setIsConfirming] = useState(false);
 
     if (!isOpen || !employeeData) return null;
@@ -42,6 +45,18 @@ export const OnboardingBookletModal: React.FC<OnboardingBookletModalProps> = ({
     const hasEducationOrFamily = validEducation.length > 0 || validFamily.length > 0;
     const photoUrl = d.personal.photo?.preview || (d.personal.photo as any)?.url || '';
     const signatureUrl = d.biometrics?.signatureImage?.preview || (d.biometrics?.signatureImage as any)?.url || '';
+
+    const handleExportAckSlip = async () => {
+        setIsGeneratingAck(true);
+        try {
+            await downloadOnboardingAckSlipPdf(employeeData);
+        } catch (error) {
+            console.error("Ack Slip PDF generation failed:", error);
+            alert(`Could not generate Ack Slip PDF: ${(error as any)?.message || error}`);
+        } finally {
+            setIsGeneratingAck(false);
+        }
+    };
 
     const handleExport = async () => {
         setIsGenerating(true);
@@ -102,7 +117,7 @@ export const OnboardingBookletModal: React.FC<OnboardingBookletModalProps> = ({
                     </div>
                 </div>
 
-                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
                     <Button 
                         type="button" 
                         onClick={() => window.print()} 
@@ -114,14 +129,27 @@ export const OnboardingBookletModal: React.FC<OnboardingBookletModalProps> = ({
                     </Button>
                     <Button 
                         type="button" 
+                        onClick={handleExportAckSlip} 
+                        variant="outline" 
+                        disabled={isGeneratingAck}
+                        size="sm"
+                        title="Download Onboarding Acknowledgement Slip PDF"
+                        className="flex-1 sm:flex-none border-emerald-300 text-emerald-800 hover:bg-emerald-50 font-semibold"
+                    >
+                        {isGeneratingAck ? <Loader2 className="mr-2 h-4 w-4 animate-spin text-emerald-600" /> : <FileCheck className="mr-2 h-4 w-4 text-emerald-600" />}
+                        {isGeneratingAck ? 'Generating...' : 'Download Ack Slip'}
+                    </Button>
+                    <Button 
+                        type="button" 
                         onClick={handleExport} 
                         variant="outline" 
                         disabled={isGenerating}
                         size="sm"
+                        title="Download 21-Page Official Statutory Compliance Data Sheet"
                         className="flex-1 sm:flex-none"
                     >
                         {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin text-emerald-600" /> : <Download className="mr-2 h-4 w-4" />}
-                        {isGenerating ? 'Generating...' : 'Download PDF'}
+                        {isGenerating ? 'Generating...' : 'Download PIFS Data Sheet'}
                     </Button>
                     <Button 
                         type="button" 
