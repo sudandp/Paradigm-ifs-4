@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -7,6 +7,7 @@ import Toast from '../../components/ui/Toast';
 import { LogIn, LogOut, Clock, Coffee, X, CloudOff, Bell, Volume2, MoveLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import SmartFieldReportModal from '../../components/attendance/SmartFieldReportModal';
+import LocationPermissionModal from '../../components/attendance/LocationPermissionModal';
 import { lookupByPasscode } from '../../services/gateApi';
 import { isDeviceTimeSpoofed } from '../../utils/timeUtils';
 import { getCurrentDevice, isDeviceAuthorized, registerDevice } from '../../services/deviceService';
@@ -135,10 +136,12 @@ const AlarmDial: React.FC<{
 const AttendanceActionPage: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
-    const { toggleCheckInStatus, isCheckedIn, geofencingSettings, fetchGeofencingSettings, isOffline } = useAuthStore();
+    const { toggleCheckInStatus, geofencingSettings, fetchGeofencingSettings, isOffline } = useAuthStore();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+    const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
+    const [locationErrorMessage, setLocationErrorMessage] = useState<string | null>(null);
     const [breakInterval, setBreakInterval] = useState<number>(() => useAuthStore.getState().breakReminderInterval || 15);
     const [selectedIdx, setSelectedIdx] = useState(() => {
         const stored = useAuthStore.getState().breakReminderInterval || 15;
@@ -159,8 +162,10 @@ const AttendanceActionPage: React.FC = () => {
             if (!geofencingSettings) await fetchGeofencingSettings();
             try {
                 const { getPrecisePosition } = await import('../../utils/locationUtils');
-                getPrecisePosition(150, 15000).catch(() => {});
-            } catch (_) {}
+                getPrecisePosition(150, 15000).catch(() => { /* ignore warm-up rejection */ });
+            } catch {
+                /* ignore warm-up import error */
+            }
         };
         init();
     }, [geofencingSettings, fetchGeofencingSettings]);
@@ -213,22 +218,22 @@ const AttendanceActionPage: React.FC = () => {
         setBreakInterval(PRESETS[i].mins);
     };
 
-    const handleConfirm = async (isAutoConfirm = false) => {
-        console.log('[AttendanceActionPage Debug] handleConfirm started:', { workType, isCheckIn, isBreakIn, isBreakOut, actionParam, bypassReport, overrideTimestamp });
+    const handleConfirm = async (isAutoConfirm = false, acquiredPosition?: GeolocationPosition) => {
+        console.log('[AttendanceActionPage Debug] handleConfirm started:', { workType, isCheckIn, isBreakIn, isBreakOut, actionParam, bypassReport, overrideTimestamp, acquiredPosition });
         setIsSubmitting(true);
         try {
             const user = useAuthStore.getState().user;
             if (!user) { setToast({ message: 'User session invalid.', type: 'error' }); setIsSubmitting(false); return; }
 
             // --- Offline Guard ---
-            // Use window.navigator.onLine as fallback for web browser where
-            // CapacitorNetwork.getStatus() incorrectly returns connected:false.
             let isOnline = typeof window !== 'undefined' ? window.navigator.onLine : true;
             try {
                 const { Network } = await import('@capacitor/network');
                 const netStatus = await Network.getStatus();
                 isOnline = netStatus.connected || isOnline;
-            } catch (_) { /* keep browser fallback */ }
+            } catch {
+                /* keep browser fallback */
+            }
             if (!isOnline) {
                 setToast({
                     message: '📡 No internet connection. Please connect to Wi-Fi or mobile data to record attendance.',
@@ -276,20 +281,35 @@ const AttendanceActionPage: React.FC = () => {
 
             const normalizedWorkType = workType === 'site-ot' ? 'field' : (workType as 'office' | 'field');
 
-            const { success, message } = await toggleCheckInStatus(
+            const res = await toggleCheckInStatus(
                 undefined,
                 null,
                 normalizedWorkType,
                 undefined,
                 forcedType,
                 (forcedType === 'break-in' && isAlarmEnabled) ? breakInterval : undefined,
-                overrideTimestamp  // ← undefined for normal punches; date-23:59 for missed-day session close
+                overrideTimestamp,
+                acquiredPosition
             );
 
-            setToast({ message, type: success ? 'success' : 'error' });
-            if (success) setTimeout(() => navigate('/profile', { replace: true }), 600);
-        } catch (error) {
-            setToast({ message: 'Failed to process request.', type: 'error' });
+            if (res.isLocationError) {
+                setLocationErrorMessage(res.message);
+                setIsLocationModalOpen(true);
+                setIsSubmitting(false);
+                return;
+            }
+
+            setToast({ message: res.message, type: res.success ? 'success' : 'error' });
+            if (res.success) setTimeout(() => navigate('/profile', { replace: true }), 600);
+        } catch (error: unknown) {
+            console.error('[AttendanceActionPage] Error:', error);
+            const errObj = error as { isPermissionError?: boolean; isPositionUnavailable?: boolean; message?: string } | undefined;
+            if (errObj?.isPermissionError || errObj?.isPositionUnavailable || errObj?.message?.toLowerCase().includes('location')) {
+                setLocationErrorMessage(errObj?.message || 'Location access failed. Please enable location permissions.');
+                setIsLocationModalOpen(true);
+            } else {
+                setToast({ message: 'Failed to process request.', type: 'error' });
+            }
         } finally { setIsSubmitting(false); }
     };
 
@@ -303,15 +323,24 @@ const AttendanceActionPage: React.FC = () => {
                 setIsVerified(true); setUsePasscodeFallback(false);
                 setTimeout(() => handleConfirm(true), 500);
             } else { setToast({ message: 'Invalid passcode for this user.', type: 'error' }); }
-        } catch (_) { setToast({ message: 'Error verifying passcode.', type: 'error' }); }
-        finally { setIsVerifyingPasscode(false); }
+        } catch {
+            setToast({ message: 'Error verifying passcode.', type: 'error' });
+        } finally {
+            setIsVerifyingPasscode(false);
+        }
     };
 
-    const handleReportConfirm = async (reportId: string, summary: string, wt: 'office' | 'field') => {
+    const handleReportConfirm = async (reportId: string, summary: string, wt: 'office' | 'field', acquiredPosition?: GeolocationPosition) => {
         setIsReportModalOpen(false); setIsSubmitting(true);
-        const { success, message } = await toggleCheckInStatus(summary, null, wt, reportId);
-        setToast({ message, type: success ? 'success' : 'error' }); setIsSubmitting(false);
-        if (success) setTimeout(() => navigate('/profile', { replace: true }), 600);
+        const res = await toggleCheckInStatus(summary, null, wt, reportId, undefined, undefined, undefined, acquiredPosition);
+        if (res.isLocationError) {
+            setLocationErrorMessage(res.message);
+            setIsLocationModalOpen(true);
+            setIsSubmitting(false);
+            return;
+        }
+        setToast({ message: res.message, type: res.success ? 'success' : 'error' }); setIsSubmitting(false);
+        if (res.success) setTimeout(() => navigate('/profile', { replace: true }), 600);
     };
 
     const isMobile = useMediaQuery('(max-width: 767px)');
@@ -858,6 +887,15 @@ const AttendanceActionPage: React.FC = () => {
                     </div>
                 )}
             </AnimatePresence>
+
+            {/* Mandatory Location Permission & Guide Modal */}
+            <LocationPermissionModal
+                isOpen={isLocationModalOpen}
+                onClose={() => setIsLocationModalOpen(false)}
+                actionName={action}
+                errorMessage={locationErrorMessage}
+                onLocationAcquired={(pos) => handleConfirm(true, pos)}
+            />
         </div>
     );
 };

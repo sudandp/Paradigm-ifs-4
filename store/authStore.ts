@@ -3,7 +3,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { Capacitor } from '@capacitor/core';
-import { Geolocation } from '@capacitor/geolocation';
 import { Network as CapacitorNetwork } from '@capacitor/network';
 const Network = {
   ...CapacitorNetwork,
@@ -14,7 +13,7 @@ const Network = {
         ...status,
         connected: status.connected || (typeof window !== 'undefined' && window.navigator.onLine)
       };
-    } catch (e) {
+    } catch {
       return {
         connected: typeof window !== 'undefined' ? window.navigator.onLine : true,
         connectionType: 'unknown'
@@ -24,10 +23,9 @@ const Network = {
 };
 import { authService } from '../services/authService';
 import { Preferences } from '@capacitor/preferences';
-import { secureSet, secureGet, secureRemove } from '../utils/secureStorage';
+import { secureSet, secureRemove } from '../utils/secureStorage';
 import type { User, AttendanceEventType } from '../types';
 import { supabase } from '../services/supabase';
-import type { RealtimeChannel, Subscription } from '@supabase/supabase-js';
 // FIX: Import the 'api' object to resolve 'Cannot find name' errors.
 import { api } from '../services/api';
 
@@ -35,7 +33,7 @@ import { withTimeout } from '../utils/async';
 import { format } from 'date-fns';
 import { routeTrackingService } from '../services/routeTrackingService';
 import { calculateDistanceMeters, reverseGeocode, getPrecisePosition } from '../utils/locationUtils';
-import { processDailyEvents, isTechnicalRole } from '../utils/attendanceCalculations';
+import { processDailyEvents } from '../utils/attendanceCalculations';
 import { useSettingsStore } from './settingsStore';
 import { dispatchNotificationFromRules } from '../services/notificationService';
 import { LocalNotifications } from '@capacitor/local-notifications';
@@ -142,7 +140,7 @@ interface AuthState {
     resetAttendance: () => void;
     updateUserProfile: (updates: Partial<User>) => void;
     checkAttendanceStatus: (isSilent?: boolean) => Promise<void>;
-    toggleCheckInStatus: (note?: string, attachmentUrl?: string | null, workType?: 'office' | 'field', fieldReportId?: string, forcedType?: string, breakInterval?: number, overrideTimestamp?: string) => Promise<{ success: boolean; message: string }>;
+    toggleCheckInStatus: (note?: string, attachmentUrl?: string | null, workType?: 'office' | 'field', fieldReportId?: string, forcedType?: string, breakInterval?: number, overrideTimestamp?: string, existingPosition?: GeolocationPosition) => Promise<{ success: boolean; message: string; isLocationError?: boolean; errorType?: string }>;
     subscribeToAttendance: () => (() => void) | void;
     error: string | null;
     setError: (error: string | null) => void;
@@ -324,7 +322,7 @@ export const useAuthStore = create<AuthState>()(
                     punchOutLat = pos.coords.latitude;
                     punchOutLng = pos.coords.longitude;
                     punchOutLocationName = 'Last Known Location';
-                } catch (_) {
+                } catch {
                     // GPS unavailable — punch-out proceeds without coords
                 }
 
@@ -521,7 +519,7 @@ export const useAuthStore = create<AuthState>()(
                     ).catch(e => ({ data: { user: null, session: null }, error: { message: e.message } }));
 
                 // Handle sign-in errors
-                if (error || !data.user || !data.session) {
+                if (error || !data || !data.user || !data.session) {
                     // [SECURITY] Record failed attempt for rate limiting
                     recordFailedAttempt(cleanEmail, 'login');
                     logSecurityEvent({
@@ -542,7 +540,9 @@ export const useAuthStore = create<AuthState>()(
                 // FORCE PERSISTENCE: As per user request ("keep login until unless user logout by them"),
                 // we always save the refresh token to Preferences, regardless of the "Remember Me" checkbox.
                 // [SECURITY] Values are AES-256 encrypted via secureStorage utility before persisting.
-                await secureSet('rememberedEmail', email);
+                if (rememberMe) {
+                    await secureSet('rememberedEmail', email);
+                }
                 await secureSet('supabase.auth.rememberMe', data.session.refresh_token);
                 
                 // [SECURITY FIX C8] Removed plaintext password storage.
@@ -841,7 +841,7 @@ export const useAuthStore = create<AuthState>()(
 
                 const events = eventsResult.value;
                 const approvedUnlockCount = unlockCountResult.status === 'fulfilled' ? unlockCountResult.value : 0;
-                const dailyUnlockRequestCount = 0;
+                const dailyUnlockRequestCount = dailyUnlockCountResult.status === 'fulfilled' ? dailyUnlockCountResult.value : 0;
                 const leaveRequests = (leaveRequestsResult.status === 'fulfilled' && (leaveRequestsResult.value as any)?.data)
                     ? (leaveRequestsResult.value as any).data
                     : [];
@@ -1179,7 +1179,7 @@ export const useAuthStore = create<AuthState>()(
             }
         },
 
-        toggleCheckInStatus: async (note?: string, attachmentUrl?: string | null, workType?: 'office' | 'field', fieldReportId?: string, forcedType?: string, breakInterval?: number, overrideTimestamp?: string) => {
+        toggleCheckInStatus: async (note?: string, attachmentUrl?: string | null, workType?: 'office' | 'field', fieldReportId?: string, forcedType?: string, breakInterval?: number, overrideTimestamp?: string, existingPosition?: GeolocationPosition) => {
             // ── Mutex guard: prevent concurrent toggle calls (double-tap, race with resume refresh) ──
             if (isToggling) {
                 console.warn('[authStore] toggleCheckInStatus: already in progress, ignoring duplicate call.');
@@ -1187,7 +1187,7 @@ export const useAuthStore = create<AuthState>()(
             }
             isToggling = true;
 
-            const { user, isCheckedIn, isFieldCheckedIn, isSiteOtCheckedIn, geofencingSettings, dailyPunchCount, isAttendanceLoading } = get();
+            const { user, geofencingSettings, dailyPunchCount, isAttendanceLoading } = get();
             if (!user) { isToggling = false; return { success: false, message: 'User not found' }; }
 
             // ── Stale-state guard: if attendance is still loading from a resume refresh,
@@ -1215,15 +1215,7 @@ export const useAuthStore = create<AuthState>()(
 
             // Check field staff restriction for office punch-in
             if (freshState.user?.role === 'field_staff' && newType === 'punch-in' && (!workType || workType === 'office')) {
-                // If they have already punched in today (count >= 1), block unless overrides exist
-                // The current request is to allow "based on request to reporting manager", implying an approval workflow.
-                // For now, allow subsequent punches ONLY if explicitly requested (e.g., manual override flag, or maybe we enforce the limit here).
-                // Let's implement the basic check first. The UI will likely block this before calling API, but enforcement here is good.
-                // However, without a dedicated 'isEmergency' flag in arguments, we can't easily distinguish approved overrides here.
-                // We'll trust the UI/Logic layer to gate this, or simply enforce it.
-                // Given "can be done one time only", we should strictly block unless there's a mechanism.
-                // For this implementation, we will enforce the block in UI but allow API if needed for debugging/future.
-                // Actually, let's skip strict blocking in API for now to allow emergency overrides later if implemented.
+                // Enforce in UI
             }
 
             // Ensure we have settings
@@ -1238,15 +1230,10 @@ export const useAuthStore = create<AuthState>()(
                         maxViolationsPerMonth: rules?.maxViolationsPerMonth ?? 3 
                     };
                     set({ geofencingSettings: settings });
-                } catch (e) {
+                } catch {
                     settings = { enabled: false, maxViolationsPerMonth: 3 };
                 }
             }
-
-            // --- strict session enforcement REMOVED to allow multiple check-ins ---
-            // Previous logic for preventing multiple check-ins per day has been removed
-            // based on user feedback to support multiple sessions.
-            // ----------------------------------------------------------------------
 
             // IMMEDIATELY cancel break alarms if the user is breaking out.
             // Do NOT wait for GPS or API calls, otherwise the device will keep ringing 
@@ -1258,25 +1245,19 @@ export const useAuthStore = create<AuthState>()(
             }
 
             try {
-                // --- 3-Stage Location Acquisition using Capacitor ---
-                let position: GeolocationPosition | null = null;
+                // --- Location Acquisition ---
+                let position: GeolocationPosition | null = existingPosition || null;
                 let locationStatus: string | null = null;
 
-                try {
-                    // Stage 1: Primary - Robust Position Acquisition with internal fallbacks
-                    // Break actions use a shorter 3s timeout to prevent Android UI hangs —
-                    // GPS is nice-to-have for breaks, not critical.
-                    // Punch-in/out gets the full 10s for accurate geofencing.
-                    const isBreakAction = newType === 'break-in' || newType === 'break-out';
-                    const gpsTimeout = isBreakAction ? 3000 : 10000;
-                    position = await getPrecisePosition(150, gpsTimeout);
-                } catch (err: any) {
-                    console.warn('[Location] All location acquisition stages failed:', err.message);
-                    // Provide a more descriptive fallback than just "GPS Unavailable"
-                    const orgSuffix = user.organizationName ? `Near ${user.organizationName} (Estimated)` : 'GPS Unavailable';
-                    locationStatus = err.message.includes('permission') 
-                        ? 'Location Permission Denied' 
-                        : orgSuffix;
+                if (!position) {
+                    try {
+                        const isBreakAction = newType === 'break-in' || newType === 'break-out';
+                        const gpsTimeout = isBreakAction ? 5000 : 10000;
+                        position = await getPrecisePosition(150, gpsTimeout);
+                    } catch (err: any) {
+                        console.warn('[Location] Location acquisition failed:', err.message);
+                        locationStatus = err.message || 'Location acquisition failed';
+                    }
                 }
 
                 const finalizeAttendance = async (lat?: number, lng?: number, locId?: string | null, locName?: string | null) => {
@@ -1531,10 +1512,20 @@ export const useAuthStore = create<AuthState>()(
                     return { success: true, message: finalMessage };
                 };
 
+                // STRICT MANDATORY LOCATION CHECK
                 if (!position || !position.coords) {
-                    // One last attempt: If they are near their assigned organization, assume that context
-                    const fallbackName = locationStatus || 'GPS Unavailable';
-                    return await finalizeAttendance(undefined, undefined, null, fallbackName);
+                    isToggling = false;
+                    const isPermission = locationStatus?.toLowerCase().includes('permission') || locationStatus?.toLowerCase().includes('denied');
+                    const defaultMsg = isPermission 
+                        ? 'Location permission denied. Please allow location access in your browser and Windows Settings to proceed.'
+                        : (locationStatus || 'Location access is strictly mandatory to record attendance. Please enable location services and retry.');
+                    
+                    return {
+                        success: false,
+                        isLocationError: true,
+                        errorType: isPermission ? 'permission_denied' : 'position_unavailable',
+                        message: defaultMsg
+                    };
                 }
                 const { latitude, longitude, accuracy } = position.coords;
                 // If accuracy is unreasonably large (>1000m), still record the raw coordinates but flag no geofence match
@@ -1616,7 +1607,7 @@ export const useAuthStore = create<AuthState>()(
                             return (geoAddr && !/^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(geoAddr.trim()))
                                 ? geoAddr
                                 : 'Mobile Punch-in';
-                        } catch (err) {
+                        } catch {
                             return 'Mobile Punch-in';
                         }
                     };
@@ -1628,7 +1619,7 @@ export const useAuthStore = create<AuthState>()(
                             if (!locationName) {
                                 locationName = await getRealAddress(latitude, longitude);
                             }
-                        } catch (err) {
+                        } catch {
                             // If reverse geocoding fails, we might be offline
                             const isOfflineStatus = !(await Network.getStatus()).connected;
                             locationName = isOfflineStatus ? 'Offline Punch' : 'Outside Geofence';
