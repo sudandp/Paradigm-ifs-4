@@ -251,6 +251,7 @@ let lastSyncedSteps = 0;
 let lastSyncTime = 0;
 // Mutex: prevents concurrent toggleCheckInStatus calls (e.g. rapid double-tap, or tap during resume refresh)
 let isToggling = false;
+let isAutoPunchOutRunning = false;
 
 export const useAuthStore = create<AuthState>()(
 
@@ -291,29 +292,35 @@ export const useAuthStore = create<AuthState>()(
         setPendingAutoPunchOut: (data) => set({ pendingAutoPunchOut: data }),
         lastCompany: null,
         executeAutoPunchOut: async () => {
+            if (isAutoPunchOutRunning) {
+                console.log('[AutoPunchOut] Execution already in progress. Skipping duplicate call.');
+                set({ pendingAutoPunchOut: null });
+                return;
+            }
             const { user, isCheckedIn, isFieldCheckedIn, isSiteOtCheckedIn, pendingAutoPunchOut } = get();
             const isUserCheckedInAtAll = isCheckedIn || isFieldCheckedIn || isSiteOtCheckedIn;
             if (!user || !isUserCheckedInAtAll || !pendingAutoPunchOut) {
                 set({ pendingAutoPunchOut: null });
                 return;
             }
+
+            // Immediately set lock and clear pending state to prevent duplicate triggers
+            isAutoPunchOutRunning = true;
+            set({ pendingAutoPunchOut: null });
             
             try {
-                // Deduplication guard: the cron (trigger-missed-checkouts) may have already
-                // inserted a punch-out. Check the last 2 hours before creating another one.
-                const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-                const recentEvents = await api.getAttendanceEvents(user.id, twoHoursAgo, new Date().toISOString());
+                // Deduplication guard: check if punch-out already exists in the last 15 minutes
+                const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+                const recentEvents = await api.getAttendanceEvents(user.id, fifteenMinsAgo, new Date().toISOString());
                 const alreadyPunchedOut = recentEvents.some(e => e.type === 'punch-out');
 
                 if (alreadyPunchedOut) {
-                    console.log('[AutoPunchOut] Punch-out already exists in the last 2 hours (likely from cron). Skipping duplicate insert — syncing state only.');
+                    console.log('[AutoPunchOut] Punch-out already exists in the last 15 minutes. Skipping duplicate insert — syncing state only.');
                     await get().checkAttendanceStatus(true);
-                    set({ pendingAutoPunchOut: null });
                     return;
                 }
 
                 // Try to capture the device's current GPS location for the punch-out record.
-                // This ensures the location column in Employee Log is populated (like a manual punch-out).
                 let punchOutLat: number | undefined;
                 let punchOutLng: number | undefined;
                 let punchOutLocationName: string | undefined;
@@ -366,6 +373,7 @@ export const useAuthStore = create<AuthState>()(
             } catch (err) {
                 console.error('[AutoPunchOut] Failed:', err);
             } finally {
+                isAutoPunchOutRunning = false;
                 set({ pendingAutoPunchOut: null });
             }
         },

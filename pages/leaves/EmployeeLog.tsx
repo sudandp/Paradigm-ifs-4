@@ -180,11 +180,33 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
         }
     }, [initialEvents, selectedRange, selectedDate]);
 
+    // Deduplicate any repeated events that occur within 2 minutes of each other with identical type
+    const deduplicatedEvents = useMemo(() => {
+        if (!events || events.length === 0) return [];
+        const sorted = [...events].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        const result: AttendanceEvent[] = [];
+
+        for (const ev of sorted) {
+            const evTime = new Date(ev.timestamp).getTime();
+            const isDuplicate = result.some(existing => {
+                if (existing.type !== ev.type) return false;
+                const existingTime = new Date(existing.timestamp).getTime();
+                const diffSec = Math.abs(evTime - existingTime) / 1000;
+                return diffSec <= 120;
+            });
+
+            if (!isDuplicate) {
+                result.push(ev);
+            }
+        }
+        return result;
+    }, [events]);
+
     const groupedByDate = useMemo(() => {
         const groups: Record<string, GroupedAttendance> = {};
-        const dayKeyById = buildAttendanceDayKeyByEventId(events);
+        const dayKeyById = buildAttendanceDayKeyByEventId(deduplicatedEvents);
 
-        events.forEach((event) => {
+        deduplicatedEvents.forEach((event) => {
             const dateKey = dayKeyById[event.id] || format(new Date(event.timestamp), 'yyyy-MM-dd');
             if (!groups[dateKey]) {
                 groups[dateKey] = {
@@ -240,7 +262,7 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
         });
 
         return finalGroups.sort((a, b) => b.date.localeCompare(a.date));
-    }, [events, selectedRange, selectedDate]);
+    }, [deduplicatedEvents, selectedRange, selectedDate]);
 
     const formatDuration = (minutes: number) => {
         const roundedMins = Math.round(minutes);

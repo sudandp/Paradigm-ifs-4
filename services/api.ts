@@ -3756,6 +3756,27 @@ export const api = {
       event.source = 'app';
     }
 
+    // Deduplication Guard: Prevent duplicate punch-out events inserted within 2 minutes for the same user
+    if (event.type === 'punch-out' || event.type === 'site-ot-out' || event.type === 'site-out') {
+      try {
+        const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+        const { data: recentOuts } = await supabase
+          .from('attendance_events')
+          .select('id, timestamp, type')
+          .eq('user_id', event.userId)
+          .in('type', ['punch-out', 'site-ot-out', 'site-out'])
+          .gte('timestamp', twoMinutesAgo)
+          .limit(1);
+
+        if (recentOuts && recentOuts.length > 0) {
+          console.warn('[addAttendanceEvent] Duplicate punch-out event detected within 2 minutes. Skipping redundant insert.');
+          return;
+        }
+      } catch (dedupErr) {
+        // Continue if check fails
+      }
+    }
+
     const status = await Network.getStatus();
     const isConnected = status.connected || (typeof window !== 'undefined' && window.navigator.onLine);
     if (!isConnected) {
