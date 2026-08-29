@@ -2009,7 +2009,7 @@ export const api = {
         while (hasMore) {
           let query = supabase
             .from('users')
-            .select('*, role:roles(display_name), companies!users_society_id_fkey(location)')
+            .select('*, role:roles(display_name)')
             .range((page - 1) * pageSize, page * pageSize - 1);
 
           if (filter?.search) {
@@ -2067,14 +2067,7 @@ export const api = {
         const roleData = u.role;
         const rawRoleName = (Array.isArray(roleData) ? roleData[0]?.display_name : (roleData as any)?.display_name) || u.role_id || u.role;
         const roleName = typeof rawRoleName === 'string' ? rawRoleName.toLowerCase().replace(/\s+/g, '_') : rawRoleName;
-        const camelUser = toCamelCase({ ...u, role: roleName });
-        if (u.companies) {
-          const compLocation = Array.isArray(u.companies) ? u.companies[0]?.location : u.companies?.location;
-          if (compLocation) {
-            camelUser.location = compLocation;
-          }
-        }
-        return camelUser;
+        return toCamelCase({ ...u, role: roleName });
       });
 
       if (formatted.length > 0) {
@@ -2091,7 +2084,7 @@ export const api = {
     const sortAscending = filter?.sortAscending ?? (filter?.sortBy ? true : false);
 
     try {
-      let query = supabase.from('users').select('*, role:roles(display_name), companies!users_society_id_fkey(location)', { count: 'exact' });
+      let query = supabase.from('users').select('*, role:roles(display_name)', { count: 'exact' });
       
       if (filter?.search) {
         query = query.or(`name.ilike.%${filter.search}%,email.ilike.%${filter.search}%`);

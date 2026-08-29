@@ -7,7 +7,7 @@ import Select from '../../components/ui/Select';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import Modal from '../../components/ui/Modal';
-import { MapPin, Users as UsersIcon, Pin, Plus, Save, Edit, Trash2, Search, ChevronUp, ChevronDown } from 'lucide-react';
+import { MapPin, Users as UsersIcon, Pin, Plus, Save, Edit, Trash2, Search, ChevronUp, ChevronDown, Download } from 'lucide-react';
 import { reverseGeocode, getPrecisePosition } from '../../utils/locationUtils';
 import { useAuthStore } from '../../store/authStore';
 import Pagination from '../../components/ui/Pagination';
@@ -342,6 +342,62 @@ const LocationManagement: React.FC = () => {
     }
   };
 
+  // Export locations to Excel / CSV
+  const handleExportExcel = () => {
+    const dataset = locations.filter(loc =>
+      searchTerm === '' ||
+      (loc.name && loc.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (loc.address && loc.address.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
+
+    if (dataset.length === 0) {
+      setToast({ message: 'No locations available to export.', type: 'error' });
+      return;
+    }
+
+    const headers = [
+      'Site Name',
+      'Radius (Meters)',
+      'Latitude',
+      'Longitude',
+      'Address',
+      'Kiosk PIN',
+      'Created By',
+      'Created At'
+    ];
+
+    const rows = dataset.map(loc => {
+      const creator = loc.createdByName || userMap.get(loc.createdBy || '') || 'System / Admin';
+      const createdDate = loc.createdAt ? new Date(loc.createdAt).toLocaleString() : '';
+
+      return [
+        `"${(loc.name || 'Unnamed Location').replace(/"/g, '""')}"`,
+        `"${loc.radius || 100}m"`,
+        loc.latitude ?? '',
+        loc.longitude ?? '',
+        `"${(loc.address || '').replace(/"/g, '""')}"`,
+        `"${loc.kioskPin || '1234'}"`,
+        `"${creator.replace(/"/g, '""')}"`,
+        `"${createdDate}"`
+      ];
+    });
+
+    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    const dateStr = new Date().toISOString().split('T')[0];
+    link.setAttribute('download', `Geo_Locations_Directory_${dateStr}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    setToast({
+      message: `Exported ${dataset.length} locations to Excel CSV successfully!`,
+      type: 'success'
+    });
+  };
+
   if (isLoading) {
     return <LoadingScreen message="Loading locations..." />;
   }
@@ -491,9 +547,21 @@ const LocationManagement: React.FC = () => {
         {/* Existing locations list */}
         {activeTab === 'Existing Locations' && (
         <section>
-          <h3 className="text-xl font-semibold text-primary-text mb-4 flex items-center">
-            <MapPin className="h-5 w-5 mr-2 text-muted" /> Existing Locations ({locations.length})
-          </h3>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+            <h3 className="text-xl font-semibold text-primary-text flex items-center">
+              <MapPin className="h-5 w-5 mr-2 text-muted" /> Existing Locations ({locations.length})
+            </h3>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleExportExcel}
+              className="flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 font-semibold shrink-0"
+              title="Download Excel CSV of all geo-locations"
+            >
+              <Download className="w-4 h-4" />
+              <span>Download Excel Sheet</span>
+            </Button>
+          </div>
 
           <div className="mb-4">
             <Input 
