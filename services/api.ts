@@ -3308,7 +3308,7 @@ export const api = {
       if (!error && data && data.length > 0) {
         // Write-through to IDB for offline reads
         data.forEach((row: any) => cacheHtYardAudit(row as OfflineHTYardAuditRecord).catch(() => {}));
-        return data.map((first: any) => ({
+        const cloudAudits = data.map((first: any) => ({
           activeAudit: {
             id: first.id,
             siteName: first.site_name,
@@ -3326,6 +3326,19 @@ export const api = {
           responses: first.responses || {},
           snagItems: first.snag_items || []
         }));
+
+        // Merge any local-only drafts that haven't synced yet
+        try {
+          const rawLocal = typeof window !== 'undefined' ? localStorage.getItem('paradigm_ht_yard_audits_list') : null;
+          if (rawLocal) {
+            const localList: any[] = JSON.parse(rawLocal);
+            const cloudIds = new Set(cloudAudits.map(c => c.activeAudit.id));
+            const unpushedLocal = localList.filter(l => l.activeAudit?.id && !cloudIds.has(l.activeAudit.id));
+            return [...cloudAudits, ...unpushedLocal];
+          }
+        } catch { /* non-fatal */ }
+
+        return cloudAudits;
       }
     } catch (err) {
       console.warn('[API] Failed to fetch HT Yard audits list from cloud, checking IDB then localStorage');

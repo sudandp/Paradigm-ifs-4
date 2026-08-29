@@ -732,7 +732,7 @@ const AuditDraftsModal: React.FC<AuditDraftsModalProps> = ({
 };
 
 export const HTYardAuditDashboard: React.FC = () => {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const selectedAuditId = searchParams.get('auditId');
   const currentUser = useAuthStore(state => state.user);
@@ -745,6 +745,9 @@ export const HTYardAuditDashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [allAudits, setAllAudits] = useState<any[]>([]);
   const [showSiteDropdown, setShowSiteDropdown] = useState<boolean>(false);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'saved' | 'saving' | 'idle'>('saved');
+  const isInitialLoadDone = useRef<boolean>(false);
+  const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // View Switcher & QR Print Center State
   const [activeDashboardView, setActiveDashboardView] = useState<'AUDIT_EXECUTION' | 'PPM_CALENDAR'>('AUDIT_EXECUTION');
@@ -884,20 +887,30 @@ export const HTYardAuditDashboard: React.FC = () => {
     return () => clearInterval(interval);
   }, [updateOutboxCount]);
 
-  const loadAudits = async () => {
+  const loadAudits = async (targetAuditId?: string) => {
     try {
       const list = await api.getAllHTYardAudits();
       setAllAudits(list);
       if (list && list.length > 0) {
         let selected = list[0];
-        if (selectedAuditId) {
-          const found = list.find((a: any) => a.activeAudit?.id === selectedAuditId);
+        const effectiveId = targetAuditId || selectedAuditId || localStorage.getItem('paradigm_ht_last_active_audit_id');
+
+        if (effectiveId) {
+          const found = list.find((a: any) => a.activeAudit?.id === effectiveId);
           if (found) selected = found;
         } else {
           const todayStr = new Date().toISOString().split('T')[0];
           const todayAudit = list.find((a: any) => a.activeAudit?.auditDate === todayStr);
           if (todayAudit) selected = todayAudit;
         }
+
+        if (selected?.activeAudit?.id) {
+          localStorage.setItem('paradigm_ht_last_active_audit_id', selected.activeAudit.id);
+          if (!selectedAuditId || selectedAuditId !== selected.activeAudit.id) {
+            setSearchParams({ auditId: selected.activeAudit.id }, { replace: true });
+          }
+        }
+
         setActiveAudit(selected.activeAudit);
         setEquipmentInstances(selected.equipmentInstances || []);
         setResponses(selected.responses || {});
@@ -908,8 +921,40 @@ export const HTYardAuditDashboard: React.FC = () => {
       console.warn('[HTYardAudit] Error loading audits:', err);
     } finally {
       setIsLoading(false);
+      isInitialLoadDone.current = true;
     }
   };
+
+  // Background Debounced Auto-Save for Field Inputs & Snags
+  useEffect(() => {
+    if (!isInitialLoadDone.current || !activeAudit) return;
+
+    setAutoSaveStatus('saving');
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+    }
+
+    autoSaveTimeoutRef.current = setTimeout(async () => {
+      try {
+        await api.saveHTYardAudit({
+          activeAudit: { ...activeAudit, auditLogs },
+          equipmentInstances,
+          responses,
+          snagItems
+        });
+        setAutoSaveStatus('saved');
+      } catch (err) {
+        console.warn('[HTYardAudit] Debounced auto-save error:', err);
+        setAutoSaveStatus('saved');
+      }
+    }, 800);
+
+    return () => {
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+    };
+  }, [responses, snagItems]);
 
   const handleRefreshDrafts = async () => {
     setIsRefreshingDrafts(true);
@@ -1144,6 +1189,10 @@ export const HTYardAuditDashboard: React.FC = () => {
     setActiveInstanceId('site_common');
     setShowSiteDropdown(false);
     setShowDraftsModal(false);
+    if (item.activeAudit?.id) {
+      localStorage.setItem('paradigm_ht_last_active_audit_id', item.activeAudit.id);
+      setSearchParams({ auditId: item.activeAudit.id }, { replace: true });
+    }
     toast.success(`Switched to ${item.activeAudit.siteName}`);
   };
 
@@ -1170,11 +1219,16 @@ export const HTYardAuditDashboard: React.FC = () => {
           setEquipmentInstances(next.equipmentInstances || []);
           setResponses(next.responses || {});
           setSnagItems(next.snagItems || []);
+          if (next.activeAudit?.id) {
+            localStorage.setItem('paradigm_ht_last_active_audit_id', next.activeAudit.id);
+            setSearchParams({ auditId: next.activeAudit.id }, { replace: true });
+          }
         } else {
           setActiveAudit(null);
           setEquipmentInstances([]);
           setResponses({});
           setSnagItems([]);
+          localStorage.removeItem('paradigm_ht_last_active_audit_id');
         }
       }
       setShowDeleteModal(false);
@@ -1262,9 +1316,11 @@ export const HTYardAuditDashboard: React.FC = () => {
     setAuditLogs([]);
     setActiveInstanceId('site_common');
     setShowNewAuditModal(false);
+    localStorage.setItem('paradigm_ht_last_active_audit_id', auditId);
+    setSearchParams({ auditId }, { replace: true });
     addAuditLog({ actionType: 'CREATE', target: trimmedSite, details: `Created new HT Yard audit draft for "${trimmedSite}"` });
     api.saveHTYardAudit(initialAuditData).then(() => {
-      loadAudits();
+      loadAudits(auditId);
     });
     toast.success('Started and saved new HT Yard audit session');
   };
@@ -1280,9 +1336,19 @@ export const HTYardAuditDashboard: React.FC = () => {
       instanceNumber: sameTypeCount + 1,
       feederWayCount: 4
     };
-    setEquipmentInstances([...equipmentInstances, newInst]);
+    const nextInstances = [...equipmentInstances, newInst];
+    setEquipmentInstances(nextInstances);
     setActiveInstanceId(newInst.id);
     addAuditLog({ actionType: 'CREATE', target: moduleType, details: `Added new equipment unit "${newInst.instanceName}"` });
+
+    // Instantly persist equipment unit to database & storage
+    api.saveHTYardAudit({
+      activeAudit: { ...activeAudit, auditLogs },
+      equipmentInstances: nextInstances,
+      responses,
+      snagItems
+    });
+
     toast.success(`Added ${newInst.instanceName}`);
   };
 
@@ -1294,15 +1360,16 @@ export const HTYardAuditDashboard: React.FC = () => {
     setEquipmentInstances(updatedInstances);
 
     // Clean up responses associated with this equipment instance
-    setResponses(prev => {
-      const next = { ...prev };
-      Object.keys(next).forEach(key => {
-        if (next[key]?.equipmentInstanceId === instId || key.startsWith(`${instId}_`)) {
-          delete next[key];
-        }
-      });
-      return next;
+    const nextResponses = { ...responses };
+    Object.keys(nextResponses).forEach(key => {
+      if (nextResponses[key]?.equipmentInstanceId === instId || key.startsWith(`${instId}_`)) {
+        delete nextResponses[key];
+      }
     });
+    setResponses(nextResponses);
+
+    const nextSnags = snagItems.filter(s => s.equipmentInstanceId !== instId);
+    setSnagItems(nextSnags);
 
     // If removing the currently active unit, switch to site_common or another unit
     if (activeInstanceId === instId) {
@@ -1310,13 +1377,33 @@ export const HTYardAuditDashboard: React.FC = () => {
     }
 
     addAuditLog({ actionType: 'DELETE', target: instName, details: `Removed equipment unit "${instName}"` });
+
+    // Instantly persist removal to database & storage
+    if (activeAudit) {
+      api.saveHTYardAudit({
+        activeAudit: { ...activeAudit, auditLogs },
+        equipmentInstances: updatedInstances,
+        responses: nextResponses,
+        snagItems: nextSnags
+      });
+    }
+
     toast.success(`Removed ${instName}`);
   };
 
   const handleUpdateInstanceFeederCount = (instId: string, newCount: number) => {
-    setEquipmentInstances(prev => prev.map(inst => 
+    const updated = equipmentInstances.map(inst => 
       inst.id === instId ? { ...inst, feederWayCount: Math.max(1, newCount) } : inst
-    ));
+    );
+    setEquipmentInstances(updated);
+    if (activeAudit) {
+      api.saveHTYardAudit({
+        activeAudit: { ...activeAudit, auditLogs },
+        equipmentInstances: updated,
+        responses,
+        snagItems
+      });
+    }
   };
 
   const handleResponseChange = (key: string, val: Partial<HTAuditResponse>) => {
@@ -1769,6 +1856,25 @@ export const HTYardAuditDashboard: React.FC = () => {
 
         {/* Top CTA Actions */}
         <div className="flex flex-wrap items-center gap-2.5">
+          {/* Real-time Auto-Save Status Badge */}
+          <div className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border ${
+            autoSaveStatus === 'saving'
+              ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200/80 dark:border-amber-800'
+              : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200/80 dark:border-emerald-800'
+          }`}>
+            {autoSaveStatus === 'saving' ? (
+              <>
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-600 dark:text-amber-400" />
+                <span>Auto-saving...</span>
+              </>
+            ) : (
+              <>
+                <CheckCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span>Auto-Saved</span>
+              </>
+            )}
+          </div>
+
           <button
             onClick={() => setShowDraftsModal(true)}
             className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl text-xs font-bold transition-all flex items-center gap-2 border border-slate-200 dark:border-slate-700 shadow-2xs"
