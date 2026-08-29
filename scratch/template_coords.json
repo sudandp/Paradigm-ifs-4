@@ -1,0 +1,4043 @@
+{
+  "page_1": [
+    {
+      "text": "EMPLOYEE PERSONAL DATA",
+      "top": 129.7,
+      "y_bottom": 712.2,
+      "x0": 126.3,
+      "x1": 469.0
+    },
+    {
+      "text": "TM",
+      "top": 306.4,
+      "y_bottom": 535.5,
+      "x0": 441.7,
+      "x1": 451.1
+    },
+    {
+      "text": "EMPLOYEE'S NAME :",
+      "top": 497.8,
+      "y_bottom": 344.1,
+      "x0": 58.8,
+      "x1": 221.6
+    },
+    {
+      "text": "SITE :",
+      "top": 535.7,
+      "y_bottom": 306.2,
+      "x0": 58.8,
+      "x1": 221.3
+    },
+    {
+      "text": "DESIGNATION :",
+      "top": 573.6,
+      "y_bottom": 268.3,
+      "x0": 58.8,
+      "x1": 221.1
+    },
+    {
+      "text": "EMPLOYEE'S ID NO. :",
+      "top": 611.5,
+      "y_bottom": 230.4,
+      "x0": 58.8,
+      "x1": 221.4
+    },
+    {
+      "text": "PF No. :",
+      "top": 649.3,
+      "y_bottom": 192.6,
+      "x0": 58.8,
+      "x1": 221.2
+    },
+    {
+      "text": "ESI NO. :",
+      "top": 687.3,
+      "y_bottom": 154.6,
+      "x0": 58.8,
+      "x1": 223.1
+    }
+  ],
+  "page_4": [
+    {
+      "text": "DOCUMENT CHECKLIST",
+      "top": 141.7,
+      "y_bottom": 700.2,
+      "x0": 192.7,
+      "x1": 404.7
+    },
+    {
+      "text": "Aadhar Card Copy (Mandatory) 1.",
+      "top": 205.0,
+      "y_bottom": 636.8,
+      "x0": 140.0,
+      "x1": 372.1
+    },
+    {
+      "text": "5 PASSPORT SIZE PHOTOS 2.",
+      "top": 235.2,
+      "y_bottom": 606.7,
+      "x0": 140.0,
+      "x1": 351.3
+    },
+    {
+      "text": "3. 2 Post Card Size Photos",
+      "top": 265.3,
+      "y_bottom": 576.6,
+      "x0": 140.0,
+      "x1": 331.6
+    },
+    {
+      "text": "4. COPY OF THE CREDENTIAL'S",
+      "top": 295.5,
+      "y_bottom": 546.4,
+      "x0": 140.0,
+      "x1": 366.8
+    },
+    {
+      "text": "CERTIFICATE",
+      "top": 310.3,
+      "y_bottom": 531.6,
+      "x0": 172.5,
+      "x1": 260.8
+    },
+    {
+      "text": "(School / College Certificates)",
+      "top": 325.4,
+      "y_bottom": 516.5,
+      "x0": 172.5,
+      "x1": 363.8
+    },
+    {
+      "text": "5. AGE PROOF",
+      "top": 356.1,
+      "y_bottom": 485.8,
+      "x0": 140.0,
+      "x1": 253.6
+    },
+    {
+      "text": "6. ADDRESS PROOF",
+      "top": 386.2,
+      "y_bottom": 455.7,
+      "x0": 140.0,
+      "x1": 290.3
+    },
+    {
+      "text": "7. COPY OF FIRST PAGE OF",
+      "top": 416.1,
+      "y_bottom": 425.8,
+      "x0": 140.0,
+      "x1": 339.3
+    },
+    {
+      "text": "EXISTING PERSONAL BANK A/c. PASSBOOK",
+      "top": 431.0,
+      "y_bottom": 410.9,
+      "x0": 172.5,
+      "x1": 464.8
+    }
+  ],
+  "page_8": [
+    {
+      "text": "EMPLOYEE ID No. : TM",
+      "top": 92.4,
+      "y_bottom": 749.5,
+      "x0": 74.8,
+      "x1": 535.1
+    },
+    {
+      "text": "PERSONAL DATA",
+      "top": 108.0,
+      "y_bottom": 733.9,
+      "x0": 216.0,
+      "x1": 334.2
+    },
+    {
+      "text": "1. Name :",
+      "top": 135.5,
+      "y_bottom": 706.4,
+      "x0": 57.3,
+      "x1": 108.7
+    },
+    {
+      "text": "2. Father's Name :",
+      "top": 156.6,
+      "y_bottom": 685.3,
+      "x0": 57.3,
+      "x1": 149.2
+    },
+    {
+      "text": "3. Mother's Name",
+      "top": 177.7,
+      "y_bottom": 664.2,
+      "x0": 57.3,
+      "x1": 145.7
+    },
+    {
+      "text": "4. Reference by :",
+      "top": 198.9,
+      "y_bottom": 643.0,
+      "x0": 57.3,
+      "x1": 143.1
+    },
+    {
+      "text": "5. Date of Birth : 6. Age :",
+      "top": 220.5,
+      "y_bottom": 621.4,
+      "x0": 57.3,
+      "x1": 357.3
+    },
+    {
+      "text": "7. Qualification : 8. Experience :",
+      "top": 241.7,
+      "y_bottom": 600.1,
+      "x0": 57.3,
+      "x1": 390.1
+    },
+    {
+      "text": "9. Designation : 10. Net Salary Offered :",
+      "top": 263.2,
+      "y_bottom": 578.6,
+      "x0": 57.3,
+      "x1": 428.2
+    },
+    {
+      "text": "11. Present Address :",
+      "top": 283.4,
+      "y_bottom": 558.5,
+      "x0": 52.3,
+      "x1": 157.7
+    },
+    {
+      "text": "12. Permanent Address :",
+      "top": 326.2,
+      "y_bottom": 515.7,
+      "x0": 52.0,
+      "x1": 172.9
+    },
+    {
+      "text": "Ph. No. Alternate Ph. No.",
+      "top": 347.8,
+      "y_bottom": 494.1,
+      "x0": 206.2,
+      "x1": 416.8
+    },
+    {
+      "text": "13. Left hand thumb impression",
+      "top": 369.0,
+      "y_bottom": 472.8,
+      "x0": 52.0,
+      "x1": 204.4
+    },
+    {
+      "text": "14. Right hand thumb impression",
+      "top": 427.0,
+      "y_bottom": 414.9,
+      "x0": 51.5,
+      "x1": 208.5
+    },
+    {
+      "text": "15. Marital Status 16. Name of the Spouse :",
+      "top": 496.4,
+      "y_bottom": 345.5,
+      "x0": 56.2,
+      "x1": 420.6
+    },
+    {
+      "text": "Contact No. :",
+      "top": 517.6,
+      "y_bottom": 324.3,
+      "x0": 359.3,
+      "x1": 420.6
+    },
+    {
+      "text": "17. Languages Known : to Speak",
+      "top": 536.7,
+      "y_bottom": 305.2,
+      "x0": 57.0,
+      "x1": 212.0
+    },
+    {
+      "text": "to Write",
+      "top": 556.6,
+      "y_bottom": 285.3,
+      "x0": 171.1,
+      "x1": 207.1
+    },
+    {
+      "text": "19. ID Card 18. Date of Joining",
+      "top": 575.8,
+      "y_bottom": 266.0,
+      "x0": 57.0,
+      "x1": 363.8
+    },
+    {
+      "text": "21. PF Number 20. ESI Number",
+      "top": 595.8,
+      "y_bottom": 246.1,
+      "x0": 57.0,
+      "x1": 378.4
+    },
+    {
+      "text": "23. Shoe Details 22. Uniform Details",
+      "top": 615.8,
+      "y_bottom": 226.1,
+      "x0": 57.0,
+      "x1": 384.2
+    },
+    {
+      "text": "25. Site / Estate Manager 24. Name of the Site :",
+      "top": 635.9,
+      "y_bottom": 206.0,
+      "x0": 57.0,
+      "x1": 425.7
+    },
+    {
+      "text": "26. Record enclosed :",
+      "top": 657.2,
+      "y_bottom": 184.7,
+      "x0": 57.0,
+      "x1": 159.4
+    },
+    {
+      "text": "28. Reference Name",
+      "top": 674.5,
+      "y_bottom": 167.4,
+      "x0": 307.2,
+      "x1": 404.1
+    },
+    {
+      "text": "27. Hirer",
+      "top": 677.7,
+      "y_bottom": 164.2,
+      "x0": 57.0,
+      "x1": 97.6
+    },
+    {
+      "text": "Reference Ph.",
+      "top": 694.5,
+      "y_bottom": 147.4,
+      "x0": 324.7,
+      "x1": 391.8
+    },
+    {
+      "text": "29.Emergency Contact Name : Ph. Blood Group",
+      "top": 714.2,
+      "y_bottom": 127.7,
+      "x0": 57.2,
+      "x1": 495.7
+    },
+    {
+      "text": "Employee Signature : Documented by :",
+      "top": 748.2,
+      "y_bottom": 93.6,
+      "x0": 56.2,
+      "x1": 409.4
+    }
+  ],
+  "page_9": [
+    {
+      "text": "BANK ACCOUNT OPENING DETAILS",
+      "top": 84.7,
+      "y_bottom": 757.2,
+      "x0": 192.7,
+      "x1": 402.7
+    },
+    {
+      "text": "(to be filled in block letters)",
+      "top": 98.1,
+      "y_bottom": 743.8,
+      "x0": 226.3,
+      "x1": 369.1
+    },
+    {
+      "text": "ADDITIONAL DETAILS",
+      "top": 148.1,
+      "y_bottom": 693.8,
+      "x0": 42.4,
+      "x1": 162.4
+    },
+    {
+      "text": "S. Number Particulars Details",
+      "top": 175.7,
+      "y_bottom": 666.2,
+      "x0": 45.2,
+      "x1": 466.9
+    },
+    {
+      "text": "Religion :",
+      "top": 200.8,
+      "y_bottom": 641.1,
+      "x0": 116.2,
+      "x1": 161.8
+    },
+    {
+      "text": "1. Hindu",
+      "top": 220.1,
+      "y_bottom": 621.8,
+      "x0": 68.6,
+      "x1": 142.4
+    },
+    {
+      "text": "2. Muslim",
+      "top": 242.5,
+      "y_bottom": 599.4,
+      "x0": 68.6,
+      "x1": 147.9
+    },
+    {
+      "text": "3. Christian",
+      "top": 264.8,
+      "y_bottom": 577.1,
+      "x0": 68.6,
+      "x1": 155.7
+    },
+    {
+      "text": "4. Sikh",
+      "top": 287.1,
+      "y_bottom": 554.8,
+      "x0": 68.6,
+      "x1": 135.7
+    },
+    {
+      "text": "5. others",
+      "top": 309.5,
+      "y_bottom": 532.4,
+      "x0": 68.6,
+      "x1": 144.0
+    },
+    {
+      "text": "Category :",
+      "top": 334.9,
+      "y_bottom": 506.9,
+      "x0": 116.2,
+      "x1": 165.7
+    },
+    {
+      "text": "1. General",
+      "top": 357.5,
+      "y_bottom": 484.4,
+      "x0": 68.6,
+      "x1": 151.8
+    },
+    {
+      "text": "2. OBC",
+      "top": 379.9,
+      "y_bottom": 462.0,
+      "x0": 68.6,
+      "x1": 137.9
+    },
+    {
+      "text": "3. SC",
+      "top": 402.2,
+      "y_bottom": 439.7,
+      "x0": 68.6,
+      "x1": 130.1
+    },
+    {
+      "text": "4. ST",
+      "top": 424.5,
+      "y_bottom": 417.3,
+      "x0": 68.6,
+      "x1": 129.0
+    },
+    {
+      "text": "ID DETAILS",
+      "top": 515.6,
+      "y_bottom": 326.3,
+      "x0": 42.6,
+      "x1": 102.9
+    },
+    {
+      "text": "S. Number Particulars Details",
+      "top": 544.2,
+      "y_bottom": 297.7,
+      "x0": 45.2,
+      "x1": 466.9
+    },
+    {
+      "text": "ID Type",
+      "top": 565.2,
+      "y_bottom": 276.7,
+      "x0": 188.8,
+      "x1": 223.1
+    },
+    {
+      "text": "1. Any ID Proof",
+      "top": 582.5,
+      "y_bottom": 259.4,
+      "x0": 68.6,
+      "x1": 165.0
+    },
+    {
+      "text": "No.",
+      "top": 593.7,
+      "y_bottom": 248.2,
+      "x0": 108.3,
+      "x1": 123.8
+    },
+    {
+      "text": "ID Number",
+      "top": 586.4,
+      "y_bottom": 255.5,
+      "x0": 188.8,
+      "x1": 237.1
+    },
+    {
+      "text": "ID Date",
+      "top": 607.5,
+      "y_bottom": 234.4,
+      "x0": 188.8,
+      "x1": 222.7
+    },
+    {
+      "text": "Place",
+      "top": 628.7,
+      "y_bottom": 213.2,
+      "x0": 188.8,
+      "x1": 213.8
+    },
+    {
+      "text": "ID Number",
+      "top": 648.5,
+      "y_bottom": 193.4,
+      "x0": 188.2,
+      "x1": 236.5
+    },
+    {
+      "text": "2. PAN Card No.",
+      "top": 660.7,
+      "y_bottom": 181.2,
+      "x0": 68.6,
+      "x1": 170.9
+    },
+    {
+      "text": "(If it is)",
+      "top": 674.2,
+      "y_bottom": 167.7,
+      "x0": 108.3,
+      "x1": 138.3
+    },
+    {
+      "text": "Issue Date",
+      "top": 668.4,
+      "y_bottom": 173.5,
+      "x0": 188.2,
+      "x1": 236.0
+    },
+    {
+      "text": "Place",
+      "top": 688.3,
+      "y_bottom": 153.6,
+      "x0": 188.2,
+      "x1": 213.2
+    },
+    {
+      "text": "Nominee Name",
+      "top": 710.4,
+      "y_bottom": 131.5,
+      "x0": 188.8,
+      "x1": 258.2
+    },
+    {
+      "text": "3. Nomination",
+      "top": 724.7,
+      "y_bottom": 117.2,
+      "x0": 68.6,
+      "x1": 158.8
+    },
+    {
+      "text": "Relation",
+      "top": 730.8,
+      "y_bottom": 111.1,
+      "x0": 188.8,
+      "x1": 225.5
+    },
+    {
+      "text": "Details",
+      "top": 738.9,
+      "y_bottom": 103.0,
+      "x0": 108.3,
+      "x1": 138.8
+    },
+    {
+      "text": "Date of Birth / Age",
+      "top": 751.1,
+      "y_bottom": 90.7,
+      "x0": 188.8,
+      "x1": 269.9
+    }
+  ],
+  "page_10": [
+    {
+      "text": "TM",
+      "top": 80.5,
+      "y_bottom": 761.4,
+      "x0": 399.8,
+      "x1": 406.5
+    },
+    {
+      "text": "FORM Q",
+      "top": 112.9,
+      "y_bottom": 729.0,
+      "x0": 268.0,
+      "x1": 328.0
+    },
+    {
+      "text": "See Rule 24 (9a)",
+      "top": 133.7,
+      "y_bottom": 708.1,
+      "x0": 252.6,
+      "x1": 343.3
+    },
+    {
+      "text": "Appointment Order",
+      "top": 158.0,
+      "y_bottom": 683.9,
+      "x0": 225.9,
+      "x1": 363.4
+    },
+    {
+      "text": ":PARADIGM INTEGRATED FACILITY SERVICES PVT. LTD. Name & Address of the Establishment",
+      "top": 195.1,
+      "y_bottom": 646.7,
+      "x0": 42.5,
+      "x1": 498.0
+    },
+    {
+      "text": "K S F Building, No.15, Golf View Road, HAL Airport Road,",
+      "top": 213.3,
+      "y_bottom": 628.6,
+      "x0": 239.0,
+      "x1": 482.1
+    },
+    {
+      "text": "Bangalore - 560 008.",
+      "top": 225.3,
+      "y_bottom": 616.6,
+      "x0": 239.0,
+      "x1": 330.9
+    },
+    {
+      "text": "Name & Address of the Employer :",
+      "top": 263.7,
+      "y_bottom": 578.2,
+      "x0": 42.5,
+      "x1": 235.7
+    },
+    {
+      "text": "Name & Address Of the Employee :",
+      "top": 303.3,
+      "y_bottom": 538.6,
+      "x0": 42.5,
+      "x1": 237.5
+    },
+    {
+      "text": "His / Her Permanent address :",
+      "top": 377.2,
+      "y_bottom": 464.7,
+      "x0": 42.5,
+      "x1": 236.3
+    },
+    {
+      "text": "Father's / Husband's Name :",
+      "top": 451.3,
+      "y_bottom": 390.6,
+      "x0": 42.5,
+      "x1": 239.1
+    },
+    {
+      "text": "Date of Birth :",
+      "top": 477.6,
+      "y_bottom": 364.3,
+      "x0": 42.5,
+      "x1": 238.1
+    },
+    {
+      "text": "Date of His / Her Entry into Employment :",
+      "top": 503.9,
+      "y_bottom": 338.0,
+      "x0": 42.5,
+      "x1": 237.4
+    },
+    {
+      "text": "Nature of work Entrusted to Him / Her :",
+      "top": 530.2,
+      "y_bottom": 311.7,
+      "x0": 42.5,
+      "x1": 238.0
+    },
+    {
+      "text": "His / Her Serial Number in Registration",
+      "top": 556.6,
+      "y_bottom": 285.3,
+      "x0": 42.5,
+      "x1": 223.4
+    },
+    {
+      "text": "of Employment (Muster Roll) :",
+      "top": 569.7,
+      "y_bottom": 272.2,
+      "x0": 42.5,
+      "x1": 236.8
+    },
+    {
+      "text": "Range of Wages Payable to Him / Her",
+      "top": 596.0,
+      "y_bottom": 245.9,
+      "x0": 42.5,
+      "x1": 220.1
+    },
+    {
+      "text": ": 1) Basic",
+      "top": 635.3,
+      "y_bottom": 206.6,
+      "x0": 42.5,
+      "x1": 239.1
+    },
+    {
+      "text": "2) VDS :",
+      "top": 661.6,
+      "y_bottom": 180.3,
+      "x0": 42.5,
+      "x1": 239.1
+    },
+    {
+      "text": "3) Other allowance ( if any ) :",
+      "top": 688.1,
+      "y_bottom": 153.8,
+      "x0": 42.5,
+      "x1": 239.1
+    },
+    {
+      "text": "Total :",
+      "top": 714.1,
+      "y_bottom": 127.8,
+      "x0": 126.9,
+      "x1": 239.1
+    },
+    {
+      "text": "Signature of the Employee Signature of the Employer",
+      "top": 757.7,
+      "y_bottom": 84.2,
+      "x0": 42.5,
+      "x1": 515.8
+    }
+  ],
+  "page_11": [
+    {
+      "text": "FORM XIV (See Rule 76)",
+      "top": 259.8,
+      "y_bottom": 582.1,
+      "x0": 275.5,
+      "x1": 408.8
+    },
+    {
+      "text": "TM",
+      "top": 270.7,
+      "y_bottom": 571.2,
+      "x0": 213.5,
+      "x1": 217.2
+    },
+    {
+      "text": "EMPLOYMENT CARD",
+      "top": 275.9,
+      "y_bottom": 566.0,
+      "x0": 282.3,
+      "x1": 402.0
+    },
+    {
+      "text": "PARADIGM INTEGRATED FACILITY SERVICES PVT. LTD. Name & Address of Establishment in /",
+      "top": 300.1,
+      "y_bottom": 541.8,
+      "x0": 91.0,
+      "x1": 527.4
+    },
+    {
+      "text": "under which contract is carried on",
+      "top": 311.1,
+      "y_bottom": 530.8,
+      "x0": 392.2,
+      "x1": 527.4
+    },
+    {
+      "text": "K S F Building, No.15, Golf View Road,",
+      "top": 315.6,
+      "y_bottom": 526.3,
+      "x0": 91.0,
+      "x1": 255.2
+    },
+    {
+      "text": "HAL Airport Road, Bangalore - 560 008.",
+      "top": 327.6,
+      "y_bottom": 514.3,
+      "x0": 91.0,
+      "x1": 261.7
+    },
+    {
+      "text": "Nature of work and Location of work Name and address of Principal Employer",
+      "top": 364.3,
+      "y_bottom": 477.6,
+      "x0": 91.0,
+      "x1": 509.7
+    },
+    {
+      "text": "1. Name of the Workman",
+      "top": 426.2,
+      "y_bottom": 415.7,
+      "x0": 86.4,
+      "x1": 199.3
+    },
+    {
+      "text": "2. Sl. No. in the register of workman employed",
+      "top": 443.9,
+      "y_bottom": 398.0,
+      "x0": 86.4,
+      "x1": 289.4
+    },
+    {
+      "text": "3. Nature of employment / Designation",
+      "top": 461.7,
+      "y_bottom": 380.2,
+      "x0": 86.4,
+      "x1": 256.4
+    },
+    {
+      "text": "4. Wage rate ( with Particulars of unit incase of piece - work)",
+      "top": 479.4,
+      "y_bottom": 362.5,
+      "x0": 86.4,
+      "x1": 348.1
+    },
+    {
+      "text": "5. Wage period",
+      "top": 497.1,
+      "y_bottom": 344.7,
+      "x0": 86.4,
+      "x1": 157.6
+    },
+    {
+      "text": "6. Tenure of employment",
+      "top": 514.9,
+      "y_bottom": 327.0,
+      "x0": 86.4,
+      "x1": 198.4
+    },
+    {
+      "text": "7. Remarks",
+      "top": 532.6,
+      "y_bottom": 309.3,
+      "x0": 86.4,
+      "x1": 142.0
+    },
+    {
+      "text": "Employee's Signature Signature of Contractor",
+      "top": 572.9,
+      "y_bottom": 269.0,
+      "x0": 104.5,
+      "x1": 498.8
+    }
+  ],
+  "page_12": [
+    {
+      "text": "FORM -1",
+      "top": 73.6,
+      "y_bottom": 768.3,
+      "x0": 269.6,
+      "x1": 326.7
+    },
+    {
+      "text": "NOMINATION AND DECLARATION FORM",
+      "top": 88.6,
+      "y_bottom": 753.3,
+      "x0": 171.5,
+      "x1": 424.8
+    },
+    {
+      "text": "( See rule 3)",
+      "top": 103.1,
+      "y_bottom": 738.7,
+      "x0": 270.6,
+      "x1": 325.6
+    },
+    {
+      "text": "Payment of Wages Act",
+      "top": 114.7,
+      "y_bottom": 727.2,
+      "x0": 247.7,
+      "x1": 348.5
+    },
+    {
+      "text": "1. Name of the person making nomination ( in block letters) :",
+      "top": 138.9,
+      "y_bottom": 703.0,
+      "x0": 44.0,
+      "x1": 335.9
+    },
+    {
+      "text": "2. Father's / Husband's Name",
+      "top": 163.3,
+      "y_bottom": 678.6,
+      "x0": 44.0,
+      "x1": 193.5
+    },
+    {
+      "text": "3. Date of Birth 4. Sex",
+      "top": 187.6,
+      "y_bottom": 654.3,
+      "x0": 44.0,
+      "x1": 368.1
+    },
+    {
+      "text": "5. Marital Status",
+      "top": 211.9,
+      "y_bottom": 630.0,
+      "x0": 44.0,
+      "x1": 131.1
+    },
+    {
+      "text": "6. Address",
+      "top": 236.1,
+      "y_bottom": 605.8,
+      "x0": 44.0,
+      "x1": 105.4
+    },
+    {
+      "text": "Permanent :",
+      "top": 248.5,
+      "y_bottom": 593.3,
+      "x0": 66.9,
+      "x1": 124.1
+    },
+    {
+      "text": "Temporary :",
+      "top": 285.1,
+      "y_bottom": 556.8,
+      "x0": 66.9,
+      "x1": 122.4
+    },
+    {
+      "text": "I hereby nominate the person (s) / cancel the nomination made by the me previously and nominate the",
+      "top": 331.7,
+      "y_bottom": 510.2,
+      "x0": 42.5,
+      "x1": 552.6
+    },
+    {
+      "text": "person(s) mentioned below to receive any amount due to me from the employer, in the event of my death.",
+      "top": 347.1,
+      "y_bottom": 494.8,
+      "x0": 42.5,
+      "x1": 532.8
+    },
+    {
+      "text": "Total Amount of If the nominee is minor relationship",
+      "top": 368.8,
+      "y_bottom": 473.1,
+      "x0": 319.3,
+      "x1": 551.3
+    },
+    {
+      "text": "Share of",
+      "top": 377.2,
+      "y_bottom": 464.7,
+      "x0": 319.3,
+      "x1": 353.5
+    },
+    {
+      "text": "and address of the guardian who",
+      "top": 381.8,
+      "y_bottom": 460.1,
+      "x0": 411.1,
+      "x1": 547.8
+    },
+    {
+      "text": "Nominee's Accumulation in",
+      "top": 387.6,
+      "y_bottom": 454.3,
+      "x0": 190.7,
+      "x1": 383.1
+    },
+    {
+      "text": "may receive the amount during the",
+      "top": 393.8,
+      "y_bottom": 448.1,
+      "x0": 411.1,
+      "x1": 550.3
+    },
+    {
+      "text": "Name of the Address relationship with Date of credit to be paid",
+      "top": 398.2,
+      "y_bottom": 443.7,
+      "x0": 42.5,
+      "x1": 383.6
+    },
+    {
+      "text": "Nominee / nominees the Member Birth to each nominee minority of nominee",
+      "top": 408.4,
+      "y_bottom": 433.5,
+      "x0": 42.5,
+      "x1": 492.5
+    },
+    {
+      "text": "(1) (2) (3) (4) (5) (6)",
+      "top": 422.1,
+      "y_bottom": 419.8,
+      "x0": 77.2,
+      "x1": 497.9
+    },
+    {
+      "text": "1. Certified that I have no Family and should I acquire a family hereafter, the above nomination shall be",
+      "top": 491.9,
+      "y_bottom": 350.0,
+      "x0": 42.5,
+      "x1": 553.7
+    },
+    {
+      "text": "deemed as cancelled.",
+      "top": 507.3,
+      "y_bottom": 334.6,
+      "x0": 67.6,
+      "x1": 169.7
+    },
+    {
+      "text": "2. * Certified that my father/ mother is / are dependent upon me.",
+      "top": 522.7,
+      "y_bottom": 319.2,
+      "x0": 42.5,
+      "x1": 352.9
+    },
+    {
+      "text": "3. * Strikeout whichever is not applicable.",
+      "top": 538.1,
+      "y_bottom": 303.7,
+      "x0": 42.5,
+      "x1": 247.3
+    },
+    {
+      "text": "Signature or thumb impression",
+      "top": 546.0,
+      "y_bottom": 295.9,
+      "x0": 404.7,
+      "x1": 553.0
+    },
+    {
+      "text": "of the employed person",
+      "top": 560.7,
+      "y_bottom": 281.2,
+      "x0": 422.5,
+      "x1": 535.3
+    },
+    {
+      "text": "CERTIFICATE BY EMPLOYER",
+      "top": 594.3,
+      "y_bottom": 247.6,
+      "x0": 213.2,
+      "x1": 382.1
+    },
+    {
+      "text": "Certified that the above declaration and nomination has been signed / thumb impressed before me by Sri / Smt/Kum",
+      "top": 611.3,
+      "y_bottom": 230.6,
+      "x0": 41.9,
+      "x1": 554.9
+    },
+    {
+      "text": ".............................................................................................................employed in my establishment after he/she has",
+      "top": 628.7,
+      "y_bottom": 213.2,
+      "x0": 42.5,
+      "x1": 554.5
+    },
+    {
+      "text": "read the entry/entries have been read over to him / her by me and got confirmed by him/her.",
+      "top": 640.7,
+      "y_bottom": 201.2,
+      "x0": 41.9,
+      "x1": 448.2
+    },
+    {
+      "text": "Signature of the employer or other authorised",
+      "top": 701.3,
+      "y_bottom": 140.6,
+      "x0": 332.1,
+      "x1": 549.9
+    },
+    {
+      "text": "Place :",
+      "top": 706.2,
+      "y_bottom": 135.7,
+      "x0": 41.9,
+      "x1": 72.4
+    },
+    {
+      "text": "officer of the establishment and Designation",
+      "top": 714.8,
+      "y_bottom": 127.1,
+      "x0": 335.4,
+      "x1": 546.6
+    },
+    {
+      "text": "Date :",
+      "top": 731.7,
+      "y_bottom": 110.2,
+      "x0": 41.9,
+      "x1": 68.5
+    },
+    {
+      "text": "PARADIGM INTEGRATED FACILITY SERVICES PVT. LTD.",
+      "top": 736.4,
+      "y_bottom": 105.5,
+      "x0": 365.4,
+      "x1": 550.4
+    },
+    {
+      "text": "K S F Building, No.15, Golf View Road,",
+      "top": 748.2,
+      "y_bottom": 93.7,
+      "x0": 375.3,
+      "x1": 539.6
+    },
+    {
+      "text": "HAL Airport Road, Bangalore - 560 008.",
+      "top": 760.1,
+      "y_bottom": 81.7,
+      "x0": 368.9,
+      "x1": 539.6
+    }
+  ],
+  "page_13": [
+    {
+      "text": "The Karnataka Payment of Gratuity Rules, 1973",
+      "top": 72.8,
+      "y_bottom": 769.1,
+      "x0": 139.1,
+      "x1": 453.5
+    },
+    {
+      "text": "FORM - 'F'",
+      "top": 88.8,
+      "y_bottom": 753.0,
+      "x0": 261.9,
+      "x1": 330.8
+    },
+    {
+      "text": "(See sub-Rule(1) of Rule 6)",
+      "top": 104.4,
+      "y_bottom": 737.4,
+      "x0": 229.1,
+      "x1": 363.5
+    },
+    {
+      "text": "To",
+      "top": 124.3,
+      "y_bottom": 717.6,
+      "x0": 40.7,
+      "x1": 51.3
+    },
+    {
+      "text": "Nomination",
+      "top": 117.4,
+      "y_bottom": 724.5,
+      "x0": 257.8,
+      "x1": 334.8
+    },
+    {
+      "text": "Give here name or description of the established with full address)",
+      "top": 136.3,
+      "y_bottom": 705.6,
+      "x0": 40.7,
+      "x1": 333.6
+    },
+    {
+      "text": "1. I, Shri / Shrimati / Kumari...............................................................................................................................(name in full",
+      "top": 156.8,
+      "y_bottom": 685.1,
+      "x0": 40.7,
+      "x1": 550.7
+    },
+    {
+      "text": "here) whose particulars are given in the statement below here by nominate the person(s) mentioned below to receive",
+      "top": 168.2,
+      "y_bottom": 673.7,
+      "x0": 58.0,
+      "x1": 551.7
+    },
+    {
+      "text": "the gratuity payable after my death as also the gratuity standing to my credit in the event of my death before that",
+      "top": 179.6,
+      "y_bottom": 662.3,
+      "x0": 58.0,
+      "x1": 550.1
+    },
+    {
+      "text": "amount has become payable, or having become has not be paid and direct that the said amount of gratuity shall be",
+      "top": 191.0,
+      "y_bottom": 650.9,
+      "x0": 58.0,
+      "x1": 551.7
+    },
+    {
+      "text": "paid in proportion indicated against the name(s) of the nominee(s)",
+      "top": 202.4,
+      "y_bottom": 639.5,
+      "x0": 58.0,
+      "x1": 335.2
+    },
+    {
+      "text": "2. I hereby certify that the person(s) mentioned is a / are member (s) of my family within the meaning of clause (h) of",
+      "top": 213.7,
+      "y_bottom": 628.1,
+      "x0": 40.7,
+      "x1": 551.1
+    },
+    {
+      "text": "Section 2 of the payment of Gratuity Act. 1972.",
+      "top": 225.1,
+      "y_bottom": 616.8,
+      "x0": 58.0,
+      "x1": 254.4
+    },
+    {
+      "text": "3. I hereby declare that I have no Family within the meaning of clause (h) of Section 2 of the said Act.",
+      "top": 236.5,
+      "y_bottom": 605.4,
+      "x0": 40.7,
+      "x1": 471.5
+    },
+    {
+      "text": "4. a) My father / mother / parents is / are not dependent on me",
+      "top": 247.9,
+      "y_bottom": 594.0,
+      "x0": 40.7,
+      "x1": 309.3
+    },
+    {
+      "text": "b) My husband's father / mother / parents is / are not dependent on my husband.",
+      "top": 259.3,
+      "y_bottom": 582.6,
+      "x0": 58.0,
+      "x1": 396.2
+    },
+    {
+      "text": "5. I have excluded my husband from my family by a notice dated the......................to the Controlling Authority in terms of",
+      "top": 270.7,
+      "y_bottom": 571.2,
+      "x0": 40.7,
+      "x1": 550.6
+    },
+    {
+      "text": "the provision to clause (h) of Section 2 of the said Act.",
+      "top": 282.1,
+      "y_bottom": 559.8,
+      "x0": 58.0,
+      "x1": 284.5
+    },
+    {
+      "text": "6. Nomination made herein invalidates my previous nomination.",
+      "top": 293.5,
+      "y_bottom": 548.4,
+      "x0": 40.7,
+      "x1": 314.6
+    },
+    {
+      "text": "NOMINEE (S)",
+      "top": 308.7,
+      "y_bottom": 533.1,
+      "x0": 256.9,
+      "x1": 335.4
+    },
+    {
+      "text": "Name in full with full address of Relationship with the Age of Proportion by which",
+      "top": 323.7,
+      "y_bottom": 518.2,
+      "x0": 62.1,
+      "x1": 536.8
+    },
+    {
+      "text": "Nominee (s) employee nominee the gratuity will be shared",
+      "top": 335.7,
+      "y_bottom": 506.2,
+      "x0": 104.0,
+      "x1": 549.3
+    },
+    {
+      "text": "1.",
+      "top": 354.6,
+      "y_bottom": 487.3,
+      "x0": 47.8,
+      "x1": 56.2
+    },
+    {
+      "text": "2.",
+      "top": 371.9,
+      "y_bottom": 470.0,
+      "x0": 47.8,
+      "x1": 56.2
+    },
+    {
+      "text": "3.",
+      "top": 389.2,
+      "y_bottom": 452.7,
+      "x0": 47.8,
+      "x1": 56.2
+    },
+    {
+      "text": "4.",
+      "top": 406.6,
+      "y_bottom": 435.3,
+      "x0": 47.8,
+      "x1": 56.2
+    },
+    {
+      "text": "So on",
+      "top": 415.2,
+      "y_bottom": 426.7,
+      "x0": 47.8,
+      "x1": 73.9
+    },
+    {
+      "text": "Statement",
+      "top": 434.0,
+      "y_bottom": 407.9,
+      "x0": 271.7,
+      "x1": 320.0
+    },
+    {
+      "text": "1. Name of Employee in full :",
+      "top": 448.8,
+      "y_bottom": 393.0,
+      "x0": 47.8,
+      "x1": 183.4
+    },
+    {
+      "text": "2. Sex :",
+      "top": 469.3,
+      "y_bottom": 372.6,
+      "x0": 47.8,
+      "x1": 89.5
+    },
+    {
+      "text": "3. Religion :",
+      "top": 489.7,
+      "y_bottom": 352.1,
+      "x0": 47.8,
+      "x1": 108.4
+    },
+    {
+      "text": "4. Whether Unmarried / Married / Widow / widower",
+      "top": 510.2,
+      "y_bottom": 331.7,
+      "x0": 47.8,
+      "x1": 279.5
+    },
+    {
+      "text": "5. Department / Branch / Section where employed :",
+      "top": 530.6,
+      "y_bottom": 311.3,
+      "x0": 47.8,
+      "x1": 282.4
+    },
+    {
+      "text": "6. Post held with Ticket No. or Serial No. if any :",
+      "top": 551.1,
+      "y_bottom": 290.8,
+      "x0": 47.8,
+      "x1": 266.8
+    },
+    {
+      "text": "7. Date of appointment :",
+      "top": 571.5,
+      "y_bottom": 270.4,
+      "x0": 47.8,
+      "x1": 162.3
+    },
+    {
+      "text": "8. Permanent address :",
+      "top": 592.0,
+      "y_bottom": 249.9,
+      "x0": 47.8,
+      "x1": 159.5
+    },
+    {
+      "text": "Village : Thana : Sub Division",
+      "top": 611.8,
+      "y_bottom": 230.1,
+      "x0": 46.8,
+      "x1": 455.5
+    },
+    {
+      "text": "Post Office : District : State :",
+      "top": 632.3,
+      "y_bottom": 209.6,
+      "x0": 46.8,
+      "x1": 428.8
+    },
+    {
+      "text": "Place :",
+      "top": 648.9,
+      "y_bottom": 193.0,
+      "x0": 46.8,
+      "x1": 77.4
+    },
+    {
+      "text": "Signature / Thumb impression of the Employee",
+      "top": 654.6,
+      "y_bottom": 187.3,
+      "x0": 341.9,
+      "x1": 550.1
+    },
+    {
+      "text": "Date :",
+      "top": 667.7,
+      "y_bottom": 174.2,
+      "x0": 46.8,
+      "x1": 73.5
+    },
+    {
+      "text": "Declaration by witnesses :",
+      "top": 681.8,
+      "y_bottom": 160.1,
+      "x0": 46.8,
+      "x1": 172.4
+    },
+    {
+      "text": "Nomination signed / thumb impressed before me :",
+      "top": 693.4,
+      "y_bottom": 148.5,
+      "x0": 46.8,
+      "x1": 268.0
+    },
+    {
+      "text": "Name in full and full address of witness : Signature of witnesses :",
+      "top": 703.8,
+      "y_bottom": 138.1,
+      "x0": 46.8,
+      "x1": 499.1
+    },
+    {
+      "text": "1.",
+      "top": 715.6,
+      "y_bottom": 126.2,
+      "x0": 46.8,
+      "x1": 55.1
+    },
+    {
+      "text": "2. 1.",
+      "top": 738.0,
+      "y_bottom": 103.9,
+      "x0": 46.8,
+      "x1": 367.7
+    },
+    {
+      "text": "Place : Date : 2.",
+      "top": 760.2,
+      "y_bottom": 81.7,
+      "x0": 46.8,
+      "x1": 367.7
+    }
+  ],
+  "page_14": [
+    {
+      "text": "KmofUm nÌ / DECLARATION FORM FORM-1",
+      "top": 73.3,
+      "y_bottom": 768.6,
+      "x0": 213.9,
+      "x1": 508.8
+    },
+    {
+      "text": "KmofUm nÌ H$_©Mmar Ûmam ^am OmoEJm & \\$m_© Ho$ gmW nmgnmoQ© AmH$ma Ho$ Xmo \\$moQ>moJ«\\$ ^r bJmE OmZo Mm{hE & \\$m_©> ^aZo go nhbo Xÿgao n¥ï> na",
+      "top": 86.4,
+      "y_bottom": 755.5,
+      "x0": 114.3,
+      "x1": 524.0
+    },
+    {
+      "text": "Xr JB© {hXm`Vm| H$mo ^br-^m§{V nT> boZm Mm{hE & `h \\$m_© {Z:ewëH$ h¡ &",
+      "top": 97.2,
+      "y_bottom": 744.7,
+      "x0": 114.3,
+      "x1": 321.6
+    },
+    {
+      "text": "To be filled in by the employee after reading instructions overleaf. Two Postcard size photographs are to",
+      "top": 105.8,
+      "y_bottom": 736.1,
+      "x0": 113.3,
+      "x1": 551.5
+    },
+    {
+      "text": "be attached with",
+      "top": 115.4,
+      "y_bottom": 726.5,
+      "x0": 113.3,
+      "x1": 182.5
+    },
+    {
+      "text": "(I) (H$)",
+      "top": 125.2,
+      "y_bottom": 716.7,
+      "x0": 41.7,
+      "x1": 306.2
+    },
+    {
+      "text": "(A)",
+      "top": 133.7,
+      "y_bottom": 708.2,
+      "x0": 41.9,
+      "x1": 53.2
+    },
+    {
+      "text": "dr_mH¥$V ì`[º$ H$m {ddaU",
+      "top": 125.8,
+      "y_bottom": 716.1,
+      "x0": 59.0,
+      "x1": 142.4
+    },
+    {
+      "text": "(B) EMPLOYER'S",
+      "top": 134.1,
+      "y_bottom": 707.8,
+      "x0": 291.2,
+      "x1": 368.7
+    },
+    {
+      "text": "{Z`moOH$ H$m {ddaU",
+      "top": 126.2,
+      "y_bottom": 715.7,
+      "x0": 314.3,
+      "x1": 377.2
+    },
+    {
+      "text": "PARTICULARS",
+      "top": 134.4,
+      "y_bottom": 707.5,
+      "x0": 373.5,
+      "x1": 432.2
+    },
+    {
+      "text": "1. dr_m",
+      "top": 144.4,
+      "y_bottom": 697.5,
+      "x0": 44.2,
+      "x1": 70.3
+    },
+    {
+      "text": "INSURED",
+      "top": 135.1,
+      "y_bottom": 706.8,
+      "x0": 58.5,
+      "x1": 94.5
+    },
+    {
+      "text": "g§»`m",
+      "top": 144.8,
+      "y_bottom": 697.1,
+      "x0": 73.5,
+      "x1": 91.5
+    },
+    {
+      "text": "PERSON'S PARTICULARS",
+      "top": 135.1,
+      "y_bottom": 706.8,
+      "x0": 96.8,
+      "x1": 194.9
+    },
+    {
+      "text": "9.",
+      "top": 143.6,
+      "y_bottom": 698.3,
+      "x0": 291.2,
+      "x1": 298.7
+    },
+    {
+      "text": "Insurance No.",
+      "top": 154.4,
+      "y_bottom": 687.5,
+      "x0": 55.0,
+      "x1": 111.0
+    },
+    {
+      "text": "{Z`moOH$ H$r Hy$Q> g»`m",
+      "top": 145.3,
+      "y_bottom": 696.6,
+      "x0": 308.4,
+      "x1": 381.8
+    },
+    {
+      "text": "Employer's Code No. 5000-041081-000-1018",
+      "top": 155.4,
+      "y_bottom": 686.5,
+      "x0": 306.7,
+      "x1": 488.0
+    },
+    {
+      "text": "2. Zm_ (ñnï>Aja _|)",
+      "top": 169.3,
+      "y_bottom": 672.6,
+      "x0": 43.6,
+      "x1": 114.7
+    },
+    {
+      "text": "10.",
+      "top": 174.3,
+      "y_bottom": 667.6,
+      "x0": 291.7,
+      "x1": 304.2
+    },
+    {
+      "text": "{XZ _hrZm df©",
+      "top": 167.0,
+      "y_bottom": 674.9,
+      "x0": 419.9,
+      "x1": 531.8
+    },
+    {
+      "text": "Name (in block Letters)",
+      "top": 180.2,
+      "y_bottom": 661.7,
+      "x0": 55.2,
+      "x1": 128.4
+    },
+    {
+      "text": "{Z`w{º$ H$r {V{W Day Month Year",
+      "top": 175.9,
+      "y_bottom": 666.0,
+      "x0": 307.2,
+      "x1": 536.1
+    },
+    {
+      "text": "3. {nVm /n{V H$m Zm_",
+      "top": 191.9,
+      "y_bottom": 650.0,
+      "x0": 44.3,
+      "x1": 110.1
+    },
+    {
+      "text": "Date of Appointment",
+      "top": 186.8,
+      "y_bottom": 655.1,
+      "x0": 306.4,
+      "x1": 388.0
+    },
+    {
+      "text": "Father's/Husband's Name 11. {Z`moOH$ H$m Zm_ Am¡a nVm/",
+      "top": 203.4,
+      "y_bottom": 638.5,
+      "x0": 55.2,
+      "x1": 394.0
+    },
+    {
+      "text": "4. OÝ_ {V{W/Date of Birth 5. d¡dm{hH$ pñW{V/Material Status",
+      "top": 212.2,
+      "y_bottom": 629.7,
+      "x0": 44.3,
+      "x1": 252.8
+    },
+    {
+      "text": "Name & address of the employer",
+      "top": 206.4,
+      "y_bottom": 635.5,
+      "x0": 398.5,
+      "x1": 530.1
+    },
+    {
+      "text": "D M Y",
+      "top": 223.7,
+      "y_bottom": 618.1,
+      "x0": 63.7,
+      "x1": 120.8
+    },
+    {
+      "text": "em/Hw$/{d M/U/W PARADIGM INTEGRATED FACILITY SERVICES PVT. LTD.",
+      "top": 218.5,
+      "y_bottom": 623.4,
+      "x0": 151.3,
+      "x1": 527.5
+    },
+    {
+      "text": "6. btJ/Sexnw/_ M/F K S F Building, No.15, Golf View Road, HAL Airport Road,",
+      "top": 233.3,
+      "y_bottom": 608.6,
+      "x0": 142.9,
+      "x1": 548.6
+    },
+    {
+      "text": "7. dV©_mZ nVm/Present 8. ñWm`r nVm/Permanent Address Address Bangalore - 560 008.",
+      "top": 244.6,
+      "y_bottom": 597.3,
+      "x0": 43.9,
+      "x1": 397.3
+    },
+    {
+      "text": "12. `{X nhbo `moO§Z _| aho h¢ Vmo Hy$n`m {Zpåb{IV {ddaU Xr{OE",
+      "top": 274.5,
+      "y_bottom": 567.4,
+      "x0": 290.9,
+      "x1": 499.1
+    },
+    {
+      "text": "In case of any previous employment please fill up the details , as uder :-",
+      "top": 281.4,
+      "y_bottom": 560.5,
+      "x0": 306.8,
+      "x1": 549.8
+    },
+    {
+      "text": "(H$) {nN>br dro_m g§»`m",
+      "top": 293.6,
+      "y_bottom": 548.3,
+      "x0": 288.6,
+      "x1": 367.8
+    },
+    {
+      "text": "(a) Previous Ins. No.",
+      "top": 301.0,
+      "y_bottom": 540.8,
+      "x0": 290.9,
+      "x1": 365.1
+    },
+    {
+      "text": "(I) {Z`moOH$ HmoS> g§»`m",
+      "top": 310.6,
+      "y_bottom": 531.3,
+      "x0": 288.6,
+      "x1": 369.5
+    },
+    {
+      "text": "(b) Emplr's Code No.",
+      "top": 318.1,
+      "y_bottom": 523.8,
+      "x0": 290.8,
+      "x1": 366.5
+    },
+    {
+      "text": "(J) {Z`moOH$ H$m Zm_ d nyU© nVm",
+      "top": 328.7,
+      "y_bottom": 513.2,
+      "x0": 288.6,
+      "x1": 397.9
+    },
+    {
+      "text": "(c) Name & Address of the Employer",
+      "top": 337.4,
+      "y_bottom": 504.5,
+      "x0": 290.6,
+      "x1": 419.7
+    },
+    {
+      "text": "{nZ H$moS>> {nZ H$moS> PARADIGM INTEGRATED FACILITY SERVICES PVT. LTD.",
+      "top": 348.0,
+      "y_bottom": 493.9,
+      "x0": 50.5,
+      "x1": 528.0
+    },
+    {
+      "text": "Pin Code Pin Code K S F Building, No.15, Golf View Road, HAL Airport Road,",
+      "top": 359.0,
+      "y_bottom": 482.8,
+      "x0": 50.4,
+      "x1": 524.8
+    },
+    {
+      "text": "Q>obr\\$moZ Zåda/…B©-_ob nVm / E-mail address Q>obr\\$moZ Zåda/…B©-_ob nVm / E-mail addrss Bangalore - 560 008.",
+      "top": 367.4,
+      "y_bottom": 474.5,
+      "x0": 49.4,
+      "x1": 388.7
+    },
+    {
+      "text": "emIm H$m`©mb` Am¡fYmb` Q>obr\\$moZ Zå~a/B©-_¡b Z§~a/ Email : accounts@paradignfms.com",
+      "top": 379.9,
+      "y_bottom": 462.0,
+      "x0": 50.0,
+      "x1": 529.8
+    },
+    {
+      "text": "Branch Office Dispensary Ph : 3291 1056",
+      "top": 389.6,
+      "y_bottom": 452.3,
+      "x0": 50.8,
+      "x1": 457.9
+    },
+    {
+      "text": "(J)_¥Ë`w H$s pñW{V _| ZH$X {hVbm^ Ho$ ^wJVmZ Ho$ {b` H$.am,dr.A{Y{Z`_, 1948 H$s Ymam 56 H$m.ag.dr.(Ho$ÝÐr`) {Z`_ 19 Ho$ AÝVJ©V Zm_mqH$V Hmo ^[aE >&",
+      "top": 402.1,
+      "y_bottom": 439.8,
+      "x0": 48.7,
+      "x1": 553.6
+    },
+    {
+      "text": "(C) Details of Nominee u/s 71 of ESI Act 1948/Rule 56/2 of ESI (Central) Rules, 1950 for payment of cash benefit in the event of death.",
+      "top": 411.3,
+      "y_bottom": 430.6,
+      "x0": 51.0,
+      "x1": 477.4
+    },
+    {
+      "text": "Zm_ g§~§Y nVm Name Relationship Address",
+      "top": 424.8,
+      "y_bottom": 417.1,
+      "x0": 97.0,
+      "x1": 407.9
+    },
+    {
+      "text": "(d) {d_mH¥$V ì`pº$ H$o n[aOZm| H$m {ddaU / (D) FAMILY PARTICULARS OF INSURED PERSON",
+      "top": 462.0,
+      "y_bottom": 379.9,
+      "x0": 120.6,
+      "x1": 446.5
+    },
+    {
+      "text": "\\ $ m_ © ^ a Z o H $ s V m a rH $ H $m o A m`w",
+      "top": 474.5,
+      "y_bottom": 367.4,
+      "x0": 235.5,
+      "x1": 306.6
+    },
+    {
+      "text": "S",
+      "top": 484.4,
+      "y_bottom": 357.5,
+      "x0": 45.6,
+      "x1": 50.7
+    },
+    {
+      "text": "H",
+      "top": 475.7,
+      "y_bottom": 366.2,
+      "x0": 48.9,
+      "x1": 53.6
+    },
+    {
+      "text": "l.",
+      "top": 484.4,
+      "y_bottom": 357.5,
+      "x0": 50.7,
+      "x1": 54.5
+    },
+    {
+      "text": "«$ .",
+      "top": 475.7,
+      "y_bottom": 366.2,
+      "x0": 53.6,
+      "x1": 58.4
+    },
+    {
+      "text": "N",
+      "top": 484.4,
+      "y_bottom": 357.5,
+      "x0": 56.7,
+      "x1": 62.2
+    },
+    {
+      "text": "g",
+      "top": 475.7,
+      "y_bottom": 366.2,
+      "x0": 58.4,
+      "x1": 63.8
+    },
+    {
+      "text": "o",
+      "top": 484.4,
+      "y_bottom": 357.5,
+      "x0": 62.2,
+      "x1": 66.4
+    },
+    {
+      "text": "§.",
+      "top": 475.7,
+      "y_bottom": 366.2,
+      "x0": 63.8,
+      "x1": 66.9
+    },
+    {
+      "text": ".",
+      "top": 484.4,
+      "y_bottom": 357.5,
+      "x0": 66.4,
+      "x1": 68.5
+    },
+    {
+      "text": "Zm_ Name D a te o f B ir t h / A g e a s on R",
+      "top": 482.0,
+      "y_bottom": 359.9,
+      "x0": 131.2,
+      "x1": 315.3
+    },
+    {
+      "text": "H$",
+      "top": 475.3,
+      "y_bottom": 366.6,
+      "x0": 311.4,
+      "x1": 316.2
+    },
+    {
+      "text": "e",
+      "top": 483.5,
+      "y_bottom": 358.4,
+      "x0": 315.3,
+      "x1": 318.5
+    },
+    {
+      "text": "_",
+      "top": 475.3,
+      "y_bottom": 366.6,
+      "x0": 316.2,
+      "x1": 320.0
+    },
+    {
+      "text": "la",
+      "top": 483.5,
+      "y_bottom": 358.4,
+      "x0": 318.5,
+      "x1": 323.1
+    },
+    {
+      "text": "©M",
+      "top": 475.3,
+      "y_bottom": 366.6,
+      "x0": 320.0,
+      "x1": 324.5
+    },
+    {
+      "text": "t",
+      "top": 483.5,
+      "y_bottom": 358.4,
+      "x0": 323.1,
+      "x1": 324.7
+    },
+    {
+      "text": "m",
+      "top": 475.3,
+      "y_bottom": 366.6,
+      "x0": 324.5,
+      "x1": 326.4
+    },
+    {
+      "text": "io",
+      "top": 483.5,
+      "y_bottom": 358.4,
+      "x0": 324.7,
+      "x1": 329.2
+    },
+    {
+      "text": "ar",
+      "top": 475.3,
+      "y_bottom": 366.6,
+      "x0": 326.4,
+      "x1": 330.5
+    },
+    {
+      "text": "n s",
+      "top": 483.5,
+      "y_bottom": 358.4,
+      "x0": 329.2,
+      "x1": 335.4
+    },
+    {
+      "text": "H",
+      "top": 475.3,
+      "y_bottom": 366.6,
+      "x0": 332.9,
+      "x1": 336.5
+    },
+    {
+      "text": "h",
+      "top": 483.5,
+      "y_bottom": 358.4,
+      "x0": 335.4,
+      "x1": 338.6
+    },
+    {
+      "text": "o$",
+      "top": 475.3,
+      "y_bottom": 366.6,
+      "x0": 336.5,
+      "x1": 337.9
+    },
+    {
+      "text": "ip",
+      "top": 483.5,
+      "y_bottom": 358.4,
+      "x0": 338.6,
+      "x1": 343.2
+    },
+    {
+      "text": "g m",
+      "top": 475.3,
+      "y_bottom": 366.6,
+      "x0": 340.3,
+      "x1": 346.3
+    },
+    {
+      "text": "w",
+      "top": 483.5,
+      "y_bottom": 358.4,
+      "x0": 344.8,
+      "x1": 349.0
+    },
+    {
+      "text": "W",
+      "top": 475.3,
+      "y_bottom": 366.6,
+      "x0": 346.3,
+      "x1": 350.4
+    },
+    {
+      "text": "it h",
+      "top": 483.5,
+      "y_bottom": 358.4,
+      "x0": 349.0,
+      "x1": 355.2
+    },
+    {
+      "text": "g",
+      "top": 475.3,
+      "y_bottom": 366.6,
+      "x0": 352.9,
+      "x1": 357.0
+    },
+    {
+      "text": "t",
+      "top": 483.5,
+      "y_bottom": 358.4,
+      "x0": 356.8,
+      "x1": 358.4
+    },
+    {
+      "text": "~",
+      "top": 475.3,
+      "y_bottom": 366.6,
+      "x0": 357.0,
+      "x1": 360.9
+    },
+    {
+      "text": "h",
+      "top": 483.5,
+      "y_bottom": 358.4,
+      "x0": 358.4,
+      "x1": 361.7
+    },
+    {
+      "text": "§Y",
+      "top": 475.3,
+      "y_bottom": 366.6,
+      "x0": 360.9,
+      "x1": 364.9
+    },
+    {
+      "text": "e",
+      "top": 483.5,
+      "y_bottom": 358.4,
+      "x0": 361.7,
+      "x1": 364.9
+    },
+    {
+      "text": "Š",
+      "top": 475.0,
+      "y_bottom": 366.9,
+      "x0": 370.4,
+      "x1": 374.0
+    },
+    {
+      "text": "W",
+      "top": 483.1,
+      "y_bottom": 358.8,
+      "x0": 372.2,
+      "x1": 377.7
+    },
+    {
+      "text": "`",
+      "top": 475.0,
+      "y_bottom": 366.9,
+      "x0": 374.0,
+      "x1": 377.8
+    },
+    {
+      "text": "h",
+      "top": 483.1,
+      "y_bottom": 358.8,
+      "x0": 377.7,
+      "x1": 381.0
+    },
+    {
+      "text": "m",
+      "top": 475.0,
+      "y_bottom": 366.9,
+      "x0": 377.8,
+      "x1": 379.7
+    },
+    {
+      "text": "e",
+      "top": 483.1,
+      "y_bottom": 358.8,
+      "x0": 381.0,
+      "x1": 384.2
+    },
+    {
+      "text": "C",
+      "top": 475.0,
+      "y_bottom": 366.9,
+      "x0": 382.1,
+      "x1": 385.2
+    },
+    {
+      "text": "t",
+      "top": 483.1,
+      "y_bottom": 358.8,
+      "x0": 384.2,
+      "x1": 385.9
+    },
+    {
+      "text": "Z",
+      "top": 475.0,
+      "y_bottom": 366.9,
+      "x0": 385.2,
+      "x1": 388.6
+    },
+    {
+      "text": "h",
+      "top": 483.1,
+      "y_bottom": 358.8,
+      "x0": 385.9,
+      "x1": 389.1
+    },
+    {
+      "text": "H",
+      "top": 475.0,
+      "y_bottom": 366.9,
+      "x0": 388.6,
+      "x1": 392.1
+    },
+    {
+      "text": "e",
+      "top": 483.1,
+      "y_bottom": 358.8,
+      "x0": 389.1,
+      "x1": 392.3
+    },
+    {
+      "text": "o$",
+      "top": 475.0,
+      "y_bottom": 366.9,
+      "x0": 392.1,
+      "x1": 393.5
+    },
+    {
+      "text": "r r",
+      "top": 483.1,
+      "y_bottom": 358.8,
+      "x0": 392.3,
+      "x1": 397.9
+    },
+    {
+      "text": "g",
+      "top": 475.0,
+      "y_bottom": 366.9,
+      "x0": 395.9,
+      "x1": 400.1
+    },
+    {
+      "text": "e",
+      "top": 483.1,
+      "y_bottom": 358.8,
+      "x0": 397.9,
+      "x1": 401.1
+    },
+    {
+      "text": "m",
+      "top": 475.0,
+      "y_bottom": 366.9,
+      "x0": 400.1,
+      "x1": 402.0
+    },
+    {
+      "text": "s",
+      "top": 483.1,
+      "y_bottom": 358.8,
+      "x0": 401.1,
+      "x1": 404.0
+    },
+    {
+      "text": "W",
+      "top": 475.0,
+      "y_bottom": 366.9,
+      "x0": 402.0,
+      "x1": 406.1
+    },
+    {
+      "text": "id",
+      "top": 483.1,
+      "y_bottom": 358.8,
+      "x0": 404.0,
+      "x1": 408.6
+    },
+    {
+      "text": "a",
+      "top": 475.0,
+      "y_bottom": 366.9,
+      "x0": 408.5,
+      "x1": 410.8
+    },
+    {
+      "text": "in",
+      "top": 483.1,
+      "y_bottom": 358.8,
+      "x0": 408.6,
+      "x1": 413.1
+    },
+    {
+      "text": "h",
+      "top": 475.0,
+      "y_bottom": 366.9,
+      "x0": 410.8,
+      "x1": 413.9
+    },
+    {
+      "text": "g",
+      "top": 483.1,
+      "y_bottom": 358.8,
+      "x0": 413.1,
+      "x1": 416.3
+    },
+    {
+      "text": "a",
+      "top": 475.0,
+      "y_bottom": 366.9,
+      "x0": 416.4,
+      "x1": 418.6
+    },
+    {
+      "text": "w",
+      "top": 483.1,
+      "y_bottom": 358.8,
+      "x0": 418.0,
+      "x1": 422.2
+    },
+    {
+      "text": "ho",
+      "top": 475.0,
+      "y_bottom": 366.9,
+      "x0": 418.6,
+      "x1": 421.8
+    },
+    {
+      "text": "it",
+      "top": 483.1,
+      "y_bottom": 358.8,
+      "x0": 422.2,
+      "x1": 425.1
+    },
+    {
+      "text": "h",
+      "top": 475.0,
+      "y_bottom": 366.9,
+      "x0": 424.2,
+      "x1": 427.3
+    },
+    {
+      "text": "h",
+      "top": 483.1,
+      "y_bottom": 358.8,
+      "x0": 425.1,
+      "x1": 428.3
+    },
+    {
+      "text": "¡ `{X Zhu Amdmg H$m ñWmZ XrOrE",
+      "top": 477.2,
+      "y_bottom": 364.7,
+      "x0": 427.3,
+      "x1": 524.7
+    },
+    {
+      "text": "date of filling form Employee him /her ? If No. State place of residence",
+      "top": 490.2,
+      "y_bottom": 351.7,
+      "x0": 245.0,
+      "x1": 520.2
+    },
+    {
+      "text": "hm±/Yes Zhu No Cn ZJa/ amÁ`/ State Town",
+      "top": 504.7,
+      "y_bottom": 337.1,
+      "x0": 370.2,
+      "x1": 536.6
+    },
+    {
+      "text": "H$.am.~r.{ZJ_ AñWmdr nhMmZ nÌ ({Z`w{º$ H$s {V{W go 3 _mg VH$ ~¡Y)",
+      "top": 598.0,
+      "y_bottom": 243.9,
+      "x0": 148.2,
+      "x1": 478.3
+    },
+    {
+      "text": "ESI Corporation Temporary Identity Card ( Valid for 3 months from the date of appointment)",
+      "top": 606.9,
+      "y_bottom": 235.0,
+      "x0": 138.5,
+      "x1": 499.8
+    },
+    {
+      "text": "Zm_/Name",
+      "top": 623.4,
+      "y_bottom": 218.5,
+      "x0": 76.7,
+      "x1": 115.2
+    },
+    {
+      "text": "H«$_ g§»`m/Ins No.",
+      "top": 644.6,
+      "y_bottom": 197.3,
+      "x0": 73.7,
+      "x1": 135.7
+    },
+    {
+      "text": "ñd`§ Ed_ n[adma H$m \\$moQ>moJ«\\$",
+      "top": 662.4,
+      "y_bottom": 179.4,
+      "x0": 394.1,
+      "x1": 490.0
+    },
+    {
+      "text": "{Z`w{º$ H$s {V{W/Date of appointment (Space for photograph)",
+      "top": 668.5,
+      "y_bottom": 173.4,
+      "x0": 74.0,
+      "x1": 478.1
+    },
+    {
+      "text": "emIm H$m`m©b` Am¡fYb`",
+      "top": 680.6,
+      "y_bottom": 161.3,
+      "x0": 77.1,
+      "x1": 228.4
+    },
+    {
+      "text": "Branch Office Dispensary",
+      "top": 688.7,
+      "y_bottom": 153.2,
+      "x0": 76.7,
+      "x1": 235.5
+    },
+    {
+      "text": "{Z`moOH$ H$s H$moS>> g§»`m d nVm",
+      "top": 702.2,
+      "y_bottom": 139.7,
+      "x0": 77.0,
+      "x1": 176.9
+    },
+    {
+      "text": "Employer's Code No. & Address",
+      "top": 711.1,
+      "y_bottom": 130.8,
+      "x0": 76.5,
+      "x1": 181.5
+    },
+    {
+      "text": "~¡YVm",
+      "top": 725.2,
+      "y_bottom": 116.7,
+      "x0": 71.8,
+      "x1": 89.0
+    },
+    {
+      "text": "Validity",
+      "top": 734.8,
+      "y_bottom": 107.1,
+      "x0": 72.8,
+      "x1": 96.0
+    },
+    {
+      "text": ":",
+      "top": 725.2,
+      "y_bottom": 116.7,
+      "x0": 92.2,
+      "x1": 95.2
+    },
+    {
+      "text": "{XZm§H$ : dr‘mH¥V ì`{º$ Ho$ hñVmja/A§JwQ>o H$m {ZemZ _moha g{hV emIm H$m`m©b` à~§YH$ Ho$ hñVmja",
+      "top": 748.6,
+      "y_bottom": 93.3,
+      "x0": 71.8,
+      "x1": 488.8
+    },
+    {
+      "text": "Dated : Signature / T. I. of I. P Signature of B.M. with seal",
+      "top": 758.4,
+      "y_bottom": 83.4,
+      "x0": 73.2,
+      "x1": 454.2
+    }
+  ],
+  "page_15": [
+    {
+      "text": "I declare that my dependent parents Income from all source is 1) Father Income Rs...................................................(2) Mother's",
+      "top": 72.9,
+      "y_bottom": 769.0,
+      "x0": 42.3,
+      "x1": 548.7
+    },
+    {
+      "text": "Income Rs...................................Total Rs...................................(Rupees..................................................................)",
+      "top": 83.0,
+      "y_bottom": 758.9,
+      "x0": 42.3,
+      "x1": 495.0
+    },
+    {
+      "text": "and her/she/ they, is/are wholly dependent on me and also resides with me.",
+      "top": 93.0,
+      "y_bottom": 748.9,
+      "x0": 42.3,
+      "x1": 342.2
+    },
+    {
+      "text": "_¢ KmofUm H$aVm/H$aVr> h±w {H$ _oao Ûmam àñVwV {H$`m J`m ã`m¡am _oar OmZH$mar Am¡a {dûdmg Ho$ AZwgma ghr h¡ & _¢ AnZo n[adma Ho$ gXñ`m| _| hþE n[adV©Z",
+      "top": 104.1,
+      "y_bottom": 737.8,
+      "x0": 42.3,
+      "x1": 511.9
+    },
+    {
+      "text": "H$s gwMZm 15 {XZ Ho$ ^rVa àñVwV H$aZo H$m dMZ XoVm/XoVr h±y &",
+      "top": 115.5,
+      "y_bottom": 726.4,
+      "x0": 42.3,
+      "x1": 238.1
+    },
+    {
+      "text": "I hereby declare that the particulars give by me are correct to the best my knowledge and belief. I undertake to intimate",
+      "top": 127.2,
+      "y_bottom": 714.7,
+      "x0": 42.7,
+      "x1": 515.5
+    },
+    {
+      "text": "the Corporation any changes in the membership of my family within 15 days of such change.",
+      "top": 137.2,
+      "y_bottom": 704.7,
+      "x0": 42.7,
+      "x1": 410.9
+    },
+    {
+      "text": "{Z`moOH$ Ho$ à{VhñVmja",
+      "top": 158.7,
+      "y_bottom": 683.2,
+      "x0": 51.8,
+      "x1": 126.0
+    },
+    {
+      "text": "Counter Signature by the Employer",
+      "top": 170.0,
+      "y_bottom": 671.9,
+      "x0": 51.2,
+      "x1": 191.8
+    },
+    {
+      "text": "hñVmH$a Ho$ gmW _moha/Signature with Seal ~r_H¥$V ì`{º$ Ho$ hñVmja/A§JyR>m {ZemZ",
+      "top": 181.2,
+      "y_bottom": 660.7,
+      "x0": 51.7,
+      "x1": 502.8
+    },
+    {
+      "text": "Signature / T. I. of IP",
+      "top": 191.7,
+      "y_bottom": 650.2,
+      "x0": 399.1,
+      "x1": 480.5
+    },
+    {
+      "text": "Date :..................................",
+      "top": 196.4,
+      "y_bottom": 645.5,
+      "x0": 51.2,
+      "x1": 160.3
+    },
+    {
+      "text": "AZwXoe/INSTRUCTIONS",
+      "top": 202.3,
+      "y_bottom": 639.6,
+      "x0": 217.7,
+      "x1": 337.0
+    },
+    {
+      "text": "1. \\$m_© -1 H$m àofU H$.a.~r (gmYmaU) {d{Z`m_mbr- 11d12 Ho$ AÝVJ©V {d{Z`{_V {H$`m OmVm h¡ ?",
+      "top": 219.6,
+      "y_bottom": 622.3,
+      "x0": 42.3,
+      "x1": 378.7
+    },
+    {
+      "text": "Submission of Form -1 is governed by regulations 11 & 12 of ESI (General) Regulations, 1950.",
+      "top": 230.5,
+      "y_bottom": 611.4,
+      "x0": 65.5,
+      "x1": 441.5
+    },
+    {
+      "text": "2. n[adma H$m AW© (1) n{V/nËZr (2) ~r_H¥$V ì`{º$ H$s Am` na Am[ûm«V ~¡Y AWdm JmoX {b`o Ad`ñH$ ~ÀMm/A{ddm{hV nwÌr (3) 2 df© H$s Am`w VH$",
+      "top": 240.8,
+      "y_bottom": 601.1,
+      "x0": 42.3,
+      "x1": 549.8
+    },
+    {
+      "text": "~r_mH¥$V ì`{º$ na Am{ûm«V ~¡Y AWdm JmoX {b`m hwAm ~ƒm `{X {ejm àmËV H$a ahm hmo (4) nyar Vah ~rdmH¥$V ì`{º$ H$s Am` na {Z^a Aeº$",
+      "top": 250.4,
+      "y_bottom": 591.5,
+      "x0": 66.0,
+      "x1": 526.7
+    },
+    {
+      "text": "(5) Am{ûm«V _mVm-{nVm H$.am.~r. AYr{Z`_ H$s Ymam 2 Ho$ AÝVJ©V n[a^mrfV Am¡a ñWmZr` n[admaOZ {M{H$Ëgm XoIaoI Ho$ hH$Xma h¡.",
+      "top": 260.1,
+      "y_bottom": 581.8,
+      "x0": 66.0,
+      "x1": 482.6
+    },
+    {
+      "text": "\"Family\" means all or any of the following relatives of an Insured Person namely :-",
+      "top": 271.6,
+      "y_bottom": 570.3,
+      "x0": 65.5,
+      "x1": 391.0
+    },
+    {
+      "text": "(i) a spouse (ii) a minor legitimate or adopted child dependant upon the I.P. : (iii) a child who is wholly dependent on",
+      "top": 281.1,
+      "y_bottom": 560.8,
+      "x0": 65.5,
+      "x1": 546.1
+    },
+    {
+      "text": "the earning of the I. P. and who is (a) receiving education , till he or she attains the age of 21years (b) an unmarried",
+      "top": 290.5,
+      "y_bottom": 551.4,
+      "x0": 65.5,
+      "x1": 543.1
+    },
+    {
+      "text": "daughter,(iv) a child who is infirm by reason of any physical or mental abnormality or injury and is wholly dependent on",
+      "top": 300.0,
+      "y_bottom": 541.9,
+      "x0": 65.5,
+      "x1": 545.7
+    },
+    {
+      "text": "the earnings of the I.P. so long as the infirmity continues: (v) dependent Parents (Please see Seition 2 clause 11 of the 11",
+      "top": 309.4,
+      "y_bottom": 532.5,
+      "x0": 65.5,
+      "x1": 546.8
+    },
+    {
+      "text": "of the ESI Act : 1948 for details).",
+      "top": 318.9,
+      "y_bottom": 523.0,
+      "x0": 65.5,
+      "x1": 194.5
+    },
+    {
+      "text": "3. nhMmZ nÌ hñWm§VaUr` Zhr h¡&",
+      "top": 328.0,
+      "y_bottom": 513.9,
+      "x0": 42.3,
+      "x1": 163.7
+    },
+    {
+      "text": "Identity Card is Non-transferable",
+      "top": 337.8,
+      "y_bottom": 504.1,
+      "x0": 65.5,
+      "x1": 195.0
+    },
+    {
+      "text": "4. nhMmZ nÌ Jw_ hmoZo H$s pñW{V _| {ZY©oeH$/emIm H$m`m©b` à~§YH$ H$mo Vw§aV gy{MV H$aZm Mm[hE&",
+      "top": 349.1,
+      "y_bottom": 492.8,
+      "x0": 42.3,
+      "x1": 366.8
+    },
+    {
+      "text": "Loss of Identity Card be reported to Employer/Bramch Managerr immediately",
+      "top": 359.9,
+      "y_bottom": 482.0,
+      "x0": 65.5,
+      "x1": 372.1
+    },
+    {
+      "text": "5. {H$gr àH$ma H$s JbV gwMZm XoZo H$r pñW{V _| H$.am.Zr.A{Y{Z`_ - 1947 H$s Ymam-84 Ho$ VhV H$mZyZr H$m`©dmhr H$s Om gH$Vr h¡ &",
+      "top": 369.9,
+      "y_bottom": 472.0,
+      "x0": 42.3,
+      "x1": 478.4
+    },
+    {
+      "text": "Submission of false information attracts penal action under Section 84 of ESI Act, 1948",
+      "top": 380.2,
+      "y_bottom": 461.7,
+      "x0": 65.5,
+      "x1": 411.2
+    },
+    {
+      "text": "6. ZB© {Z`y{º$ H$s pñW{V _o§ ^br-^§{V ^am hwAm `h \\$m_© {Z`w{º$ Ho$ Xg {XZ Ho$ ^rVa g~§{YV ñWm[Z` H$m`m©b` _| Adñ` hr àñVwV {H$`m OmZm MmhrE &",
+      "top": 392.5,
+      "y_bottom": 449.4,
+      "x0": 42.3,
+      "x1": 535.2
+    },
+    {
+      "text": "{dbå~ H$s pñW{V _| {Z`moOH$ Ho$ {dê$Ô Ymam-76 Ho$ VhV H$mZyZr H$m`©dmhr H$s Om gH$Vr h¡ &",
+      "top": 403.5,
+      "y_bottom": 438.4,
+      "x0": 66.0,
+      "x1": 358.3
+    },
+    {
+      "text": "This form duly filled in must reach the concerned Branch Office within 10 days of appointment of an Employee. Delay",
+      "top": 415.2,
+      "y_bottom": 426.7,
+      "x0": 65.5,
+      "x1": 543.0
+    },
+    {
+      "text": "attracts penal action under Section 85 of the Act, Against employer.",
+      "top": 425.3,
+      "y_bottom": 416.6,
+      "x0": 65.5,
+      "x1": 332.6
+    },
+    {
+      "text": "7. ~r_mH¥$V ì`{º$ AeX`u eV} nyar H$aZo na {ZåZ{b{IV {hVbm^ àmËn H$a gHo$Jm (1) ~r_mar {hVbm^ (2) AñWm`r An§JV {hVbm^ (3) ñWm`r",
+      "top": 436.4,
+      "y_bottom": 405.5,
+      "x0": 42.3,
+      "x1": 517.4
+    },
+    {
+      "text": "An§JVm {hVbm^ (4) Am{ûm«V OZ {hVbm^ (5) àgy{V {hVbm^ (_{hbm H$_©Mmar Ho$ {bE) &",
+      "top": 446.9,
+      "y_bottom": 395.0,
+      "x0": 66.0,
+      "x1": 354.7
+    },
+    {
+      "text": "As am Insured Person you and your dependent family members are entitiled to full medical care. The other benefits in",
+      "top": 457.8,
+      "y_bottom": 384.1,
+      "x0": 65.5,
+      "x1": 543.6
+    },
+    {
+      "text": "cash include (1) Sickness Benefit (2) Temporary Disablement benefit (3) Permanent disablement Benefit (4) Dependents",
+      "top": 467.9,
+      "y_bottom": 374.0,
+      "x0": 65.5,
+      "x1": 544.5
+    },
+    {
+      "text": "benefit and (5) Maternity Benefit ( in case of women employees) subject to fulfilment of contributory conditions.",
+      "top": 477.9,
+      "y_bottom": 364.0,
+      "x0": 65.5,
+      "x1": 505.2
+    },
+    {
+      "text": "8. A{YH$ OmZH$ar Ho$ {bE {ZJ_ Ho$ do^g¡>Q> wwww.esicorg.in H$mo XoIo `m ñ`m[` H$m`©mb` `m joV«r` H$m`m©b` go g§nH©$ H$ao",
+      "top": 490.5,
+      "y_bottom": 351.4,
+      "x0": 42.3,
+      "x1": 452.7
+    },
+    {
+      "text": "For more details please visit website of ESIC at ww. esic.org.in or contact Regional office or Branch Office.",
+      "top": 502.0,
+      "y_bottom": 339.9,
+      "x0": 65.5,
+      "x1": 488.8
+    },
+    {
+      "text": "Ho$db emIm H$m`m©b` _| à`moJ hoVw FOR BRANCH OF OFFICE USE ONLY",
+      "top": 521.8,
+      "y_bottom": 320.1,
+      "x0": 155.4,
+      "x1": 428.8
+    },
+    {
+      "text": "1. ~r_m g§»`m Amd§VZ H$s VmarI$/Date of Allotments of Ins. No. :",
+      "top": 534.1,
+      "y_bottom": 307.7,
+      "x0": 42.3,
+      "x1": 288.1
+    },
+    {
+      "text": "2. A.n.n.Omar H$aZo H$s VmarI /Date of Issue of TIC :",
+      "top": 546.7,
+      "y_bottom": 295.2,
+      "x0": 42.3,
+      "x1": 251.4
+    },
+    {
+      "text": "3. Am¡fYmb` H$m Zm_/g§»`m/ Name /No. of Disp. :",
+      "top": 559.4,
+      "y_bottom": 282.4,
+      "x0": 42.3,
+      "x1": 247.6
+    },
+    {
+      "text": "4. Š`m AÝ` {M{H$Ëgm ì`dñWm CnbãY h¡? `{X hmo, Vmo, C„oI H$ao :",
+      "top": 571.3,
+      "y_bottom": 270.6,
+      "x0": 42.3,
+      "x1": 272.7
+    },
+    {
+      "text": "Whether reciprocal Medical arrangements involved ? If Yes, please indicate :",
+      "top": 583.5,
+      "y_bottom": 258.4,
+      "x0": 65.5,
+      "x1": 370.2
+    },
+    {
+      "text": "à~ÝYH$ Ho$ hñVmja",
+      "top": 587.6,
+      "y_bottom": 254.2,
+      "x0": 441.1,
+      "x1": 501.2
+    },
+    {
+      "text": "Signature of Branch Manager",
+      "top": 598.2,
+      "y_bottom": 243.7,
+      "x0": 412.1,
+      "x1": 529.6
+    },
+    {
+      "text": "\\$m_© ^aZo H$s VmarH$ H$mo Am`w H$_©Mmar Ho$ gmW g§~§Y Š`m CZHo$ gmW ah aho h¡ `{X Zhu, Amdmg H$m ñWmZ XrOrE",
+      "top": 619.4,
+      "y_bottom": 222.5,
+      "x0": 229.3,
+      "x1": 534.3
+    },
+    {
+      "text": "Sl.No. Name Date of Birth / Age as on Relationship with the Whether residing with If No. State place of residence",
+      "top": 629.1,
+      "y_bottom": 212.7,
+      "x0": 41.3,
+      "x1": 530.5
+    },
+    {
+      "text": "date of filling form Employee him /her ?",
+      "top": 637.2,
+      "y_bottom": 204.7,
+      "x0": 240.7,
+      "x1": 405.3
+    },
+    {
+      "text": "1.",
+      "top": 653.4,
+      "y_bottom": 188.4,
+      "x0": 49.1,
+      "x1": 56.6
+    },
+    {
+      "text": "hm±/Yes Zhu No Cn ZJa/ Town amÁ`/ State",
+      "top": 648.8,
+      "y_bottom": 193.1,
+      "x0": 363.0,
+      "x1": 528.2
+    },
+    {
+      "text": "2",
+      "top": 673.6,
+      "y_bottom": 168.3,
+      "x0": 49.1,
+      "x1": 54.1
+    },
+    {
+      "text": "3",
+      "top": 693.8,
+      "y_bottom": 148.1,
+      "x0": 49.1,
+      "x1": 54.1
+    },
+    {
+      "text": "4",
+      "top": 713.9,
+      "y_bottom": 128.0,
+      "x0": 49.1,
+      "x1": 54.1
+    },
+    {
+      "text": "5.",
+      "top": 734.1,
+      "y_bottom": 107.8,
+      "x0": 49.1,
+      "x1": 56.6
+    },
+    {
+      "text": "6.",
+      "top": 754.3,
+      "y_bottom": 87.6,
+      "x0": 49.1,
+      "x1": 56.6
+    }
+  ],
+  "page_16": [
+    {
+      "text": "PÝËáìPÜÃÜ »ÜËÐÜÂ ¯— ÓÜíÓæ§ / H$_©Xmar ^{dî` qZ{Y g§JR>Z",
+      "top": 73.9,
+      "y_bottom": 768.0,
+      "x0": 138.2,
+      "x1": 371.6
+    },
+    {
+      "text": "THE EMPLOYEES PROVIDENT FUND ORGANISATION ±ÜÅ±ÜñÜÅ 2 (±ÜÄÐÜ¢ñÜ)",
+      "top": 89.7,
+      "y_bottom": 752.2,
+      "x0": 112.4,
+      "x1": 548.8
+    },
+    {
+      "text": "Form No. (Revised)",
+      "top": 97.2,
+      "y_bottom": 744.6,
+      "x0": 447.7,
+      "x1": 552.6
+    },
+    {
+      "text": "Ë®ÝÀá£WæãÚÔÃÜ¨Ü / Ë®ÝÀá£WæãÚÔ¨Ü E¨ÜÂÊÜáÓÜíÓæ§WÜÚWÝX",
+      "top": 105.7,
+      "y_bottom": 736.2,
+      "x0": 150.1,
+      "x1": 407.0
+    },
+    {
+      "text": "®ÝÊÜá¯¨æìÍÜ®Ü ÊÜáñÜá¤ ÐæãàÐÜOæ¿á ±ÜñÜÅ",
+      "top": 119.6,
+      "y_bottom": 722.3,
+      "x0": 200.0,
+      "x1": 357.2
+    },
+    {
+      "text": "NOMINATION AND DECLARATION FORM",
+      "top": 134.2,
+      "y_bottom": 707.7,
+      "x0": 181.4,
+      "x1": 376.2
+    },
+    {
+      "text": "FOR UNEXMPTED / EXEMPTED ESTABLISHMENTS",
+      "top": 145.4,
+      "y_bottom": 696.5,
+      "x0": 157.0,
+      "x1": 400.7
+    },
+    {
+      "text": "PÝËáìPÜÃÜ »ÜËÐÜÂ¯— ÊÜáñÜá¤ PÝËáìPÜÃÜ ²íaÜ~ Áãàg®æWÜÙÜ ÊæáàÃæWæ ÐæãàÐÜOæ ÊÜáñÜá¤ ®ÝÊÜá ¯¨æàìÍÜ®Ü ±ÜÅ±ÜñÜÅ",
+      "top": 157.1,
+      "y_bottom": 684.8,
+      "x0": 91.2,
+      "x1": 466.0
+    },
+    {
+      "text": "Declaration and Nomination Form under the Empoloyees Provident Fund Pension Scheme",
+      "top": 168.4,
+      "y_bottom": 673.5,
+      "x0": 85.5,
+      "x1": 472.1
+    },
+    {
+      "text": "(PÝËáìPÜÃÜ »ÜËÐÜÂ¯— Áãàg®æ 1952ÃÜ ±ÝÂÃÝ 11 ÊÜáñÜá¤ 61 ÊÜáñÜá¤ PÝËáìPÜÃÜ ²íaÜ~ Áãàg®æ 1995ÃÜ PÜíwPæ 18)",
+      "top": 177.7,
+      "y_bottom": 664.2,
+      "x0": 76.1,
+      "x1": 479.9
+    },
+    {
+      "text": "(Paragraph 33 and 61 of the Employees' Provident Fund Scheme, 1952 & Paragraph 18 of the",
+      "top": 188.8,
+      "y_bottom": 653.1,
+      "x0": 87.1,
+      "x1": 483.3
+    },
+    {
+      "text": "Employees Pension Scheme 1995)",
+      "top": 198.8,
+      "y_bottom": 643.1,
+      "x0": 211.4,
+      "x1": 359.0
+    },
+    {
+      "text": "1. ÖæÓÜÃÜá (¹w AûÜÃÜWÜÙÜÈÉ) 6. TÝñæ ÓÜí.Pæ.G®…./vÜŸáÉ$Â™.G´… /45433",
+      "top": 211.5,
+      "y_bottom": 630.4,
+      "x0": 53.7,
+      "x1": 488.4
+    },
+    {
+      "text": "Name (in Block Letters) Account No. KN/WF/45433",
+      "top": 223.9,
+      "y_bottom": 618.0,
+      "x0": 76.7,
+      "x1": 449.0
+    },
+    {
+      "text": "2. ñÜí¨æ¿á /WÜívÜ®Ü ÖæÓÜÃÜá (ËÊÝ×ñÜÙÝX¨ÜªÈÉ) 7. TÝ¿áí ËÙÝÓÜ/Permanent Address",
+      "top": 239.9,
+      "y_bottom": 601.9,
+      "x0": 53.7,
+      "x1": 479.6
+    },
+    {
+      "text": "Father's / Husband's Name",
+      "top": 249.4,
+      "y_bottom": 592.5,
+      "x0": 76.9,
+      "x1": 185.4
+    },
+    {
+      "text": "( In Case of married woman)",
+      "top": 259.5,
+      "y_bottom": 582.4,
+      "x0": 76.9,
+      "x1": 191.0
+    },
+    {
+      "text": "3. g®Ü¾ ©®ÝíPÜ",
+      "top": 270.2,
+      "y_bottom": 571.7,
+      "x0": 53.7,
+      "x1": 118.6
+    },
+    {
+      "text": "Date of Birth 8. ñÝñÝRÈPÜ ËÙÝÓÜ/Temporary",
+      "top": 283.8,
+      "y_bottom": 558.1,
+      "x0": 76.9,
+      "x1": 445.1
+    },
+    {
+      "text": "Ô÷à",
+      "top": 293.1,
+      "y_bottom": 548.8,
+      "x0": 191.9,
+      "x1": 201.3
+    },
+    {
+      "text": "Address",
+      "top": 285.7,
+      "y_bottom": 556.2,
+      "x0": 447.1,
+      "x1": 480.1
+    },
+    {
+      "text": "4. ÈíWÜ : ±ÜâÃÜáÐÜ",
+      "top": 296.7,
+      "y_bottom": 545.1,
+      "x0": 53.7,
+      "x1": 142.0
+    },
+    {
+      "text": "Sex Male Female",
+      "top": 307.2,
+      "y_bottom": 534.7,
+      "x0": 77.9,
+      "x1": 221.9
+    },
+    {
+      "text": "5. ÊæçÊÝ×PÜ Ô§£",
+      "top": 320.3,
+      "y_bottom": 521.6,
+      "x0": 53.7,
+      "x1": 119.8
+    },
+    {
+      "text": "Marital Status",
+      "top": 331.5,
+      "y_bottom": 510.4,
+      "x0": 75.3,
+      "x1": 130.3
+    },
+    {
+      "text": "»ÝWÜ &G (PÝ.»Ü.Áãà) PART - A (EPF)",
+      "top": 344.8,
+      "y_bottom": 497.0,
+      "x0": 193.3,
+      "x1": 397.4
+    },
+    {
+      "text": "®Ý®Üá D ÊÜáãÆPÜ ÊÜÂQ¤¿á®Üá° (WÜÙÜ®Üá°) ®ÝÊÜá ¯¨æàìÎÔ¨æªà®æ / D ÊÜáãÆPÜ ÊÜÞw¨Üª ®ÝÊÜá ¯¨æàìÍÜ®ÜÊÜ®Üá° ÖÜ¨Üª ±ÜwÔ¨æªà®æ ÊÜáñÜá¤ ®Ý®Üá ÊÜáÃÜ|",
+      "top": 366.0,
+      "y_bottom": 475.9,
+      "x0": 43.9,
+      "x1": 537.6
+    },
+    {
+      "text": "Öæãí©¨Ü ±ÜûÜ¨ÜÈÉ PÝËáìPÜ »ÜËÐÜÂ¯—¿áá ®Ü®Ü° ÇæPÜR¨ÜÈÉ gÊæá¿ÞXÃÜáÊÜ ÊæãŸÆWÜ®Üá° ÔÌàPÜÄÓÜÆá, D PæÙÜWæ ®ÜÊÜáã©Ô¨Ü ÊÜÂQ¤¿á®Üá° (WÜÙÜ®Üá°) ®Ý®Üá",
+      "top": 377.2,
+      "y_bottom": 464.6,
+      "x0": 43.9,
+      "x1": 542.3
+    },
+    {
+      "text": "¯¨æàìÎÔ¨æªà®æ.",
+      "top": 388.5,
+      "y_bottom": 453.3,
+      "x0": 43.9,
+      "x1": 97.6
+    },
+    {
+      "text": "I hereby nominate the person(s)/cancel the nomination made by the previously and nominate the person(s), mentioned below",
+      "top": 400.9,
+      "y_bottom": 441.0,
+      "x0": 42.9,
+      "x1": 541.2
+    },
+    {
+      "text": "to receive the amount standing to my credit in the Employees Provident Fund, in the event my death",
+      "top": 410.9,
+      "y_bottom": 431.0,
+      "x0": 93.0,
+      "x1": 491.2
+    },
+    {
+      "text": "®ÝÊÜá¯¨æìàÎñÜÃÜá A±ÝÅ±Ü¤ ®ÝÊÜá ¯¨æìàÎñÜ (®Ü) (ÃÜ) ÓÜ¨ÜÓÜÂÃæãvÜ®æ g®Ü¾ ±ÜÅ£ÁãŸº ®ÝÊÜá¯¨æìàÎñÜ®Üá",
+      "top": 424.9,
+      "y_bottom": 417.0,
+      "x0": 67.9,
+      "x1": 538.9
+    },
+    {
+      "text": "ÊÜ¿áÓÜR®ÝX¨ÜªÃæ ®ÝÊÜá¯¨æàìÎñÜ®Ü ÖæÓÜÃÜá ÊÜáñÜá¤ ËÙÝÓÜ CÃÜáÊÜ ©®ÝíPÜ »Ü¯ÐÜÂ¯—¿áÈÉ ÓÜíŸí«Ü",
+      "top": 436.7,
+      "y_bottom": 405.2,
+      "x0": 80.2,
+      "x1": 550.5
+    },
+    {
+      "text": "®ÝÊÜá¯¨æàìÍÜ®Ü ÊÝ¨Üá¨ÜÃÜ ±æçQ ÓÜí¨Ý¿á B±ÝÅ±Ü¤ÊÜ¿áÔÕ®Ü AÊÜ—¿áÈÉ",
+      "top": 447.3,
+      "y_bottom": 394.6,
+      "x0": 227.7,
+      "x1": 542.0
+    },
+    {
+      "text": "ÓÜíŸí«Ü ÊÜÞvÜñÜPÜR Joár ÊæãŸÆWÜá ÊæãŸÆWÜ®Üá° ±Üvæ¿áŸÖÜá¨Ý¨Ü",
+      "top": 458.6,
+      "y_bottom": 383.3,
+      "x0": 241.7,
+      "x1": 546.3
+    },
+    {
+      "text": "Nominee/s A¥ÜÊÝ A¨ÜÃÜ ±ÝÆá ±ÝÆPÜ®Ü ÖæÓÜÃÜá ÊÜáñÜá¤ ËÙÝÓÜ",
+      "top": 469.4,
+      "y_bottom": 372.5,
+      "x0": 230.6,
+      "x1": 542.7
+    },
+    {
+      "text": "Relationship Total Amount of Share",
+      "top": 481.4,
+      "y_bottom": 360.5,
+      "x0": 227.3,
+      "x1": 420.3
+    },
+    {
+      "text": "If the nominee is a minor",
+      "top": 477.7,
+      "y_bottom": 364.2,
+      "x0": 442.8,
+      "x1": 541.4
+    },
+    {
+      "text": "Name & Address of Nominee/s with the Date of",
+      "top": 487.5,
+      "y_bottom": 354.4,
+      "x0": 56.0,
+      "x1": 318.8
+    },
+    {
+      "text": "of Accumuiation in",
+      "top": 491.5,
+      "y_bottom": 350.4,
+      "x0": 340.7,
+      "x1": 413.7
+    },
+    {
+      "text": "name relationship and",
+      "top": 486.8,
+      "y_bottom": 355.1,
+      "x0": 447.8,
+      "x1": 536.4
+    },
+    {
+      "text": "member Birth Provident Fund to be",
+      "top": 500.0,
+      "y_bottom": 341.9,
+      "x0": 235.6,
+      "x1": 417.8
+    },
+    {
+      "text": "address of the guardian who",
+      "top": 495.9,
+      "y_bottom": 345.9,
+      "x0": 435.3,
+      "x1": 548.9
+    },
+    {
+      "text": "Paid to Each Nominee",
+      "top": 510.7,
+      "y_bottom": 331.2,
+      "x0": 331.2,
+      "x1": 420.7
+    },
+    {
+      "text": "may",
+      "top": 505.1,
+      "y_bottom": 336.8,
+      "x0": 430.3,
+      "x1": 447.3
+    },
+    {
+      "text": "the",
+      "top": 514.2,
+      "y_bottom": 327.7,
+      "x0": 445.3,
+      "x1": 457.8
+    },
+    {
+      "text": "receive",
+      "top": 505.1,
+      "y_bottom": 336.8,
+      "x0": 449.8,
+      "x1": 478.8
+    },
+    {
+      "text": "minority",
+      "top": 514.2,
+      "y_bottom": 327.7,
+      "x0": 460.3,
+      "x1": 491.8
+    },
+    {
+      "text": "the",
+      "top": 505.1,
+      "y_bottom": 336.8,
+      "x0": 481.3,
+      "x1": 493.8
+    },
+    {
+      "text": "of",
+      "top": 514.2,
+      "y_bottom": 327.7,
+      "x0": 494.3,
+      "x1": 501.8
+    },
+    {
+      "text": "amount",
+      "top": 505.1,
+      "y_bottom": 336.8,
+      "x0": 496.3,
+      "x1": 526.4
+    },
+    {
+      "text": "nominee",
+      "top": 514.2,
+      "y_bottom": 327.7,
+      "x0": 504.3,
+      "x1": 538.9
+    },
+    {
+      "text": "during",
+      "top": 505.1,
+      "y_bottom": 336.8,
+      "x0": 528.9,
+      "x1": 553.9
+    },
+    {
+      "text": "1 2 3 4 5",
+      "top": 527.4,
+      "y_bottom": 314.5,
+      "x0": 115.1,
+      "x1": 494.5
+    },
+    {
+      "text": "1. PÝËáìPÜÃÜ »ÜËÐÜÂ ¯— Áãàg®æ 1952 PÜíqPæ 2 (i)¿áÈÉ ±ÜÄ»ÝÑÓÜÇÝ¨Üíñæ ®Ý®Üá PÜáoáíŸÊÜ®Üá° Öæãí©ÆÉÊæí¨Üá ÊÜáñÜá¤ D ñÜÃÜáÊÝ¿á",
+      "top": 597.1,
+      "y_bottom": 244.8,
+      "x0": 55.6,
+      "x1": 541.1
+    },
+    {
+      "text": "®Ý®Üá PÜáoáíŸÊÜ®Üá° Öæãí©¨ÜªÃæ ÊæáàÆRívÜ ®ÝÊÜá ¯¨æìàÍÜ®ÜÊÜâ ÃÜ¨ÝªX¨æÁáí¨Üá »ÝËÓÜñÜPÜR¨æí¨Üá.",
+      "top": 608.5,
+      "y_bottom": 233.4,
+      "x0": 71.8,
+      "x1": 404.4
+    },
+    {
+      "text": " Certified that I have no family as defined in para 2 (g) of the Employees' Provident Fund Scheme. 1952 and should I",
+      "top": 620.8,
+      "y_bottom": 221.1,
+      "x0": 71.3,
+      "x1": 539.8
+    },
+    {
+      "text": "acquire family hereafter the above nomination should be deemed as cancelled.",
+      "top": 630.8,
+      "y_bottom": 211.1,
+      "x0": 77.3,
+      "x1": 391.5
+    },
+    {
+      "text": "2. ®Ü®Ü° ñÜí¨æ, ñÝÀá ®Ü®Ü°®Üá°$BÍÜÅÀáÔ¨ÝªÃæí¨Üá ±ÜÅÊÜÞ~PÜÄÔ¨æªà®æ.",
+      "top": 646.8,
+      "y_bottom": 195.1,
+      "x0": 55.6,
+      "x1": 290.1
+    },
+    {
+      "text": " Certified that my father’s/mother’s / are dependent upon me.",
+      "top": 659.8,
+      "y_bottom": 182.0,
+      "x0": 72.7,
+      "x1": 320.7
+    },
+    {
+      "text": "3. A®ÜÌÀáÓÜ©ÃÜáÊÜâ¨Ü®Üá° Öæãvæ¨Üá ÖÝQ",
+      "top": 672.6,
+      "y_bottom": 169.2,
+      "x0": 55.6,
+      "x1": 195.6
+    },
+    {
+      "text": " Strikeout whichever is not applicable Signature of thumb impression of the Subscriber",
+      "top": 689.0,
+      "y_bottom": 152.8,
+      "x0": 73.2,
+      "x1": 528.3
+    },
+    {
+      "text": "FOR OFFICE USE ONLY",
+      "top": 705.1,
+      "y_bottom": 136.8,
+      "x0": 237.0,
+      "x1": 339.1
+    },
+    {
+      "text": "Dt. of remaining EPF / /20 ENTRIES VERIFIED",
+      "top": 719.8,
+      "y_bottom": 122.1,
+      "x0": 50.9,
+      "x1": 470.3
+    },
+    {
+      "text": "Past Service..........................year",
+      "top": 737.5,
+      "y_bottom": 104.4,
+      "x0": 50.9,
+      "x1": 184.0
+    },
+    {
+      "text": "D.A. S.S. A.A.O. Date of Joining EPS / /20",
+      "top": 755.1,
+      "y_bottom": 86.8,
+      "x0": 50.9,
+      "x1": 517.3
+    }
+  ],
+  "page_17": [
+    {
+      "text": "»ÝWÜ &¹ (PÝ.²í.Áãà) PÜíwPæ 18 PART - B (EPS) Para 18",
+      "top": 77.8,
+      "y_bottom": 764.1,
+      "x0": 139.8,
+      "x1": 460.0
+    },
+    {
+      "text": "®Ý®Üá ÓæàÊæ¿áÈÉÃÜáÊÝWÜ AÊÜ— ±Üä|ìÊÝWÜáÊÜâ¨ÜPæR Êæã¨ÜÆá ÊÜáÃÜ| Öæãí©¨Üª ÓÜí¨Ü»Üì¨ÜÈÉ Ë«ÜÊæ/Ë«ÜáÃÜ ÊÜáPÜRÙÜ ÊÜÞÔPÜ ²íaÜ~¿á®Üá° ®Üvæ¿áÆá",
+      "top": 101.8,
+      "y_bottom": 740.1,
+      "x0": 41.2,
+      "x1": 546.5
+    },
+    {
+      "text": "AÖÜìÃÝ¨Ü ®Ü®Ü° PÜáoáíŸ¨Ü ÓÜ¨ÜÓÜÂÃÜ ËÊÜÃÜWÜÙÜ®Üá° D ÊÜáãÆPÜ PæÙÜPÜívÜíñæ J¨ÜXÔ¨æªà®æ.",
+      "top": 114.8,
+      "y_bottom": 727.1,
+      "x0": 41.2,
+      "x1": 332.3
+    },
+    {
+      "text": "I hereby furnish below particulars of the members of my family who would be eligible to receive widow/widwer/children Pension in",
+      "top": 128.9,
+      "y_bottom": 713.0,
+      "x0": 41.2,
+      "x1": 554.8
+    },
+    {
+      "text": "the event of my death.",
+      "top": 139.0,
+      "y_bottom": 702.9,
+      "x0": 41.2,
+      "x1": 130.2
+    },
+    {
+      "text": "PÜÅÊÜáÓÜíTæÂ PÜáoáíŸ¨Ü ÓÜ¨ÜÓÜÂÃÜ ÖæÓÜÃÜá ËÙÝÓÜ g®Ü¾ ©®ÝíPÜ aÜí¨Ý¨ÝÃÜ®æãvÜ¯ÃÜáÊÜ ÓÜíŸí«Ü",
+      "top": 156.0,
+      "y_bottom": 685.9,
+      "x0": 41.2,
+      "x1": 526.6
+    },
+    {
+      "text": "Sl.No. Name of the Family Member Address Date of Birth Relationship with member",
+      "top": 169.0,
+      "y_bottom": 672.9,
+      "x0": 46.1,
+      "x1": 522.3
+    },
+    {
+      "text": "1 2 3 4 5",
+      "top": 187.6,
+      "y_bottom": 654.3,
+      "x0": 52.7,
+      "x1": 473.3
+    },
+    {
+      "text": "PÝËáìPÜ ²íaÜ~ Áãàg®æ 1005ÃÜ PÜíwPæ 2 (vii) ÃÜÈÉ ±ÜÄ»ÝÑÓÜÇÝ¨Üíñæ ®Ý®Üá PÜáoáíŸÊÜ®Üá° Öæãí©ÆÉÊæí¨Üá ÊÜáñÜá¤ D ñÜÃÜáÊÝ¿á ®Ý®Üá",
+      "top": 254.8,
+      "y_bottom": 587.1,
+      "x0": 41.2,
+      "x1": 551.6
+    },
+    {
+      "text": "PÜáoáíŸÊÜ®Üá° Öæãí©¨ÜªÃæ ÊæáàÆRívÜ ±ÜÅÊÜÜñÜÅ¨ÜÈÉ ËÊÜÃÜWÜÙÜ®Üá° J¨ÜXÓÜáÊæ®æí¨Üá ±ÜÅÊÜÞ~àPÜÄÓÜáñæ¤à®æ.",
+      "top": 265.8,
+      "y_bottom": 576.1,
+      "x0": 41.2,
+      "x1": 381.1
+    },
+    {
+      "text": "Certified that I have no family, as defined in para 2 (vii) of Employees' Pension Scheme, 1995 and should I acquire a family",
+      "top": 278.0,
+      "y_bottom": 563.9,
+      "x0": 41.2,
+      "x1": 552.0
+    },
+    {
+      "text": "hereafter I shall furnish particulars thereon on the above form.",
+      "top": 288.1,
+      "y_bottom": 553.8,
+      "x0": 41.2,
+      "x1": 287.3
+    },
+    {
+      "text": "®Ý®Üá ÊÜáÃÜ| Öæãí©¨Ü ÓÜí¨Ü»Üì¨ÜÈÉ ÊÜÞÔPÜ Ë«ÜÊæ/Ë«ÜáÃÜ ²íaÜ~ ±Üvæ¿áÆá ®Ü®Ü° PÜáoáíŸ¨Ü ÓÜ¨ÜÓÜÂÃÜá ¿ÞÃÜá CÆÉ©ÃÜáÊÝWÜ D PæÙÜPÜívÜÊÜÃÜ®Üá°",
+      "top": 297.7,
+      "y_bottom": 544.2,
+      "x0": 41.2,
+      "x1": 551.6
+    },
+    {
+      "text": "²íaÜ~ ±Üvæ¿áÆá (².Áãà.PÜíwPæ16(2) (i)(i) ÊÜáñÜá¤ (ii) Aw¿áÈÉ ®ÝÊÜá ¯¨æàìÎÔÃÜáñæ¤à®æ.",
+      "top": 308.8,
+      "y_bottom": 533.1,
+      "x0": 41.2,
+      "x1": 384.7
+    },
+    {
+      "text": "I hereby nominate the following person for receiving the monthly pension/admissible under para 16(2) (g)(i) and (ii) in the event",
+      "top": 320.6,
+      "y_bottom": 521.3,
+      "x0": 41.2,
+      "x1": 552.9
+    },
+    {
+      "text": "of my death without leaving any eligible family member for receiving person.",
+      "top": 330.7,
+      "y_bottom": 511.2,
+      "x0": 41.2,
+      "x1": 343.3
+    },
+    {
+      "text": "®ÝÊÜá ¯¨æàìÎñÜ®Ü ÖæÓÜÃÜá ÊÜáñÜá¤ ËÙÝÓÜ g®Ü¾ ©®ÝíPÜ aÜí¨Ý¨ÝÃÜ®æãvÜ¯ÃÜáÊÜ ÓÜíŸí«Ü",
+      "top": 346.7,
+      "y_bottom": 495.2,
+      "x0": 104.4,
+      "x1": 507.8
+    },
+    {
+      "text": "Name & Address of the Nominee Date of Birth Relationship with member",
+      "top": 357.7,
+      "y_bottom": 484.1,
+      "x0": 105.7,
+      "x1": 503.5
+    },
+    {
+      "text": "©®ÝíPÜ Date",
+      "top": 468.8,
+      "y_bottom": 373.1,
+      "x0": 42.1,
+      "x1": 91.6
+    },
+    {
+      "text": "A®ÜÌÀáÓÜ©ÃÜáÊÜâ¨Ü®Üá° Öæãvæ¨Üá ÖÝQ aÜí¨Ý¨ÝÃÜ®Ü ÓÜ× A¥ÜÊÝ Öæ¸æºqr®Ü WÜáÃÜáñÜá",
+      "top": 480.5,
+      "y_bottom": 361.4,
+      "x0": 54.0,
+      "x1": 486.1
+    },
+    {
+      "text": "Stike out whichever is not applicable Signature or thumb impression of the subscriber",
+      "top": 491.8,
+      "y_bottom": 350.0,
+      "x0": 53.1,
+      "x1": 509.7
+    },
+    {
+      "text": "¯ÁãàgPÜ®Ü ±ÜÅÊÜÞ| ±ÜñÜÅ",
+      "top": 514.6,
+      "y_bottom": 327.3,
+      "x0": 236.9,
+      "x1": 357.9
+    },
+    {
+      "text": "CERTIFIED BY EMPLOYER",
+      "top": 530.3,
+      "y_bottom": 311.6,
+      "x0": 220.5,
+      "x1": 374.3
+    },
+    {
+      "text": "®Ü®Ü° E¨ÜÂÊÜá ÓÜíÓæ§¿áÈÉ ¯ÁãàiñÜÃÝXÃÜáÊÜ ÎÅà/ÎÅàÊÜá£/PÜáÊÜÞÄ",
+      "top": 552.5,
+      "y_bottom": 289.3,
+      "x0": 47.7,
+      "x1": 279.4
+    },
+    {
+      "text": "¿áÊÜÃÜá ÊæáàÆRívÜ ®ÜÊÜáã®æWÜÙÜ®Üá° K©¨Ü ñÜÃÜáÊÝ¿á/AÊÜÄWæ ®ÜÊÜáã®æWÜÙÜ®Üá° K© ÖæàÚ¨Ü ñÜÃÜáÊÝ¿á/ AÊÜÃÜá AÊÜâWÜÙÜ®Üá° ÔÌàPÜÄÔ,®Ü®Ü° ÓÜÊÜáá¾S¨ÜÈÉ",
+      "top": 565.1,
+      "y_bottom": 276.8,
+      "x0": 47.7,
+      "x1": 549.6
+    },
+    {
+      "text": "ÊæáàÆRívÜ ÐæãàÐÜOæWæ ÊÜáñÜá¤ ®ÝÊÜá ¯¨æàìÍÜ®ÜPæR ÓÜ× ÊÜÞw¨Ýª®æ /Ùæ. Öæ¸æºqr®Ü WÜáÃÜáñÜ®Üá° ÖÝQ¨Ýª®æ /Ùæ Gí¨Üá ±ÜÅÊÜÞ~PÜÄÓÜáñæ¤à®æ.",
+      "top": 577.7,
+      "y_bottom": 264.2,
+      "x0": 47.7,
+      "x1": 491.4
+    },
+    {
+      "text": "Certified that the above declaration and nomination has been signed / thumb impressed before me by",
+      "top": 595.7,
+      "y_bottom": 246.2,
+      "x0": 48.2,
+      "x1": 547.0
+    },
+    {
+      "text": "Shri/Smt./Kum",
+      "top": 610.3,
+      "y_bottom": 231.6,
+      "x0": 48.2,
+      "x1": 106.2
+    },
+    {
+      "text": "employed in my establishment after he/she has read the entriess have been read over to him/her by me and got confirmed by",
+      "top": 624.9,
+      "y_bottom": 217.0,
+      "x0": 48.2,
+      "x1": 546.9
+    },
+    {
+      "text": "him/her.",
+      "top": 639.5,
+      "y_bottom": 202.4,
+      "x0": 48.2,
+      "x1": 80.2
+    },
+    {
+      "text": "¯ÁãàgPÜ®Ü A¥ÜÊÝ E¨ÜÂÊÜá ÓÜíÓæ§Àáí¨Ü A—PÝÃÜ ±Üvæ¨Ü A—PÝÄ¿á ÓÜ×",
+      "top": 651.1,
+      "y_bottom": 190.8,
+      "x0": 260.6,
+      "x1": 514.3
+    },
+    {
+      "text": "Signature of the employer or other authorised officers of the Establishment",
+      "top": 665.5,
+      "y_bottom": 176.4,
+      "x0": 239.2,
+      "x1": 535.7
+    },
+    {
+      "text": "±Ü¨Ü®ÝÊÜá /Designation: Authorised Signatory",
+      "top": 699.5,
+      "y_bottom": 142.4,
+      "x0": 237.3,
+      "x1": 417.5
+    },
+    {
+      "text": "PÝTÝì®æÜ¿á / E¨ÜÂÊÜá ÓÜíÓæ§¿á ÖæÓÜÃÜá ÊÜáñÜá¤ ËÙÝÓÜ A¥ÜÊÝ A¨ÜÃÜ ÃÜŸºÃ… ÊæãÖÜÃÜá",
+      "top": 710.9,
+      "y_bottom": 131.0,
+      "x0": 225.4,
+      "x1": 517.2
+    },
+    {
+      "text": "Name and Address of Factory / Establishment or Rubber Stamp thereof",
+      "top": 723.1,
+      "y_bottom": 118.8,
+      "x0": 228.8,
+      "x1": 513.5
+    },
+    {
+      "text": "PARADIGM INTEGRATED FACILITY SERVICES PVT. LTD.",
+      "top": 734.4,
+      "y_bottom": 107.4,
+      "x0": 268.3,
+      "x1": 490.3
+    },
+    {
+      "text": "K S F Building, No.15, Golf View Road, HAL Airport Road,",
+      "top": 748.3,
+      "y_bottom": 93.6,
+      "x0": 257.7,
+      "x1": 500.9
+    },
+    {
+      "text": "Bangalore - 560 008.",
+      "top": 760.3,
+      "y_bottom": 81.6,
+      "x0": 333.4,
+      "x1": 425.2
+    }
+  ],
+  "page_18": [
+    {
+      "text": "Paradigm Integrated Facility Services Pvt. Ltd.",
+      "top": 73.1,
+      "y_bottom": 768.8,
+      "x0": 372.1,
+      "x1": 553.3
+    },
+    {
+      "text": "TM",
+      "top": 81.3,
+      "y_bottom": 760.5,
+      "x0": 276.8,
+      "x1": 284.2
+    },
+    {
+      "text": "K S F Building, No.15, Golf View Road,",
+      "top": 86.6,
+      "y_bottom": 755.3,
+      "x0": 389.0,
+      "x1": 553.3
+    },
+    {
+      "text": "HAL Airport Road, Bangalore - 560 008.",
+      "top": 98.6,
+      "y_bottom": 743.3,
+      "x0": 382.6,
+      "x1": 553.3
+    },
+    {
+      "text": "info@paradigmfms.com",
+      "top": 111.4,
+      "y_bottom": 730.4,
+      "x0": 449.3,
+      "x1": 550.4
+    },
+    {
+      "text": "EMPLOYMENT VERIFICATION FORM",
+      "top": 147.0,
+      "y_bottom": 694.9,
+      "x0": 192.4,
+      "x1": 402.9
+    },
+    {
+      "text": "Applicant Detail",
+      "top": 175.7,
+      "y_bottom": 666.2,
+      "x0": 47.1,
+      "x1": 115.1
+    },
+    {
+      "text": "Full Name * ID (For internal Tracking) :",
+      "top": 191.8,
+      "y_bottom": 650.1,
+      "x0": 47.1,
+      "x1": 520.3
+    },
+    {
+      "text": "Date of Birth * Gender :",
+      "top": 208.5,
+      "y_bottom": 633.4,
+      "x0": 47.1,
+      "x1": 452.8
+    },
+    {
+      "text": "Father’s Name",
+      "top": 225.5,
+      "y_bottom": 616.4,
+      "x0": 47.1,
+      "x1": 109.1
+    },
+    {
+      "text": "Contact Details",
+      "top": 251.1,
+      "y_bottom": 590.8,
+      "x0": 47.1,
+      "x1": 112.6
+    },
+    {
+      "text": "Present Address *",
+      "top": 268.9,
+      "y_bottom": 573.0,
+      "x0": 47.1,
+      "x1": 124.3
+    },
+    {
+      "text": "(with landmark)",
+      "top": 280.8,
+      "y_bottom": 561.1,
+      "x0": 47.1,
+      "x1": 108.6
+    },
+    {
+      "text": "Permanent Address *",
+      "top": 322.6,
+      "y_bottom": 519.3,
+      "x0": 47.1,
+      "x1": 137.8
+    },
+    {
+      "text": "(with landmark)",
+      "top": 334.6,
+      "y_bottom": 507.3,
+      "x0": 47.1,
+      "x1": 108.6
+    },
+    {
+      "text": "Email Address *",
+      "top": 367.1,
+      "y_bottom": 474.7,
+      "x0": 47.1,
+      "x1": 115.3
+    },
+    {
+      "text": "Landline number",
+      "top": 382.9,
+      "y_bottom": 459.0,
+      "x0": 47.1,
+      "x1": 119.6
+    },
+    {
+      "text": "Education Details",
+      "top": 414.2,
+      "y_bottom": 427.7,
+      "x0": 47.1,
+      "x1": 122.6
+    },
+    {
+      "text": "Institution Name * Affiliated Degree, Specialization * Year of Registration Full / Part",
+      "top": 431.5,
+      "y_bottom": 410.4,
+      "x0": 47.1,
+      "x1": 533.4
+    },
+    {
+      "text": "University (e.g. BE, Mechanical) Graduation * Number* Time",
+      "top": 440.8,
+      "y_bottom": 401.1,
+      "x0": 163.7,
+      "x1": 523.3
+    },
+    {
+      "text": "Experience Details",
+      "top": 501.0,
+      "y_bottom": 340.9,
+      "x0": 47.1,
+      "x1": 136.0
+    },
+    {
+      "text": "Company Name &",
+      "top": 519.6,
+      "y_bottom": 322.3,
+      "x0": 70.9,
+      "x1": 147.9
+    },
+    {
+      "text": "Designation *",
+      "top": 524.2,
+      "y_bottom": 317.7,
+      "x0": 172.1,
+      "x1": 229.6
+    },
+    {
+      "text": "Duration * Employee CTC Per Reporting Manager",
+      "top": 519.6,
+      "y_bottom": 322.3,
+      "x0": 263.8,
+      "x1": 542.5
+    },
+    {
+      "text": "Address * Start Date - End Date ID * Annum * Name, Designation",
+      "top": 529.6,
+      "y_bottom": 312.3,
+      "x0": 88.4,
+      "x1": 539.8
+    },
+    {
+      "text": "1",
+      "top": 548.8,
+      "y_bottom": 293.1,
+      "x0": 47.1,
+      "x1": 52.1
+    },
+    {
+      "text": "Reason for Leaving / Comment :",
+      "top": 564.3,
+      "y_bottom": 277.6,
+      "x0": 63.2,
+      "x1": 192.8
+    },
+    {
+      "text": "2",
+      "top": 582.2,
+      "y_bottom": 259.6,
+      "x0": 47.9,
+      "x1": 52.9
+    },
+    {
+      "text": "Reason for Leaving / Comment :",
+      "top": 600.2,
+      "y_bottom": 241.7,
+      "x0": 63.2,
+      "x1": 192.8
+    },
+    {
+      "text": "Reference Details",
+      "top": 625.0,
+      "y_bottom": 216.9,
+      "x0": 45.9,
+      "x1": 129.8
+    },
+    {
+      "text": "Reference Name * Company Name * Designation *",
+      "top": 652.9,
+      "y_bottom": 189.0,
+      "x0": 67.3,
+      "x1": 332.8
+    },
+    {
+      "text": "Contact Email Years of",
+      "top": 649.7,
+      "y_bottom": 192.2,
+      "x0": 352.0,
+      "x1": 533.0
+    },
+    {
+      "text": "Number Address * association *",
+      "top": 659.8,
+      "y_bottom": 182.1,
+      "x0": 352.0,
+      "x1": 543.2
+    },
+    {
+      "text": "How do you know the reference :",
+      "top": 693.6,
+      "y_bottom": 148.3,
+      "x0": 63.2,
+      "x1": 194.8
+    },
+    {
+      "text": "How do you know the reference :",
+      "top": 728.1,
+      "y_bottom": 113.8,
+      "x0": 63.2,
+      "x1": 194.8
+    },
+    {
+      "text": "CONFIDENTIAL : This document contains cofidential information and must be handled with care 1|Page",
+      "top": 747.2,
+      "y_bottom": 94.7,
+      "x0": 46.2,
+      "x1": 553.0
+    },
+    {
+      "text": "ops/evf.v.04",
+      "top": 757.3,
+      "y_bottom": 84.6,
+      "x0": 46.2,
+      "x1": 94.0
+    }
+  ],
+  "page_19": [
+    {
+      "text": "Paradigm Integrated Facility Services Pvt. Ltd.",
+      "top": 73.1,
+      "y_bottom": 768.8,
+      "x0": 372.1,
+      "x1": 553.3
+    },
+    {
+      "text": "TM",
+      "top": 81.3,
+      "y_bottom": 760.5,
+      "x0": 276.8,
+      "x1": 284.2
+    },
+    {
+      "text": "K S F Building, No.15, Golf View Road,",
+      "top": 86.9,
+      "y_bottom": 755.0,
+      "x0": 389.0,
+      "x1": 553.3
+    },
+    {
+      "text": "HAL Airport Road, Bangalore - 560 008.",
+      "top": 98.9,
+      "y_bottom": 743.0,
+      "x0": 382.6,
+      "x1": 553.3
+    },
+    {
+      "text": "info@paradigmfms.com",
+      "top": 110.7,
+      "y_bottom": 731.2,
+      "x0": 452.3,
+      "x1": 553.4
+    },
+    {
+      "text": "Please attach the relevant documents (Mark sheets / Degree Certificate, Relieving letter and pay slip)",
+      "top": 154.9,
+      "y_bottom": 687.0,
+      "x0": 47.1,
+      "x1": 525.0
+    },
+    {
+      "text": "Criminal Verification",
+      "top": 174.5,
+      "y_bottom": 667.4,
+      "x0": 47.1,
+      "x1": 143.8
+    },
+    {
+      "text": "Period for Criminal Verification no of years or FROM.................................TO...............................",
+      "top": 194.5,
+      "y_bottom": 647.4,
+      "x0": 47.1,
+      "x1": 522.3
+    },
+    {
+      "text": "Present Address",
+      "top": 212.0,
+      "y_bottom": 629.9,
+      "x0": 47.1,
+      "x1": 126.2
+    },
+    {
+      "text": "Permanent Address",
+      "top": 302.6,
+      "y_bottom": 539.3,
+      "x0": 47.1,
+      "x1": 141.2
+    },
+    {
+      "text": "Previous Address 1",
+      "top": 407.5,
+      "y_bottom": 434.4,
+      "x0": 47.1,
+      "x1": 140.1
+    },
+    {
+      "text": "Previous Address 2",
+      "top": 510.2,
+      "y_bottom": 331.7,
+      "x0": 47.1,
+      "x1": 140.1
+    },
+    {
+      "text": "For Criminal verification please attach relevant documents ( a recent photo, a copy of ID).",
+      "top": 612.9,
+      "y_bottom": 228.9,
+      "x0": 47.1,
+      "x1": 471.7
+    },
+    {
+      "text": "CONFIDENTIAL : This document contains cofidential information and must be handled with care",
+      "top": 747.2,
+      "y_bottom": 94.7,
+      "x0": 46.2,
+      "x1": 429.3
+    },
+    {
+      "text": "ops/evf.v.04 2|Page",
+      "top": 758.2,
+      "y_bottom": 83.7,
+      "x0": 46.2,
+      "x1": 553.0
+    }
+  ],
+  "page_20": [
+    {
+      "text": "To",
+      "top": 76.6,
+      "y_bottom": 765.3,
+      "x0": 41.9,
+      "x1": 54.5
+    },
+    {
+      "text": "The Manager",
+      "top": 90.9,
+      "y_bottom": 750.9,
+      "x0": 41.9,
+      "x1": 113.2
+    },
+    {
+      "text": "Sub : Resignation Letter PIFS PVT. LTD.",
+      "top": 103.5,
+      "y_bottom": 738.4,
+      "x0": 41.9,
+      "x1": 377.8
+    },
+    {
+      "text": "I having employee ID No.",
+      "top": 144.8,
+      "y_bottom": 697.0,
+      "x0": 41.9,
+      "x1": 428.3
+    },
+    {
+      "text": "Son / Daughter / Wife of .wish to",
+      "top": 184.4,
+      "y_bottom": 657.5,
+      "x0": 41.9,
+      "x1": 551.3
+    },
+    {
+      "text": "resign from Paradigm Integrated Facility Services Pvt. Ltd. with effect from",
+      "top": 224.0,
+      "y_bottom": 617.9,
+      "x0": 41.9,
+      "x1": 403.0
+    },
+    {
+      "text": "Signature",
+      "top": 248.5,
+      "y_bottom": 593.4,
+      "x0": 376.0,
+      "x1": 423.1
+    },
+    {
+      "text": "Place :",
+      "top": 260.3,
+      "y_bottom": 581.6,
+      "x0": 41.9,
+      "x1": 75.5
+    },
+    {
+      "text": "Date :",
+      "top": 301.7,
+      "y_bottom": 540.2,
+      "x0": 41.9,
+      "x1": 71.2
+    },
+    {
+      "text": "EMP ID No.",
+      "top": 310.4,
+      "y_bottom": 531.5,
+      "x0": 376.0,
+      "x1": 433.9
+    },
+    {
+      "text": "FULL AND FINAL SETTLEMENT",
+      "top": 369.9,
+      "y_bottom": 471.9,
+      "x0": 197.0,
+      "x1": 396.8
+    },
+    {
+      "text": "I, S/o. / D/o. / W/o.",
+      "top": 400.0,
+      "y_bottom": 441.9,
+      "x0": 41.7,
+      "x1": 333.4
+    },
+    {
+      "text": "residing at",
+      "top": 425.1,
+      "y_bottom": 416.8,
+      "x0": 41.7,
+      "x1": 92.4
+    },
+    {
+      "text": "have this day received from M/s",
+      "top": 450.2,
+      "y_bottom": 391.7,
+      "x0": 41.7,
+      "x1": 196.9
+    },
+    {
+      "text": "Rs/- (Rupees )",
+      "top": 475.3,
+      "y_bottom": 366.6,
+      "x0": 41.7,
+      "x1": 553.5
+    },
+    {
+      "text": "in full and final settlement of all my claims against the management.",
+      "top": 500.4,
+      "y_bottom": 341.5,
+      "x0": 41.7,
+      "x1": 371.2
+    },
+    {
+      "text": "I further declare that on payment of the said sum I have no further claims whatsoever against the said",
+      "top": 538.0,
+      "y_bottom": 303.9,
+      "x0": 41.7,
+      "x1": 553.4
+    },
+    {
+      "text": "management including that of reinstatement/re-employment. I also declare that I have received the above",
+      "top": 550.5,
+      "y_bottom": 291.4,
+      "x0": 41.7,
+      "x1": 554.0
+    },
+    {
+      "text": "said amount as the settlement of all legal and statutory dues against.",
+      "top": 563.1,
+      "y_bottom": 278.8,
+      "x0": 41.7,
+      "x1": 376.1
+    },
+    {
+      "text": "Date :",
+      "top": 684.9,
+      "y_bottom": 156.9,
+      "x0": 41.9,
+      "x1": 73.9
+    },
+    {
+      "text": "ACCEPTED",
+      "top": 720.6,
+      "y_bottom": 121.3,
+      "x0": 41.9,
+      "x1": 107.2
+    },
+    {
+      "text": "Signature",
+      "top": 756.2,
+      "y_bottom": 85.7,
+      "x0": 41.9,
+      "x1": 93.2
+    }
+  ]
+}

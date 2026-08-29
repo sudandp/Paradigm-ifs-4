@@ -343,18 +343,18 @@ const DocumentVerificationBadges: React.FC<DocumentVerificationBadgesProps> = ({
     ];
 
     return (
-        <div className={`flex items-center gap-2 ${hideLabels ? 'justify-center' : 'flex-wrap'}`}>
+        <div className={`flex items-center ${hideLabels ? 'gap-1.5 justify-center' : 'gap-2 flex-wrap'}`}>
             {docList.map(doc => {
                 if (doc.applicable === false) {
                     return (
                         <span 
                             key={doc.key} 
                             className={`inline-flex items-center justify-center gap-1 rounded-md text-[10px] font-bold bg-slate-100 text-slate-400 border border-slate-200 ${
-                                hideLabels ? 'w-7 h-7 p-0' : 'px-2 py-0.5'
+                                hideLabels ? 'w-6 h-6 p-0' : 'px-2 py-0.5'
                             }`}
                             title={`${doc.label}: Not Applicable`}
                         >
-                            <Square className="w-3.5 h-3.5 text-slate-300" />
+                            <Square className="w-3 h-3 text-slate-300" />
                             {!hideLabels && <span>{doc.label} (N/A)</span>}
                         </span>
                     );
@@ -369,7 +369,7 @@ const DocumentVerificationBadges: React.FC<DocumentVerificationBadgesProps> = ({
                             onToggleDoc?.(doc.key);
                         }}
                         className={`inline-flex items-center justify-center gap-1 rounded-md text-[10px] font-bold transition-all duration-150 shadow-2xs ${
-                            hideLabels ? 'w-7 h-7 p-0' : 'px-2 py-0.5'
+                            hideLabels ? 'w-6 h-6 p-0' : 'px-2 py-0.5'
                         } ${
                             isVerified 
                                 ? doc.activeColor 
@@ -1145,30 +1145,30 @@ const VerificationDashboard: React.FC = () => {
                         )}
                     </div>
                 ) : (
-                    <table className="min-w-full border-separate border-spacing-0">
+                    <table className="w-full min-w-[1200px] border-separate border-spacing-0">
                         <thead>
-                            <tr className="bg-slate-50/80 border-b border-slate-100">
-                                <th scope="col" className="px-5 py-3.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80">Employee</th>
-                                <th scope="col" className="px-5 py-3.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80">Site Location</th>
+                            <tr className="bg-slate-50/90 border-b border-slate-200">
+                                <th scope="col" className="px-4 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Employee</th>
+                                <th scope="col" className="px-3 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Site Location</th>
                                 {statusFilter !== 'verified' && (
-                                    <th scope="col" className="px-5 py-3.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80">Status</th>
+                                    <th scope="col" className="px-3 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Status</th>
                                 )}
-                                <th scope="col" className="px-5 py-3.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80">Designation</th>
-                                <th scope="col" className="px-5 py-3 text-center border-b border-slate-200/80">
+                                <th scope="col" className="px-3 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Designation</th>
+                                <th scope="col" className="px-3 py-3 text-center border-b border-slate-200 w-[155px]">
                                     <div className="flex flex-col items-center gap-1">
                                         <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Verified Documents</span>
-                                        <div className="flex items-center gap-2 mt-0.5">
-                                            <span className="px-1.5 py-0.5 text-[9px] font-extrabold rounded bg-blue-50 text-blue-700 border border-blue-200/80 shadow-2xs">PAN</span>
-                                            <span className="px-1.5 py-0.5 text-[9px] font-extrabold rounded bg-emerald-50 text-emerald-700 border border-emerald-200/80 shadow-2xs">AADHAAR</span>
-                                            <span className="px-1.5 py-0.5 text-[9px] font-extrabold rounded bg-amber-50 text-amber-700 border border-amber-200/80 shadow-2xs">UAN</span>
-                                            <span className="px-1.5 py-0.5 text-[9px] font-extrabold rounded bg-indigo-50 text-indigo-700 border border-indigo-200/80 shadow-2xs">BANK</span>
-                                            <span className="px-1.5 py-0.5 text-[9px] font-extrabold rounded bg-teal-50 text-teal-700 border border-teal-200/80 shadow-2xs">ADDRESS</span>
+                                        <div className="flex items-center gap-1 mt-0.5">
+                                            <span className="w-5 text-center text-[8.5px] font-bold text-blue-600 bg-blue-50 px-0.5 py-0.5 rounded border border-blue-200" title="PAN">PAN</span>
+                                            <span className="w-5 text-center text-[8.5px] font-bold text-emerald-600 bg-emerald-50 px-0.5 py-0.5 rounded border border-emerald-200" title="Aadhaar">AAD</span>
+                                            <span className="w-5 text-center text-[8.5px] font-bold text-amber-600 bg-amber-50 px-0.5 py-0.5 rounded border border-amber-200" title="UAN">UAN</span>
+                                            <span className="w-5 text-center text-[8.5px] font-bold text-indigo-600 bg-indigo-50 px-0.5 py-0.5 rounded border border-indigo-200" title="Bank">BNK</span>
+                                            <span className="w-5 text-center text-[8.5px] font-bold text-teal-600 bg-teal-50 px-0.5 py-0.5 rounded border border-teal-200" title="Address">ADR</span>
                                         </div>
                                     </div>
                                 </th>
-                                <th scope="col" className="px-5 py-3.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80">Approved By</th>
-                                <th scope="col" className="px-5 py-3.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80">Created Date/Time</th>
-                                <th scope="col" className="px-5 py-3.5 text-center text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80">Actions</th>
+                                <th scope="col" className="px-3 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Approved By</th>
+                                <th scope="col" className="px-3 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Created Date/Time</th>
+                                <th scope="col" className="sticky right-0 bg-slate-50/95 backdrop-blur-xs z-20 px-4 py-3 text-right text-[11px] font-bold text-slate-600 uppercase tracking-wider border-b border-slate-200 shadow-[-6px_0_10px_-2px_rgba(0,0,0,0.06)] w-[270px] min-w-[270px]">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 bg-white">
@@ -1191,25 +1191,25 @@ const VerificationDashboard: React.FC = () => {
                                     return (
                                     <tr key={s.id} className={`group hover:bg-emerald-50/40 transition-colors duration-150 ${s.requiresManualVerification ? 'bg-amber-50/60' : isDraft ? 'bg-slate-50/30' : ''}`}>
                                         {/* Employee */}
-                                        <td className="px-5 py-3.5 whitespace-nowrap">
-                                            <div className="flex items-center gap-3">
-                                                <div className={`h-10 w-10 rounded-full ${isDraft ? 'bg-slate-700' : 'bg-gradient-to-br from-emerald-500 to-teal-700'} text-white font-black text-xs flex items-center justify-center shadow-xs border-2 border-white flex-shrink-0`}>
+                                        <td className="px-4 py-3 whitespace-nowrap">
+                                            <div className="flex items-center gap-2.5">
+                                                <div className={`h-9 w-9 rounded-full ${isDraft ? 'bg-slate-700' : 'bg-gradient-to-br from-emerald-500 to-teal-700'} text-white font-black text-xs flex items-center justify-center shadow-xs border-2 border-white flex-shrink-0`}>
                                                     {empInitials}
                                                 </div>
                                                 <div className="flex flex-col">
                                                     <div className="flex items-center gap-1.5">
-                                                        <span className="text-sm font-bold text-slate-900 hover:text-emerald-700 transition-colors capitalize">
+                                                        <span className="text-xs font-bold text-slate-900 hover:text-emerald-700 transition-colors capitalize">
                                                             {empDisplayName}
                                                         </span>
                                                         {s.requiresManualVerification && (
                                                             <span title="Manual verification required">
-                                                                <AlertTriangle className="h-4 w-4 text-amber-500" />
+                                                                <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
                                                             </span>
                                                         )}
                                                     </div>
-                                                    <div className="flex items-center gap-2 mt-0.5">
-                                                        <span className="font-mono text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200/60">
-                                                            {s.personal.employeeId || 'ID: Pending'}
+                                                    <div className="flex items-center gap-1.5 mt-0.5">
+                                                        <span className="font-mono text-[10px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200/60">
+                                                            {s.personal?.employeeId || 'ID: Pending'}
                                                         </span>
                                                         <SyncStatusBadge pending={(s as any).pending} failed={(s as any).failed} />
                                                     </div>
@@ -1218,8 +1218,8 @@ const VerificationDashboard: React.FC = () => {
                                         </td>
 
                                         {/* Site */}
-                                        <td className="px-5 py-3.5 whitespace-nowrap">
-                                            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                                        <td className="px-3 py-3 whitespace-nowrap">
+                                            <div className="flex items-center gap-1 text-xs font-semibold text-slate-700">
                                                 <MapPin className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
                                                 <span>{s.organizationName || s.organization?.organizationName || '-'}</span>
                                             </div>
@@ -1227,62 +1227,62 @@ const VerificationDashboard: React.FC = () => {
 
                                         {/* Status */}
                                         {statusFilter !== 'verified' && (
-                                            <td className="px-5 py-3.5 whitespace-nowrap">
+                                            <td className="px-3 py-3 whitespace-nowrap">
                                                 <StatusChip status={s.status} />
                                             </td>
                                         )}
 
                                         {/* Designation */}
-                                        <td className="px-5 py-3.5 whitespace-nowrap">
-                                            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                                        <td className="px-3 py-3 whitespace-nowrap">
+                                            <div className="flex items-center gap-1 text-xs font-semibold text-slate-700">
                                                 <Briefcase className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
                                                 <span>{s.organization?.designation || '-'}</span>
                                             </div>
                                         </td>
 
                                         {/* Verified Documents */}
-                                        <td className="px-5 py-3.5 whitespace-nowrap text-center">
+                                        <td className="px-3 py-3 whitespace-nowrap text-center">
                                             <DocumentVerificationBadges submission={s} onToggleDoc={(key) => handleToggleDocVerification(s.id!, key)} hideLabels />
                                         </td>
 
                                         {/* Approved By */}
-                                        <td className="px-5 py-3.5 whitespace-nowrap">
+                                        <td className="px-3 py-3 whitespace-nowrap">
                                             {s.status === 'verified' ? (
                                                 s.verificationMode === 'auto' || s.verifiedBy === 'Paradigm AI Agent' ? (
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="h-7 w-7 rounded-full bg-gradient-to-tr from-violet-600 to-indigo-600 text-white flex items-center justify-center shadow-2xs flex-shrink-0 border border-violet-300">
-                                                            <Bot className="h-4 w-4 text-white" />
+                                                    <div className="flex items-center gap-1.5">
+                                                        <div className="h-6 w-6 rounded-full bg-gradient-to-tr from-violet-600 to-indigo-600 text-white flex items-center justify-center shadow-2xs flex-shrink-0 border border-violet-300">
+                                                            <Bot className="h-3.5 w-3.5 text-white" />
                                                         </div>
                                                         <div className="flex flex-col">
-                                                            <span className="text-xs font-bold text-violet-950 flex items-center gap-1">
-                                                                Verified by Paradigm AI Agent
-                                                                <Sparkles className="h-3 w-3 text-amber-500 fill-amber-400 flex-shrink-0" />
+                                                            <span className="text-[11px] font-bold text-violet-950 flex items-center gap-1">
+                                                                Verified by AI Agent
+                                                                <Sparkles className="h-2.5 w-2.5 text-amber-500 fill-amber-400 flex-shrink-0" />
                                                             </span>
                                                             {s.verifiedAt && (
-                                                                <span className="text-[10px] text-slate-400 font-medium">
+                                                                <span className="text-[9.5px] text-slate-400 font-medium">
                                                                     {formatCreatedDate(s.verifiedAt)}
                                                                 </span>
                                                             )}
                                                         </div>
                                                     </div>
                                                 ) : (
-                                                    <div className="flex items-center gap-2">
+                                                    <div className="flex items-center gap-1.5">
                                                         {s.verifiedByPhoto ? (
-                                                            <img src={s.verifiedByPhoto} alt={s.verifiedBy || 'HR'} className="h-7 w-7 rounded-full object-cover border-2 border-emerald-500 shadow-2xs flex-shrink-0" />
+                                                            <img src={s.verifiedByPhoto} alt={s.verifiedBy || 'HR'} className="h-6 w-6 rounded-full object-cover border-2 border-emerald-500 shadow-2xs flex-shrink-0" />
                                                         ) : (
-                                                            <div className="h-7 w-7 rounded-full bg-gradient-to-br from-emerald-500 to-teal-700 text-white font-black text-xs flex items-center justify-center shadow-2xs border border-emerald-400 flex-shrink-0 uppercase">
+                                                            <div className="h-6 w-6 rounded-full bg-gradient-to-br from-emerald-500 to-teal-700 text-white font-black text-[10px] flex items-center justify-center shadow-2xs border border-emerald-400 flex-shrink-0 uppercase">
                                                                 {s.verifiedBy ? s.verifiedBy.split(' ').map(n => n[0]).join('').slice(0, 2) : 'HR'}
                                                             </div>
                                                         )}
                                                         <div className="flex flex-col">
                                                             <div className="flex items-center gap-1">
-                                                                <span className="text-xs font-bold text-slate-800 capitalize">
+                                                                <span className="text-[11px] font-bold text-slate-800 capitalize">
                                                                     {s.verifiedBy || 'HR Admin'}
                                                                 </span>
-                                                                <UserCheck className="h-3.5 w-3.5 text-emerald-600 flex-shrink-0" />
+                                                                <UserCheck className="h-3 w-3 text-emerald-600 flex-shrink-0" />
                                                             </div>
                                                             {s.verifiedAt && (
-                                                                <span className="text-[10px] text-slate-400 font-medium">
+                                                                <span className="text-[9.5px] text-slate-400 font-medium">
                                                                     {formatCreatedDate(s.verifiedAt)}
                                                                 </span>
                                                             )}
@@ -1295,72 +1295,74 @@ const VerificationDashboard: React.FC = () => {
                                         </td>
 
                                         {/* Created Date/Time */}
-                                        <td className="px-5 py-3.5 whitespace-nowrap">
-                                            <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+                                        <td className="px-3 py-3 whitespace-nowrap">
+                                            <div className="flex items-center gap-1 text-[11px] font-medium text-slate-600">
                                                 <Calendar className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
                                                 <span>{formatCreatedDate(s.createdAt || s.created_at || s.enrollmentDate)}</span>
                                             </div>
                                         </td>
 
-                                        {/* Actions */}
-                                        <td className="px-5 py-3.5 whitespace-nowrap text-center">
-                                            <div className="flex items-center justify-center gap-1">
+                                        {/* Sticky Actions Column */}
+                                        <td className={`sticky right-0 z-10 px-4 py-3 whitespace-nowrap text-right shadow-[-6px_0_10px_-2px_rgba(0,0,0,0.06)] border-b border-slate-100 ${
+                                            s.requiresManualVerification ? 'bg-amber-50 group-hover:bg-amber-100/70' : isDraft ? 'bg-slate-50 group-hover:bg-slate-100/70' : 'bg-white group-hover:bg-emerald-50/70'
+                                        }`}>
+                                            <div className="flex items-center justify-end gap-1">
                                                 {isDraft && (
                                                     <button 
                                                         onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)}
-                                                        className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold shadow-xs transition-all duration-200 flex items-center gap-1"
-                                                        title="Resume & Complete Enrollment"
+                                                        className="px-2.5 py-1.5 bg-slate-900 hover:bg-black text-white rounded-lg text-xs font-bold shadow-xs transition-all duration-200 flex items-center gap-1 shrink-0 mr-1"
+                                                        title="Resume Incomplete Enrollment"
                                                     >
                                                         <Play className="h-3 w-3 fill-current" /> Resume
                                                     </button>
                                                 )}
                                                 <button 
                                                     onClick={() => navigate(`/onboarding/add/review?id=${s.id}`)}
-                                                    className="p-2 text-slate-500 hover:text-emerald-700 bg-slate-100/80 hover:bg-emerald-50 rounded-lg transition-all duration-200 border border-slate-200/60 hover:border-emerald-200"
+                                                    className="w-7 h-7 flex items-center justify-center text-slate-500 hover:text-emerald-700 bg-slate-100/80 hover:bg-emerald-50 rounded-lg transition-all duration-200 border border-slate-200/60 hover:border-emerald-200 shrink-0"
                                                     title="View Summary Details"
                                                 >
-                                                    <Eye className="h-4 w-4" />
+                                                    <Eye className="h-3.5 w-3.5" />
                                                 </button>
                                                 <button 
                                                     onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)}
-                                                    className="p-2 text-slate-500 hover:text-blue-700 bg-slate-100/80 hover:bg-blue-50 rounded-lg transition-all duration-200 border border-slate-200/60 hover:border-blue-200"
+                                                    className="w-7 h-7 flex items-center justify-center text-slate-500 hover:text-blue-700 bg-slate-100/80 hover:bg-blue-50 rounded-lg transition-all duration-200 border border-slate-200/60 hover:border-blue-200 shrink-0"
                                                     title="Edit Application"
                                                 >
-                                                    <Edit2 className="h-4 w-4" />
+                                                    <Edit2 className="h-3.5 w-3.5" />
                                                 </button>
                                                 <button 
                                                     onClick={() => navigate(`/onboarding/pdf/${s.id}`)}
-                                                    className="p-2 text-slate-500 hover:text-teal-700 bg-slate-100/80 hover:bg-teal-50 rounded-lg transition-all duration-200 border border-slate-200/60 hover:border-teal-200"
+                                                    className="w-7 h-7 flex items-center justify-center text-slate-500 hover:text-teal-700 bg-slate-100/80 hover:bg-teal-50 rounded-lg transition-all duration-200 border border-slate-200/60 hover:border-teal-200 shrink-0"
                                                     title="Download Official Forms"
                                                 >
-                                                    <FileText className="h-4 w-4" />
+                                                    <FileText className="h-3.5 w-3.5" />
                                                 </button>
                                                 <button 
                                                     onClick={() => handleDelete(s.id!)}
-                                                    className="p-2 text-slate-500 hover:text-rose-700 bg-slate-100/80 hover:bg-rose-50 rounded-lg transition-all duration-200 border border-slate-200/60 hover:border-rose-200"
+                                                    className="w-7 h-7 flex items-center justify-center text-slate-500 hover:text-rose-700 bg-slate-100/80 hover:bg-rose-50 rounded-lg transition-all duration-200 border border-slate-200/60 hover:border-rose-200 shrink-0"
                                                     title="Delete Application"
                                                 >
-                                                    <Trash2 className="h-4 w-4" />
+                                                    <Trash2 className="h-3.5 w-3.5" />
                                                 </button>
 
                                                 {s.status === 'pending' && (
-                                                    <div className="flex items-center gap-1 border-l border-slate-200 ml-1 pl-1.5">
+                                                    <div className="flex items-center gap-1 pl-1.5 ml-0.5 border-l border-slate-200 shrink-0">
                                                         <button 
-                                                             onClick={() => handleAction('approve', s.id!)}
-                                                             className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs transition-all duration-200 flex items-center gap-1"
-                                                             title="Verify & Approve"
-                                                         >
-                                                             <CheckSquare className="h-3.5 w-3.5" /> Approve
-                                                         </button>
-                                                         <button 
-                                                             onClick={() => handleAction('reject', s.id!)}
-                                                             className="px-2.5 py-1.5 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 rounded-lg text-xs font-bold transition-all duration-200 flex items-center gap-1"
-                                                             title="Reject & Request Changes"
-                                                         >
-                                                             <XSquare className="h-3.5 w-3.5" /> Reject
-                                                         </button>
-                                                     </div>
-                                                 )}
+                                                            onClick={() => handleAction('approve', s.id!)}
+                                                            className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs transition-all duration-200 flex items-center gap-1 shrink-0"
+                                                            title="Verify & Approve"
+                                                        >
+                                                            <CheckSquare className="h-3.5 w-3.5" /> Approve
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => handleAction('reject', s.id!)}
+                                                            className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-bold transition-all duration-200 flex items-center gap-1 shrink-0"
+                                                            title="Reject & Request Changes"
+                                                        >
+                                                            <XSquare className="h-3.5 w-3.5" /> Reject
+                                                        </button>
+                                                    </div>
+                                                )}
 
                                                 {s.status === 'verified' && (s.portalSyncStatus === 'pending_sync' || s.portalSyncStatus === 'failed') && (
                                                     <Button 
@@ -1368,9 +1370,9 @@ const VerificationDashboard: React.FC = () => {
                                                         size="sm" 
                                                         onClick={() => handleSync(s.id!)} 
                                                         isLoading={syncingId === s.id}
-                                                        className="ml-1.5 !rounded-lg border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 h-8 text-xs font-bold"
+                                                        className="ml-1 !rounded-lg border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 h-7 text-xs font-bold shrink-0 px-2"
                                                     >
-                                                        {syncingId !== s.id && <Send className="h-3.5 w-3.5 mr-1" />}
+                                                        {syncingId !== s.id && <Send className="h-3 w-3 mr-1" />}
                                                         Sync
                                                     </Button>
                                                 )}

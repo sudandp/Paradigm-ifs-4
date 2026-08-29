@@ -7,6 +7,8 @@ import { useLogoStore } from '../../store/logoStore';
 import { useAuthStore } from '../../store/authStore';
 import { getProxyUrl } from '../../utils/fileUrl';
 
+import { generatePifsCompliancePdf, savePifsCompliancePdfToServer } from '../../services/pifsCompliancePdfService';
+
 interface OnboardingBookletModalProps {
     isOpen: boolean;
     onClose: () => void;
@@ -44,23 +46,25 @@ export const OnboardingBookletModal: React.FC<OnboardingBookletModalProps> = ({
     const handleExport = async () => {
         setIsGenerating(true);
         try {
-            const [{ pdf }, { EmployeeOnboardingDocument }] = await Promise.all([
-                import('@react-pdf/renderer'),
-                import('../../pages/attendance/PDFReports')
-            ]);
-            const doc = <EmployeeOnboardingDocument data={employeeData} logoUrl={logo} />;
-            const blob = await pdf(doc).toBlob();
-            if (blob) {
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `Onboarding_Forms_${d.personal.employeeId || 'employee'}.pdf`;
-                link.click();
-                URL.revokeObjectURL(url);
-            }
+            const pdfBytes = await generatePifsCompliancePdf(employeeData);
+            const blob = new Blob([pdfBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            const empId = (d.personal?.employeeId || d.id || 'employee').replace(/-/g, ' ');
+            link.download = `PIFS Data Sheet ${empId}.pdf`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+            // Automatically save/upload filled compliance datasheet to server
+            savePifsCompliancePdfToServer(employeeData, pdfBytes).catch((err) => {
+                console.warn('Background server compliance PDF upload warning:', err);
+            });
         } catch (error) {
-            console.error("PDF generation failed:", error);
-            window.print();
+            console.error("PIFS Compliance PDF generation failed:", error);
+            alert(`Could not generate official 21-page PDF: ${(error as any)?.message || error}`);
         } finally {
             setIsGenerating(false);
         }
@@ -69,6 +73,15 @@ export const OnboardingBookletModal: React.FC<OnboardingBookletModalProps> = ({
     const handleConfirm = async () => {
         setIsConfirming(true);
         try {
+            // Ensure compliance data sheet is auto-saved to server on confirmation
+            try {
+                const { savePifsCompliancePdfToServer } = await import('../../services/pifsCompliancePdfService');
+                savePifsCompliancePdfToServer(employeeData).catch((err) => {
+                    console.warn('Server compliance upload warning on confirm:', err);
+                });
+            } catch {
+                /* non-blocking */
+            }
             await onConfirm();
         } finally {
             setIsConfirming(false);

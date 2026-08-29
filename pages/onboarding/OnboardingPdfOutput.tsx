@@ -10,6 +10,8 @@ import { useAuthStore } from '../../store/authStore';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 import { getProxyUrl } from '../../utils/fileUrl';
 
+import { generatePifsCompliancePdf, savePifsCompliancePdfToServer } from '../../services/pifsCompliancePdfService';
+
 const OnboardingPdfOutput: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
@@ -28,7 +30,7 @@ const OnboardingPdfOutput: React.FC = () => {
                 try {
                     const data = await api.getOnboardingDataById(id);
                     setEmployeeData(data || storeData);
-                } catch (err) {
+                } catch {
                     setEmployeeData(storeData);
                 }
             } else {
@@ -43,23 +45,25 @@ const OnboardingPdfOutput: React.FC = () => {
         if (!employeeData) return;
         setIsGenerating(true);
         try {
-            const [{ pdf }, { EmployeeOnboardingDocument }] = await Promise.all([
-                import('@react-pdf/renderer'),
-                import('../../pages/attendance/PDFReports')
-            ]);
-            const doc = <EmployeeOnboardingDocument data={employeeData} logoUrl={logo} />;
-            const blob = await pdf(doc).toBlob();
-            if (blob) {
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `Onboarding_Forms_${employeeData.personal.employeeId || 'employee'}.pdf`;
-                link.click();
-                URL.revokeObjectURL(url);
-            }
+            const pdfBytes = await generatePifsCompliancePdf(employeeData);
+            const blob = new Blob([pdfBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            const empId = (employeeData.personal?.employeeId || employeeData.id || 'employee').replace(/-/g, ' ');
+            link.download = `PIFS Data Sheet ${empId}.pdf`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+            // Save on server in background
+            savePifsCompliancePdfToServer(employeeData, pdfBytes).catch((err) => {
+                console.warn('Background server compliance upload warning:', err);
+            });
         } catch (error) {
-            console.error("PDF generation failed:", error);
-            window.print();
+            console.error("PIFS Compliance PDF generation failed:", error);
+            alert(`Could not generate official 21-page PDF: ${(error as any)?.message || error}`);
         } finally {
             setIsGenerating(false);
         }
@@ -69,6 +73,16 @@ const OnboardingPdfOutput: React.FC = () => {
         if (!employeeData) return;
         setIsConfirming(true);
         try {
+            // Auto save to server
+            try {
+                const { savePifsCompliancePdfToServer } = await import('../../services/pifsCompliancePdfService');
+                savePifsCompliancePdfToServer(employeeData).catch((err) => {
+                    console.warn('Server compliance upload warning on confirm:', err);
+                });
+            } catch {
+                /* non-blocking */
+            }
+
             setFormsGenerated(true);
             const updated = { ...employeeData, formsGenerated: true };
             useOnboardingStore.getState().setData(updated);

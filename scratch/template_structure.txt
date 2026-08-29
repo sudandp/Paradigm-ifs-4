@@ -1,0 +1,799 @@
+
+
+============================== PAGE 1 (w=595.3, h=841.9) ==============================
+top=129.7 | pdf_y=712.2 | x=126.3..469.0 | EMPLOYEE PERSONAL DATA
+top=306.4 | pdf_y=535.5 | x=441.7..451.1 | TM
+top=497.8 | pdf_y=344.1 | x= 58.8..221.6 | EMPLOYEE'S NAME :
+top=535.7 | pdf_y=306.2 | x= 58.8..221.3 | SITE :
+top=573.6 | pdf_y=268.3 | x= 58.8..221.1 | DESIGNATION :
+top=611.5 | pdf_y=230.4 | x= 58.8..221.4 | EMPLOYEE'S ID NO. :
+top=649.4 | pdf_y=192.5 | x= 58.8..221.2 | PF No. :
+top=687.3 | pdf_y=154.6 | x= 58.8..223.1 | ESI NO. :
+
+
+============================== PAGE 2 (w=595.3, h=841.9) ==============================
+top=242.7 | pdf_y=599.2 | x=253.8..341.9 | BANGALORE :
+top=261.5 | pdf_y=580.4 | x=119.7..475.9 | K S F Building, No.15, Golf View Road, HAL Airport Road,
+top=278.2 | pdf_y=563.6 | x=152.0..443.7 | Bangalore - 560 008. www.paradigmfms.com
+top=302.0 | pdf_y=539.9 | x=260.1..339.6 | 8884888825
+top=379.7 | pdf_y=462.2 | x=258.0..337.6 | HYDERABAD :
+top=397.9 | pdf_y=444.0 | x=138.4..457.3 | # 203, C.V. Towers, 2nd Floor, SBR CV Towers, Sector-1,
+top=413.1 | pdf_y=428.8 | x=157.5..438.1 | Techno Enclave, Madhapur, Hyderabad- 500 081.
+top=435.9 | pdf_y=406.0 | x=263.4..335.9 | 9885077378
+top=498.0 | pdf_y=343.9 | x=277.7..317.9 | PUNE :
+top=514.7 | pdf_y=327.2 | x=149.7..446.0 | #15A, 4th Floor, City Vista, Fountain Road, Kharadi,
+top=530.4 | pdf_y=311.5 | x=213.6..382.1 | Pune, Maharashtra- 411 014.
+top=553.0 | pdf_y=288.9 | x=263.1..336.2 | 8884888826
+
+
+============================== PAGE 3 (w=595.3, h=841.9) ==============================
+top=271.4 | pdf_y=570.5 | x=258.0..337.6 | HYDERABAD :
+top=289.7 | pdf_y=552.2 | x=138.4..457.3 | # 203, C.V. Towers, 2nd Floor, SBR CV Towers, Sector-1,
+top=304.9 | pdf_y=537.0 | x=157.5..438.1 | Techno Enclave, Madhapur, Hyderabad- 500 081.
+top=327.6 | pdf_y=514.3 | x=263.4..335.9 | 9885077378
+top=406.3 | pdf_y=435.6 | x=253.8..341.9 | BANGALORE :
+top=425.1 | pdf_y=416.8 | x=119.7..475.9 | K S F Building, No.15, Golf View Road, HAL Airport Road,
+top=441.8 | pdf_y=400.1 | x=152.0..443.7 | Bangalore - 560 008. www.paradigmfms.com
+top=465.6 | pdf_y=376.3 | x=260.1..339.6 | 8884888825
+top=524.5 | pdf_y=317.4 | x=277.7..317.9 | PUNE :
+top=541.3 | pdf_y=300.6 | x=149.7..446.0 | #15A, 4th Floor, City Vista, Fountain Road, Kharadi,
+top=556.9 | pdf_y=285.0 | x=213.6..382.1 | Pune, Maharashtra- 411 014.
+top=579.5 | pdf_y=262.4 | x=263.1..336.2 | 8884888826
+
+
+============================== PAGE 4 (w=595.3, h=841.9) ==============================
+top=141.7 | pdf_y=700.2 | x=192.7..404.7 | DOCUMENT CHECKLIST
+top=204.7 | pdf_y=637.2 | x=172.6..372.1 | Aadhar Card Copy (Mandatory)
+top=206.3 | pdf_y=635.6 | x=140.0..151.3 | 1.
+top=234.9 | pdf_y=607.0 | x=172.6..351.3 | 5 PASSPORT SIZE PHOTOS
+top=236.5 | pdf_y=605.4 | x=140.0..151.3 | 2.
+top=265.0 | pdf_y=576.8 | x=172.5..331.6 | 2 Post Card Size Photos
+top=266.6 | pdf_y=575.2 | x=140.0..151.3 | 3.
+top=295.2 | pdf_y=546.7 | x=172.5..366.8 | COPY OF THE CREDENTIAL'S
+top=296.8 | pdf_y=545.1 | x=140.0..151.3 | 4.
+top=310.3 | pdf_y=531.6 | x=172.5..260.8 | CERTIFICATE
+top=325.4 | pdf_y=516.5 | x=172.5..363.8 | (School / College Certificates)
+top=357.1 | pdf_y=484.8 | x=140.0..253.6 | 5. AGE PROOF
+top=387.3 | pdf_y=454.6 | x=140.0..290.3 | 6. ADDRESS PROOF
+top=417.5 | pdf_y=424.4 | x=140.0..339.3 | 7. COPY OF FIRST PAGE OF
+top=431.0 | pdf_y=410.9 | x=172.5..464.8 | EXISTING PERSONAL BANK A/c. PASSBOOK
+
+
+============================== PAGE 5 (w=595.3, h=841.9) ==============================
+top= 73.0 | pdf_y=768.9 | x= 72.3..528.5 | ÖèÓ… Qà²íW… (WÜêÖÜ ¯ÊÜÞì|) ®èPÜÃÜÃÜ PÜoár±ÝvÜá ÊÜáñÜá¤ ÐÜÃÜñÜá¤WÜÙÜá
+top= 98.1 | pdf_y=743.8 | x= 55.0..543.4 | 1. PÜÃÝÄ®Üíñæ ÖÝWÜã ÖèÓ… Qà²íW… ñÜÃÜ¸æà£¨ÝÃÜ®ÝX / ñÜÃÜ¸æà£¨ÝÃÜÙÝX 2&3 ©®Ü PæÆÓÜ ÊÜÞvÜáñæ¤à®æ. ÖÝWÜã D AÊÜ—Wæ ®Ü®ÜWæ
+top=108.9 | pdf_y=733.0 | x= 73.3..175.0 | ÖÜ| ÓÜí¨Ý¿áÊÝWÜáÊÜâ©ÆÉ™.
+top=129.8 | pdf_y=712.1 | x= 55.0..408.6 | 2. ®Ü®Ü° PæÆÓÜ¨Ü ÓÝ«Ü®æ¿á®Üá° ®æãàw ÊÜåèÈÂàPÜÄÔ¨Ü ®ÜíñÜÃÜ ñÝÊÜâ ®Ü®Ü° ÊæàñÜ®Ü ¯WÜ© ÊÜÞvÜŸÖÜá¨Üá.
+top=151.0 | pdf_y=690.9 | x= 55.0..541.7 | 3. BÃÜá £íWÜÙÜá ±æäÅà´æÐÜ®… B«ÝÃÜ¨Ü ÊæáàÇæ ®Ý®Üá PÝ¿áì ¯ÊÜì×ÓÜáñæ¤à®æ. ®Ü®Ü° PÝ¿áìÓÝ«Ü®æ ñÜê²¤ ñÜí¨ÜÃæ ñÝÊÜâ ®Ü®Ü° ÓæàÊÝ
+top=162.7 | pdf_y=679.2 | x= 73.3..168.5 | AÊÜ— ËÓÜ¤ÄÓÜŸÖÜá¨ÝX¨æ.
+top=182.7 | pdf_y=659.2 | x= 55.0..462.9 | 4. ¿ÞÊÜâ¨æà WÝÅÖÜPÜÃÜ ÓæàÊÝÓÜ§ÙÜPæR ÊÜWÜìÊÝ¨ÝWÜ, B¿Þ WÝÅÖÜPÜ PÜÃÝÄ®Ü B«ÝÃÜ¨Üíñæ ®Ý®Üá ÊæàñÜ®Ü ÔÌàPÜÄÓÜáñæ¤à®æ.
+top=203.8 | pdf_y=638.0 | x= 55.0..537.1 | 5. Jí¨Üá ÊæàÙæ ®Ý®Üá D PæÆÓÜPæR ÃÝià®ÝÊæá PæãvÜÆá Ÿ¿áÔ¨ÜÃæ, 15 ©®ÜWÜÙÜ ®æãàqÓ… AÊÜ— £ÚÓÜáñæ¤à®æ A¥ÜÊÝ Jí¨Üá £íWÜÙÜ
+top=215.3 | pdf_y=626.6 | x= 73.3..152.5 | ÓÜíŸÙÜ ±ÝÊÜ£ÓÜáñæ¤à®æ.
+top=235.4 | pdf_y=606.5 | x= 73.3..410.3 | ®Ý®Üá ®Ü®Ü° ¸ÝQ ÊæàñÜ®ÜÊÜ®Üá° ÊÜáãÃÜá £íWÜÙæãÙÜWæ ñæWæ¨ÜáPæãÙÜÛ©¨ÜªÈÉ D ÖÜ| PÜí±Ü¯Wæ ÓæàÃÜáñÜ¤¨æ.
+top=235.6 | pdf_y=606.3 | x= 55.0.. 63.6 | 6.
+top=256.7 | pdf_y=585.2 | x= 55.0..544.8 | 7. ®Ü®ÜWæ A«Üì ©®Ü¨Ü ÃÜhæ¿á BWÜñÜÂËÃÜáÊÝWÜ (ñÜáñÜáì ÓÜí¨Ü»Üì ÖæãÃÜñÜá±ÜwÔ) Óæçq®Ü ÊÜááSÂ ¯ÊÝÖÜìPÜÄWæ 48 WÜípæWæ ÊÜáá®Ü° A¨Ü®Üá°
+top=268.2 | pdf_y=573.7 | x= 73.7..544.1 | £ÚÓÜá ñæ¤à®æ (ñÜáñÜáì ÓÜí¨Ü»Üì: ¯«Ü®Ü A¥ÜÊÝ A±Ü[ÝñÜWÜÙÜá, D ŸWæY AWÜñÜÂ ÓÝûÜ$ÂWÜÙÜá ÓÝ¨ÜÃÜ±ÜwÓÜÆá Ë´ÜÆÊÝ¨ÜÃæ ñÝÊÜâ ®Ü®Ü°
+top=280.4 | pdf_y=561.5 | x= 73.3..189.2 | ÓÜíŸÙÜ ×w©oárPæãÙÜÛŸÖÜá¨Üá.)
+top=299.0 | pdf_y=542.9 | x= 55.0..547.8 | 8. ®Ü®ÜWæ ÃÜhæ¿á AÊÜÍÜÂPÜñæÀá¨ÜªÃæ A¨ÜPÝRX 48 WÜípæWÜÙÜ Êæã¨ÜÇæà ÃÜhæ bàq ¯àvÜáñæ¤à®æ (2 ©®ÜWÜÚWÜã Öæbc®Ü AÊÜ—Wæ A®ÜÌ¿áÊÝWÜáñÜ¤¨æ).
+top=320.2 | pdf_y=521.7 | x= 55.0..472.1 | 9. ñÜÊÜá¾ ±ÜäÊÝì®ÜáÊÜá£ CÆÉ¨æ Jí¨Üá ©®Ü ÃÜhæ ÖÝQ¨æªà B¨ÜÈÉ ñÝÊÜâ ®Ü®Ü° 3&4 ©®ÜWÜÙÜ ÓÜíŸÙÜ PÜwñÜWæãÚÓÜŸÖÜá¨Üá.
+top=341.3 | pdf_y=500.6 | x= 49.8..545.6 | 10. ®Ý®Üá ñÜÊÜá¾ PÜí±Ü¯¿á ±Üä|ì ±ÜÅÊÜÞ|¨Ü E¨æãÂàX¿ÞX PæÆÓÜ ÊÜÞvÜáñæ¤à®æ; D PÜí±Ü¯ ¹vÜáÊÜÊÜÃæWÜã ¸æàÃævæ PæÆÓÜ ÊÜÞvÜáÊÜâ©ÆÉ™.
+top=362.5 | pdf_y=479.4 | x= 49.8..516.5 | 11. D WÜá£¤Wæ ±Üä£ìWæãívÝWÜ ÊÜáñÜá¤ ¸æàÃæ WÜá£¤Wæ¿áw ¯Áãàg®æ¿ÞWÜáÊÜÊÜÃæX®Ü AÊÜ—Wæ ®Ü®ÜWæ ¿ÞÊÜâ¨æà ÓÜíŸÙÜ CÃÜáÊÜâ©ÆÉ.
+top=383.6 | pdf_y=458.3 | x= 49.8..540.4 | 12. ¯ÁãàiñÜ ÓÜ§ÙÜ©í¨Ü ®Ý®Üá ÃÝi®ÝÊæá ¯àw¨ÜÈÉ ÃÝià®ÝÊæá ÓÜ§ÙÜ¨ÜÇæÉ ¿ÞÊÜâ¨æà ÖÜá¨æªWÝX ÊÜááí©®Ü BÃÜá £íWÜÙÜÈÉ PæÆÓÜPæR
+top=395.4 | pdf_y=446.5 | x= 73.3..138.3 | ÓæàÄPæãÙÜáÛÊÜâ©ÆÉ™.
+top=415.4 | pdf_y=426.5 | x= 49.8..541.1 | 13. ®Ü®ÜWæ ¯àvÜÇÝ¨Ü ÓÜÊÜáÊÜÓÜ÷ÊÜ®Üá° «ÜÄÓÜáñæ¤à®æ, ÖÝWÜã A¨Ü®Üá° ÓÜ³aÜfÊÝXoárPæãÙÜáÛñæ¤à®æ. A¨Ü®Üá° ®Ý®æà «ÜÄÓÜáñæ¤à®æ ÊÜáñÜá¤ PæÆÓÜ¨ÜÈÉ¨ÝªWÜ
+top=426.6 | pdf_y=415.3 | x= 73.3..115.1 | «ÜÄÓÜáñæ¤à®æ.
+top=447.1 | pdf_y=394.8 | x= 49.8..544.4 | 14. ®Ý®Üá PÜñÜìÊÜÂ¯ÊÜìÖÜOæ¿áÈÉÃÜáÊÝWÜ ®Ü®Ü° GÆÉ ×Ä¿áÄWæ WèÃÜÊÜ ÓÜÈÉÓÜáñæ¤à®æ. ®Ý®Üá ÖÝWæ ÊÜ£ìÓÜ©¨ÜªÈÉ ®Ü®Ü° ÊæàñÜ®ÜÊÜ®Üá° ñÜvæ¿ááÊÜ
+top=458.8 | pdf_y=383.1 | x= 73.3..146.5 | GÇÝÉ ÖÜPÜáR ñÜÊÜáX¨æ.
+top=478.4 | pdf_y=363.5 | x= 73.3..374.6 | ®Ü®Ü° PæÆÓÜ¨Ü AÊÜ—¿áÈÉ PÝ¿áìÓÝ§®ÜÊÜ®Üá° ¹oár ®Ý®æÈÉ¿áã ÖæãÃÜWæ ÖæãàWÜáÊÜâ©ÆÉ™.
+top=478.8 | pdf_y=363.1 | x= 49.8.. 63.6 | 15.
+top=500.0 | pdf_y=341.9 | x= 49.8..542.5 | 16. ÖæãÃÜWæ ÖæãàWÜ¸æàPÝ¨Ü ¿ÞÊÜâ¨æà ñÜáñÜáì ÓÜí¨Ü»ÜìWÜÙÜÈÉ ®Ý®Üá ®Ü®Ü° ÊæáàÈ®ÜÊÜÄWæ £ÚÓÜáñæ¤à®æ. ÖÝWÜã AWÜñÜÂÊÝ¨Ü ÊÜÂÊÜÓæ§ ÊÜÞw
+top=511.3 | pdf_y=330.6 | x= 73.3..121.0 | ÖæãàWÜáñæ¤à®æ.
+top=531.7 | pdf_y=310.2 | x= 49.8..540.4 | 17. ®Ý®Üá ÊÜá¨ÜÂ±Ý®Ü ÊÜÞw¨Ü, ¯¨æÅ ÊÜÞw¨Ü A¥ÜÊÝ ÓÜáÔ§£¿áÈÉ ¯WÜ©ñÜ ÓÜ§ÙÜ¨ÜÈÉ CÃÜ¨Ü ÓÜí¨Ü»ÜìWÜÙÜÈÉ BWÜñÜÂÊÝ¨Ü ÃÜã. 10 Äí¨Ü
+top=543.5 | pdf_y=298.4 | x= 73.3..252.2 | ÃÜã. 200ÃÜÊÜÃæWæ ¨ÜívÜ ÖÝPÜáÊÜ A—PÝÃÜ ñÜÊÜáX¨æ.
+top=563.4 | pdf_y=278.5 | x= 49.8..542.6 | 18. PÜÙÜÛñÜ®Ü¨Ü ¿ÞÊÜâ¨æà PÜêñÜÂWÜÙÜÈÉ ñæãvÜWÜáÊÜâ©ÆÉ : PÜí±Ü¯¿á E¨æãÂàXÁãí©Wæ CíñÜÖÜ ¿ÞÊÜâ¨æà ±ÜÅ¿áñÜ° ®ÜvæÔ¨Ü A±ÜÃÝ«Ü PÜívÜá
+top=575.0 | pdf_y=266.9 | x= 73.3..530.2 | Ÿí¨ÜÈÉ ñÝÊÜâ ñÜûÜ| ®Ü®Ü°®Üá° E¨æãÂàWÜ©í¨Ü ñæWæ¨Üá ÖÝQ, ÊÜááí©®Ü ËaÝÃÜOæWæ ±æäàÈàÓ… sÝOæWæ ®Ü®Ü°®Üá° ÖÜÓÝ¤íñÜÄÓÜŸÖÜá¨ÝX¨æ.
+top=595.1 | pdf_y=246.7 | x= 49.8..540.3 | 19. ®Ü®Ü° PæÆÓÜ¨Ü AÊÜ—¿áÈÉ ®Ý®Üá ¿ÞÊÝWÜÆã ®Ü®Ü° ÊæáàÈ®ÜÊÜÃÜ B¨æàÍÜWÜÙÜ®Üá° WèÃÜËÓÜáñæ¤à®æ ÊÜáñÜá¤ ±ÝÈÓÜáñæ¤à®æ. ±ÝÅÊÜÞ~PÜÊÝX
+top=607.1 | pdf_y=234.7 | x= 73.3..175.3 | ÊÜá®ÜÔÕoár PæÆÓÜ ÊÜÞvÜáñæ¤à®æ.
+top=626.9 | pdf_y=215.0 | x= 49.8..542.6 | 20. Êæç¨ÜÂQà¿á E±ÜaÝÃÜPÝRX ±ÜÅ£ £íWÜÙÜá ÃÜã. 5/& PÜwñÜWæãÚÔ A¨Ü®Üá° ñÜáñÜáì ±ÜÅ¥ÜÊÜá bQñæÕ E±ÜaÝÃÜPÝRX ŸÙÜÓÜÆá ®Ý®Üá J²³Wæ
+top=638.8 | pdf_y=203.1 | x= 73.3..111.7 | ¯àw¨æªà®æ.
+top=658.0 | pdf_y=183.9 | x= 73.3..543.5 | ®Ü®Ü° PæÆÓÜ¨Ü AÊÜ—¿áÈÉ ®Ü®ÜWæ ¯àw¨Ü ÓÜÆPÜÃÜ~WÜÙÜá (ÓÝ³®ÜÃ…, PÜqíW… ±æÉà¿áÃ…, ÓÜãðvæùÊÜÃ… CñÝÂ©) PÜÙæ¨Üá Öæãà¨ÜÈÉ ÓÜÆPÜÃÜ~WÜÙÜ
+top=658.6 | pdf_y=183.3 | x= 49.8.. 63.6 | 21.
+top=671.3 | pdf_y=170.6 | x= 73.3..267.9 | ÊæãñÜ¤ÊÜ®Üá° ®Ü®Ü° ÓÜíŸÙÜ¨ÜÈÉ PÜwñÜWæãÚÓÜÆá J²³ÃÜáñæ¤à®æ.
+top=690.3 | pdf_y=151.6 | x= 49.8..388.8 | 22. ¿ÞÊÜâ¨æà ÊÜÞ×£ ¯àvÜ¨æ PæÆÓÜ ¹orÈÉ™, ¿ÞÊÜâ¨æà PÝÃÜ|PÜãR ÓÜíŸÙÜ ¯àvÜÇÝWÜáÊÜâ©ÆÉ™.
+top=708.1 | pdf_y=133.8 | x= 49.8..414.9 | ®Ý®Üá D ÊÜáãÆPÜ GÇÝÉ ÊæáàÈ®Ü ¯¿áÊÜá ÊÜáñÜá¤ ¯Ÿìí«Ü®æWÜÙÜ®Üá° ®Ü®Ü° ÓæàÊÝ AÊÜ—¿áÈÉ ±ÝÈÓÜáñæ¤à®æ.
+top=724.8 | pdf_y=117.1 | x= 64.4..328.7 | ÖæÓÜÃÜá : PÜí±Ü¯ :
+top=742.2 | pdf_y= 99.7 | x= 64.4.. 88.1 | ÖÜá¨æª :
+top=742.7 | pdf_y= 99.2 | x=300.8..320.0 | ÓÜ§ÙÜ :
+top=759.5 | pdf_y= 82.4 | x= 64.4.. 83.1 | ÓÜ× :
+top=760.6 | pdf_y= 81.3 | x=300.8..332.7 | ©®ÝíPÜ :
+
+
+============================== PAGE 6 (w=595.3, h=841.9) ==============================
+top= 81.3 | pdf_y=760.6 | x=157.7..463.5 | Terms & Conditions for House Keeping Trainee
+top=100.8 | pdf_y=741.1 | x= 49.5..540.8 | 1. As per the agreement, I agree to work for 2-3 days as a House Keeping Trainee for which I shall not be
+top=110.3 | pdf_y=731.6 | x= 83.3..140.0 | remunerated
+top=129.4 | pdf_y=712.5 | x= 49.5..505.8 | 2. The wages shall be agreed and fixed after reviewing my performance during the training period.
+top=148.4 | pdf_y=693.5 | x= 49.5..540.2 | 3. I agree to be on probationary period for the first six months after which based on my performance my
+top=158.0 | pdf_y=683.9 | x= 83.3..233.4 | service shall be made permanent.
+top=177.0 | pdf_y=664.9 | x= 49.5..486.1 | 4. I agree to work for a revised wage if I am sent to a different client for providing my services.
+top=196.1 | pdf_y=645.8 | x= 49.5..541.9 | 5. In case I decide to discontinue my services, I agree to serve a notice for a period of 15 days or 1
+top=205.7 | pdf_y=636.2 | x= 83.3..207.3 | month wage in lieu of notice
+top=224.6 | pdf_y=617.3 | x= 49.5..541.9 | 6. If I fail to collect my wages within a period of 3 months the same shall stand for forfeited in favour of
+top=234.3 | pdf_y=607.6 | x= 83.3..190.9 | the company's account.
+top=253.2 | pdf_y=588.7 | x= 49.5..541.9 | 7. In case of any circumstance other than emergency where I need a half day leave, I shall inform the
+top=262.9 | pdf_y=579.0 | x= 83.3..542.4 | site supervisor 48 hrs in advance. ( In emergency like death, or accident of my kith & kin in whose
+top=272.4 | pdf_y=569.5 | x= 83.3..542.5 | connection if I am unable to provide any proof the company shall deduct my wages for such leave
+top=281.9 | pdf_y=560.0 | x= 83.3..117.2 | period.)
+top=300.8 | pdf_y=541.1 | x= 49.5..540.8 | 8. In case of want for leave, I agree to submit an application for leave 48 hrs. in advance, applicable for
+top=310.5 | pdf_y=531.4 | x= 83.3..209.5 | a leave of more than 2 days.
+top=329.4 | pdf_y=512.5 | x= 49.5..473.5 | 9. In case of 1 day leave without prior intimation the company may deduct 3-4 days wages.
+top=348.5 | pdf_y=493.4 | x= 49.5..542.4 | 10. I agree not to be employed simutionualy by / with any other company / employer during my tenure as
+top=358.2 | pdf_y=483.7 | x= 83.3..228.8 | an employee with your company.
+top=377.0 | pdf_y=464.8 | x= 49.5..540.8 | 11. On completion of contract and till the time I am assigned on any other contract, I agree not to be
+top=386.8 | pdf_y=455.1 | x= 83.3..211.7 | remunerated for such period.
+top=405.6 | pdf_y=436.3 | x= 49.5..541.9 | 12. On resignation, I agree not to be employed with the client with whom I was working under your
+top=415.4 | pdf_y=426.5 | x= 83.3..255.6 | contract or a period of next six months.
+top=434.2 | pdf_y=407.7 | x= 49.5..540.8 | 13. I agree to maintain the provided uniform clear and tidy and also to be present on duty with provided
+top=444.0 | pdf_y=397.9 | x= 83.3..119.5 | uniform.
+top=462.8 | pdf_y=379.1 | x= 49.5..540.6 | 14. I Shall respect all any seniors while on job or off job. In case of any breach of discipline the company
+top=472.6 | pdf_y=369.3 | x= 83.3..290.9 | may deduct my wage's for such action of mine.
+top=491.4 | pdf_y=350.5 | x= 49.5..447.3 | 15. I agree not to go any where else other than the assigned work place while on duty.
+top=510.4 | pdf_y=331.5 | x= 49.5..540.2 | 16. In case of any emergency if I am required to move out of the work place temporarily I shall inform the
+top=520.3 | pdf_y=321.6 | x= 83.3..543.0 | site supervisor and make alternate arrangement for completion of my assigned work and then leave
+top=529.8 | pdf_y=312.1 | x= 83.3..150.6 | the work place.
+top=548.5 | pdf_y=293.4 | x= 49.5..543.0 | 17. If I am found to be intoxicated or sleeping or lethelrgic while on duty the company may impose
+top=558.4 | pdf_y=283.5 | x= 83.3..242.3 | penalty ranging from Rs. 10 to 200.
+top=577.1 | pdf_y=264.8 | x= 49.5..542.5 | 18. I agree not to indulge in any kind of theft if found to join hands with any other employee for any theft
+top=587.0 | pdf_y=254.9 | x= 83.3..513.5 | the company may take necessary action against me and also file a police complaint for the same.
+top=605.7 | pdf_y=236.2 | x= 49.5..539.1 | 19. During the tenure of my employment I agree to obey the orders of my supervisor and perform my
+top=615.6 | pdf_y=226.3 | x= 83.3..165.4 | duties respectfully.
+top=634.3 | pdf_y=207.6 | x= 49.5.. 63.4 | 20.
+top=634.7 | pdf_y=207.2 | x= 83.3..541.3 | I agree to contribute a sum of Rs. 5/- per month from my wages towards a fund that shall be used
+top=644.2 | pdf_y=197.7 | x= 83.3..317.7 | for first aid treatment purpose during any emergency.
+top=662.8 | pdf_y=179.1 | x= 49.5..541.9 | 21. If I happen to loose any equipment like spanner, cuttingfliers screwdrives etc. provided by the
+top=672.8 | pdf_y=169.1 | x= 83.3..542.3 | company for performing my duties the cost of the same shall be recovered by the company. as a
+top=682.3 | pdf_y=159.6 | x= 83.3..200.1 | deduction from my wages.
+top=700.9 | pdf_y=141.0 | x= 49.5..486.7 | 22. If I leave the job without prior information I agree not to claim any wages from the company.
+top=720.5 | pdf_y=121.4 | x= 83.3..430.2 | I agree to obey all the above stated conditions during the tenure of my service.
+top=737.0 | pdf_y=104.9 | x= 88.7..375.0 | Name : Company :
+top=753.0 | pdf_y= 88.9 | x= 88.7..357.3 | Designation : Place :
+top=769.0 | pdf_y= 72.9 | x= 88.7..353.4 | Signature : Date :
+
+
+============================== PAGE 7 (w=595.3, h=841.9) ==============================
+top= 73.1 | pdf_y=768.8 | x=149.9..446.6 | hm¡g {H$nrJ§ Q´¡>Zr Ho$ {bE eV}Am¡a {Z`_o
+top=104.5 | pdf_y=737.4 | x= 56.4..472.1 | 1 H$ama Ho$ _wVm~roH$ _¡ hm¡g {H$nr§H$ Q´>oZr hmoH$a brE 2-3 [XZ H$m_ H$ê±$Jm/H$ê±$Jr dmo g_` H$mo _oao H$mo doVZ Zhr {X`m Om`oJm
+top=130.5 | pdf_y=711.4 | x= 56.4..317.7 | 2 _oam H$m_ H$mO H$m VarIm XoIZo Ho$ ~mX Amn h_mam doVZ V¡` H$a gH$Vo hmo&
+top=156.5 | pdf_y=685.4 | x= 56.4..492.8 | 3 nhbo Amn Ho$ nmg N>: _hrZo H$m_ H$mO H$ê± Jm/Jr AmnH$mo _oao H$m_H$mO go g§Vwï> hmoVmo Amn _oam godmH$mb H$mo AmJo ~S>m gH$Vo hmo&
+top=182.5 | pdf_y=659.4 | x= 56.4..341.3 | 4 AJa Amn Xþgar OJh godm H$mo ^oO {X`mVmo _¢ Cgr J«mhH$ Ho$ AZwgma doVZ bodw±Jm &
+top=208.5 | pdf_y=633.4 | x= 56.4..489.5 | 5 AJa _¡ AnZo _Z _wVm~rH$ go amOrZm_m XoZm Mmhþ±Vmo 15 {XZ nhbo AmnH$mo ~Vm`m Om`oJm `m EH$ _hrZo H$m doVZ AmnH$mo Xo Xþ±Jm &
+top=234.5 | pdf_y=607.4 | x= 56.4..424.3 | 6 AJa _¡ AmnZm doVZ H$m aH$_ 3 _hrZo go nhbo Zhr {b`m Vmo O_m aH$_ Amn H$s H$§nZr H$mo AXm hmo OmVm h¡ &
+top=260.5 | pdf_y=581.4 | x= 56.4..517.3 | 7 AJa _oao H$mo AmYm {XZ Ho$ [bE Nw>Å>r hmoZm h¡ Vmo g¡Q> Ho$ {Zdm©hH$ H$mo 48 K§Q>o nhbo OmZH$ar XoVm /XoVr hþ± (Am\$VH$mbroZ N>moS>H$a) Am\$V
+top=275.4 | pdf_y=566.4 | x= 74.3..482.3 | H$mb O¡gm H$sgrH$s _m¡V `m A\$KmV hmoVmoAwgHo$ g§^{XV XñVmdoO nog Zhr H$a nm`m Vmo Amn _oao doVZ ^o H$Q>moVr H$a gH$Vo hmo &
+top=299.5 | pdf_y=542.4 | x= 56.4..520.4 | 8 AJa _oao H$mo Nw>Å>r H$mo Adñ`H$V hmoVmo _¡ CgHo$ {bE 48 K§Q>o nhbo AmnH$mo Nw>Å>r H$m AdoXZ nÌ XoVm/XoVr hþ± (AJa Nw>Å>r 2 {XZgo Á`mXm hmoVmo)
+top=325.4 | pdf_y=516.5 | x= 74.5..359.8 | AJa AmnH$mo {~Zm ~VmE EH$ {XZ Nw>Å>r S>mbZo go Amn 3-4 [XZ H$m doVZ H$mQ> gH$Vo hmo &
+top=325.5 | pdf_y=516.4 | x= 56.4.. 61.8 | 9
+top=351.5 | pdf_y=490.4 | x= 51.0..392.4 | 10 _¡ AmnHo$ H§$nZr Ho$ {gdm Xþgar H§$nZr _o H$m_ Zhr H$é±Jm /Jr O~ VH$ AmnH$s H§$nZr N>moS>Zo VH$ &
+top=377.5 | pdf_y=464.4 | x= 51.0..433.2 | 11 Omo H$m_ h_H$mo gm|nm J`m AwgH$m H$ama IV_ hmoZoHo$ ~mX Xþgam H$m_ gm§ono V~VH$ H$moB© doVZ Zhr {X`m Om`oJm &
+top=403.5 | pdf_y=438.4 | x= 51.0..434.5 | 12 gm|nm J`m hþdm H$m_ go AJa _¡ amOrZm_m Xr`m J`m Vmo N> : _hrZo VH$ Cgr ñWmZ _o H$m_ H$aZo H$mo Zhr Omd±wJm &
+top=429.5 | pdf_y=412.3 | x= 51.0..461.0 | 13 Omo `wZr\$m_© {X`m Om`oJm dhr nhþZy±Jm /Jr Am¡a gm\$ gwYa aIw±Jm /Jr H$m_ Ho$ dº$ hr nhÿ±ZwJm/Jr Am¡a _o hr nhþ±ZwJm/Jr
+top=455.5 | pdf_y=386.3 | x= 51.0..545.2 | 14 O~ H$m_ na ahþ±Jm/Jr Cg dº$ g~ H$mo B‚mV XoZm _oam H$aË`d hmoVm h¡ AJa d¡go Zhr H$ê±$Jm/Jr Vmo Amn _oam doVZ Z XoZo H$m A{YH$ma AmnH$mo h¡&
+top=481.6 | pdf_y=360.3 | x= 51.0..269.0 | 15 H$m_ Ho$ g_` _o H$m`©ñWmZ N>moS>H$a H$hr ^r Zhr Omdw±Jm/Jr
+top=507.6 | pdf_y=334.3 | x= 51.0..438.7 | 16 AJa Vwa§V ~mha OmZm nS>Vo Vmo _¡ H$m`© Zrdm©hH$ H$mo ~Vmdw±Jm/Jr Am¡a Xþgar ì`dñWm _oar OJh H$aHo$ Omdw±Jm/Jr
+top=533.6 | pdf_y=308.3 | x= 51.0..487.9 | 17 H$m`©ñWb _o _¡ AJa H$m`© Ho$ g_` _o _{Xam, [ZÐm dJ¡ao {H$`m hmo Vmo Amn é. 20 go 200 VH$ X§S> S>mboZo H$m A{YH$ma AmnH$mo h¡ &
+top=559.6 | pdf_y=282.3 | x= 51.0..525.1 | 18 Mmoar dJoam Zhr H$ê±$Jm /Jr H§$nZr H$mo Xþgao H$m_uH$$ go {H$`m hmoZoH$m AmnHo$ ZOa _o Am`oVmo Amn H$m_ go {ZH$mb XoZoH$m A{YH$ma AmnH$mo
+top=572.7 | pdf_y=269.2 | x= 74.5..225.7 | h¢ Am¡a nmobrg R>mUm H$mo {\$a`mX H$a gH$Vo hmo &
+top=598.6 | pdf_y=243.3 | x= 51.0..509.6 | 19 _oao H$m_ Ho$ g_` _oao go Cnadmbo H$m AmXoe H$mo {Z^mdw°Jm /Jr Am¡a _ZbJmH$a àm_mUrH$Vm go H$ê±$Jm/Jr {MH$[ñVm H$mo {bE ha _hrZo
+top=611.8 | pdf_y=230.1 | x= 74.5..380.7 | ê$. 5/- O_m H$ê±$Jm/Jr & dmo aH$_ àW_ {M{H$ñVm Ho$ {bE Cn`moJ H$aZo Ho$ {bE _oar _§Owar h¡ &
+top=637.6 | pdf_y=204.3 | x= 51.0..521.5 | 20 _oao H$m_ Ho$ g_` {X`m J`m hwdm (ñnmZa, H$Q>tJ nob`a ñH«w$S´>¡da Am{X) AJa Jw_ hmo J`m Vmo AwgHo$ Xm_ _oao doVZ go H$Q>¡mVr H$a gH$Vo hmo &
+top=663.6 | pdf_y=178.3 | x= 51.0..348.7 | 21 {~Zm H$moB© g_mMma AJa H$m_ N>moS> {X`m Vmo Ho$B© ^r H$maU gw doVZ Zhr {X`m Om`oJm &
+top=689.6 | pdf_y=152.3 | x= 51.0..301.4 | 22 _¡ Cna Omo eV} Am¡a Zr`_o _oar H$m`©H$mb AdYr _o nmbZ H$ê±$Jm/Jr &
+top=718.4 | pdf_y=123.5 | x= 82.0..105.3 | Zm_ :
+top=721.5 | pdf_y=120.4 | x=251.4..282.7 | H§$nZr :
+top=737.6 | pdf_y=104.3 | x= 82.0..109.0 | hwÔ :
+top=739.6 | pdf_y=102.3 | x=251.4..283.1 | ñWb :
+top=756.9 | pdf_y= 85.0 | x= 82.0..124.5 | hñVmja :
+top=757.7 | pdf_y= 84.2 | x=251.4..285.3 | {X§ZmH$ :
+
+
+============================== PAGE 8 (w=595.3, h=841.9) ==============================
+top= 90.5 | pdf_y=751.4 | x=529.7..535.1 | TM
+top= 92.8 | pdf_y=749.0 | x= 74.8..184.8 | EMPLOYEE ID No. :
+top=108.0 | pdf_y=733.9 | x=216.0..334.2 | PERSONAL DATA
+top=135.5 | pdf_y=706.4 | x= 57.3..108.7 | 1. Name :
+top=156.3 | pdf_y=685.6 | x= 57.3..149.2 | 2. Father's Name :
+top=177.1 | pdf_y=664.8 | x= 57.3..145.7 | 3. Mother's Name
+top=197.9 | pdf_y=644.0 | x= 57.3..143.1 | 4. Reference by :
+top=218.7 | pdf_y=623.2 | x= 57.3..139.0 | 5. Date of Birth :
+top=221.1 | pdf_y=620.8 | x=323.4..357.3 | 6. Age :
+top=239.4 | pdf_y=602.4 | x= 57.3.. 66.1 | 7.
+top=241.7 | pdf_y=600.2 | x= 74.8..390.1 | Qualification : 8. Experience :
+top=260.2 | pdf_y=581.7 | x= 57.3.. 66.1 | 9.
+top=262.9 | pdf_y=579.0 | x= 74.8..428.2 | Designation : 10. Net Salary Offered :
+top=281.0 | pdf_y=560.9 | x= 52.3.. 66.1 | 11.
+top=284.1 | pdf_y=557.8 | x= 74.8..157.7 | Present Address :
+top=325.1 | pdf_y=516.8 | x= 52.0.. 66.6 | 12.
+top=326.6 | pdf_y=515.3 | x= 74.8..172.9 | Permanent Address :
+top=347.8 | pdf_y=494.1 | x=206.2..416.8 | Ph. No. Alternate Ph. No.
+top=369.0 | pdf_y=472.9 | x= 52.0..204.4 | 13. Left hand thumb impression
+top=427.0 | pdf_y=414.9 | x= 51.5..208.5 | 14. Right hand thumb impression
+top=496.4 | pdf_y=345.5 | x= 56.2..420.6 | 15. Marital Status 16. Name of the Spouse :
+top=517.6 | pdf_y=324.3 | x=359.3..420.6 | Contact No. :
+top=537.5 | pdf_y=304.4 | x= 57.0..212.0 | 17. Languages Known : to Speak
+top=556.6 | pdf_y=285.3 | x=171.1..207.1 | to Write
+top=574.4 | pdf_y=267.5 | x=307.2..363.8 | 19. ID Card
+top=576.6 | pdf_y=265.3 | x= 74.8..144.8 | Date of Joining
+top=577.8 | pdf_y=264.1 | x= 57.0.. 71.6 | 18.
+top=594.4 | pdf_y=247.5 | x=307.2..378.4 | 21. PF Number
+top=598.0 | pdf_y=243.9 | x= 57.0..132.0 | 20. ESI Number
+top=614.4 | pdf_y=227.5 | x=307.2..384.2 | 23. Shoe Details
+top=618.1 | pdf_y=223.8 | x= 57.0..146.6 | 22. Uniform Details
+top=634.4 | pdf_y=207.5 | x=307.2..425.7 | 25. Site / Estate Manager
+top=636.8 | pdf_y=205.1 | x= 74.8..158.9 | Name of the Site :
+top=638.2 | pdf_y=203.6 | x= 57.0.. 71.6 | 24.
+top=658.4 | pdf_y=183.5 | x= 57.0..159.4 | 26. Record enclosed :
+top=674.5 | pdf_y=167.4 | x=307.2..404.1 | 28. Reference Name
+top=678.5 | pdf_y=163.4 | x= 57.0.. 97.6 | 27. Hirer
+top=694.5 | pdf_y=147.4 | x=324.7..391.8 | Reference Ph.
+top=714.0 | pdf_y=127.9 | x= 57.2..495.7 | 29.Emergency Contact Name : Ph. Blood Group
+top=748.2 | pdf_y= 93.6 | x= 56.2..409.4 | Employee Signature : Documented by :
+
+
+============================== PAGE 9 (w=595.3, h=841.9) ==============================
+top= 84.7 | pdf_y=757.2 | x=192.7..402.7 | BANK ACCOUNT OPENING DETAILS
+top= 98.1 | pdf_y=743.8 | x=226.3..369.1 | (to be filled in block letters)
+top=148.1 | pdf_y=693.8 | x= 42.4..162.4 | ADDITIONAL DETAILS
+top=175.7 | pdf_y=666.2 | x= 45.2..466.9 | S. Number Particulars Details
+top=200.8 | pdf_y=641.1 | x=116.2..161.8 | Religion :
+top=220.1 | pdf_y=621.8 | x= 68.6..142.4 | 1. Hindu
+top=242.5 | pdf_y=599.4 | x= 68.6..147.9 | 2. Muslim
+top=264.8 | pdf_y=577.1 | x= 68.6..155.7 | 3. Christian
+top=287.1 | pdf_y=554.8 | x= 68.6..135.7 | 4. Sikh
+top=309.5 | pdf_y=532.4 | x= 68.6..144.0 | 5. others
+top=334.9 | pdf_y=506.9 | x=116.2..165.7 | Category :
+top=357.5 | pdf_y=484.4 | x= 68.6..151.8 | 1. General
+top=379.9 | pdf_y=462.0 | x= 68.6..137.9 | 2. OBC
+top=402.2 | pdf_y=439.7 | x= 68.6..130.1 | 3. SC
+top=424.5 | pdf_y=417.3 | x= 68.6..129.0 | 4. ST
+top=515.6 | pdf_y=326.3 | x= 42.6..102.9 | ID DETAILS
+top=544.2 | pdf_y=297.7 | x= 45.2..466.9 | S. Number Particulars Details
+top=565.2 | pdf_y=276.7 | x=188.8..223.1 | ID Type
+top=582.5 | pdf_y=259.4 | x= 68.6..165.0 | 1. Any ID Proof
+top=586.4 | pdf_y=255.5 | x=188.8..237.1 | ID Number
+top=593.7 | pdf_y=248.2 | x=108.3..123.8 | No.
+top=607.5 | pdf_y=234.4 | x=188.8..222.7 | ID Date
+top=628.7 | pdf_y=213.2 | x=188.8..213.8 | Place
+top=648.5 | pdf_y=193.4 | x=188.2..236.5 | ID Number
+top=660.6 | pdf_y=181.3 | x= 68.6..170.9 | 2. PAN Card No.
+top=668.4 | pdf_y=173.5 | x=188.2..236.0 | Issue Date
+top=674.2 | pdf_y=167.7 | x=108.3..138.3 | (If it is)
+top=688.3 | pdf_y=153.6 | x=188.2..213.2 | Place
+top=710.4 | pdf_y=131.5 | x=188.8..258.2 | Nominee Name
+top=724.7 | pdf_y=117.2 | x= 68.6..158.8 | 3. Nomination
+top=730.8 | pdf_y=111.1 | x=188.8..225.5 | Relation
+top=738.9 | pdf_y=103.0 | x=108.3..138.8 | Details
+top=751.1 | pdf_y= 90.7 | x=188.8..269.9 | Date of Birth / Age
+
+
+============================== PAGE 10 (w=595.3, h=841.9) ==============================
+top= 80.5 | pdf_y=761.4 | x=399.8..406.5 | TM
+top=112.9 | pdf_y=729.0 | x=268.0..328.0 | FORM Q
+top=133.7 | pdf_y=708.1 | x=252.6..343.3 | See Rule 24 (9a)
+top=158.0 | pdf_y=683.9 | x=225.9..363.4 | Appointment Order
+top=195.6 | pdf_y=646.3 | x= 42.5..498.0 | Name & Address of the Establishment :PARADIGM INTEGRATED FACILITY SERVICES PVT. LTD.
+top=213.3 | pdf_y=628.6 | x=239.0..482.1 | K S F Building, No.15, Golf View Road, HAL Airport Road,
+top=225.3 | pdf_y=616.6 | x=239.0..330.9 | Bangalore - 560 008.
+top=263.7 | pdf_y=578.2 | x= 42.5..235.7 | Name & Address of the Employer :
+top=303.3 | pdf_y=538.6 | x= 42.5..237.5 | Name & Address Of the Employee :
+top=377.2 | pdf_y=464.7 | x= 42.5..236.3 | His / Her Permanent address :
+top=451.3 | pdf_y=390.6 | x= 42.5..239.1 | Father's / Husband's Name :
+top=477.6 | pdf_y=364.3 | x= 42.5..238.1 | Date of Birth :
+top=503.9 | pdf_y=338.0 | x= 42.5..237.4 | Date of His / Her Entry into Employment :
+top=530.2 | pdf_y=311.7 | x= 42.5..238.0 | Nature of work Entrusted to Him / Her :
+top=556.6 | pdf_y=285.3 | x= 42.5..223.4 | His / Her Serial Number in Registration
+top=569.7 | pdf_y=272.2 | x= 42.5..236.8 | of Employment (Muster Roll) :
+top=596.0 | pdf_y=245.9 | x= 42.5..220.1 | Range of Wages Payable to Him / Her
+top=635.5 | pdf_y=206.4 | x= 42.5..239.1 | 1) Basic :
+top=661.0 | pdf_y=180.9 | x=236.2..239.1 | :
+top=661.8 | pdf_y=180.0 | x= 42.5.. 76.4 | 2) VDS
+top=688.2 | pdf_y=153.7 | x= 42.5..239.1 | 3) Other allowance ( if any ) :
+top=714.5 | pdf_y=127.4 | x=126.9..239.1 | Total :
+top=757.7 | pdf_y= 84.2 | x= 42.5..515.8 | Signature of the Employee Signature of the Employer
+
+
+============================== PAGE 11 (w=595.3, h=841.9) ==============================
+top=259.8 | pdf_y=582.1 | x=275.5..408.8 | FORM XIV (See Rule 76)
+top=270.7 | pdf_y=571.2 | x=213.5..217.2 | TM
+top=275.9 | pdf_y=566.0 | x=282.3..402.0 | EMPLOYMENT CARD
+top=300.6 | pdf_y=541.3 | x= 91.0..527.4 | PARADIGM INTEGRATED FACILITY SERVICES PVT. LTD. Name & Address of Establishment in /
+top=311.1 | pdf_y=530.8 | x=392.2..527.4 | under which contract is carried on
+top=315.6 | pdf_y=526.3 | x= 91.0..255.2 | K S F Building, No.15, Golf View Road,
+top=327.6 | pdf_y=514.3 | x= 91.0..261.7 | HAL Airport Road, Bangalore - 560 008.
+top=364.3 | pdf_y=477.6 | x= 91.0..509.7 | Nature of work and Location of work Name and address of Principal Employer
+top=426.2 | pdf_y=415.7 | x= 86.4..199.3 | 1. Name of the Workman
+top=443.9 | pdf_y=398.0 | x= 86.4..289.4 | 2. Sl. No. in the register of workman employed
+top=461.7 | pdf_y=380.2 | x= 86.4..256.4 | 3. Nature of employment / Designation
+top=479.4 | pdf_y=362.5 | x= 86.4..348.1 | 4. Wage rate ( with Particulars of unit incase of piece - work)
+top=497.1 | pdf_y=344.7 | x= 86.4..157.6 | 5. Wage period
+top=514.9 | pdf_y=327.0 | x= 86.4..198.4 | 6. Tenure of employment
+top=532.6 | pdf_y=309.3 | x= 86.4..142.0 | 7. Remarks
+top=572.9 | pdf_y=269.0 | x=104.5..498.8 | Employee's Signature Signature of Contractor
+
+
+============================== PAGE 12 (w=595.3, h=841.9) ==============================
+top= 73.6 | pdf_y=768.3 | x=269.6..326.7 | FORM -1
+top= 88.6 | pdf_y=753.3 | x=171.5..424.8 | NOMINATION AND DECLARATION FORM
+top=103.1 | pdf_y=738.7 | x=270.6..325.6 | ( See rule 3)
+top=114.7 | pdf_y=727.2 | x=247.7..348.5 | Payment of Wages Act
+top=138.9 | pdf_y=703.0 | x= 44.0..335.9 | 1. Name of the person making nomination ( in block letters) :
+top=163.2 | pdf_y=678.7 | x= 44.0..193.5 | 2. Father's / Husband's Name
+top=187.4 | pdf_y=654.5 | x= 44.0.. 52.8 | 3.
+top=187.7 | pdf_y=654.2 | x= 66.9..368.1 | Date of Birth 4. Sex
+top=211.6 | pdf_y=630.3 | x= 44.0..131.1 | 5. Marital Status
+top=235.8 | pdf_y=606.1 | x= 44.0..105.4 | 6. Address
+top=248.5 | pdf_y=593.3 | x= 66.9..124.1 | Permanent :
+top=285.1 | pdf_y=556.8 | x= 66.9..122.4 | Temporary :
+top=331.7 | pdf_y=510.2 | x= 42.5..552.6 | I hereby nominate the person (s) / cancel the nomination made by the me previously and nominate the
+top=347.1 | pdf_y=494.8 | x= 42.5..532.8 | person(s) mentioned below to receive any amount due to me from the employer, in the event of my death.
+top=366.7 | pdf_y=475.2 | x=319.3..381.6 | Total Amount of
+top=369.8 | pdf_y=472.1 | x=411.1..551.3 | If the nominee is minor relationship
+top=377.2 | pdf_y=464.7 | x=319.3..353.5 | Share of
+top=381.8 | pdf_y=460.1 | x=411.1..547.8 | and address of the guardian who
+top=387.2 | pdf_y=454.7 | x=190.7..383.1 | Nominee's Accumulation in
+top=393.8 | pdf_y=448.1 | x=411.1..550.3 | may receive the amount during the
+top=398.0 | pdf_y=443.9 | x= 42.5..383.6 | Name of the Address relationship with Date of credit to be paid
+top=405.8 | pdf_y=436.1 | x=413.6..492.5 | minority of nominee
+top=409.3 | pdf_y=432.6 | x= 42.5..386.1 | Nominee / nominees Birth to each nominee
+top=409.9 | pdf_y=432.0 | x=190.7..238.9 | the Member
+top=422.1 | pdf_y=419.8 | x= 77.2..497.9 | (1) (2) (3) (4) (5) (6)
+top=491.9 | pdf_y=350.0 | x= 42.5..553.7 | 1. Certified that I have no Family and should I acquire a family hereafter, the above nomination shall be
+top=507.3 | pdf_y=334.6 | x= 67.6..169.7 | deemed as cancelled.
+top=522.7 | pdf_y=319.2 | x= 42.5..352.9 | 2. * Certified that my father/ mother is / are dependent upon me.
+top=538.1 | pdf_y=303.7 | x= 42.5..247.3 | 3. * Strikeout whichever is not applicable.
+top=546.0 | pdf_y=295.9 | x=404.7..553.0 | Signature or thumb impression
+top=560.7 | pdf_y=281.2 | x=422.5..535.3 | of the employed person
+top=594.3 | pdf_y=247.6 | x=213.2..382.1 | CERTIFICATE BY EMPLOYER
+top=611.3 | pdf_y=230.6 | x= 41.9..554.9 | Certified that the above declaration and nomination has been signed / thumb impressed before me by Sri / Smt/Kum
+top=628.7 | pdf_y=213.2 | x= 42.5..554.5 | .............................................................................................................employed in my establishment after he/she has
+top=640.7 | pdf_y=201.2 | x= 41.9..448.2 | read the entry/entries have been read over to him / her by me and got confirmed by him/her.
+top=701.3 | pdf_y=140.6 | x=332.1..549.9 | Signature of the employer or other authorised
+top=706.2 | pdf_y=135.7 | x= 41.9.. 72.4 | Place :
+top=714.8 | pdf_y=127.1 | x=335.4..546.6 | officer of the establishment and Designation
+top=731.7 | pdf_y=110.2 | x= 41.9.. 68.5 | Date :
+top=736.4 | pdf_y=105.5 | x=365.4..550.4 | PARADIGM INTEGRATED FACILITY SERVICES PVT. LTD.
+top=748.2 | pdf_y= 93.7 | x=375.3..539.6 | K S F Building, No.15, Golf View Road,
+top=760.1 | pdf_y= 81.7 | x=368.9..539.6 | HAL Airport Road, Bangalore - 560 008.
+
+
+============================== PAGE 13 (w=595.3, h=841.9) ==============================
+top= 72.8 | pdf_y=769.1 | x=139.1..453.5 | The Karnataka Payment of Gratuity Rules, 1973
+top= 88.8 | pdf_y=753.0 | x=261.9..330.8 | FORM - 'F'
+top=104.4 | pdf_y=737.4 | x=229.1..363.5 | (See sub-Rule(1) of Rule 6)
+top=117.4 | pdf_y=724.5 | x=257.8..334.8 | Nomination
+top=124.3 | pdf_y=717.6 | x= 40.7.. 51.3 | To
+top=136.3 | pdf_y=705.6 | x= 40.7..333.6 | Give here name or description of the established with full address)
+top=156.8 | pdf_y=685.1 | x= 40.7..550.7 | 1. I, Shri / Shrimati / Kumari...............................................................................................................................(name in full
+top=168.2 | pdf_y=673.7 | x= 58.0..551.7 | here) whose particulars are given in the statement below here by nominate the person(s) mentioned below to receive
+top=179.6 | pdf_y=662.3 | x= 58.0..550.1 | the gratuity payable after my death as also the gratuity standing to my credit in the event of my death before that
+top=191.0 | pdf_y=650.9 | x= 58.0..551.7 | amount has become payable, or having become has not be paid and direct that the said amount of gratuity shall be
+top=202.4 | pdf_y=639.5 | x= 58.0..335.2 | paid in proportion indicated against the name(s) of the nominee(s)
+top=213.7 | pdf_y=628.1 | x= 40.7..551.1 | 2. I hereby certify that the person(s) mentioned is a / are member (s) of my family within the meaning of clause (h) of
+top=225.1 | pdf_y=616.8 | x= 58.0..254.4 | Section 2 of the payment of Gratuity Act. 1972.
+top=236.5 | pdf_y=605.4 | x= 40.7..471.5 | 3. I hereby declare that I have no Family within the meaning of clause (h) of Section 2 of the said Act.
+top=247.9 | pdf_y=594.0 | x= 40.7..309.3 | 4. a) My father / mother / parents is / are not dependent on me
+top=259.3 | pdf_y=582.6 | x= 58.0..396.2 | b) My husband's father / mother / parents is / are not dependent on my husband.
+top=270.7 | pdf_y=571.2 | x= 40.7..550.6 | 5. I have excluded my husband from my family by a notice dated the......................to the Controlling Authority in terms of
+top=282.1 | pdf_y=559.8 | x= 58.0..284.5 | the provision to clause (h) of Section 2 of the said Act.
+top=293.5 | pdf_y=548.4 | x= 40.7..314.6 | 6. Nomination made herein invalidates my previous nomination.
+top=308.7 | pdf_y=533.1 | x=256.9..335.4 | NOMINEE (S)
+top=323.8 | pdf_y=518.1 | x= 62.1..536.8 | Name in full with full address of Relationship with the Age of Proportion by which
+top=335.7 | pdf_y=506.1 | x=104.0..549.3 | Nominee (s) employee nominee the gratuity will be shared
+top=354.6 | pdf_y=487.3 | x= 47.8.. 56.2 | 1.
+top=371.9 | pdf_y=470.0 | x= 47.8.. 56.2 | 2.
+top=389.2 | pdf_y=452.7 | x= 47.8.. 56.2 | 3.
+top=406.6 | pdf_y=435.3 | x= 47.8.. 56.2 | 4.
+top=415.2 | pdf_y=426.7 | x= 47.8.. 73.9 | So on
+top=434.0 | pdf_y=407.9 | x=271.7..320.0 | Statement
+top=448.8 | pdf_y=393.0 | x= 47.8..183.4 | 1. Name of Employee in full :
+top=469.3 | pdf_y=372.6 | x= 47.8.. 89.5 | 2. Sex :
+top=489.7 | pdf_y=352.1 | x= 47.8..108.4 | 3. Religion :
+top=510.2 | pdf_y=331.7 | x= 47.8..279.5 | 4. Whether Unmarried / Married / Widow / widower
+top=530.6 | pdf_y=311.3 | x= 47.8..282.4 | 5. Department / Branch / Section where employed :
+top=551.1 | pdf_y=290.8 | x= 47.8..266.8 | 6. Post held with Ticket No. or Serial No. if any :
+top=571.5 | pdf_y=270.4 | x= 47.8..162.3 | 7. Date of appointment :
+top=592.0 | pdf_y=249.9 | x= 47.8..159.5 | 8. Permanent address :
+top=611.8 | pdf_y=230.1 | x= 46.8..455.5 | Village : Thana : Sub Division
+top=632.3 | pdf_y=209.6 | x= 46.8..428.8 | Post Office : District : State :
+top=648.9 | pdf_y=193.0 | x= 46.8.. 77.4 | Place :
+top=654.6 | pdf_y=187.3 | x=341.9..550.1 | Signature / Thumb impression of the Employee
+top=667.7 | pdf_y=174.2 | x= 46.8.. 73.5 | Date :
+top=681.8 | pdf_y=160.1 | x= 46.8..172.4 | Declaration by witnesses :
+top=693.4 | pdf_y=148.5 | x= 46.8..268.0 | Nomination signed / thumb impressed before me :
+top=702.1 | pdf_y=139.7 | x=392.9..499.1 | Signature of witnesses :
+top=704.5 | pdf_y=137.4 | x= 46.8..225.7 | Name in full and full address of witness :
+top=715.6 | pdf_y=126.2 | x= 46.8.. 55.1 | 1.
+top=737.9 | pdf_y=104.0 | x= 46.8..367.7 | 2. 1.
+top=760.2 | pdf_y= 81.7 | x= 46.8..367.7 | Place : Date : 2.
+
+
+============================== PAGE 14 (w=595.3, h=841.9) ==============================
+top= 72.2 | pdf_y=769.7 | x=213.9..282.4 | KmofUm nÌ /
+top= 73.9 | pdf_y=767.9 | x=286.0..508.8 | DECLARATION FORM FORM-1
+top= 86.4 | pdf_y=755.5 | x=114.3..524.0 | KmofUm nÌ H$_©Mmar Ûmam ^am OmoEJm & \$m_© Ho$ gmW nmgnmoQ© AmH$ma Ho$ Xmo \$moQ>moJ«\$ ^r bJmE OmZo Mm{hE & \$m_©> ^aZo go nhbo Xÿgao n¥ï> na
+top= 97.2 | pdf_y=744.7 | x=114.3..321.6 | Xr JB© {hXm`Vm| H$mo ^br-^m§{V nT> boZm Mm{hE & `h \$m_© {Z:ewëH$ h¡ &
+top=105.8 | pdf_y=736.1 | x=113.3..551.5 | To be filled in by the employee after reading instructions overleaf. Two Postcard size photographs are to
+top=115.4 | pdf_y=726.5 | x=113.3..182.5 | be attached with
+top=125.5 | pdf_y=716.4 | x= 41.7..377.2 | (H$) dr_mH¥$V ì`[º$ H$m {ddaU (I) {Z`moOH$ H$m {ddaU
+top=133.7 | pdf_y=708.2 | x= 41.9..432.2 | (A) INSURED PERSON'S PARTICULARS (B) EMPLOYER'S PARTICULARS
+top=143.9 | pdf_y=698.0 | x= 44.2..381.8 | 1. dr_m g§»`m 9. {Z`moOH$ H$r Hy$Q> g»`m
+top=154.4 | pdf_y=687.5 | x= 55.0..111.0 | Insurance No.
+top=155.4 | pdf_y=686.5 | x=306.7..488.0 | Employer's Code No. 5000-041081-000-1018
+top=169.2 | pdf_y=672.7 | x= 55.7..531.8 | Zm_ (ñnï>Aja _|) {XZ _hrZm df©
+top=169.6 | pdf_y=672.3 | x= 43.6.. 50.7 | 2.
+top=174.3 | pdf_y=667.6 | x=291.7..492.8 | 10. Month
+top=175.9 | pdf_y=666.0 | x=307.2..536.1 | {Z`w{º$ H$r {V{W Day Year
+top=180.2 | pdf_y=661.7 | x= 55.2..128.4 | Name (in block Letters)
+top=186.8 | pdf_y=655.1 | x=306.4..388.0 | Date of Appointment
+top=191.2 | pdf_y=650.7 | x= 44.3..110.1 | 3. {nVm /n{V H$m Zm_
+top=201.5 | pdf_y=640.4 | x= 55.2..137.2 | Father's/Husband's Name
+top=202.9 | pdf_y=639.0 | x=290.9..394.0 | 11. {Z`moOH$ H$m Zm_ Am¡a nVm/
+top=206.4 | pdf_y=635.5 | x=398.5..530.1 | Name & address of the employer
+top=210.8 | pdf_y=631.1 | x=142.9..252.8 | 5. d¡dm{hH$ pñW{V/Material Status
+top=212.1 | pdf_y=629.8 | x= 44.3..132.0 | 4. OÝ_ {V{W/Date of Birth
+top=218.1 | pdf_y=623.8 | x=151.3..527.5 | em/Hw$/{d M/U/W PARADIGM INTEGRATED FACILITY SERVICES PVT. LTD.
+top=223.7 | pdf_y=618.1 | x= 63.7..120.8 | D M Y
+top=231.2 | pdf_y=610.7 | x=142.9..214.9 | 6. btJ/Sexnw/_ M/F
+top=234.0 | pdf_y=607.9 | x=305.5..548.6 | K S F Building, No.15, Golf View Road, HAL Airport Road,
+top=242.9 | pdf_y=599.0 | x= 43.9..273.9 | 7. dV©_mZ nVm/Present 8. ñWm`r nVm/Permanent Address
+top=245.8 | pdf_y=596.1 | x=126.9..397.3 | Address Bangalore - 560 008.
+top=274.5 | pdf_y=567.4 | x=308.7..499.1 | `{X nhbo `moO§Z _| aho h¢ Vmo Hy$n`m {Zpåb{IV {ddaU Xr{OE
+top=274.6 | pdf_y=567.2 | x=290.9..303.4 | 12.
+top=281.4 | pdf_y=560.5 | x=306.8..549.8 | In case of any previous employment please fill up the details , as uder :-
+top=292.1 | pdf_y=549.8 | x=288.6..303.0 | (H$)
+top=294.1 | pdf_y=547.8 | x=307.2..367.8 | {nN>br dro_m g§»`m
+top=300.7 | pdf_y=541.2 | x=290.9..365.1 | (a) Previous Ins. No.
+top=310.2 | pdf_y=531.7 | x=288.6..303.6 | (I)
+top=310.7 | pdf_y=531.2 | x=307.0..369.5 | {Z`moOH$ HmoS> g§»`m
+top=318.1 | pdf_y=523.8 | x=290.8..366.5 | (b) Emplr's Code No.
+top=328.8 | pdf_y=513.1 | x=288.6..397.9 | (J) {Z`moOH$ H$m Zm_ d nyU© nVm
+top=337.5 | pdf_y=504.4 | x=290.6..419.7 | (c) Name & Address of the Employer
+top=348.8 | pdf_y=493.1 | x= 50.5..528.0 | {nZ H$moS>> {nZ H$moS> PARADIGM INTEGRATED FACILITY SERVICES PVT. LTD.
+top=357.5 | pdf_y=484.4 | x= 50.4..199.4 | Pin Code Pin Code
+top=359.6 | pdf_y=482.3 | x=306.0..524.8 | K S F Building, No.15, Golf View Road, HAL Airport Road,
+top=366.3 | pdf_y=475.6 | x= 49.4..232.1 | Q>obr\$moZ Zåda/…B©-_ob nVm / E-mail address Q>obr\$moZ Zåda/…B©-_ob nVm /
+top=367.5 | pdf_y=474.3 | x=236.6..388.7 | E-mail addrss Bangalore - 560 008.
+top=379.4 | pdf_y=462.5 | x=308.4..529.8 | Q>obr\$moZ Zå~a/B©-_¡b Z§~a/ Email : accounts@paradignfms.com
+top=381.4 | pdf_y=460.4 | x= 50.0..203.1 | emIm H$m`©mb` Am¡fYmb`
+top=390.0 | pdf_y=451.9 | x= 50.8..457.9 | Branch Office Dispensary Ph : 3291 1056
+top=402.1 | pdf_y=439.8 | x= 48.7..553.6 | (J)_¥Ë`w H$s pñW{V _| ZH$X {hVbm^ Ho$ ^wJVmZ Ho$ {b` H$.am,dr.A{Y{Z`_, 1948 H$s Ymam 56 H$m.ag.dr.(Ho$ÝÐr`) {Z`_ 19 Ho$ AÝVJ©V Zm_mqH$V Hmo ^[aE >&
+top=411.3 | pdf_y=430.6 | x= 51.0..477.4 | (C) Details of Nominee u/s 71 of ESI Act 1948/Rule 56/2 of ESI (Central) Rules, 1950 for payment of cash benefit in the event of death.
+top=423.9 | pdf_y=418.0 | x= 97.0..372.0 | Zm_ g§~§Y nVm
+top=425.1 | pdf_y=416.8 | x=116.7..407.9 | Name Relationship Address
+top=461.3 | pdf_y=380.6 | x=120.6..446.5 | (d) {d_mH¥$V ì`pº$ H$o n[aOZm| H$m {ddaU / (D) FAMILY PARTICULARS OF INSURED PERSON
+top=474.5 | pdf_y=367.4 | x=235.5..427.4 | \ $ m_ © ^ a Z o H $ s V m a rH $ H $m o A m`w H$ _ ©M m ar H o$ g m W g ~ §Y Š ` m C Z H o$ g m W a h a ho h ¡
+top=475.7 | pdf_y=366.2 | x= 48.9..524.7 | H «$ . g §. `{X Zhu Amdmg H$m ñWmZ XrOrE
+top=479.5 | pdf_y=362.4 | x=131.2..170.8 | Zm_ Name
+top=484.4 | pdf_y=357.5 | x= 45.6..428.3 | S l. N o . D a te o f B ir t h / A g e a s on R e la t io n s h ip w it h t h e W h e t h e r r e s id in g w it h
+top=488.2 | pdf_y=353.7 | x=442.1..520.2 | If No. State place of residence
+top=491.2 | pdf_y=350.7 | x=245.0..413.3 | date of filling form Employee him /her ?
+top=503.8 | pdf_y=338.1 | x=370.2..536.6 | hm±/Yes Zhu No Cn ZJa/ amÁ`/ State
+top=506.0 | pdf_y=335.9 | x=467.8..483.9 | Town
+top=597.2 | pdf_y=244.7 | x=148.2..478.3 | H$.am.~r.{ZJ_ AñWmdr nhMmZ nÌ ({Z`w{º$ H$s {V{W go 3 _mg VH$ ~¡Y)
+top=605.7 | pdf_y=236.2 | x=138.5..499.8 | ESI Corporation Temporary Identity Card ( Valid for 3 months from the date of appointment)
+top=623.4 | pdf_y=218.5 | x= 76.7..115.2 | Zm_/Name
+top=644.7 | pdf_y=197.2 | x= 73.7..135.7 | H«$_ g§»`m/Ins No.
+top=662.4 | pdf_y=179.4 | x=394.1..490.0 | ñd`§ Ed_ n[adma H$m \$moQ>moJ«\$
+top=667.3 | pdf_y=174.6 | x= 74.0..191.1 | {Z`w{º$ H$s {V{W/Date of appointment
+top=670.3 | pdf_y=171.5 | x=402.3..478.1 | (Space for photograph)
+top=680.8 | pdf_y=161.1 | x= 77.1..228.4 | emIm H$m`m©b` Am¡fYb`
+top=687.9 | pdf_y=153.9 | x=198.6..235.5 | Dispensary
+top=689.0 | pdf_y=152.8 | x= 76.7..121.3 | Branch Office
+top=702.2 | pdf_y=139.7 | x= 77.0..176.9 | {Z`moOH$ H$s H$moS>> g§»`m d nVm
+top=711.1 | pdf_y=130.8 | x= 76.5..181.5 | Employer's Code No. & Address
+top=725.2 | pdf_y=116.7 | x= 71.8.. 95.2 | ~¡YVm :
+top=734.8 | pdf_y=107.1 | x= 72.8.. 96.0 | Validity
+top=747.9 | pdf_y= 94.0 | x=168.0..294.5 | dr‘mH¥V ì`{º$ Ho$ hñVmja/A§JwQ>o H$m {ZemZ
+top=750.1 | pdf_y= 91.8 | x= 71.8..488.8 | {XZm§H$ : _moha g{hV emIm H$m`m©b` à~§YH$ Ho$ hñVmja
+top=758.5 | pdf_y= 83.4 | x= 73.2..454.2 | Dated : Signature / T. I. of I. P Signature of B.M. with seal
+
+
+============================== PAGE 15 (w=595.3, h=841.9) ==============================
+top= 72.9 | pdf_y=769.0 | x= 42.3..548.7 | I declare that my dependent parents Income from all source is 1) Father Income Rs...................................................(2) Mother's
+top= 83.0 | pdf_y=758.9 | x= 42.3..495.0 | Income Rs...................................Total Rs...................................(Rupees..................................................................)
+top= 93.0 | pdf_y=748.9 | x= 42.3..342.2 | and her/she/ they, is/are wholly dependent on me and also resides with me.
+top=104.1 | pdf_y=737.8 | x= 42.3..511.9 | _¢ KmofUm H$aVm/H$aVr> h±w {H$ _oao Ûmam àñVwV {H$`m J`m ã`m¡am _oar OmZH$mar Am¡a {dûdmg Ho$ AZwgma ghr h¡ & _¢ AnZo n[adma Ho$ gXñ`m| _| hþE n[adV©Z
+top=115.5 | pdf_y=726.4 | x= 42.3..238.1 | H$s gwMZm 15 {XZ Ho$ ^rVa àñVwV H$aZo H$m dMZ XoVm/XoVr h±y &
+top=127.2 | pdf_y=714.7 | x= 42.7..515.5 | I hereby declare that the particulars give by me are correct to the best my knowledge and belief. I undertake to intimate
+top=137.2 | pdf_y=704.7 | x= 42.7..410.9 | the Corporation any changes in the membership of my family within 15 days of such change.
+top=158.7 | pdf_y=683.2 | x= 51.8..126.0 | {Z`moOH$ Ho$ à{VhñVmja
+top=170.0 | pdf_y=671.9 | x= 51.2..191.8 | Counter Signature by the Employer
+top=181.2 | pdf_y=660.7 | x= 51.7..502.8 | hñVmH$a Ho$ gmW _moha/Signature ~r_H¥$V ì`{º$ Ho$ hñVmja/A§JyR>m {ZemZ
+top=182.8 | pdf_y=659.1 | x=166.6..203.1 | with Seal
+top=191.7 | pdf_y=650.2 | x=399.1..480.5 | Signature / T. I. of IP
+top=196.4 | pdf_y=645.5 | x= 51.2..160.3 | Date :..................................
+top=202.3 | pdf_y=639.6 | x=217.7..337.0 | AZwXoe/INSTRUCTIONS
+top=219.5 | pdf_y=622.4 | x= 66.0..378.7 | \$m_© -1 H$m àofU H$.a.~r (gmYmaU) {d{Z`m_mbr- 11d12 Ho$ AÝVJ©V {d{Z`{_V {H$`m OmVm h¡ ?
+top=220.5 | pdf_y=621.4 | x= 42.3.. 49.8 | 1.
+top=230.5 | pdf_y=611.4 | x= 65.5..441.5 | Submission of Form -1 is governed by regulations 11 & 12 of ESI (General) Regulations, 1950.
+top=241.0 | pdf_y=600.9 | x= 42.3..549.8 | 2. n[adma H$m AW© (1) n{V/nËZr (2) ~r_H¥$V ì`{º$ H$s Am` na Am[ûm«V ~¡Y AWdm JmoX {b`o Ad`ñH$ ~ÀMm/A{ddm{hV nwÌr (3) 2 df© H$s Am`w VH$
+top=250.4 | pdf_y=591.5 | x= 66.0..526.7 | ~r_mH¥$V ì`{º$ na Am{ûm«V ~¡Y AWdm JmoX {b`m hwAm ~ƒm `{X {ejm àmËV H$a ahm hmo (4) nyar Vah ~rdmH¥$V ì`{º$ H$s Am` na {Z^a Aeº$
+top=260.1 | pdf_y=581.8 | x= 66.0..482.6 | (5) Am{ûm«V _mVm-{nVm H$.am.~r. AYr{Z`_ H$s Ymam 2 Ho$ AÝVJ©V n[a^mrfV Am¡a ñWmZr` n[admaOZ {M{H$Ëgm XoIaoI Ho$ hH$Xma h¡.
+top=271.6 | pdf_y=570.3 | x= 65.5..391.0 | "Family" means all or any of the following relatives of an Insured Person namely :-
+top=281.1 | pdf_y=560.8 | x= 65.5..546.1 | (i) a spouse (ii) a minor legitimate or adopted child dependant upon the I.P. : (iii) a child who is wholly dependent on
+top=290.5 | pdf_y=551.4 | x= 65.5..543.1 | the earning of the I. P. and who is (a) receiving education , till he or she attains the age of 21years (b) an unmarried
+top=300.0 | pdf_y=541.9 | x= 65.5..545.7 | daughter,(iv) a child who is infirm by reason of any physical or mental abnormality or injury and is wholly dependent on
+top=309.4 | pdf_y=532.5 | x= 65.5..546.8 | the earnings of the I.P. so long as the infirmity continues: (v) dependent Parents (Please see Seition 2 clause 11 of the 11
+top=318.9 | pdf_y=523.0 | x= 65.5..194.5 | of the ESI Act : 1948 for details).
+top=326.5 | pdf_y=515.4 | x= 42.3..163.7 | 3. nhMmZ nÌ hñWm§VaUr` Zhr h¡&
+top=337.8 | pdf_y=504.1 | x= 65.5..195.0 | Identity Card is Non-transferable
+top=349.1 | pdf_y=492.8 | x= 42.3..366.8 | 4. nhMmZ nÌ Jw_ hmoZo H$s pñW{V _| {ZY©oeH$/emIm H$m`m©b` à~§YH$ H$mo Vw§aV gy{MV H$aZm Mm[hE&
+top=359.9 | pdf_y=482.0 | x= 65.5..372.1 | Loss of Identity Card be reported to Employer/Bramch Managerr immediately
+top=369.2 | pdf_y=472.7 | x= 42.3..478.4 | 5. {H$gr àH$ma H$s JbV gwMZm XoZo H$r pñW{V _| H$.am.Zr.A{Y{Z`_ - 1947 H$s Ymam-84 Ho$ VhV H$mZyZr H$m`©dmhr H$s Om gH$Vr h¡ &
+top=380.2 | pdf_y=461.7 | x= 65.5..411.2 | Submission of false information attracts penal action under Section 84 of ESI Act, 1948
+top=392.7 | pdf_y=449.2 | x= 42.3..535.2 | 6. ZB© {Z`y{º$ H$s pñW{V _o§ ^br-^§{V ^am hwAm `h \$m_© {Z`w{º$ Ho$ Xg {XZ Ho$ ^rVa g~§{YV ñWm[Z` H$m`m©b` _| Adñ` hr àñVwV {H$`m OmZm MmhrE &
+top=403.5 | pdf_y=438.4 | x= 66.0..358.3 | {dbå~ H$s pñW{V _| {Z`moOH$ Ho$ {dê$Ô Ymam-76 Ho$ VhV H$mZyZr H$m`©dmhr H$s Om gH$Vr h¡ &
+top=415.2 | pdf_y=426.7 | x= 65.5..543.0 | This form duly filled in must reach the concerned Branch Office within 10 days of appointment of an Employee. Delay
+top=425.3 | pdf_y=416.6 | x= 65.5..332.6 | attracts penal action under Section 85 of the Act, Against employer.
+top=436.3 | pdf_y=405.5 | x= 66.0..517.4 | ~r_mH¥$V ì`{º$ AeX`u eV} nyar H$aZo na {ZåZ{b{IV {hVbm^ àmËn H$a gHo$Jm (1) ~r_mar {hVbm^ (2) AñWm`r An§JV {hVbm^ (3) ñWm`r
+top=437.2 | pdf_y=404.6 | x= 42.3.. 49.8 | 7.
+top=446.9 | pdf_y=395.0 | x= 66.0..354.7 | An§JVm {hVbm^ (4) Am{ûm«V OZ {hVbm^ (5) àgy{V {hVbm^ (_{hbm H$_©Mmar Ho$ {bE) &
+top=457.8 | pdf_y=384.1 | x= 65.5..543.6 | As am Insured Person you and your dependent family members are entitiled to full medical care. The other benefits in
+top=467.9 | pdf_y=374.0 | x= 65.5..544.5 | cash include (1) Sickness Benefit (2) Temporary Disablement benefit (3) Permanent disablement Benefit (4) Dependents
+top=477.9 | pdf_y=364.0 | x= 65.5..505.2 | benefit and (5) Maternity Benefit ( in case of women employees) subject to fulfilment of contributory conditions.
+top=489.2 | pdf_y=352.7 | x= 42.3.. 49.8 | 8.
+top=490.5 | pdf_y=351.4 | x= 65.5..452.7 | A{YH$ OmZH$ar Ho$ {bE {ZJ_ Ho$ do^g¡>Q> wwww.esicorg.in H$mo XoIo `m ñ`m[` H$m`©mb` `m joV«r` H$m`m©b` go g§nH©$ H$ao
+top=502.0 | pdf_y=339.9 | x= 65.5..488.8 | For more details please visit website of ESIC at ww. esic.org.in or contact Regional office or Branch Office.
+top=521.3 | pdf_y=320.5 | x=155.4..428.8 | Ho$db emIm H$m`m©b` _| à`moJ hoVw FOR BRANCH OF OFFICE USE ONLY
+top=534.7 | pdf_y=307.2 | x= 42.3..288.1 | 1. ~r_m g§»`m Amd§VZ H$s VmarI$/Date of Allotments of Ins. No. :
+top=547.3 | pdf_y=294.6 | x= 42.3..251.4 | 2. A.n.n.Omar H$aZo H$s VmarI /Date of Issue of TIC :
+top=558.6 | pdf_y=283.3 | x= 66.1..152.6 | Am¡fYmb` H$m Zm_/g§»`m/
+top=559.9 | pdf_y=282.0 | x= 42.3..247.6 | 3. Name /No. of Disp. :
+top=571.2 | pdf_y=270.7 | x= 66.1..272.7 | Š`m AÝ` {M{H$Ëgm ì`dñWm CnbãY h¡? `{X hmo, Vmo, C„oI H$ao :
+top=572.5 | pdf_y=269.4 | x= 42.3.. 49.8 | 4.
+top=583.5 | pdf_y=258.4 | x= 65.5..370.2 | Whether reciprocal Medical arrangements involved ? If Yes, please indicate :
+top=587.6 | pdf_y=254.2 | x=441.1..501.2 | à~ÝYH$ Ho$ hñVmja
+top=598.2 | pdf_y=243.7 | x=412.1..529.6 | Signature of Branch Manager
+top=618.9 | pdf_y=223.0 | x=229.3..419.4 | \$m_© ^aZo H$s VmarH$ H$mo Am`w Š`m CZHo$ gmW ah aho h¡
+top=619.6 | pdf_y=222.3 | x=304.6..534.3 | H$_©Mmar Ho$ gmW g§~§Y `{X Zhu, Amdmg H$m ñWmZ XrOrE
+top=627.2 | pdf_y=214.7 | x=145.2..420.3 | Name Date of Birth / Age as on Relationship with the Whether residing with
+top=629.9 | pdf_y=212.0 | x= 41.3.. 65.8 | Sl.No.
+top=631.8 | pdf_y=210.1 | x=452.3..530.5 | If No. State place of residence
+top=637.4 | pdf_y=204.5 | x=240.7..405.3 | date of filling form Employee him /her ?
+top=648.3 | pdf_y=193.6 | x=363.0..528.2 | hm±/Yes Zhu Cn ZJa/ Town amÁ`/ State
+top=649.6 | pdf_y=192.3 | x=409.3..418.1 | No
+top=653.4 | pdf_y=188.4 | x= 49.1.. 56.6 | 1.
+top=673.6 | pdf_y=168.3 | x= 49.1.. 54.1 | 2
+top=693.8 | pdf_y=148.1 | x= 49.1.. 54.1 | 3
+top=713.9 | pdf_y=128.0 | x= 49.1.. 54.1 | 4
+top=734.1 | pdf_y=107.8 | x= 49.1.. 56.6 | 5.
+top=754.3 | pdf_y= 87.6 | x= 49.1.. 56.6 | 6.
+
+
+============================== PAGE 16 (w=595.3, h=841.9) ==============================
+top= 73.1 | pdf_y=768.8 | x=138.2..266.5 | PÝËáìPÜÃÜ »ÜËÐÜÂ ¯— ÓÜíÓæ§ /
+top= 75.0 | pdf_y=766.9 | x=276.0..371.6 | H$_©Xmar ^{dî` qZ{Y g§JR>Z
+top= 88.1 | pdf_y=753.8 | x=456.1..548.8 | ±ÜÅ±ÜñÜÅ 2 (±ÜÄÐÜ¢ñÜ)
+top= 91.3 | pdf_y=750.5 | x=112.4..445.8 | THE EMPLOYEES PROVIDENT FUND ORGANISATION
+top= 97.2 | pdf_y=744.7 | x=447.7..552.6 | Form No. (Revised)
+top=105.7 | pdf_y=736.2 | x=150.1..407.0 | Ë®ÝÀá£WæãÚÔÃÜ¨Ü / Ë®ÝÀá£WæãÚÔ¨Ü E¨ÜÂÊÜáÓÜíÓæ§WÜÚWÝX
+top=119.6 | pdf_y=722.3 | x=200.0..357.2 | ®ÝÊÜá¯¨æìÍÜ®Ü ÊÜáñÜá¤ ÐæãàÐÜOæ¿á ±ÜñÜÅ
+top=134.2 | pdf_y=707.7 | x=181.4..376.2 | NOMINATION AND DECLARATION FORM
+top=145.4 | pdf_y=696.5 | x=157.0..400.7 | FOR UNEXMPTED / EXEMPTED ESTABLISHMENTS
+top=157.1 | pdf_y=684.8 | x= 91.2..466.0 | PÝËáìPÜÃÜ »ÜËÐÜÂ¯— ÊÜáñÜá¤ PÝËáìPÜÃÜ ²íaÜ~ Áãàg®æWÜÙÜ ÊæáàÃæWæ ÐæãàÐÜOæ ÊÜáñÜá¤ ®ÝÊÜá ¯¨æàìÍÜ®Ü ±ÜÅ±ÜñÜÅ
+top=168.4 | pdf_y=673.5 | x= 85.5..472.1 | Declaration and Nomination Form under the Empoloyees Provident Fund Pension Scheme
+top=177.7 | pdf_y=664.2 | x= 76.1..479.9 | (PÝËáìPÜÃÜ »ÜËÐÜÂ¯— Áãàg®æ 1952ÃÜ ±ÝÂÃÝ 11 ÊÜáñÜá¤ 61 ÊÜáñÜá¤ PÝËáìPÜÃÜ ²íaÜ~ Áãàg®æ 1995ÃÜ PÜíwPæ 18)
+top=188.8 | pdf_y=653.1 | x= 87.1..483.3 | (Paragraph 33 and 61 of the Employees' Provident Fund Scheme, 1952 & Paragraph 18 of the
+top=198.8 | pdf_y=643.1 | x=211.4..359.0 | Employees Pension Scheme 1995)
+top=210.8 | pdf_y=631.1 | x=327.1..488.4 | 6. TÝñæ ÓÜí.Pæ.G®…./vÜŸáÉ$Â™.G´… /45433
+top=212.6 | pdf_y=629.3 | x= 53.7..163.9 | 1. ÖæÓÜÃÜá (¹w AûÜÃÜWÜÙÜÈÉ)
+top=222.8 | pdf_y=619.1 | x=340.9..449.0 | Account No. KN/WF/45433
+top=224.7 | pdf_y=617.1 | x= 76.7..170.7 | Name (in Block Letters)
+top=237.6 | pdf_y=604.3 | x= 53.7.. 61.2 | 2.
+top=239.4 | pdf_y=602.4 | x= 76.9..444.6 | ñÜí¨æ¿á /WÜívÜ®Ü ÖæÓÜÃÜá (ËÊÝ×ñÜÙÝX¨ÜªÈÉ) 7. TÝ¿áí ËÙÝÓÜ/Permanent
+top=242.3 | pdf_y=599.6 | x=446.6..479.6 | Address
+top=249.4 | pdf_y=592.5 | x= 76.9..185.4 | Father's / Husband's Name
+top=259.5 | pdf_y=582.4 | x= 76.9..191.0 | ( In Case of married woman)
+top=269.7 | pdf_y=572.2 | x= 53.7..118.6 | 3. g®Ü¾ ©®ÝíPÜ
+top=283.7 | pdf_y=558.2 | x= 76.9..480.1 | Date of Birth 8. ñÝñÝRÈPÜ ËÙÝÓÜ/Temporary Address
+top=293.1 | pdf_y=548.8 | x=191.9..201.3 | Ô÷à
+top=296.7 | pdf_y=545.2 | x= 53.7..142.0 | 4. ÈíWÜ : ±ÜâÃÜáÐÜ
+top=307.2 | pdf_y=534.7 | x= 77.9..221.9 | Sex Male Female
+top=321.1 | pdf_y=520.8 | x= 53.7..119.8 | 5. ÊæçÊÝ×PÜ Ô§£
+top=331.5 | pdf_y=510.4 | x= 75.3..130.3 | Marital Status
+top=344.6 | pdf_y=497.3 | x=193.3..397.4 | »ÝWÜ &G (PÝ.»Ü.Áãà) PART - A (EPF)
+top=366.0 | pdf_y=475.9 | x= 43.9..537.6 | ®Ý®Üá D ÊÜáãÆPÜ ÊÜÂQ¤¿á®Üá° (WÜÙÜ®Üá°) ®ÝÊÜá ¯¨æàìÎÔ¨æªà®æ / D ÊÜáãÆPÜ ÊÜÞw¨Üª ®ÝÊÜá ¯¨æàìÍÜ®ÜÊÜ®Üá° ÖÜ¨Üª ±ÜwÔ¨æªà®æ ÊÜáñÜá¤ ®Ý®Üá ÊÜáÃÜ|
+top=377.2 | pdf_y=464.6 | x= 43.9..542.3 | Öæãí©¨Ü ±ÜûÜ¨ÜÈÉ PÝËáìPÜ »ÜËÐÜÂ¯—¿áá ®Ü®Ü° ÇæPÜR¨ÜÈÉ gÊæá¿ÞXÃÜáÊÜ ÊæãŸÆWÜ®Üá° ÔÌàPÜÄÓÜÆá, D PæÙÜWæ ®ÜÊÜáã©Ô¨Ü ÊÜÂQ¤¿á®Üá° (WÜÙÜ®Üá°) ®Ý®Üá
+top=388.5 | pdf_y=453.3 | x= 43.9.. 97.6 | ¯¨æàìÎÔ¨æªà®æ.
+top=400.9 | pdf_y=441.0 | x= 42.9..541.2 | I hereby nominate the person(s)/cancel the nomination made by the previously and nominate the person(s), mentioned below
+top=410.9 | pdf_y=431.0 | x= 93.0..491.2 | to receive the amount standing to my credit in the Employees Provident Fund, in the event my death
+top=423.5 | pdf_y=418.4 | x=447.2..538.9 | ®ÝÊÜá¯¨æìàÎñÜÃÜá A±ÝÅ±Ü¤
+top=425.2 | pdf_y=416.6 | x= 67.9..426.5 | ®ÝÊÜá ¯¨æìàÎñÜ (®Ü) (ÃÜ) ÓÜ¨ÜÓÜÂÃæãvÜ®æ g®Ü¾ ±ÜÅ£ÁãŸº ®ÝÊÜá¯¨æìàÎñÜ®Üá
+top=434.8 | pdf_y=407.1 | x=435.6..550.5 | ÊÜ¿áÓÜR®ÝX¨ÜªÃæ ®ÝÊÜá¯¨æàìÎñÜ®Ü
+top=438.2 | pdf_y=403.7 | x= 80.2..418.0 | ÖæÓÜÃÜá ÊÜáñÜá¤ ËÙÝÓÜ CÃÜáÊÜ ©®ÝíPÜ »Ü¯ÐÜÂ¯—¿áÈÉ ÓÜíŸí«Ü
+top=447.8 | pdf_y=394.0 | x=227.7..542.0 | ®ÝÊÜá¯¨æàìÍÜ®Ü ÊÝ¨Üá¨ÜÃÜ ±æçQ ÓÜí¨Ý¿á B±ÝÅ±Ü¤ÊÜ¿áÔÕ®Ü AÊÜ—¿áÈÉ
+top=457.4 | pdf_y=384.5 | x=439.8..546.3 | ÊæãŸÆWÜ®Üá° ±Üvæ¿áŸÖÜá¨Ý¨Ü
+top=459.1 | pdf_y=382.7 | x=241.7..421.2 | ÓÜíŸí«Ü ÊÜÞvÜñÜPÜR Joár ÊæãŸÆWÜá
+top=469.3 | pdf_y=372.6 | x=230.6..542.7 | Nominee/s ±ÝÆPÜ®Ü ÖæÓÜÃÜá ÊÜáñÜá¤ ËÙÝÓÜ
+top=470.4 | pdf_y=371.5 | x=340.6..410.9 | A¥ÜÊÝ A¨ÜÃÜ ±ÝÆá
+top=477.7 | pdf_y=364.2 | x=442.8..541.4 | If the nominee is a minor
+top=479.4 | pdf_y=362.5 | x=227.3..276.9 | Relationship
+top=481.9 | pdf_y=359.9 | x=331.7..420.3 | Total Amount of Share
+top=487.2 | pdf_y=354.6 | x= 56.0..536.4 | Name & Address of Nominee/s Date of name relationship and
+top=489.4 | pdf_y=352.5 | x=236.6..267.6 | with the
+top=491.5 | pdf_y=350.4 | x=340.7..413.7 | of Accumuiation in
+top=496.3 | pdf_y=345.6 | x=295.0..548.9 | Birth address of the guardian who
+top=499.5 | pdf_y=342.4 | x=235.6..268.6 | member
+top=501.1 | pdf_y=340.8 | x=334.2..417.8 | Provident Fund to be
+top=505.1 | pdf_y=336.8 | x=430.3..553.9 | may receive the amount during
+top=510.7 | pdf_y=331.2 | x=331.2..420.7 | Paid to Each Nominee
+top=514.2 | pdf_y=327.7 | x=445.3..538.9 | the minority of nominee
+top=527.4 | pdf_y=314.5 | x=115.1..494.5 | 1 2 3 4 5
+top=596.3 | pdf_y=245.6 | x= 55.6..541.1 | 1. PÝËáìPÜÃÜ »ÜËÐÜÂ ¯— Áãàg®æ 1952 PÜíqPæ 2 (i)¿áÈÉ ±ÜÄ»ÝÑÓÜÇÝ¨Üíñæ ®Ý®Üá PÜáoáíŸÊÜ®Üá° Öæãí©ÆÉÊæí¨Üá ÊÜáñÜá¤ D ñÜÃÜáÊÝ¿á
+top=608.5 | pdf_y=233.4 | x= 71.8..404.4 | ®Ý®Üá PÜáoáíŸÊÜ®Üá° Öæãí©¨ÜªÃæ ÊæáàÆRívÜ ®ÝÊÜá ¯¨æìàÍÜ®ÜÊÜâ ÃÜ¨ÝªX¨æÁáí¨Üá »ÝËÓÜñÜPÜR¨æí¨Üá.
+top=621.3 | pdf_y=220.6 | x= 71.3..539.8 |  Certified that I have no family as defined in para 2 (g) of the Employees' Provident Fund Scheme. 1952 and should I
+top=630.8 | pdf_y=211.1 | x= 77.3..391.5 | acquire family hereafter the above nomination should be deemed as cancelled.
+top=646.0 | pdf_y=195.9 | x= 55.6.. 63.1 | 2.
+top=647.0 | pdf_y=194.9 | x= 71.8..290.1 | ®Ü®Ü° ñÜí¨æ, ñÝÀá ®Ü®Ü°®Üá°$BÍÜÅÀáÔ¨ÝªÃæí¨Üá ±ÜÅÊÜÞ~PÜÄÔ¨æªà®æ.
+top=660.3 | pdf_y=181.5 | x= 72.7..320.7 |  Certified that my father’s/mother’s / are dependent upon me.
+top=671.9 | pdf_y=170.0 | x= 55.6..195.6 | 3. A®ÜÌÀáÓÜ©ÃÜáÊÜâ¨Ü®Üá° Öæãvæ¨Üá ÖÝQ
+top=688.0 | pdf_y=153.9 | x= 73.2..226.3 |  Strikeout whichever is not applicable
+top=690.3 | pdf_y=151.6 | x=335.7..528.3 | Signature of thumb impression of the Subscriber
+top=705.1 | pdf_y=136.8 | x=237.0..339.1 | FOR OFFICE USE ONLY
+top=719.4 | pdf_y=122.5 | x= 50.9..470.3 | Dt. of remaining EPF / /20 ENTRIES VERIFIED
+top=737.5 | pdf_y=104.4 | x= 50.9..184.0 | Past Service..........................year
+top=754.3 | pdf_y= 87.6 | x=337.1..517.3 | D.A. S.S. A.A.O.
+top=755.5 | pdf_y= 86.4 | x= 50.9..229.0 | Date of Joining EPS / /20
+
+
+============================== PAGE 17 (w=595.3, h=841.9) ==============================
+top= 76.7 | pdf_y=765.1 | x=139.8..460.0 | »ÝWÜ &¹ (PÝ.²í.Áãà) PÜíwPæ 18 PART - B (EPS) Para 18
+top=101.8 | pdf_y=740.1 | x= 41.2..546.5 | ®Ý®Üá ÓæàÊæ¿áÈÉÃÜáÊÝWÜ AÊÜ— ±Üä|ìÊÝWÜáÊÜâ¨ÜPæR Êæã¨ÜÆá ÊÜáÃÜ| Öæãí©¨Üª ÓÜí¨Ü»Üì¨ÜÈÉ Ë«ÜÊæ/Ë«ÜáÃÜ ÊÜáPÜRÙÜ ÊÜÞÔPÜ ²íaÜ~¿á®Üá° ®Üvæ¿áÆá
+top=114.8 | pdf_y=727.1 | x= 41.2..332.3 | AÖÜìÃÝ¨Ü ®Ü®Ü° PÜáoáíŸ¨Ü ÓÜ¨ÜÓÜÂÃÜ ËÊÜÃÜWÜÙÜ®Üá° D ÊÜáãÆPÜ PæÙÜPÜívÜíñæ J¨ÜXÔ¨æªà®æ.
+top=128.9 | pdf_y=713.0 | x= 41.2..554.8 | I hereby furnish below particulars of the members of my family who would be eligible to receive widow/widwer/children Pension in
+top=139.0 | pdf_y=702.9 | x= 41.2..130.2 | the event of my death.
+top=155.3 | pdf_y=686.5 | x= 41.2..526.6 | PÜÅÊÜáÓÜíTæÂ PÜáoáíŸ¨Ü ÓÜ¨ÜÓÜÂÃÜ ÖæÓÜÃÜá ËÙÝÓÜ g®Ü¾ ©®ÝíPÜ aÜí¨Ý¨ÝÃÜ®æãvÜ¯ÃÜáÊÜ ÓÜíŸí«Ü
+top=167.7 | pdf_y=674.2 | x= 46.1..522.3 | Sl.No. Name of the Family Member Address Date of Birth Relationship with member
+top=187.2 | pdf_y=654.7 | x=149.5..473.3 | 2 3 4 5
+top=189.4 | pdf_y=652.5 | x= 52.7.. 57.7 | 1
+top=254.9 | pdf_y=587.0 | x= 41.2..551.6 | PÝËáìPÜ ²íaÜ~ Áãàg®æ 1005ÃÜ PÜíwPæ 2 (vii) ÃÜÈÉ ±ÜÄ»ÝÑÓÜÇÝ¨Üíñæ ®Ý®Üá PÜáoáíŸÊÜ®Üá° Öæãí©ÆÉÊæí¨Üá ÊÜáñÜá¤ D ñÜÃÜáÊÝ¿á ®Ý®Üá
+top=265.8 | pdf_y=576.1 | x= 41.2..381.1 | PÜáoáíŸÊÜ®Üá° Öæãí©¨ÜªÃæ ÊæáàÆRívÜ ±ÜÅÊÜÜñÜÅ¨ÜÈÉ ËÊÜÃÜWÜÙÜ®Üá° J¨ÜXÓÜáÊæ®æí¨Üá ±ÜÅÊÜÞ~àPÜÄÓÜáñæ¤à®æ.
+top=278.0 | pdf_y=563.9 | x= 41.2..552.0 | Certified that I have no family, as defined in para 2 (vii) of Employees' Pension Scheme, 1995 and should I acquire a family
+top=288.1 | pdf_y=553.8 | x= 41.2..287.3 | hereafter I shall furnish particulars thereon on the above form.
+top=297.7 | pdf_y=544.2 | x= 41.2..551.6 | ®Ý®Üá ÊÜáÃÜ| Öæãí©¨Ü ÓÜí¨Ü»Üì¨ÜÈÉ ÊÜÞÔPÜ Ë«ÜÊæ/Ë«ÜáÃÜ ²íaÜ~ ±Üvæ¿áÆá ®Ü®Ü° PÜáoáíŸ¨Ü ÓÜ¨ÜÓÜÂÃÜá ¿ÞÃÜá CÆÉ©ÃÜáÊÝWÜ D PæÙÜPÜívÜÊÜÃÜ®Üá°
+top=309.0 | pdf_y=532.9 | x= 41.2..384.7 | ²íaÜ~ ±Üvæ¿áÆá (².Áãà.PÜíwPæ16(2) (i)(i) ÊÜáñÜá¤ (ii) Aw¿áÈÉ ®ÝÊÜá ¯¨æàìÎÔÃÜáñæ¤à®æ.
+top=320.6 | pdf_y=521.3 | x= 41.2..552.9 | I hereby nominate the following person for receiving the monthly pension/admissible under para 16(2) (g)(i) and (ii) in the event
+top=330.7 | pdf_y=511.2 | x= 41.2..343.3 | of my death without leaving any eligible family member for receiving person.
+top=345.4 | pdf_y=496.5 | x=311.3..507.8 | g®Ü¾ ©®ÝíPÜ aÜí¨Ý¨ÝÃÜ®æãvÜ¯ÃÜáÊÜ ÓÜíŸí«Ü
+top=347.4 | pdf_y=494.5 | x=104.4..237.6 | ®ÝÊÜá ¯¨æàìÎñÜ®Ü ÖæÓÜÃÜá ÊÜáñÜá¤ ËÙÝÓÜ
+top=357.8 | pdf_y=484.1 | x=105.7..503.5 | Name & Address of the Nominee Date of Birth Relationship with member
+top=469.1 | pdf_y=372.8 | x= 42.1.. 91.6 | ©®ÝíPÜ Date
+top=480.5 | pdf_y=361.4 | x= 54.0..486.1 | A®ÜÌÀáÓÜ©ÃÜáÊÜâ¨Ü®Üá° Öæãvæ¨Üá ÖÝQ aÜí¨Ý¨ÝÃÜ®Ü ÓÜ× A¥ÜÊÝ Öæ¸æºqr®Ü WÜáÃÜáñÜá
+top=491.8 | pdf_y=350.0 | x= 53.1..509.7 | Stike out whichever is not applicable Signature or thumb impression of the subscriber
+top=514.6 | pdf_y=327.3 | x=236.9..357.9 | ¯ÁãàgPÜ®Ü ±ÜÅÊÜÞ| ±ÜñÜÅ
+top=530.3 | pdf_y=311.6 | x=220.5..374.3 | CERTIFIED BY EMPLOYER
+top=552.5 | pdf_y=289.3 | x= 47.7..279.4 | ®Ü®Ü° E¨ÜÂÊÜá ÓÜíÓæ§¿áÈÉ ¯ÁãàiñÜÃÝXÃÜáÊÜ ÎÅà/ÎÅàÊÜá£/PÜáÊÜÞÄ
+top=565.1 | pdf_y=276.8 | x= 47.7..549.6 | ¿áÊÜÃÜá ÊæáàÆRívÜ ®ÜÊÜáã®æWÜÙÜ®Üá° K©¨Ü ñÜÃÜáÊÝ¿á/AÊÜÄWæ ®ÜÊÜáã®æWÜÙÜ®Üá° K© ÖæàÚ¨Ü ñÜÃÜáÊÝ¿á/ AÊÜÃÜá AÊÜâWÜÙÜ®Üá° ÔÌàPÜÄÔ,®Ü®Ü° ÓÜÊÜáá¾S¨ÜÈÉ
+top=577.7 | pdf_y=264.2 | x= 47.7..491.4 | ÊæáàÆRívÜ ÐæãàÐÜOæWæ ÊÜáñÜá¤ ®ÝÊÜá ¯¨æàìÍÜ®ÜPæR ÓÜ× ÊÜÞw¨Ýª®æ /Ùæ. Öæ¸æºqr®Ü WÜáÃÜáñÜ®Üá° ÖÝQ¨Ýª®æ /Ùæ Gí¨Üá ±ÜÅÊÜÞ~PÜÄÓÜáñæ¤à®æ.
+top=595.7 | pdf_y=246.2 | x= 48.2..547.0 | Certified that the above declaration and nomination has been signed / thumb impressed before me by
+top=610.3 | pdf_y=231.6 | x= 48.2..106.2 | Shri/Smt./Kum
+top=624.9 | pdf_y=217.0 | x= 48.2..546.9 | employed in my establishment after he/she has read the entriess have been read over to him/her by me and got confirmed by
+top=639.5 | pdf_y=202.4 | x= 48.2.. 80.2 | him/her.
+top=651.1 | pdf_y=190.8 | x=260.6..514.3 | ¯ÁãàgPÜ®Ü A¥ÜÊÝ E¨ÜÂÊÜá ÓÜíÓæ§Àáí¨Ü A—PÝÃÜ ±Üvæ¨Ü A—PÝÄ¿á ÓÜ×
+top=665.5 | pdf_y=176.4 | x=239.2..535.7 | Signature of the employer or other authorised officers of the Establishment
+top=699.6 | pdf_y=142.3 | x=237.3..417.5 | ±Ü¨Ü®ÝÊÜá /Designation: Authorised Signatory
+top=710.9 | pdf_y=131.0 | x=225.4..517.2 | PÝTÝì®æÜ¿á / E¨ÜÂÊÜá ÓÜíÓæ§¿á ÖæÓÜÃÜá ÊÜáñÜá¤ ËÙÝÓÜ A¥ÜÊÝ A¨ÜÃÜ ÃÜŸºÃ… ÊæãÖÜÃÜá
+top=723.1 | pdf_y=118.8 | x=228.8..513.5 | Name and Address of Factory / Establishment or Rubber Stamp thereof
+top=734.4 | pdf_y=107.4 | x=268.3..490.3 | PARADIGM INTEGRATED FACILITY SERVICES PVT. LTD.
+top=748.3 | pdf_y= 93.6 | x=257.7..500.9 | K S F Building, No.15, Golf View Road, HAL Airport Road,
+top=760.3 | pdf_y= 81.6 | x=333.4..425.2 | Bangalore - 560 008.
+
+
+============================== PAGE 18 (w=595.3, h=841.9) ==============================
+top= 73.1 | pdf_y=768.8 | x=372.1..553.3 | Paradigm Integrated Facility Services Pvt. Ltd.
+top= 81.3 | pdf_y=760.5 | x=276.8..284.2 | TM
+top= 86.6 | pdf_y=755.3 | x=389.0..553.3 | K S F Building, No.15, Golf View Road,
+top= 98.6 | pdf_y=743.3 | x=382.6..553.3 | HAL Airport Road, Bangalore - 560 008.
+top=111.4 | pdf_y=730.4 | x=449.3..550.4 | info@paradigmfms.com
+top=147.0 | pdf_y=694.9 | x=192.4..402.9 | EMPLOYMENT VERIFICATION FORM
+top=175.7 | pdf_y=666.2 | x= 47.1..115.1 | Applicant Detail
+top=193.3 | pdf_y=648.6 | x= 47.1..520.3 | Full Name * ID (For internal Tracking) :
+top=206.5 | pdf_y=635.4 | x=415.8..452.8 | Gender :
+top=209.4 | pdf_y=632.5 | x= 47.1..107.1 | Date of Birth *
+top=225.5 | pdf_y=616.4 | x= 47.1..109.1 | Father’s Name
+top=251.1 | pdf_y=590.8 | x= 47.1..112.6 | Contact Details
+top=268.9 | pdf_y=573.0 | x= 47.1..124.3 | Present Address *
+top=280.8 | pdf_y=561.1 | x= 47.1..108.6 | (with landmark)
+top=322.6 | pdf_y=519.3 | x= 47.1..137.8 | Permanent Address *
+top=334.6 | pdf_y=507.3 | x= 47.1..108.6 | (with landmark)
+top=367.1 | pdf_y=474.7 | x= 47.1..115.3 | Email Address *
+top=382.9 | pdf_y=459.0 | x= 47.1..119.6 | Landline number
+top=414.2 | pdf_y=427.7 | x= 47.1..122.6 | Education Details
+top=430.7 | pdf_y=411.2 | x=166.2..533.4 | Affiliated Degree, Specialization * Year of Registration Full / Part
+top=433.9 | pdf_y=408.0 | x= 47.1..123.6 | Institution Name *
+top=440.8 | pdf_y=401.1 | x=163.7..523.3 | University (e.g. BE, Mechanical) Graduation * Number* Time
+top=501.0 | pdf_y=340.9 | x= 47.1..136.0 | Experience Details
+top=519.6 | pdf_y=322.3 | x= 70.9..542.5 | Company Name & Duration * Employee CTC Per Reporting Manager
+top=524.2 | pdf_y=317.7 | x=172.1..229.6 | Designation *
+top=529.6 | pdf_y=312.3 | x= 88.4..539.8 | Address * Start Date - End Date ID * Annum * Name, Designation
+top=548.8 | pdf_y=293.1 | x= 47.1.. 52.1 | 1
+top=564.3 | pdf_y=277.6 | x= 63.2..192.8 | Reason for Leaving / Comment :
+top=582.2 | pdf_y=259.6 | x= 47.9.. 52.9 | 2
+top=600.2 | pdf_y=241.7 | x= 63.2..192.8 | Reason for Leaving / Comment :
+top=625.0 | pdf_y=216.9 | x= 45.9..129.8 | Reference Details
+top=648.7 | pdf_y=193.2 | x=352.0..385.5 | Contact
+top=649.7 | pdf_y=192.2 | x=423.7..533.0 | Email Years of
+top=652.9 | pdf_y=189.0 | x= 67.3..332.8 | Reference Name * Company Name * Designation *
+top=658.7 | pdf_y=183.2 | x=352.0..543.2 | Number Address * association *
+top=693.6 | pdf_y=148.3 | x= 63.2..194.8 | How do you know the reference :
+top=728.1 | pdf_y=113.8 | x= 63.2..194.8 | How do you know the reference :
+top=747.2 | pdf_y= 94.7 | x= 46.2..553.0 | CONFIDENTIAL : This document contains cofidential information and must be handled with care 1|Page
+top=757.3 | pdf_y= 84.6 | x= 46.2.. 94.0 | ops/evf.v.04
+
+
+============================== PAGE 19 (w=595.3, h=841.9) ==============================
+top= 73.1 | pdf_y=768.8 | x=372.1..553.3 | Paradigm Integrated Facility Services Pvt. Ltd.
+top= 81.3 | pdf_y=760.5 | x=276.8..284.2 | TM
+top= 86.9 | pdf_y=755.0 | x=389.0..553.3 | K S F Building, No.15, Golf View Road,
+top= 98.9 | pdf_y=743.0 | x=382.6..553.3 | HAL Airport Road, Bangalore - 560 008.
+top=110.7 | pdf_y=731.2 | x=452.3..553.4 | info@paradigmfms.com
+top=154.9 | pdf_y=687.0 | x= 47.1..525.0 | Please attach the relevant documents (Mark sheets / Degree Certificate, Relieving letter and pay slip)
+top=174.5 | pdf_y=667.4 | x= 47.1..143.8 | Criminal Verification
+top=194.5 | pdf_y=647.4 | x= 47.1..522.3 | Period for Criminal Verification no of years or FROM.................................TO...............................
+top=212.0 | pdf_y=629.9 | x= 47.1..126.2 | Present Address
+top=302.6 | pdf_y=539.3 | x= 47.1..141.2 | Permanent Address
+top=407.5 | pdf_y=434.4 | x= 47.1..140.1 | Previous Address 1
+top=510.2 | pdf_y=331.7 | x= 47.1..140.1 | Previous Address 2
+top=612.9 | pdf_y=228.9 | x= 47.1..471.7 | For Criminal verification please attach relevant documents ( a recent photo, a copy of ID).
+top=747.2 | pdf_y= 94.7 | x= 46.2..429.3 | CONFIDENTIAL : This document contains cofidential information and must be handled with care
+top=757.3 | pdf_y= 84.6 | x= 46.2.. 94.0 | ops/evf.v.04
+top=759.2 | pdf_y= 82.7 | x=524.4..553.0 | 2|Page
+
+
+============================== PAGE 20 (w=595.3, h=841.9) ==============================
+top= 76.6 | pdf_y=765.3 | x= 41.9.. 54.5 | To
+top= 90.9 | pdf_y=750.9 | x= 41.9..113.2 | The Manager
+top=102.2 | pdf_y=739.7 | x=216.0..377.8 | Sub : Resignation Letter
+top=105.3 | pdf_y=736.6 | x= 41.9..125.7 | PIFS PVT. LTD.
+top=144.8 | pdf_y=697.0 | x= 41.9..428.3 | I having employee ID No.
+top=184.4 | pdf_y=657.5 | x= 41.9..551.3 | Son / Daughter / Wife of .wish to
+top=224.0 | pdf_y=617.9 | x= 41.9..403.0 | resign from Paradigm Integrated Facility Services Pvt. Ltd. with effect from
+top=248.5 | pdf_y=593.4 | x=376.0..423.1 | Signature
+top=260.3 | pdf_y=581.6 | x= 41.9.. 75.5 | Place :
+top=301.7 | pdf_y=540.2 | x= 41.9.. 71.2 | Date :
+top=310.4 | pdf_y=531.5 | x=376.0..433.9 | EMP ID No.
+top=369.9 | pdf_y=471.9 | x=197.0..396.8 | FULL AND FINAL SETTLEMENT
+top=400.0 | pdf_y=441.9 | x= 41.7..333.4 | I, S/o. / D/o. / W/o.
+top=425.1 | pdf_y=416.8 | x= 41.7.. 92.4 | residing at
+top=450.2 | pdf_y=391.7 | x= 41.7..196.9 | have this day received from M/s
+top=475.3 | pdf_y=366.6 | x= 41.7..553.5 | Rs/- (Rupees )
+top=500.4 | pdf_y=341.5 | x= 41.7..371.2 | in full and final settlement of all my claims against the management.
+top=538.0 | pdf_y=303.9 | x= 41.7..553.4 | I further declare that on payment of the said sum I have no further claims whatsoever against the said
+top=550.5 | pdf_y=291.4 | x= 41.7..554.0 | management including that of reinstatement/re-employment. I also declare that I have received the above
+top=563.1 | pdf_y=278.8 | x= 41.7..376.1 | said amount as the settlement of all legal and statutory dues against.
+top=684.9 | pdf_y=156.9 | x= 41.9.. 73.9 | Date :
+top=720.6 | pdf_y=121.3 | x= 41.9..107.2 | ACCEPTED
+top=756.2 | pdf_y= 85.7 | x= 41.9.. 93.2 | Signature
+
+
+============================== PAGE 21 (w=595.3, h=841.9) ==============================
+top= 81.3 | pdf_y=760.5 | x=276.8..284.2 | TM
+top=155.9 | pdf_y=686.0 | x=114.0..491.0 | Annexure - list of acceptable documentary proofs
+top=203.9 | pdf_y=638.0 | x= 65.5..334.2 | Education (for every education to be verified ) :
+top=244.0 | pdf_y=597.9 | x= 98.1..298.2 | Degree Certificate and all years mark sheets.
+top=245.1 | pdf_y=596.7 | x= 65.5.. 73.5 | 
+top=266.3 | pdf_y=575.6 | x= 65.5..233.2 |  Provisional Degree Certificate.
+top=288.7 | pdf_y=553.2 | x= 98.1..211.5 | Consolidated Mark sheet.
+top=292.3 | pdf_y=549.6 | x= 65.5.. 73.5 | 
+top=342.7 | pdf_y=499.2 | x= 65.5..362.2 | Employment (for every employment to be verified ) :
+top=383.9 | pdf_y=457.9 | x= 65.5..202.6 |  Service or reliving letter
+top=405.1 | pdf_y=436.8 | x= 65.5..192.6 |  Latest month pay slip
+top=454.6 | pdf_y=387.3 | x= 65.5..310.2 | Address (for every address to be verified) :
+top=495.8 | pdf_y=346.1 | x= 65.5..163.2 |  Driving license
+top=516.9 | pdf_y=325.0 | x= 65.5..159.3 |  Telephone bill
+top=539.3 | pdf_y=302.6 | x= 98.1..167.6 | Bank statement
+top=542.3 | pdf_y=299.6 | x= 65.5.. 73.5 | 
+top=561.6 | pdf_y=280.3 | x= 98.1..137.6 | Passport
+top=567.8 | pdf_y=274.1 | x= 65.5.. 73.5 | 
+top=747.2 | pdf_y= 94.7 | x= 46.2..429.3 | CONFIDENTIAL : This document contains cofidential information and must be handled with care
+top=757.3 | pdf_y= 84.6 | x= 46.2.. 94.0 | ops/evf.v.04
+top=759.2 | pdf_y= 82.7 | x=524.4..553.0 | 4|Page
