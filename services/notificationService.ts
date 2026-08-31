@@ -224,6 +224,9 @@ const getNotificationTypeForEvent = (eventType: string): any => {
     if (['check_in', 'check_out', 'site_check_in', 'site_check_out', 'break_in', 'break_out', 'break_start', 'break_end', 'not_reported_by_12pm'].includes(eventType)) {
         return 'team_activity'; // These will be filtered into Team section via metadata
     }
+    if (eventType === 'onboarding_verified' || eventType === 'onboarding_fcu_complete') {
+        return 'approval_request';
+    }
     return 'info';
 };
 

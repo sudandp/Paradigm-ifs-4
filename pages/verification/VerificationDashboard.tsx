@@ -643,7 +643,7 @@ const VerificationDashboard: React.FC = () => {
     const [statusFilter, setStatusFilter] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
     const [syncingId, setSyncingId] = useState<string | null>(null);
-    const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+    const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
     const navigate = useNavigate();
     const isMobile = useMediaQuery('(max-width: 767px)');
 
@@ -946,6 +946,13 @@ const VerificationDashboard: React.FC = () => {
     };
 
     const handleSync = async (id: string) => {
+        const sub = submissions.find(s => s.id === id);
+        const fcuSt = (sub as any)?.fcuStatus || (sub as any)?.fcu_status;
+        if (fcuSt !== 'verified') {
+            setToast({ message: 'Complete and verify FCU (Field Check Unit) before portal sync.', type: 'warning' });
+            return;
+        }
+
         setSyncingId(id);
         try {
             // The sync function now returns the updated submission
@@ -957,8 +964,9 @@ const VerificationDashboard: React.FC = () => {
             } else {
                 setToast({ message: 'Portal sync failed. Check details.', type: 'error' });
             }
-        } catch (error) {
-            setToast({ message: 'An error occurred during sync.', type: 'error' });
+        } catch (error: any) {
+            console.error('Sync failed:', error);
+            setToast({ message: error?.message || 'An error occurred during sync.', type: 'error' });
         } finally {
             setSyncingId(null);
         }
@@ -1084,7 +1092,7 @@ const VerificationDashboard: React.FC = () => {
     };
 
     const filterTabs = ['all', 'draft', 'pending', 'verified', 'rejected'];
-    const colSpan = statusFilter === 'verified' ? 7 : 8;
+    const colSpan = statusFilter === 'verified' ? 8 : 9;
 
     // Calculate counts for each status based on companyScopedSubmissions
     const counts = useMemo(() => {
@@ -1499,6 +1507,56 @@ const VerificationDashboard: React.FC = () => {
                                                         </div>
                                                     )}
                                                 </div>
+                                                <div className="w-full h-px bg-slate-200/60"></div>
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">FCU Status</span>
+                                                    {(() => {
+                                                        const fcuSt = (s as any).fcuStatus || (s as any).fcu_status;
+                                                        if (fcuSt === 'verified') {
+                                                            return (
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                                    <CheckCircle2 size={10} className="text-emerald-600" /> Verified
+                                                                </span>
+                                                            );
+                                                        }
+                                                        if (fcuSt === 'failed') {
+                                                            return (
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-50 text-red-700 border border-red-200">
+                                                                    <XCircle size={10} className="text-red-600" /> Failed
+                                                                </span>
+                                                            );
+                                                        }
+                                                        if (fcuSt === 'pending') {
+                                                            return (
+                                                                <div className="flex items-center gap-1">
+                                                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                                                        <Clock size={10} className="text-amber-600 animate-pulse" /> Pending
+                                                                    </span>
+                                                                    <button
+                                                                        onClick={() => s.id && api.updateFcuStatus(s.id, 'verified').then(() => fetchSubmissions())}
+                                                                        className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100"
+                                                                    >
+                                                                        Done
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => s.id && api.updateFcuStatus(s.id, 'failed', 'FCU failed').then(() => fetchSubmissions())}
+                                                                        className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-50 text-red-700 border border-red-200 hover:bg-red-100"
+                                                                    >
+                                                                        Fail
+                                                                    </button>
+                                                                </div>
+                                                            );
+                                                        }
+                                                        return (
+                                                            <button
+                                                                onClick={() => s.id && api.acknowledgeOnboardingVerification(s.id).then(() => fetchSubmissions())}
+                                                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-50 text-slate-600 border border-slate-200 hover:bg-teal-50 hover:text-teal-700"
+                                                            >
+                                                                <Play size={9} /> Start FCU
+                                                            </button>
+                                                        );
+                                                    })()}
+                                                </div>
                                             </>
                                         )}
                                         {s.status === 'rejected' && (
@@ -1593,17 +1651,40 @@ const VerificationDashboard: React.FC = () => {
                                                 </button>
                                             </>
                                         )}
-                                        {s.status === 'verified' && (s.portalSyncStatus === 'pending_sync' || s.portalSyncStatus === 'failed') && (
-                                            <Button 
-                                                variant="outline" 
-                                                size="sm" 
-                                                onClick={() => handleSync(s.id!)} 
-                                                isLoading={syncingId === s.id}
-                                                className="!rounded-lg border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 h-8 text-xs font-bold"
-                                            >
-                                                {syncingId !== s.id && <Send className="h-3.5 w-3.5 mr-1" />}
-                                                Sync
-                                            </Button>
+                                        {s.status === 'verified' && (
+                                            (() => {
+                                                const fcuSt = (s as any).fcuStatus || (s as any).fcu_status;
+                                                const isFcuDone = fcuSt === 'verified';
+                                                if (s.portalSyncStatus === 'synced') {
+                                                    return (
+                                                        <span className="text-xs font-semibold text-emerald-600 flex items-center gap-1">
+                                                            <CheckSquare className="h-3.5 w-3.5" /> Synced
+                                                        </span>
+                                                    );
+                                                }
+                                                if (!isFcuDone) {
+                                                    return (
+                                                        <button
+                                                            onClick={() => setToast({ message: 'Complete and verify FCU before portal sync.', type: 'warning' })}
+                                                            className="px-2.5 py-1.5 text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition-all flex items-center gap-1"
+                                                        >
+                                                            <Clock className="w-3 h-3 text-amber-600" /> FCU Required
+                                                        </button>
+                                                    );
+                                                }
+                                                return (
+                                                    <Button 
+                                                        variant="outline" 
+                                                        size="sm" 
+                                                        onClick={() => handleSync(s.id!)} 
+                                                        isLoading={syncingId === s.id}
+                                                        className="!rounded-lg border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 h-8 text-xs font-bold"
+                                                    >
+                                                        {syncingId !== s.id && <Send className="h-3.5 w-3.5 mr-1" />}
+                                                        Sync
+                                                    </Button>
+                                                );
+                                            })()
                                         )}
                                     </div>
                                 </div>
@@ -1651,6 +1732,12 @@ const VerificationDashboard: React.FC = () => {
                                             <span className="w-6 h-5 flex items-center justify-center text-[9px] font-bold text-indigo-600 bg-indigo-50/80 rounded border border-indigo-200/80" title="Bank">BNK</span>
                                             <span className="w-6 h-5 flex items-center justify-center text-[9px] font-bold text-teal-600 bg-teal-50/80 rounded border border-teal-200/80" title="Address">ADR</span>
                                         </div>
+                                    </div>
+                                </th>
+                                <th scope="col" className="px-3 py-3 text-center align-middle border-b border-slate-200 w-[110px] min-w-[110px]">
+                                    <div className="flex flex-col items-center justify-center gap-0.5">
+                                        <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">FCU Status</span>
+                                        <span className="text-[9.5px] font-medium text-slate-400 whitespace-nowrap">Field Check</span>
                                     </div>
                                 </th>
                                 <th scope="col" className="px-3 py-3 text-center align-middle border-b border-slate-200 w-[190px] min-w-[190px]">
@@ -1797,6 +1884,65 @@ const VerificationDashboard: React.FC = () => {
                                             <div className="flex items-center justify-center">
                                                 <DocumentVerificationBadges submission={s} onToggleDoc={(key) => handleToggleDocVerification(s.id!, key)} hideLabels />
                                             </div>
+                                        </td>
+
+                                        {/* FCU Status */}
+                                        <td className="px-3 py-3.5 whitespace-nowrap text-center align-middle">
+                                            {(() => {
+                                                const fcuSt = (s as any).fcuStatus || (s as any).fcu_status || null;
+                                                if (fcuSt === 'verified') {
+                                                    return (
+                                                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                            <CheckCircle2 size={11} className="text-emerald-600" /> Verified
+                                                        </span>
+                                                    );
+                                                }
+                                                if (fcuSt === 'failed') {
+                                                    return (
+                                                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold bg-red-50 text-red-700 border border-red-200">
+                                                            <XCircle size={11} className="text-red-600" /> Failed
+                                                        </span>
+                                                    );
+                                                }
+                                                if (fcuSt === 'pending') {
+                                                    return (
+                                                        <div className="flex flex-col items-center gap-1">
+                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                                                <Clock size={10} className="text-amber-600 animate-pulse" /> Pending
+                                                            </span>
+                                                            <div className="flex gap-1">
+                                                                <button
+                                                                    onClick={() => s.id && api.updateFcuStatus(s.id, 'verified').then(() => fetchSubmissions())}
+                                                                    className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors"
+                                                                    title="Mark FCU Verified"
+                                                                >
+                                                                    ✅ Done
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => s.id && api.updateFcuStatus(s.id, 'failed', 'FCU verification failed').then(() => fetchSubmissions())}
+                                                                    className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 transition-colors"
+                                                                    title="Mark FCU Failed"
+                                                                >
+                                                                    ❌ Fail
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                }
+                                                // Not started
+                                                if (s.status === 'verified') {
+                                                    return (
+                                                        <button
+                                                            onClick={() => s.id && api.acknowledgeOnboardingVerification(s.id).then(() => fetchSubmissions())}
+                                                            className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold bg-slate-50 text-slate-600 border border-slate-200 hover:bg-teal-50 hover:text-teal-700 hover:border-teal-200 transition-all"
+                                                            title="Start FCU Process"
+                                                        >
+                                                            <Play size={10} /> Start FCU
+                                                        </button>
+                                                    );
+                                                }
+                                                return <span className="text-[10px] text-slate-400 font-medium">—</span>;
+                                            })()}
                                         </td>
 
                                         {/* Approved / Rejected By */}
@@ -1993,22 +2139,40 @@ const VerificationDashboard: React.FC = () => {
                                                     )}
 
                                                     {s.status === 'verified' && (
-                                                        (s.portalSyncStatus === 'pending_sync' || s.portalSyncStatus === 'failed') ? (
-                                                            <Button 
-                                                                variant="outline" 
-                                                                size="sm" 
-                                                                onClick={() => handleSync(s.id!)} 
-                                                                isLoading={syncingId === s.id}
-                                                                className="!rounded-md border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 h-6 text-[11px] font-bold px-3 w-full max-w-[130px]"
-                                                            >
-                                                                {syncingId !== s.id && <Send className="h-2.5 w-2.5 mr-1" />}
-                                                                Sync
-                                                            </Button>
-                                                        ) : (
-                                                            <span className="text-[11px] font-semibold text-emerald-600 flex items-center justify-center gap-1">
-                                                                <CheckSquare className="h-3 w-3" /> Verified
-                                                            </span>
-                                                        )
+                                                        (() => {
+                                                            const fcuSt = (s as any).fcuStatus || (s as any).fcu_status;
+                                                            const isFcuDone = fcuSt === 'verified';
+                                                            if (s.portalSyncStatus === 'synced') {
+                                                                return (
+                                                                    <span className="text-[11px] font-semibold text-emerald-600 flex items-center justify-center gap-1">
+                                                                        <CheckSquare className="h-3 w-3" /> Synced
+                                                                    </span>
+                                                                );
+                                                            }
+                                                            if (!isFcuDone) {
+                                                                return (
+                                                                    <button
+                                                                        onClick={() => setToast({ message: 'Complete and verify FCU (Field Check Unit) before syncing to portals.', type: 'warning' })}
+                                                                        className="h-6 px-2 text-[10px] font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-md transition-all flex items-center justify-center gap-1 w-full max-w-[130px]"
+                                                                        title="FCU verification is pending. Complete FCU to enable portal sync."
+                                                                    >
+                                                                        <Clock className="w-2.5 h-2.5 text-amber-600" /> FCU Required
+                                                                    </button>
+                                                                );
+                                                            }
+                                                            return (
+                                                                <Button 
+                                                                    variant="outline" 
+                                                                    size="sm" 
+                                                                    onClick={() => handleSync(s.id!)} 
+                                                                    isLoading={syncingId === s.id}
+                                                                    className="!rounded-md border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 h-6 text-[11px] font-bold px-3 w-full max-w-[130px]"
+                                                                >
+                                                                    {syncingId !== s.id && <Send className="h-2.5 w-2.5 mr-1" />}
+                                                                    Sync
+                                                                </Button>
+                                                            );
+                                                        })()
                                                     )}
                                                 </div>
                                             </div>

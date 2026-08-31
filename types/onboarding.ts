@@ -64,6 +64,13 @@ export interface OnboardingData {
   createdByRole?: string | null;
   submittedBy?: string | null;
   submitted_by?: string | null;
+  fcuStatus?: 'pending' | 'verified' | 'failed' | null;
+  fcu_status?: 'pending' | 'verified' | 'failed' | null;
+  fcuAcknowledgedBy?: string | null;
+  fcuAcknowledgedAt?: string | null;
+  fcuVerifiedBy?: string | null;
+  fcuVerifiedAt?: string | null;
+  fcuNotes?: string | null;
 }
 
 export type OnboardingStep = 'personal' | 'address' | 'organization' | 'family' | 'education' | 'bank' | 'uan' | 'esi' | 'gmc' | 'uniform' | 'biometrics' | 'documents' | 'review';

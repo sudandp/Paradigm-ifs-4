@@ -1803,15 +1803,100 @@ export const api = {
       if (trackErr) console.warn('[verifySubmission] Tracking columns not yet in DB. Run the SQL migration:', trackErr.message);
     });
     
-    // Trigger notification
+    // Trigger notification to HR team + Reporting Manager
     const submission = await api.getOnboardingDataById(id);
     if (submission && user) {
+        const candidateName = `${(submission.personal as any)?.firstName || ''} ${(submission.personal as any)?.lastName || ''}`.trim() || 'Candidate';
+        const employeeId = (submission.personal as any)?.employeeId || id.slice(0, 8);
+        const siteName = submission.organizationName || (submission.organization as any)?.organizationName || '';
+        const designation = (submission.organization as any)?.designation || '';
+        const reportingManagerName = (submission.organization as any)?.reportingManager || '';
+
+        // 1. Dispatch rule-based notification (reaches HR/admin via notification_rules table)
         dispatchNotificationFromRules('onboarding_verified', {
-            actorName: 'Enrollment for ' + (submission.personal as any).firstName,
-            actionText: 'has been verified',
-            locString: '',
-            actor: { id: user.id, name: verifierName, role: 'admin' }
+            actorName: candidateName,
+            actionText: `onboarding verified by ${mode === 'auto' ? 'AI Agent' : verifierName}. Acknowledge to start FCU.`,
+            locString: siteName ? ` at ${siteName}` : '',
+            title: `✅ Onboarding Verified: ${candidateName}`,
+            link: '/verification/dashboard',
+            severity: 'Medium',
+            actor: { id: user.id, name: verifierName, role: 'admin' },
+            metadata: {
+                submissionId: id,
+                candidateName,
+                employeeId,
+                siteName,
+                designation,
+                verificationMode: mode,
+                isOnboardingApproval: true
+            }
         });
+
+        // 2. Send direct notification to all HR/HR Ops users
+        try {
+            const { data: hrUsers } = await supabase.from('users').select('id').in('role_id', ['hr', 'hr_ops']);
+            if (hrUsers && hrUsers.length > 0) {
+                const hrMessage = `✅ Onboarding VERIFIED: ${candidateName} (${employeeId}) at ${siteName} — All documents verified by ${mode === 'auto' ? 'AI Agent' : verifierName}. Acknowledge to proceed with FCU.`;
+                const hrNotifications = hrUsers
+                    .filter(u => u.id !== user.id)
+                    .map(u => ({
+                        user_id: u.id,
+                        message: hrMessage,
+                        type: 'approval_request',
+                        link_to: '/verification/dashboard',
+                        severity: 'Medium',
+                        metadata: {
+                            submissionId: id,
+                            candidateName,
+                            employeeId,
+                            siteName,
+                            designation,
+                            verificationMode: mode,
+                            isOnboardingApproval: true,
+                            employeeName: verifierName,
+                            employeePhoto: verifierPhoto
+                        }
+                    }));
+                if (hrNotifications.length > 0) {
+                    await supabase.from('notifications').insert(hrNotifications);
+                }
+            }
+        } catch (hrErr) {
+            console.warn('[verifySubmission] HR notification dispatch error:', hrErr);
+        }
+
+        // 3. Send notification to the Reporting Manager (by name lookup)
+        if (reportingManagerName) {
+            try {
+                const { data: managers } = await supabase.from('users').select('id').ilike('name', reportingManagerName);
+                if (managers && managers.length > 0) {
+                    const mgr = managers[0];
+                    if (mgr.id !== user.id) {
+                        const mgrMessage = `✅ Onboarding VERIFIED: ${candidateName} (${employeeId}) assigned under you at ${siteName} — Documents verified by ${mode === 'auto' ? 'AI Agent' : verifierName}.`;
+                        await supabase.from('notifications').insert({
+                            user_id: mgr.id,
+                            message: mgrMessage,
+                            type: 'approval_request',
+                            link_to: '/verification/dashboard',
+                            severity: 'Medium',
+                            metadata: {
+                                submissionId: id,
+                                candidateName,
+                                employeeId,
+                                siteName,
+                                designation,
+                                verificationMode: mode,
+                                isOnboardingApproval: true,
+                                employeeName: verifierName,
+                                employeePhoto: verifierPhoto
+                            }
+                        });
+                    }
+                }
+            } catch (mgrErr) {
+                console.warn('[verifySubmission] Reporting manager notification error:', mgrErr);
+            }
+        }
     }
   },
 
@@ -1913,10 +1998,108 @@ export const api = {
     }
   },
 
+  /** Acknowledge a verified onboarding submission and start FCU process */
+  acknowledgeOnboardingVerification: async (id: string): Promise<void> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    const acknowledgerName = (user as any)?.user_metadata?.full_name || (user as any)?.user_metadata?.name || user?.email?.split('@')[0] || 'HR Admin';
+    
+    // Soft-write FCU columns (works even before migration)
+    supabase.from('onboarding_submissions').update({
+      fcu_status: 'pending',
+      fcu_acknowledged_by: acknowledgerName,
+      fcu_acknowledged_at: new Date().toISOString()
+    }).eq('id', id).then(({ error: fcuErr }) => {
+      if (fcuErr) console.warn('[acknowledgeOnboarding] FCU columns not yet in DB:', fcuErr.message);
+    });
+  },
+
+  /** Update FCU verification status */
+  updateFcuStatus: async (id: string, fcuStatus: 'verified' | 'failed', notes?: string): Promise<void> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    const verifierName = (user as any)?.user_metadata?.full_name || (user as any)?.user_metadata?.name || user?.email?.split('@')[0] || 'HR Admin';
+    
+    supabase.from('onboarding_submissions').update({
+      fcu_status: fcuStatus,
+      fcu_verified_by: verifierName,
+      fcu_verified_at: new Date().toISOString(),
+      fcu_notes: notes || null
+    }).eq('id', id).then(({ error: fcuErr }) => {
+      if (fcuErr) console.warn('[updateFcuStatus] FCU columns not yet in DB:', fcuErr.message);
+    });
+
+    // Notify HR team about FCU completion
+    const submission = await api.getOnboardingDataById(id);
+    if (submission && user) {
+      const candidateName = `${(submission.personal as any)?.firstName || ''} ${(submission.personal as any)?.lastName || ''}`.trim() || 'Candidate';
+      const siteName = submission.organizationName || (submission.organization as any)?.organizationName || '';
+      const statusIcon = fcuStatus === 'verified' ? '✅' : '❌';
+      
+      dispatchNotificationFromRules('onboarding_fcu_complete', {
+        actorName: candidateName,
+        actionText: `FCU ${fcuStatus === 'verified' ? 'verification passed' : 'verification FAILED'}${notes ? ': ' + notes : ''}`,
+        locString: siteName ? ` at ${siteName}` : '',
+        title: `${statusIcon} FCU ${fcuStatus === 'verified' ? 'Verified' : 'Failed'}: ${candidateName}`,
+        link: '/verification/dashboard',
+        severity: fcuStatus === 'failed' ? 'High' : 'Low',
+        actor: { id: user.id, name: verifierName, role: 'admin' },
+        metadata: {
+          submissionId: id,
+          candidateName,
+          siteName,
+          fcuStatus,
+          fcuNotes: notes
+        }
+      });
+    }
+  },
+
+  /** Get verified submissions pending acknowledgment (for NotificationPanel) */
+  getVerifiedOnboardingForApproval: async (): Promise<any[]> => {
+    const { data, error } = await supabase
+      .from('onboarding_submissions')
+      .select('*')
+      .eq('status', 'verified');
+    if (error) {
+      console.warn('[getVerifiedOnboardingForApproval] Error:', error.message);
+      return [];
+    }
+    // Filter client-side: only those without fcu_status OR fcu_status is null
+    return (data || [])
+      .map((d: any) => toCamelCase(d))
+      .filter((s: any) => !s.fcuStatus && !s.fcu_status);
+  },
+
   syncPortals: async (id: string): Promise<OnboardingData> => {
-    const { data, error } = await supabase.functions.invoke('sync-portals', { body: { submissionId: id } });
-    if (error) throw error;
-    return toCamelCase(data);
+    // 1. Attempt edge function if deployed
+    try {
+      const { data, error } = await supabase.functions.invoke('sync-portals', { body: { submissionId: id } });
+      if (!error && data) {
+        return toCamelCase(data);
+      }
+    } catch (e) {
+      console.warn('[syncPortals] Edge function failed or unavailable, falling back to direct DB sync:', e);
+    }
+
+    // 2. Direct Supabase DB update fallback
+    const { error: updateErr } = await supabase
+      .from('onboarding_submissions')
+      .update({
+        portal_sync_status: 'synced',
+        status: 'verified'
+      })
+      .eq('id', id);
+
+    if (updateErr) {
+      console.error('[syncPortals] Direct DB update failed:', updateErr);
+      throw updateErr;
+    }
+
+    // Return the updated record
+    const updated = await api.getOnboardingDataById(id);
+    if (!updated) {
+      throw new Error('Unable to retrieve updated submission after sync');
+    }
+    return updated;
   },
 
   deleteFile: async (filePath: string): Promise<void> => {

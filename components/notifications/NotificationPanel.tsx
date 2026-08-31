@@ -21,6 +21,7 @@ import {
     Trash2,
     MessageSquare
 } from 'lucide-react';
+import type { OnboardingData } from '../../types/onboarding';
 import { format, formatDistanceToNow, isToday, isYesterday, parseISO } from 'date-fns';
 import type { Notification, NotificationType, AttendanceUnlockRequest, LeaveRequest, ExtraWorkLog, SiteFinanceRecord, SiteInvoiceRecord } from '../../types';
 import Button from '../ui/Button';
@@ -83,6 +84,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
     const [financeRequests, setFinanceRequests] = React.useState<SiteFinanceRecord[]>([]);
     const [invoiceAlerts, setInvoiceAlerts] = React.useState<SiteInvoiceRecord[]>([]);
     const [reportAccessRequests, setReportAccessRequests] = React.useState<any[]>([]);
+    const [onboardingApprovals, setOnboardingApprovals] = React.useState<OnboardingData[]>([]);
     
     const [expandedSections, setExpandedSections] = React.useState({
         unlocks: false,
@@ -94,7 +96,8 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
         violations: false,
         inactive: false,
         team: false,
-        reportAccess: false
+        reportAccess: false,
+        onboarding: false
     });
     const [expandedDetails, setExpandedDetails] = React.useState<Record<string, boolean>>({});
 
@@ -118,7 +121,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
         return ['hr', 'hr_ops'].includes(role);
     }, [user]);
 
-    const toggleSection = (section: 'unlocks' | 'leaves' | 'claims' | 'finance' | 'invoices' | 'general' | 'violations' | 'inactive' | 'team' | 'reportAccess') => {
+    const toggleSection = (section: 'unlocks' | 'leaves' | 'claims' | 'finance' | 'invoices' | 'general' | 'violations' | 'inactive' | 'team' | 'reportAccess' | 'onboarding') => {
         setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
     };
 
@@ -271,6 +274,19 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
             } else {
                 setInactiveEmployees([]);
             }
+
+            // Fetch verified onboarding submissions pending FCU acknowledgment
+            if (isSuperAdmin || isHR) {
+                try {
+                    const pendingOnboarding = await api.getVerifiedOnboardingForApproval();
+                    setOnboardingApprovals(pendingOnboarding);
+                } catch (obErr) {
+                    console.warn('[Approvals] Failed to fetch onboarding approvals:', obErr);
+                    setOnboardingApprovals([]);
+                }
+            } else {
+                setOnboardingApprovals([]);
+            }
         } catch (err) {
             console.error('Error fetching pending approvals:', err);
         }
@@ -302,6 +318,19 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
         } finally {
             setIsActionLoading(null);
             // Refresh counts to update badge
+            useNotificationStore.getState().fetchNotifications();
+        }
+    };
+
+    const handleAcknowledgeOnboarding = async (submissionId: string) => {
+        setIsActionLoading(submissionId);
+        try {
+            await api.acknowledgeOnboardingVerification(submissionId);
+            setOnboardingApprovals(prev => prev.filter(s => s.id !== submissionId));
+        } catch (err) {
+            console.error('Error acknowledging onboarding:', err);
+        } finally {
+            setIsActionLoading(null);
             useNotificationStore.getState().fetchNotifications();
         }
     };
@@ -704,7 +733,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
 
     const isUserAdmin = user && isAdmin(user.role);
     const pendingCount = isManagerRole 
-        ? (unlockRequests.length + leaveRequests.length + extraWorkClaims.length + financeRequests.length + inactiveEmployees.length + securityViolations.length + invoiceAlerts.length + teamActivityNotifications.length + (isUserAdmin ? reportAccessRequests.length : 0)) 
+        ? (unlockRequests.length + leaveRequests.length + extraWorkClaims.length + financeRequests.length + inactiveEmployees.length + securityViolations.length + invoiceAlerts.length + teamActivityNotifications.length + onboardingApprovals.length + (isUserAdmin ? reportAccessRequests.length : 0)) 
         : (securityViolations.length + invoiceAlerts.length);
 
     if (!isOpen) return null;
@@ -1203,6 +1232,106 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                                                     </div>
                                                 </div>
                                             ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                            {/* Onboarding Approvals - AI Verified, pending FCU acknowledgment */}
+                            {onboardingApprovals.length > 0 && (
+                                <div className={`group rounded-2xl overflow-hidden transition-all duration-300 border ${isMobile ? 'border-teal-500/30 bg-teal-500/5' : 'border-teal-100 bg-white hover:shadow-md'}`}>
+                                    <button 
+                                        onClick={() => toggleSection('onboarding')}
+                                        className="w-full p-3 flex items-center justify-between bg-transparent"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className={`p-2 rounded-xl flex items-center justify-center ${isMobile ? 'bg-teal-500/20 text-teal-400 shadow-[0_0_10px_rgba(20,184,166,0.2)]' : 'bg-teal-100 text-teal-600'}`}>
+                                                <UserPlus className="w-4 h-4" />
+                                            </div>
+                                            <div className="text-left">
+                                                <p className={`text-xs font-bold ${isMobile ? 'text-white' : 'text-gray-900'}`}>Onboarding Approvals</p>
+                                                <p className={`text-[10px] ${isMobile ? 'text-teal-400' : 'text-teal-500'}`}>AI Verified — Acknowledge for FCU</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className={`flex h-5 min-w-[20px] px-1.5 items-center justify-center rounded-full text-[10px] font-bold ${isMobile ? 'bg-teal-500 text-white shadow-[0_0_10px_rgba(20,184,166,0.4)]' : 'bg-teal-100 text-teal-700'}`}>
+                                                {onboardingApprovals.length}
+                                            </span>
+                                            {expandedSections.onboarding ? <ChevronUp className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} /> : <ChevronDown className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} />}
+                                        </div>
+                                    </button>
+                                    
+                                    {expandedSections.onboarding && (
+                                        <div className={`p-3 space-y-3 border-t ${isMobile ? 'border-teal-500/10' : 'border-teal-100/50'}`}>
+                                            <div className="flex items-center gap-2 px-1 py-1">
+                                                <CheckCircle className="w-3.5 h-3.5 text-teal-500" />
+                                                <span className={`text-[10px] font-black uppercase tracking-wider ${isMobile ? 'text-teal-400' : 'text-teal-700'}`}>
+                                                    Documents Verified — Start Field Check
+                                                </span>
+                                            </div>
+                                            {onboardingApprovals.map(sub => {
+                                                const candidateName = `${(sub.personal as any)?.firstName || ''} ${(sub.personal as any)?.lastName || ''}`.trim() || 'Candidate';
+                                                const empId = (sub.personal as any)?.employeeId || sub.id?.slice(0, 8) || '';
+                                                const siteName = sub.organizationName || (sub.organization as any)?.organizationName || '';
+                                                const designation = (sub.organization as any)?.designation || '';
+                                                const verifiedAt = sub.verifiedAt || (sub as any)?.verified_at;
+                                                const verifiedBy = sub.verifiedBy || (sub as any)?.verified_by || 'AI Agent';
+                                                
+                                                return (
+                                                    <div key={sub.id} className={`rounded-xl p-3 border ${isMobile ? 'bg-black/20 border-white/5' : 'bg-teal-50/30 border-teal-100'}`}>
+                                                        <div className="flex items-center gap-3 mb-3">
+                                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isMobile ? 'bg-teal-500/20 text-teal-400' : 'bg-teal-100 text-teal-600'}`}>
+                                                                <UserPlus className="w-4 h-4" />
+                                                            </div>
+                                                            <div className="flex-1 min-w-0">
+                                                                <div className="flex items-center justify-between">
+                                                                    <p className={`text-xs font-bold truncate ${isMobile ? 'text-white' : 'text-gray-900'}`}>{candidateName}</p>
+                                                                    <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-teal-500/10 text-teal-500 border border-teal-500/20">
+                                                                        {empId}
+                                                                    </span>
+                                                                </div>
+                                                                <p className={`text-[9px] ${isMobile ? 'text-white/50' : 'text-teal-700/60'}`}>
+                                                                    {designation}{siteName ? ` · ${siteName}` : ''}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <div className={`grid grid-cols-2 gap-2 mb-3`}>
+                                                            <div className={`rounded-lg p-2 ${isMobile ? 'bg-black/20' : 'bg-white/50 border border-teal-100/50'}`}>
+                                                                <p className={`text-[8px] uppercase font-bold mb-0.5 ${isMobile ? 'text-white/40' : 'text-gray-400'}`}>Verified By</p>
+                                                                <p className={`text-[10px] font-bold ${isMobile ? 'text-white/80' : 'text-gray-700'}`}>
+                                                                    {verifiedBy === 'Paradigm AI Agent' ? '🤖 AI Agent' : verifiedBy}
+                                                                </p>
+                                                            </div>
+                                                            <div className={`rounded-lg p-2 ${isMobile ? 'bg-black/20' : 'bg-white/50 border border-teal-100/50'}`}>
+                                                                <p className={`text-[8px] uppercase font-bold mb-0.5 ${isMobile ? 'text-white/40' : 'text-gray-400'}`}>Verified On</p>
+                                                                <p className={`text-[10px] font-bold ${isMobile ? 'text-white/80' : 'text-gray-700'}`}>
+                                                                    {verifiedAt ? format(parseISO(verifiedAt), 'dd MMM yyyy, hh:mm a') : '—'}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex gap-2">
+                                                            <Button 
+                                                                size="sm" 
+                                                                disabled={isActionLoading === sub.id}
+                                                                className="flex-1 bg-teal-600 hover:bg-teal-700 border-none text-[9px] uppercase font-bold h-8 shadow-lg shadow-teal-900/20"
+                                                                onClick={() => sub.id && handleAcknowledgeOnboarding(sub.id)}
+                                                            >
+                                                                <CheckCircle className="w-3 h-3 mr-1" /> Acknowledge & Start FCU
+                                                            </Button>
+                                                            <Button 
+                                                                size="sm" 
+                                                                variant="outline"
+                                                                className={`flex-1 text-[9px] uppercase font-bold h-8 ${isMobile ? 'border-white/10 text-white hover:bg-white/5' : 'border-teal-200 text-teal-700 hover:bg-teal-50'}`}
+                                                                onClick={() => {
+                                                                    onClose();
+                                                                    navigate(`/onboarding/review/${sub.id}`);
+                                                                }}
+                                                            >
+                                                                <FileText className="w-3 h-3 mr-1" /> View Details
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     )}
                                 </div>
