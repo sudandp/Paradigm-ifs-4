@@ -161,9 +161,10 @@ const AddEmployee: React.FC = () => {
     const handleSaveDraft = useCallback(async () => {
         setSaveStatus('saving');
         try {
-            const { draftId } = await api.saveDraft(data);
-            const updatedData = draftId !== data.id ? { ...data, id: draftId } : data;
-            if (draftId !== data.id) {
+            const currentData = useOnboardingStore.getState().data;
+            const { draftId } = await api.saveDraft(currentData);
+            const updatedData = draftId !== currentData.id ? { ...currentData, id: draftId } : currentData;
+            if (draftId !== currentData.id) {
                 setData(updatedData);
             }
             lastSavedDataRef.current = JSON.stringify(updatedData);
@@ -179,7 +180,7 @@ const AddEmployee: React.FC = () => {
             });
             setSaveStatus('dirty');
         }
-    }, [data, setData]);
+    }, [setData]);
     
     useEffect(() => {
         const isDraft = !data.id || data.id.startsWith('draft_') || data.status === 'draft';
@@ -282,9 +283,10 @@ const AddEmployee: React.FC = () => {
     
     const handleSubmit = async () => {
         setIsSubmitting(true);
-        const submissionData = { ...data, status: 'pending' as const };
+        const currentData = useOnboardingStore.getState().data;
+        const submissionData = { ...currentData, status: 'pending' as const };
         try {
-            const isExistingRecord = !!data.id && !data.id.startsWith('draft_');
+            const isExistingRecord = !!currentData.id && !currentData.id.startsWith('draft_');
             if (isExistingRecord) {
                 await api.updateOnboarding(submissionData);
                 setToast({ message: 'Application updated successfully!', type: 'success' });

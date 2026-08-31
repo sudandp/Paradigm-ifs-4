@@ -5,7 +5,7 @@ import type { OnboardingData } from '@/types';
 import StatusChip from '@/components/ui/StatusChip';
 import Button from '@/components/ui/Button';
 import { useNavigate } from 'react-router-dom';
-import { Search, Eye, FileText, Send, RefreshCw, AlertTriangle, Loader2, CheckSquare, XSquare, Square, Edit2, Trash2, Bug, Play, RotateCcw, X, CheckCircle2, Users, Clock, XCircle, MapPin, Briefcase, Calendar, Bot, Sparkles, UserCheck } from 'lucide-react';
+import { Search, Eye, FileText, Send, RefreshCw, AlertTriangle, Loader2, CheckSquare, XSquare, Square, Edit2, Trash2, Bug, Play, RotateCcw, X, CheckCircle2, Users, Clock, XCircle, MapPin, Briefcase, Calendar, Bot, Sparkles, UserCheck, Building2 } from 'lucide-react';
 import Toast from '@/components/ui/Toast';
 import TableSkeleton from '@/components/skeletons/TableSkeleton';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -468,10 +468,19 @@ const VerificationDashboard: React.FC = () => {
         if (isAdmin(user.role)) return true;
         const roleId = user.roleId?.toLowerCase() || '';
         const roleName = user.role?.toLowerCase() || '';
-        const roleNameUnderscore = roleName.replace(/\s+/g, '_');
-        const roleNameHyphen = roleName.replace(/\s+/g, '-');
-        const directPerms = (user as any).permissions || [];
+        const roleNameUnderscore = roleName.replace(/[\s-]+/g, '_');
+        const roleNameHyphen = roleName.replace(/[\s_]+/g, '-');
+        
+        // HR, HR Ops, HR Onboarding, Admin, Management, Director always have verification dashboard access
+        const allowedRoles = [
+            'admin', 'super_admin', 'hr', 'hr_ops', 'hr_operations', 'hr_operation', 
+            'hr_onboarding', 'management', 'director', 'operations_head', 'general_manager', 'developer'
+        ];
+        if (allowedRoles.includes(roleId) || allowedRoles.includes(roleName) || allowedRoles.includes(roleNameUnderscore)) {
+            return true;
+        }
 
+        const directPerms = (user as any).permissions || [];
         const userPerms = permissions[user.roleId] || 
                permissions[roleId] || 
                permissions[user.role] || 
@@ -482,6 +491,81 @@ const VerificationDashboard: React.FC = () => {
         const combined = [...new Set([...userPerms, ...directPerms])];
         return combined.includes('view_all_submissions');
     }, [user, permissions]);
+
+    const isSouthWallUser = useMemo(() => {
+        if (!user) return false;
+        const lastCompany = useAuthStore.getState().lastCompany || '';
+        const raw = (user.societyName || user.organizationName || (user as any).companyName || (user as any).company_name || (user as any).companyId || (user as any).company_id || user.department || lastCompany || '').toLowerCase();
+        const email = (user.email || '').toLowerCase();
+        return raw.includes('south wall') || raw.includes('southwall') || raw.includes('south-wall') || email.includes('southwall') || email.includes('south-wall');
+    }, [user]);
+
+    const isGlobalHROrOps = useMemo(() => {
+        if (!user) return false;
+        if (isAdmin(user.role)) return true;
+        const roleId = (user.roleId || '').toLowerCase().trim();
+        const roleName = (user.role || '').toLowerCase().trim();
+        const roleNormalized = roleName.replace(/[\s-_]+/g, '_');
+
+        // HR Ops, Operations Head, Director, Management, Super Admin, Developer always have global multi-company view
+        const globalRoles = [
+            'admin', 'super_admin', 'developer',
+            'hr_ops', 'hr_operations', 'hr_operation', 'operations_head',
+            'director', 'management', 'general_manager'
+        ];
+        if (globalRoles.includes(roleId) || globalRoles.includes(roleNormalized)) {
+            return true;
+        }
+
+        // Global HR check (if role is HR / HR Manager without specific SouthWall binding)
+        if ((roleId === 'hr' || roleNormalized === 'hr' || roleNormalized === 'hr_manager' || roleNormalized === 'hr_head') && !isSouthWallUser) {
+            return true;
+        }
+
+        return false;
+    }, [user, isSouthWallUser]);
+
+    const isSubmissionForSouthWall = useCallback((s: OnboardingData): boolean => {
+        if (!s) return false;
+        const orgObj = (s.organization as any) || {};
+        const orgName = (s.organizationName || orgObj.organizationName || (s as any).organization_name || '').toLowerCase();
+        const site = (orgObj.site || orgObj.location || '').toLowerCase();
+        const compName = (orgObj.companyName || orgObj.companyId || (s as any).companyName || (s as any).company_name || (s as any).company_id || '').toLowerCase();
+        const societyName = (orgObj.societyName || orgObj.societyId || (s as any).societyName || (s as any).society_name || '').toLowerCase();
+        const dept = (orgObj.department || '').toLowerCase();
+        const createdBy = ((s as any).createdBy || (s as any).created_by || '').toLowerCase();
+        const email = (s.personal?.email || '').toLowerCase();
+        const orgId = (s.organizationId || (s as any).organization_id || orgObj.organizationId || '').toLowerCase();
+
+        // SouthWall explicit company and operating company tokens
+        const southWallKeywords = ['south wall', 'southwall', 'south-wall', 'swllp', 'comp_1774527590821'];
+        const matchesKeyword = southWallKeywords.some(kw => 
+            orgName.includes(kw) || site.includes(kw) || compName.includes(kw) || societyName.includes(kw) || dept.includes(kw) || createdBy.includes(kw) || email.includes(kw) || orgId.includes(kw)
+        );
+        if (matchesKeyword) return true;
+
+        // SouthWall associated known sites/entities
+        const southWallSites = [
+            'gk_ispat', 'gk ispat', 'iskcon', 'habitat_aura', 'habitat aura', 'keshav_setlur', 'keshav setlur',
+            'nikoo_homes', 'nikoo homes', 'brigade_jacaranda', 'brigade jacaranda', 'brigade_laburnum', 'brigade laburnum',
+            'dsr_eden_greens', 'dsr eden greens', 'global_edifice_infra', 'global edifice', 'habitat_eden_heights', 'eden heights',
+            'icon_sanctury', 'icon sanctuary', 'nadathur_fame_india', 'nadathur', 'paliwal_ttn', 'paliwal', 'purva_sunshine',
+            'purva sunshine', 'raja_ritz_avenue', 'raja ritz', 'serene_brigade', 'shriram_smrithi', 'shriram smrithi',
+            'shriram_spurthi', 'shriram spurthi', 'sjr_spencer', 'sjr spencer', 'snn_spiritua', 'snn spiritua'
+        ];
+        const matchesSite = southWallSites.some(st => 
+            orgName.includes(st) || site.includes(st) || orgId.includes(st)
+        );
+        if (matchesSite) return true;
+
+        if (user?.id && ((s as any).userId === user.id || (s as any).user_id === user.id || (s as any).created_user_id === user.id)) {
+            return true;
+        }
+
+        return false;
+    }, [user]);
+
+    const [companyFilter, setCompanyFilter] = useState<'all' | 'southwall' | 'paradigm'>('all');
 
     const [submissions, setSubmissions] = useState<OnboardingData[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -497,6 +581,112 @@ const VerificationDashboard: React.FC = () => {
     const [showDebugModal, setShowDebugModal] = useState(false);
     const [rejectModalSubmission, setRejectModalSubmission] = useState<OnboardingData | null>(null);
     const [isRejecting, setIsRejecting] = useState(false);
+
+    // Cache of users for resolving creator names & photos
+    const [usersMap, setUsersMap] = useState<Record<string, { name: string; photo?: string | null; role?: string; email?: string }>>({});
+
+    useEffect(() => {
+        api.getUsers({ fetchAll: true }).then((usersList: any) => {
+            const raw = Array.isArray(usersList) ? usersList : (usersList?.data || []);
+            const map: Record<string, { name: string; photo?: string | null; role?: string; email?: string }> = {};
+            raw.forEach((u: any) => {
+                if (u) {
+                    const resolvedName = u.name || u.fullName || u.full_name || u.displayName || u.display_name || u.email?.split('@')[0] || 'User';
+                    const resolvedPhoto = u.photoUrl || u.photo_url || u.avatarUrl || u.avatar_url || u.profilePhoto || u.profile_photo || u.picture || u.avatar || null;
+                    const resolvedRole = u.role || (u.roles as any)?.display_name || (u.role as any)?.displayName || u.roleId || u.role_id || '';
+                    const resolvedEmail = u.email || '';
+
+                    const entry = {
+                        name: resolvedName,
+                        photo: resolvedPhoto,
+                        role: resolvedRole,
+                        email: resolvedEmail
+                    };
+
+                    if (u.id) map[u.id] = entry;
+                    if (resolvedEmail) map[resolvedEmail.toLowerCase().trim()] = entry;
+                    if (resolvedName) map[resolvedName.toLowerCase().trim()] = entry;
+                }
+            });
+            setUsersMap(map);
+        }).catch(err => console.warn('[VerificationDashboard] Failed to fetch users map:', err));
+    }, []);
+
+    const getCreatorInfo = useCallback((s: OnboardingData) => {
+        // 1. Check explicit creator name stored when created
+        const explicitName = (s as any).created_by_name || (s as any).createdByName || (s as any).createdBy || (s as any).created_by || (s as any).submitted_by || (s as any).submittedBy || (s.personal as any)?.createdBy || (s.personal as any)?.created_by;
+        const explicitPhoto = (s as any).created_by_photo || (s as any).createdByPhoto || null;
+        const explicitRole = (s as any).created_by_role || (s as any).createdByRole || '';
+
+        // 2. Creator ID lookup in users map
+        const creatorId = (s as any).created_user_id || (s as any).createdUserId || (s as any).user_id || (s as any).userId || '';
+        const creatorFromMap = (creatorId ? usersMap[creatorId] : null)
+            || (explicitName ? usersMap[String(explicitName).toLowerCase().trim()] : null);
+
+        let name = '';
+        let photo: string | null = null;
+        let role = '';
+
+        if (creatorFromMap) {
+            name = creatorFromMap.name;
+            photo = creatorFromMap.photo || explicitPhoto || null;
+            role = creatorFromMap.role || explicitRole || '';
+        } else if (explicitName && typeof explicitName === 'string' && explicitName.trim() !== '') {
+            name = explicitName;
+            photo = explicitPhoto || null;
+            role = explicitRole || '';
+        } else if (s.organization?.reportingManager && usersMap[s.organization.reportingManager.toLowerCase().trim()]) {
+            const mgr = usersMap[s.organization.reportingManager.toLowerCase().trim()];
+            name = mgr.name;
+            photo = mgr.photo || null;
+            role = mgr.role || '';
+        } else {
+            name = 'HR Staff';
+            photo = null;
+            role = '';
+        }
+
+        const initials = name
+            ? name.split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase()
+            : 'HR';
+
+        return { name, photo, initials, role };
+    }, [usersMap]);
+
+    const getEmployeePhoto = useCallback((s: OnboardingData): string | null => {
+        const p = s.personal as any;
+        if (!p) return null;
+
+        // 1. Direct string URL or base64
+        if (typeof p.photo === 'string' && p.photo.trim() !== '') return p.photo;
+        if (typeof p.photoUrl === 'string' && p.photoUrl.trim() !== '') return p.photoUrl;
+        if (typeof p.photo_url === 'string' && p.photo_url.trim() !== '') return p.photo_url;
+        if (typeof p.profilePhoto === 'string' && p.profilePhoto.trim() !== '') return p.profilePhoto;
+        if (typeof p.profile_photo === 'string' && p.profile_photo.trim() !== '') return p.profile_photo;
+
+        // 2. UploadedFile object with preview / url / dataUrl
+        if (p.photo && typeof p.photo === 'object') {
+            const url = p.photo.url || p.photo.preview || p.photo.dataUrl;
+            if (url && typeof url === 'string') return url;
+        }
+        if (p.profilePhoto && typeof p.profilePhoto === 'object') {
+            const url = p.profilePhoto.url || p.profilePhoto.preview || p.profilePhoto.dataUrl;
+            if (url && typeof url === 'string') return url;
+        }
+
+        // 3. Fallback to documents photo if available
+        const docs = (s as any).documents;
+        if (docs) {
+            const docPhoto = docs.photo || docs.passportPhoto || docs.profilePhoto || docs.passport_photo || docs.profile_photo;
+            if (typeof docPhoto === 'string' && docPhoto.trim() !== '') return docPhoto;
+            if (docPhoto && typeof docPhoto === 'object') {
+                const url = docPhoto.url || docPhoto.preview || docPhoto.dataUrl;
+                if (url && typeof url === 'string') return url;
+            }
+        }
+
+        return null;
+    }, []);
 
     const updateOutboxCount = useCallback(async () => {
       try {
@@ -589,9 +779,24 @@ const VerificationDashboard: React.FC = () => {
         };
     }, [fetchSubmissions]);
 
-    const filteredSubmissions = useMemo(() => {
+    // Filter submissions by company scope
+    const companyScopedSubmissions = useMemo(() => {
         if (!submissions) return [];
-        return submissions.filter(s => {
+        if (companyFilter === 'southwall') {
+            return submissions.filter(s => isSubmissionForSouthWall(s));
+        }
+        if (companyFilter === 'paradigm') {
+            return submissions.filter(s => !isSubmissionForSouthWall(s));
+        }
+        if (!isGlobalHROrOps && isSouthWallUser) {
+            return submissions.filter(s => isSubmissionForSouthWall(s));
+        }
+        return submissions;
+    }, [submissions, companyFilter, isGlobalHROrOps, isSouthWallUser, isSubmissionForSouthWall]);
+
+    const filteredSubmissions = useMemo(() => {
+        if (!companyScopedSubmissions) return [];
+        return companyScopedSubmissions.filter(s => {
             const siteName = s.organizationName || s.organization?.organizationName || '';
             const query = searchTerm.toLowerCase().trim();
             if (!query) return true;
@@ -608,7 +813,7 @@ const VerificationDashboard: React.FC = () => {
                 siteName.toLowerCase().includes(query)
             );
         });
-    }, [submissions, searchTerm]);
+    }, [companyScopedSubmissions, searchTerm]);
 
     const handleApprove = async (id: string) => {
         const verifierName = (user as any)?.user_metadata?.full_name || (user as any)?.user_metadata?.name || user?.email?.split('@')[0] || 'HR Admin';
@@ -810,16 +1015,16 @@ const VerificationDashboard: React.FC = () => {
     const filterTabs = ['all', 'draft', 'pending', 'verified', 'rejected'];
     const colSpan = statusFilter === 'verified' ? 7 : 8;
 
-    // Calculate counts for each status
+    // Calculate counts for each status based on companyScopedSubmissions
     const counts = useMemo(() => {
         return {
-            all: submissions.length,
-            draft: submissions.filter(s => s.status === 'draft').length,
-            pending: submissions.filter(s => s.status === 'pending').length,
-            verified: submissions.filter(s => s.status === 'verified').length,
-            rejected: submissions.filter(s => s.status === 'rejected').length
+            all: companyScopedSubmissions.length,
+            draft: companyScopedSubmissions.filter(s => s.status === 'draft').length,
+            pending: companyScopedSubmissions.filter(s => s.status === 'pending').length,
+            verified: companyScopedSubmissions.filter(s => s.status === 'verified').length,
+            rejected: companyScopedSubmissions.filter(s => s.status === 'rejected').length
         };
-    }, [submissions]);
+    }, [companyScopedSubmissions]);
 
     if (!hasAccess) {
         return (
@@ -851,12 +1056,68 @@ const VerificationDashboard: React.FC = () => {
                     <div className="flex items-center gap-2">
                         <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">Onboarding Forms</h2>
                         <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                            {submissions.length} Total
+                            {companyScopedSubmissions.length} Total
                         </span>
+                        {isSouthWallUser && !isGlobalHROrOps && (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                                <Building2 className="w-3 h-3 text-amber-700" />
+                                SouthWall Security
+                            </span>
+                        )}
                     </div>
-                    <p className="text-slate-500 text-sm mt-0.5">Manage, review, and verify employee onboarding applications across sites</p>
+                    <p className="text-slate-500 text-sm mt-0.5">
+                        {isSouthWallUser && !isGlobalHROrOps
+                            ? 'Showing SouthWall employee onboarding applications & records'
+                            : 'Manage, review, and verify employee onboarding applications across sites'}
+                    </p>
                 </div>
-                <div className="flex items-center gap-2.5">
+                <div className="flex flex-wrap items-center gap-2.5">
+                    <div className="flex items-center bg-white p-1 rounded-xl border border-slate-200 shadow-2xs">
+                        <span className="text-[11px] font-bold text-slate-500 px-2 flex items-center gap-1">
+                            <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                            Company:
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => setCompanyFilter('all')}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                                companyFilter === 'all'
+                                    ? 'bg-emerald-600 text-white shadow-xs'
+                                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                            }`}
+                        >
+                            All ({submissions.length})
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setCompanyFilter('southwall')}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                                companyFilter === 'southwall'
+                                    ? 'bg-amber-600 text-white shadow-xs'
+                                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                            }`}
+                        >
+                            SouthWall ({submissions.filter(s => isSubmissionForSouthWall(s)).length})
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setCompanyFilter('paradigm')}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                                companyFilter === 'paradigm'
+                                    ? 'bg-emerald-700 text-white shadow-xs'
+                                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                            }`}
+                        >
+                            Paradigm ({submissions.filter(s => !isSubmissionForSouthWall(s)).length})
+                        </button>
+                    </div>
+                    <button
+                      onClick={() => navigate('/onboarding/submissions')}
+                      className="px-3.5 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-1.5 border border-emerald-200 shadow-xs"
+                      title="View only submissions created by you"
+                    >
+                      <UserCheck className="w-3.5 h-3.5 text-emerald-600" /> My Submissions
+                    </button>
                     <button
                       onClick={handleManualSync}
                       disabled={isSyncing}
@@ -1022,14 +1283,34 @@ const VerificationDashboard: React.FC = () => {
                             <div className="text-center py-16 bg-slate-50/50 rounded-2xl border border-slate-200/80">
                                 <div className="flex flex-col items-center justify-center text-slate-400">
                                     <Search className="h-10 w-10 mb-3 opacity-30 text-emerald-600" />
-                                    <p className="text-sm font-semibold text-slate-600">No submissions found</p>
-                                    <p className="text-xs text-slate-400 mt-1">Try adjusting your search or filters</p>
+                                    <p className="text-sm font-semibold text-slate-700">
+                                        {companyFilter === 'southwall' 
+                                            ? 'No SouthWall onboarding submissions found' 
+                                            : companyFilter === 'paradigm' 
+                                                ? 'No Paradigm onboarding submissions found' 
+                                                : 'No submissions found'}
+                                    </p>
+                                    <p className="text-xs text-slate-400 mt-1">
+                                        {submissions.length > 0 && companyFilter !== 'all' 
+                                            ? `There are ${submissions.length} submission(s) in other company views.` 
+                                            : 'Try adjusting your search or filters'}
+                                    </p>
+                                    {submissions.length > 0 && companyFilter !== 'all' && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setCompanyFilter('all')}
+                                            className="mt-3 px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold transition-all shadow-2xs"
+                                        >
+                                            View All Submissions ({submissions.length})
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         ) : (
                             filteredSubmissions.map((s) => {
                                 const empDisplayName = [s.personal?.firstName, s.personal?.lastName].filter(Boolean).join(' ') || (s.personal?.mobile ? `Draft (${s.personal.mobile})` : (s.personal?.employeeId ? `Draft (${s.personal.employeeId})` : 'Draft Applicant'));
                                 const empInitials = ((s.personal?.firstName?.[0] || '') + (s.personal?.lastName?.[0] || '')) || 'DR';
+                                const empPhoto = getEmployeePhoto(s);
                                 const isDraft = s.status === 'draft';
 
                                 return (
@@ -1039,8 +1320,24 @@ const VerificationDashboard: React.FC = () => {
                                     )}
                                     <div className="flex justify-between items-start">
                                         <div className="flex items-center gap-3">
-                                            <div className={`h-11 w-11 rounded-full ${isDraft ? 'bg-slate-700' : 'bg-gradient-to-br from-emerald-500 to-teal-700'} text-white flex items-center justify-center font-black text-sm shadow-xs border-2 border-white`}>
-                                                {empInitials}
+                                            <div className="relative h-11 w-11 flex-shrink-0 flex items-center justify-center">
+                                                {empPhoto ? (
+                                                    <img 
+                                                        src={empPhoto} 
+                                                        alt={empDisplayName} 
+                                                        className="h-11 w-11 rounded-full object-cover border-2 border-slate-200 shadow-2xs"
+                                                        onError={(e) => {
+                                                            e.currentTarget.style.display = 'none';
+                                                            const fb = e.currentTarget.parentElement?.querySelector('.emp-fallback-m') as HTMLElement;
+                                                            if (fb) fb.style.display = 'flex';
+                                                        }}
+                                                    />
+                                                ) : null}
+                                                <div 
+                                                    className={`emp-fallback-m h-11 w-11 rounded-full ${isDraft ? 'bg-slate-700' : 'bg-gradient-to-br from-emerald-500 to-teal-700'} text-white items-center justify-center font-black text-sm shadow-2xs border-2 border-white uppercase ${empPhoto ? 'hidden' : 'flex'}`}
+                                                >
+                                                    {empInitials}
+                                                </div>
                                             </div>
                                             <div className="flex flex-col">
                                                 <div className="flex items-center gap-2">
@@ -1083,6 +1380,25 @@ const VerificationDashboard: React.FC = () => {
                                         <div className="flex flex-col gap-1.5">
                                             <span className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">Verified Documents</span>
                                             <DocumentVerificationBadges submission={s} onToggleDoc={(key) => handleToggleDocVerification(s.id!, key)} />
+                                        </div>
+                                        <div className="w-full h-px bg-slate-200/60"></div>
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">Created By</span>
+                                            {(() => {
+                                                const creator = getCreatorInfo(s);
+                                                return (
+                                                    <div className="flex items-center gap-1.5">
+                                                        {creator.photo ? (
+                                                            <img src={creator.photo} alt={creator.name} className="h-5 w-5 rounded-full object-cover border border-slate-300" />
+                                                        ) : (
+                                                            <div className="h-5 w-5 rounded-full bg-slate-700 text-white font-black text-[8.5px] flex items-center justify-center uppercase">
+                                                                {creator.initials}
+                                                            </div>
+                                                        )}
+                                                        <span className="text-xs text-slate-800 font-bold capitalize">{creator.name}</span>
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
                                         <div className="w-full h-px bg-slate-200/60"></div>
                                         <div className="flex items-center justify-between">
@@ -1247,7 +1563,7 @@ const VerificationDashboard: React.FC = () => {
                                     </div>
                                 </th>
                                 <th scope="col" className="px-3 py-3.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200 w-[180px]">Verified / Rejected By</th>
-                                <th scope="col" className="px-3 py-3.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200 w-[150px]">Created Date/Time</th>
+                                <th scope="col" className="px-3 py-3.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200 w-[200px]">Created By / Date</th>
                                 <th scope="col" className="sticky right-0 bg-slate-50/95 backdrop-blur-xs z-20 px-4 py-3.5 text-right text-[11px] font-bold text-slate-600 uppercase tracking-wider border-b border-slate-200 shadow-[-6px_0_10px_-2px_rgba(0,0,0,0.06)] w-[280px] min-w-[280px]">Actions</th>
                             </tr>
                         </thead>
@@ -1258,14 +1574,34 @@ const VerificationDashboard: React.FC = () => {
                                 <tr><td colSpan={colSpan} className="text-center py-16">
                                     <div className="flex flex-col items-center justify-center text-slate-400">
                                         <Search className="h-10 w-10 mb-3 opacity-30 text-emerald-600" />
-                                        <p className="text-sm font-semibold text-slate-600">No onboarding submissions found</p>
-                                        <p className="text-xs text-slate-400 mt-1">Try adjusting your search terms or filter tabs</p>
+                                        <p className="text-sm font-semibold text-slate-700">
+                                            {companyFilter === 'southwall' 
+                                                ? 'No SouthWall onboarding submissions found' 
+                                                : companyFilter === 'paradigm' 
+                                                    ? 'No Paradigm onboarding submissions found' 
+                                                    : 'No onboarding submissions found'}
+                                        </p>
+                                        <p className="text-xs text-slate-400 mt-1">
+                                            {submissions.length > 0 && companyFilter !== 'all' 
+                                                ? `There are ${submissions.length} submission(s) in other company views.` 
+                                                : 'Try adjusting your search terms or filter tabs'}
+                                        </p>
+                                        {submissions.length > 0 && companyFilter !== 'all' && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setCompanyFilter('all')}
+                                                className="mt-3 px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold transition-all shadow-2xs"
+                                            >
+                                                View All Submissions ({submissions.length})
+                                            </button>
+                                        )}
                                     </div>
                                 </td></tr>
                             ) : (
                                 filteredSubmissions.map((s) => {
                                     const empDisplayName = [s.personal?.firstName, s.personal?.lastName].filter(Boolean).join(' ') || (s.personal?.mobile ? `Draft (${s.personal.mobile})` : (s.personal?.employeeId ? `Draft (${s.personal.employeeId})` : 'Draft Applicant'));
                                     const empInitials = ((s.personal?.firstName?.[0] || '') + (s.personal?.lastName?.[0] || '')) || 'DR';
+                                    const empPhoto = getEmployeePhoto(s);
                                     const isDraft = s.status === 'draft';
                                     const currentRejectionReason = s.rejectionReason || (s as any).rejection_reason || s.personal?.rejectionReason || 'Profile Photo Mismatch';
                                     const currentRejectedBy = s.rejectedBy || (s as any).rejected_by || s.personal?.rejectedBy || 'HR Admin';
@@ -1276,8 +1612,24 @@ const VerificationDashboard: React.FC = () => {
                                         {/* Employee */}
                                         <td className="px-4 py-3.5 whitespace-nowrap align-middle">
                                             <div className="flex items-center gap-2.5">
-                                                <div className={`h-9 w-9 rounded-full ${isDraft ? 'bg-slate-700' : s.status === 'rejected' ? 'bg-gradient-to-br from-rose-500 to-rose-700' : 'bg-gradient-to-br from-emerald-500 to-teal-700'} text-white font-black text-xs flex items-center justify-center shadow-xs border-2 border-white flex-shrink-0`}>
-                                                    {empInitials}
+                                                <div className="relative h-9 w-9 flex-shrink-0 flex items-center justify-center">
+                                                    {empPhoto ? (
+                                                        <img 
+                                                            src={empPhoto} 
+                                                            alt={empDisplayName} 
+                                                            className="h-9 w-9 rounded-full object-cover border-2 border-white shadow-2xs"
+                                                            onError={(e) => {
+                                                                e.currentTarget.style.display = 'none';
+                                                                const fb = e.currentTarget.parentElement?.querySelector('.emp-fallback') as HTMLElement;
+                                                                if (fb) fb.style.display = 'flex';
+                                                            }}
+                                                        />
+                                                    ) : null}
+                                                    <div 
+                                                        className={`emp-fallback h-9 w-9 rounded-full ${isDraft ? 'bg-slate-700' : s.status === 'rejected' ? 'bg-gradient-to-br from-rose-500 to-rose-700' : 'bg-gradient-to-br from-emerald-500 to-teal-700'} text-white font-black text-xs items-center justify-center shadow-2xs border-2 border-white uppercase ${empPhoto ? 'hidden' : 'flex'}`}
+                                                    >
+                                                        {empInitials}
+                                                    </div>
                                                 </div>
                                                 <div className="flex flex-col justify-center">
                                                     <div className="flex items-center gap-1.5">
@@ -1404,12 +1756,45 @@ const VerificationDashboard: React.FC = () => {
                                             )}
                                         </td>
 
-                                        {/* Created Date/Time */}
+                                        {/* Created By / Date */}
                                         <td className="px-3 py-3.5 whitespace-nowrap align-middle">
-                                            <div className="flex items-center gap-1 text-[11px] font-medium text-slate-600">
-                                                <Calendar className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
-                                                <span>{formatCreatedDate(s.createdAt || s.created_at || s.enrollmentDate)}</span>
-                                            </div>
+                                            {(() => {
+                                                const creator = getCreatorInfo(s);
+                                                return (
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="relative h-7 w-7 flex-shrink-0 flex items-center justify-center">
+                                                            {creator.photo ? (
+                                                                <img 
+                                                                    src={creator.photo} 
+                                                                    alt={creator.name} 
+                                                                    className="h-7 w-7 rounded-full object-cover border border-slate-300 shadow-2xs" 
+                                                                    onError={(e) => {
+                                                                        e.currentTarget.style.display = 'none';
+                                                                        const fb = e.currentTarget.parentElement?.querySelector('.creator-fallback') as HTMLElement;
+                                                                        if (fb) fb.style.display = 'flex';
+                                                                    }}
+                                                                />
+                                                            ) : null}
+                                                            <div 
+                                                                className={`creator-fallback h-7 w-7 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 text-white font-black text-[10px] items-center justify-center shadow-2xs border border-slate-400 uppercase ${creator.photo ? 'hidden' : 'flex'}`}
+                                                            >
+                                                                {creator.initials}
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex flex-col justify-center">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span className="text-xs font-bold text-slate-800 capitalize leading-tight">
+                                                                    {creator.name}
+                                                                </span>
+                                                            </div>
+                                                            <div className="flex items-center gap-1 text-[10.5px] text-slate-500 font-medium mt-0.5">
+                                                                <Calendar className="h-3 w-3 text-slate-400 flex-shrink-0" />
+                                                                <span>{formatCreatedDate(s.createdAt || s.created_at || s.enrollmentDate)}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
                                         </td>
 
                                         {/* Sticky Actions Column */}

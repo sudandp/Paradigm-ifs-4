@@ -1462,7 +1462,7 @@ export const api = {
 
     const cacheKey = `verification_submissions_${status || 'all'}_${organizationId || 'all'}_${managerId || 'all'}`;
     return fetchWithCache(cacheKey, async () => {
-      let query = supabase.from('onboarding_submissions').select('*, user:user_id(reporting_manager_id)');
+      let query = supabase.from('onboarding_submissions').select('*');
       if (status && status !== 'all') query = query.eq('status', status);
       if (organizationId && organizationId !== 'all') query = query.eq('organization_id', organizationId);
       const { data, error } = await query.order('created_at', { ascending: false }).limit(5000);
@@ -1471,6 +1471,8 @@ export const api = {
       let filteredData = data || [];
       if (managerId) {
           filteredData = filteredData.filter((row: any) => 
+              row.user_id === managerId ||
+              row.created_user_id === managerId ||
               row.user?.reporting_manager_id === managerId || 
               row.user?.reporting_manager_2_id === managerId || 
               row.user?.reporting_manager_3_id === managerId
@@ -1478,7 +1480,7 @@ export const api = {
       }
       
       const mapped = (filteredData || []).map((row: any) => {
-        const item = toCamelCase(row) as OnboardingData;
+        const item = processUrlsForDisplay(toCamelCase(row)) as OnboardingData;
         if (item.status === 'rejected') {
           const cachedReason = typeof window !== 'undefined' ? localStorage.getItem('pifs_rejection_reason_' + item.id) : null;
           const cachedBy = typeof window !== 'undefined' ? localStorage.getItem('pifs_rejected_by_' + item.id) : null;
@@ -1568,11 +1570,27 @@ export const api = {
 
     const dataWithPaths = await processFilesForUpload(data, userId, submissionId);
     const snakedData = toSnakeCase(dataWithPaths);
+
+    // Resolve current user info for creator defaults
+    const currentActiveUser = useAuthStore.getState().user;
+    const currentUserName = currentActiveUser?.name || (currentActiveUser as any)?.full_name || session?.user?.user_metadata?.full_name || session?.user?.user_metadata?.name || session?.user?.email?.split('@')[0] || '';
+    const currentUserPhoto = (currentActiveUser as any)?.avatar_url || (currentActiveUser as any)?.photo_url || (currentActiveUser as any)?.profile_photo || session?.user?.user_metadata?.avatar_url || session?.user?.user_metadata?.picture || null;
+    const currentUserRole = currentActiveUser?.role || '';
     
+    // Preserve original creator info if already present; only set to current user on initial creation
+    const originalCreatedUserId = (data as any).createdUserId || (data as any).created_user_id || (snakedData as any).created_user_id || (data as any).userId || (data as any).user_id || userId;
+    const originalCreatedByName = (data as any).createdByName || (data as any).created_by_name || (data as any).createdBy || (data as any).created_by || (data as any).submitted_by || currentUserName;
+    const originalCreatedByPhoto = (data as any).createdByPhoto || (data as any).created_by_photo || currentUserPhoto;
+    const originalCreatedByRole = (data as any).createdByRole || (data as any).created_by_role || currentUserRole;
+
     const dbData = {
       ...snakedData,
       id: submissionId,
-      user_id: userId,
+      user_id: originalCreatedUserId,
+      created_user_id: originalCreatedUserId,
+      created_by_name: originalCreatedByName,
+      created_by_photo: originalCreatedByPhoto,
+      created_by_role: originalCreatedByRole,
       employee_id: data.personal?.employeeId || null,
       status: asDraft ? 'draft' : data.status,
       organization_id: data.organization?.organizationId || null,

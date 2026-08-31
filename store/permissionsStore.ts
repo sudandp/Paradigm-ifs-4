@@ -130,8 +130,21 @@ const defaultPermissions: Record<UserRole, Permission[]> = {
     'view_mobile_nav_home', 'view_mobile_nav_tasks', 'view_mobile_nav_profile'
   ],
   hr_ops: [
+    'view_all_submissions', 'manage_users', 'manage_sites', 'view_entity_management', 'view_templates_hub',
     'view_all_attendance', 'view_own_attendance', 'view_attendance_tracker', 'download_attendance_report',
-    'create_enrollment', 'manage_enrollment_rules',
+    'create_enrollment', 'manage_enrollment_rules', 'view_profile',
+    'view_mobile_nav_home', 'view_mobile_nav_tasks', 'view_mobile_nav_profile'
+  ],
+  hr_onboarding: [
+    'view_all_submissions', 'manage_users', 'manage_sites', 'view_entity_management', 'view_templates_hub',
+    'view_all_attendance', 'view_own_attendance', 'view_attendance_tracker', 'download_attendance_report',
+    'create_enrollment', 'manage_enrollment_rules', 'view_profile',
+    'view_mobile_nav_home', 'view_mobile_nav_tasks', 'view_mobile_nav_profile'
+  ],
+  hr_operations: [
+    'view_all_submissions', 'manage_users', 'manage_sites', 'view_entity_management', 'view_templates_hub',
+    'view_all_attendance', 'view_own_attendance', 'view_attendance_tracker', 'download_attendance_report',
+    'create_enrollment', 'manage_enrollment_rules', 'view_profile',
     'view_mobile_nav_home', 'view_mobile_nav_tasks', 'view_mobile_nav_profile'
   ],
   finance_manager: [

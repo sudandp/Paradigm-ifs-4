@@ -5,7 +5,7 @@ import { useOutletContext } from 'react-router-dom';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import { useOnboardingStore } from '../../store/onboardingStore';
-import type { PersonalDetails, UploadedFile } from '../../types';
+import type { PersonalDetails } from '../../types';
 import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
 import { AvatarUpload } from '../../components/onboarding/AvatarUpload';
@@ -76,7 +76,7 @@ const PersonalDetails = () => {
     const { data, updatePersonal, addOrUpdateEmergencyContactAsFamilyMember, setPersonalVerifiedStatus } = useOnboardingStore();
     const { esiCtcThreshold } = useEnrollmentRulesStore();
 
-    const family = data.family || [];
+    const family = useMemo(() => data.family || [], [data.family]);
     const INDIAN_LANGUAGES = [
         { id: 'English', name: 'English' }, { id: 'Hindi', name: 'Hindi' }, { id: 'Assamese', name: 'Assamese' },
         { id: 'Bengali', name: 'Bengali' }, { id: 'Bodo', name: 'Bodo' }, { id: 'Dogri', name: 'Dogri' },
@@ -142,11 +142,6 @@ const PersonalDetails = () => {
     const salaryVal = personalData.salary;
     const isEsiEligible = typeof salaryVal === 'number' && salaryVal <= esiCtcThreshold;
 
-    // Sync store data (e.g. from OCR or PreUpload) into react-hook-form state
-    useEffect(() => {
-        reset(initialPersonal);
-    }, [initialPersonal, reset]);
-
     // L-08: Auto-sync preferredName = firstName (stops if user edits preferredName)
     useEffect(() => {
         const firstName = personalData.firstName || '';
@@ -154,7 +149,7 @@ const PersonalDetails = () => {
         if (!preferredNameManuallyEdited.current && firstName && preferred !== firstName) {
             setValue('preferredName', firstName, { shouldValidate: true });
         }
-    }, [personalData.firstName, setValue]);
+    }, [personalData.firstName, personalData.preferredName, setValue]);
 
     // Auto-populate/sync Emergency Contact with Spouse (or single family member if only one exists)
     useEffect(() => {
@@ -268,7 +263,21 @@ const PersonalDetails = () => {
     }, [emergencyName, emergencyNumber, emergencyRelation, emergencyId, data.family, setValue]);
 
     const onSubmit: SubmitHandler<PersonalDetails> = async (formData) => {
-        updatePersonal(formData); // Final sync before processing
+        const cleanedData: PersonalDetails = { ...formData };
+        if (cleanedData.aadhaarNumber) {
+            cleanedData.aadhaarNumber = cleanedData.aadhaarNumber.replace(/\D/g, '').slice(0, 12);
+            if (!cleanedData.idProofType || cleanedData.idProofType === 'Aadhaar') {
+                cleanedData.idProofNumber = cleanedData.aadhaarNumber;
+                cleanedData.idProofType = 'Aadhaar';
+            }
+        }
+        if (cleanedData.panNumber) {
+            cleanedData.panNumber = cleanedData.panNumber.toUpperCase().trim();
+            if (cleanedData.idProofType === 'PAN') {
+                cleanedData.idProofNumber = cleanedData.panNumber;
+            }
+        }
+        updatePersonal(cleanedData); // Final sync before processing
         addOrUpdateEmergencyContactAsFamilyMember();
         await onValidated();
     };
@@ -385,14 +394,16 @@ const PersonalDetails = () => {
                         label="Aadhaar Number"
                         id="aadhaarNumber"
                         maxLength={12}
+                        pattern="999999999999"
+                        autoCapitalizeCustom={false}
                         registration={register('aadhaarNumber', {
                             onChange: (e) => {
                                 const val = e.target.value.replace(/\D/g, '').slice(0, 12);
+                                e.target.value = val;
                                 setValue('aadhaarNumber', val, { shouldValidate: true });
                                 if (!personalData.idProofType || personalData.idProofType === 'Aadhaar') {
                                     setValue('idProofNumber', val);
                                 }
-                                setPersonalVerifiedStatus({ aadhaarNumber: false, idProofNumber: false });
                             }
                         })}
                         error={errors.aadhaarNumber?.message}
@@ -406,14 +417,16 @@ const PersonalDetails = () => {
                         label="PAN Number"
                         id="panNumber"
                         maxLength={10}
+                        pattern="AAAAA9999A"
+                        forceUppercase={true}
                         registration={register('panNumber', {
                             onChange: (e) => {
                                 const val = e.target.value.toUpperCase().slice(0, 10);
+                                e.target.value = val;
                                 setValue('panNumber', val, { shouldValidate: true });
                                 if (personalData.idProofType === 'PAN') {
                                     setValue('idProofNumber', val);
                                 }
-                                setPersonalVerifiedStatus({ panNumber: false, panCard: false });
                             }
                         })}
                         error={errors.panNumber?.message}

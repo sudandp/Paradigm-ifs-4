@@ -12,6 +12,12 @@ interface VerifiedInputProps extends React.InputHTMLAttributes<HTMLInputElement>
   error?: string;
   registration?: UseFormRegisterReturn;
   onManualInput?: () => void;
+  autoCapitalizeCustom?: boolean;
+  forceUppercase?: boolean;
+  pattern?: string;
+  onComplete?: () => void;
+  icon?: React.ReactNode;
+  description?: string;
 }
 
 const VerifiedInput: React.FC<VerifiedInputProps> = ({ label, isVerified, hasValue, error, registration, onManualInput, ...props }) => {

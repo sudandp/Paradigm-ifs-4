@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import type { OnboardingData, PersonalDetails, AddressDetails, FamilyMember, EducationRecord, BankDetails, UanDetails, EsiDetails, GmcDetails, OrganizationDetails, EmployeeUniformSelection, Address, SalaryChangeRequest, BiometricsData, VerificationUsageItem } from '../types';
-import { differenceInYears, format } from 'date-fns';
+import type { OnboardingData, PersonalDetails, AddressDetails, FamilyMember, EducationRecord, BankDetails, UanDetails, EsiDetails, GmcDetails, OrganizationDetails, EmployeeUniformSelection, Address, SalaryChangeRequest, BiometricsData } from '../types';
+import { format } from 'date-fns';
 
 interface OnboardingState {
   data: OnboardingData;
@@ -36,10 +36,32 @@ interface OnboardingState {
   addOrUpdateEmergencyContactAsFamilyMember: () => void;
 }
 
-const getInitialState = (): OnboardingData => ({
-  id: `draft_${Date.now()}`,
-  status: 'draft',
-  enrollmentDate: new Date().toISOString().split('T')[0],
+const getInitialState = (): OnboardingData => {
+  let authUser: any = null;
+  try {
+    const raw = typeof window !== 'undefined' ? localStorage.getItem('auth-storage') : null;
+    if (raw) authUser = JSON.parse(raw)?.state?.user;
+  } catch (_e) {
+    void _e; // ignore parse error during initial state recovery
+  }
+
+  const userName = authUser?.name || authUser?.full_name || authUser?.email?.split('@')[0] || '';
+  const userPhoto = authUser?.avatar_url || authUser?.photo_url || authUser?.profile_photo || null;
+  const userRole = authUser?.role || '';
+  const userId = authUser?.id || '';
+
+  return {
+    id: `draft_${Date.now()}`,
+    status: 'draft',
+    enrollmentDate: new Date().toISOString().split('T')[0],
+    created_user_id: userId || null,
+    createdUserId: userId || null,
+    created_by_name: userName || null,
+    createdByName: userName || null,
+    created_by_photo: userPhoto || null,
+    createdByPhoto: userPhoto || null,
+    created_by_role: userRole || null,
+    createdByRole: userRole || null,
     personal: {
       employeeId: `PARA-${Math.floor(1000 + Math.random() * 9000)}`,
       firstName: '',
@@ -114,7 +136,8 @@ const getInitialState = (): OnboardingData => ({
   requiresManualVerification: false,
   formsGenerated: false,
   verificationUsage: [],
-});
+  };
+};
 
 // Helper to recursively strip transient base64 image data from drafts before saving to localStorage
 const stripHeavyData = (obj: any): any => {

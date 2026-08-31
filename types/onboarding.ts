@@ -54,6 +54,14 @@ export interface OnboardingData {
   rejected_at?: string | null;
   createdBy?: string | null;
   created_by?: string | null;
+  created_user_id?: string | null;
+  createdUserId?: string | null;
+  created_by_name?: string | null;
+  createdByName?: string | null;
+  created_by_photo?: string | null;
+  createdByPhoto?: string | null;
+  created_by_role?: string | null;
+  createdByRole?: string | null;
   submittedBy?: string | null;
   submitted_by?: string | null;
 }

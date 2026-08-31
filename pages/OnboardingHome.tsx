@@ -1,16 +1,13 @@
 import React from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import Button from '../components/ui/Button';
 import { useOnboardingStore } from '../store/onboardingStore';
 import { FileSignature } from 'lucide-react';
-import { useAuthStore } from '../store/authStore';
-import { ProfilePlaceholder } from '../components/ui/ProfilePlaceholder';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 
 const OnboardingHome: React.FC = () => {
   const navigate = useNavigate();
   const { data, reset } = useOnboardingStore();
-  const { user } = useAuthStore();
   const hasDraft = data.personal.firstName || data.personal.lastName;
 
   const isMobile = useMediaQuery('(max-width: 767px)');
@@ -47,6 +44,9 @@ const OnboardingHome: React.FC = () => {
             <Button onClick={handleStart} variant="primary" className="w-full !py-3 !text-lg">
               Start New Application
             </Button>
+            <Button onClick={() => navigate('/onboarding/submissions')} variant="outline" className="w-full !py-2.5 border-emerald-500/40 text-emerald-400">
+              View My Submissions
+            </Button>
           </div>
         </div>
       </div>
@@ -56,7 +56,7 @@ const OnboardingHome: React.FC = () => {
 
   return (
     <div className="h-full flex items-center justify-center p-4">
-      <div className="bg-card p-8 sm:p-12 rounded-2xl shadow-card text-center w-full">
+      <div className="bg-card p-8 sm:p-12 rounded-2xl shadow-card text-center w-full max-w-xl">
         <div className="flex justify-center mb-6">
           <div className="bg-accent-light p-4 rounded-full">
             <FileSignature className="h-12 w-12 text-accent-dark" />
@@ -67,7 +67,7 @@ const OnboardingHome: React.FC = () => {
           We need to collect some information to get you set up. This should only take a few minutes.
         </p>
 
-        <div className="mt-10 flex justify-center items-center gap-4 flex-wrap">
+        <div className="mt-8 flex justify-center items-center gap-3 flex-wrap">
           {hasDraft && (
             <Button onClick={handleContinue} variant="secondary">
               Continue Draft
@@ -75,6 +75,9 @@ const OnboardingHome: React.FC = () => {
           )}
           <Button onClick={handleStart} variant="primary">
             {hasDraft ? 'Start Fresh' : 'Start New Application'}
+          </Button>
+          <Button onClick={() => navigate('/onboarding/submissions')} variant="outline" className="border-accent text-accent">
+            My Submissions
           </Button>
         </div>
       </div>
