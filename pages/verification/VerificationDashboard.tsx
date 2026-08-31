@@ -224,40 +224,81 @@ const SyncDebugModal: React.FC<SyncDebugModalProps> = ({ isOpen, onClose, onRefr
 };
 
 
+const getDocValue = (val: any): string => {
+    if (!val) return '';
+    if (typeof val === 'string') return val.trim();
+    if (typeof val === 'object') return (val.url || val.preview || val.name || '').trim();
+    return String(val).trim();
+};
+
 export const checkIsAllDocsVerified = (submission: OnboardingData): boolean => {
-    const isPanVerified = Boolean(
-        submission.personal?.verifiedStatus?.panCard ||
-        (submission.personal?.idProofType === 'PAN' && submission.personal?.verifiedStatus?.idProofNumber) ||
-        submission.personal?.panCard ||
-        (submission.personal?.idProofType === 'PAN' && submission.personal?.idProofNumber)
-    );
+    if (!submission) return false;
+    const personal = (submission.personal as any) || {};
+    const documents = (submission as any)?.documents || {};
+    const bank = (submission.bank as any) || {};
+    const uan = (submission.uan as any) || {};
+    const address = (submission.address as any) || {};
 
-    const isAadhaarVerified = Boolean(
-        submission.personal?.isQrVerified ||
-        (submission.personal?.idProofType === 'Aadhaar' && submission.personal?.verifiedStatus?.idProofNumber) ||
-        (submission.personal?.idProofFront && submission.personal?.idProofBack) ||
-        (submission.personal?.idProofType === 'Aadhaar' && submission.personal?.idProofNumber)
+    // 1. PAN Verification
+    const hasPanNumber = Boolean(
+        getDocValue(personal.panCard) ||
+        getDocValue(personal.panNumber) ||
+        (personal.idProofType === 'PAN' && getDocValue(personal.idProofNumber)) ||
+        documents.panCard
     );
-
-    const isUanApplicable = submission.uan?.hasPreviousPf;
-    const isUanVerified = !isUanApplicable || Boolean(
-        submission.uan?.verifiedStatus?.uanNumber ||
-        submission.uan?.uanNumber ||
-        submission.uan?.document ||
-        submission.uan?.salarySlip
+    const hasPanDoc = Boolean(
+        (personal.idProofType === 'PAN' && (personal.idProofFront || personal.idProofBack)) ||
+        documents.panCard
     );
+    const isExplicitlyPanVerified = personal.verifiedStatus?.panCard === true || 
+        personal.verifiedStatus?.panNumber === true || 
+        (personal.idProofType === 'PAN' && personal.verifiedStatus?.idProofNumber === true);
+    const isExplicitlyPanFailed = personal.verifiedStatus?.panCard === false || 
+        personal.verifiedStatus?.panNumber === false || 
+        (personal.idProofType === 'PAN' && personal.verifiedStatus?.idProofNumber === false);
+    const isPanVerified = !isExplicitlyPanFailed && (isExplicitlyPanVerified || (hasPanNumber && (hasPanDoc || personal.panCard)));
 
-    const isBankVerified = Boolean(
-        submission.bank?.verifiedStatus?.accountNumber ||
-        (submission.bank?.accountNumber && (submission.bank?.bankProof || submission.bank?.ifscCode))
+    // 2. Aadhaar Verification
+    const hasAadhaarNumber = Boolean(
+        getDocValue(personal.aadhaarNumber) ||
+        (personal.idProofType === 'Aadhaar' && getDocValue(personal.idProofNumber)) ||
+        documents.aadhaarNumber
     );
-
-    const isAddressVerified = Boolean(
-        (submission.address?.present?.verifiedStatus?.line1 || submission.address?.present?.line1) &&
-        (submission.address?.permanent?.verifiedStatus?.line1 || submission.address?.permanent?.line1 || submission.address?.sameAsPresent)
+    const hasAadhaarDoc = Boolean(
+        (personal.idProofType === 'Aadhaar' && (personal.idProofFront || personal.idProofBack)) ||
+        documents.aadhaarFront ||
+        documents.aadhaarBack
     );
+    const isExplicitlyAadhaarVerified = personal.isQrVerified === true || 
+        personal.verifiedStatus?.aadhaarNumber === true || 
+        (personal.idProofType === 'Aadhaar' && personal.verifiedStatus?.idProofNumber === true);
+    const isExplicitlyAadhaarFailed = personal.verifiedStatus?.aadhaarNumber === false || 
+        (personal.idProofType === 'Aadhaar' && personal.verifiedStatus?.idProofNumber === false);
+    const isAadhaarVerified = !isExplicitlyAadhaarFailed && ((hasAadhaarNumber || hasAadhaarDoc) && (isExplicitlyAadhaarVerified || (hasAadhaarNumber && hasAadhaarDoc)));
 
-    return isPanVerified && isAadhaarVerified && isUanVerified && isBankVerified && isAddressVerified;
+    // 3. UAN Verification
+    const isUanApplicable = Boolean(uan.hasPreviousPf);
+    const hasUanNumber = Boolean(getDocValue(uan.uanNumber));
+    const hasUanDoc = Boolean(uan.document || uan.salarySlip);
+    const isExplicitlyUanVerified = uan.verifiedStatus?.uanNumber === true;
+    const isExplicitlyUanFailed = uan.verifiedStatus?.uanNumber === false;
+    const isUanVerified = !isUanApplicable || (!isExplicitlyUanFailed && (isExplicitlyUanVerified || (hasUanNumber && (hasUanDoc || hasUanNumber))));
+
+    // 4. Bank Verification
+    const hasBankAcc = Boolean(getDocValue(bank.accountNumber));
+    const hasBankIfsc = Boolean(getDocValue(bank.ifscCode));
+    const isExplicitlyBankVerified = bank.verifiedStatus?.accountNumber === true;
+    const isExplicitlyBankFailed = bank.verifiedStatus?.accountNumber === false;
+    const isBankVerified = hasBankAcc && hasBankIfsc && !isExplicitlyBankFailed && (isExplicitlyBankVerified || (hasBankAcc && hasBankIfsc));
+
+    // 5. Address Verification
+    const hasPresentAddr = Boolean(getDocValue(address.present?.line1));
+    const hasPermanentAddr = Boolean(address.sameAsPresent || getDocValue(address.permanent?.line1));
+    const isExplicitlyAddrVerified = address.present?.verifiedStatus?.line1 === true;
+    const isExplicitlyAddrFailed = address.present?.verifiedStatus?.line1 === false;
+    const isAddressVerified = hasPresentAddr && hasPermanentAddr && !isExplicitlyAddrFailed && (isExplicitlyAddrVerified || (hasPresentAddr && hasPermanentAddr));
+
+    return Boolean(isPanVerified && isAadhaarVerified && isUanVerified && isBankVerified && isAddressVerified);
 };
 
 interface DocumentVerificationBadgesProps {
@@ -267,42 +308,72 @@ interface DocumentVerificationBadgesProps {
 }
 
 const DocumentVerificationBadges: React.FC<DocumentVerificationBadgesProps> = ({ submission, onToggleDoc, hideLabels }) => {
+    const personal = (submission.personal as any) || {};
+    const documents = (submission as any)?.documents || {};
+    const bank = (submission.bank as any) || {};
+    const uan = (submission.uan as any) || {};
+    const address = (submission.address as any) || {};
+
     // 1. PAN Verification Status
-    const isPanVerified = Boolean(
-        submission.personal?.verifiedStatus?.panCard ||
-        (submission.personal?.idProofType === 'PAN' && submission.personal?.verifiedStatus?.idProofNumber) ||
-        submission.personal?.panCard ||
-        (submission.personal?.idProofType === 'PAN' && submission.personal?.idProofNumber)
+    const hasPanNumber = Boolean(
+        getDocValue(personal.panCard) ||
+        getDocValue(personal.panNumber) ||
+        (personal.idProofType === 'PAN' && getDocValue(personal.idProofNumber)) ||
+        documents.panCard
     );
+    const hasPanDoc = Boolean(
+        (personal.idProofType === 'PAN' && (personal.idProofFront || personal.idProofBack)) ||
+        documents.panCard
+    );
+    const isExplicitlyPanVerified = personal.verifiedStatus?.panCard === true || 
+        personal.verifiedStatus?.panNumber === true || 
+        (personal.idProofType === 'PAN' && personal.verifiedStatus?.idProofNumber === true);
+    const isExplicitlyPanFailed = personal.verifiedStatus?.panCard === false || 
+        personal.verifiedStatus?.panNumber === false || 
+        (personal.idProofType === 'PAN' && personal.verifiedStatus?.idProofNumber === false);
+    const isPanVerified = (hasPanNumber || hasPanDoc) && !isExplicitlyPanFailed && (isExplicitlyPanVerified || hasPanNumber);
 
     // 2. Aadhaar Verification Status
-    const isAadhaarVerified = Boolean(
-        submission.personal?.isQrVerified ||
-        (submission.personal?.idProofType === 'Aadhaar' && submission.personal?.verifiedStatus?.idProofNumber) ||
-        (submission.personal?.idProofFront && submission.personal?.idProofBack) ||
-        (submission.personal?.idProofType === 'Aadhaar' && submission.personal?.idProofNumber)
+    const hasAadhaarNumber = Boolean(
+        getDocValue(personal.aadhaarNumber) ||
+        (personal.idProofType === 'Aadhaar' && getDocValue(personal.idProofNumber)) ||
+        documents.aadhaarNumber
     );
+    const hasAadhaarDoc = Boolean(
+        (personal.idProofType === 'Aadhaar' && (personal.idProofFront || personal.idProofBack)) ||
+        documents.aadhaarFront ||
+        documents.aadhaarBack
+    );
+    const isExplicitlyAadhaarVerified = personal.isQrVerified === true || 
+        personal.verifiedStatus?.aadhaarNumber === true || 
+        (personal.idProofType === 'Aadhaar' && personal.verifiedStatus?.idProofNumber === true);
+    const isExplicitlyAadhaarFailed = personal.verifiedStatus?.aadhaarNumber === false || 
+        (personal.idProofType === 'Aadhaar' && personal.verifiedStatus?.idProofNumber === false);
+    const isAadhaarVerified = (hasAadhaarNumber || hasAadhaarDoc) && !isExplicitlyAadhaarFailed && (isExplicitlyAadhaarVerified || hasAadhaarNumber);
 
     // 3. UAN Verification Status
-    const isUanApplicable = submission.uan?.hasPreviousPf;
-    const isUanVerified = isUanApplicable ? Boolean(
-        submission.uan?.verifiedStatus?.uanNumber ||
-        submission.uan?.uanNumber ||
-        submission.uan?.document ||
-        submission.uan?.salarySlip
+    const isUanApplicable = Boolean(uan.hasPreviousPf);
+    const hasUanNumber = Boolean(getDocValue(uan.uanNumber));
+    const hasUanDoc = Boolean(uan.document || uan.salarySlip);
+    const isExplicitlyUanVerified = uan.verifiedStatus?.uanNumber === true;
+    const isExplicitlyUanFailed = uan.verifiedStatus?.uanNumber === false;
+    const isUanVerified = isUanApplicable ? (
+        (hasUanNumber || hasUanDoc) && !isExplicitlyUanFailed && (isExplicitlyUanVerified || hasUanNumber)
     ) : null;
 
     // 4. Bank Account Verification Status
-    const isBankVerified = Boolean(
-        submission.bank?.verifiedStatus?.accountNumber ||
-        (submission.bank?.accountNumber && (submission.bank?.bankProof || submission.bank?.ifscCode))
-    );
+    const hasBankAcc = Boolean(getDocValue(bank.accountNumber));
+    const hasBankIfsc = Boolean(getDocValue(bank.ifscCode));
+    const isExplicitlyBankVerified = bank.verifiedStatus?.accountNumber === true;
+    const isExplicitlyBankFailed = bank.verifiedStatus?.accountNumber === false;
+    const isBankVerified = hasBankAcc && hasBankIfsc && !isExplicitlyBankFailed && (isExplicitlyBankVerified || (hasBankAcc && hasBankIfsc));
 
     // 5. Address Verification Status
-    const isAddressVerified = Boolean(
-        (submission.address?.present?.verifiedStatus?.line1 || submission.address?.present?.line1) &&
-        (submission.address?.permanent?.verifiedStatus?.line1 || submission.address?.permanent?.line1 || submission.address?.sameAsPresent)
-    );
+    const hasPresentAddr = Boolean(getDocValue(address.present?.line1));
+    const hasPermanentAddr = Boolean(address.sameAsPresent || getDocValue(address.permanent?.line1));
+    const isExplicitlyAddrVerified = address.present?.verifiedStatus?.line1 === true;
+    const isExplicitlyAddrFailed = address.present?.verifiedStatus?.line1 === false;
+    const isAddressVerified = hasPresentAddr && hasPermanentAddr && !isExplicitlyAddrFailed && (isExplicitlyAddrVerified || (hasPresentAddr && hasPermanentAddr));
 
     const docList = [
         { 
@@ -1544,27 +1615,62 @@ const VerificationDashboard: React.FC = () => {
                     <table className="w-full min-w-[1260px] border-separate border-spacing-0">
                         <thead>
                             <tr className="bg-slate-50/90 border-b border-slate-200">
-                                <th scope="col" className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200 w-[220px]">Employee</th>
-                                <th scope="col" className="px-3 py-3.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200 w-[170px]">Site Location</th>
+                                <th scope="col" className="px-4 py-3 text-center align-middle border-b border-slate-200 w-[220px]">
+                                    <div className="flex flex-col items-center justify-center gap-0.5">
+                                        <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Employee</span>
+                                        <span className="text-[9.5px] font-medium text-slate-400 whitespace-nowrap">Name & ID</span>
+                                    </div>
+                                </th>
+                                <th scope="col" className="px-3 py-3 text-center align-middle border-b border-slate-200 w-[170px]">
+                                    <div className="flex flex-col items-center justify-center gap-0.5">
+                                        <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Site Location</span>
+                                        <span className="text-[9.5px] font-medium text-slate-400 whitespace-nowrap">Assigned Unit</span>
+                                    </div>
+                                </th>
                                 {statusFilter !== 'verified' && (
-                                    <th scope="col" className="px-3 py-3.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200 w-[170px]">Status</th>
+                                    <th scope="col" className="px-3 py-3 text-center align-middle border-b border-slate-200 w-[170px]">
+                                        <div className="flex flex-col items-center justify-center gap-0.5">
+                                            <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Status</span>
+                                            <span className="text-[9.5px] font-medium text-slate-400 whitespace-nowrap">Current State</span>
+                                        </div>
+                                    </th>
                                 )}
-                                <th scope="col" className="px-3 py-3.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200 w-[140px]">Designation</th>
-                                <th scope="col" className="px-3 py-3.5 text-center border-b border-slate-200 w-[150px]">
-                                    <div className="flex flex-col items-center gap-1">
-                                        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Verified Documents</span>
-                                        <div className="flex items-center gap-1 mt-0.5">
-                                            <span className="w-5 text-center text-[8.5px] font-bold text-blue-600 bg-blue-50 px-0.5 py-0.5 rounded border border-blue-200" title="PAN">PAN</span>
-                                            <span className="w-5 text-center text-[8.5px] font-bold text-emerald-600 bg-emerald-50 px-0.5 py-0.5 rounded border border-emerald-200" title="Aadhaar">AAD</span>
-                                            <span className="w-5 text-center text-[8.5px] font-bold text-amber-600 bg-amber-50 px-0.5 py-0.5 rounded border border-amber-200" title="UAN">UAN</span>
-                                            <span className="w-5 text-center text-[8.5px] font-bold text-indigo-600 bg-indigo-50 px-0.5 py-0.5 rounded border border-indigo-200" title="Bank">BNK</span>
-                                            <span className="w-5 text-center text-[8.5px] font-bold text-teal-600 bg-teal-50 px-0.5 py-0.5 rounded border border-teal-200" title="Address">ADR</span>
+                                <th scope="col" className="px-3 py-3 text-center align-middle border-b border-slate-200 w-[160px]">
+                                    <div className="flex flex-col items-center justify-center gap-0.5">
+                                        <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Designation</span>
+                                        <span className="text-[9.5px] font-medium text-slate-400 whitespace-nowrap">Job Role</span>
+                                    </div>
+                                </th>
+                                <th scope="col" className="px-3 py-3 text-center align-middle border-b border-slate-200 w-[180px] min-w-[180px]">
+                                    <div className="flex flex-col items-center justify-center gap-1.5">
+                                        <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Verified Documents</span>
+                                        <div className="flex items-center justify-center gap-1.5">
+                                            <span className="w-6 h-5 flex items-center justify-center text-[9px] font-bold text-blue-600 bg-blue-50/80 rounded border border-blue-200/80" title="PAN">PAN</span>
+                                            <span className="w-6 h-5 flex items-center justify-center text-[9px] font-bold text-emerald-600 bg-emerald-50/80 rounded border border-emerald-200/80" title="Aadhaar">AAD</span>
+                                            <span className="w-6 h-5 flex items-center justify-center text-[9px] font-bold text-amber-600 bg-amber-50/80 rounded border border-amber-200/80" title="UAN">UAN</span>
+                                            <span className="w-6 h-5 flex items-center justify-center text-[9px] font-bold text-indigo-600 bg-indigo-50/80 rounded border border-indigo-200/80" title="Bank">BNK</span>
+                                            <span className="w-6 h-5 flex items-center justify-center text-[9px] font-bold text-teal-600 bg-teal-50/80 rounded border border-teal-200/80" title="Address">ADR</span>
                                         </div>
                                     </div>
                                 </th>
-                                <th scope="col" className="px-3 py-3.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200 w-[180px]">Verified / Rejected By</th>
-                                <th scope="col" className="px-3 py-3.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200 w-[200px]">Created By / Date</th>
-                                <th scope="col" className="sticky right-0 bg-slate-50/95 backdrop-blur-xs z-20 px-4 py-3.5 text-right text-[11px] font-bold text-slate-600 uppercase tracking-wider border-b border-slate-200 shadow-[-6px_0_10px_-2px_rgba(0,0,0,0.06)] w-[280px] min-w-[280px]">Actions</th>
+                                <th scope="col" className="px-3 py-3 text-center align-middle border-b border-slate-200 w-[190px] min-w-[190px]">
+                                    <div className="flex flex-col items-center justify-center gap-0.5">
+                                        <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Verified / Rejected By</span>
+                                        <span className="text-[9.5px] font-medium text-slate-400 whitespace-nowrap">Reviewer & Date</span>
+                                    </div>
+                                </th>
+                                <th scope="col" className="px-3 py-3 text-center align-middle border-b border-slate-200 w-[200px]">
+                                    <div className="flex flex-col items-center justify-center gap-0.5">
+                                        <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Created By / Date</span>
+                                        <span className="text-[9.5px] font-medium text-slate-400 whitespace-nowrap">Submission Info</span>
+                                    </div>
+                                </th>
+                                <th scope="col" className="sticky right-0 bg-slate-50/95 backdrop-blur-xs z-20 px-3 py-3 text-center align-middle border-b border-slate-200 shadow-[-6px_0_10px_-2px_rgba(0,0,0,0.06)] w-[190px] min-w-[190px]">
+                                    <div className="flex flex-col items-center justify-center gap-0.5">
+                                        <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Actions</span>
+                                        <span className="text-[9.5px] font-medium text-slate-400 whitespace-nowrap">Review & Manage</span>
+                                    </div>
+                                </th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 bg-white">
@@ -1653,8 +1759,8 @@ const VerificationDashboard: React.FC = () => {
                                         </td>
 
                                         {/* Site */}
-                                        <td className="px-3 py-3.5 whitespace-nowrap align-middle">
-                                            <div className="flex items-center gap-1 text-xs font-semibold text-slate-700">
+                                        <td className="px-3 py-3.5 whitespace-nowrap align-middle text-center">
+                                            <div className="flex items-center justify-center gap-1 text-xs font-semibold text-slate-700">
                                                 <MapPin className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
                                                 <span>{s.organizationName || s.organization?.organizationName || '-'}</span>
                                             </div>
@@ -1662,8 +1768,8 @@ const VerificationDashboard: React.FC = () => {
 
                                         {/* Status */}
                                         {statusFilter !== 'verified' && (
-                                            <td className="px-3 py-3.5 whitespace-nowrap align-middle">
-                                                <div className="flex flex-col gap-1 items-start">
+                                            <td className="px-3 py-3.5 whitespace-nowrap align-middle text-center">
+                                                <div className="flex flex-col gap-1 items-center justify-center">
                                                     <StatusChip status={s.status} />
                                                     {s.status === 'rejected' && (
                                                         <div 
@@ -1679,8 +1785,8 @@ const VerificationDashboard: React.FC = () => {
                                         )}
 
                                         {/* Designation */}
-                                        <td className="px-3 py-3.5 whitespace-nowrap align-middle">
-                                            <div className="flex items-center gap-1 text-xs font-semibold text-slate-700">
+                                        <td className="px-3 py-3.5 whitespace-nowrap align-middle text-center">
+                                            <div className="flex items-center justify-center gap-1 text-xs font-semibold text-slate-700">
                                                 <Briefcase className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
                                                 <span>{s.organization?.designation || '-'}</span>
                                             </div>
@@ -1688,18 +1794,20 @@ const VerificationDashboard: React.FC = () => {
 
                                         {/* Verified Documents */}
                                         <td className="px-3 py-3.5 whitespace-nowrap text-center align-middle">
-                                            <DocumentVerificationBadges submission={s} onToggleDoc={(key) => handleToggleDocVerification(s.id!, key)} hideLabels />
+                                            <div className="flex items-center justify-center">
+                                                <DocumentVerificationBadges submission={s} onToggleDoc={(key) => handleToggleDocVerification(s.id!, key)} hideLabels />
+                                            </div>
                                         </td>
 
                                         {/* Approved / Rejected By */}
-                                        <td className="px-3 py-3.5 whitespace-nowrap align-middle">
+                                        <td className="px-3 py-3.5 whitespace-nowrap align-middle text-center">
                                             {s.status === 'verified' ? (
                                                 s.verificationMode === 'auto' || s.verifiedBy === 'Paradigm AI Agent' ? (
-                                                    <div className="flex items-center gap-2">
+                                                    <div className="flex items-center justify-center gap-2">
                                                         <div className="h-7 w-7 rounded-full bg-gradient-to-tr from-violet-600 to-indigo-600 text-white flex items-center justify-center shadow-2xs flex-shrink-0 border border-violet-300">
                                                             <Bot className="h-3.5 w-3.5 text-white" />
                                                         </div>
-                                                        <div className="flex flex-col">
+                                                        <div className="flex flex-col text-left">
                                                             <span className="text-xs font-bold text-violet-950 flex items-center gap-1">
                                                                 Verified by AI Agent
                                                                 <Sparkles className="h-2.5 w-2.5 text-amber-500 fill-amber-400 flex-shrink-0" />
@@ -1712,7 +1820,7 @@ const VerificationDashboard: React.FC = () => {
                                                         </div>
                                                     </div>
                                                 ) : (
-                                                    <div className="flex items-center gap-2">
+                                                    <div className="flex items-center justify-center gap-2">
                                                         {s.verifiedByPhoto ? (
                                                             <img src={s.verifiedByPhoto} alt={s.verifiedBy || 'HR'} className="h-7 w-7 rounded-full object-cover border-2 border-emerald-500 shadow-2xs flex-shrink-0" />
                                                         ) : (
@@ -1720,7 +1828,7 @@ const VerificationDashboard: React.FC = () => {
                                                                 {s.verifiedBy ? s.verifiedBy.split(' ').map(n => n[0]).join('').slice(0, 2) : 'HR'}
                                                             </div>
                                                         )}
-                                                        <div className="flex flex-col">
+                                                        <div className="flex flex-col text-left">
                                                             <div className="flex items-center gap-1">
                                                                 <span className="text-xs font-bold text-slate-800 capitalize">
                                                                     {s.verifiedBy || 'HR Admin'}
@@ -1736,11 +1844,11 @@ const VerificationDashboard: React.FC = () => {
                                                     </div>
                                                 )
                                             ) : s.status === 'rejected' ? (
-                                                <div className="flex items-center gap-2">
+                                                <div className="flex items-center justify-center gap-2">
                                                     <div className="h-7 w-7 rounded-full bg-rose-100 text-rose-700 border border-rose-300 flex items-center justify-center flex-shrink-0">
                                                         <XCircle className="h-4 w-4 text-rose-600" />
                                                     </div>
-                                                    <div className="flex flex-col">
+                                                    <div className="flex flex-col text-left">
                                                         <span className="text-xs font-bold text-rose-950">
                                                             Rejected by {currentRejectedBy}
                                                         </span>
@@ -1757,11 +1865,11 @@ const VerificationDashboard: React.FC = () => {
                                         </td>
 
                                         {/* Created By / Date */}
-                                        <td className="px-3 py-3.5 whitespace-nowrap align-middle">
+                                        <td className="px-3 py-3.5 whitespace-nowrap align-middle text-center">
                                             {(() => {
                                                 const creator = getCreatorInfo(s);
                                                 return (
-                                                    <div className="flex items-center gap-2">
+                                                    <div className="flex items-center justify-center gap-2">
                                                         <div className="relative h-7 w-7 flex-shrink-0 flex items-center justify-center">
                                                             {creator.photo ? (
                                                                 <img 
@@ -1781,7 +1889,7 @@ const VerificationDashboard: React.FC = () => {
                                                                 {creator.initials}
                                                             </div>
                                                         </div>
-                                                        <div className="flex flex-col justify-center">
+                                                        <div className="flex flex-col justify-center text-left">
                                                             <div className="flex items-center gap-1.5">
                                                                 <span className="text-xs font-bold text-slate-800 capitalize leading-tight">
                                                                     {creator.name}
@@ -1797,104 +1905,112 @@ const VerificationDashboard: React.FC = () => {
                                             })()}
                                         </td>
 
-                                        {/* Sticky Actions Column */}
-                                        <td className={`sticky right-0 z-10 px-4 py-3.5 whitespace-nowrap text-right shadow-[-6px_0_10px_-2px_rgba(0,0,0,0.06)] border-b border-slate-100 align-middle ${
+                                        {/* Sticky Actions Column - 2-Row Layout */}
+                                        <td className={`sticky right-0 z-10 px-3 py-2 whitespace-nowrap text-center shadow-[-6px_0_10px_-2px_rgba(0,0,0,0.06)] border-b border-slate-100 align-middle ${
                                             s.requiresManualVerification ? 'bg-amber-50 group-hover:bg-amber-100/70' : isDraft ? 'bg-slate-50 group-hover:bg-slate-100/70' : 'bg-white group-hover:bg-emerald-50/70'
                                         }`}>
-                                            <div className="flex items-center justify-end gap-1.5">
-                                                {/* Toolbar utility icons */}
-                                                <div className="flex items-center gap-1 bg-slate-50/80 p-0.5 rounded-lg border border-slate-200/60 shadow-2xs">
+                                            <div className="flex flex-col items-center justify-center gap-1.5 min-w-[155px]">
+                                                {/* 1st Row: Utility Icons */}
+                                                <div className="flex items-center justify-center gap-1 bg-slate-50/90 p-0.5 rounded-lg border border-slate-200/60 shadow-2xs">
                                                     <button 
                                                         onClick={() => navigate(`/onboarding/add/review?id=${s.id}`)}
-                                                        className="w-7 h-7 flex items-center justify-center text-slate-500 hover:text-emerald-700 bg-white hover:bg-emerald-50 rounded-md transition-all duration-200 border border-slate-200/50 hover:border-emerald-200 shrink-0"
+                                                        className="w-6 h-6 flex items-center justify-center text-slate-500 hover:text-emerald-700 bg-white hover:bg-emerald-50 rounded-md transition-all duration-200 border border-slate-200/50 hover:border-emerald-200 shrink-0"
                                                         title="View Summary Details"
                                                     >
                                                         <Eye className="h-3.5 w-3.5" />
                                                     </button>
                                                     <button 
                                                         onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)}
-                                                        className="w-7 h-7 flex items-center justify-center text-slate-500 hover:text-blue-700 bg-white hover:bg-blue-50 rounded-md transition-all duration-200 border border-slate-200/50 hover:border-blue-200 shrink-0"
+                                                        className="w-6 h-6 flex items-center justify-center text-slate-500 hover:text-blue-700 bg-white hover:bg-blue-50 rounded-md transition-all duration-200 border border-slate-200/50 hover:border-blue-200 shrink-0"
                                                         title="Edit Application"
                                                     >
                                                         <Edit2 className="h-3.5 w-3.5" />
                                                     </button>
                                                     <button 
                                                         onClick={() => navigate(`/onboarding/pdf/${s.id}`)}
-                                                        className="w-7 h-7 flex items-center justify-center text-slate-500 hover:text-teal-700 bg-white hover:bg-teal-50 rounded-md transition-all duration-200 border border-slate-200/50 hover:border-teal-200 shrink-0"
+                                                        className="w-6 h-6 flex items-center justify-center text-slate-500 hover:text-teal-700 bg-white hover:bg-teal-50 rounded-md transition-all duration-200 border border-slate-200/50 hover:border-teal-200 shrink-0"
                                                         title="Download Official Forms"
                                                     >
                                                         <FileText className="h-3.5 w-3.5" />
                                                     </button>
                                                     <button 
                                                         onClick={() => handleDelete(s.id!)}
-                                                        className="w-7 h-7 flex items-center justify-center text-slate-500 hover:text-rose-700 bg-white hover:bg-rose-50 rounded-md transition-all duration-200 border border-slate-200/50 hover:border-rose-200 shrink-0"
+                                                        className="w-6 h-6 flex items-center justify-center text-slate-500 hover:text-rose-700 bg-white hover:bg-rose-50 rounded-md transition-all duration-200 border border-slate-200/50 hover:border-rose-200 shrink-0"
                                                         title="Delete Application"
                                                     >
                                                         <Trash2 className="h-3.5 w-3.5" />
                                                     </button>
                                                 </div>
 
-                                                {/* Contextual Primary Actions */}
-                                                {isDraft && (
-                                                    <button 
-                                                        onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)}
-                                                        className="h-7 px-2.5 bg-slate-900 hover:bg-black text-white rounded-lg text-xs font-bold shadow-xs transition-all duration-200 flex items-center gap-1 shrink-0 ml-0.5"
-                                                        title="Resume Incomplete Enrollment"
-                                                    >
-                                                        <Play className="h-3 w-3 fill-current" /> Resume
-                                                    </button>
-                                                )}
+                                                {/* 2nd Row: Contextual Primary Action(s) */}
+                                                <div className="flex items-center justify-center gap-1.5 w-full">
+                                                    {isDraft && (
+                                                        <button 
+                                                            onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)}
+                                                            className="h-6 px-3 bg-slate-900 hover:bg-black text-white rounded-md text-[11px] font-bold shadow-xs transition-all duration-200 flex items-center justify-center gap-1 w-full max-w-[130px]"
+                                                            title="Resume Incomplete Enrollment"
+                                                        >
+                                                            <Play className="h-2.5 w-2.5 fill-current" /> Resume
+                                                        </button>
+                                                    )}
 
-                                                {s.status === 'pending' && (
-                                                    <div className="flex items-center gap-1 pl-1 ml-0.5 border-l border-slate-200 shrink-0">
-                                                        <button 
-                                                            onClick={() => handleApprove(s.id!)}
-                                                            className="h-7 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs transition-all duration-200 flex items-center gap-1 shrink-0"
-                                                            title="Verify & Approve"
-                                                        >
-                                                            <CheckSquare className="h-3.5 w-3.5" /> Approve
-                                                        </button>
-                                                        <button 
-                                                            onClick={() => handleOpenRejectModal(s)}
-                                                            className="h-7 px-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-bold transition-all duration-200 flex items-center gap-1 shrink-0"
-                                                            title="Reject & Request Changes"
-                                                        >
-                                                            <XSquare className="h-3.5 w-3.5" /> Reject
-                                                        </button>
-                                                    </div>
-                                                )}
+                                                    {s.status === 'pending' && (
+                                                        <>
+                                                            <button 
+                                                                onClick={() => handleApprove(s.id!)}
+                                                                className="h-6 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-[11px] font-bold shadow-xs transition-all duration-200 flex items-center justify-center gap-1"
+                                                                title="Verify & Approve"
+                                                            >
+                                                                <CheckSquare className="h-3 w-3" /> Approve
+                                                            </button>
+                                                            <button 
+                                                                onClick={() => handleOpenRejectModal(s)}
+                                                                className="h-6 px-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-md text-[11px] font-bold transition-all duration-200 flex items-center justify-center gap-1"
+                                                                title="Reject & Request Changes"
+                                                            >
+                                                                <XSquare className="h-3 w-3" /> Reject
+                                                            </button>
+                                                        </>
+                                                    )}
 
-                                                {s.status === 'rejected' && (
-                                                    <div className="flex items-center gap-1 pl-1 ml-0.5 border-l border-slate-200 shrink-0">
-                                                        <button 
-                                                            onClick={() => handleOpenRejectModal(s)}
-                                                            className="h-7 px-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-bold transition-all duration-200 flex items-center gap-1 shrink-0"
-                                                            title="Update Rejection Reason"
-                                                        >
-                                                            <Edit2 className="h-3 w-3" /> Reason
-                                                        </button>
-                                                        <button 
-                                                            onClick={() => handleApprove(s.id!)}
-                                                            className="h-7 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs transition-all duration-200 flex items-center gap-1 shrink-0"
-                                                            title="Verify & Approve"
-                                                        >
-                                                            <CheckSquare className="h-3.5 w-3.5" /> Approve
-                                                        </button>
-                                                    </div>
-                                                )}
+                                                    {s.status === 'rejected' && (
+                                                        <>
+                                                            <button 
+                                                                onClick={() => handleOpenRejectModal(s)}
+                                                                className="h-6 px-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-md text-[11px] font-bold transition-all duration-200 flex items-center justify-center gap-1"
+                                                                title="Update Rejection Reason"
+                                                            >
+                                                                <Edit2 className="h-2.5 w-2.5" /> Reason
+                                                            </button>
+                                                            <button 
+                                                                onClick={() => handleApprove(s.id!)}
+                                                                className="h-6 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-[11px] font-bold shadow-xs transition-all duration-200 flex items-center justify-center gap-1"
+                                                                title="Verify & Approve"
+                                                            >
+                                                                <CheckSquare className="h-3 w-3" /> Approve
+                                                            </button>
+                                                        </>
+                                                    )}
 
-                                                {s.status === 'verified' && (s.portalSyncStatus === 'pending_sync' || s.portalSyncStatus === 'failed') && (
-                                                    <Button 
-                                                        variant="outline" 
-                                                        size="sm" 
-                                                        onClick={() => handleSync(s.id!)} 
-                                                        isLoading={syncingId === s.id}
-                                                        className="ml-1 !rounded-lg border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 h-7 text-xs font-bold shrink-0 px-2"
-                                                    >
-                                                        {syncingId !== s.id && <Send className="h-3 w-3 mr-1" />}
-                                                        Sync
-                                                    </Button>
-                                                )}
+                                                    {s.status === 'verified' && (
+                                                        (s.portalSyncStatus === 'pending_sync' || s.portalSyncStatus === 'failed') ? (
+                                                            <Button 
+                                                                variant="outline" 
+                                                                size="sm" 
+                                                                onClick={() => handleSync(s.id!)} 
+                                                                isLoading={syncingId === s.id}
+                                                                className="!rounded-md border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 h-6 text-[11px] font-bold px-3 w-full max-w-[130px]"
+                                                            >
+                                                                {syncingId !== s.id && <Send className="h-2.5 w-2.5 mr-1" />}
+                                                                Sync
+                                                            </Button>
+                                                        ) : (
+                                                            <span className="text-[11px] font-semibold text-emerald-600 flex items-center justify-center gap-1">
+                                                                <CheckSquare className="h-3 w-3" /> Verified
+                                                            </span>
+                                                        )
+                                                    )}
+                                                </div>
                                             </div>
                                         </td>
                                     </tr>
