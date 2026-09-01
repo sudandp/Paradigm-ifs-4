@@ -748,7 +748,7 @@ app.get('/devices', requireApiKey, async (req, res) => {
        ISNULL(SerialNumber, '') AS serialNo,
        ISNULL(DeviceFName, SerialNumber) AS deviceName,
        ISNULL(DeviceLocation, '') AS location,
-       LastPing AS lastPing,
+       CONVERT(VARCHAR(19), LastPing, 120) AS lastPing,
        CASE WHEN LastPing IS NOT NULL AND DATEDIFF(MINUTE, LastPing, GETDATE()) <= 60 THEN 'online' ELSE 'offline' END AS status
      FROM dbo.Devices WITH (NOLOCK)
      ORDER BY DeviceFName`,
@@ -768,7 +768,7 @@ app.get('/devices', requireApiKey, async (req, res) => {
        DeviceId, SN AS serialNo,
        ISNULL(Alias, SN) AS deviceName,
        ISNULL(Location, '') AS location,
-       LastActivity AS lastPing,
+       CONVERT(VARCHAR(19), LastActivity, 120) AS lastPing,
        CASE WHEN DATEDIFF(MINUTE, LastActivity, GETDATE()) <= 30 THEN 'online' ELSE 'offline' END AS status
      FROM dbo.iclock_Device WITH (NOLOCK)
      ORDER BY deviceName`,
@@ -778,7 +778,7 @@ app.get('/devices', requireApiKey, async (req, res) => {
        DeviceId, SerialNo AS serialNo,
        ISNULL(DeviceName, SerialNo) AS deviceName,
        ISNULL(Location, '') AS location,
-       LastPing AS lastPing,
+       CONVERT(VARCHAR(19), LastPing, 120) AS lastPing,
        CASE WHEN DATEDIFF(MINUTE, LastPing, GETDATE()) <= 30 THEN 'online' ELSE 'offline' END AS status
      FROM dbo.iclock_Device WITH (NOLOCK)
      ORDER BY deviceName`,
@@ -788,7 +788,7 @@ app.get('/devices', requireApiKey, async (req, res) => {
        id AS DeviceId, sn AS serialNo,
        ISNULL(alias, sn) AS deviceName,
        ISNULL(area_name, '') AS location,
-       last_activity AS lastPing,
+       CONVERT(VARCHAR(19), last_activity, 120) AS lastPing,
        CASE WHEN DATEDIFF(MINUTE, last_activity, GETDATE()) <= 30 THEN 'online' ELSE 'offline' END AS status
      FROM dbo.iclock_terminal WITH (NOLOCK)
      ORDER BY deviceName`,

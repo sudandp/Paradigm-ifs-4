@@ -578,10 +578,10 @@ const VerificationDashboard: React.FC = () => {
         const roleName = (user.role || '').toLowerCase().trim();
         const roleNormalized = roleName.replace(/[\s-_]+/g, '_');
 
-        // HR Ops, Operations Head, Director, Management, Super Admin, Developer always have global multi-company view
+        // HR Ops, HR Onboarding, Operations Head, Director, Management, Super Admin, Developer always have global multi-company view
         const globalRoles = [
             'admin', 'super_admin', 'developer',
-            'hr_ops', 'hr_operations', 'hr_operation', 'operations_head',
+            'hr_ops', 'hr_operations', 'hr_operation', 'hr_onboarding', 'operations_head',
             'director', 'management', 'general_manager'
         ];
         if (globalRoles.includes(roleId) || globalRoles.includes(roleNormalized)) {
@@ -858,6 +858,9 @@ const VerificationDashboard: React.FC = () => {
         }
         if (companyFilter === 'paradigm') {
             return submissions.filter(s => !isSubmissionForSouthWall(s));
+        }
+        if (companyFilter === 'all') {
+            return submissions;
         }
         if (!isGlobalHROrOps && isSouthWallUser) {
             return submissions.filter(s => isSubmissionForSouthWall(s));

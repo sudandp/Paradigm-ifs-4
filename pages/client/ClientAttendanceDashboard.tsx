@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom';
 import {
   format, subDays, startOfDay, endOfDay, startOfMonth, endOfMonth,
-  startOfYear, subMonths, eachDayOfInterval, isSameDay, addDays
+  subMonths, eachDayOfInterval, isSameDay
 } from 'date-fns';
 import { DateRangePicker, Range, RangeKeyDict } from 'react-date-range';
 import 'react-date-range/dist/styles.css';
@@ -10,10 +10,10 @@ import 'react-date-range/dist/theme/default.css';
 import {
   Users, UserCheck, UserX, Clock, RefreshCw, Database,
   AlertTriangle, TrendingUp, Search, ChevronUp, ChevronDown,
-  Calendar, WifiOff, Wifi, BarChart3, Building2, Shield, Radio, Bug, CheckCircle2,
-  Settings, Plus, Trash2, Edit3, Copy, Sliders, Save, RotateCcw,
-  Lock, ShieldCheck, CheckSquare, Square, UserPlus, FileText, Camera, AlertOctagon, MessageSquare, Eye, X, Video, Moon, Pencil, Check,
-  FileDown, Mail, Filter, Download, Printer, FileSpreadsheet, Loader2, Send, Cpu, Sparkles
+  Calendar, WifiOff, BarChart3, Building2, Shield, Radio, Bug, CheckCircle2,
+  Plus, Trash2, Edit3, Copy, Sliders, Save, RotateCcw,
+  Lock, ShieldCheck, CheckSquare, Square, UserPlus, FileText, Camera, Eye, X, Video, Moon, Pencil, Check,
+  FileDown, Mail, Filter, Download, FileSpreadsheet, Loader2, Send, Cpu, Sparkles
 } from 'lucide-react';
 import { supabase } from '../../services/supabase';
 import { useAuthStore } from '../../store/authStore';
@@ -35,10 +35,10 @@ import {
 } from '../../services/accessControlSupabase';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Cell
+  ResponsiveContainer
 } from 'recharts';
 import { exportGenericReportToExcel, GenericReportColumn } from '../../utils/excelExport';
-import type { DetailedAuditPdfEmployee, DetailedAuditPdfDataRow, AttendanceLogDataRow, BasicReportDataRow } from '../attendance/PDFReports';
+import type { DetailedAuditPdfEmployee, DetailedAuditPdfDataRow, BasicReportDataRow } from '../attendance/PDFReports';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -1809,7 +1809,7 @@ function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | 
       if (isToday) {
         const now = new Date();
         const nowMins = now.getHours() * 60 + now.getMinutes();
-        let diff = nowMins - inM;
+        const diff = nowMins - inM;
         if (diff > 0) {
           const hrs = Math.floor(diff / 60);
           const mins = diff % 60;
@@ -1820,6 +1820,40 @@ function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | 
   }
 
   return '-';
+}
+
+function formatDeviceLastPing(lastPing: string | null | undefined): string {
+  if (!lastPing) return '—';
+  const raw = String(lastPing).trim();
+  if (!raw || raw === '—' || raw.startsWith('1900') || raw.startsWith('0001')) return '—';
+
+  // Format: "YYYY-MM-DDTHH:mm:ss..." or "YYYY-MM-DD HH:mm:ss..."
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (match) {
+    const year = parseInt(match[1], 10);
+    if (year < 2020) return '—';
+    const month = parseInt(match[2], 10);
+    const day = match[3];
+    const hour = parseInt(match[4], 10);
+    const minute = match[5];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
+    const monthStr = months[month - 1] || match[2];
+    const ampm = hour >= 12 ? 'pm' : 'am';
+    const displayHour = hour % 12 === 0 ? 12 : hour % 12;
+    const hourStr = String(displayHour).padStart(2, '0');
+    return `${day} ${monthStr}, ${hourStr}:${minute} ${ampm}`;
+  }
+
+  // Fallback for other date formats
+  const d = new Date(raw);
+  if (isNaN(d.getTime()) || d.getFullYear() < 2020) return '—';
+  return d.toLocaleString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
 }
 
 function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string }): string {
@@ -1848,48 +1882,16 @@ const DetailedAuditReportView: React.FC<{
   const [viewMode, setViewMode] = useState<'single' | 'all'>('single');
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
-  const activeEmp = typeof selectedEmpIndex === 'number' ? (employees[selectedEmpIndex] || employees[0]) : employees[0];
+  // Fetch monthly attendance events from Supabase for all days of the selected month
+  const [dbMonthEventsMap, setDbMonthEventsMap] = useState<Record<string, Record<number, { inTime?: string; outTime?: string; status?: string }>>>({});
+  const [, setIsFetchingMonthEvents] = useState(false);
 
-  const d = new Date(selectedDate || Date.now());
+  const d = useMemo(() => new Date(selectedDate || Date.now()), [selectedDate]);
   const year = isNaN(d.getTime()) ? new Date().getFullYear() : d.getFullYear();
   const month = isNaN(d.getTime()) ? new Date().getMonth() : d.getMonth();
   const monthName = isNaN(d.getTime()) ? 'July' : d.toLocaleString('default', { month: 'long' });
   const daysInMonth = isNaN(d.getTime()) ? 31 : new Date(year, month + 1, 0).getDate();
-  const daysArray = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-
-  if (!employees || employees.length === 0) {
-    return (
-      <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
-        <p className="text-slate-500 font-bold text-sm">No employee data found matching current filter.</p>
-      </div>
-    );
-  }
-
-  const handleSelectChange = (val: string) => {
-    if (val === 'all') {
-      setShowConfirmModal(true);
-    } else {
-      setSelectedEmpIndex(Number(val));
-      setViewMode('single');
-    }
-  };
-
-  const handleConfirmShowAll = () => {
-    setSelectedEmpIndex('all');
-    setViewMode('all');
-    setShowConfirmModal(false);
-  };
-
-  const handleCancelShowAll = () => {
-    setShowConfirmModal(false);
-    if (viewMode !== 'all') {
-      setSelectedEmpIndex(0);
-    }
-  };
-
-  // Fetch monthly attendance events from Supabase for all days of the selected month
-  const [dbMonthEventsMap, setDbMonthEventsMap] = useState<Record<string, Record<number, { inTime?: string; outTime?: string; status?: string }>>>({});
-  const [isFetchingMonthEvents, setIsFetchingMonthEvents] = useState(false);
+  const daysArray = useMemo(() => Array.from({ length: daysInMonth }, (_, i) => i + 1), [daysInMonth]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1947,6 +1949,38 @@ const DetailedAuditReportView: React.FC<{
     fetchMonthlyEvents();
     return () => { isMounted = false; };
   }, [year, month, daysInMonth]);
+
+  if (!employees || employees.length === 0) {
+    return (
+      <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
+        <p className="text-slate-500 font-bold text-sm">No employee data found matching current filter.</p>
+      </div>
+    );
+  }
+
+  const activeEmp = typeof selectedEmpIndex === 'number' ? (employees[selectedEmpIndex] || employees[0]) : employees[0];
+
+  const handleSelectChange = (val: string) => {
+    if (val === 'all') {
+      setShowConfirmModal(true);
+    } else {
+      setSelectedEmpIndex(Number(val));
+      setViewMode('single');
+    }
+  };
+
+  const handleConfirmShowAll = () => {
+    setSelectedEmpIndex('all');
+    setViewMode('all');
+    setShowConfirmModal(false);
+  };
+
+  const handleCancelShowAll = () => {
+    setShowConfirmModal(false);
+    if (viewMode !== 'all') {
+      setSelectedEmpIndex(0);
+    }
+  };
 
   // Helper to render single employee card (Image 3 layout) with dynamic database record calculations
   const renderEmployeeCard = (emp: EmployeeRow, idx: number) => {
@@ -6189,9 +6223,7 @@ const DetailedAuditReportView: React.FC<{
                         <td className="px-4 py-3 font-mono text-slate-500">{device.serialNo}</td>
                         <td className="px-4 py-3 text-slate-500">{device.location || '—'}</td>
                         <td className="px-4 py-3 text-slate-500">
-                          {device.lastPing
-                            ? new Date(device.lastPing).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })
-                            : '—'}
+                          {formatDeviceLastPing(device.lastPing)}
                         </td>
                       </tr>
                     ))}
