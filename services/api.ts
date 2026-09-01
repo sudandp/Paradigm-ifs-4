@@ -14,8 +14,10 @@ import type {
   NotificationRule, AutomatedNotificationRule, ScheduledNotification, NotificationType, Company, GmcPolicySettings, StaffAttendanceRules,
   GmcSubmission, UserHoliday, AttendanceUnlockRequest, LeaveType, SiteAttendanceRecord, SiteInvoiceRecord, SiteInvoiceDefault, SiteFinanceRecord,
   CommunicationLog, RevisionLog, UserChild, RoutePoint,
-  AttendanceReportType, ReportEmailPayload
+  AttendanceReportType, ReportEmailPayload,
+  SiteResponsibilityMatrix
 } from '../types';
+import { INITIAL_SITE_RESPONSIBILITY_DATA } from '../data/initialSiteResponsibilityData';
 import { getObjectDiff } from '../utils/diff';
 import { 
   differenceInCalendarDays, differenceInCalendarMonths, differenceInMonths, differenceInYears, format, startOfMonth, endOfMonth, 
@@ -11074,5 +11076,167 @@ export const api = {
       .order('log_date', { ascending: true });
     if (error) throw error;
     return data || [];
+  },
+
+  /**
+   * Site Responsibility & Employee Routing Matrix
+   */
+  getSiteResponsibilityMatrix: async (): Promise<SiteResponsibilityMatrix[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('site_responsibility_matrix')
+        .select('*')
+        .order('site_name', { ascending: true });
+      
+      if (error || !data || data.length === 0) {
+        if (error) console.warn('Supabase site_responsibility_matrix fetch warning:', error.message);
+        const cached = await offlineDb.getCache('site_responsibility_matrix');
+        if (cached && Array.isArray(cached) && cached.length > 0) {
+          return cached;
+        }
+        return INITIAL_SITE_RESPONSIBILITY_DATA;
+      }
+
+      const formatted = data.map((row: any) => toCamelCase(row) as SiteResponsibilityMatrix);
+      await offlineDb.setCache('site_responsibility_matrix', formatted);
+      return formatted;
+    } catch (err) {
+      console.warn('Could not query site_responsibility_matrix:', err);
+      const cached = await offlineDb.getCache('site_responsibility_matrix');
+      return cached || INITIAL_SITE_RESPONSIBILITY_DATA;
+    }
+  },
+
+  upsertSiteResponsibility: async (matrix: Partial<SiteResponsibilityMatrix>): Promise<SiteResponsibilityMatrix> => {
+    try {
+      const payload: Record<string, any> = toSnakeCase(matrix);
+      payload.updated_at = new Date().toISOString();
+      
+      // Ensure id is only sent if it is a valid UUID
+      const isValidUUID = payload.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payload.id);
+      if (!isValidUUID) {
+        delete payload.id;
+      }
+
+      // Clean date
+      if (payload.takeover_date === '' || payload.takeover_date === undefined) {
+        payload.takeover_date = null;
+      }
+
+      // Clean integer units_count
+      if (payload.units_count !== null && payload.units_count !== undefined) {
+        const parsed = parseInt(String(payload.units_count), 10);
+        payload.units_count = isNaN(parsed) ? null : parsed;
+      }
+
+      // Clean empty UUID foreign key fields
+      ['ops_manager_id', 'hr_incharge_id', 'accounts_incharge_id', 'site_id', 'site_supervisor_id'].forEach(key => {
+        if (payload[key] && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payload[key])) {
+          payload[key] = null;
+        }
+      });
+
+      const { data, error } = await supabase
+        .from('site_responsibility_matrix')
+        .upsert(payload, { onConflict: 'site_name' })
+        .select('*')
+        .single();
+
+      if (error) {
+        console.warn('Supabase upsert warning on site_responsibility_matrix:', error.message);
+      }
+
+      const result: SiteResponsibilityMatrix = data ? (toCamelCase(data) as SiteResponsibilityMatrix) : (matrix as SiteResponsibilityMatrix);
+
+      // Update offline DB cache
+      const cached = (await offlineDb.getCache('site_responsibility_matrix')) || [];
+      const updatedList = Array.isArray(cached) ? [...cached] : [];
+      const existingIdx = updatedList.findIndex(m => m.siteName?.toLowerCase() === matrix.siteName?.toLowerCase());
+      if (existingIdx >= 0) {
+        updatedList[existingIdx] = { ...updatedList[existingIdx], ...result };
+      } else {
+        updatedList.push(result);
+      }
+      await offlineDb.setCache('site_responsibility_matrix', updatedList);
+
+      return result;
+    } catch (err: any) {
+      console.warn('Error in upsertSiteResponsibility, saving to local cache:', err);
+      const result = { ...matrix, updatedAt: new Date().toISOString() } as SiteResponsibilityMatrix;
+      const cached = (await offlineDb.getCache('site_responsibility_matrix')) || [];
+      const updatedList = Array.isArray(cached) ? [...cached] : [];
+      const existingIdx = updatedList.findIndex(m => m.siteName?.toLowerCase() === matrix.siteName?.toLowerCase());
+      if (existingIdx >= 0) {
+        updatedList[existingIdx] = { ...updatedList[existingIdx], ...result };
+      } else {
+        updatedList.push(result);
+      }
+      await offlineDb.setCache('site_responsibility_matrix', updatedList);
+      return result;
+    }
+  },
+
+  deleteSiteResponsibility: async (id: string): Promise<void> => {
+    try {
+      const isValidUUID = id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+      if (isValidUUID) {
+        const { error } = await supabase
+          .from('site_responsibility_matrix')
+          .delete()
+          .eq('id', id);
+        if (error) console.warn('Supabase delete error:', error.message);
+      }
+    } catch (err) {
+      console.warn('Delete error:', err);
+    }
+
+    const cached = (await offlineDb.getCache('site_responsibility_matrix')) || [];
+    if (Array.isArray(cached)) {
+      const filtered = cached.filter(m => m.id !== id);
+      await offlineDb.setCache('site_responsibility_matrix', filtered);
+    }
+  },
+
+  bulkUpdateSiteIncharges: async (
+    siteNames: string[],
+    updates: {
+      opsManagerName?: string;
+      opsManagerId?: string | null;
+      hrInchargeName?: string;
+      hrInchargeId?: string | null;
+      accountsInchargeName?: string;
+      accountsInchargeId?: string | null;
+    }
+  ): Promise<void> => {
+    try {
+      const payload = toSnakeCase(updates);
+      payload.updated_at = new Date().toISOString();
+
+      ['ops_manager_id', 'hr_incharge_id', 'accounts_incharge_id'].forEach(key => {
+        if (payload[key] && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payload[key])) {
+          payload[key] = null;
+        }
+      });
+
+      const { error } = await supabase
+        .from('site_responsibility_matrix')
+        .update(payload)
+        .in('site_name', siteNames);
+
+      if (error) console.warn('Supabase bulk update warning:', error.message);
+    } catch (err) {
+      console.warn('Error during bulk update:', err);
+    }
+
+    const cached = (await offlineDb.getCache('site_responsibility_matrix')) || [];
+    if (Array.isArray(cached)) {
+      const updated = cached.map(site => {
+        if (siteNames.includes(site.siteName)) {
+          return { ...site, ...updates, updatedAt: new Date().toISOString() };
+        }
+        return site;
+      });
+      await offlineDb.setCache('site_responsibility_matrix', updated);
+    }
   }
 };

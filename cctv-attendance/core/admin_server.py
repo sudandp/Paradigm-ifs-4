@@ -218,14 +218,26 @@ def create_admin_app(
     @app.get("/status")
     async def health():
         """Health check endpoint."""
+        try:
+            enrolled = db.get_embedding_count()
+        except Exception:
+            enrolled = 0
+
+        obj_ready = False
+        try:
+            if pipeline and hasattr(pipeline, 'object_detector') and pipeline.object_detector:
+                obj_ready = getattr(pipeline.object_detector, 'is_ready', False)
+        except Exception:
+            obj_ready = False
+
         return {
             "status": "running",
             "service": "Paradigm CCTV Attendance Edge Server",
             "device_id": config.edge_device_id,
             "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "enrolled_count": db.get_embedding_count(),
+            "enrolled_count": enrolled,
             "cloud_enabled": config.cloud_enabled,
-            "object_detector_ready": pipeline.object_detector.is_ready if pipeline and hasattr(pipeline, 'object_detector') else False,
+            "object_detector_ready": obj_ready,
         }
 
     @app.get("/stats")
@@ -233,6 +245,13 @@ def create_admin_app(
         """Pipeline statistics including object detection counters."""
         queue_stats = db.get_queue_stats()
         pipeline_stats = pipeline.get_stats() if pipeline and hasattr(pipeline, 'get_stats') else {}
+        obj_ready = False
+        try:
+            if pipeline and hasattr(pipeline, 'object_detector') and pipeline.object_detector:
+                obj_ready = getattr(pipeline.object_detector, 'is_ready', False)
+        except Exception:
+            obj_ready = False
+
         return {
             "enrolled_faces": db.get_embedding_count(),
             "queue": queue_stats,
@@ -240,7 +259,7 @@ def create_admin_app(
             "match_threshold": config.match_threshold,
             "cooldown_seconds": config.cooldown_seconds,
             "processing_fps": config.processing_fps,
-            "object_detector_on": pipeline.object_detector.is_ready if pipeline and hasattr(pipeline, 'object_detector') else False,
+            "object_detector_on": obj_ready,
             **{k: v for k, v in pipeline_stats.items() if k in (
                 'frames_processed', 'faces_detected', 'objects_detected',
                 'vehicles_detected', 'matches', 'unknown_faces', 'errors'

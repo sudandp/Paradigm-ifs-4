@@ -63,31 +63,35 @@ class CameraStream:
         return self._frame_count
 
     def _get_candidate_urls(self) -> list[str]:
-        """Generate alternative RTSP URLs to try if default fails (e.g., Dahua subtype 1, Hikvision, decoded pass)."""
+        """Generate alternative RTSP URLs to try if default fails."""
+        import urllib.parse
         base = self.config.rtsp_url
         candidates = [base]
 
-        # Alternative 1: If %40 in password, try unescaped @ or vice versa
+        # Clean double-escaped %%40 if present
+        if '%%40' in base:
+            candidates.append(base.replace('%%40', '%40'))
+            candidates.append(base.replace('%%40', '@'))
+
+        # Alternative: %40 <-> raw @
         if '%40' in base:
             candidates.append(base.replace('%40', '@'))
-        elif '@' in base and base.count('@') > 1:
-            # e.g. rtsp://admin:Paradigm@2006@192.168...
-            parts = base.split('@')
-            candidates.append(f"{parts[0]}%40{'@'.join(parts[1:])}")
 
-        # Alternative 2: Try subtype=1 (substream) if currently subtype=0
-        if 'subtype=0' in base:
-            candidates.append(base.replace('subtype=0', 'subtype=1'))
-        elif 'subtype=1' in base:
-            candidates.append(base.replace('subtype=1', 'subtype=0'))
-        elif '/cam/realmonitor' in base and 'subtype' not in base:
-            candidates.append(base + '&subtype=1')
+        # Alternative: Subtype swapping (subtype=0 main 1080p, subtype=1 sub 480p)
+        current = list(candidates)
+        for cand in current:
+            if 'subtype=0' in cand:
+                candidates.append(cand.replace('subtype=0', 'subtype=1'))
+            elif 'subtype=1' in cand:
+                candidates.append(cand.replace('subtype=1', 'subtype=0'))
 
-        # Alternative 3: Hikvision stream paths if Dahua path fails
-        if '/cam/realmonitor' in base:
-            prefix = base.split('/cam/realmonitor')[0]
-            candidates.append(f"{prefix}/Streaming/Channels/101")
-            candidates.append(f"{prefix}/Streaming/Channels/102")
+        # Alternative: Alternate confirmed camera IP (swap .150 <-> .149)
+        current = list(candidates)
+        for cand in current:
+            if '192.168.51.150' in cand:
+                candidates.append(cand.replace('192.168.51.150', '192.168.51.149'))
+            elif '192.168.51.149' in cand:
+                candidates.append(cand.replace('192.168.51.149', '192.168.51.150'))
 
         # Deduplicate while preserving order
         seen = set()
@@ -98,37 +102,78 @@ class CameraStream:
                 deduped.append(c)
         return deduped
 
-    def connect(self) -> bool:
-        """Open RTSP connection to the camera with multi-candidate fallback."""
-        import os
+    def _probe_host(self, host: str, port: int = 554, timeout: float = 0.4) -> bool:
+        """Non-blocking TCP probe. Returns True if host:port responds."""
         import socket
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(timeout)
+            ok = s.connect_ex((host, port)) == 0
+            s.close()
+            return ok
+        except Exception:
+            return False
+
+    def _scan_fallback_ips(self, parsed_url, nvr_host: str) -> list[str]:
+        """
+        When NVR is unreachable, scan 192.168.51.149-165 in parallel (400ms probes)
+        and build RTSP candidate URLs for any host with port 554 open.
+        """
+        import threading, urllib.parse
+        user_info = f"{parsed_url.username}:{parsed_url.password}" if parsed_url.username else "admin:admin"
+        base = self.config.rtsp_url
+        live: list[str] = []
+        lock = threading.Lock()
+
+        def probe(ip: str) -> None:
+            if self._probe_host(ip):
+                with lock:
+                    live.append(ip)
+
+        threads = [threading.Thread(target=probe, args=(f"192.168.51.{i}",), daemon=True) for i in range(149, 166)]
+        for t in threads: t.start()
+        for t in threads: t.join(timeout=1.5)
+
+        candidates: list[str] = []
+        for cam_ip in live:
+            fallback_base = base.replace(nvr_host, cam_ip)
+            candidates.append(fallback_base)
+            if 'subtype=0' in fallback_base:
+                candidates.append(fallback_base.replace('subtype=0', 'subtype=1'))
+            candidates += [
+                f"rtsp://{user_info}@{cam_ip}:554/Streaming/Channels/101",
+                f"rtsp://{user_info}@{cam_ip}:554/h264/ch1/main/av_stream",
+            ]
+            logger.info(f"[Camera:{self.config.name}] Auto-discovered fallback camera at {cam_ip}:554")
+        return candidates
+
+    def connect(self) -> bool:
+        """Open RTSP connection with NVR first, then auto-discover fallback IPs."""
+        import os
         import urllib.parse
 
         self.connection_attempts += 1
-        logger.info(f"[Camera:{self.config.name}] Connecting to RTSP stream (attempt {self.connection_attempts})...")
+        logger.info(f"[Camera:{self.config.name}] Connecting (attempt {self.connection_attempts})...")
 
-        # Check socket reachability to host/port 554 first
-        try:
-            parsed = urllib.parse.urlparse(self.config.rtsp_url)
-            host = parsed.hostname or '192.168.51.111'
-            port = parsed.port or 554
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(2.0)
-            res = sock.connect_ex((host, port))
-            sock.close()
-            if res != 0:
-                self.last_error = f"Socket error: {host}:{port} unreachable (code {res})"
-                logger.warning(f"[Camera:{self.config.name}] {self.last_error}")
-            else:
-                self.last_error = f"TCP {host}:{port} open, negotiating RTSP..."
-        except Exception as e:
-            self.last_error = f"Host check failed: {e}"
+        parsed = urllib.parse.urlparse(self.config.rtsp_url)
+        nvr_host = parsed.hostname or '192.168.51.150'
+        port = parsed.port or 554
 
-        candidate_urls = self._get_candidate_urls()
+        # Build candidate list: target host first, fallback direct IPs if unreachable
+        if self._probe_host(nvr_host, port, timeout=2.0):
+            self.last_error = f"TCP {nvr_host}:{port} open, negotiating RTSP..."
+            candidate_urls = self._get_candidate_urls()
+        else:
+            self.last_error = f"Socket error: {nvr_host}:{port} unreachable — scanning LAN for cameras..."
+            logger.warning(f"[Camera:{self.config.name}] {self.last_error}")
+            candidate_urls = self._scan_fallback_ips(parsed, nvr_host)
+            if not candidate_urls:
+                logger.error(f"[Camera:{self.config.name}] No reachable RTSP hosts found on 192.168.51.x")
+                return False
+
         for cand_url in candidate_urls:
             for transport in ['tcp', 'udp']:
                 try:
-                    # Low-latency FFMPEG options: discard internal FIFO buffer to ensure 0ms real-time delay
                     os.environ['OPENCV_FFMPEG_CAPTURE_OPTIONS'] = (
                         f'rtsp_transport;{transport}|'
                         'fflags;nobuffer|'
@@ -136,25 +181,21 @@ class CameraStream:
                         'max_delay;100000|'
                         'reorder_queue_size;0|'
                         'buffer_size;102400|'
-                        'timeout;5000000'
+                        'timeout;4000000'
                     )
                     cap = cv2.VideoCapture(cand_url, cv2.CAP_FFMPEG)
-                    
                     if cap and cap.isOpened():
-                        # Test reading 1 frame to be 100% sure stream produces frames
                         ret, test_frame = cap.read()
                         if ret and test_frame is not None:
                             self._cap = cap
                             self.active_rtsp_url = cand_url
                             self._cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-
                             width = int(self._cap.get(cv2.CAP_PROP_FRAME_WIDTH))
                             height = int(self._cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
                             native_fps = self._cap.get(cv2.CAP_PROP_FPS)
-
                             logger.info(
-                                f"[Camera:{self.config.name}] Connected via {transport.upper()} (Zero-Latency mode) — "
-                                f"{width}x{height} @ {native_fps:.1f} FPS (URL: {cand_url.split('@')[-1]})"
+                                f"[Camera:{self.config.name}] Connected via {transport.upper()} — "
+                                f"{width}x{height} @ {native_fps:.1f} FPS ({cand_url.split('@')[-1]})"
                             )
                             self._consecutive_failures = 0
                             self.last_error = "Connected"
@@ -162,7 +203,7 @@ class CameraStream:
                         else:
                             cap.release()
                 except Exception as e:
-                    self.last_error = f"Error trying {transport}: {e}"
+                    self.last_error = f"Error ({transport}): {e}"
 
         logger.error(f"[Camera:{self.config.name}] Failed to connect to any candidate RTSP stream")
         return False
@@ -175,15 +216,15 @@ class CameraStream:
         logger.info(f"[Camera:{self.config.name}] Disconnected")
 
     def start(self) -> None:
-        """Start background frame capture thread."""
+        """Start background frame capture thread. Always launches thread to auto-reconnect."""
         if self._running:
             return
-        
-        if not self.is_connected:
-            if not self.connect():
-                logger.error(f"[Camera:{self.config.name}] Cannot start — connection failed")
-                return
 
+        # Attempt initial quick connect
+        if not self.is_connected:
+            self.connect()
+
+        # Always start background thread so auto-reconnect continuously runs
         self._running = True
         self._thread = threading.Thread(
             target=self._capture_loop,
@@ -191,7 +232,7 @@ class CameraStream:
             daemon=True,
         )
         self._thread.start()
-        logger.info(f"[Camera:{self.config.name}] Capture thread started")
+        logger.info(f"[Camera:{self.config.name}] Background capture thread active")
 
     def stop(self) -> None:
         """Stop background frame capture."""
@@ -226,15 +267,20 @@ class CameraStream:
         """
         while self._running:
             try:
-                if not self.is_connected:
+                if not self.is_connected or self._cap is None:
                     logger.warning(f"[Camera:{self.config.name}] Disconnected, attempting reconnect...")
                     time.sleep(5.0)
                     if not self.connect():
                         time.sleep(5.0)
                         continue
 
-                # Fast grab to discard any queued stale frames in network socket
-                if not self._cap.grab():
+                cap = self._cap
+                if cap is None:
+                    continue
+
+                # Read live frame directly
+                ret, frame = cap.read()
+                if not ret or frame is None:
                     self._consecutive_failures += 1
                     if self._consecutive_failures >= self._max_failures:
                         logger.warning(
@@ -244,11 +290,6 @@ class CameraStream:
                         self.disconnect()
                         time.sleep(2.0)
                     time.sleep(0.01)
-                    continue
-
-                # Retrieve decoded latest frame
-                ret, frame = self._cap.retrieve()
-                if not ret or frame is None:
                     continue
 
                 self._consecutive_failures = 0

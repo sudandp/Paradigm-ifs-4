@@ -109,8 +109,18 @@ class AppConfig:
         # Look for .env in the cctv-attendance directory
         env_path = Path(__file__).parent.parent / '.env'
         if env_path.exists():
-            load_dotenv(env_path)
-            logger.info(f"Loaded .env from {env_path}")
+            # Robust multi-encoding loader for Windows systems
+            loaded = False
+            for enc in ('utf-8', 'utf-8-sig', 'cp1252', 'latin-1'):
+                try:
+                    load_dotenv(env_path, encoding=enc)
+                    logger.info(f"Loaded .env from {env_path} (encoding: {enc})")
+                    loaded = True
+                    break
+                except Exception:
+                    continue
+            if not loaded:
+                load_dotenv(env_path)
         else:
             load_dotenv()  # Try default locations
             logger.warning(f"No .env found at {env_path}, using system environment")

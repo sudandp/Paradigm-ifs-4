@@ -39,6 +39,30 @@ import {
 } from 'recharts';
 import { exportGenericReportToExcel, GenericReportColumn } from '../../utils/excelExport';
 import type { DetailedAuditPdfEmployee, DetailedAuditPdfDataRow, BasicReportDataRow } from '../attendance/PDFReports';
+import type { SiteResponsibilityMatrix } from '../../types/siteRouting';
+import { INITIAL_SITE_RESPONSIBILITY_DATA } from '../../data/initialSiteResponsibilityData';
+
+// Helper to check if an employee department/site string matches a matrix site name
+function matchSiteName(dept: string, matrixSiteName: string): boolean {
+  if (!dept || !matrixSiteName) return false;
+  const d = dept.toLowerCase().trim();
+  const m = matrixSiteName.toLowerCase().trim();
+  if (d === m) return true;
+  if (d.includes(m) || m.includes(d)) return true;
+  
+  // Key site matching rules
+  if ((d.includes('brigade') || d.includes('utopia')) && (m.includes('brigade') || m.includes('utopia'))) return true;
+  if (d.includes('silicon') && m.includes('silicon')) return true;
+  if (d.includes('venezia') && m.includes('venezia')) return true;
+  if (d.includes('nikoo') && m.includes('nikoo')) return true;
+  if (d.includes('aarna') && m.includes('aarna')) return true;
+  if (d.includes('eden') && m.includes('eden')) return true;
+
+  const dWords = d.replace(/[^a-z0-9]/g, ' ').split(/\s+/).filter(w => w.length >= 4);
+  const mWords = m.replace(/[^a-z0-9]/g, ' ').split(/\s+/).filter(w => w.length >= 4);
+  const common = dWords.filter(w => mWords.includes(w));
+  return common.length >= 2;
+}
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -529,6 +553,80 @@ const ClientAttendanceDashboard: React.FC = () => {
   const [pageSize, setPageSize] = useState<number>(50);
   const tableRef = useRef<HTMLDivElement>(null);
   const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ── Site Responsibility Matrix & Operations Manager Scoping ─────────────────
+  const [matrixData, setMatrixData] = useState<SiteResponsibilityMatrix[]>([]);
+
+  useEffect(() => {
+    api.getSiteResponsibilityMatrix()
+      .then(res => setMatrixData(res && res.length > 0 ? res : INITIAL_SITE_RESPONSIBILITY_DATA))
+      .catch(() => setMatrixData(INITIAL_SITE_RESPONSIBILITY_DATA));
+  }, []);
+
+  // Distinct Operations Managers list from Site Matrix
+  const opsManagerList = useMemo(() => {
+    const set = new Set<string>();
+    matrixData.forEach(m => {
+      if (m.opsManagerName) {
+        m.opsManagerName.split(/[/&]/).forEach(part => {
+          const clean = part.trim();
+          if (clean) set.add(clean);
+        });
+      }
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [matrixData]);
+
+  // Detect if current logged-in user is an Operations Manager
+  const loggedInOpsManager = useMemo(() => {
+    if (!authUser) return null;
+    const userEmail = (authUser.email || '').toLowerCase();
+    const userName = (authUser.name || '').toLowerCase();
+
+    // Super Admin accounts have global company-wide access
+    if (userEmail === 'admin@paradigmfms.com' || userEmail === 'sudhan@paradigm.com' || (authUser.role === 'admin' && !userEmail.includes('ops') && !userEmail.includes('sandeep'))) {
+      return null;
+    }
+
+    const matched = opsManagerList.find(ops => {
+      const opsLower = ops.toLowerCase();
+      const opsRoot = opsLower.split(/\s+/)[0];
+      return userEmail.includes(opsRoot) || userName.includes(opsLower) || opsLower.includes(userName);
+    });
+
+    return matched || null;
+  }, [authUser, opsManagerList]);
+
+  // Selected Ops Manager filter state (locked to loggedInOpsManager if logged in as ops manager)
+  const [selectedOpsManager, setSelectedOpsManager] = useState<string>('all');
+
+  useEffect(() => {
+    if (loggedInOpsManager) {
+      setSelectedOpsManager(loggedInOpsManager);
+    }
+  }, [loggedInOpsManager]);
+
+  // Allowed site names list for the selected / logged-in Operations Manager
+  const allowedSitesForOpsManager = useMemo(() => {
+    const targetOps = loggedInOpsManager || (selectedOpsManager !== 'all' ? selectedOpsManager : null);
+    if (!targetOps) return null;
+
+    const mappedSites: string[] = [];
+    matrixData.forEach(m => {
+      if (m.opsManagerName) {
+        const parts = m.opsManagerName.split(/[/&]/).map(s => s.trim().toLowerCase());
+        const targetLower = targetOps.toLowerCase().trim();
+        const targetRoot = targetLower.split(/\s+/)[0];
+        
+        const isMatch = parts.some(p => p === targetLower || p.includes(targetRoot) || targetLower.includes(p));
+        if (isMatch && m.siteName) {
+          mappedSites.push(m.siteName);
+        }
+      }
+    });
+
+    return mappedSites;
+  }, [loggedInOpsManager, selectedOpsManager, matrixData]);
 
   // ── Multi-Filter Toolbar & Date Preset State (Matching Image 3 & Image 2) ──
   const [datePreset, setDatePreset] = useState<string>('Today');
@@ -1201,17 +1299,19 @@ const ClientAttendanceDashboard: React.FC = () => {
     return today > currentUserPermission.validUntilDate;
   }, [currentUserPermission]);
 
-  // Set of allowed sites for current user (null if super admin / full access)
+  // Set of allowed sites for current user / selected Ops Manager (null if super admin full access)
   const allowedSitesSet = useMemo(() => {
-    // Super admin by email
-    if (currentUserEmail === 'admin@paradigmfms.com') {
-      return null; // Super Admin Full Access
+    // 1. If an Operations Manager is active (logged-in or selected via filter)
+    if (allowedSitesForOpsManager && allowedSitesForOpsManager.length > 0) {
+      return new Set(allowedSitesForOpsManager);
     }
 
-    // Internal staff (@paradigmfms.com domain) who are not explicit client roles get full access
-    const isInternalStaff = currentUserEmail.endsWith('@paradigmfms.com') || currentUserEmail.endsWith('@paradigm.com');
-    const isClientRole = authUser?.role === 'client' || authUser?.role === 'client_panel' || (authUser as any)?.roleId === 'client_panel';
+    // 2. Super admin by email (full company-wide access)
+    if (currentUserEmail === 'admin@paradigmfms.com' || currentUserEmail === 'sudhan@paradigm.com') {
+      return null;
+    }
 
+    // 3. User permission rules from Access Control
     if (currentUserPermission) {
       if (currentUserPermission.accessType === 'all') {
         return null; // Explicit Full Access
@@ -1219,13 +1319,11 @@ const ClientAttendanceDashboard: React.FC = () => {
       if (isPermissionExpired) {
         return new Set<string>(); // Expired = 0 sites allowed
       }
-      // Only apply restricted access to non-internal (client) users
-      if (!isInternalStaff || isClientRole) {
-        return new Set(currentUserPermission.allowedSites || []);
-      }
+      return new Set(currentUserPermission.allowedSites || []);
     }
 
-    // Default restricted access for non-admin client roles if no explicit entry found
+    // 4. Default restricted access for non-admin client roles if no explicit entry found
+    const isClientRole = authUser?.role === 'client' || authUser?.role === 'client_panel' || (authUser as any)?.roleId === 'client_panel';
     if (isClientRole) {
       const userSite = (authUser as any)?.site;
       if (userSite) {
@@ -1234,8 +1332,8 @@ const ClientAttendanceDashboard: React.FC = () => {
       return new Set<string>(); // 0 sites allowed until configured by admin
     }
 
-    return null; // Default to full access for internal admin staff
-  }, [currentUserPermission, currentUserEmail, isPermissionExpired, authUser]);
+    return null; // Default to full access for general admin staff
+  }, [allowedSitesForOpsManager, currentUserPermission, currentUserEmail, isPermissionExpired, authUser]);
 
 
   // Save permissions to localStorage
@@ -2603,11 +2701,13 @@ const DetailedAuditReportView: React.FC<{
     const accessible = allowedSitesSet === null
       ? data.employees
       : data.employees.filter(emp => {
-          if (!emp.department) return false;
+          const smartInfo = getSmartSiteFrontend(emp.empCode, emp.department);
+          const dept = smartInfo.site || emp.department || '';
+          if (!dept || dept === 'Default' || dept === 'General') {
+            return false;
+          }
           for (const allowedSite of allowedSitesSet) {
-            const allowedLower = allowedSite.toLowerCase().trim();
-            const deptLower = emp.department.toLowerCase().trim();
-            if (allowedLower === deptLower || deptLower.includes(allowedLower) || allowedLower.includes(deptLower)) {
+            if (matchSiteName(dept, allowedSite)) {
               return true;
             }
           }
@@ -4149,9 +4249,39 @@ const DetailedAuditReportView: React.FC<{
             <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
               Real-time site attendance overview & employee tracking
             </p>
+            {selectedOpsManager !== 'all' && (
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[11px] font-bold mt-2">
+                <ShieldCheck size={13} className="text-emerald-600 shrink-0" />
+                <span>
+                  Scoped to Operations Manager: <strong>{selectedOpsManager}</strong> ({allowedSitesForOpsManager?.length || 0} mapped sites in Responsibility Matrix)
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            {/* Operations Manager Filter */}
+            <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2">
+              <ShieldCheck size={16} className="text-emerald-600 dark:text-emerald-400" />
+              <select
+                value={selectedOpsManager}
+                onChange={e => {
+                  setSelectedOpsManager(e.target.value);
+                  setDepartmentFilter('all');
+                }}
+                disabled={Boolean(loggedInOpsManager)}
+                className="bg-transparent text-slate-800 dark:text-slate-200 text-xs font-semibold outline-none cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed"
+                title={loggedInOpsManager ? `Access strictly locked to ${loggedInOpsManager}'s mapped sites` : 'Filter sites by Operations Manager'}
+              >
+                <option value="all">🌐 All Operations Leads</option>
+                {opsManagerList.map(mgr => (
+                  <option key={mgr} value={mgr}>
+                    🛡️ Ops: {mgr}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {/* Department / Site Filter */}
             <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2">
               <Building2 size={16} className="text-emerald-600 dark:text-emerald-400" />
@@ -4160,7 +4290,9 @@ const DetailedAuditReportView: React.FC<{
                 onChange={e => setDepartmentFilter(e.target.value)}
                 className="bg-transparent text-slate-800 dark:text-slate-200 text-xs font-semibold outline-none cursor-pointer"
               >
-                <option value="all">All Sites / Depts</option>
+                <option value="all">
+                  {selectedOpsManager !== 'all' ? `All ${selectedOpsManager} Sites (${departmentList.length})` : `All Sites / Depts (${departmentList.length})`}
+                </option>
                 {departmentList.map(dept => (
                   <option key={dept} value={dept}>
                     {dept}

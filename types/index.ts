@@ -9,6 +9,7 @@ export * from './attendance';
 export * from './common';
 export * from './crm';
 export * from './operations';
+export * from './siteRouting';
 
 import { UploadedFile } from './common';
 

@@ -138,8 +138,9 @@ class AttendancePipeline:
         cam_status = self.grabber.start_all()
         connected = sum(1 for v in cam_status.values() if v)
         if connected == 0:
-            logger.error("[Pipeline] No cameras connected!")
-            return False
+            logger.warning("[Pipeline] No cameras connected yet — background grabber will continuously auto-reconnect")
+        else:
+            logger.info(f"[Pipeline] Connected {connected}/{len(self.config.cameras)} cameras")
 
         # 9. Ensure directories exist
         if self.config.save_snapshots:
