@@ -2984,6 +2984,20 @@ export const api = {
 
     const { data, error } = await supabase.from('users').update(dbUpdates).eq('id', id).select().single();
     if (error) throw error;
+
+    // If email or phone was updated by admin, sync to auth.users pre-confirmed
+    if (dbUpdates.email || dbUpdates.phone) {
+      try {
+        await supabase.rpc('admin_update_user_auth_email', {
+          target_user_id: id,
+          new_email: dbUpdates.email || data.email,
+          new_phone: dbUpdates.phone || data.phone || null
+        });
+      } catch (authErr) {
+        console.warn('[updateUser] Could not sync auth email via RPC:', authErr);
+      }
+    }
+
     return toCamelCase({ ...data, role: data.role_id });
   },
 
@@ -3020,6 +3034,69 @@ export const api = {
     // Call the security-definer RPC which blocks/unblocks the user in public.users and auth.users
     const { error } = await supabase.rpc('block_user', { target_user_id: id, block_status: blockStatus });
     if (error) throw error;
+  },
+
+  /** Mark an employee as Left/Relieved with exit date and optionally release their email */
+  markUserAsLeft: async (params: {
+    userId: string;
+    exitDate: string;
+    exitReason?: string;
+    releaseEmail?: boolean;
+    notes?: string;
+  }): Promise<{ success: boolean; archivedEmail?: string; releasedEmail?: string }> => {
+    // 1. Try security-definer RPC function
+    try {
+      const { data, error } = await supabase.rpc('mark_user_left', {
+        target_user_id: params.userId,
+        p_exit_date: params.exitDate,
+        p_exit_reason: params.exitReason || 'Resigned',
+        p_release_email: params.releaseEmail ?? true,
+        p_notes: params.notes || null
+      });
+      if (!error && data) {
+        return data;
+      }
+    } catch (rpcErr) {
+      console.warn('[markUserAsLeft] RPC not available, using fallback:', rpcErr);
+    }
+
+    // 2. Client-side fallback if RPC is not yet migrated
+    const { data: userData } = await supabase.from('users').select('email, name').eq('id', params.userId).single();
+    const currentEmail = userData?.email;
+    let archivedEmail = currentEmail;
+
+    if (params.releaseEmail && currentEmail) {
+      const prefix = currentEmail.split('@')[0];
+      const domain = currentEmail.split('@')[1] || 'paradigmfms.com';
+      const cleanName = (userData?.name || prefix).toLowerCase().replace(/[^a-z0-9]+/g, '.');
+      const datePart = params.exitDate.replace(/-/g, '');
+      archivedEmail = `${cleanName}.left.${datePart}@${domain}`;
+    }
+
+    const updates: any = {
+      status: 'left',
+      is_blocked: true,
+      left_date: params.exitDate,
+      exit_reason: params.exitReason || 'Resigned',
+      exit_notes: params.notes || null
+    };
+
+    if (params.releaseEmail && archivedEmail) {
+      updates.archived_original_email = currentEmail;
+      updates.email = archivedEmail;
+    }
+
+    const { error: updateErr } = await supabase.from('users').update(updates).eq('id', params.userId);
+    if (updateErr) throw updateErr;
+
+    // Block in auth
+    await api.blockUser(params.userId, true).catch(() => {});
+
+    return {
+      success: true,
+      archivedEmail: params.releaseEmail ? archivedEmail : undefined,
+      releasedEmail: currentEmail
+    };
   },
 
   bulkUpdateUsers: async (userIds: string[], updates: Partial<User>): Promise<void> => {
@@ -7047,6 +7124,76 @@ export const api = {
       }
     } catch (err) {
       console.warn('[API] Warning: Targeted DB insert succeeded, but Push threw an exception:', err);
+    }
+  },
+
+  broadcastAppUpdateNotification: async (params: {
+    version: string;
+    buildNumber?: number;
+    releaseNotes?: string;
+    isMandatory?: boolean;
+    playStoreUrl?: string;
+  }): Promise<{ success: boolean; message: string; data?: any }> => {
+    const playStoreUrl = params.playStoreUrl || 'https://play.google.com/store/apps/details?id=com.paradigmfms.app';
+    const title = `🚀 App Update v${params.version} Available`;
+    const message = params.releaseNotes ||
+      `A new version of Paradigm Services (v${params.version}${params.buildNumber ? `, Build ${params.buildNumber}` : ''}) is now available on Google Play Store. Please update your app now for uninterrupted access.`;
+
+    console.log('[API] broadcastAppUpdateNotification:', { params, playStoreUrl, title });
+
+    // 1. Insert in-app broadcast notification
+    try {
+      await supabase.rpc('broadcast_notification', {
+        p_message: message,
+        p_type: 'info',
+        p_severity: params.isMandatory ? 'High' : 'Medium',
+        p_metadata: {
+          title,
+          isAppUpdate: true,
+          version: params.version,
+          buildNumber: params.buildNumber,
+          isMandatory: !!params.isMandatory,
+          playStoreUrl,
+          sentAt: new Date().toISOString()
+        },
+        p_link_to: playStoreUrl
+      });
+    } catch (dbErr) {
+      console.warn('[API] broadcast_notification RPC for app update non-fatal:', dbErr);
+    }
+
+    // 2. Dispatch real high-priority FCM Push to all mobile devices (Android / iOS)
+    // targeting those on older versions so it reaches devices where app is closed / killed
+    try {
+      const { data: pushData, error: pushError } = await supabase.functions.invoke('send-notification', {
+        body: {
+          broadcast: true,
+          platforms: ['android', 'ios'],
+          targetVersion: params.version,
+          targetBuild: params.buildNumber,
+          title,
+          body: message,
+          message,
+          data: {
+            type: 'app_update',
+            isAppUpdate: 'true',
+            version: params.version,
+            buildNumber: String(params.buildNumber || ''),
+            isMandatory: String(!!params.isMandatory),
+            url: playStoreUrl,
+            link: playStoreUrl,
+            click_action: 'OPEN_PLAY_STORE'
+          }
+        }
+      });
+
+      if (pushError) {
+        console.warn('[API] send-notification for app update returned error:', pushError);
+      }
+      return { success: true, message: `Update notification broadcast dispatched for v${params.version}.`, data: pushData };
+    } catch (fcmErr: any) {
+      console.error('[API] Failed to dispatch FCM update push:', fcmErr);
+      return { success: false, message: fcmErr.message || 'FCM dispatch failed' };
     }
   },
 

@@ -695,7 +695,22 @@ const AddUserPage: React.FC = () => {
         const { password, noSiteAssignment, ...rest } = processedData;
         const payload = cleanPayload(rest);
         await api.updateUser(id, payload);
-        setToast({ message: 'User updated successfully!', type: 'success' });
+
+        // Send alert notification to the user if email or phone was updated
+        if (payload.email || payload.phone) {
+          try {
+            await api.createNotification({
+              userId: id,
+              type: 'info',
+              message: `Your login and profile contact details have been updated by admin. Email: ${payload.email || 'unchanged'}, Phone: ${payload.phone || 'unchanged'}. Please use this email for future logins.`,
+              linkTo: '#/profile'
+            });
+          } catch (notifErr) {
+            console.warn('[AddUserPage] Failed to dispatch user notification alert:', notifErr);
+          }
+        }
+
+        setToast({ message: 'User updated successfully! Alert notification sent.', type: 'success' });
       } else {
         const { name, email, password, role, noSiteAssignment, ...rest } = processedData;
         if (!password) {
@@ -760,6 +775,7 @@ const AddUserPage: React.FC = () => {
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
               <Input label="Full Name" id="name" registration={register('name')} error={errors.name?.message} />
               <Input label="Email" id="email" type="email" registration={register('email')} error={errors.email?.message} />
+              <Input label="Phone Number" id="phone" type="tel" registration={register('phone')} error={errors.phone?.message} placeholder="e.g. 6366381663" />
               <Select label="Role" id="role" registration={register('role')} error={errors.role?.message}>
                 {roles.map(r => (
                   <option key={r.id} value={r.id}>{r.displayName}</option>
@@ -1076,6 +1092,7 @@ const AddUserPage: React.FC = () => {
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
           <Input label="Full Name" id="name" registration={register('name')} error={errors.name?.message} />
           <Input label="Email" id="email" type="email" registration={register('email')} error={errors.email?.message} />
+          <Input label="Phone Number" id="phone" type="tel" registration={register('phone')} error={errors.phone?.message} placeholder="e.g. 6366381663" />
           <Select label="Role" id="role" registration={register('role')} error={errors.role?.message}>
             {roles.map(r => (
               <option key={r.id} value={r.id}>{r.displayName}</option>

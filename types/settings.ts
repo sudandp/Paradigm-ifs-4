@@ -1,3 +1,4 @@
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface EmailSettings {
   // SMTP settings are now managed on the backend for security.
 }
@@ -43,6 +44,8 @@ export interface ApiSettings {
   autoBackupEnabled: boolean;
   backupSchedule?: BackupSchedule;
   appVersion?: string;
+  appBuildNumber?: number;
+  autoBroadcastAppUpdate?: boolean;
   automatedTracking?: {
     enabled: boolean;
     intervalMinutes: number;

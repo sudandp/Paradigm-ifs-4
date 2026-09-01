@@ -161,6 +161,15 @@ export interface User {
   vehicle_type?: 'two_wheeler' | 'four_wheeler_petrol' | 'four_wheeler_diesel' | 'public_transport' | 'company_vehicle' | null;
   createdAt?: string;
   isBlocked?: boolean;
+  status?: 'active' | 'left' | 'blocked' | 'pending' | string;
+  leftDate?: string | null;
+  left_date?: string | null;
+  exitReason?: string | null;
+  exit_reason?: string | null;
+  exitNotes?: string | null;
+  exit_notes?: string | null;
+  archivedOriginalEmail?: string | null;
+  archived_original_email?: string | null;
 }
 
 

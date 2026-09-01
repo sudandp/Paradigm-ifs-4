@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import Input from '../../components/ui/Input';
 import Button from '../../components/ui/Button';
-import { Server, Download, ShieldCheck, Settings, Mail, Image, Phone, Building } from 'lucide-react';
+import { Server, Download, ShieldCheck, Settings, Mail, Image, Phone, Building, Smartphone, Send } from 'lucide-react';
 import { api } from '../../services/api';
 import Toast from '../../components/ui/Toast';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -44,10 +44,35 @@ export const ApiSettings: React.FC = () => {
     const store = useSettingsStore();
 
     const [isExporting, setIsExporting] = useState(false);
+    const [isBroadcastingUpdate, setIsBroadcastingUpdate] = useState(false);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [isInterfaceModalOpen, setIsInterfaceModalOpen] = useState(false);
     const [backups, setBackups] = useState<any[]>([]);
     const [activeTab, setActiveTab] = useState('Authentication Settings');
+
+    const handleBroadcastAppUpdate = async () => {
+        const targetVer = store.apiSettings.appVersion || '20.0.0';
+        const targetBuild = store.apiSettings.appBuildNumber || 110;
+        setIsBroadcastingUpdate(true);
+        try {
+            await api.broadcastAppUpdateNotification({
+                version: targetVer,
+                buildNumber: targetBuild,
+                playStoreUrl: 'https://play.google.com/store/apps/details?id=com.paradigmfms.app'
+            });
+            setToast({
+                message: `Update alert sent via FCM for v${targetVer} (Build ${targetBuild})!`,
+                type: 'success'
+            });
+        } catch (err: any) {
+            setToast({
+                message: `Failed to broadcast update: ${err.message || 'Error'}`,
+                type: 'error'
+            });
+        } finally {
+            setIsBroadcastingUpdate(false);
+        }
+    };
 
     const TabButton = ({ tabName }: { tabName: string }) => (
         <button
@@ -341,17 +366,73 @@ export const ApiSettings: React.FC = () => {
                         <div className="space-y-6 pt-4">
                             <Checkbox id="pincode-verification" label="Enable Pincode API Verification" description="Auto-fill City/State from pincode during onboarding." checked={store.address.enablePincodeVerification} onChange={e => store.updateAddressSettings({ enablePincodeVerification: e.target.checked })} />
                             
-                            <div className={`p-4 border rounded-lg ${isMobile ? 'border-[#1f3d2b] bg-[#041b0f]' : 'border-border bg-gray-50'}`}>
-                                <label htmlFor="app-version" className={`block text-xs font-bold uppercase tracking-wider mb-2 ${isMobile ? 'text-white/70' : 'text-muted'}`}>Minimum Required App Version</label>
-                                <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                                    <Input 
-                                        id="app-version"
-                                        placeholder="e.g., 7.0.0" 
-                                        className="max-w-[150px]"
-                                        value={store.apiSettings.appVersion || ''} 
-                                        onChange={e => store.updateApiSettings({ appVersion: e.target.value, updatedBy: user?.name, updatedAt: new Date().toISOString() })}
+                            <div className={`p-5 border rounded-xl space-y-4 ${isMobile ? 'border-[#1f3d2b] bg-[#041b0f]' : 'border-border bg-gray-50/50'}`}>
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <h4 className="text-sm font-bold text-primary-text flex items-center gap-2">
+                                            <Smartphone className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                                            Google Play Store & Mobile App Version Control
+                                        </h4>
+                                        <p className="text-xs text-muted mt-0.5">
+                                            Automatically notifies outdated mobile devices via FCM push notifications even when the app is closed or killed.
+                                        </p>
+                                    </div>
+                                    <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 whitespace-nowrap">
+                                        Play Store: com.paradigmfms.app
+                                    </span>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <label htmlFor="app-version" className="block text-xs font-bold uppercase tracking-wider mb-1 text-muted">
+                                            Target App Version (VersionName)
+                                        </label>
+                                        <Input 
+                                            id="app-version"
+                                            placeholder="e.g., 20.0.0" 
+                                            value={store.apiSettings.appVersion || ''} 
+                                            onChange={e => {
+                                                const newVer = e.target.value;
+                                                store.updateApiSettings({ appVersion: newVer, updatedBy: user?.name, updatedAt: new Date().toISOString() });
+                                            }}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label htmlFor="app-build" className="block text-xs font-bold uppercase tracking-wider mb-1 text-muted">
+                                            Approved Build Number (VersionCode)
+                                        </label>
+                                        <Input 
+                                            id="app-build"
+                                            type="number"
+                                            placeholder="e.g., 110" 
+                                            value={store.apiSettings.appBuildNumber ?? ''} 
+                                            onChange={e => {
+                                                const newBuild = e.target.value ? parseInt(e.target.value, 10) : undefined;
+                                                store.updateApiSettings({ appBuildNumber: newBuild, updatedBy: user?.name, updatedAt: new Date().toISOString() });
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-border/60">
+                                    <Checkbox 
+                                        id="auto-broadcast-app-update"
+                                        label="Auto-broadcast FCM push alert when new build is saved"
+                                        description="Immediately dispatches high-priority push notifications to devices on older builds."
+                                        checked={store.apiSettings.autoBroadcastAppUpdate !== false}
+                                        onChange={e => store.updateApiSettings({ autoBroadcastAppUpdate: e.target.checked, updatedBy: user?.name, updatedAt: new Date().toISOString() })}
                                     />
-                                    <p className="text-xs text-muted italic">Users with an app version older than this will be forced to update from app.paradigmfms.com. Set this to the latest released APK version.</p>
+                                    <Button 
+                                        type="button"
+                                        variant="primary"
+                                        isLoading={isBroadcastingUpdate}
+                                        disabled={isBroadcastingUpdate}
+                                        onClick={handleBroadcastAppUpdate}
+                                        className="!text-xs !py-2 !px-4 shrink-0 flex items-center gap-1.5 shadow-sm"
+                                    >
+                                        <Send className="w-3.5 h-3.5" />
+                                        Broadcast FCM Alert Now
+                                    </Button>
                                 </div>
                             </div>
 

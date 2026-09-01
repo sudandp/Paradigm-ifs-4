@@ -44,14 +44,14 @@ const sendFcuBroadcast = async (remoteInfo: AppVersionInfo) => {
 
   try {
     const { api } = await import('../services/api');
-    await api.broadcastNotification({
-      title: `🚀 App Update v${remoteInfo.latestVersionName} Available`,
-      message: remoteInfo.releaseNotes ||
-        `A new version of Paradigm IFS (v${remoteInfo.latestVersionName}) is available. Please update to access the latest features and improvements.`,
-      type: 'info',
-      severity: 'Low',
+    await api.broadcastAppUpdateNotification({
+      version: remoteInfo.latestVersionName,
+      buildNumber: remoteInfo.latestVersionCode,
+      releaseNotes: remoteInfo.releaseNotes,
+      isMandatory: remoteInfo.isMandatory,
+      playStoreUrl: remoteInfo.apkDownloadUrl
     });
-    console.log(`[FCU] Broadcast sent for version ${remoteInfo.latestVersionName}`);
+    console.log(`[FCU] App update FCM broadcast sent for version ${remoteInfo.latestVersionName}`);
   } catch (err) {
     // Non-critical — do not surface to user. The localStorage key is already set
     // so this won't retry on next launch even if the broadcast failed.
@@ -127,8 +127,8 @@ export const useAppUpdate = () => {
         const remoteInfo: AppVersionInfo = {
           latestVersionCode: latestCode,
           latestVersionName: info.availableVersionName || `Build ${latestCode}`,
-          apkDownloadUrl: 'https://play.google.com/store/apps/details?id=com.paradigm.ifs',
-          releaseNotes: 'A new version of Paradigm IFS is available on the Play Store. Please update to get the latest features and security improvements.',
+          apkDownloadUrl: 'https://play.google.com/store/apps/details?id=com.paradigmfms.app',
+          releaseNotes: 'A new version of Paradigm Services is available on Google Play Store. Please update to get the latest features and security improvements.',
           isMandatory: info.immediateUpdateAllowed || false,
         };
 

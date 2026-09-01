@@ -30,7 +30,7 @@ serve(async (req: Request) => {
 
   try {
     const body = await req.json()
-    const { user_id, userIds, title, body: msgBody, message, data, broadcast, metadata, platforms } = body
+    const { user_id, userIds, title, body: msgBody, message, data, broadcast, metadata, platforms, targetVersion, targetBuild } = body
     const finalMessage = msgBody || message
     const finalTitle = title || "Paradigm Office"
     
@@ -63,10 +63,17 @@ serve(async (req: Request) => {
     // 1. Fetch tokens
     let tokens = []
     if (broadcast) {
-      console.log("[SendNotification] Processing broadcast to all users...");
-      let query = supabase.from("fcm_tokens").select("token, user_id, platform")
+      console.log(`[SendNotification] Processing broadcast to all users...${targetVersion ? ` (Targeting outdated < v${targetVersion}${targetBuild ? ` build ${targetBuild}` : ''})` : ''}`);
+      let query = supabase.from("fcm_tokens").select("token, user_id, platform, app_version, build_number")
       if (platforms && platforms.length > 0) {
         query = query.in("platform", platforms)
+      }
+      if (targetBuild) {
+        // Target devices where build_number is null, less than targetBuild, or version does not match
+        query = query.or(`build_number.is.null,build_number.lt.${targetBuild},app_version.neq.${targetVersion}`)
+      } else if (targetVersion) {
+        // Target devices where app_version is null or does not match targetVersion
+        query = query.or(`app_version.is.null,app_version.neq.${targetVersion}`)
       }
       const { data: allTokens, error } = await query
       if (error) throw error
@@ -129,7 +136,19 @@ serve(async (req: Request) => {
     const results = await Promise.all(tokens.map(async (t: { token: string, user_id?: string }) => {
       const userUnreadCount = t.user_id ? (unreadMap.get(t.user_id) || 0) : 0;
       
-      const payload: Record<string, any> = {
+      const payload: {
+        token: string;
+        data: Record<string, string>;
+        android: {
+          priority: string;
+          collapse_key?: string;
+          direct_boot_ok?: boolean;
+          notification?: Record<string, unknown>;
+        };
+        apns: Record<string, unknown>;
+        webpush: Record<string, unknown>;
+        notification?: { title: string; body?: string };
+      } = {
         token: t.token,
         // data-only payload — always present for all message types
         data: {
@@ -169,10 +188,10 @@ serve(async (req: Request) => {
       if (!isSilentPing) {
         payload.notification = { title: finalTitle, body: finalMessage };
         payload.android.notification = {
-          tag: ruleId ? `rule_${ruleId}` : undefined,
+          tag: ruleId ? `rule_${ruleId}` : (data?.type === 'app_update' ? 'app_update' : undefined),
           icon: "ic_launcher",
-          color: "#1d4ed8",
-          channel_id: "default",
+          color: data?.type === 'app_update' ? "#10b981" : "#1d4ed8",
+          channel_id: data?.type === 'app_update' ? "paradigm_critical_updates" : "default",
           notification_count: userUnreadCount > 0 ? userUnreadCount : undefined,
           default_sound: true,
           default_vibrate_timings: true,

@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import type { User, OrganizationGroup, Role } from '../../types';
-import { ShieldCheck, Plus, Edit, Trash2, Info, UserCheck, MapPin, Search, Filter, FilterX, FileSpreadsheet, X, RotateCw, Copy, Check, Clock, Ban, LogIn } from 'lucide-react';
+import { ShieldCheck, Plus, Edit, Trash2, Info, UserCheck, MapPin, Search, Filter, FilterX, FileSpreadsheet, X, RotateCw, Copy, Check, Clock, Ban, LogIn, UserMinus } from 'lucide-react';
 import { useImpersonationStore } from '../../store/impersonationStore';
 import { useAuthStore } from '../../store/authStore';
 import Button from '../../components/ui/Button';
@@ -16,6 +16,7 @@ import ApprovalModal from '../../components/admin/ApprovalModal';
 import LocationAssignmentModal from '../../components/admin/LocationAssignmentModal';
 import BulkUserUpdateModal from '../../components/admin/BulkUserUpdateModal';
 import BulkRoleUpdateModal from '../../components/admin/BulkRoleUpdateModal';
+import MarkAsLeftModal from '../../components/admin/MarkAsLeftModal';
 import Pagination from '../../components/ui/Pagination';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 import { CheckSquare, Square } from 'lucide-react';
@@ -90,12 +91,13 @@ interface UserActionProps {
     handleDelete: (u: User) => void;
     handleToggleBlock: (u: User) => void;
     handleImpersonate: (u: User) => void;
+    handleMarkAsLeft: (u: User) => void;
     activityStatus?: 'active' | 'inactive' | 'unknown';
 }
 
 // Memoized Row for performance
 const UserRow = React.memo(({ 
-    user, isSelected, onSelect, handleApprove, handleEdit, handleManageLocations, handleResetPasscode, handleDelete, handleToggleBlock, handleImpersonate, activityStatus, orgStructure 
+    user, isSelected, onSelect, handleApprove, handleEdit, handleManageLocations, handleResetPasscode, handleDelete, handleToggleBlock, handleImpersonate, handleMarkAsLeft, activityStatus, orgStructure 
 }: UserActionProps & { orgStructure: OrganizationGroup[] }) => {
     return (
         <tr className={`hover:bg-slate-50 transition-colors border-b border-border ${isSelected ? 'bg-emerald-50/50' : ''}`}>
@@ -111,11 +113,15 @@ const UserRow = React.memo(({
                 <div className="flex items-center gap-2">
                     <ActivityDot status={activityStatus} />
                     <div className="font-semibold text-primary-text truncate" title={user.name}>{user.name}</div>
-                    {user.isBlocked && (
+                    {user.status === 'left' || user.leftDate ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-900 border border-amber-300 uppercase tracking-wider whitespace-nowrap" title={`Exit: ${user.leftDate || ''} (${user.exitReason || 'Relieved'})`}>
+                            Left {user.leftDate ? `(${user.leftDate})` : ''}
+                        </span>
+                    ) : user.isBlocked ? (
                         <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-red-100 text-red-800 uppercase tracking-wider">
                             Blocked
                         </span>
-                    )}
+                    ) : null}
                 </div>
             </td>
             <td data-label="Email" className="p-3 align-top">
@@ -192,6 +198,14 @@ const UserRow = React.memo(({
                         <LogIn className="h-4 w-4" />
                     </button>
                     <button 
+                        onClick={() => handleMarkAsLeft(user)} 
+                        aria-label={`Mark ${user.name} as Left`} 
+                        title={user.status === 'left' || user.leftDate ? `Exit Recorded: ${user.leftDate || ''}` : `Mark ${user.name} as Left / Relieved`} 
+                        className={`p-1 rounded transition-all ${user.status === 'left' || user.leftDate ? 'text-amber-700 bg-amber-100' : 'text-amber-500 hover:text-amber-700 hover:bg-amber-50'}`}
+                    >
+                        <UserMinus className="h-4 w-4" />
+                    </button>
+                    <button 
                         onClick={() => handleToggleBlock(user)} 
                         aria-label={`${user.isBlocked ? 'Unblock' : 'Block'} ${user.name}`} 
                         title={`${user.isBlocked ? 'Unblock' : 'Block'} ${user.name}`} 
@@ -215,7 +229,7 @@ const UserRow = React.memo(({
 
 // Memoized Card for Mobile view performance
 const UserCard = React.memo(({ 
-    user, isSelected, onSelect, handleApprove, handleEdit, handleManageLocations, handleResetPasscode, handleDelete, handleToggleBlock, handleImpersonate, activityStatus, orgStructure 
+    user, isSelected, onSelect, handleApprove, handleEdit, handleManageLocations, handleResetPasscode, handleDelete, handleToggleBlock, handleImpersonate, handleMarkAsLeft, activityStatus, orgStructure 
 }: UserActionProps & { orgStructure: OrganizationGroup[] }) => {
     return (
         <div className={`bg-card p-4 rounded-xl border shadow-sm flex flex-col gap-3 h-full transition-all ${isSelected ? 'border-emerald-500 bg-emerald-50/5 ring-1 ring-emerald-500' : 'border-border'}`}>
@@ -231,11 +245,15 @@ const UserCard = React.memo(({
                         <div className="flex items-center gap-2">
                             <ActivityDot status={activityStatus} />
                             <h3 className="font-semibold text-primary-text">{user.name}</h3>
-                            {user.isBlocked && (
+                            {user.status === 'left' || user.leftDate ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-900 border border-amber-300 uppercase tracking-wider">
+                                    Left {user.leftDate ? `(${user.leftDate})` : ''}
+                                </span>
+                            ) : user.isBlocked ? (
                                 <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-red-100 text-red-800 uppercase tracking-wider">
                                     Blocked
                                 </span>
-                            )}
+                            ) : null}
                         </div>
                         <p className="text-sm text-muted">{user.email}</p>
                     </div>
@@ -302,6 +320,15 @@ const UserCard = React.memo(({
                 )}
                 
                 <div className="flex-1" />
+
+                <button 
+                    onClick={() => handleMarkAsLeft(user)} 
+                    className="p-2.5 rounded-xl !bg-amber-500/10 !border !border-amber-500/20 text-amber-500 hover:text-amber-400 hover:bg-amber-500/20 transition-all active:scale-90 flex-shrink-0"
+                    aria-label="Mark as Left"
+                    title="Mark Employee as Left / Relieved"
+                >
+                    <UserMinus className="h-4 w-4" />
+                </button>
 
                 <button 
                     onClick={() => handleToggleBlock(user)} 
@@ -382,6 +409,8 @@ const UserManagement: React.FC = () => {
     const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [isBlockModalOpen, setIsBlockModalOpen] = useState(false);
+    const [isMarkAsLeftModalOpen, setIsMarkAsLeftModalOpen] = useState(false);
+    const [userForExit, setUserForExit] = useState<User | null>(null);
     const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false);
     const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
     const [isResetModalOpen, setIsResetModalOpen] = useState(false);
@@ -596,6 +625,54 @@ const UserManagement: React.FC = () => {
         setCurrentUser(user);
         setIsBlockModalOpen(true);
     }, []);
+
+    const handleMarkAsLeft = useCallback((user: User) => {
+        setUserForExit(user);
+        setIsMarkAsLeftModalOpen(true);
+    }, []);
+
+    const handleConfirmMarkAsLeft = async (data: {
+        exitDate: string;
+        exitReason: string;
+        releaseEmail: boolean;
+        notes?: string;
+    }) => {
+        if (!userForExit) return;
+        setIsSaving(true);
+        try {
+            const res = await api.markUserAsLeft({
+                userId: userForExit.id,
+                exitDate: data.exitDate,
+                exitReason: data.exitReason,
+                releaseEmail: data.releaseEmail,
+                notes: data.notes
+            });
+            
+            setToast({
+                message: `Employee ${userForExit.name} marked as Left (${data.exitDate}).${data.releaseEmail ? ' Email released.' : ''}`,
+                type: 'success'
+            });
+            setIsMarkAsLeftModalOpen(false);
+            setUserForExit(null);
+            
+            // Instant state update
+            setUsers(prev => prev.map(u => u.id === userForExit.id ? {
+                ...u,
+                status: 'left',
+                isBlocked: true,
+                leftDate: data.exitDate,
+                exitReason: data.exitReason,
+                email: res.archivedEmail || u.email
+            } : u));
+
+            fetchUsers();
+        } catch (err: any) {
+            console.error('Failed to mark user as left:', err);
+            setToast({ message: 'Failed to mark employee as left: ' + (err.message || 'Unknown error'), type: 'error' });
+        } finally {
+            setIsSaving(false);
+        }
+    };
 
     const handleManageLocations = useCallback((user: User) => {
         setCurrentUserForLocation(user);
@@ -846,8 +923,9 @@ const UserManagement: React.FC = () => {
         });
         const statusesInUse = new Set<string>();
         matchingUsers.forEach(u => {
-            if (u.isBlocked) statusesInUse.add('blocked');
-            if (u.role === 'unverified') statusesInUse.add('pending');
+            if (u.status === 'left' || u.leftDate) statusesInUse.add('left');
+            else if (u.isBlocked) statusesInUse.add('blocked');
+            else if (u.role === 'unverified') statusesInUse.add('pending');
             else if (u.role === 'gate_only') statusesInUse.add('gate');
             else statusesInUse.add('active');
         });
@@ -855,7 +933,8 @@ const UserManagement: React.FC = () => {
             active: statusesInUse.has('active'),
             pending: statusesInUse.has('pending'),
             gate: statusesInUse.has('gate'),
-            blocked: statusesInUse.has('blocked')
+            blocked: statusesInUse.has('blocked'),
+            left: statusesInUse.has('left')
         };
     }, [dbUsers, pendingFilters.location, pendingFilters.company, pendingFilters.site, pendingFilters.role, orgStructure]);
 
@@ -956,10 +1035,17 @@ const UserManagement: React.FC = () => {
             if (activeFilters.location && resolveUserLocation(user, orgStructure).toLowerCase() !== activeFilters.location.toLowerCase()) return false;
             
             if (activeFilters.status !== 'all') {
-                if (activeFilters.status === 'pending' && user.role !== 'unverified') return false;
-                if (activeFilters.status === 'gate' && user.role !== 'gate_only') return false;
-                if (activeFilters.status === 'active' && (user.role === 'unverified' || user.isBlocked)) return false;
-                if (activeFilters.status === 'blocked' && !user.isBlocked) return false;
+                if (activeFilters.status === 'left') {
+                    if (user.status !== 'left' && !user.leftDate) return false;
+                } else if (activeFilters.status === 'pending') {
+                    if (user.role !== 'unverified') return false;
+                } else if (activeFilters.status === 'gate') {
+                    if (user.role !== 'gate_only') return false;
+                } else if (activeFilters.status === 'active') {
+                    if (user.role === 'unverified' || user.isBlocked || user.status === 'left' || user.leftDate) return false;
+                } else if (activeFilters.status === 'blocked') {
+                    if (!user.isBlocked || user.status === 'left') return false;
+                }
             }
 
             if (activeFilters.employee && user.id !== activeFilters.employee) return false;
@@ -1034,6 +1120,17 @@ const UserManagement: React.FC = () => {
                 onClose={() => setIsLocationModalOpen(false)}
                 userId={currentUserForLocation?.id || ''}
                 userName={currentUserForLocation?.name || ''}
+            />
+
+            <MarkAsLeftModal
+                isOpen={isMarkAsLeftModalOpen}
+                onClose={() => {
+                    setIsMarkAsLeftModalOpen(false);
+                    setUserForExit(null);
+                }}
+                user={userForExit}
+                onConfirm={handleConfirmMarkAsLeft}
+                isSaving={isSaving}
             />
 
             <Modal
@@ -1215,6 +1312,7 @@ const UserManagement: React.FC = () => {
                                 {filteredStatusesCascade.pending && <option value="pending">Pending Approval</option>}
                                 {filteredStatusesCascade.gate && <option value="gate">Gate Only</option>}
                                 {filteredStatusesCascade.blocked && <option value="blocked">Blocked</option>}
+                                <option value="left">Left / Relieved</option>
                             </select>
                             <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
                                 <Filter className="h-3.5 w-3.5 opacity-50" />
@@ -1313,6 +1411,7 @@ const UserManagement: React.FC = () => {
                                     handleDelete={handleDelete}
                                     handleToggleBlock={handleToggleBlock}
                                     handleImpersonate={handleImpersonate}
+                                    handleMarkAsLeft={handleMarkAsLeft}
                                     activityStatus={activityMap[user.id]}
                                 />
                             ))}
@@ -1380,6 +1479,7 @@ const UserManagement: React.FC = () => {
                                         handleDelete={handleDelete}
                                         handleToggleBlock={handleToggleBlock}
                                         handleImpersonate={handleImpersonate}
+                                        handleMarkAsLeft={handleMarkAsLeft}
                                         activityStatus={activityMap[user.id]}
                                     />
                                 ))}

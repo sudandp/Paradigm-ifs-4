@@ -4,6 +4,7 @@ import { LocalNotifications, type Channel } from '@capacitor/local-notifications
 import { getToken, onMessage } from 'firebase/messaging';
 import { messaging } from '../config/firebase';
 import { supabase } from './supabase';
+import { APP_VERSION, APP_BUILD_NUMBER } from '../src/config/appVersion';
 
 export const pushNotificationService = {
   /**
@@ -271,6 +272,8 @@ async function saveTokenToDatabase(token: string, platform: string) {
       user_id: user.id,
       token: token,
       platform: platform,
+      app_version: APP_VERSION,
+      build_number: APP_BUILD_NUMBER,
       last_seen: new Date().toISOString(),
     }, { onConflict: 'token' });
 
