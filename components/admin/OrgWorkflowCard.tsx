@@ -1,164 +1,260 @@
-import React, { useState, useEffect } from 'react';
-import { Search, ZoomIn, ZoomOut, Maximize2, Minimize2, Info } from 'lucide-react';
+import React, { useState } from 'react';
+import { 
+    Search, 
+    ZoomIn, 
+    ZoomOut, 
+    Maximize2, 
+    Minimize2, 
+    Info, 
+    Network, 
+    Users, 
+    Sparkles, 
+    AlertTriangle 
+} from 'lucide-react';
 import WorkflowChart2D from './WorkflowChart2D';
-import type { User } from '../../types';
+import WorkflowManagerGrid from './WorkflowManagerGrid';
+import WorkflowPathTrace from './WorkflowPathTrace';
+import type { User, Role } from '../../types';
 
 interface OrgWorkflowCardProps {
-    users: (User & { managerName?: string })[];
+    users: (User & { managerName?: string; manager2Name?: string; manager3Name?: string })[];
+    allRoles?: Role[];
+    finalConfirmationRole?: string;
+    onManagerChange?: (userId: string, managerId: string, slot?: 1 | 2 | 3) => void;
+    onSave?: () => void;
 }
 
-const OrgWorkflowCard: React.FC<OrgWorkflowCardProps> = ({ users }) => {
+type SubView = 'tree' | 'teams' | 'simulator';
+
+const OrgWorkflowCard: React.FC<OrgWorkflowCardProps> = ({ 
+    users, 
+    allRoles = [], 
+    finalConfirmationRole = 'hr',
+    onManagerChange,
+    onSave
+}) => {
+    const [subView, setSubView] = useState<SubView>('tree');
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
-    const [zoom, setZoom] = useState<number | null>(null); // null = use auto-fit
+    const [zoom, setZoom] = useState<number | null>(null);
     const [showLegend, setShowLegend] = useState(true);
+    const [selectedTraceUserId, setSelectedTraceUserId] = useState<string | null>(null);
 
     const handleReset = () => {
         setSearchQuery('');
-        setZoom(null); // null triggers auto-fit in chart
-        // After a brief moment, read the auto-calculated zoom
-        setTimeout(() => {
-            // Chart will auto-fit, we'll leave zoom as null so it keeps using internal calculation
-        }, 100);
+        setZoom(null);
     };
 
-    const handleZoomIn = () => setZoom(prev => Math.min((prev ?? 80) + 10, 250));
-    const handleZoomOut = () => setZoom(prev => Math.max((prev ?? 80) - 10, 40));
+    const handleZoomIn = () => setZoom(prev => Math.min((prev ?? 85) + 10, 200));
+    const handleZoomOut = () => setZoom(prev => Math.max((prev ?? 85) - 10, 35));
+
+    const unassignedCount = users.filter(u => !u.reportingManagerId).length;
+
+    const handleSelectForTrace = (userId: string) => {
+        setSelectedTraceUserId(userId);
+        setSubView('simulator');
+    };
 
     const chartContent = (
-        <div className={`flex flex-col ${isFullscreen ? 'h-screen' : 'h-[75vh] min-h-[500px]'}`}>
-            {/* Toolbar */}
-            <div className="flex-shrink-0 bg-white border-b border-slate-200 px-4 py-3">
-                <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3">
-                    {/* Search */}
-                    <div className="relative flex-shrink-0 w-full md:w-64">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <input
-                            type="text"
-                            placeholder="Search employees..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-10 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                        />
+        <div className={`flex flex-col flex-1 h-full min-h-0 w-full ${isFullscreen ? 'fixed inset-0 z-50 bg-white' : ''}`}>
+            {/* COMPACT SINGLE-ROW SUBVIEW TOOLBAR */}
+            <div className="flex-shrink-0 bg-white border-b border-slate-200 px-3.5 py-2">
+                <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5">
+                    {/* View Modes & Unassigned Pill */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                        <div className="flex items-center gap-0.5 bg-slate-100 p-0.5 rounded-lg border border-slate-200/80">
+                            <button
+                                type="button"
+                                onClick={() => setSubView('tree')}
+                                className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-bold transition-all ${
+                                    subView === 'tree'
+                                        ? 'bg-white text-slate-900 shadow-xs'
+                                        : 'text-slate-600 hover:text-slate-900'
+                                }`}
+                            >
+                                <Network className="w-3.5 h-3.5 text-emerald-600" />
+                                Org Tree
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setSubView('teams')}
+                                className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-bold transition-all ${
+                                    subView === 'teams'
+                                        ? 'bg-white text-slate-900 shadow-xs'
+                                        : 'text-slate-600 hover:text-slate-900'
+                                }`}
+                            >
+                                <Users className="w-3.5 h-3.5 text-amber-600" />
+                                Manager Teams
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setSubView('simulator')}
+                                className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-bold transition-all ${
+                                    subView === 'simulator'
+                                        ? 'bg-white text-slate-900 shadow-xs'
+                                        : 'text-slate-600 hover:text-slate-900'
+                                }`}
+                            >
+                                <Sparkles className="w-3.5 h-3.5 text-primary" />
+                                Approval Simulator
+                            </button>
+                        </div>
+
+                        {/* Unassigned Quick Jump Pill */}
+                        {unassignedCount > 0 && (
+                            <button
+                                type="button"
+                                onClick={() => setSubView('teams')}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition-colors"
+                                title="Click to view and assign unassigned employees"
+                            >
+                                <AlertTriangle className="w-3 h-3 text-amber-600" />
+                                <span>{unassignedCount} Needs Mgr</span>
+                            </button>
+                        )}
                     </div>
 
-                    {/* Spacer */}
-                    <div className="flex-1" />
+                    {/* Right Tools (Search, Zoom, Fullscreen) */}
+                    <div className="flex items-center gap-2 flex-wrap justify-end">
+                        {/* Search */}
+                        <div className="relative w-full sm:w-52">
+                            <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                            <input
+                                type="text"
+                                placeholder="Search employees..."
+                                value={searchQuery}
+                                onChange={e => setSearchQuery(e.target.value)}
+                                className="w-full pl-8 pr-3 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                            />
+                        </div>
 
-                    {/* Zoom Controls */}
-                    <div className="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-2 border border-slate-200">
-                        <button
-                            onClick={handleZoomOut}
-                            className="p-1.5 hover:bg-slate-200/60 rounded-md transition-colors text-slate-600 hover:text-slate-900"
-                            title="Zoom Out"
-                        >
-                            <ZoomOut className="w-4 h-4" />
-                        </button>
+                        {/* Zoom Controls (Active in Tree view) */}
+                        {subView === 'tree' && (
+                            <div className="flex items-center gap-1 bg-slate-50 rounded-lg px-2 py-0.5 border border-slate-200">
+                                <button
+                                    onClick={handleZoomOut}
+                                    className="p-1 hover:bg-slate-200/60 rounded text-slate-600 hover:text-slate-900"
+                                    title="Zoom Out"
+                                >
+                                    <ZoomOut className="w-3.5 h-3.5" />
+                                </button>
+                                <span className="text-[11px] font-bold text-slate-700 min-w-[32px] text-center">
+                                    {zoom ? `${zoom}%` : 'Auto'}
+                                </span>
+                                <button
+                                    onClick={handleZoomIn}
+                                    className="p-1 hover:bg-slate-200/60 rounded text-slate-600 hover:text-slate-900"
+                                    title="Zoom In"
+                                >
+                                    <ZoomIn className="w-3.5 h-3.5" />
+                                </button>
+                            </div>
+                        )}
 
-                        <input
-                            type="range"
-                            min="40"
-                            max="250"
-                            value={zoom ?? 80}
-                            disabled={zoom === null}
-                            onChange={(e) => setZoom(parseInt(e.target.value))}
-                            className="w-24 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:w-3 [&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-primary [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:border-0"
-                        />
-
-                        <span className="text-xs font-semibold text-slate-700 min-w-[45px] text-center">{zoom ? `${zoom}%` : 'Auto'}</span>
-
-                        <button
-                            onClick={handleZoomIn}
-                            className="p-1.5 hover:bg-slate-200/60 rounded-md transition-colors text-slate-600 hover:text-slate-900"
-                            title="Zoom In"
-                        >
-                            <ZoomIn className="w-4 h-4" />
-                        </button>
-                    </div>
-
-                    {/* Action Buttons */}
-                    <div className="flex items-center gap-2">
                         <button
                             onClick={handleReset}
-                            className="px-3 py-2 text-sm font-medium text-slate-700 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors flex items-center gap-2"
+                            className="px-2.5 py-1 text-xs font-semibold text-slate-700 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors flex items-center gap-1"
+                            title="Reset filters and view"
                         >
-                            <Maximize2 className="w-4 h-4" />
-                            <span className="hidden sm:inline">Reset</span>
+                            <Maximize2 className="w-3.5 h-3.5" />
+                            Fit
                         </button>
 
                         <button
                             onClick={() => setIsFullscreen(!isFullscreen)}
-                            className="px-3 py-2 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg transition-colors flex items-center gap-2"
+                            className="px-2.5 py-1 text-xs font-semibold text-white bg-primary hover:bg-primary/90 rounded-lg transition-colors flex items-center gap-1"
                         >
-                            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-                            <span className="hidden sm:inline">{isFullscreen ? 'Exit' : 'Full Screen'}</span>
+                            {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                            {isFullscreen ? 'Exit' : 'Full Screen'}
                         </button>
                     </div>
                 </div>
             </div>
 
-            {/* Chart Container */}
-            <div className="flex-1 bg-slate-50 relative overflow-hidden">
-                <WorkflowChart2D
-                    users={users}
-                    externalSearchQuery={searchQuery}
-                    externalZoom={zoom !== null ? zoom / 100 : undefined}
-                    showControls={false}
-                />
+            {/* Main Content Area - Full Available Height */}
+            <div className="flex-1 min-h-0 bg-slate-50 relative overflow-hidden flex flex-col">
+                {subView === 'tree' && (
+                    <div className="w-full h-full flex-1 min-h-0 relative flex flex-col">
+                        <WorkflowChart2D
+                            users={users}
+                            allRoles={allRoles}
+                            externalSearchQuery={searchQuery}
+                            externalZoom={zoom !== null ? zoom / 100 : undefined}
+                            showControls={true}
+                            onSelectEmployeeForTrace={handleSelectForTrace}
+                            onManagerChange={onManagerChange}
+                        />
 
-                {/* Legend */}
-                <div className={`absolute bottom-4 right-4 z-20 ${showLegend ? 'block' : 'hidden'} md:block`}>
-                    <div className="bg-white/95 backdrop-blur-sm border border-slate-200 rounded-xl shadow-lg px-4 py-3 min-w-[200px]">
-                        <div className="flex items-center justify-between mb-3">
-                            <h4 className="text-xs font-bold text-slate-900 flex items-center gap-2">
-                                <div className="w-2 h-2 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full" />
-                                Legend
-                            </h4>
-                            <button
-                                onClick={() => setShowLegend(!showLegend)}
-                                className="md:hidden text-slate-400 hover:text-slate-600"
-                            >
-                                <Info className="w-3 h-3" />
-                            </button>
-                        </div>
-                        <div className="space-y-2">
-                            <div className="flex items-center gap-2 text-xs text-slate-600">
-                                <div className="w-4 h-4 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 shadow-sm flex-shrink-0" />
-                                <span>Team Member</span>
-                            </div>
-                            <div className="flex items-center gap-2 text-xs text-slate-600">
-                                <div className="w-4 h-4 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-sm flex-shrink-0" />
-                                <span>Search Match</span>
-                            </div>
-                            <div className="flex items-center gap-2 text-xs text-slate-600">
-                                <div className="w-6 h-0.5 bg-gradient-to-r from-indigo-400 to-purple-500 flex-shrink-0 shadow-sm" />
-                                <span>Reports To</span>
-                            </div>
-                            <div className="flex items-center gap-2 text-xs text-slate-600">
-                                <div className="w-4 h-4 rounded-full bg-emerald-500 text-white text-[8px] font-bold flex items-center justify-center flex-shrink-0">L2</div>
-                                <span>Level Badge</span>
+                        {/* Floating Visual Legend */}
+                        <div className={`absolute bottom-3 left-3 z-20 ${showLegend ? 'block' : 'hidden'} md:block`}>
+                            <div className="bg-white/95 backdrop-blur-md border border-slate-200 rounded-xl shadow-md px-3 py-2 min-w-[200px]">
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <h5 className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                                        Role Legend
+                                    </h5>
+                                    <button
+                                        onClick={() => setShowLegend(false)}
+                                        className="md:hidden text-slate-400 hover:text-slate-600"
+                                    >
+                                        <Info className="w-3 h-3" />
+                                    </button>
+                                </div>
+                                <div className="grid grid-cols-2 gap-x-2.5 gap-y-1 text-[10px] text-slate-600">
+                                    <div className="flex items-center gap-1.5">
+                                        <div className="w-2 h-2 rounded-full bg-emerald-600" />
+                                        <span>Executive</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        <div className="w-2 h-2 rounded-full bg-amber-500" />
+                                        <span>Site Manager</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        <div className="w-2 h-2 rounded-full bg-blue-600" />
+                                        <span>HR & People</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        <div className="w-2 h-2 rounded-full bg-teal-600" />
+                                        <span>Technical</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        <div className="w-2 h-2 rounded-full bg-sky-500" />
+                                        <span>Field Staff</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        <div className="w-2 h-2 rounded-full bg-amber-400" />
+                                        <span className="font-semibold text-amber-700">Needs Mgr</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
+                )}
 
-                {/* Mobile Legend Toggle */}
-                <button
-                    onClick={() => setShowLegend(!showLegend)}
-                    className="md:hidden absolute bottom-4 right-4 z-30 bg-white border border-slate-200 rounded-full p-2 shadow-lg"
-                >
-                    <Info className="w-5 h-5 text-slate-600" />
-                </button>
+                {subView === 'teams' && (
+                    <div className="p-4 sm:p-6 overflow-y-auto flex-1 h-full min-h-0">
+                        <WorkflowManagerGrid
+                            users={users}
+                            allRoles={allRoles}
+                            onManagerChange={onManagerChange}
+                            onSave={onSave}
+                        />
+                    </div>
+                )}
+
+                {subView === 'simulator' && (
+                    <div className="p-4 sm:p-6 overflow-y-auto flex-1 h-full min-h-0">
+                        <WorkflowPathTrace
+                            users={users}
+                            allRoles={allRoles}
+                            finalConfirmationRole={finalConfirmationRole}
+                            initialSelectedUserId={selectedTraceUserId || undefined}
+                            onManagerChange={onManagerChange}
+                            onSave={onSave}
+                        />
+                    </div>
+                )}
             </div>
-
-            {/* Results Counter */}
-            {searchQuery && (
-                <div className="flex-shrink-0 bg-white border-t border-slate-200 px-4 py-2">
-                    <p className="text-xs text-slate-600">
-                        {users.filter(u => u.name.toLowerCase().includes(searchQuery.toLowerCase())).length} results found
-                    </p>
-                </div>
-            )}
         </div>
     );
 
@@ -171,7 +267,7 @@ const OrgWorkflowCard: React.FC<OrgWorkflowCardProps> = ({ users }) => {
     }
 
     return (
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+        <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden flex-1 h-full min-h-0 flex flex-col">
             {chartContent}
         </div>
     );

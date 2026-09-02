@@ -124,10 +124,13 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
             setIsLoadingExisting(true);
             try {
                 // Use IST-aware range: from midnight IST on the selected date
-                // through noon IST the following day, so overnight punch-outs are included.
-                // IST = UTC+05:30  →  midnight IST = 18:30Z previous day
+                // through end of day (23:59:59 IST) on the SAME day only.
+                // BUG FIX: Previously used next-day noon which caused day N+1 events
+                // (e.g. day 15) to be fetched and then deleted when day N (day 14) was updated.
+                // Overnight punch-outs that cross midnight are handled via the checkOutNextDay flag,
+                // so we do NOT need to extend the fetch window into the next calendar day.
                 const dayStart = parseISO(`${date}T00:00:00+05:30`);
-                const dayEnd = addDays(parseISO(`${date}T12:00:00+05:30`), 1); // next-day noon IST
+                const dayEnd = parseISO(`${date}T23:59:59+05:30`); // same day end only
                 const startDate = dayStart.toISOString();
                 const endDate = dayEnd.toISOString();
 
@@ -268,6 +271,24 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                 }
                 if (breakOutDate <= breakInDate) {
                     setToast({ message: 'Break out time must be after break in.', type: 'error' });
+                    return;
+                }
+            }
+        }
+
+        // Validate overall session wraps site visits correctly.
+        // Pattern: Punch In (gate) ≤ Site In → Site Out ≤ Punch Out (gate)
+        if ((status === 'Site Visit' || includeSiteVisit || userCategory !== 'office') && siteVisits.length > 0) {
+            const punchIn = checkInTime;
+            const punchOut = checkOutTime;
+
+            for (const visit of siteVisits) {
+                if (visit.in && punchIn && visit.in < punchIn) {
+                    setToast({ message: `Site Check-In (${visit.in}) cannot be earlier than Overall Punch In (${punchIn}). Punch in first, then go to site.`, type: 'error' });
+                    return;
+                }
+                if (visit.out && punchOut && visit.out > punchOut) {
+                    setToast({ message: `Site Check-Out (${visit.out}) cannot be later than Overall Punch Out (${punchOut}). Leave site before final punch out.`, type: 'error' });
                     return;
                 }
             }
@@ -661,6 +682,14 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                                         )}
                                     </div>
                                 </div>
+
+                                {/* Site mode hint: punch in/out are gate times that wrap site visits */}
+                                {(status === 'Site Visit' || includeSiteVisit || userCategory !== 'office') && (
+                                    <p className="text-[11px] text-blue-600/80 bg-blue-50 border border-blue-100 rounded-md px-2.5 py-1.5 leading-relaxed">
+                                        <span className="font-bold">Gate times:</span> Punch In → Site In → Site Out → Punch Out<br />
+                                        <span className="text-gray-500">e.g. 09:00 punch in · 09:10 site in · 18:00 site out · 18:10 punch out</span>
+                                    </p>
+                                )}
                             </div>
 
                             {/* Reason / Notes */}
