@@ -388,9 +388,9 @@ const safeSetLastPath = (path: string) => {
     }
     // ~5 MB quota → 5 * 1024 * 1024 / 2 chars = 2621440 chars (UTF-16)
     const QUOTA_CHARS = 2621440;
-    if (totalBytes > QUOTA_CHARS * 0.8) {
+    if (totalBytes > QUOTA_CHARS * 0.75) {
       console.warn('[App] localStorage near quota (' + Math.round(totalBytes / 1024) + ' KB) — evicting stale keys.');
-      const evictPrefixes = ['sb-', 'supabase.auth.', 'app:cache'];
+      const evictPrefixes = ['sb-', 'supabase.auth.', 'app:cache', 'paradigm_cache_', 'paradigm_ppm_', 'paradigm_ht_', 'ht_custom_', 'local_route_points_'];
       const toRemove: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
@@ -398,7 +398,13 @@ const safeSetLastPath = (path: string) => {
           toRemove.push(k);
         }
       }
-      toRemove.forEach(k => localStorage.removeItem(k));
+      toRemove.forEach(k => {
+        try {
+          localStorage.removeItem(k);
+        } catch (_err) {
+          // Ignore removal errors
+        }
+      });
       console.warn('[App] Evicted ' + toRemove.length + ' stale localStorage keys.');
     }
   } catch {

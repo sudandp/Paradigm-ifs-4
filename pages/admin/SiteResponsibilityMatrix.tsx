@@ -63,21 +63,105 @@ const STANDARD_BILLING_CYCLES = [
   'Monthly Calendar'
 ];
 
+// Primary Canonical Site Lead Incharges
+const PRIMARY_HR_LEADS = ['Chandana R', 'Poojashree S', 'Kavya M', 'Chennamma'];
+const PRIMARY_ACCOUNTS_LEADS = ['Arpitha Nairy', 'Sinchana KM', 'Arya Thomas', 'Chethan V', 'Vishwa Finance', 'Sandeep Biswas'];
+const PRIMARY_OPS_LEADS = [
+  'Sandeep B',
+  'Isaac Roy',
+  'Venkatachalam',
+  'Shilpa M',
+  'Keshav Murthy',
+  'Harish H P',
+  'Stany D Souza',
+  'Nakul R Alvar',
+  'Ankur',
+  'Pradeepp Gangaiah',
+  'Nithin Gowda',
+  'Ravi DEVA',
+  'Tharun Boyapally'
+];
+
+const PRIMARY_FIELD_OFFICERS = [
+  'Arjun Kumar Arjun',
+  'Yuva Naidu',
+  'YOGESH SINGH',
+  'Bhimas Bora',
+  'Gagan Saikia',
+  'Karthik K.s',
+  'Sandip Limboo',
+  'Shankar Namdev',
+  'Debashish Sharma',
+  'Shivappa M',
+  'Lava K S',
+  'Ganesha C',
+  'Kusha K S',
+  'Harish H P',
+  'Joy Immanuel',
+  'Gowtham Mohan',
+  'Narasimha',
+  'Anil',
+  'Akash',
+  'Arun Kumar A V',
+  'Rajeshwari',
+  'Sanjay Ganapati Naik',
+  'Veerabhadra T M'
+];
+
+const PRIMARY_SITE_MANAGERS = [
+  'Abhishek T',
+  'Amarender Golla',
+  'Anil Hanmantrao Battewad',
+  'Arun Goud',
+  'Bududula praveen Praveen',
+  'Charan Kumar',
+  'Facility Manager VGPT',
+  'Fortune 1 FM',
+  'Hari krishna Bollam',
+  'Kalakanti Premkumar',
+  'Kannaiah R',
+  'Ks Srikanth',
+  'Manasa Chakali',
+  'meena koutam',
+  'Prashant',
+  'S.venkata Thirupathirao',
+  'Sachin Kote',
+  'Saikumar Palaki',
+  'Sainath B',
+  'Sampath',
+  'Sampath Kumar',
+  'Sanctuary FM',
+  'Santosh Rathod',
+  'vinjam manoj kumar'
+];
+
 // Helper to extract the primary canonical name root
 const getCleanRoot = (name: string): string => {
   if (!name) return '';
   const words = name.toLowerCase().replace(/[^a-z0-9]/g, ' ').trim().split(/\s+/).filter(w => w.length >= 3);
   let root = words[0] || name.trim().toLowerCase();
   if (root === 'arpitha') root = 'arpita';
-  if (root === 'chennamma') root = 'chandana';
-  if (root === 'poojashree') root = 'pooja';
+  if (root === 'poojashree' || root === 'poojashri') root = 'pooja';
   return root;
+};
+
+const getNormalizedUserName = (u: { name?: string; email?: string }): string => {
+  const email = (u.email || '').toLowerCase();
+  const rawName = (u.name || '').trim();
+  if (rawName.toLowerCase() === 'chennamma' || (email === 'chandana.hr@paradigmfms.com' && rawName.toLowerCase().includes('chennamma'))) return 'Chennamma';
+  if (email === 'onboarding@paradigmfms.com') return 'Chandana R';
+  if (email === 'pooja@paradigmfms.in') return 'Poojashree S';
+  if (email === 'hr.kavya@paradigmfms.com') return 'Kavya M';
+  if (rawName.toLowerCase() === 'pooja') return 'Poojashree S';
+  return rawName;
 };
 
 const getUserRoleString = (u: any): string => {
   if (typeof u.role_id === 'string' && u.role_id) return u.role_id.toLowerCase();
   if (typeof u.role === 'string' && u.role) return u.role.toLowerCase();
+  if (u.role && typeof u.role.display_name === 'string') return u.role.display_name.toLowerCase();
   if (u.role && typeof u.role.name === 'string') return u.role.name.toLowerCase();
+  if (u.roles && typeof u.roles.display_name === 'string') return u.roles.display_name.toLowerCase();
   if (u.roles && typeof u.roles.name === 'string') return u.roles.name.toLowerCase();
   return '';
 };
@@ -85,23 +169,37 @@ const getUserRoleString = (u: any): string => {
 // Strict Role Filters as requested by user
 const isStrictOpsManager = (u: any): boolean => {
   const role = getUserRoleString(u);
-  if (role === 'operation_manager') return true;
+  if (['operation_manager', 'operations_manager', 'ops_manager', 'operations_head', 'ops_head'].includes(role) || role.includes('operation') || role.includes('ops')) return true;
   const email = (u.email || '').toLowerCase();
   return ['isaac.ops@', 'sandeep@paradigmfms.com', 'venkat@', 'shilpa.ops@', 'keshavmani27@', 'stany@', 'harish.hp@', 'nakulalvar@', 'ankur@', 'pradeep@', 'nithin@', 'ravi@'].some(e => email.includes(e));
 };
 
 const isStrictHr = (u: any): boolean => {
   const role = getUserRoleString(u);
-  if (['hr', 'hr_ops', 'hr_onboaring', 'hr_recruitment'].includes(role)) return true;
+  if (['hr', 'hr_ops', 'hr_operations', 'hr_onboarding', 'hr_onboaring', 'hr_recruitment', 'hr_manager', 'hr_head', 'hr_executive', 'hr_lead'].includes(role) || role.includes('hr')) return true;
   const email = (u.email || '').toLowerCase();
-  return ['chandana.hr@', 'onboarding@paradigmfms', 'pooja@', 'hr.kavya@', 'hiring@', 'hrsupport@', 'southwall.hr@'].some(e => email.includes(e));
+  return ['chandana.hr@', 'onboarding@paradigmfms', 'pooja@', 'hr.kavya@', 'hiring@', 'hrsupport@', 'southwall.hr@', 'recruitment@', 'ajit@', 'hr.hyd@'].some(e => email.includes(e));
 };
 
 const isStrictFinance = (u: any): boolean => {
   const role = getUserRoleString(u);
-  if (['finance', 'finance_manager', 'accounts'].includes(role)) return true;
+  if (['finance', 'finance_manager', 'accounts', 'accounts_manager', 'accounts_executive', 'accountant'].includes(role) || role.includes('finance') || role.includes('account')) return true;
   const email = (u.email || '').toLowerCase();
   return ['arpitha@', 'sinchana@', 'aryasouthwall@', 'sandeep.accounts@', 'chethan@', 'vishwa.finance@', 'accounts.ape@'].some(e => email.includes(e));
+};
+
+const isStrictFieldOfficer = (u: any): boolean => {
+  const role = getUserRoleString(u);
+  if (['field_officer', 'field_staff', 'technical_supervisor', 'technical_reliever', 'supervisor', 'site_supervisor'].includes(role) || role.includes('field') || role.includes('supervisor') || role.includes('reliever')) return true;
+  const email = (u.email || '').toLowerCase();
+  return ['.foe@', 'fireofficer@', '.tech@', 'singhyd', 'borabhimas', 'gagandeepa', 'karthikks', 'limboosandip', 'yuvanaidu', 'arjunkumar'].some(e => email.includes(e));
+};
+
+const isStrictSiteManager = (u: any): boolean => {
+  const role = getUserRoleString(u);
+  if (['site_manager', 'site_supervisor', 'facility_manager', 'associate_facility_manager', 'technical_manager', 'afm_-_soft', 'afm_-_technical', 'asst_facility_manager_operations', 'asst_facility_manager', 'asst_manager_civil_engineer'].includes(role) || role.includes('site_manager') || role.includes('facility') || role.includes('afm')) return true;
+  const email = (u.email || '').toLowerCase();
+  return ['vgpt.fm@', 'fortune1fm.', 'sanctuary.', 's3fm.', 'sampathfm@', 'sureshfacilitiesmanager@', 'propertymanager', 'estatemanager', 'titanium.prashant@'].some(e => email.includes(e));
 };
 
 const findUserMatch = (
@@ -109,7 +207,6 @@ const findUserMatch = (
   options: Array<{ id: string; name: string; userId?: string }>
 ) => {
   if (!rawName) return null;
-  const clean = rawName.trim().toLowerCase();
 
   // If joint/multiple managers like 'Pradeepp Gangaiah / Isaac Roy'
   if (rawName.includes('/') || rawName.includes('&')) {
@@ -131,7 +228,7 @@ const findUserMatch = (
 
   const root = getCleanRoot(rawName);
 
-  // 2. Canonical root match
+  // Canonical root match
   return options.find(u => {
     const uClean = u.id.toLowerCase();
     const uRoot = getCleanRoot(u.id);
@@ -139,12 +236,12 @@ const findUserMatch = (
   }) || null;
 };
 
-// Reusable Multi-Incharge Chip & Dropdown Selector Component
+// Reusable Multi-Incharge Chip & Dropdown Selector Component with Integrated Search
 const MultiInchargeSelector: React.FC<{
   label: string;
   badgeIcon: React.ReactNode;
   selectedNames: string | undefined | null;
-  options: Array<{ id: string; name: string; userId?: string }>;
+  options: Array<{ id: string; name: string; userId?: string; isPrimary?: boolean }>;
   onChange: (names: string, primaryId: string | null) => void;
   required?: boolean;
   badgeBg: string;
@@ -162,7 +259,16 @@ const MultiInchargeSelector: React.FC<{
   badgeBorder
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const containerRef = React.useRef<HTMLDivElement>(null);
+  const searchInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Focus search when opened
+  useEffect(() => {
+    if (isOpen && searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+  }, [isOpen]);
 
   // Parse currently selected manager names (normalized against options)
   const currentList = useMemo(() => {
@@ -179,11 +285,19 @@ const MultiInchargeSelector: React.FC<{
     return resolved;
   }, [selectedNames, options]);
 
+  // Filter options by search query
+  const filteredOptions = useMemo(() => {
+    if (!searchQuery.trim()) return options;
+    const q = searchQuery.toLowerCase().trim();
+    return options.filter(opt => opt.name.toLowerCase().includes(q));
+  }, [options, searchQuery]);
+
   // Click outside to close
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setIsOpen(false);
+        setSearchQuery('');
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -208,6 +322,20 @@ const MultiInchargeSelector: React.FC<{
     const joined = nextList.join(' / ');
     const firstMatch = nextList.length > 0 ? options.find(o => o.name === nextList[0]) : null;
     onChange(joined, firstMatch?.userId || null);
+  };
+
+  const handleAddCustom = (customName: string) => {
+    const trimmed = customName.trim();
+    if (!trimmed) return;
+    let nextList: string[];
+    if (currentList.includes(trimmed)) {
+      nextList = currentList.filter(n => n !== trimmed);
+    } else {
+      nextList = [...currentList, trimmed];
+    }
+    const joined = nextList.join(' / ');
+    onChange(joined, null);
+    setSearchQuery('');
   };
 
   return (
@@ -256,39 +384,88 @@ const MultiInchargeSelector: React.FC<{
         </span>
       </div>
 
-      {/* Dropdown Menu with Checkboxes */}
+      {/* Dropdown Menu with Search and Checkboxes */}
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl shadow-xl max-h-56 overflow-y-auto p-1.5 space-y-0.5 animate-scale-in">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 px-2 py-1">
-            Click to select 1 or multiple leads
-          </div>
-          {options.map(opt => {
-            const isChecked = currentList.includes(opt.name);
-            return (
-              <div
-                key={opt.id}
-                onClick={() => handleToggle(opt)}
-                className={`flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${
-                  isChecked
-                    ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300'
-                    : 'text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800'
-                }`}
+        <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl shadow-2xl max-h-72 overflow-hidden flex flex-col p-1.5 animate-scale-in">
+          {/* Quick Search Input */}
+          <div className="relative mb-1 px-1">
+            <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              placeholder={`Search ${label.toLowerCase()}...`}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-8 pr-6 py-1.5 text-xs rounded-lg bg-gray-50 dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 font-medium"
+              onClick={(e) => e.stopPropagation()}
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
               >
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={isChecked}
-                    onChange={() => {}}
-                    className="rounded text-emerald-600 focus:ring-emerald-500 w-3.5 h-3.5"
-                  />
-                  <span>{opt.name}</span>
-                </div>
-                {isChecked && (
-                  <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">✓ Added</span>
+                ×
+              </button>
+            )}
+          </div>
+
+          {/* Header Note */}
+          <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 px-2 py-1 flex items-center justify-between">
+            <span>Select 1 or multiple leads</span>
+            <span>{filteredOptions.length} available</span>
+          </div>
+
+          {/* Options List */}
+          <div className="overflow-y-auto space-y-0.5 pr-0.5 flex-1 max-h-56">
+            {filteredOptions.length === 0 ? (
+              <div className="p-3 text-center text-xs text-gray-400 space-y-2">
+                <div>No lead found matching &quot;{searchQuery}&quot;</div>
+                {searchQuery.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => handleAddCustom(searchQuery)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[11px] font-bold hover:bg-emerald-100"
+                  >
+                    + Add &quot;{searchQuery.trim()}&quot; as custom
+                  </button>
                 )}
               </div>
-            );
-          })}
+            ) : (
+              filteredOptions.map(opt => {
+                const isChecked = currentList.includes(opt.name);
+                return (
+                  <div
+                    key={opt.id}
+                    onClick={() => handleToggle(opt)}
+                    className={`flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${
+                      isChecked
+                        ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300'
+                        : 'text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => {}}
+                        className="rounded text-emerald-600 focus:ring-emerald-500 w-3.5 h-3.5"
+                      />
+                      <span>{opt.name}</span>
+                      {opt.isPrimary && (
+                        <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-blue-100 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300">
+                          Primary
+                        </span>
+                      )}
+                    </div>
+                    {isChecked && (
+                      <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">✓ Added</span>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -308,8 +485,10 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterSite, setFilterSite] = useState('ALL');
   const [filterOps, setFilterOps] = useState('ALL');
+  const [filterSiteManager, setFilterSiteManager] = useState('ALL');
   const [filterHr, setFilterHr] = useState('ALL');
   const [filterAccounts, setFilterAccounts] = useState('ALL');
+  const [filterFieldOfficer, setFilterFieldOfficer] = useState('ALL');
   const [filterCompany, setFilterCompany] = useState('ALL');
   const [filterCycle, setFilterCycle] = useState('ALL');
 
@@ -321,8 +500,10 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
   const [selectedSites, setSelectedSites] = useState<string[]>([]);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [bulkOps, setBulkOps] = useState('');
+  const [bulkSiteManager, setBulkSiteManager] = useState('');
   const [bulkHr, setBulkHr] = useState('');
   const [bulkAccounts, setBulkAccounts] = useState('');
+  const [bulkFieldOfficer, setBulkFieldOfficer] = useState('');
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
 
   // Active Site for Drawer
@@ -369,31 +550,63 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
     loadData();
   }, [loadData]);
 
-  // STRICT Operations Managers Only Dropdown List
+  // STRICT Operations Managers Dropdown List
   const opsUserOptions = useMemo(() => {
-    const list: { id: string; name: string; userId?: string }[] = [];
+    const list: { id: string; name: string; userId?: string; isPrimary?: boolean }[] = [];
     const seenRoots = new Set<string>();
 
+    // 1. Primary Ops Managers
+    PRIMARY_OPS_LEADS.forEach(primName => {
+      const root = getCleanRoot(primName);
+      const user = dbUsers.find(u => {
+        const uClean = getNormalizedUserName(u);
+        return getCleanRoot(uClean) === root;
+      });
+      seenRoots.add(root);
+      list.push({
+        id: primName,
+        name: primName,
+        userId: user?.id,
+        isPrimary: true
+      });
+    });
+
+    // 2. DB Users
     dbUsers.forEach(u => {
       if (u.name && isStrictOpsManager(u) && !u.email?.includes('left.')) {
-        const cleanName = u.name.trim();
+        const cleanName = getNormalizedUserName(u);
         const root = getCleanRoot(cleanName);
         if (!seenRoots.has(root)) {
           seenRoots.add(root);
           list.push({
             id: cleanName,
             name: cleanName,
-            userId: u.id
+            userId: u.id,
+            isPrimary: false
           });
         }
       }
     });
 
-    // Also include any multi-manager combinations found in matrixData (e.g. 'Pradeepp Gangaiah / Isaac Roy')
+    // 3. Matrix records and joint combinations
     matrixData.forEach(m => {
       const raw = (m.opsManagerName || '').trim();
-      if (raw && (raw.includes('/') || raw.includes('&'))) {
-        const parts = raw.split(/[/&]/).map(s => s.trim()).filter(Boolean);
+      if (!raw) return;
+
+      const parts = raw.split(/[/&]/).map(s => s.trim()).filter(Boolean);
+      parts.forEach(p => {
+        const root = getCleanRoot(p);
+        if (root && !seenRoots.has(root)) {
+          seenRoots.add(root);
+          list.push({
+            id: p,
+            name: p,
+            isPrimary: false
+          });
+        }
+      });
+
+      if (raw.includes('/') || raw.includes('&')) {
         const resolved = parts.map(p => {
           const match = findUserMatch(p, list);
           return match ? match.name : p;
@@ -403,59 +616,334 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
           list.push({
             id: resolved,
             name: `${resolved} (Joint Ops)`,
+            isPrimary: false
           });
         }
       }
     });
 
-    return list.sort((a, b) => a.name.localeCompare(b.name));
+    return list.sort((a, b) => {
+      if (a.isPrimary && !b.isPrimary) return -1;
+      if (!a.isPrimary && b.isPrimary) return 1;
+      return a.name.localeCompare(b.name);
+    });
   }, [dbUsers, matrixData]);
 
-  // STRICT HR Leads Only Dropdown List
+  // STRICT HR Leads Dropdown List
   const hrUserOptions = useMemo(() => {
-    const list: { id: string; name: string; userId?: string }[] = [];
+    const list: { id: string; name: string; userId?: string; isPrimary?: boolean }[] = [];
     const seenRoots = new Set<string>();
 
+    // 1. Primary Site HR Leads (Always at top)
+    PRIMARY_HR_LEADS.forEach(primName => {
+      const root = getCleanRoot(primName);
+      const user = dbUsers.find(u => {
+        const uClean = getNormalizedUserName(u);
+        return getCleanRoot(uClean) === root;
+      });
+      seenRoots.add(root);
+      list.push({
+        id: primName,
+        name: primName,
+        userId: user?.id,
+        isPrimary: true
+      });
+    });
+
+    // 2. All HR users from DB
     dbUsers.forEach(u => {
       if (u.name && isStrictHr(u) && !u.email?.includes('left.')) {
-        const cleanName = u.email === 'chandana.hr@paradigmfms.com' ? 'Chandana R' : u.name.trim();
+        const cleanName = getNormalizedUserName(u);
         const root = getCleanRoot(cleanName);
         if (!seenRoots.has(root)) {
           seenRoots.add(root);
           list.push({
             id: cleanName,
             name: cleanName,
-            userId: u.id
+            userId: u.id,
+            isPrimary: false
           });
         }
       }
     });
 
-    return list.sort((a, b) => a.name.localeCompare(b.name));
-  }, [dbUsers]);
+    // 3. Matrix records and joint combinations
+    matrixData.forEach(m => {
+      const raw = (m.hrInchargeName || '').trim();
+      if (!raw) return;
 
-  // STRICT Accounts & Finance Only Dropdown List
+      const parts = raw.split(/[/&]/).map(s => s.trim()).filter(Boolean);
+      parts.forEach(p => {
+        const root = getCleanRoot(p);
+        if (root && !seenRoots.has(root)) {
+          seenRoots.add(root);
+          list.push({
+            id: p,
+            name: p,
+            isPrimary: false
+          });
+        }
+      });
+
+      if (raw.includes('/') || raw.includes('&')) {
+        const resolved = parts.map(p => {
+          const match = findUserMatch(p, list);
+          return match ? match.name : p;
+        }).join(' / ');
+        
+        if (!list.some(item => item.id.toLowerCase() === resolved.toLowerCase())) {
+          list.push({
+            id: resolved,
+            name: `${resolved} (Joint HR)`,
+            isPrimary: false
+          });
+        }
+      }
+    });
+
+    return list.sort((a, b) => {
+      if (a.isPrimary && !b.isPrimary) return -1;
+      if (!a.isPrimary && b.isPrimary) return 1;
+      return a.name.localeCompare(b.name);
+    });
+  }, [dbUsers, matrixData]);
+
+  // STRICT Accounts & Finance Dropdown List
   const accountsUserOptions = useMemo(() => {
-    const list: { id: string; name: string; userId?: string }[] = [];
+    const list: { id: string; name: string; userId?: string; isPrimary?: boolean }[] = [];
     const seenRoots = new Set<string>();
 
+    // 1. Primary Accounts Leads
+    PRIMARY_ACCOUNTS_LEADS.forEach(primName => {
+      const root = getCleanRoot(primName);
+      const user = dbUsers.find(u => {
+        const uClean = getNormalizedUserName(u);
+        return getCleanRoot(uClean) === root;
+      });
+      seenRoots.add(root);
+      list.push({
+        id: primName,
+        name: primName,
+        userId: user?.id,
+        isPrimary: true
+      });
+    });
+
+    // 2. DB Users
     dbUsers.forEach(u => {
       if (u.name && isStrictFinance(u) && !u.email?.includes('left.')) {
-        const cleanName = u.name.trim();
+        const cleanName = getNormalizedUserName(u);
         const root = getCleanRoot(cleanName);
         if (!seenRoots.has(root)) {
           seenRoots.add(root);
           list.push({
             id: cleanName,
             name: cleanName,
-            userId: u.id
+            userId: u.id,
+            isPrimary: false
           });
         }
       }
     });
 
-    return list.sort((a, b) => a.name.localeCompare(b.name));
-  }, [dbUsers]);
+    // 3. Matrix records and joint combinations
+    matrixData.forEach(m => {
+      const raw = (m.accountsInchargeName || '').trim();
+      if (!raw) return;
+
+      const parts = raw.split(/[/&]/).map(s => s.trim()).filter(Boolean);
+      parts.forEach(p => {
+        const root = getCleanRoot(p);
+        if (root && !seenRoots.has(root)) {
+          seenRoots.add(root);
+          list.push({
+            id: p,
+            name: p,
+            isPrimary: false
+          });
+        }
+      });
+
+      if (raw.includes('/') || raw.includes('&')) {
+        const resolved = parts.map(p => {
+          const match = findUserMatch(p, list);
+          return match ? match.name : p;
+        }).join(' / ');
+        
+        if (!list.some(item => item.id.toLowerCase() === resolved.toLowerCase())) {
+          list.push({
+            id: resolved,
+            name: `${resolved} (Joint Accounts)`,
+            isPrimary: false
+          });
+        }
+      }
+    });
+
+    return list.sort((a, b) => {
+      if (a.isPrimary && !b.isPrimary) return -1;
+      if (!a.isPrimary && b.isPrimary) return 1;
+      return a.name.localeCompare(b.name);
+    });
+  }, [dbUsers, matrixData]);
+
+  // STRICT Field Officers & Field Staff Dropdown List
+  const fieldOfficerOptions = useMemo(() => {
+    const list: { id: string; name: string; userId?: string; isPrimary?: boolean }[] = [];
+    const seenRoots = new Set<string>();
+
+    // 1. Primary Field Officers
+    PRIMARY_FIELD_OFFICERS.forEach(primName => {
+      const root = getCleanRoot(primName);
+      const user = dbUsers.find(u => {
+        const uClean = getNormalizedUserName(u);
+        return getCleanRoot(uClean) === root;
+      });
+      seenRoots.add(root);
+      list.push({
+        id: primName,
+        name: primName,
+        userId: user?.id,
+        isPrimary: true
+      });
+    });
+
+    // 2. DB Users
+    dbUsers.forEach(u => {
+      if (u.name && isStrictFieldOfficer(u) && !u.email?.includes('left.')) {
+        const cleanName = getNormalizedUserName(u);
+        const root = getCleanRoot(cleanName);
+        if (!seenRoots.has(root)) {
+          seenRoots.add(root);
+          list.push({
+            id: cleanName,
+            name: cleanName,
+            userId: u.id,
+            isPrimary: false
+          });
+        }
+      }
+    });
+
+    // 3. Matrix records and joint combinations
+    matrixData.forEach(m => {
+      const raw = (m.fieldOfficerName || '').trim();
+      if (!raw) return;
+
+      const parts = raw.split(/[/&]/).map(s => s.trim()).filter(Boolean);
+      parts.forEach(p => {
+        const root = getCleanRoot(p);
+        if (root && !seenRoots.has(root)) {
+          seenRoots.add(root);
+          list.push({
+            id: p,
+            name: p,
+            isPrimary: false
+          });
+        }
+      });
+
+      if (raw.includes('/') || raw.includes('&')) {
+        const resolved = parts.map(p => {
+          const match = findUserMatch(p, list);
+          return match ? match.name : p;
+        }).join(' / ');
+        
+        if (!list.some(item => item.id.toLowerCase() === resolved.toLowerCase())) {
+          list.push({
+            id: resolved,
+            name: `${resolved} (Joint Field)`,
+            isPrimary: false
+          });
+        }
+      }
+    });
+
+    return list.sort((a, b) => {
+      if (a.isPrimary && !b.isPrimary) return -1;
+      if (!a.isPrimary && b.isPrimary) return 1;
+      return a.name.localeCompare(b.name);
+    });
+  }, [dbUsers, matrixData]);
+
+  // STRICT Site Managers & Site Supervisors Dropdown List
+  const siteManagerOptions = useMemo(() => {
+    const list: { id: string; name: string; userId?: string; isPrimary?: boolean }[] = [];
+    const seenRoots = new Set<string>();
+
+    // 1. Primary Site Managers
+    PRIMARY_SITE_MANAGERS.forEach(primName => {
+      const root = getCleanRoot(primName);
+      const user = dbUsers.find(u => {
+        const uClean = getNormalizedUserName(u);
+        return getCleanRoot(uClean) === root;
+      });
+      seenRoots.add(root);
+      list.push({
+        id: primName,
+        name: primName,
+        userId: user?.id,
+        isPrimary: true
+      });
+    });
+
+    // 2. DB Users
+    dbUsers.forEach(u => {
+      if (u.name && isStrictSiteManager(u) && !u.email?.includes('left.')) {
+        const cleanName = getNormalizedUserName(u);
+        const root = getCleanRoot(cleanName);
+        if (!seenRoots.has(root)) {
+          seenRoots.add(root);
+          list.push({
+            id: cleanName,
+            name: cleanName,
+            userId: u.id,
+            isPrimary: false
+          });
+        }
+      }
+    });
+
+    // 3. Matrix records and joint combinations
+    matrixData.forEach(m => {
+      const raw = (m.siteSupervisorName || m.siteManagerName || '').trim();
+      if (!raw) return;
+
+      const parts = raw.split(/[/&]/).map(s => s.trim()).filter(Boolean);
+      parts.forEach(p => {
+        const root = getCleanRoot(p);
+        if (root && !seenRoots.has(root)) {
+          seenRoots.add(root);
+          list.push({
+            id: p,
+            name: p,
+            isPrimary: false
+          });
+        }
+      });
+
+      if (raw.includes('/') || raw.includes('&')) {
+        const resolved = parts.map(p => {
+          const match = findUserMatch(p, list);
+          return match ? match.name : p;
+        }).join(' / ');
+        
+        if (!list.some(item => item.id.toLowerCase() === resolved.toLowerCase())) {
+          list.push({
+            id: resolved,
+            name: `${resolved} (Joint Site Mgr)`,
+            isPrimary: false
+          });
+        }
+      }
+    });
+
+    return list.sort((a, b) => {
+      if (a.isPrimary && !b.isPrimary) return -1;
+      if (!a.isPrimary && b.isPrimary) return 1;
+      return a.name.localeCompare(b.name);
+    });
+  }, [dbUsers, matrixData]);
 
   // Combined site options from DB locations and matrix
   const siteSelectOptions = useMemo(() => {
@@ -549,13 +1037,16 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
   // Filtered dataset
   const filteredData = useMemo(() => {
     return matrixData.filter(item => {
+      const siteMgr = item.siteManagerName || item.siteSupervisorName || '';
       const matchSearch = 
         searchTerm === '' ||
         item.siteName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (item.billingLegalName && item.billingLegalName.toLowerCase().includes(searchTerm.toLowerCase())) ||
         item.opsManagerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        siteMgr.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.hrInchargeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.accountsInchargeName.toLowerCase().includes(searchTerm.toLowerCase());
+        item.accountsInchargeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (item.fieldOfficerName && item.fieldOfficerName.toLowerCase().includes(searchTerm.toLowerCase()));
 
       const matchSite = filterSite === 'ALL' || item.siteName.toLowerCase() === filterSite.toLowerCase();
 
@@ -565,6 +1056,14 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
           const rootPart = getCleanRoot(part);
           const rootFilter = getCleanRoot(filterOps);
           return rootPart === rootFilter || part.trim().toLowerCase() === filterOps.trim().toLowerCase();
+        });
+
+      const matchSiteManager = filterSiteManager === 'ALL' || 
+        siteMgr.toUpperCase().includes(filterSiteManager.toUpperCase()) ||
+        siteMgr.split(/[/&]/).some(part => {
+          const rootPart = getCleanRoot(part);
+          const rootFilter = getCleanRoot(filterSiteManager);
+          return rootPart === rootFilter || part.trim().toLowerCase() === filterSiteManager.trim().toLowerCase();
         });
 
       const matchHr = filterHr === 'ALL' || 
@@ -583,12 +1082,20 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
           return rootPart === rootFilter || part.trim().toLowerCase() === filterAccounts.trim().toLowerCase();
         });
 
+      const matchFieldOfficer = filterFieldOfficer === 'ALL' || 
+        Boolean(item.fieldOfficerName && item.fieldOfficerName.toUpperCase().includes(filterFieldOfficer.toUpperCase())) ||
+        Boolean(item.fieldOfficerName && item.fieldOfficerName.split(/[/&]/).some(part => {
+          const rootPart = getCleanRoot(part);
+          const rootFilter = getCleanRoot(filterFieldOfficer);
+          return rootPart === rootFilter || part.trim().toLowerCase() === filterFieldOfficer.trim().toLowerCase();
+        }));
+
       const matchCompany = filterCompany === 'ALL' || item.billingCompany === filterCompany;
       const matchCycle = filterCycle === 'ALL' || item.billingCycle === filterCycle;
 
-      return matchSearch && matchSite && matchOps && matchHr && matchAccounts && matchCompany && matchCycle;
+      return matchSearch && matchSite && matchOps && matchSiteManager && matchHr && matchAccounts && matchFieldOfficer && matchCompany && matchCycle;
     });
-  }, [matrixData, searchTerm, filterSite, filterOps, filterHr, filterAccounts, filterCompany, filterCycle]);
+  }, [matrixData, searchTerm, filterSite, filterOps, filterSiteManager, filterHr, filterAccounts, filterFieldOfficer, filterCompany, filterCycle]);
 
   // Paginated dataset
   const paginatedData = useMemo(() => {
@@ -624,6 +1131,15 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
         updates.opsManagerName = matched ? matched.id : bulkOps;
         if (matched?.userId) updates.opsManagerId = matched.userId;
       }
+      if (bulkSiteManager) {
+        const matched = findUserMatch(bulkSiteManager, siteManagerOptions);
+        updates.siteSupervisorName = matched ? matched.id : bulkSiteManager;
+        updates.siteManagerName = matched ? matched.id : bulkSiteManager;
+        if (matched?.userId) {
+          updates.siteSupervisorId = matched.userId;
+          updates.siteManagerId = matched.userId;
+        }
+      }
       if (bulkHr) {
         const matched = findUserMatch(bulkHr, hrUserOptions);
         updates.hrInchargeName = matched ? matched.id : bulkHr;
@@ -634,14 +1150,21 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
         updates.accountsInchargeName = matched ? matched.id : bulkAccounts;
         if (matched?.userId) updates.accountsInchargeId = matched.userId;
       }
+      if (bulkFieldOfficer) {
+        const matched = findUserMatch(bulkFieldOfficer, fieldOfficerOptions);
+        updates.fieldOfficerName = matched ? matched.id : bulkFieldOfficer;
+        if (matched?.userId) updates.fieldOfficerId = matched.userId;
+      }
 
       await api.bulkUpdateSiteIncharges(selectedSites, updates);
       setToast({ message: `Successfully updated ${selectedSites.length} sites.`, type: 'success' });
       setIsBulkModalOpen(false);
       setSelectedSites([]);
       setBulkOps('');
+      setBulkSiteManager('');
       setBulkHr('');
       setBulkAccounts('');
+      setBulkFieldOfficer('');
       await loadData();
     } catch (err: any) {
       console.error(err);
@@ -667,17 +1190,28 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
   const handleSaveSite = async (siteToSave: Partial<SiteResponsibilityMatrix>) => {
     try {
       const opsMatch = findUserMatch(siteToSave.opsManagerName, opsUserOptions);
+      const smMatch = findUserMatch(siteToSave.siteManagerName || siteToSave.siteSupervisorName, siteManagerOptions);
       const hrMatch = findUserMatch(siteToSave.hrInchargeName, hrUserOptions);
       const acMatch = findUserMatch(siteToSave.accountsInchargeName, accountsUserOptions);
+      const foMatch = findUserMatch(siteToSave.fieldOfficerName, fieldOfficerOptions);
+
+      const effectiveSmName = smMatch ? smMatch.name : (siteToSave.siteManagerName || siteToSave.siteSupervisorName || null);
+      const effectiveSmId = smMatch?.userId || siteToSave.siteManagerId || siteToSave.siteSupervisorId || null;
 
       const payload: Partial<SiteResponsibilityMatrix> = {
         ...siteToSave,
         opsManagerName: opsMatch ? opsMatch.name : (siteToSave.opsManagerName || ''),
         opsManagerId: opsMatch?.userId || siteToSave.opsManagerId || null,
+        siteManagerName: effectiveSmName,
+        siteManagerId: effectiveSmId,
+        siteSupervisorName: effectiveSmName,
+        siteSupervisorId: effectiveSmId,
         hrInchargeName: hrMatch ? hrMatch.name : (siteToSave.hrInchargeName || ''),
         hrInchargeId: hrMatch?.userId || siteToSave.hrInchargeId || null,
         accountsInchargeName: acMatch ? acMatch.name : (siteToSave.accountsInchargeName || ''),
-        accountsInchargeId: acMatch?.userId || siteToSave.accountsInchargeId || null
+        accountsInchargeId: acMatch?.userId || siteToSave.accountsInchargeId || null,
+        fieldOfficerName: foMatch ? foMatch.name : (siteToSave.fieldOfficerName || null),
+        fieldOfficerId: foMatch?.userId || siteToSave.fieldOfficerId || null
       };
 
       await api.upsertSiteResponsibility(payload);
@@ -708,12 +1242,14 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
   // Export to CSV
   const handleExportCSV = () => {
     const headers = [
-      'Site Name', 'Ops Manager', 'HR Incharge', 'Accounts Incharge', 
+      'Site Name', 'Operations Manager', 'Site Manager', 'Field Officer', 'HR Incharge', 'Accounts Incharge',
       'Company', 'Billing Cycle', 'Units / Flats', 'Takeover Date', 'Name as per GST', 'GSTIN', 'PAN'
     ];
     const rows = filteredData.map(d => [
       `"${d.siteName}"`,
       `"${d.opsManagerName}"`,
+      `"${d.siteManagerName || d.siteSupervisorName || ''}"`,
+      `"${d.fieldOfficerName || ''}"`,
       `"${d.hrInchargeName}"`,
       `"${d.accountsInchargeName}"`,
       `"${d.billingCompany}"`,
@@ -786,8 +1322,11 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
               setEditingSite({
                 siteName: '',
                 opsManagerName: 'Sandeep B',
+                siteManagerName: '',
+                siteSupervisorName: '',
                 hrInchargeName: 'Chandana R',
                 accountsInchargeName: 'Arpitha Nairy',
+                fieldOfficerName: '',
                 billingCompany: 'PIFS',
                 billingCycle: '3rd Billing Cycle',
                 isActive: true
@@ -802,47 +1341,65 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Stats Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
-        <div className="p-5 rounded-3xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 flex items-center justify-center text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800">
-            <Building2 className="w-6 h-6" />
+      {/* Stats Summary Cards: 6 Individual Dedicated Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5 w-full">
+        <div className="p-4 rounded-3xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-xs flex items-center gap-3.5">
+          <div className="w-11 h-11 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 flex items-center justify-center text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800 shrink-0">
+            <Building2 className="w-5 h-5" />
           </div>
-          <div>
-            <div className="text-2xl font-black text-gray-900 dark:text-white">{matrixData.length}</div>
-            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Active Managed Sites</div>
-          </div>
-        </div>
-
-        <div className="p-5 rounded-3xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/60 flex items-center justify-center text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-800">
-            <ShieldCheck className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="text-2xl font-black text-gray-900 dark:text-white">{opsUserOptions.length}</div>
-            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Operations Managers</div>
+          <div className="min-w-0">
+            <div className="text-xl font-black text-gray-900 dark:text-white leading-tight">{matrixData.length}</div>
+            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider truncate">Active Sites</div>
           </div>
         </div>
 
-        <div className="p-5 rounded-3xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-purple-50 dark:bg-purple-950/60 flex items-center justify-center text-purple-600 dark:text-purple-400 border border-purple-100 dark:border-purple-800">
-            <UserCheck className="w-6 h-6" />
+        <div className="p-4 rounded-3xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-xs flex items-center gap-3.5">
+          <div className="w-11 h-11 rounded-2xl bg-blue-50 dark:bg-blue-950/60 flex items-center justify-center text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-800 shrink-0">
+            <ShieldCheck className="w-5 h-5" />
           </div>
-          <div>
-            <div className="text-2xl font-black text-gray-900 dark:text-white">
-              {hrUserOptions.length} HR / {accountsUserOptions.length} Finance
-            </div>
-            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Support Leads</div>
+          <div className="min-w-0">
+            <div className="text-xl font-black text-gray-900 dark:text-white leading-tight">{opsUserOptions.length}</div>
+            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider truncate">Ops Managers</div>
           </div>
         </div>
 
-        <div className="p-5 rounded-3xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-950/60 flex items-center justify-center text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-800">
-            <Sparkles className="w-6 h-6" />
+        <div className="p-4 rounded-3xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-xs flex items-center gap-3.5">
+          <div className="w-11 h-11 rounded-2xl bg-cyan-50 dark:bg-cyan-950/60 flex items-center justify-center text-cyan-600 dark:text-cyan-400 border border-cyan-100 dark:border-cyan-800 shrink-0">
+            <Building2 className="w-5 h-5" />
           </div>
-          <div>
-            <div className="text-2xl font-black text-gray-900 dark:text-white">100%</div>
-            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Automated Dispatch</div>
+          <div className="min-w-0">
+            <div className="text-xl font-black text-gray-900 dark:text-white leading-tight">{siteManagerOptions.length}</div>
+            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider truncate">Site Managers</div>
+          </div>
+        </div>
+
+        <div className="p-4 rounded-3xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-xs flex items-center gap-3.5">
+          <div className="w-11 h-11 rounded-2xl bg-amber-50 dark:bg-amber-950/60 flex items-center justify-center text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-800 shrink-0">
+            <MapPin className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-xl font-black text-gray-900 dark:text-white leading-tight">{fieldOfficerOptions.length}</div>
+            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider truncate">Field Officers</div>
+          </div>
+        </div>
+
+        <div className="p-4 rounded-3xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-xs flex items-center gap-3.5">
+          <div className="w-11 h-11 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800 shrink-0">
+            <UserCheck className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-xl font-black text-gray-900 dark:text-white leading-tight">{hrUserOptions.length}</div>
+            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider truncate">HR Incharges</div>
+          </div>
+        </div>
+
+        <div className="p-4 rounded-3xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-xs flex items-center gap-3.5">
+          <div className="w-11 h-11 rounded-2xl bg-purple-50 dark:bg-purple-950/60 flex items-center justify-center text-purple-600 dark:text-purple-400 border border-purple-100 dark:border-purple-800 shrink-0">
+            <FileText className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-xl font-black text-gray-900 dark:text-white leading-tight">{accountsUserOptions.length}</div>
+            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider truncate">Finance Leads</div>
           </div>
         </div>
       </div>
@@ -855,7 +1412,7 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
             <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Search by Site Name, Registered GST Name, Ops Manager, HR, or Accounts..."
+              placeholder="Search by Site Name, GST Name, Ops Manager, Site Manager, HR, Accounts, or Field Officer..."
               value={searchTerm}
               onChange={(e) => {
                 setSearchTerm(e.target.value);
@@ -866,7 +1423,7 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
           </div>
 
           {/* Quick Clear */}
-          {(searchTerm || filterSite !== 'ALL' || filterOps !== 'ALL' || filterHr !== 'ALL' || filterAccounts !== 'ALL' || filterCompany !== 'ALL' || filterCycle !== 'ALL') && (
+          {(searchTerm || filterSite !== 'ALL' || filterOps !== 'ALL' || filterSiteManager !== 'ALL' || filterHr !== 'ALL' || filterAccounts !== 'ALL' || filterFieldOfficer !== 'ALL' || filterCompany !== 'ALL' || filterCycle !== 'ALL') && (
             <Button
               variant="secondary"
               size="sm"
@@ -874,8 +1431,10 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
                 setSearchTerm('');
                 setFilterSite('ALL');
                 setFilterOps('ALL');
+                setFilterSiteManager('ALL');
                 setFilterHr('ALL');
                 setFilterAccounts('ALL');
+                setFilterFieldOfficer('ALL');
                 setFilterCompany('ALL');
                 setFilterCycle('ALL');
                 setCurrentPage(1);
@@ -887,10 +1446,10 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
           )}
         </div>
 
-        {/* Dropdown Filters */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 pt-2 border-t border-gray-100 dark:border-zinc-800">
+        {/* Dropdown Filters: 8 Columns */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 pt-2 border-t border-gray-100 dark:border-zinc-800">
           <div>
-            <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-1">Site / Client Name</label>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-1">Site / Client</label>
             <select
               value={filterSite}
               onChange={(e) => { setFilterSite(e.target.value); setCurrentPage(1); }}
@@ -902,37 +1461,61 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
           </div>
 
           <div>
-            <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-1">Ops Lead (Managers Only)</label>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-1">Ops Lead</label>
             <select
               value={filterOps}
               onChange={(e) => { setFilterOps(e.target.value); setCurrentPage(1); }}
               className="w-full py-1.5 px-3 text-xs rounded-xl bg-gray-50 dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-semibold"
             >
-              <option value="ALL">All Ops Managers ({opsUserOptions.length})</option>
+              <option value="ALL">All Ops ({opsUserOptions.length})</option>
               {opsUserOptions.map(op => <option key={op.id} value={op.id}>{op.name}</option>)}
             </select>
           </div>
 
           <div>
-            <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-1">HR Lead (HR Only)</label>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-1">Site Manager</label>
+            <select
+              value={filterSiteManager}
+              onChange={(e) => { setFilterSiteManager(e.target.value); setCurrentPage(1); }}
+              className="w-full py-1.5 px-3 text-xs rounded-xl bg-gray-50 dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-semibold"
+            >
+              <option value="ALL">All Site Mgrs ({siteManagerOptions.length})</option>
+              {siteManagerOptions.map(sm => <option key={sm.id} value={sm.id}>{sm.name}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-1">Field Officer</label>
+            <select
+              value={filterFieldOfficer}
+              onChange={(e) => { setFilterFieldOfficer(e.target.value); setCurrentPage(1); }}
+              className="w-full py-1.5 px-3 text-xs rounded-xl bg-gray-50 dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-semibold"
+            >
+              <option value="ALL">All Officers ({fieldOfficerOptions.length})</option>
+              {fieldOfficerOptions.map(fo => <option key={fo.id} value={fo.id}>{fo.name}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-1">HR Lead</label>
             <select
               value={filterHr}
               onChange={(e) => { setFilterHr(e.target.value); setCurrentPage(1); }}
               className="w-full py-1.5 px-3 text-xs rounded-xl bg-gray-50 dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-semibold"
             >
-              <option value="ALL">All HR Leads ({hrUserOptions.length})</option>
+              <option value="ALL">All HR ({hrUserOptions.length})</option>
               {hrUserOptions.map(hr => <option key={hr.id} value={hr.id}>{hr.name}</option>)}
             </select>
           </div>
 
           <div>
-            <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-1">Accounts Lead (Finance Only)</label>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-1">Accounts Lead</label>
             <select
               value={filterAccounts}
               onChange={(e) => { setFilterAccounts(e.target.value); setCurrentPage(1); }}
               className="w-full py-1.5 px-3 text-xs rounded-xl bg-gray-50 dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-semibold"
             >
-              <option value="ALL">All Finance Leads ({accountsUserOptions.length})</option>
+              <option value="ALL">All Finance ({accountsUserOptions.length})</option>
               {accountsUserOptions.map(ac => <option key={ac.id} value={ac.id}>{ac.name}</option>)}
             </select>
           </div>
@@ -1007,6 +1590,8 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
                 </th>
                 <th className="py-3.5 px-4">Client / Site Name</th>
                 <th className="py-3.5 px-4">Operations Manager</th>
+                <th className="py-3.5 px-4">Site Manager</th>
+                <th className="py-3.5 px-4">Field Officer</th>
                 <th className="py-3.5 px-4">HR Lead</th>
                 <th className="py-3.5 px-4">Accounts Lead</th>
                 <th className="py-3.5 px-4">Company & Cycle</th>
@@ -1016,7 +1601,7 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
             <tbody className="divide-y divide-gray-100 dark:divide-zinc-800/60">
               {paginatedData.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-gray-400">
+                  <td colSpan={9} className="py-12 text-center text-gray-400">
                     No sites found matching the current search / filter criteria.
                   </td>
                 </tr>
@@ -1024,8 +1609,11 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
                 paginatedData.map((row) => {
                   const isSelected = selectedSites.includes(row.siteName);
                   const opsMatch = findUserMatch(row.opsManagerName, opsUserOptions);
+                  const smMatch = findUserMatch(row.siteManagerName || row.siteSupervisorName, siteManagerOptions);
                   const hrMatch = findUserMatch(row.hrInchargeName, hrUserOptions);
                   const acMatch = findUserMatch(row.accountsInchargeName, accountsUserOptions);
+                  const foMatch = findUserMatch(row.fieldOfficerName, fieldOfficerOptions);
+                  const rawSm = row.siteManagerName || row.siteSupervisorName;
 
                   return (
                     <tr 
@@ -1082,6 +1670,54 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
                             );
                           })}
                         </div>
+                      </td>
+
+                      {/* Site Manager */}
+                      <td className="py-4 px-4">
+                        {rawSm ? (
+                          <div className="flex flex-wrap gap-1.5 items-center">
+                            {rawSm.split(/[/&]/).map((part, i) => {
+                              const clean = part.trim();
+                              if (!clean) return null;
+                              const match = findUserMatch(clean, siteManagerOptions);
+                              return (
+                                <div 
+                                  key={i} 
+                                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-cyan-50 dark:bg-cyan-950/40 text-cyan-800 dark:text-cyan-300 font-semibold text-xs border border-cyan-100 dark:border-cyan-900/50 shadow-xs"
+                                >
+                                  <Building2 className="w-3.5 h-3.5 text-cyan-600 shrink-0" />
+                                  <span>{match?.name || clean}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-400 dark:text-gray-500 italic">Unassigned</span>
+                        )}
+                      </td>
+
+                      {/* Field Officer */}
+                      <td className="py-4 px-4">
+                        {row.fieldOfficerName ? (
+                          <div className="flex flex-wrap gap-1.5 items-center">
+                            {row.fieldOfficerName.split(/[/&]/).map((part, i) => {
+                              const clean = part.trim();
+                              if (!clean) return null;
+                              const match = findUserMatch(clean, fieldOfficerOptions);
+                              return (
+                                <div 
+                                  key={i} 
+                                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 font-semibold text-xs border border-amber-100 dark:border-amber-900/50 shadow-xs"
+                                >
+                                  <MapPin className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                  <span>{match?.name || clean}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-400 dark:text-gray-500 italic">Unassigned</span>
+                        )}
                       </td>
 
                       {/* HR Incharge */}
@@ -1228,6 +1864,34 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
 
             <div>
               <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">
+                New Site Manager <span className="text-[11px] font-normal text-gray-400">(Site Managers & Facility Managers Only)</span>
+              </label>
+              <select
+                value={bulkSiteManager}
+                onChange={(e) => setBulkSiteManager(e.target.value)}
+                className="w-full py-2.5 px-3 rounded-xl bg-gray-50 dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 font-semibold text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+              >
+                <option value="">-- Leave Unchanged --</option>
+                {siteManagerOptions.map(sm => <option key={sm.id} value={sm.id}>{sm.name}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">
+                New Field Officer <span className="text-[11px] font-normal text-gray-400">(Field Officers & Staff Only)</span>
+              </label>
+              <select
+                value={bulkFieldOfficer}
+                onChange={(e) => setBulkFieldOfficer(e.target.value)}
+                className="w-full py-2.5 px-3 rounded-xl bg-gray-50 dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 font-semibold text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+              >
+                <option value="">-- Leave Unchanged --</option>
+                {fieldOfficerOptions.map(fo => <option key={fo.id} value={fo.id}>{fo.name}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">
                 New HR Incharge <span className="text-[11px] font-normal text-gray-400">(HR Leads Only)</span>
               </label>
               <select
@@ -1262,7 +1926,7 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
             <Button
               variant="primary"
               onClick={handleExecuteBulk}
-              disabled={isBulkUpdating || (!bulkOps && !bulkHr && !bulkAccounts)}
+              disabled={isBulkUpdating || (!bulkOps && !bulkSiteManager && !bulkHr && !bulkAccounts && !bulkFieldOfficer)}
               className="!bg-emerald-600 hover:!bg-emerald-700 !text-white"
             >
               {isBulkUpdating ? 'Updating...' : `Confirm & Update ${selectedSites.length} Sites`}
@@ -1271,7 +1935,7 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
         </div>
       </Modal>
 
-      {/* Add / Edit Modal with Perfectly Aligned Grid Layout */}
+      {/* Add / Edit Modal with Perfectly Aligned 5-Column Incharge Grid */}
       {isFormModalOpen && editingSite && (
         <Modal
           isOpen={isFormModalOpen}
@@ -1280,7 +1944,7 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
             setEditingSite(null);
           }}
           title={editingSite.id ? `Edit Mapping: ${editingSite.siteName}` : 'Add New Site Responsibility Mapping'}
-          maxWidth="md:max-w-2xl lg:max-w-3xl"
+          maxWidth="md:max-w-4xl lg:max-w-5xl"
           hideFooter={true}
         >
           <div className="space-y-4 text-sm max-h-[78vh] overflow-y-auto pr-1">
@@ -1304,8 +1968,8 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
               />
             </div>
 
-            {/* In-Charge Multi-Select Controls: 3 Column Perfectly Aligned Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-1">
+            {/* In-Charge Multi-Select Controls: 5 Column Perfectly Aligned Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3.5 pt-1">
               <MultiInchargeSelector
                 label="Operations Lead"
                 badgeIcon={<ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />}
@@ -1322,6 +1986,44 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
                 badgeBg="bg-emerald-50 dark:bg-emerald-950/40"
                 badgeText="text-emerald-800 dark:text-emerald-300"
                 badgeBorder="border-emerald-200 dark:border-emerald-900/50"
+              />
+
+              <MultiInchargeSelector
+                label="Site Manager"
+                badgeIcon={<Building2 className="w-3.5 h-3.5 text-cyan-600 shrink-0" />}
+                selectedNames={editingSite.siteManagerName || editingSite.siteSupervisorName}
+                options={siteManagerOptions}
+                onChange={(names, primaryId) => {
+                  setEditingSite(prev => ({
+                    ...prev,
+                    siteManagerName: names,
+                    siteManagerId: primaryId || prev?.siteManagerId || null,
+                    siteSupervisorName: names,
+                    siteSupervisorId: primaryId || prev?.siteSupervisorId || null
+                  }));
+                }}
+                required={false}
+                badgeBg="bg-cyan-50 dark:bg-cyan-950/40"
+                badgeText="text-cyan-800 dark:text-cyan-300"
+                badgeBorder="border-cyan-200 dark:border-cyan-900/50"
+              />
+
+              <MultiInchargeSelector
+                label="Field Officer"
+                badgeIcon={<MapPin className="w-3.5 h-3.5 text-amber-600 shrink-0" />}
+                selectedNames={editingSite.fieldOfficerName}
+                options={fieldOfficerOptions}
+                onChange={(names, primaryId) => {
+                  setEditingSite(prev => ({
+                    ...prev,
+                    fieldOfficerName: names,
+                    fieldOfficerId: primaryId || prev?.fieldOfficerId || null
+                  }));
+                }}
+                required={false}
+                badgeBg="bg-amber-50 dark:bg-amber-950/40"
+                badgeText="text-amber-800 dark:text-amber-300"
+                badgeBorder="border-amber-200 dark:border-amber-900/50"
               />
 
               <MultiInchargeSelector

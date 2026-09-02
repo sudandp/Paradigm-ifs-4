@@ -31,8 +31,13 @@ export interface SiteResponsibilityMatrix {
   accountsInchargeId?: string | null;
   accountsInchargeName: string;
   
+  fieldOfficerId?: string | null;
+  fieldOfficerName?: string | null;
+
   siteSupervisorId?: string | null;
   siteSupervisorName?: string | null;
+  siteManagerId?: string | null;
+  siteManagerName?: string | null;
   
   // Billing & Legal
   billingCompany: string;
@@ -59,6 +64,8 @@ export interface SiteRoutingStats {
   totalOpsManagers: number;
   totalHrIncharges: number;
   totalAccountsIncharges: number;
+  totalFieldOfficers?: number;
+  totalSiteManagers?: number;
   unassignedSites: number;
   billingCycleCounts: Record<string, number>;
   companyCounts: Record<string, number>;

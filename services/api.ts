@@ -38,16 +38,36 @@ export const offlineDb = {
     if (!key || typeof window === 'undefined') return;
     try {
       localStorage.setItem(`paradigm_cache_${key}`, JSON.stringify(val));
-    } catch (err) {
-      console.debug('Failed to set localStorage cache', err);
+    } catch {
+      // Storage quota exceeded — attempt to prune old cache entries and retry
+      try {
+        const cacheKeys: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && (k.startsWith('paradigm_cache_') || k.startsWith('paradigm_ppm_') || k.startsWith('paradigm_ht_')) && k !== `paradigm_cache_${key}`) {
+            cacheKeys.push(k);
+          }
+        }
+        // Prune the first batch of cache keys to free space
+        cacheKeys.slice(0, Math.max(2, Math.ceil(cacheKeys.length / 2))).forEach(k => {
+          try {
+            localStorage.removeItem(k);
+          } catch (_err) {
+            // Ignore removal errors
+          }
+        });
+        localStorage.setItem(`paradigm_cache_${key}`, JSON.stringify(val));
+      } catch {
+        // Safe silent recovery when localStorage is completely constrained
+      }
     }
   },
   removeCache: async (key?: string) => {
     if (!key || typeof window === 'undefined') return;
     try {
       localStorage.removeItem(`paradigm_cache_${key}`);
-    } catch (err) {
-      console.debug('Failed to remove localStorage cache', err);
+    } catch {
+      // Safe silent catch
     }
   },
   addToOutbox: async (val?: any) => {},
@@ -11097,7 +11117,32 @@ export const api = {
         return INITIAL_SITE_RESPONSIBILITY_DATA;
       }
 
-      const formatted = data.map((row: any) => toCamelCase(row) as SiteResponsibilityMatrix);
+      const formatted = data.map((row: any) => {
+        const item = toCamelCase(row) as SiteResponsibilityMatrix;
+        if (!item.fieldOfficerName && row.routing_rules?.field_officer_name) {
+          item.fieldOfficerName = row.routing_rules.field_officer_name;
+        } else if (!item.fieldOfficerName && Array.isArray(row.routing_rules?.field_officers)) {
+          item.fieldOfficerName = row.routing_rules.field_officers.join(' / ');
+        }
+        if (!item.fieldOfficerId && row.routing_rules?.field_officer_id) {
+          item.fieldOfficerId = row.routing_rules.field_officer_id;
+        }
+        if (!item.siteManagerName && row.routing_rules?.site_manager_name) {
+          item.siteManagerName = row.routing_rules.site_manager_name;
+        } else if (!item.siteManagerName && item.siteSupervisorName) {
+          item.siteManagerName = item.siteSupervisorName;
+        } else if (!item.siteSupervisorName && item.siteManagerName) {
+          item.siteSupervisorName = item.siteManagerName;
+        }
+        if (!item.siteManagerId && row.routing_rules?.site_manager_id) {
+          item.siteManagerId = row.routing_rules.site_manager_id;
+        } else if (!item.siteManagerId && item.siteSupervisorId) {
+          item.siteManagerId = item.siteSupervisorId;
+        } else if (!item.siteSupervisorId && item.siteManagerId) {
+          item.siteSupervisorId = item.siteManagerId;
+        }
+        return item;
+      });
       await offlineDb.setCache('site_responsibility_matrix', formatted);
       return formatted;
     } catch (err) {
@@ -11129,18 +11174,68 @@ export const api = {
         payload.units_count = isNaN(parsed) ? null : parsed;
       }
 
-      // Clean empty UUID foreign key fields
-      ['ops_manager_id', 'hr_incharge_id', 'accounts_incharge_id', 'site_id', 'site_supervisor_id'].forEach(key => {
+      // Ensure routing_rules safely captures field officer and site manager routing
+      if (!payload.routing_rules) payload.routing_rules = {};
+      if (matrix.fieldOfficerName !== undefined) {
+        payload.routing_rules.field_officer_name = matrix.fieldOfficerName || null;
+        payload.routing_rules.field_officers = matrix.fieldOfficerName ? matrix.fieldOfficerName.split(/[/&]/).map((s: string) => s.trim()).filter(Boolean) : [];
+      }
+      if (matrix.fieldOfficerId !== undefined) {
+        payload.routing_rules.field_officer_id = matrix.fieldOfficerId || null;
+      }
+
+      // Sync siteManagerName / siteSupervisorName
+      if (matrix.siteManagerName !== undefined || matrix.siteSupervisorName !== undefined) {
+        const smName = matrix.siteManagerName || matrix.siteSupervisorName || null;
+        payload.site_supervisor_name = smName;
+        payload.routing_rules.site_manager_name = smName;
+        payload.routing_rules.site_supervisor_name = smName;
+      }
+      if (matrix.siteManagerId !== undefined || matrix.siteSupervisorId !== undefined) {
+        const smId = matrix.siteManagerId || matrix.siteSupervisorId || null;
+        payload.site_supervisor_id = smId;
+        payload.routing_rules.site_manager_id = smId;
+        payload.routing_rules.site_supervisor_id = smId;
+      }
+
+      // Clean empty or invalid UUID foreign key fields
+      ['ops_manager_id', 'hr_incharge_id', 'accounts_incharge_id', 'field_officer_id', 'site_id', 'site_supervisor_id', 'site_manager_id'].forEach(key => {
         if (payload[key] && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payload[key])) {
           payload[key] = null;
         }
       });
 
-      const { data, error } = await supabase
-        .from('site_responsibility_matrix')
-        .upsert(payload, { onConflict: 'site_name' })
-        .select('*')
-        .single();
+      // Execute upsert with automatic schema cache fallback
+      const currentPayload = { ...payload };
+      let data: any = null;
+      let error: any = null;
+
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const res = await supabase
+          .from('site_responsibility_matrix')
+          .upsert(currentPayload, { onConflict: 'site_name' })
+          .select('*')
+          .single();
+
+        data = res.data;
+        error = res.error;
+
+        if (!error) break;
+
+        // If a column is missing from Supabase schema cache, stash it into routing_rules and retry
+        const missingColMatch = error.message?.match(/Could not find the '([^']+)' column/i);
+        if (missingColMatch && missingColMatch[1]) {
+          const missingCol = missingColMatch[1];
+          if (currentPayload[missingCol] !== undefined) {
+            currentPayload.routing_rules = currentPayload.routing_rules || {};
+            currentPayload.routing_rules[missingCol] = currentPayload[missingCol];
+            delete currentPayload[missingCol];
+          }
+          continue;
+        } else {
+          break;
+        }
+      }
 
       if (error) {
         console.warn('Supabase upsert warning on site_responsibility_matrix:', error.message);

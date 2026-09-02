@@ -123,27 +123,41 @@ export const SiteEscalationDrawer: React.FC<SiteEscalationDrawerProps> = ({
           
           <div className="flex items-center gap-2">
             {isEditing ? (
-              <Button 
-                variant="primary" 
-                size="sm" 
-                onClick={handleSave} 
-                disabled={isSaving}
-                className="!bg-emerald-600 hover:!bg-emerald-700 !text-white flex items-center gap-1.5 rounded-xl shadow-md"
-              >
-                <Save className="w-4 h-4" />
-                {isSaving ? 'Saving...' : 'Save Changes'}
-              </Button>
+              <>
+                <Button 
+                  variant="secondary" 
+                  size="sm" 
+                  onClick={() => {
+                    setFormData(JSON.parse(JSON.stringify(site)));
+                    setIsEditing(false);
+                  }}
+                  disabled={isSaving}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  variant="primary" 
+                  size="sm" 
+                  onClick={handleSave}
+                  disabled={isSaving}
+                  className="!bg-emerald-600 hover:!bg-emerald-700 !text-white flex items-center gap-1.5"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  {isSaving ? 'Saving...' : 'Save Matrix'}
+                </Button>
+              </>
             ) : (
               <Button 
                 variant="secondary" 
                 size="sm" 
                 onClick={() => setIsEditing(true)}
-                className="flex items-center gap-1.5 rounded-xl"
+                className="flex items-center gap-1.5"
               >
-                <Edit2 className="w-4 h-4" />
-                Edit Matrix
+                <Edit2 className="w-3.5 h-3.5" />
+                Edit Escalation
               </Button>
             )}
+
             <button 
               onClick={onClose}
               className="p-2 rounded-xl text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
@@ -156,7 +170,7 @@ export const SiteEscalationDrawer: React.FC<SiteEscalationDrawerProps> = ({
         {/* Drawer Body */}
         <div className="p-6 space-y-8 flex-1">
           
-          {/* Section 1: Incharge Triad */}
+          {/* Section 1: Incharges */}
           <div>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-2">
@@ -166,7 +180,7 @@ export const SiteEscalationDrawer: React.FC<SiteEscalationDrawerProps> = ({
               <span className="text-[11px] text-gray-400">Directly responsible for automated workflows</span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {/* Ops Lead Card */}
               <div className="p-4 rounded-2xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/40 relative group">
                 <div className="flex items-center justify-between mb-2">
@@ -187,7 +201,61 @@ export const SiteEscalationDrawer: React.FC<SiteEscalationDrawerProps> = ({
                   </div>
                 )}
                 <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-2 leading-relaxed">
-                  Shift checkouts, patrol audits, missed punch alerts & facility tickets.
+                  Shift checkouts, overall operations & escalation management.
+                </p>
+              </div>
+
+              {/* Site Manager Card */}
+              <div className="p-4 rounded-2xl bg-cyan-50/50 dark:bg-cyan-950/20 border border-cyan-100 dark:border-cyan-900/40 relative group">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-cyan-100 dark:bg-cyan-900/60 text-cyan-700 dark:text-cyan-300">
+                    Site Manager
+                  </span>
+                  <Building2 className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
+                </div>
+                {isEditing ? (
+                  <Input 
+                    value={formData.siteManagerName || formData.siteSupervisorName || ''} 
+                    placeholder="Site Manager(s)"
+                    onChange={(e) => setFormData({ 
+                      ...formData, 
+                      siteManagerName: e.target.value,
+                      siteSupervisorName: e.target.value
+                    })} 
+                    className="!py-1 !text-sm"
+                  />
+                ) : (
+                  <div className="text-base font-bold text-gray-900 dark:text-white truncate">
+                    {formData.siteManagerName || formData.siteSupervisorName || <span className="text-gray-400 text-sm italic font-normal">Unassigned</span>}
+                  </div>
+                )}
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-2 leading-relaxed">
+                  On-site day-to-day management, site team supervision & client contact.
+                </p>
+              </div>
+
+              {/* Field Officer Card */}
+              <div className="p-4 rounded-2xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/40 relative group">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300">
+                    Field Officer
+                  </span>
+                  <MapPin className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                </div>
+                {isEditing ? (
+                  <Input 
+                    value={formData.fieldOfficerName || ''} 
+                    placeholder="Field Officer(s)"
+                    onChange={(e) => setFormData({ ...formData, fieldOfficerName: e.target.value })} 
+                    className="!py-1 !text-sm"
+                  />
+                ) : (
+                  <div className="text-base font-bold text-gray-900 dark:text-white truncate">
+                    {formData.fieldOfficerName || <span className="text-gray-400 text-sm italic font-normal">Unassigned</span>}
+                  </div>
+                )}
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-2 leading-relaxed">
+                  On-ground inspection, patrol audits & field staff supervision.
                 </p>
               </div>
 
@@ -211,7 +279,7 @@ export const SiteEscalationDrawer: React.FC<SiteEscalationDrawerProps> = ({
                   </div>
                 )}
                 <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-2 leading-relaxed">
-                  Daily attendance muster, staff onboarding, leave approvals & uniform requests.
+                  Attendance muster, onboarding & leave approvals.
                 </p>
               </div>
 
@@ -235,7 +303,7 @@ export const SiteEscalationDrawer: React.FC<SiteEscalationDrawerProps> = ({
                   </div>
                 )}
                 <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-2 leading-relaxed">
-                  Monthly billing cycle, draft invoice reviews, GST compliance & collections.
+                  Billing cycle, invoices & GST compliance.
                 </p>
               </div>
             </div>
