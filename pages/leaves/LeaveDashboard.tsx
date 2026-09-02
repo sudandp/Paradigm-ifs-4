@@ -849,7 +849,7 @@ const LeaveDashboard: React.FC = () => {
 
     const getBlueLeaveStatusForViewingDate = () => {
         const isValid = isFloatingHolidayValidForViewingDate();
-        if (!isValid) return { total: 0, used: 0, pending: 0 };
+        if (!isValid) return { total: 0, used: 0, pending: 0, available: 0, description: 'Not applicable for this period' };
         
         let total = 1;
         if (attendanceSettings && user) {
@@ -880,7 +880,8 @@ const LeaveDashboard: React.FC = () => {
         }
 
         const today = new Date();
-        const isPast = thirdSaturday && startOfDay(thirdSaturday) <= startOfDay(today);
+        const thirdSatPassed = thirdSaturday && startOfDay(thirdSaturday) <= startOfDay(today);
+        const isPastMonth = endOfMonth(viewingDate) < startOfDay(today);
         
         const allRelevantLeaves = [...(yearlyData?.leaves || []), ...requests].filter((v,i,a)=>a.findIndex(t=>(t.id === v.id))===i);
 
@@ -893,39 +894,69 @@ const LeaveDashboard: React.FC = () => {
             }
             if (type.includes('floating') || type === 'fh' || type === 'blue leave' || type === 'blue') {
                 if (reqStart >= monthStart && reqStart <= monthEnd) {
-                    let amount = req.dayOption === 'half' ? 0.5 : (differenceInCalendarDays(new Date(req.endDate.replace(/-/g, '/')), reqStart) + 1);
+                    const amount = req.dayOption === 'half' ? 0.5 : (differenceInCalendarDays(new Date(req.endDate.replace(/-/g, '/')), reqStart) + 1);
                     if (req.status === 'approved' || req.status === 'correction_made') used += amount;
                     if (req.status === 'pending_manager_approval' || req.status === 'pending_hr_confirmation') pending += amount;
                 }
             }
         });
 
-        // Auto-deduct if the 3rd Saturday has passed AND employee was ABSENT (did NOT punch in).
-        // Business Rule:
-        //   - Worked on 3rd Saturday  → Blue Leave NOT consumed → 1/1 (still available)
-        //   - Absent on 3rd Saturday  → Blue Leave consumed     → 0/1
-        //   - Before 3rd Saturday     → isPast=false, no change → 1/1 (entitlement pending)
-        //   - Approved leave filed    → handled by loop above (used already ≥ 1)
-        if (isPast && used === 0 && thirdSaturday) {
+        let workedOn3rdSat = false;
+        if (thirdSaturday) {
             const thirdSatStr = format(thirdSaturday, 'yyyy-MM-dd');
-            const workedOn3rdSat = events.some(e => {
+            workedOn3rdSat = events.some(e => {
                 const eDate = format(new Date(e.timestamp), 'yyyy-MM-dd');
-                const eventType = e.type as string;
+                const eventType = String(e.type || '').toLowerCase();
                 return eDate === thirdSatStr && (
                     eventType === 'punch-in' || eventType === 'check-in' ||
-                    eventType === 'punch_in' || eventType === 'checkin'
+                    eventType === 'punch_in' || eventType === 'checkin' ||
+                    eventType === 'site-in' || eventType === 'site_in'
                 );
             });
+            // Also check approved Blue Leave Work requests or corrections
             if (!workedOn3rdSat) {
-                // Employee was absent on 3rd Saturday — leave is consumed
-                used = 1;
+                workedOn3rdSat = allRelevantLeaves.some(req => {
+                    const reqType = (req.leaveType || '').toLowerCase();
+                    const reqDate = req.startDate;
+                    return reqDate === thirdSatStr && 
+                           (req.status === 'approved' || req.status === 'correction_made') && 
+                           (reqType.includes('blue leave work') || reqType.includes('correction') || reqType.includes('comp'));
+                });
             }
-            // If they worked, blue leave remains available (1/1) — they may earn Comp Off instead
+        }
+
+        // Business Rules:
+        // 1. Before 3rd Saturday (in current/future month): Employee has NOT worked on 3rd Saturday yet -> 0/1 (0 available).
+        // 2. On / After 3rd Saturday:
+        //    - Worked on 3rd Saturday -> 1/1 earned. If user took Blue Leave in same month -> deduct used/pending.
+        //    - Absent on 3rd Saturday -> 0/1 (consumed as holiday).
+        // 3. Month Expiration: Blue Leave cannot be carried forward. If viewing a past month and it was unused, it is expired.
+        let available = 0;
+        let description = '';
+
+        if (!thirdSatPassed) {
+            // Before 3rd Saturday: Cannot be taken in advance, 0 available
+            available = 0;
+            used = total;
+            description = `Total: ${total}d. Available: 0d (Accrues after working on 3rd Sat)`;
+        } else if (workedOn3rdSat) {
+            // Worked on 3rd Saturday: 1 earned
+            available = Math.max(0, total - used - pending);
+            if (isPastMonth) {
+                description = `Total: ${total}d. Expired at month end.`;
+            } else {
+                description = `Total: ${total}d. Available: ${available}d (Expires ${format(monthEnd, 'MMM dd')})${pending > 0 ? ` (Pending: ${pending}d)` : ''}`;
+            }
+        } else {
+            // Absent on 3rd Saturday: Consumed as holiday -> 0 available
+            used = total;
+            available = 0;
+            description = `Total: ${total}d. Available: 0d (Taken as 3rd Sat holiday)`;
         }
 
         if (used > total) used = total;
         
-        return { total, used, pending };
+        return { total, used, pending, available, description };
     };
 
     const staffCategory = user ? getStaffCategory(user.roleId || user.role || '', user.societyId || user.organizationId, attendanceSettings) : 'office';
@@ -953,12 +984,12 @@ const LeaveDashboard: React.FC = () => {
         },
         { 
             title: 'Blue Leave', 
-            value: `${parseFloat((blueLeaveStatus.total - blueLeaveStatus.used - blueLeaveStatus.pending).toFixed(1))} / ${parseFloat(blueLeaveStatus.total.toFixed(1))}`, 
-            description: `Total: ${parseFloat(blueLeaveStatus.total.toFixed(1))}d. Available: ${parseFloat((blueLeaveStatus.total - blueLeaveStatus.used - blueLeaveStatus.pending).toFixed(1))}d.${blueLeaveStatus.pending > 0 ? ` (Pending: ${blueLeaveStatus.pending}d)` : ''}`,
+            value: `${parseFloat(blueLeaveStatus.available.toFixed(1))} / ${parseFloat(blueLeaveStatus.total.toFixed(1))}`, 
+            description: blueLeaveStatus.description,
             icon: Plane,
             isExpired: !isFloatingHolidayValidForViewingDate(),
             isHidden: isFemale,
-            infoMessage: "Cannot be taken in advance. Available only after you work on the designated day."
+            infoMessage: "Blue Leave cannot be taken in advance. Available only in the same month after you work on the 3rd Saturday. Expires at month end."
         },
         ...(isFemale ? [
             { 

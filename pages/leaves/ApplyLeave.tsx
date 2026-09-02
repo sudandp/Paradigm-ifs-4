@@ -12,7 +12,7 @@ import Select from '../../components/ui/Select';
 import { useForm, Controller, SubmitHandler, Resolver, useFieldArray } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
-import { format, differenceInCalendarDays, isSameDay, differenceInMinutes } from 'date-fns';
+import { format, differenceInCalendarDays, isSameDay, differenceInMinutes, startOfMonth, endOfMonth, eachDayOfInterval, startOfDay } from 'date-fns';
 import DatePicker from '../../components/ui/DatePicker';
 import NativeDatePicker from '../../components/ui/NativeDatePicker';
 import DateRangePicker from '../../components/ui/DateRangePicker';
@@ -550,7 +550,7 @@ const ApplyLeave: React.FC = () => {
             const earliestIn = getEarliestEvent(origPunchIn);
             const latestOut = getLatestEvent(origPunchOut);
             
-            let totalMins = Math.max(0, differenceInMinutes(new Date(latestOut.timestamp), new Date(earliestIn.timestamp)));
+            const totalMins = Math.max(0, differenceInMinutes(new Date(latestOut.timestamp), new Date(earliestIn.timestamp)));
             
             let breakMins = 0;
             if (origBreakIn.length > 0 && origBreakOut.length > 0) {
@@ -940,10 +940,10 @@ const ApplyLeave: React.FC = () => {
             const duration = formData.dayOption === 'half' ? 0.5 : differenceInCalendarDays(endDateObj, startDateObj) + 1;
 
             // Strict time check: 
-            // 1. Sick Leave, Comp Off, Correction, Permission, Pink Leave, WFH, and Loss of Pay can be applied for any date (past/present/future).
+            // 1. Sick Leave, Comp Off, Correction, Permission, Pink Leave, WFH, Floating (Blue Leave), and Loss of Pay can be applied for any date (past/present/future) with their own specific rules.
             // 2. Earned Leave can be applied for the same day IF applied before 9:00 AM. Otherwise, at least 1 day in advance.
             // 3. All other leaves must be applied at least one day in advance (no past or present days).
-            if (!['Correction', 'Permission', 'Sick', 'Comp Off', 'Pink Leave', 'WFH', 'Loss of Pay'].includes(formData.leaveType)) {
+            if (!['Correction', 'Permission', 'Sick', 'Comp Off', 'Pink Leave', 'WFH', 'Loss of Pay', 'Floating'].includes(formData.leaveType)) {
                 const now = new Date();
                 const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
@@ -968,6 +968,66 @@ const ApplyLeave: React.FC = () => {
                     // All other leave types: strict 1-day advance rule
                     if (startDateObj <= todayMidnight) {
                         setToast({ message: 'This type of leave must be applied at least one day in advance. Past and present days are not allowed.', type: 'error' });
+                        setIsSubmitting(false);
+                        return;
+                    }
+                }
+            }
+
+            // Blue Leave (Floating Holiday) validation:
+            // 1. Cannot be applied in advance of the 3rd Saturday.
+            // 2. Can only be applied for dates on/after 3rd Saturday in the same month.
+            // 3. Must be used within the same calendar month (expires at month end).
+            if (formData.leaveType === 'Floating' || (formData.leaveType as string) === 'Blue Leave') {
+                const now = new Date();
+                const reqMonthStart = startOfMonth(startDateObj);
+                const reqMonthEnd = endOfMonth(startDateObj);
+                let thirdSat: Date | null = null;
+                let count = 0;
+                for (const d of eachDayOfInterval({ start: reqMonthStart, end: reqMonthEnd })) {
+                    if (d.getDay() === 6) {
+                        count++;
+                        if (count === 3) {
+                            thirdSat = d;
+                            break;
+                        }
+                    }
+                }
+
+                if (thirdSat) {
+                    if (startOfDay(now) < startOfDay(thirdSat)) {
+                        setToast({ 
+                            message: `Blue Leave cannot be applied in advance. You can only apply after working on the 3rd Saturday (${format(thirdSat, 'dd-MM-yyyy')}).`, 
+                            type: 'error' 
+                        });
+                        setIsSubmitting(false);
+                        return;
+                    }
+
+                    if (startDateObj < thirdSat) {
+                        setToast({ 
+                            message: `Blue Leave can only be applied for dates after the 3rd Saturday (${format(thirdSat, 'dd-MM-yyyy')}) within the same month.`, 
+                            type: 'error' 
+                        });
+                        setIsSubmitting(false);
+                        return;
+                    }
+
+                    if (startDateObj.getMonth() !== endDateObj.getMonth() || startDateObj.getFullYear() !== endDateObj.getFullYear()) {
+                        setToast({ 
+                            message: 'Blue Leave must be taken within the same calendar month and cannot span across months.', 
+                            type: 'error' 
+                        });
+                        setIsSubmitting(false);
+                        return;
+                    }
+
+                    // Check if month has already expired (past month)
+                    if (reqMonthEnd < startOfDay(now)) {
+                        setToast({ 
+                            message: 'This Blue Leave has expired. Blue Leave must be used within the same calendar month in which it was earned.', 
+                            type: 'error' 
+                        });
                         setIsSubmitting(false);
                         return;
                     }

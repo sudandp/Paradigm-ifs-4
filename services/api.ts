@@ -5848,16 +5848,54 @@ export const api = {
       childCare: isNotValid(rules.childCareLeavesValidFrom, rules.childCareLeavesExpiryDate)
     };
 
-    // 1. Floating Holiday Logic (Check validity)
-    // Blue Leave (Floating Holiday/3rd Saturday) is ONLY available for MALE Bangalore office/field staff.
+    // 1. Floating Holiday / Blue Leave Logic (Check validity & 3rd Saturday presence)
+    // Blue Leave (Floating Holiday/3rd Saturday) is strictly monthly for MALE Bangalore staff.
+    // - Before 3rd Saturday (in current/future month): 0 available (cannot be taken in advance)
+    // - On/After 3rd Saturday: if worked -> 1 available; if absent -> 0 available (used as holiday)
+    // - Month Expiration: zero carry forward across months.
     let floatingTotalValue = 0;
-    const floatingOpeningBalance = Number(userData.floating_leave_opening_balance || userData.floatingLeaveOpeningBalance || 0);
-    const floatingOpeningDate = userData.floating_leave_opening_date;
-    const floatingOpeningDateObj = floatingOpeningDate ? new Date(floatingOpeningDate.replace(/-/g, '/')) : null;
-    const hasReachedFloatingOpening = !floatingOpeningDateObj || accrualEndDate >= floatingOpeningDateObj;
-    const effectiveFloatingOpeningBalance = hasReachedFloatingOpening ? floatingOpeningBalance : 0;
+    let initialFloatingUsed = 0;
+
+    const refMonthStart = startOfMonth(referenceDate);
+    const refMonthEnd = endOfMonth(referenceDate);
+    let thirdSaturdayDate: Date | null = null;
+    let satCount = 0;
+    for (const d of eachDayOfInterval({ start: refMonthStart, end: refMonthEnd })) {
+      if (d.getDay() === 6) {
+        satCount++;
+        if (satCount === 3) {
+          thirdSaturdayDate = d;
+          break;
+        }
+      }
+    }
+
+    const todayDate = new Date();
+    const thirdSatPassed = thirdSaturdayDate && startOfDay(thirdSaturdayDate) <= startOfDay(todayDate);
+    let workedOn3rdSat = false;
+    if (thirdSaturdayDate) {
+      const thirdSatStr = format(thirdSaturdayDate, 'yyyy-MM-dd');
+      workedOn3rdSat = attendedDates.has(thirdSatStr) || workDatesSet.has(thirdSatStr);
+      if (!workedOn3rdSat) {
+        workedOn3rdSat = approvedLeaves.some(l => {
+          const lType = String(l.leave_type || (l as any).type || '').toLowerCase();
+          const lStatus = String(l.status || '').toLowerCase();
+          return l.start_date === thirdSatStr && 
+                 (lStatus === 'approved' || lStatus === 'correction_made') && 
+                 (lType.includes('blue leave work') || lType.includes('correction') || lType.includes('comp'));
+        });
+      }
+    }
+
     if (isBangaloreStaff && isFloatingHolidayValid(todayStr) && !isFemaleUser) {
-        floatingTotalValue = (rules.monthlyFloatingLeaves || 0) + effectiveFloatingOpeningBalance;
+        floatingTotalValue = rules.monthlyFloatingLeaves || 1;
+        if (!thirdSatPassed) {
+          // Has not occurred yet — cannot be taken in advance, 0 available
+          initialFloatingUsed = floatingTotalValue;
+        } else if (!workedOn3rdSat) {
+          // Passed and user did NOT work — consumed as holiday, 0 available
+          initialFloatingUsed = floatingTotalValue;
+        }
     }
 
     const balance: LeaveBalance = {
@@ -5869,7 +5907,7 @@ export const api = {
       sickUsed: 0,
       sickPending: 0,
       floatingTotal: floatingTotalValue, 
-      floatingUsed: 0,
+      floatingUsed: initialFloatingUsed,
       floatingPending: 0,
       compOffTotal: finalCompOffTotal, 
       compOffUsed: manualCompOffUsedNotLinked, // Start with manual 'used' logs not linked to requests
@@ -6465,9 +6503,67 @@ export const api = {
         throw new Error(`Insufficient earned leave balance. Requested: ${requestedDays} days, Available: ${balances.earnedTotal - balances.earnedUsed - balances.earnedPending} days.`);
       }
     }
-    else if (leaveTypeLower.includes('floating') || leaveTypeLower === 'fh') {
+    else if (leaveTypeLower.includes('floating') || leaveTypeLower === 'fh' || leaveTypeLower.includes('blue leave')) {
+      const now = new Date();
+      const reqMonthStart = startOfMonth(startD);
+      const reqMonthEnd = endOfMonth(startD);
+      let thirdSat: Date | null = null;
+      let satCnt = 0;
+      for (const d of eachDayOfInterval({ start: reqMonthStart, end: reqMonthEnd })) {
+        if (d.getDay() === 6) {
+          satCnt++;
+          if (satCnt === 3) {
+            thirdSat = d;
+            break;
+          }
+        }
+      }
+
+      if (thirdSat) {
+        // 1. Advance check
+        if (startOfDay(now) < startOfDay(thirdSat)) {
+          throw new Error(`Blue Leave cannot be applied in advance. You can only apply after working on the 3rd Saturday (${format(thirdSat, 'dd-MM-yyyy')}).`);
+        }
+
+        // 2. Date check
+        if (startD < thirdSat) {
+          throw new Error(`Blue Leave can only be applied for dates after the 3rd Saturday (${format(thirdSat, 'dd-MM-yyyy')}) within the same month.`);
+        }
+
+        // 3. Same-month check
+        if (startD.getMonth() !== endD.getMonth() || startD.getFullYear() !== endD.getFullYear()) {
+          throw new Error('Blue Leave must be taken within the same calendar month and cannot span across months.');
+        }
+
+        // 4. Month expiry check
+        if (reqMonthEnd < startOfDay(now)) {
+          throw new Error('This Blue Leave has expired. Blue Leave must be used within the same calendar month in which it was earned.');
+        }
+
+        // 5. 3rd Saturday Attendance check
+        const thirdSatStr = format(thirdSat, 'yyyy-MM-dd');
+        const dayEvents = await api.getAttendanceEvents(data.userId, `${thirdSatStr}T00:00:00Z`, `${thirdSatStr}T23:59:59Z`);
+        const hasWorked = dayEvents && dayEvents.some((e: any) => 
+          ['punch-in', 'site-in', 'punch_in', 'site_in', 'check-in', 'checkin'].includes(String(e.type || '').toLowerCase())
+        );
+
+        if (!hasWorked) {
+          // Check approved Blue Leave Work requests or corrections
+          const { data: userReqs } = await api.getLeaveRequests({ userId: data.userId });
+          const hasApprovedBLW = userReqs && userReqs.some((r: any) => {
+            const rType = String(r.leaveType || r.leave_type || '').toLowerCase();
+            return r.startDate === thirdSatStr && 
+                   (r.status === 'approved' || r.status === 'correction_made') && 
+                   (rType.includes('blue leave work') || rType.includes('correction') || rType.includes('comp'));
+          });
+          if (!hasApprovedBLW) {
+            throw new Error(`You did not work on the 3rd Saturday (${format(thirdSat, 'dd-MM-yyyy')}) and are not eligible for Blue Leave.`);
+          }
+        }
+      }
+
       if (balances.floatingUsed + balances.floatingPending + requestedDays > balances.floatingTotal) {
-        throw new Error(`Insufficient floating holiday balance. Requested: ${requestedDays} days, Available: ${balances.floatingTotal - balances.floatingUsed - balances.floatingPending} days.`);
+        throw new Error(`Insufficient Blue Leave balance. Requested: ${requestedDays} days, Available: ${balances.floatingTotal - balances.floatingUsed - balances.floatingPending} days.`);
       }
     }
     else if (leaveTypeLower.includes('comp') || leaveTypeLower === 'co') {
