@@ -1619,10 +1619,17 @@ export const api = {
       organization_name: data.organization?.organizationName || null,
     };
 
-    // Remove any client-side only properties that don't have columns
+    // Remove any client-side only properties that don't have columns in onboarding_submissions.
+    // created_by_name / created_by_photo / created_by_role were added as frontend helper
+    // fields but were never migrated into the DB schema — sending them causes:
+    //   "Could not find the 'created_by_name' column of 'onboarding_submissions' in the schema cache"
     delete dbData.file;
     delete dbData.confirm_account_number;
-    delete (dbData as any).is_qr_verified; 
+    delete (dbData as any).is_qr_verified;
+    delete (dbData as any).created_by_name;
+    delete (dbData as any).created_by_photo;
+    delete (dbData as any).created_by_role;
+    delete (dbData as any).created_by;
     // submission_mode and verification tracking columns are stored separately after migration
     delete (dbData as any).submission_mode;
     delete (dbData as any).verified_by;
@@ -3928,7 +3935,7 @@ export const api = {
           .lte('timestamp', end)
           .order('timestamp', { ascending: true });
         
-        const data = await withTimeout(fetchAll<any>(query), 5000, 'Fetch attendance events timed out');
+        const data = await withTimeout(fetchAll<any>(query), 15000, 'Fetch attendance events timed out');
         const formatted = (data || []).map(toCamelCase);
         // Cache per user/period might be too much, but we can cache recent ones
         await offlineDb.setCache(`attendance_${userId}_${start.split('T')[0]}`, formatted);

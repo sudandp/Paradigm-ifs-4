@@ -56,6 +56,30 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
     const isFemale = ['female', 'ladies'].includes((user?.gender || '').toLowerCase());
     const isMale = !isFemale;
 
+    const employmentStartDate = useMemo(() => {
+        if (!user) return null;
+        const rawJoining = user.joiningDate || (user as any).joining_date || user.createdAt || (user as any).created_at;
+        let startDate: Date | null = rawJoining ? startOfDay(new Date(String(rawJoining).replace(/-/g, '/'))) : null;
+        if (events && events.length > 0) {
+            const punchDates = events
+                .filter(e => e && e.timestamp)
+                .map(e => startOfDay(new Date(e.timestamp)).getTime());
+            if (punchDates.length > 0) {
+                const earliestPunchMs = Math.min(...punchDates);
+                const earliestPunchDate = new Date(earliestPunchMs);
+                if (!startDate || earliestPunchDate < startDate) {
+                    startDate = earliestPunchDate;
+                }
+            }
+        }
+        return startDate;
+    }, [user, events]);
+
+    const isMonthBeforeJoining = useMemo(() => {
+        if (!employmentStartDate) return false;
+        return endOfMonth(currentDate) < employmentStartDate;
+    }, [employmentStartDate, currentDate]);
+
     // Determine which holidays to use based on user role
     const holidays = useMemo(() => {
         const { officeHolidays, fieldHolidays } = useSettingsStore.getState();
@@ -171,10 +195,23 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
             const dateStr = format(day, 'yyyy-MM-dd');
             const dayOfWeek = day.getDay();
 
+            const isBeforeEmployment = employmentStartDate ? isBefore(startOfDay(day), employmentStartDate) : false;
+
             if (dayOfWeek === 1) {
                 daysPresentInPreviousWeek = daysActiveInWeek;
                 daysPresentInWeek = 0;
                 daysActiveInWeek = 0;
+            }
+
+            if (isBeforeEmployment) {
+                statusMap.set(dateStr, { 
+                    status: 'neutral', 
+                    holidayName: '', 
+                    presenceVal: 0, 
+                    isSiteOtPresent: false, 
+                    isPoolHoliday: false 
+                });
+                return;
             }
 
             const dayEvents = eventsByGroup[dateStr] || [];
@@ -292,7 +329,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
         });
 
         return statusMap;
-    }, [currentDate, events, leaveRequests, userHolidays, holidays, recurringHolidayDates, settings, user]);
+    }, [currentDate, events, leaveRequests, userHolidays, holidays, recurringHolidayDates, settings, user, employmentStartDate]);
 
     // All notation definitions — dot color matches actual calendar cell color
     const ALL_NOTATIONS: { code: string; label: string; dot: string }[] = [
@@ -353,6 +390,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
 
         daysInMonth.forEach(date => {
             if (isAfter(startOfDay(date), today)) return; // skip future dates only; today IS counted
+            if (employmentStartDate && isBefore(startOfDay(date), employmentStartDate)) return; // skip pre-employment dates
 
             const dateKey = format(date, 'yyyy-MM-dd');
             const dayKeyMap = buildAttendanceDayKeyByEventId(events);
@@ -434,7 +472,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
             count += normalPay; // Site OT is tracked separately — does NOT add to payable days
         });
         return { monthlyPaydaysCount: count, monthlySiteOtCount: otCount };
-    }, [daysInMonth, dayStatusMap, events, settings, user, leaveRequests]);
+    }, [daysInMonth, dayStatusMap, events, settings, user, leaveRequests, employmentStartDate]);
 
     useEffect(() => {
         if (onMonthPaydaysChange) {
@@ -450,7 +488,14 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
     return (
         <div className="bg-card p-4 rounded-xl shadow-card border border-border w-full flex flex-col h-full">
             <div className="flex items-center justify-between mb-4 flex-shrink-0">
-                <h3 className="text-sm font-semibold text-primary-text">Attendance</h3>
+                <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-semibold text-primary-text">Attendance</h3>
+                    {isMonthBeforeJoining && (
+                        <span className="text-[10px] font-medium text-muted bg-gray-100 dark:bg-gray-800 border border-border px-1.5 py-0.5 rounded">
+                            Pre-Joining
+                        </span>
+                    )}
+                </div>
                 <div className="flex items-center gap-1">
                     <Button variant="secondary" size="sm" className="btn-icon !p-1 h-6 w-6" onClick={() => setCurrentDate(subMonths(currentDate, 1))}><ChevronLeft className="h-4 w-4" /></Button>
                     <span className="font-medium min-w-[80px] text-center text-xs">{format(currentDate, 'MMMM yyyy')}</span>

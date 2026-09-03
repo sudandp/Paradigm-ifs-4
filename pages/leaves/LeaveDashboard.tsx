@@ -347,7 +347,7 @@ const LeaveDashboard: React.FC = () => {
                     status: filter === 'all' ? undefined : filter
                 }).then(res => res.data).catch(() => []),
                 api.getCompOffLogs(user.id).catch(() => []),
-                api.getAttendanceEvents(user.id, startStr, endStr),
+                api.getAttendanceEvents(user.id, startStr, endStr).catch(err => { console.warn('Attendance events fetch failed (offline?):', err.message); return []; }),
                 api.getAttendanceSettings().catch(err => { console.warn('Attendance settings fetch failed (offline?):', err.message); return null; }),
                 api.getRecurringHolidays().catch(() => []),
                 api.getUserHolidays(user.id).catch(() => []),
@@ -848,6 +848,24 @@ const LeaveDashboard: React.FC = () => {
     };
 
     const getBlueLeaveStatusForViewingDate = () => {
+        const rawJoining = user?.joiningDate || (user as any)?.joining_date || user?.createdAt || (user as any)?.created_at;
+        let employmentStartDate: Date | null = rawJoining ? startOfDay(new Date(String(rawJoining).replace(/-/g, '/'))) : null;
+        if (events && events.length > 0) {
+            const punchDates = events
+                .filter(e => e && e.timestamp)
+                .map(e => startOfDay(new Date(e.timestamp)).getTime());
+            if (punchDates.length > 0) {
+                const earliestPunchMs = Math.min(...punchDates);
+                const earliestPunchDate = new Date(earliestPunchMs);
+                if (!employmentStartDate || earliestPunchDate < employmentStartDate) {
+                    employmentStartDate = earliestPunchDate;
+                }
+            }
+        }
+        if (employmentStartDate && endOfMonth(viewingDate) < employmentStartDate) {
+            return { total: 0, used: 0, pending: 0, available: 0, description: 'Not applicable (Before joining date)' };
+        }
+
         const isValid = isFloatingHolidayValidForViewingDate();
         if (!isValid) return { total: 0, used: 0, pending: 0, available: 0, description: 'Not applicable for this period' };
         

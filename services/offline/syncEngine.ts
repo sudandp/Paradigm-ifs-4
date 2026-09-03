@@ -151,6 +151,40 @@ async function syncItem(item: OutboxItem): Promise<'synced' | 'failed'> {
       delete (payload as any).user_id;
     }
 
+    // Strip columns that don't exist on onboarding_submissions.
+    // The store/draft builder adds frontend helper fields (created_by_name,
+    // created_by_photo, created_by_role, camelCase twins) that were never
+    // added to the DB schema. Sending them causes:
+    //   "Could not find the 'created_by_name' column of 'onboarding_submissions' in the schema cache"
+    if (item.tableName === 'onboarding_submissions') {
+      const onboardingStripFields = [
+        'created_by_name',
+        'created_by_photo',
+        'created_by_role',
+        'created_by',
+        'created_by_name_snake',
+        // camelCase twins that sneak in via spread
+        'createdByName',
+        'createdByPhoto',
+        'createdByRole',
+        'createdBy',
+        // other transient UI fields
+        'pending',
+        'failed',
+        'is_qr_verified',
+        'submission_mode',
+        'verified_by',
+        'verified_by_photo',
+        'verified_at',
+        'verification_mode',
+        'confirm_account_number',
+        'file',
+      ] as const;
+      for (const field of onboardingStripFields) {
+        delete (payload as any)[field];
+      }
+    }
+
     // ── Step 2: Upsert / update / delete in Supabase ─────────────────────────
     if (item.action === 'INSERT' || item.action === 'UPDATE') {
       const { error } = await supabase

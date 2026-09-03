@@ -65,7 +65,7 @@ const STANDARD_BILLING_CYCLES = [
 
 // Primary Canonical Site Lead Incharges
 const PRIMARY_HR_LEADS = ['Chandana R', 'Poojashree S', 'Kavya M', 'Chennamma'];
-const PRIMARY_ACCOUNTS_LEADS = ['Arpitha Nairy', 'Sinchana KM', 'Arya Thomas', 'Chethan V', 'Vishwa Finance', 'Sandeep Biswas'];
+const PRIMARY_ACCOUNTS_LEADS = ['Arpitha Nair', 'Sinchana KM', 'Arya Thomas', 'Chethan V', 'Sandeep Biswas', 'Vishwa'];
 const PRIMARY_OPS_LEADS = [
   'Sandeep B',
   'Isaac Roy',
@@ -153,6 +153,12 @@ const getNormalizedUserName = (u: { name?: string; email?: string }): string => 
   if (email === 'pooja@paradigmfms.in') return 'Poojashree S';
   if (email === 'hr.kavya@paradigmfms.com') return 'Kavya M';
   if (rawName.toLowerCase() === 'pooja') return 'Poojashree S';
+  if (email === 'arpitha@paradigmfms.com' || rawName.toLowerCase().includes('arpitha') || rawName.toLowerCase().includes('arpita')) return 'Arpitha Nair';
+  if (email === 'vishwa.finance@paradigmfms.com' || rawName.toLowerCase() === 'vishwa finance' || rawName.toLowerCase() === 'vishwa') return 'Vishwa';
+  if (email === 'sinchana@paradigmfms.in' || rawName.toLowerCase() === 'sinchana') return 'Sinchana KM';
+  if (email === 'aryasouthwall@paradigmfms.in' || rawName.toLowerCase() === 'arya') return 'Arya Thomas';
+  if (email === 'sandeep.accounts@paradigmfms.com') return 'Sandeep Biswas';
+  if (email === 'chethan@paradigmfms.com') return 'Chethan V';
   return rawName;
 };
 
@@ -182,10 +188,10 @@ const isStrictHr = (u: any): boolean => {
 };
 
 const isStrictFinance = (u: any): boolean => {
-  const role = getUserRoleString(u);
-  if (['finance', 'finance_manager', 'accounts', 'accounts_manager', 'accounts_executive', 'accountant'].includes(role) || role.includes('finance') || role.includes('account')) return true;
   const email = (u.email || '').toLowerCase();
-  return ['arpitha@', 'sinchana@', 'aryasouthwall@', 'sandeep.accounts@', 'chethan@', 'vishwa.finance@', 'accounts.ape@'].some(e => email.includes(e));
+  const rawName = (u.name || '').toLowerCase();
+  return ['arpitha@', 'sinchana@', 'aryasouthwall@', 'sandeep.accounts@', 'chethan@', 'vishwa.finance@'].some(e => email.includes(e)) ||
+         ['arpitha', 'arpita', 'sinchana', 'arya thomas', 'chethan v', 'sandeep biswas', 'vishwa'].some(n => rawName.includes(n));
 };
 
 const isStrictFieldOfficer = (u: any): boolean => {
@@ -1325,7 +1331,7 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
                 siteManagerName: '',
                 siteSupervisorName: '',
                 hrInchargeName: 'Chandana R',
-                accountsInchargeName: 'Arpitha Nairy',
+                accountsInchargeName: 'Arpitha Nair',
                 fieldOfficerName: '',
                 billingCompany: 'PIFS',
                 billingCycle: '3rd Billing Cycle',

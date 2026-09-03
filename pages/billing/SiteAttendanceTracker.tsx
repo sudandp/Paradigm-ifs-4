@@ -420,8 +420,9 @@ const SiteAttendanceTracker: React.FC = () => {
                 return filters.status === 'sent' ? isSent : !isSent;
             })();
 
-            // Date filtering (based on createdAt)
-            const recordDate = r.createdAt ? parseISO(r.createdAt) : null;
+            // Date filtering (based on managerTentativeDate or createdAt)
+            const targetDateStr = r.managerTentativeDate || r.createdAt;
+            const recordDate = targetDateStr ? parseISO(targetDateStr) : null;
             const matchesYear = filters.year === 'all' || (recordDate && recordDate.getFullYear().toString() === filters.year);
             const matchesMonth = filters.month === 'all' || (recordDate && (recordDate.getMonth() + 1).toString() === filters.month);
 

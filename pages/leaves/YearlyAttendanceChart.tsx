@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { startOfYear, endOfYear, format, getMonth, eachDayOfInterval, getDay, isSameDay, startOfMonth, endOfMonth, subDays, startOfDay } from 'date-fns';
+import { startOfYear, endOfYear, format, getMonth, eachDayOfInterval, getDay, isSameDay, startOfMonth, endOfMonth, subDays, startOfDay, isBefore } from 'date-fns';
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -134,6 +134,21 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isL
             : attendance?.office?.floatingLeavesExpiryDate;
         const expiryDate = expiryDateStr ? startOfDay(new Date(expiryDateStr)) : null;
 
+        const rawJoining = user?.joiningDate || (user as any)?.joining_date || user?.createdAt || (user as any)?.created_at;
+        let employmentStartDate: Date | null = rawJoining ? startOfDay(new Date(String(rawJoining).replace(/-/g, '/'))) : null;
+        if (events && events.length > 0) {
+            const punchDates = events
+                .filter(e => e && e.timestamp)
+                .map(e => startOfDay(new Date(e.timestamp)).getTime());
+            if (punchDates.length > 0) {
+                const earliestPunchMs = Math.min(...punchDates);
+                const earliestPunchDate = new Date(earliestPunchMs);
+                if (!employmentStartDate || earliestPunchDate < employmentStartDate) {
+                    employmentStartDate = earliestPunchDate;
+                }
+            }
+        }
+
         for (let m = 0; m < 12; m++) {
             const start = startOfMonth(new Date(currentYear, m, 1));
             const end = endOfMonth(new Date(currentYear, m, 1));
@@ -148,6 +163,7 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isL
 
             daysInMonth.forEach(day => {
                 const dateStr = format(day, 'yyyy-MM-dd');
+                const isBeforeEmployment = employmentStartDate ? isBefore(startOfDay(day), employmentStartDate) : false;
                 
                 if (siteOtDaysSet.has(dateStr)) {
                     monthSiteOtCount++;
@@ -156,6 +172,10 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isL
                 // 1. Worked (Highest priority)
                 if (workedDaysSet.has(dateStr)) {
                     monthWorkedCount++;
+                    return;
+                }
+
+                if (isBeforeEmployment) {
                     return;
                 }
 
