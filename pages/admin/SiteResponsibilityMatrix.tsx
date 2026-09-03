@@ -47,11 +47,10 @@ import { SiteEscalationDrawer } from '../../components/admin/SiteEscalationDrawe
 const STANDARD_COMPANIES = [
   'PIFS',
   'SWLLP',
+  'PIFS & SWLLP',
   'PPFMS',
   'PIFS & PPFMS',
-  'PIFS & SWLLP',
-  'Paradigm Integrated Facility Services',
-  'Swift Wing LLP'
+  'PPFMS & SWLLP'
 ];
 
 const STANDARD_BILLING_CYCLES = [
@@ -500,7 +499,7 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(15);
+  const [pageSize, setPageSize] = useState(20);
 
   // Selection & Bulk Actions
   const [selectedSites, setSelectedSites] = useState<string[]>([]);
@@ -1574,9 +1573,9 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
               className="py-1 px-2 text-xs rounded-lg bg-gray-50 dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800"
             >
               <option value={10}>10</option>
-              <option value={15}>15</option>
-              <option value={30}>30</option>
+              <option value={20}>20</option>
               <option value={50}>50</option>
+              <option value={100}>100</option>
             </select>
           </div>
         </div>

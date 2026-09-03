@@ -7,7 +7,7 @@ import Select from '../../components/ui/Select';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import Modal from '../../components/ui/Modal';
-import { MapPin, Users as UsersIcon, Pin, Plus, Save, Edit, Trash2, Search, ChevronUp, ChevronDown, Download } from 'lucide-react';
+import { MapPin, Users as UsersIcon, Pin, Plus, Save, Edit, Trash2, Search, ChevronUp, ChevronDown, Download, Sparkles, Building2 } from 'lucide-react';
 import { reverseGeocode, getPrecisePosition } from '../../utils/locationUtils';
 import { useAuthStore } from '../../store/authStore';
 import Pagination from '../../components/ui/Pagination';
@@ -81,12 +81,18 @@ const LocationManagement: React.FC = () => {
   // function as an edit form instead of create.  Stores the id of the
   // location being edited.
   const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
+  const [officialSites, setOfficialSites] = useState<string[]>([]);
+  const [selectedOfficialSite, setSelectedOfficialSite] = useState<string>('');
 
-  // Load all locations and users on mount
+  // Load all locations, users, and official sites on mount
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [locs, usr] = await Promise.all([api.getLocations(), api.getUsers()]);
+        const [locs, usr, matrixData] = await Promise.all([
+          api.getLocations(), 
+          api.getUsers(),
+          api.getSiteResponsibilityMatrix().catch(() => [])
+        ]);
         // Sort client-side as well to ensure newest are always at top
         const sortedLocs = locs.sort((a, b) => {
           const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
@@ -95,6 +101,10 @@ const LocationManagement: React.FC = () => {
         });
         setLocations(sortedLocs);
         setUsers(usr);
+        if (matrixData && Array.isArray(matrixData)) {
+          const siteNames = Array.from(new Set(matrixData.map((m: any) => m.siteName).filter(Boolean))) as string[];
+          setOfficialSites(siteNames.sort((a, b) => a.localeCompare(b)));
+        }
       } catch (err) {
         console.error(err);
         setToast({ message: 'Failed to load locations or users.', type: 'error' });
@@ -276,6 +286,88 @@ const LocationManagement: React.FC = () => {
     }
   };
 
+  const isAddressOrCoord = (n?: string | null) => {
+    if (!n) return true;
+    const isCoord = /^\s*-?\d+\.?\d*\s*,\s*-?\d+\.?\d*\s*$/.test(n);
+    const isAddr = n.includes('Road') || n.includes('Nagar') || n.includes('Bengaluru') || n.includes('India') || n.includes('Street') || n.includes('Colony') || n.includes('Layout');
+    return isCoord || isAddr;
+  };
+
+  const handleAutoMapSites = async () => {
+    setIsLoading(true);
+    try {
+      const knownNamedLocs = locations.filter(l => !isAddressOrCoord(l.name));
+      let count = 0;
+
+      for (const loc of locations) {
+        if (!isAddressOrCoord(loc.name)) continue;
+
+        let newName: string | null = null;
+
+        // 1. Proximity to Paradigm Head Office (12.95968, 77.64573)
+        const dHO = calculateDistance(loc.latitude, loc.longitude, 12.95968, 77.64573);
+        if (dHO <= 150) {
+          newName = 'Paradigm Head Office';
+        }
+
+        // 2. Proximity to known named locations (< 80m)
+        if (!newName) {
+          let closest: Location | null = null;
+          let minDist = Infinity;
+          for (const k of knownNamedLocs) {
+            const d = calculateDistance(loc.latitude, loc.longitude, k.latitude, k.longitude);
+            if (d < minDist) {
+              minDist = d;
+              closest = k;
+            }
+          }
+          if (closest && minDist <= 80) {
+            newName = closest.name;
+          }
+        }
+
+        // 3. Keyword matching against official registered sites
+        if (!newName && officialSites.length > 0) {
+          const text = `${loc.name} ${loc.address || ''}`.toLowerCase();
+          for (const site of officialSites) {
+            const words = site.toLowerCase().split(/\s+/).filter(w => w.length >= 4 && !['phase', 'apartment', 'apartments', 'owners', 'welfare', 'association', 'south', 'north', 'east', 'west', 'city'].includes(w));
+            if (words.length >= 2) {
+              if (words.every(w => text.includes(w))) {
+                newName = site;
+                break;
+              }
+            } else if (words.length === 1 && words[0].length >= 6) {
+              if (text.includes(words[0])) {
+                newName = site;
+                break;
+              }
+            }
+          }
+        }
+
+        if (newName && newName !== loc.name) {
+          await api.updateLocation(loc.id, {
+            name: newName,
+            latitude: loc.latitude,
+            longitude: loc.longitude,
+            radius: loc.radius,
+            address: loc.address,
+            kioskPin: loc.kioskPin
+          });
+          count++;
+        }
+      }
+
+      await refreshLocations();
+      setToast({ message: `Successfully mapped ${count} locations to registered site names!`, type: 'success' });
+    } catch (e: any) {
+      console.error(e);
+      setToast({ message: 'Error running auto-mapping', type: 'error' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleAssignLocation = async () => {
     if (!assignUserId || assignLocationIds.length === 0) {
       setToast({ message: 'Please select a user and at least one location.', type: 'error' });
@@ -298,6 +390,11 @@ const LocationManagement: React.FC = () => {
   const handleEditLocation = (loc: Location) => {
     setEditingLocationId(loc.id);
     setNewName(loc.name || '');
+    if (officialSites.includes(loc.name || '')) {
+      setSelectedOfficialSite(loc.name || '');
+    } else {
+      setSelectedOfficialSite('');
+    }
     setNewRadius(loc.radius.toString());
     setNewLatitude(loc.latitude.toString());
     setNewLongitude(loc.longitude.toString());
@@ -313,6 +410,7 @@ const LocationManagement: React.FC = () => {
   const handleCancelEdit = () => {
     setEditingLocationId(null);
     setNewName('');
+    setSelectedOfficialSite('');
     setNewRadius('100');
     setNewLatitude('');
     setNewLongitude('');
@@ -425,6 +523,30 @@ const LocationManagement: React.FC = () => {
           <h3 className="text-lg font-semibold text-primary-text mb-4 flex items-center">
             <MapPin className="h-5 w-5 mr-2 text-muted" /> {editingLocationId ? 'Edit Location' : 'Add New Location'}
           </h3>
+          {/* Official Site Selector */}
+          <div className="mb-4 p-3 rounded-lg border border-border bg-page/50">
+            <label className="block text-sm font-medium text-primary-text mb-1.5 flex items-center gap-1.5">
+              <Building2 className="w-4 h-4 text-accent" />
+              <span>Link to Official Site / Entity (Optional)</span>
+            </label>
+            <select
+              value={selectedOfficialSite}
+              onChange={(e) => {
+                const val = e.target.value;
+                setSelectedOfficialSite(val);
+                if (val) setNewName(val);
+              }}
+              className="w-full text-sm px-3 py-2 border border-border rounded-lg bg-card focus:outline-none focus:border-accent text-primary-text shadow-sm"
+            >
+              <option value="">-- Choose Registered Site (or type custom name below) --</option>
+              <option value="Paradigm Head Office">🏢 Paradigm Head Office</option>
+              {officialSites.map(s => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+            <p className="text-[11px] text-muted mt-1">Selecting a site from the 216 registered entities will automatically name and map this geofence.</p>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <Input label="Name (optional)" id="locName" name="locationName" autoComplete="organization" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. Office HQ" />
             <Input label="Radius (meters)" id="locRadius" name="locationRadius" type="number" value={newRadius} onChange={(e) => setNewRadius(e.target.value)} min="10" max="1000" />
@@ -551,16 +673,28 @@ const LocationManagement: React.FC = () => {
             <h3 className="text-xl font-semibold text-primary-text flex items-center">
               <MapPin className="h-5 w-5 mr-2 text-muted" /> Existing Locations ({locations.length})
             </h3>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={handleExportExcel}
-              className="flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 font-semibold shrink-0"
-              title="Download Excel CSV of all geo-locations"
-            >
-              <Download className="w-4 h-4" />
-              <span>Download Excel Sheet</span>
-            </Button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleAutoMapSites}
+                className="flex items-center gap-1.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 font-semibold shrink-0"
+                title="Automatically map unmapped coordinates and addresses to registered sites"
+              >
+                <Sparkles className="w-4 h-4 text-indigo-600" />
+                <span>Auto-Map Sites</span>
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleExportExcel}
+                className="flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 font-semibold shrink-0"
+                title="Download Excel CSV of all geo-locations"
+              >
+                <Download className="w-4 h-4" />
+                <span>Download Excel Sheet</span>
+              </Button>
+            </div>
           </div>
 
           <div className="mb-4">
@@ -636,6 +770,15 @@ const LocationManagement: React.FC = () => {
                           <h4 className={`font-bold ${loc.name && duplicateNames.has(loc.name.trim().toLowerCase()) ? 'text-red-500' : 'text-primary-text'}`}>
                             {loc.name || 'Unnamed Location'}
                           </h4>
+                          {isAddressOrCoord(loc.name) && (
+                            <button
+                              type="button"
+                              onClick={() => handleEditLocation(loc)}
+                              className="text-[11px] text-accent hover:underline font-semibold mt-0.5 block"
+                            >
+                              + Map Site Name
+                            </button>
+                          )}
                           <p className="text-sm text-muted">{loc.address}</p>
                         </div>
                         <div className="flex gap-2">
@@ -700,7 +843,19 @@ const LocationManagement: React.FC = () => {
                       {paginatedLocations.map((loc) => (
                         <tr key={loc.id} className="border-b border-border hover:bg-muted/5 transition-colors group">
                           <td className={`p-3 font-medium break-words ${loc.name && duplicateNames.has(loc.name.trim().toLowerCase()) ? 'text-red-500' : 'text-primary-text'}`}>
-                            {loc.name || '-'}
+                            <div className="flex flex-col gap-1">
+                              <span className="font-semibold text-gray-900 dark:text-gray-100">{loc.name || '-'}</span>
+                              {isAddressOrCoord(loc.name) && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleEditLocation(loc)}
+                                  className="inline-flex items-center text-[11px] text-accent hover:underline font-semibold w-fit"
+                                  title="Map this location to a registered site"
+                                >
+                                  + Map Site Name
+                                </button>
+                              )}
+                            </div>
                           </td>
                           <td className="p-3 text-muted">{loc.radius}m</td>
                           <td className={`p-3 text-xs font-mono ${duplicateCoords.has(`${loc.latitude.toFixed(4)},${loc.longitude.toFixed(4)}`) ? 'text-red-500 font-bold' : 'text-muted'}`}>

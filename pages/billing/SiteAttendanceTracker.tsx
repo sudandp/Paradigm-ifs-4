@@ -3,11 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import type { SiteInvoiceRecord, SiteInvoiceDefault } from '../../types';
 import { format, differenceInCalendarDays, parseISO, isBefore, isToday, startOfDay, subDays } from 'date-fns';
-import { Loader2, Plus, Trash2, Edit2, ClipboardList, CheckCircle2, Clock, Mail, AlertTriangle, Building2, Building, Download, Upload, FileSpreadsheet, X, Search, RotateCcw, ShieldX, Info, AlertCircle, FilterX } from 'lucide-react';
+import { Loader2, Plus, Trash2, Edit2, ClipboardList, CheckCircle2, Clock, Mail, AlertTriangle, Building2, Building, Download, Upload, FileSpreadsheet, X, Search, RotateCcw, ShieldX, Info, AlertCircle, FilterX, ShieldCheck } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import Toast from '../../components/ui/Toast';
 import RevisionHistoryModal from '../../components/modals/RevisionHistoryModal';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import { getUserRoutingScope, validateImportRows, getSiteMetadataFromMatrix, normalizeCompanyShortName, type UserRoutingScope } from '../../services/siteRoutingScope';
+import type { SiteResponsibilityMatrix } from '../../types/siteRouting';
 
 
 const SiteAttendanceTracker: React.FC = () => {
@@ -19,12 +21,14 @@ const SiteAttendanceTracker: React.FC = () => {
     const [previewData, setPreviewData] = useState<Partial<SiteInvoiceRecord>[]>([]);
     const [isImporting, setIsImporting] = useState(false);
     const [siteDefaults, setSiteDefaults] = useState<SiteInvoiceDefault[]>([]);
+    const [matrixList, setMatrixList] = useState<SiteResponsibilityMatrix[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [revisionModal, setRevisionModal] = useState<{ isOpen: boolean; recordId: string; siteName: string }>({ isOpen: false, recordId: '', siteName: '' });
 
     // Filter & Pagination State
     const [searchQuery, setSearchQuery] = useState('');
     const [filters, setFilters] = useState({ 
+        company: 'all',
         siteName: '', 
         status: '',
         year: new Date().getFullYear().toString(),
@@ -35,6 +39,7 @@ const SiteAttendanceTracker: React.FC = () => {
 
     const clearFilters = () => {
         setFilters({ 
+            company: 'all',
             siteName: '', 
             status: '',
             year: new Date().getFullYear().toString(),
@@ -44,11 +49,37 @@ const SiteAttendanceTracker: React.FC = () => {
         });
         setSearchQuery('');
     };
+
     const [currentPage, setCurrentPage] = useState(1);
-    const [rowsPerPage, setRowsPerPage] = useState(15);
+    const [rowsPerPage, setRowsPerPage] = useState(20);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [isBulkDeleting, setIsBulkDeleting] = useState(false);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
+
+    const getPageNumbers = (current: number, total: number) => {
+        if (total <= 15) {
+            return Array.from({ length: total }, (_, i) => i + 1);
+        }
+        const pages: (number | string)[] = [];
+        if (current <= 4) {
+            for (let i = 1; i <= 5; i++) pages.push(i);
+            pages.push('...');
+            pages.push(total);
+        } else if (current >= total - 3) {
+            pages.push(1);
+            pages.push('...');
+            for (let i = total - 4; i <= total; i++) pages.push(i);
+        } else {
+            pages.push(1);
+            pages.push('...');
+            pages.push(current - 1);
+            pages.push(current);
+            pages.push(current + 1);
+            pages.push('...');
+            pages.push(total);
+        }
+        return pages;
+    };
 
     // Deletion State
     const [deletedRecords, setDeletedRecords] = useState<SiteInvoiceRecord[]>([]);
@@ -60,22 +91,23 @@ const SiteAttendanceTracker: React.FC = () => {
 
     const { user } = useAuthStore();
 
+    // Compute site routing scope based on Image 1 matrix
+    const routingScope = useMemo(() => getUserRoutingScope(user, matrixList), [user, matrixList]);
+
     const fetchInitialData = useCallback(async () => {
         if (!user) return;
         setIsLoading(true);
         try {
-            const userRole = (user.role || '').toLowerCase();
-            const isSuperAdmin = ['admin', 'super_admin', 'finance_manager', 'management', 'hr', 'hr_ops'].includes(userRole);
-            const managerId = isSuperAdmin ? undefined : user.id;
-
-            const [fetchedRecords, fetchedDefaults, fetchedDeleted] = await Promise.all([
-                api.getSiteInvoiceRecords(managerId),
-                api.getSiteInvoiceDefaults(managerId),
-                api.getDeletedSiteInvoiceRecords(managerId)
+            const [fetchedRecords, fetchedDefaults, fetchedDeleted, matrixData] = await Promise.all([
+                api.getSiteInvoiceRecords(),
+                api.getSiteInvoiceDefaults(),
+                api.getDeletedSiteInvoiceRecords(),
+                api.getSiteResponsibilityMatrix()
             ]);
             setRecords(fetchedRecords);
             setSiteDefaults(fetchedDefaults);
             setDeletedRecords(fetchedDeleted);
+            setMatrixList(matrixData || []);
 
             // Auto-cleanup records older than 7 days
             const sevenDaysAgo = subDays(new Date(), 7);
@@ -316,7 +348,36 @@ const SiteAttendanceTracker: React.FC = () => {
             ];
             ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
             ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0D9488' } };
-            siteDefaults.forEach(d => ws.addRow(d));
+            
+            // Only export sites authorized for the user, pre-filled with official matrix incharges
+            const templateDefaults = siteDefaults.filter(d => routingScope.isSitePermitted(d.siteName, d.companyName));
+            templateDefaults.forEach(d => {
+                const meta = getSiteMetadataFromMatrix(d.siteName, matrixList);
+                ws.addRow({
+                    siteName: d.siteName,
+                    companyName: meta?.billingCompany || d.companyName || '',
+                    billingCycle: meta?.billingCycle || '1st Billing Cycle',
+                    opsIncharge: meta?.opsManagerName || '',
+                    hrIncharge: meta?.hrInchargeName || '',
+                    invoiceIncharge: meta?.accountsInchargeName || '',
+                    opsRemarks: '',
+                    hrRemarks: '',
+                    financeRemarks: '',
+                    managerTentativeDate: '',
+                    managerReceivedDate: '',
+                    hrTentativeDate: '',
+                    hrReceivedDate: '',
+                    attendanceReceivedTime: '',
+                    invoiceSharingTentativeDate: '',
+                    invoicePreparedDate: '',
+                    invoiceSentDate: '',
+                    invoiceSentTime: '',
+                    invoiceSentMethodRemarks: '',
+                    receivedBalance: '',
+                    receivedBalanceReceipt: ''
+                });
+            });
+
             const buffer = await workbook.xlsx.writeBuffer();
             const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
             
@@ -325,7 +386,7 @@ const SiteAttendanceTracker: React.FC = () => {
             const templateMonth = format(new Date(Number(uploadYearStr), Number(uploadMonthStr) - 1, 1), 'yyyy-MM');
             
             saveAs(blob, `Attendance_Tracker_Template_${templateMonth}.xlsx`);
-            setToast({ message: 'Template downloaded!', type: 'success' });
+            setToast({ message: `Template for ${templateMonth} downloaded (${templateDefaults.length} permitted sites)`, type: 'success' });
         } catch (err) {
             console.error('Template error:', err);
             setToast({ message: 'Failed to download template', type: 'error' });
@@ -346,13 +407,19 @@ const SiteAttendanceTracker: React.FC = () => {
             const parsed: Partial<SiteInvoiceRecord>[] = [];
             ws?.eachRow((row, i) => {
                 if (i === 1) return;
+                const rawSiteName = row.getCell(1).value?.toString() || '';
+                if (!rawSiteName) return;
+
+                // Pre-fetch matrix metadata to enrich if spreadsheet cells are blank
+                const meta = getSiteMetadataFromMatrix(rawSiteName, matrixList);
+
                 parsed.push({
-                    siteName: row.getCell(1).value?.toString() || '',
-                    companyName: row.getCell(2).value?.toString() || '',
-                    billingCycle: row.getCell(3).value?.toString() || '',
-                    opsIncharge: row.getCell(4).value?.toString() || '',
-                    hrIncharge: row.getCell(5).value?.toString() || '',
-                    invoiceIncharge: row.getCell(6).value?.toString() || '',
+                    siteName: rawSiteName,
+                    companyName: row.getCell(2).value?.toString() || meta?.billingCompany || '',
+                    billingCycle: row.getCell(3).value?.toString() || meta?.billingCycle || '',
+                    opsIncharge: row.getCell(4).value?.toString() || meta?.opsManagerName || '',
+                    hrIncharge: row.getCell(5).value?.toString() || meta?.hrInchargeName || '',
+                    invoiceIncharge: row.getCell(6).value?.toString() || meta?.accountsInchargeName || '',
                     opsRemarks: row.getCell(7).value?.toString() || '',
                     hrRemarks: row.getCell(8).value?.toString() || '',
                     financeRemarks: row.getCell(9).value?.toString() || '',
@@ -368,9 +435,25 @@ const SiteAttendanceTracker: React.FC = () => {
                     invoiceSentMethodRemarks: row.getCell(19).value?.toString() || '',
                 });
             });
-            setPreviewData(parsed.filter(p => !!p.siteName));
-            setToast({ message: 'File parsed. Please review.', type: 'success' });
+
+            // Validate parsed rows against user's routing scope and authorized company
+            const { validRows, rejectedRows, warningMessage } = validateImportRows(parsed.filter(p => !!p.siteName), routingScope, matrixList);
+
+            if (validRows.length === 0) {
+                setToast({ message: warningMessage || 'No permitted sites found in uploaded file', type: 'error' });
+            } else {
+                setPreviewData(validRows);
+                if (rejectedRows.length > 0) {
+                    setToast({ 
+                        message: `${validRows.length} valid records parsed. ${rejectedRows.length} unauthorized sites skipped.`, 
+                        type: 'error' 
+                    });
+                } else {
+                    setToast({ message: `${validRows.length} records parsed successfully. Please review.`, type: 'success' });
+                }
+            }
         } catch (err) {
+            console.error('Failed to parse file:', err);
             setToast({ message: 'Failed to parse file', type: 'error' });
         }
     };
@@ -386,7 +469,7 @@ const SiteAttendanceTracker: React.FC = () => {
                 createdByRole: user.role
             }));
             await api.bulkSaveSiteInvoiceRecords(recordsWithUser);
-            setToast({ message: 'Records imported!', type: 'success' });
+            setToast({ message: 'Records imported successfully!', type: 'success' });
             setPreviewData([]);
             fetchInitialData();
         } catch (err: any) {
@@ -398,20 +481,36 @@ const SiteAttendanceTracker: React.FC = () => {
         }
     };
 
+    // Scoped datasets according to Site Responsibility Matrix permissions
+    const scopedRecords = useMemo(() => {
+        return records.filter(r => routingScope.isSitePermitted(r.siteName, r.companyName));
+    }, [records, routingScope]);
+
+    const scopedDeletedRecords = useMemo(() => {
+        return deletedRecords.filter(r => routingScope.isSitePermitted(r.siteName, r.companyName));
+    }, [deletedRecords, routingScope]);
+
+    const scopedSiteDefaults = useMemo(() => {
+        return siteDefaults.filter(s => routingScope.isSitePermitted(s.siteName, s.companyName));
+    }, [siteDefaults, routingScope]);
+
     // --- Filter & Stats ---
-    const currentRecords = activeSubTab === 'active' ? records : deletedRecords;
+    const currentRecords = activeSubTab === 'active' ? scopedRecords : scopedDeletedRecords;
 
     const siteOptions = useMemo(() => {
-        const sites = new Set(records.map(r => r.siteName));
-        siteDefaults.forEach(s => sites.add(s.siteName));
+        const sites = new Set(scopedRecords.map(r => r.siteName));
+        scopedSiteDefaults.forEach(s => sites.add(s.siteName));
         return Array.from(sites).sort();
-    }, [records, siteDefaults]);
+    }, [scopedRecords, scopedSiteDefaults]);
 
     const filteredRecords = useMemo(() => {
         return currentRecords.filter(r => {
             const matchesSearch = r.siteName.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 (r.companyName || '').toLowerCase().includes(searchQuery.toLowerCase());
             
+            const matchesCompany = !filters.company || filters.company === 'all' || 
+                (r.companyName || '').toUpperCase().includes((filters.company || '').toUpperCase());
+
             const matchesSiteName = !filters.siteName || 
                 r.siteName.toLowerCase().includes(filters.siteName.toLowerCase());
                 
@@ -440,21 +539,21 @@ const SiteAttendanceTracker: React.FC = () => {
                 matchesCustomRange = false;
             }
 
-            return matchesSearch && matchesSiteName && matchesStatus && matchesYear && matchesMonth && matchesCustomRange;
+            return matchesSearch && matchesCompany && matchesSiteName && matchesStatus && matchesYear && matchesMonth && matchesCustomRange;
         });
     }, [currentRecords, searchQuery, filters]);
 
     const stats = useMemo(() => {
-        const total = records.length;
-        const sent = records.filter(r => !!r.invoiceSentDate).length;
+        const total = scopedRecords.length;
+        const sent = scopedRecords.filter(r => !!r.invoiceSentDate).length;
         const pending = total - sent;
         const today = startOfDay(new Date());
-        const due = records.filter(r => {
+        const due = scopedRecords.filter(r => {
             if (!!r.invoiceSentDate || !r.invoiceSharingTentativeDate) return false;
             return isBefore(parseISO(r.invoiceSharingTentativeDate), today) || isToday(parseISO(r.invoiceSharingTentativeDate));
         });
         return { total, sent, pending, due };
-    }, [records]);
+    }, [scopedRecords]);
 
     const totalPages = Math.ceil(filteredRecords.length / rowsPerPage);
     const paginatedRecords = filteredRecords.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
@@ -483,6 +582,7 @@ const SiteAttendanceTracker: React.FC = () => {
 
     useEffect(() => {
         setFilters({ 
+            company: 'all',
             siteName: '', 
             status: '',
             year: new Date().getFullYear().toString(),
@@ -538,6 +638,21 @@ const SiteAttendanceTracker: React.FC = () => {
                             <option value="">Status</option>
                             <option value="sent">Sent</option>
                             <option value="pending">Pending</option>
+                        </select>
+
+                        <select
+                            value={filters.company || 'all'}
+                            onChange={(e) => setFilters(prev => ({ ...prev, company: e.target.value }))}
+                            className="h-10 px-3 bg-[#041b0f] md:bg-gray-50 border border-white/10 md:border-gray-200 rounded-lg text-xs md:text-sm text-white md:text-gray-900 focus:outline-none focus:border-[#00D27F] transition-all font-semibold cursor-pointer min-w-[125px]"
+                            title="Filter by Company Entity"
+                        >
+                            <option value="all">All Companies</option>
+                            <option value="PIFS">PIFS</option>
+                            <option value="SWLLP">SWLLP (SOUTHWALL)</option>
+                            <option value="PIFS & SWLLP">PIFS & SWLLP (Split)</option>
+                            <option value="PPFMS">PPFMS</option>
+                            <option value="PIFS & PPFMS">PIFS & PPFMS</option>
+                            <option value="PPFMS & SWLLP">PPFMS & SWLLP</option>
                         </select>
                     </div>
 
@@ -595,13 +710,26 @@ const SiteAttendanceTracker: React.FC = () => {
 
                 {/* Row 2: All Primary Actions */}
                 <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-white/5 md:border-gray-100">
-                    <button
-                        onClick={() => navigate('/finance/attendance/add')}
-                        className="whitespace-nowrap h-11 inline-flex items-center justify-center gap-2 px-6 py-2 text-sm font-bold text-[#041b0f] md:text-white bg-[#00D27F] md:bg-emerald-600 rounded-xl hover:bg-[#00b86e] md:hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-500/10 active:scale-95"
-                    >
-                        <Plus className="h-4 w-4" />
-                        <span>New Entry</span>
-                    </button>
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={() => navigate('/finance/attendance/add')}
+                            className="whitespace-nowrap h-11 inline-flex items-center justify-center gap-2 px-6 py-2 text-sm font-bold text-[#041b0f] md:text-white bg-[#00D27F] md:bg-emerald-600 rounded-xl hover:bg-[#00b86e] md:hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-500/10 active:scale-95"
+                        >
+                            <Plus className="h-4 w-4" />
+                            <span>New Entry</span>
+                        </button>
+
+                        {!routingScope.isGlobalAdmin && (
+                            <div className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-500/10 md:bg-emerald-50 border border-emerald-500/20 md:border-emerald-200 text-xs font-bold text-emerald-400 md:text-emerald-800">
+                                <ShieldCheck className="h-4 w-4 text-[#00D27F] md:text-emerald-600" />
+                                <span>
+                                    {routingScope.allowedCompanies.length > 0 
+                                        ? `Scope: ${routingScope.allowedCompanies.join(', ')} (${scopedRecords.length} sites)` 
+                                        : `Assigned Sites (${scopedRecords.length})`}
+                                </span>
+                            </div>
+                        )}
+                    </div>
 
                     <div className="flex items-center gap-2">
                         <button
@@ -830,7 +958,7 @@ const SiteAttendanceTracker: React.FC = () => {
                                                 </td>
                                                 <td className="px-5 py-3.5">
                                                     <div className="font-bold text-white md:text-gray-900 text-sm">{record.siteName}</div>
-                                                    <div className="text-[11px] text-emerald-400/50 md:text-gray-500 mt-0.5">{record.companyName || '—'}</div>
+                                                    <div className="text-[11px] text-emerald-400/50 md:text-gray-500 mt-0.5 font-bold uppercase tracking-wider">{normalizeCompanyShortName(record.companyName) || '—'}</div>
                                                     <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                                                         {record.billingCycle && <span className="inline-block px-1.5 py-0.5 rounded bg-emerald-500/10 md:bg-gray-100 text-[#00D27F] md:text-gray-600 text-[10px] font-black uppercase tracking-tighter border border-emerald-500/20 md:border-gray-200">{record.billingCycle}</span>}
                                                         {record.revisionCount && record.revisionCount > 0 ? (
@@ -987,7 +1115,7 @@ const SiteAttendanceTracker: React.FC = () => {
                                                 <div>
                                                     <h4 className="font-bold text-white leading-tight">{record.siteName}</h4>
                                                     <div className="flex items-center gap-2 mt-0.5">
-                                                        <span className="text-[10px] text-emerald-400/40 font-bold uppercase tracking-wider">{record.companyName || '—'}</span>
+                                                        <span className="text-[10px] text-emerald-400/40 font-bold uppercase tracking-wider">{normalizeCompanyShortName(record.companyName) || '—'}</span>
                                                         {record.billingCycle && (
                                                             <span className="px-1.5 py-0.5 bg-emerald-500/10 text-[#00D27F] text-[9px] font-black rounded uppercase tracking-tighter border border-emerald-500/20">
                                                                 {record.billingCycle}
@@ -1091,50 +1219,56 @@ const SiteAttendanceTracker: React.FC = () => {
                         </div>
 
                         {/* Pagination */}
-                        {totalPages > 1 && (
+                        {filteredRecords.length > 0 && (
                             <div className="px-5 py-4 border-t border-white/5 md:border-border flex flex-col md:flex-row items-center justify-between bg-[#041b0f]/30 md:bg-card gap-4 md:gap-0">
                                 <div className="flex items-center gap-4">
                                     <div className="flex items-center gap-2">
-                                        <span className="text-[10px] md:text-xs text-emerald-400/40 md:text-muted font-bold md:font-semibold uppercase md:uppercase tracking-widest md:tracking-wide">Rows:</span>
-                                            <select
-                                                value={rowsPerPage}
-                                                onChange={(e) => {
-                                                    setRowsPerPage(Number(e.target.value));
-                                                    setCurrentPage(1);
-                                                }}
-                                                className="h-8 md:h-9 px-2 text-[11px] md:text-xs font-black md:font-bold text-emerald-400 md:text-primary-text bg-[#041b0f] md:bg-page border border-white/10 md:border-border rounded-lg outline-none focus:border-[#00D27F] md:focus:border-emerald-500 transition-all cursor-pointer shadow-sm"
-                                            >
+                                        <span className="text-[10px] md:text-xs text-emerald-400/40 md:text-muted font-bold md:font-semibold uppercase tracking-widest md:tracking-wide">Rows:</span>
+                                        <select
+                                            value={rowsPerPage}
+                                            onChange={(e) => {
+                                                setRowsPerPage(Number(e.target.value));
+                                                setCurrentPage(1);
+                                            }}
+                                            className="h-8 md:h-9 px-2 text-[11px] md:text-xs font-black md:font-bold text-emerald-400 md:text-primary-text bg-[#041b0f] md:bg-page border border-white/10 md:border-border rounded-lg outline-none focus:border-[#00D27F] md:focus:border-emerald-500 transition-all cursor-pointer shadow-sm"
+                                        >
                                             <option value={10}>10</option>
-                                            <option value={15}>15</option>
                                             <option value={20}>20</option>
                                             <option value={50}>50</option>
+                                            <option value={100}>100</option>
                                         </select>
                                     </div>
-                                    <p className="text-[10px] md:text-xs text-emerald-400/40 md:text-muted font-bold md:font-semibold uppercase md:uppercase tracking-tight md:tracking-wide">
+                                    <p className="text-[10px] md:text-xs text-emerald-400/40 md:text-muted font-bold md:font-semibold uppercase tracking-tight md:tracking-wide">
                                         Showing {((currentPage - 1) * rowsPerPage) + 1}–{Math.min(currentPage * rowsPerPage, filteredRecords.length)} of {filteredRecords.length}
                                     </p>
                                 </div>
-                                <div className="flex items-center gap-1">
+                                {totalPages > 1 && (
+                                    <div className="flex items-center gap-1">
                                         <button
                                             onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                                             disabled={currentPage === 1}
                                             className="px-3 md:px-4 py-1.5 md:h-9 text-[10px] md:text-xs font-black md:font-bold uppercase tracking-tighter md:tracking-wide text-emerald-400/60 md:text-primary-text bg-white/5 md:bg-page border border-white/5 md:border-border rounded-lg hover:bg-white/10 md:hover:bg-gray-100 disabled:opacity-20 disabled:cursor-not-allowed transition-all"
                                         >Prev</button>
-                                    <div className="flex items-center gap-1 mx-2">
-                                        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => i + 1).map(page => (
-                                                <button
-                                                    key={page}
-                                                    onClick={() => setCurrentPage(page)}
-                                                    className={`w-8 h-8 md:w-9 md:h-9 text-xs font-black rounded-lg transition-all ${page === currentPage ? 'bg-[#00D27F] md:bg-emerald-600 text-[#041b0f] md:text-white shadow-lg md:shadow-sm shadow-emerald-500/20' : 'text-emerald-400/40 md:text-muted hover:text-emerald-400 md:hover:text-primary-text hover:bg-white/5 md:hover:bg-page border border-white/5 md:border-border'}`}
-                                                >{page}</button>
-                                        ))}
+                                        <div className="flex items-center gap-1 mx-2">
+                                            {getPageNumbers(currentPage, totalPages).map((p, idx) => (
+                                                p === '...' ? (
+                                                    <span key={`dots-${idx}`} className="px-1 text-xs text-emerald-400/40 md:text-muted font-bold">...</span>
+                                                ) : (
+                                                    <button
+                                                        key={p}
+                                                        onClick={() => setCurrentPage(Number(p))}
+                                                        className={`w-8 h-8 md:w-9 md:h-9 text-xs font-black rounded-lg transition-all ${p === currentPage ? 'bg-[#00D27F] md:bg-emerald-600 text-[#041b0f] md:text-white shadow-lg md:shadow-sm shadow-emerald-500/20' : 'text-emerald-400/40 md:text-muted hover:text-emerald-400 md:hover:text-primary-text hover:bg-white/5 md:hover:bg-page border border-white/5 md:border-border'}`}
+                                                    >{p}</button>
+                                                )
+                                            ))}
+                                        </div>
+                                        <button
+                                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                            disabled={currentPage === totalPages}
+                                            className="px-3 md:px-4 py-1.5 md:h-9 text-[10px] md:text-xs font-black md:font-bold uppercase tracking-tighter md:tracking-wide text-emerald-400/60 md:text-primary-text bg-white/5 md:bg-page border border-white/5 md:border-border rounded-lg hover:bg-white/10 md:hover:bg-gray-100 disabled:opacity-20 disabled:cursor-not-allowed transition-all"
+                                        >Next</button>
                                     </div>
-                                    <button
-                                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                                        disabled={currentPage === totalPages}
-                                        className="px-3 md:px-4 py-1.5 md:h-9 text-[10px] md:text-xs font-black md:font-bold uppercase tracking-tighter md:tracking-wide text-emerald-400/60 md:text-primary-text bg-white/5 md:bg-page border border-white/5 md:border-border rounded-lg hover:bg-white/10 md:hover:bg-gray-100 disabled:opacity-20 disabled:cursor-not-allowed transition-all"
-                                    >Next</button>
-                                </div>
+                                )}
                             </div>
                         )}
                     </>

@@ -14,6 +14,10 @@ import { format, startOfMonth } from 'date-fns';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 
 
+import { getUserRoutingScope, getSiteMetadataFromMatrix } from '../../services/siteRoutingScope';
+import type { SiteResponsibilityMatrix } from '../../types/siteRouting';
+
+
 const AddSiteFinanceRecord: React.FC = () => {
     const navigate = useNavigate();
     const { id } = useParams<{ id: string }>();
@@ -23,8 +27,9 @@ const AddSiteFinanceRecord: React.FC = () => {
     const [sites, setSites] = useState<Organization[]>([]);
     const [trackerSites, setTrackerSites] = useState<{ id: string; name: string }[]>([]);
     const [siteDefaults, setSiteDefaults] = useState<SiteInvoiceDefault[]>([]);
+    const [matrixList, setMatrixList] = useState<SiteResponsibilityMatrix[]>([]);
     const [activeDefault, setActiveDefault] = useState<SiteInvoiceDefault | null>(null);
-    const [currentUser, setCurrentUser] = useState<{ id: string, name: string, role: string } | null>(null);
+    const [currentUser, setCurrentUser] = useState<{ id: string, name: string, role: string, email?: string } | null>(null);
     const [recordMetadata, setRecordMetadata] = useState<{ createdBy?: string, createdByName?: string, createdAt?: string, updatedBy?: string, updatedByName?: string, updatedAt?: string } | null>(null);
 
     const { control, handleSubmit, setValue, watch, reset, formState: { errors } } = useForm<Partial<SiteFinanceRecord>>({
@@ -60,17 +65,45 @@ const AddSiteFinanceRecord: React.FC = () => {
         const loadData = async () => {
             setIsLoading(true);
             try {
-                const [fetchedSites, defaults, financeTrackerSites, attendanceRecords] = await Promise.all([
+                const [fetchedSites, defaults, financeTrackerSites, attendanceRecords, matrixData] = await Promise.all([
                     api.getOrganizations(),
                     api.getSiteInvoiceDefaults(),
                     api.getUniqueTrackerSites(),
-                    api.getSiteInvoiceRecords()
+                    api.getSiteInvoiceRecords(),
+                    api.getSiteResponsibilityMatrix()
                 ]);
+
+                const matrix = matrixData || [];
+                setMatrixList(matrix);
+                
+                // Fetch current user details from auth store if available, otherwise fallback to metadata
+                const { user: authStoreUser } = useAuthStore.getState();
+                const { data: { user: authUser } } = await supabase.auth.getUser();
+                
+                let activeUserObj: { id: string, name: string, role: string, email?: string } | null = null;
+                if (authStoreUser) {
+                    activeUserObj = {
+                        id: authStoreUser.id,
+                        name: authStoreUser.name || 'Unknown',
+                        role: authStoreUser.role || 'user',
+                        email: authStoreUser.email
+                    };
+                } else if (authUser) {
+                    const name = authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'Unknown';
+                    const profile = await api.getUserById(authUser.id);
+                    activeUserObj = { 
+                        id: authUser.id, 
+                        name, 
+                        role: profile?.role || 'user',
+                        email: authUser.email
+                    };
+                }
+                setCurrentUser(activeUserObj);
+
+                const routingScope = getUserRoutingScope(activeUserObj, matrix);
                 
                 // Handle both array and paginated response
                 const sitesList = Array.isArray(fetchedSites) ? fetchedSites : fetchedSites.data || [];
-                setSites(sitesList);
-                setSiteDefaults(defaults);
                 
                 // Merge finance and attendance tracker sites
                 const allTrackerSites = [...financeTrackerSites];
@@ -79,21 +112,14 @@ const AddSiteFinanceRecord: React.FC = () => {
                         allTrackerSites.push({ id: r.siteId || r.siteName, name: r.siteName });
                     }
                 });
-                setTrackerSites(allTrackerSites);
-                
-                // Fetch current user
-                // Fetch current user details from auth store if available, otherwise fallback to metadata
-                const { data: { user: authUser } } = await supabase.auth.getUser();
-                if (authUser) {
-                    const name = authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'Unknown';
-                    // Fetch profile to get role
-                    const profile = await api.getUserById(authUser.id);
-                    setCurrentUser({ 
-                        id: authUser.id, 
-                        name, 
-                        role: profile?.role || 'user' 
-                    });
-                }
+
+                // Filter options to user's authorized scope
+                const permittedSites = sitesList.filter(s => routingScope.isSitePermitted(s.shortName || s.name));
+                const permittedTrackerSites = allTrackerSites.filter(s => routingScope.isSitePermitted(s.name));
+
+                setSites(permittedSites);
+                setTrackerSites(permittedTrackerSites);
+                setSiteDefaults(defaults);
 
                 if (isEditing && id) {
                     const record = await api.getSiteFinanceRecord(id);
@@ -141,10 +167,13 @@ const AddSiteFinanceRecord: React.FC = () => {
 
             const payload = { ...data, billingMonth: formattedBillingMonth, id: id };
             
-            // UUID check removed to support text-based Site IDs (e.g. from organizations)
-            // if (payload.siteId && !uuidRegex.test(payload.siteId)) {
-            //     payload.siteId = null as any; 
-            // }
+            // Enforce routing scope authorization
+            const routingScope = getUserRoutingScope(currentUser, matrixList);
+            if (payload.siteName && !routingScope.isSitePermitted(payload.siteName, payload.companyName)) {
+                setToast({ message: `Access denied: You are not authorized to manage ${payload.siteName}`, type: 'error' });
+                setIsLoading(false);
+                return;
+            }
 
             // Add creator info for new records
             if (!id && currentUser) {
@@ -225,6 +254,12 @@ const AddSiteFinanceRecord: React.FC = () => {
     const handleSiteSelection = async (selectedSiteId: string, selectedSiteName: string) => {
         setValue('siteId', selectedSiteId);
         setValue('siteName', selectedSiteName);
+
+        // Authoritative company from Image 1 Site Responsibility Matrix
+        const matrixMeta = getSiteMetadataFromMatrix(selectedSiteName, matrixList);
+        if (matrixMeta?.billingCompany) {
+            setValue('companyName', matrixMeta.billingCompany);
+        }
         
         // Auto-fill from defaults if available - YEAR AWARE
         const currentYear = new Date(watch('billingMonth') || new Date()).getFullYear();
@@ -244,7 +279,9 @@ const AddSiteFinanceRecord: React.FC = () => {
 
         if (effectiveDefault) {
             setActiveDefault(effectiveDefault);
-            setValue('companyName', effectiveDefault.companyName);
+            if (!matrixMeta?.billingCompany) {
+                setValue('companyName', effectiveDefault.companyName);
+            }
             if (effectiveDefault.contractAmount) setValue('contractAmount', effectiveDefault.contractAmount);
             if (effectiveDefault.contractManagementFee) setValue('contractManagementFee', effectiveDefault.contractManagementFee);
         } else {

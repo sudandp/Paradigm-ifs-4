@@ -121,6 +121,7 @@ const AddUserPage: React.FC = () => {
   const [selectedLocation, setSelectedLocation] = useState<string>('');
   const [selectedSociety, setSelectedSociety] = useState<string>('');
   const [selectedSiteIds, setSelectedSiteIds] = useState<string[]>([]);
+  const [siteSearchTerm, setSiteSearchTerm] = useState<string>('');
   const [attendanceSettings, setAttendanceSettings] = useState<AttendanceSettings | null>(null);
   // Auto-sync: when saving a user with an unmapped role, intercept and prompt for category
   const [pendingSubmitData, setPendingSubmitData] = useState<any>(null);
@@ -473,17 +474,38 @@ const AddUserPage: React.FC = () => {
   const availableEntities = React.useMemo(() => {
     if (!selectedSociety) return [];
     const entities: { id: string, name: string }[] = [];
+    const seen = new Set<string>();
+
+    // 1. Entities belonging to the selected company
     orgStructure.forEach(group => {
       group.companies.forEach(company => {
         if (company.id === selectedSociety) {
           company.entities.forEach(entity => {
-            entities.push({ id: entity.id, name: entity.name });
+            if (!seen.has(entity.id)) {
+              seen.add(entity.id);
+              entities.push({ id: entity.id, name: entity.name });
+            }
           });
         }
       });
     });
+
+    // 2. Also include any entities currently selected in selectedSiteIds even if from another company
+    if (selectedSiteIds.length > 0) {
+      orgStructure.forEach(group => {
+        group.companies.forEach(company => {
+          company.entities.forEach(entity => {
+            if (selectedSiteIds.includes(entity.id) && !seen.has(entity.id)) {
+              seen.add(entity.id);
+              entities.push({ id: entity.id, name: entity.name });
+            }
+          });
+        });
+      });
+    }
+
     return entities;
-  }, [orgStructure, selectedSociety]);
+  }, [orgStructure, selectedSociety, selectedSiteIds]);
 
   // Synchronize selectedSiteIds changes to form values
   useEffect(() => {
@@ -538,38 +560,89 @@ const AddUserPage: React.FC = () => {
       ...availableEntities
     ];
 
+    const filteredOptions = options.filter(opt => {
+      if (!siteSearchTerm.trim()) return true;
+      return opt.name.toLowerCase().includes(siteSearchTerm.toLowerCase());
+    });
+
+    const handleSelectAllFiltered = () => {
+      const idsToAdd = filteredOptions.map(o => o.id);
+      setSelectedSiteIds(prev => Array.from(new Set([...prev, ...idsToAdd])));
+    };
+
+    const handleClearAll = () => {
+      setSelectedSiteIds([]);
+    };
+
     return (
       <div>
-        <label className="block text-sm font-medium text-muted mb-1 flex justify-between items-center">
-          <span>Assigned Site(s) (Entity)</span>
-          <span className="text-xs text-emerald-600 font-bold">({selectedSiteIds.length} selected)</span>
-        </label>
-        <div className="border border-gray-200 rounded-xl p-3 bg-white max-h-48 overflow-y-auto space-y-2 shadow-sm transition-all focus-within:ring-2 focus-within:ring-emerald-500/20 focus-within:border-emerald-500">
-          {options.map(opt => {
-            const isChecked = selectedSiteIds.includes(opt.id);
-            return (
-              <label 
-                key={opt.id} 
-                className={`flex items-center gap-3 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-slate-50 transition-colors ${
-                  isChecked ? 'bg-emerald-50/45 border-l-2 border-emerald-500 font-medium' : ''
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  checked={isChecked}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setSelectedSiteIds(prev => [...prev, opt.id]);
-                    } else {
-                      setSelectedSiteIds(prev => prev.filter(id => id !== opt.id));
-                    }
-                  }}
-                  className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-                />
-                <span className="text-sm text-gray-700 select-none">{opt.name}</span>
-              </label>
-            );
-          })}
+        <div className="mb-1 flex flex-wrap justify-between items-center gap-2">
+          <label className="block text-sm font-medium text-muted">
+            <span>Assigned Site(s) (Entity)</span>
+            <span className="ml-2 text-xs text-emerald-600 font-bold">({selectedSiteIds.length} selected)</span>
+          </label>
+          <div className="flex items-center gap-2 text-xs">
+            <button
+              type="button"
+              onClick={handleSelectAllFiltered}
+              className="text-emerald-700 hover:text-emerald-800 font-semibold hover:underline"
+            >
+              Select All
+            </button>
+            <span className="text-gray-300">|</span>
+            <button
+              type="button"
+              onClick={handleClearAll}
+              className="text-gray-500 hover:text-red-600 font-semibold hover:underline"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+
+        {/* Quick site search filter */}
+        <div className="mb-2">
+          <input
+            type="text"
+            placeholder="Search & filter assigned sites..."
+            value={siteSearchTerm}
+            onChange={(e) => setSiteSearchTerm(e.target.value)}
+            className="w-full text-xs px-3 py-1.5 border border-gray-200 rounded-lg bg-gray-50 focus:bg-white focus:outline-none focus:border-emerald-500 transition-all"
+          />
+        </div>
+
+        <div className="border border-gray-200 rounded-xl p-3 bg-white max-h-56 overflow-y-auto space-y-1.5 shadow-sm transition-all focus-within:ring-2 focus-within:ring-emerald-500/20 focus-within:border-emerald-500">
+          {filteredOptions.length === 0 ? (
+            <div className="py-4 text-center text-xs text-gray-400 italic">
+              No sites matching "{siteSearchTerm}"
+            </div>
+          ) : (
+            filteredOptions.map(opt => {
+              const isChecked = selectedSiteIds.includes(opt.id);
+              return (
+                <label 
+                  key={opt.id} 
+                  className={`flex items-center gap-3 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-slate-50 transition-colors ${
+                    isChecked ? 'bg-emerald-50/45 border-l-2 border-emerald-500 font-medium' : ''
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedSiteIds(prev => [...prev, opt.id]);
+                      } else {
+                        setSelectedSiteIds(prev => prev.filter(id => id !== opt.id));
+                      }
+                    }}
+                    className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span className="text-sm text-gray-700 select-none">{opt.name}</span>
+                </label>
+              );
+            })
+          )}
         </div>
         {errors.organizationId?.message && (
           <p className="mt-1 text-xs text-red-600">{errors.organizationId.message}</p>

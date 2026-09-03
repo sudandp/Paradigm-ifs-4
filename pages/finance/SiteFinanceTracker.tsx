@@ -16,11 +16,13 @@ const getExcelJS = async () => {
 };
 import { 
     Loader2, Plus, Edit2, Trash2, IndianRupee, FileSpreadsheet, TrendingUp, TrendingDown, 
-    ClipboardCheck, Building2, Download, Upload, AlertTriangle, RotateCcw, ShieldX, Search, Info, FilterX, X, Clock
+    ClipboardCheck, Building2, Download, Upload, AlertTriangle, RotateCcw, ShieldX, Search, Info, FilterX, X, Clock, ShieldCheck, Shield
 } from 'lucide-react';
 import Toast from '../../components/ui/Toast';
 import RevisionHistoryModal from '../../components/modals/RevisionHistoryModal';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import { getUserRoutingScope, validateImportRows, normalizeCompanyShortName, type UserRoutingScope } from '../../services/siteRoutingScope';
+import type { SiteResponsibilityMatrix } from '../../types/siteRouting';
 
 
 const SiteFinanceTracker: React.FC = () => {
@@ -33,6 +35,7 @@ const SiteFinanceTracker: React.FC = () => {
     const [importedMonth, setImportedMonth] = useState<string>(''); // billing month read from uploaded file
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [siteDefaults, setSiteDefaults] = useState<SiteInvoiceDefault[]>([]);
+    const [matrixList, setMatrixList] = useState<SiteResponsibilityMatrix[]>([]);
     const [exportDropdownOpen, setExportDropdownOpen] = useState(false);
     const fileInputRef = React.useRef<HTMLInputElement>(null);
     const exportDropdownRef = React.useRef<HTMLDivElement>(null);
@@ -42,6 +45,7 @@ const SiteFinanceTracker: React.FC = () => {
     // Filter & Pagination State
     const [searchQuery, setSearchQuery] = useState('');
     const [filters, setFilters] = useState({ 
+        company: 'all',
         siteName: '', 
         status: '',
         year: new Date().getFullYear().toString(),
@@ -58,22 +62,23 @@ const SiteFinanceTracker: React.FC = () => {
     const [isDeleting, setIsDeleting] = useState(false);
     const [isRestoring, setIsRestoring] = useState<string | null>(null);
 
+    // Compute site routing scope based on Image 1 matrix
+    const routingScope = useMemo(() => getUserRoutingScope(user, matrixList), [user, matrixList]);
+
     const fetchData = useCallback(async () => {
         if (!user) return;
         setIsLoading(true);
         try {
-            const userRole = (user.role || '').toLowerCase();
-            const isSuperAdmin = ['admin', 'super_admin', 'finance_manager', 'management', 'hr', 'hr_ops'].includes(userRole);
-            const managerId = isSuperAdmin ? undefined : user.id;
-
-            const [recordsData, defaultsData, deletedData] = await Promise.all([
-                api.getSiteFinanceRecords(undefined as any, managerId),
-                api.getSiteInvoiceDefaults(managerId),
-                api.getDeletedSiteFinanceRecords(managerId)
+            const [recordsData, defaultsData, deletedData, matrixData] = await Promise.all([
+                api.getSiteFinanceRecords(),
+                api.getSiteInvoiceDefaults(),
+                api.getDeletedSiteFinanceRecords(),
+                api.getSiteResponsibilityMatrix()
             ]);
             setRecords(recordsData);
             setDeletedRecords(deletedData);
             setSiteDefaults(defaultsData.sort((a, b) => a.siteName.localeCompare(b.siteName)));
+            setMatrixList(matrixData || []);
 
             // Auto-cleanup records older than 7 days
             const sevenDaysAgo = new Date();
@@ -215,7 +220,9 @@ const SiteFinanceTracker: React.FC = () => {
                 });
             });
 
-            const templateSites = Array.from(siteMap.values()).sort((a, b) => a.siteName.localeCompare(b.siteName));
+            const templateSites = Array.from(siteMap.values())
+                .filter(s => routingScope.isSitePermitted(s.siteName, s.companyName))
+                .sort((a, b) => a.siteName.localeCompare(b.siteName));
 
             templateSites.forEach((site, i) => {
                 const row = ws.getRow(5 + i);
@@ -339,12 +346,22 @@ const SiteFinanceTracker: React.FC = () => {
                 });
             });
 
-            if (parsed.length === 0) {
-                setToast({ message: 'No valid records found in file', type: 'error' });
+            // Validate parsed rows against user's routing scope and authorized company
+            const { validRows, rejectedRows, warningMessage } = validateImportRows(parsed, routingScope, matrixList);
+
+            if (validRows.length === 0) {
+                setToast({ message: warningMessage || 'No permitted records found in uploaded file', type: 'error' });
             } else {
                 setImportedMonth(billingMonthDisplay);
-                setPreviewData(parsed);
-                setToast({ message: `${parsed.length} records parsed for ${billingMonthDisplay}`, type: 'success' });
+                setPreviewData(validRows);
+                if (rejectedRows.length > 0) {
+                    setToast({ 
+                        message: `${validRows.length} valid records parsed. ${rejectedRows.length} unauthorized sites skipped.`, 
+                        type: 'error' 
+                    });
+                } else {
+                    setToast({ message: `${validRows.length} records parsed for ${billingMonthDisplay}`, type: 'success' });
+                }
             }
         } catch (error) {
             console.error('Import error:', error);
@@ -771,12 +788,25 @@ const SiteFinanceTracker: React.FC = () => {
         }
     };
 
-    // Calculate variations for stats
+    // Scoped datasets according to Site Responsibility Matrix permissions
+    const scopedRecords = useMemo(() => {
+        return records.filter(r => routingScope.isSitePermitted(r.siteName, r.companyName));
+    }, [records, routingScope]);
+
+    const scopedDeletedRecords = useMemo(() => {
+        return deletedRecords.filter(r => routingScope.isSitePermitted(r.siteName, r.companyName));
+    }, [deletedRecords, routingScope]);
+
+    const scopedSiteDefaults = useMemo(() => {
+        return siteDefaults.filter(s => routingScope.isSitePermitted(s.siteName, s.companyName));
+    }, [siteDefaults, routingScope]);
+
+    // Calculate variations for stats based on user's authorized scope
     let totalBillingVariation = 0;
     let totalFeeVariation = 0;
     let profitSitesCount = 0;
 
-    records.forEach(r => {
+    scopedRecords.forEach(r => {
         const bDiff = (r.billedAmount || 0) - (r.contractAmount || 0);
         const fDiff = (r.billedManagementFee || 0) - (r.contractManagementFee || 0);
         totalBillingVariation += bDiff;
@@ -785,16 +815,44 @@ const SiteFinanceTracker: React.FC = () => {
     });
 
     const [currentPage, setCurrentPage] = useState(1);
-    const [rowsPerPage, setRowsPerPage] = useState(15);
+    const [rowsPerPage, setRowsPerPage] = useState(20);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [isBulkDeleting, setIsBulkDeleting] = useState(false);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
 
-    const currentRecords = activeSubTab === 'active' ? records : deletedRecords;
+    const getPageNumbers = (current: number, total: number) => {
+        if (total <= 15) {
+            return Array.from({ length: total }, (_, i) => i + 1);
+        }
+        const pages: (number | string)[] = [];
+        if (current <= 4) {
+            for (let i = 1; i <= 5; i++) pages.push(i);
+            pages.push('...');
+            pages.push(total);
+        } else if (current >= total - 3) {
+            pages.push(1);
+            pages.push('...');
+            for (let i = total - 4; i <= total; i++) pages.push(i);
+        } else {
+            pages.push(1);
+            pages.push('...');
+            pages.push(current - 1);
+            pages.push(current);
+            pages.push(current + 1);
+            pages.push('...');
+            pages.push(total);
+        }
+        return pages;
+    };
+
+    const currentRecords = activeSubTab === 'active' ? scopedRecords : scopedDeletedRecords;
 
     const filteredRecords = currentRecords.filter(r => {
         const matchesSearch = r.siteName.toLowerCase().includes(searchQuery.toLowerCase()) ||
             (r.companyName || '').toLowerCase().includes(searchQuery.toLowerCase());
+
+        const matchesCompany = !filters.company || filters.company === 'all' || 
+            (r.companyName || '').toUpperCase().includes((filters.company || '').toUpperCase());
         
         const matchesSiteName = !filters.siteName || 
             r.siteName.toLowerCase().includes(filters.siteName.toLowerCase());
@@ -826,11 +884,12 @@ const SiteFinanceTracker: React.FC = () => {
             }
         }
 
-        return matchesSearch && matchesSiteName && matchesStatus && matchesYear && matchesMonth && matchesCustomRange;
+        return matchesSearch && matchesCompany && matchesSiteName && matchesStatus && matchesYear && matchesMonth && matchesCustomRange;
     });
 
     const clearFilters = () => {
         setFilters({ 
+            company: 'all',
             siteName: '', 
             status: '',
             year: new Date().getFullYear().toString(),
@@ -842,10 +901,10 @@ const SiteFinanceTracker: React.FC = () => {
     };
 
     const siteOptions = useMemo(() => {
-        const sites = new Set(records.map(r => r.siteName));
-        siteDefaults.forEach(s => sites.add(s.siteName));
+        const sites = new Set(scopedRecords.map(r => r.siteName));
+        scopedSiteDefaults.forEach(s => sites.add(s.siteName));
         return Array.from(sites).sort();
-    }, [records, siteDefaults]);
+    }, [scopedRecords, scopedSiteDefaults]);
 
     const totalPages = Math.ceil(filteredRecords.length / rowsPerPage);
     const paginatedRecords = filteredRecords.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
@@ -858,6 +917,7 @@ const SiteFinanceTracker: React.FC = () => {
     // Clear column filters and selection when switching sub-tabs
     useEffect(() => {
         setFilters({ 
+            company: 'all',
             siteName: '', 
             status: '',
             year: new Date().getFullYear().toString(),
@@ -931,6 +991,21 @@ const SiteFinanceTracker: React.FC = () => {
                             <option value="profit">Profit</option>
                             <option value="loss">Loss</option>
                         </select>
+
+                        <select
+                            value={filters.company || 'all'}
+                            onChange={(e) => setFilters(prev => ({ ...prev, company: e.target.value }))}
+                            className="h-10 px-3 bg-[#041b0f] md:bg-gray-50 border border-white/10 md:border-gray-200 rounded-lg text-xs md:text-sm text-white md:text-gray-900 focus:outline-none focus:border-[#00D27F] transition-all font-semibold cursor-pointer min-w-[125px]"
+                            title="Filter by Company Entity"
+                        >
+                            <option value="all">All Companies</option>
+                            <option value="PIFS">PIFS</option>
+                            <option value="SWLLP">SWLLP (SOUTHWALL)</option>
+                            <option value="PIFS & SWLLP">PIFS & SWLLP (Split)</option>
+                            <option value="PPFMS">PPFMS</option>
+                            <option value="PIFS & PPFMS">PIFS & PPFMS</option>
+                            <option value="PPFMS & SWLLP">PPFMS & SWLLP</option>
+                        </select>
                     </div>
 
                     <div className="flex items-center gap-1 bg-[#041b0f] md:bg-gray-50 p-1 rounded-lg border border-white/10 md:border-gray-200 shrink-0">
@@ -987,13 +1062,26 @@ const SiteFinanceTracker: React.FC = () => {
 
                 {/* Row 2: All Primary Actions */}
                 <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-white/5 md:border-gray-100">
-                    <button
-                        onClick={() => navigate('/finance/site-tracker/add')}
-                        className="whitespace-nowrap h-11 inline-flex items-center justify-center gap-2 px-6 py-2 text-sm font-bold text-[#041b0f] md:text-white bg-[#00D27F] md:bg-emerald-600 rounded-xl hover:bg-[#00b86e] md:hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-500/10 active:scale-95"
-                    >
-                        <Plus className="h-4 w-4" />
-                        <span>New Entry</span>
-                    </button>
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={() => navigate('/finance/site-tracker/add')}
+                            className="whitespace-nowrap h-11 inline-flex items-center justify-center gap-2 px-6 py-2 text-sm font-bold text-[#041b0f] md:text-white bg-[#00D27F] md:bg-emerald-600 rounded-xl hover:bg-[#00b86e] md:hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-500/10 active:scale-95"
+                        >
+                            <Plus className="h-4 w-4" />
+                            <span>New Entry</span>
+                        </button>
+
+                        {!routingScope.isGlobalAdmin && (
+                            <div className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-500/10 md:bg-emerald-50 border border-emerald-500/20 md:border-emerald-200 text-xs font-bold text-emerald-400 md:text-emerald-800">
+                                <ShieldCheck className="h-4 w-4 text-[#00D27F] md:text-emerald-600" />
+                                <span>
+                                    {routingScope.allowedCompanies.length > 0 
+                                        ? `Scope: ${routingScope.allowedCompanies.join(', ')} (${scopedRecords.length} sites)` 
+                                        : `Assigned Sites (${scopedRecords.length})`}
+                                </span>
+                            </div>
+                        )}
+                    </div>
 
                     <div className="flex items-center gap-2">
                         <button
@@ -1268,7 +1356,7 @@ const SiteFinanceTracker: React.FC = () => {
                                                 </td>
                                                 <td className="px-5 py-3.5">
                                                     <div className="font-bold text-white md:text-gray-900 text-sm">{record.siteName}</div>
-                                                    <div className="text-[10px] text-emerald-400/30 md:text-gray-500 mt-1 font-bold uppercase tracking-wider">{record.companyName || '—'}</div>
+                                                    <div className="text-[10px] text-emerald-400/30 md:text-gray-500 mt-1 font-bold uppercase tracking-wider">{normalizeCompanyShortName(record.companyName) || '—'}</div>
                                                     
                                                     <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                                                         {activeSubTab === 'log' && record.billingMonth && (
@@ -1410,7 +1498,7 @@ const SiteFinanceTracker: React.FC = () => {
                                                 />
                                                 <div>
                                                     <h4 className="font-bold text-white leading-tight">{record.siteName}</h4>
-                                                    <p className="text-[10px] text-emerald-400/50 font-medium uppercase mt-0.5">{record.companyName || '—'}</p>
+                                                    <p className="text-[10px] text-emerald-400/50 font-bold uppercase mt-0.5">{normalizeCompanyShortName(record.companyName) || '—'}</p>
                                                     {activeSubTab === 'log' && record.billingMonth && (
                                                         <span className="inline-block mt-1 px-1.5 py-0.5 bg-emerald-500/10 text-[#00D27F] text-[9px] font-black rounded tracking-tighter uppercase">
                                                             {format(new Date(record.billingMonth), 'MMM yyyy')}
@@ -1500,50 +1588,56 @@ const SiteFinanceTracker: React.FC = () => {
                         </div>
 
                         {/* Pagination */}
-                        {totalPages > 1 && (
+                        {filteredRecords.length > 0 && (
                             <div className="px-5 py-4 border-t border-white/5 md:border-border flex flex-col md:flex-row items-center justify-between bg-[#041b0f]/30 md:bg-card gap-4 md:gap-0">
                                 <div className="flex items-center gap-4">
                                     <div className="flex items-center gap-2">
-                                        <span className="text-[10px] md:text-xs text-emerald-400/40 md:text-muted font-bold md:font-semibold uppercase md:uppercase tracking-widest md:tracking-wide">Rows:</span>
-                                            <select
-                                                value={rowsPerPage}
-                                                onChange={(e) => {
-                                                    setRowsPerPage(Number(e.target.value));
-                                                    setCurrentPage(1);
-                                                }}
-                                                className="h-8 md:h-9 px-2 text-[11px] md:text-xs font-black md:font-bold text-emerald-400 md:text-primary-text bg-[#041b0f] md:bg-page border border-white/10 md:border-border rounded-lg outline-none focus:border-[#00D27F] md:focus:border-emerald-500 transition-all cursor-pointer shadow-sm"
-                                            >
+                                        <span className="text-[10px] md:text-xs text-emerald-400/40 md:text-muted font-bold md:font-semibold uppercase tracking-widest md:tracking-wide">Rows:</span>
+                                        <select
+                                            value={rowsPerPage}
+                                            onChange={(e) => {
+                                                setRowsPerPage(Number(e.target.value));
+                                                setCurrentPage(1);
+                                            }}
+                                            className="h-8 md:h-9 px-2 text-[11px] md:text-xs font-black md:font-bold text-emerald-400 md:text-primary-text bg-[#041b0f] md:bg-page border border-white/10 md:border-border rounded-lg outline-none focus:border-[#00D27F] md:focus:border-emerald-500 transition-all cursor-pointer shadow-sm"
+                                        >
                                             <option value={10}>10</option>
-                                            <option value={15}>15</option>
                                             <option value={20}>20</option>
                                             <option value={50}>50</option>
+                                            <option value={100}>100</option>
                                         </select>
                                     </div>
-                                    <p className="text-[10px] md:text-xs text-emerald-400/40 md:text-muted font-bold md:font-semibold uppercase md:uppercase tracking-tight md:tracking-wide">
+                                    <p className="text-[10px] md:text-xs text-emerald-400/40 md:text-muted font-bold md:font-semibold uppercase tracking-tight md:tracking-wide">
                                         Showing {((currentPage - 1) * rowsPerPage) + 1}–{Math.min(currentPage * rowsPerPage, filteredRecords.length)} of {filteredRecords.length}
                                     </p>
                                 </div>
-                                <div className="flex items-center gap-1">
+                                {totalPages > 1 && (
+                                    <div className="flex items-center gap-1">
                                         <button
                                             onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                                             disabled={currentPage === 1}
                                             className="px-3 md:px-4 py-1.5 md:h-9 text-[10px] md:text-xs font-black md:font-bold uppercase tracking-tighter md:tracking-wide text-emerald-400/60 md:text-primary-text bg-white/5 md:bg-page border border-white/5 md:border-border rounded-lg hover:bg-white/10 md:hover:bg-gray-100 disabled:opacity-20 disabled:cursor-not-allowed transition-all"
                                         >Prev</button>
-                                    <div className="flex items-center gap-1 mx-2">
-                                        {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
-                                                <button
-                                                    key={page}
-                                                    onClick={() => setCurrentPage(page)}
-                                                    className={`w-8 h-8 md:w-9 md:h-9 text-xs font-black rounded-lg transition-all ${page === currentPage ? 'bg-[#00D27F] md:bg-emerald-600 text-[#041b0f] md:text-white shadow-lg md:shadow-sm shadow-emerald-500/20' : 'text-emerald-400/40 md:text-muted hover:text-emerald-400 md:hover:text-primary-text hover:bg-white/5 md:hover:bg-page border border-white/5 md:border-border'}`}
-                                                >{page}</button>
-                                        ))}
+                                        <div className="flex items-center gap-1 mx-2">
+                                            {getPageNumbers(currentPage, totalPages).map((p, idx) => (
+                                                p === '...' ? (
+                                                    <span key={`dots-${idx}`} className="px-1 text-xs text-emerald-400/40 md:text-muted font-bold">...</span>
+                                                ) : (
+                                                    <button
+                                                        key={p}
+                                                        onClick={() => setCurrentPage(Number(p))}
+                                                        className={`w-8 h-8 md:w-9 md:h-9 text-xs font-black rounded-lg transition-all ${p === currentPage ? 'bg-[#00D27F] md:bg-emerald-600 text-[#041b0f] md:text-white shadow-lg md:shadow-sm shadow-emerald-500/20' : 'text-emerald-400/40 md:text-muted hover:text-emerald-400 md:hover:text-primary-text hover:bg-white/5 md:hover:bg-page border border-white/5 md:border-border'}`}
+                                                    >{p}</button>
+                                                )
+                                            ))}
+                                        </div>
+                                        <button
+                                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                            disabled={currentPage === totalPages}
+                                            className="px-3 md:px-4 py-1.5 md:h-9 text-[10px] md:text-xs font-black md:font-bold uppercase tracking-tighter md:tracking-wide text-emerald-400/60 md:text-primary-text bg-white/5 md:bg-page border border-white/5 md:border-border rounded-lg hover:bg-white/10 md:hover:bg-gray-100 disabled:opacity-20 disabled:cursor-not-allowed transition-all"
+                                        >Next</button>
                                     </div>
-                                    <button
-                                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                                        disabled={currentPage === totalPages}
-                                        className="px-3 md:px-4 py-1.5 md:h-9 text-[10px] md:text-xs font-black md:font-bold uppercase tracking-tighter md:tracking-wide text-emerald-400/60 md:text-primary-text bg-white/5 md:bg-page border border-white/5 md:border-border rounded-lg hover:bg-white/10 md:hover:bg-gray-100 disabled:opacity-20 disabled:cursor-not-allowed transition-all"
-                                    >Next</button>
-                                </div>
+                                )}
                             </div>
                         )}
                     </>

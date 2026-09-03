@@ -14,6 +14,10 @@ import { format, getDate, getMonth, getYear, set, parseISO } from 'date-fns';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 
 
+import { getUserRoutingScope, getSiteMetadataFromMatrix } from '../../services/siteRoutingScope';
+import type { SiteResponsibilityMatrix } from '../../types/siteRouting';
+
+
 const AddSiteAttendanceRecord: React.FC = () => {
     const navigate = useNavigate();
     const { id } = useParams<{ id: string }>();
@@ -23,6 +27,7 @@ const AddSiteAttendanceRecord: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [sites, setSites] = useState<Organization[]>([]);
+    const [matrixList, setMatrixList] = useState<SiteResponsibilityMatrix[]>([]);
     const [record, setRecord] = useState<Partial<SiteInvoiceRecord>>({
         siteId: '',
         siteName: '',
@@ -58,30 +63,54 @@ const AddSiteAttendanceRecord: React.FC = () => {
         const fetchData = async () => {
             setIsLoading(true);
             try {
-                const [fetchedSites, fetchedDefaults, trackerRecords] = await Promise.all([
+                const { user: authUser } = useAuthStore.getState();
+                if (authUser) {
+                    setCurrentUser({ id: authUser.id, name: authUser.name || 'Unknown' });
+                }
+
+                const [fetchedSites, fetchedDefaults, trackerRecords, matrixData] = await Promise.all([
                     api.getOrganizations(),
                     api.getSiteInvoiceDefaults(),
-                    api.getSiteInvoiceRecords()
+                    api.getSiteInvoiceRecords(),
+                    api.getSiteResponsibilityMatrix()
                 ]);
+
+                const matrix = matrixData || [];
+                setMatrixList(matrix);
+
+                const scope = getUserRoutingScope(authUser, matrix);
 
                 // Extract unique site names from tracker records
                 const trackerSiteNames = Array.from(new Set(trackerRecords.map(r => r.siteName).filter(Boolean)));
                 
-                // Merge with fetched sites
+                // Merge with fetched sites & matrix sites
                 const allSites: Organization[] = [...(fetchedSites || [])];
                 trackerSiteNames.forEach(name => {
                     if (!allSites.find(s => s.shortName === name)) {
                         allSites.push({ id: name!, shortName: name!, name: name! } as any as Organization);
                     }
                 });
+                matrix.forEach(m => {
+                    if (m.siteName && !allSites.find(s => s.shortName === m.siteName)) {
+                        allSites.push({ id: m.siteName, shortName: m.siteName, name: m.siteName } as any as Organization);
+                    }
+                });
                 
-                setSites(allSites);
+                // Filter sites strictly to user's authorized scope
+                const permittedSites = allSites.filter(s => scope.isSitePermitted(s.shortName || (s as any).name));
+                setSites(permittedSites);
                 setSiteDefaults(fetchedDefaults || []);
 
-                // Extract unique incharge names from tracker records
+                // Extract unique incharge names from tracker records & matrix
                 const opsSet = new Set<string>();
                 const hrSet = new Set<string>();
                 const invoiceSet = new Set<string>();
+
+                matrix.forEach(m => {
+                    if (m.opsManagerName) opsSet.add(m.opsManagerName);
+                    if (m.hrInchargeName) hrSet.add(m.hrInchargeName);
+                    if (m.accountsInchargeName) invoiceSet.add(m.accountsInchargeName);
+                });
 
                 trackerRecords.forEach(r => {
                     if (r.opsIncharge) opsSet.add(r.opsIncharge);
@@ -89,24 +118,13 @@ const AddSiteAttendanceRecord: React.FC = () => {
                     if (r.invoiceIncharge) invoiceSet.add(r.invoiceIncharge);
                 });
 
-                // Add default options if not present
-                ['Sandeep', 'Shilpa', 'Isaac', 'Venkat'].forEach(name => opsSet.add(name));
-                ['Chandana', 'Pooja', 'Kavya'].forEach(name => hrSet.add(name));
-                ['Arpitha', 'Sinchana'].forEach(name => invoiceSet.add(name));
-
                 setOpsInchargeOptions(Array.from(opsSet).sort());
                 setHrInchargeOptions(Array.from(hrSet).sort());
                 setInvoiceInchargeOptions(Array.from(invoiceSet).sort());
 
-                const { user: authUser } = useAuthStore.getState();
-                if (authUser) {
-                    setCurrentUser({ id: authUser.id, name: authUser.name || 'Unknown' });
-                }
-
                 if (isEditing && id) {
                     const existingRecord = trackerRecords.find(r => r.id === id);
                     if (existingRecord) {
-                        // Ensure siteId is not null/empty if siteName exists
                         if (!existingRecord.siteId && existingRecord.siteName) {
                             existingRecord.siteId = existingRecord.siteName;
                         }
@@ -140,16 +158,26 @@ const AddSiteAttendanceRecord: React.FC = () => {
                     updated.siteName = value;
                 }
                 
-                // Auto-fill from defaults
+                // 1. Auto-fill primary canonical incharge and company info from Site Responsibility Matrix (Image 1)
+                const matrixMeta = getSiteMetadataFromMatrix(updated.siteName || value, matrixList);
+                if (matrixMeta) {
+                    updated.companyName = matrixMeta.billingCompany || updated.companyName;
+                    updated.billingCycle = matrixMeta.billingCycle || updated.billingCycle;
+                    updated.opsIncharge = matrixMeta.opsManagerName || updated.opsIncharge;
+                    updated.hrIncharge = matrixMeta.hrInchargeName || updated.hrIncharge;
+                    updated.invoiceIncharge = matrixMeta.accountsInchargeName || updated.invoiceIncharge;
+                }
+
+                // 2. Auto-fill additional date defaults if available
                 const targetId = site ? site.id : value;
                 const defaults = siteDefaults.find(d => d.siteId === targetId || d.siteName === value);
                 if (defaults) {
                     const defs = defaults as any;
-                    updated.companyName = defs.companyName || updated.companyName;
-                    updated.billingCycle = defs.billingCycle || updated.billingCycle;
-                    updated.opsIncharge = defs.opsIncharge || updated.opsIncharge;
-                    updated.hrIncharge = defs.hrIncharge || updated.hrIncharge;
-                    updated.invoiceIncharge = defs.invoiceIncharge || updated.invoiceIncharge;
+                    if (!updated.companyName) updated.companyName = defs.companyName;
+                    if (!updated.billingCycle) updated.billingCycle = defs.billingCycle;
+                    if (!updated.opsIncharge) updated.opsIncharge = defs.opsIncharge;
+                    if (!updated.hrIncharge) updated.hrIncharge = defs.hrIncharge;
+                    if (!updated.invoiceIncharge) updated.invoiceIncharge = defs.invoiceIncharge;
 
                     // Dynamic Date Adjustment: Use the day from defaults, but current Year & Month
                     const adjustDateToCurrentPeriod = (dateStr: string | undefined): string => {

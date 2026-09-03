@@ -18,6 +18,7 @@ import type {
   SiteResponsibilityMatrix
 } from '../types';
 import { INITIAL_SITE_RESPONSIBILITY_DATA } from '../data/initialSiteResponsibilityData';
+import { normalizeCompanyShortName } from './siteRoutingScope';
 import { getObjectDiff } from '../utils/diff';
 import { 
   differenceInCalendarDays, differenceInCalendarMonths, differenceInMonths, differenceInYears, format, startOfMonth, endOfMonth, 
@@ -877,37 +878,24 @@ export const api = {
     return fetchWithCache(`site_invoice_records_${managerId || 'all'}`, async () => {
       const query = supabase
         .from('site_invoice_tracker')
-        .select('*, creator:created_by(reporting_manager_id, reporting_manager_2_id, reporting_manager_3_id)')
+        .select('*')
         .is('deleted_at', null)
         .order('site_name');
       
       const { data, error } = await query;
       if (error) throw error;
 
-      let filteredData = data || [];
-      if (managerId) {
-          filteredData = filteredData.filter((row: any) => 
-              row.creator?.reporting_manager_id === managerId ||
-              row.creator?.reporting_manager_2_id === managerId ||
-              row.creator?.reporting_manager_3_id === managerId
-          );
-      }
-
-      return filteredData.map(toCamelCase);
+      return (data || []).map(toCamelCase);
     });
   },
 
   getDeletedSiteInvoiceRecords: async (managerId?: string): Promise<SiteInvoiceRecord[]> => {
     return fetchWithCache(`deleted_site_invoice_records_${managerId || 'all'}`, async () => {
-      let query = supabase
+      const query = supabase
         .from('site_invoice_tracker')
         .select('*')
         .not('deleted_at', 'is', null)
         .order('site_name');
-        
-      if (managerId) {
-          query = query.eq('created_by', managerId);
-      }
       
       const { data, error } = await query;
       if (error) throw error;
@@ -1039,14 +1027,10 @@ export const api = {
   // --- Site Invoice Defaults (Auto-fill templates) ---
   getSiteInvoiceDefaults: async (managerId?: string): Promise<SiteInvoiceDefault[]> => {
     return fetchWithCache(`site_invoice_defaults_${managerId || 'all'}`, async () => {
-      let query = supabase
+      const query = supabase
         .from('site_invoice_defaults')
         .select('*')
         .order('site_name');
-        
-      if (managerId) {
-          query = query.eq('created_by', managerId);
-      }
       
       const { data, error } = await query;
       if (error) throw error;
@@ -3320,6 +3304,47 @@ export const api = {
       const camelGroups: any[] = groups.map(g => processUrlsForDisplay(toCamelCase(g)));
       const camelCompanies: any[] = companies.map(c => processUrlsForDisplay(toCamelCase(c)));
       const camelEntities: any[] = entities.map(e => processUrlsForDisplay(toCamelCase(e)));
+
+      // Ensure AP Group exists if empty
+      if (camelGroups.length === 0) {
+        camelGroups.push({
+          id: 'group_1774003567612',
+          name: 'AP Group',
+          companies: [],
+          locations: ['Bangalore', 'Hyderabad']
+        });
+      }
+
+      // Ensure PARADIGM PROPERTY & FACILITY MANAGEMENT SERVICES (PPFMS) is present
+      const hasPPFMS = camelCompanies.some(c => (c.name || '').toUpperCase().includes('PARADIGM PROPERTY') || c.id === 'comp_ppfms');
+      if (!hasPPFMS) {
+        camelCompanies.push({
+          id: 'comp_ppfms',
+          name: 'PARADIGM PROPERTY & FACILITY MANAGEMENT SERVICES',
+          groupId: camelGroups[0]?.id || 'group_1774003567612',
+          location: 'Bangalore',
+          address: 'KSF Building 1st Floor No. 15, Golf View Road, HAL Airport Road, Kodihalli, Bengaluru – 560008',
+          registrationType: 'ROC',
+          status: 'active',
+          entities: []
+        });
+      }
+
+      // Smart entity company linkage fallback
+      camelEntities.forEach(e => {
+        if (!e.companyId || e.companyId === 'unassigned_company') {
+          const op = (e.billingControls?.operatingCompany || '').toUpperCase();
+          if (op.includes('PPFMS')) {
+            e.companyId = 'comp_ppfms';
+          } else if (op.includes('SWLLP') || op.includes('SOUTHWALL')) {
+            e.companyId = 'comp_1774527590821';
+          } else if ((e.location || '').toLowerCase().includes('hyd')) {
+            e.companyId = 'comp_1775122124670';
+          } else {
+            e.companyId = 'comp_1774006215885';
+          }
+        }
+      });
 
       const companyMap = new Map<string, any[]>();
       const assignedEntityIds = new Set<string>();
@@ -10336,15 +10361,11 @@ export const api = {
   },
 
   async getDeletedSiteFinanceRecords(managerId?: string): Promise<SiteFinanceRecord[]> {
-    let query = supabase
+    const query = supabase
       .from('site_finance_tracker')
       .select('*')
       .not('deleted_at', 'is', null)
       .order('deleted_at', { ascending: false });
-
-    if (managerId) {
-        query = query.eq('created_by', managerId);
-    }
 
     const { data, error } = await query;
     if (error) throw error;
@@ -11222,6 +11243,9 @@ export const api = {
 
       const formatted = data.map((row: any) => {
         const item = toCamelCase(row) as SiteResponsibilityMatrix;
+        if (item.billingCompany) {
+          item.billingCompany = normalizeCompanyShortName(item.billingCompany);
+        }
         if (!item.fieldOfficerName && row.routing_rules?.field_officer_name) {
           item.fieldOfficerName = row.routing_rules.field_officer_name;
         } else if (!item.fieldOfficerName && Array.isArray(row.routing_rules?.field_officers)) {

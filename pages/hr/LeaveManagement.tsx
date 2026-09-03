@@ -152,9 +152,8 @@ const LeaveManagement: React.FC = () => {
                 end = endOfDay(today);
                 break;
             case 'Last Month':
-                const lastMonth = subMonths(today, 1);
-                start = startOfMonth(lastMonth);
-                end = endOfMonth(lastMonth);
+                start = startOfMonth(subMonths(today, 1));
+                end = endOfMonth(subMonths(today, 1));
                 break;
             case 'This Year':
                 start = startOfYear(today);
@@ -1812,6 +1811,7 @@ const LeaveManagement: React.FC = () => {
                             }}
                             className="bg-page border border-border text-primary-text text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 block p-1.5 transition-all outline-none"
                         >
+                            <option value={10}>10</option>
                             <option value={20}>20</option>
                             <option value={50}>50</option>
                             <option value={100}>100</option>
