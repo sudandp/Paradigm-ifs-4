@@ -19,31 +19,57 @@ const SiteAttendanceTracker: React.FC = () => {
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [isExporting, setIsExporting] = useState(false);
     const [previewData, setPreviewData] = useState<Partial<SiteInvoiceRecord>[]>([]);
+    const [importedMonth, setImportedMonth] = useState<string>(''); // BUG-11: billing month label from imported template
     const [isImporting, setIsImporting] = useState(false);
     const [siteDefaults, setSiteDefaults] = useState<SiteInvoiceDefault[]>([]);
     const [matrixList, setMatrixList] = useState<SiteResponsibilityMatrix[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [revisionModal, setRevisionModal] = useState<{ isOpen: boolean; recordId: string; siteName: string }>({ isOpen: false, recordId: '', siteName: '' });
 
+    const { user } = useAuthStore();
+    // BUG-06 FIX: isAdmin must be declared BEFORE handler functions that reference it.
+    // Previously declared at L596, causing it to evaluate as undefined (falsy) inside handlers.
+    const isAdmin = ['admin', 'super_admin', 'management', 'hr'].includes(user?.role || '');
+
     // Filter & Pagination State
+    const getDefaultBillingPeriod = () => {
+        const d = new Date();
+        d.setDate(1);
+        d.setMonth(d.getMonth() - 1);
+        return {
+            month: (d.getMonth() + 1).toString(),
+            year: d.getFullYear().toString()
+        };
+    };
+
     const [searchQuery, setSearchQuery] = useState('');
-    const [filters, setFilters] = useState({ 
-        company: 'all',
-        siteName: '', 
-        status: '',
-        year: new Date().getFullYear().toString(),
-        month: 'all',
-        startDate: '',
-        endDate: ''
+    const [filters, setFilters] = useState(() => {
+        const defaultPeriod = getDefaultBillingPeriod();
+        return {
+            company: 'all',
+            siteName: '', 
+            status: '',
+            opsIncharge: 'all',
+            hrIncharge: 'all',
+            billingCycle: 'all',
+            year: defaultPeriod.year,
+            month: defaultPeriod.month,
+            startDate: '',
+            endDate: ''
+        };
     });
 
     const clearFilters = () => {
+        const defaultPeriod = getDefaultBillingPeriod();
         setFilters({ 
             company: 'all',
             siteName: '', 
             status: '',
-            year: new Date().getFullYear().toString(),
-            month: 'all',
+            opsIncharge: 'all',
+            hrIncharge: 'all',
+            billingCycle: 'all',
+            year: defaultPeriod.year,
+            month: defaultPeriod.month,
             startDate: '',
             endDate: ''
         });
@@ -89,8 +115,6 @@ const SiteAttendanceTracker: React.FC = () => {
     const [isDeleting, setIsDeleting] = useState(false);
     const [isRestoring, setIsRestoring] = useState<string | null>(null);
 
-    const { user } = useAuthStore();
-
     // Compute site routing scope based on Image 1 matrix
     const routingScope = useMemo(() => getUserRoutingScope(user, matrixList), [user, matrixList]);
 
@@ -126,7 +150,9 @@ const SiteAttendanceTracker: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    // BUG-09 FIX: Add `user` to the dependency array — previously empty, causing a stale
+    // closure that would not re-run if user changed role mid-session.
+    }, [user]);
 
     useEffect(() => {
         fetchInitialData();
@@ -245,6 +271,18 @@ const SiteAttendanceTracker: React.FC = () => {
         if (val instanceof Date) return format(val, 'yyyy-MM-dd');
         const str = val.toString().trim();
         if (!str) return null;
+
+        // IMP-04 FIX: Detect DD/MM/YYYY format typed manually in India (e.g. "05/07/2026").
+        // JavaScript's Date constructor parses this as MM/DD/YYYY (May 7), not DD/MM/YYYY (July 5).
+        const ddmmyyyy = str.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+        if (ddmmyyyy) {
+            const [, day, month, year] = ddmmyyyy;
+            const date = new Date(Number(year), Number(month) - 1, Number(day));
+            if (!isNaN(date.getTime())) {
+                return format(date, 'yyyy-MM-dd');
+            }
+        }
+
         // Handle common Excel date formats or raw strings
         try {
             const date = new Date(str);
@@ -321,9 +359,27 @@ const SiteAttendanceTracker: React.FC = () => {
                 import('file-saver')
             ]);
             const ExcelJS = ExcelJSModule.default || ExcelJSModule;
+
+            // BUG-04 FIX: Use selected filter month (not current month) and embed BILLING_MONTH
+            // metadata so the import function knows which billing period the records belong to.
+            const uploadYearStr = filters.year === 'all' ? new Date().getFullYear().toString() : filters.year;
+            const uploadMonthStr = filters.month === 'all' ? (new Date().getMonth() + 1).toString() : filters.month;
+            const templateMonthDate = new Date(Number(uploadYearStr), Number(uploadMonthStr) - 1, 1);
+            const templateMonthCode = format(templateMonthDate, 'yyyy-MM-dd');
+            const templateMonthLabel = format(templateMonthDate, 'MMMM yyyy');
+
             const workbook = new ExcelJS.Workbook();
             const ws = workbook.addWorksheet('Template');
-            ws.columns = [
+
+            // Row 1: Metadata row — BILLING_MONTH (same pattern as Finance tracker)
+            ws.getRow(1).getCell(1).value = 'BILLING_MONTH';
+            ws.getRow(1).getCell(2).value = templateMonthCode;
+            ws.getRow(1).font = { size: 7, color: { argb: 'FFBFBFBF' } };
+            ws.getRow(1).height = 14;
+
+            // Row 2: Column headers
+            const headerRow = ws.getRow(2);
+            const headers = [
                 { header: 'Site Name', key: 'siteName', width: 25 },
                 { header: 'Company Name', key: 'companyName', width: 20 },
                 { header: 'Billing Cycle', key: 'billingCycle', width: 20 },
@@ -346,8 +402,13 @@ const SiteAttendanceTracker: React.FC = () => {
                 { header: 'Received Balance', key: 'receivedBalance', width: 15 },
                 { header: 'Balance Receipt No / Remarks', key: 'receivedBalanceReceipt', width: 25 },
             ];
-            ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
-            ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0D9488' } };
+            ws.columns = headers;
+            headers.forEach((h, idx) => {
+                const cell = headerRow.getCell(idx + 1);
+                cell.value = h.header;
+            });
+            headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0D9488' } };
             
             // Only export sites authorized for the user, pre-filled with official matrix incharges
             const templateDefaults = siteDefaults.filter(d => routingScope.isSitePermitted(d.siteName, d.companyName));
@@ -381,12 +442,9 @@ const SiteAttendanceTracker: React.FC = () => {
             const buffer = await workbook.xlsx.writeBuffer();
             const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
             
-            const uploadYearStr = filters.year === 'all' ? new Date().getFullYear().toString() : filters.year;
-            const uploadMonthStr = filters.month === 'all' ? (new Date().getMonth() + 1).toString() : filters.month;
-            const templateMonth = format(new Date(Number(uploadYearStr), Number(uploadMonthStr) - 1, 1), 'yyyy-MM');
-            
+            const templateMonth = format(templateMonthDate, 'yyyy-MM');
             saveAs(blob, `Attendance_Tracker_Template_${templateMonth}.xlsx`);
-            setToast({ message: `Template for ${templateMonth} downloaded (${templateDefaults.length} permitted sites)`, type: 'success' });
+            setToast({ message: `Template for ${templateMonthLabel} downloaded (${templateDefaults.length} permitted sites)`, type: 'success' });
         } catch (err) {
             console.error('Template error:', err);
             setToast({ message: 'Failed to download template', type: 'error' });
@@ -405,10 +463,32 @@ const SiteAttendanceTracker: React.FC = () => {
             await workbook.xlsx.load(await file.arrayBuffer());
             const ws = workbook.getWorksheet(1);
             const parsed: Partial<SiteInvoiceRecord>[] = [];
+
+            // BUG-04 FIX: Read BILLING_MONTH metadata from row 1 (embedded by handleDownloadTemplate).
+            // Row 1 col A = 'BILLING_MONTH', col B = 'yyyy-MM-dd'
+            const metaLabel = ws?.getRow(1).getCell(1).value?.toString() || '';
+            const metaValue = ws?.getRow(1).getCell(2).value?.toString() || '';
+            let effectiveBillingMonth: string;
+            let importMonthDisplay: string;
+
+            if (metaLabel === 'BILLING_MONTH' && metaValue) {
+                effectiveBillingMonth = metaValue;
+                importMonthDisplay = format(new Date(metaValue), 'MMMM yyyy');
+            } else {
+                // Legacy template: fall back to current filter or current month
+                const uploadYearStr = filters.year === 'all' ? new Date().getFullYear().toString() : filters.year;
+                const uploadMonthStr = filters.month === 'all' ? (new Date().getMonth() + 1).toString() : filters.month;
+                effectiveBillingMonth = format(new Date(Number(uploadYearStr), Number(uploadMonthStr) - 1, 1), 'yyyy-MM-dd');
+                importMonthDisplay = format(new Date(effectiveBillingMonth), 'MMMM yyyy');
+            }
+
+            // Data rows start at row 2 for new templates (row 1 = metadata), row 1 for legacy
+            const dataStartRow = metaLabel === 'BILLING_MONTH' ? 3 : 2; // row 2 = headers in new template
+
             ws?.eachRow((row, i) => {
-                if (i === 1) return;
+                if (i < dataStartRow) return;
                 const rawSiteName = row.getCell(1).value?.toString() || '';
-                if (!rawSiteName) return;
+                if (!rawSiteName || rawSiteName === 'Site Name') return;
 
                 // Pre-fetch matrix metadata to enrich if spreadsheet cells are blank
                 const meta = getSiteMetadataFromMatrix(rawSiteName, matrixList);
@@ -433,6 +513,11 @@ const SiteAttendanceTracker: React.FC = () => {
                     invoiceSentDate: parseExcelDate(row.getCell(17).value),
                     invoiceSentTime: row.getCell(18).value?.toString() || '',
                     invoiceSentMethodRemarks: row.getCell(19).value?.toString() || '',
+                    // BUG-03 FIX: Cols 20-21 were previously missing — data was silently dropped on import.
+                    receivedBalance: row.getCell(20).value?.toString() || '',
+                    receivedBalanceReceipt: row.getCell(21).value?.toString() || '',
+                    // Attach billing month for traceability
+                    billingMonth: effectiveBillingMonth,
                 });
             });
 
@@ -442,14 +527,16 @@ const SiteAttendanceTracker: React.FC = () => {
             if (validRows.length === 0) {
                 setToast({ message: warningMessage || 'No permitted sites found in uploaded file', type: 'error' });
             } else {
+                // BUG-11 FIX: Store month label so the preview panel can display it.
+                setImportedMonth(importMonthDisplay);
                 setPreviewData(validRows);
                 if (rejectedRows.length > 0) {
                     setToast({ 
-                        message: `${validRows.length} valid records parsed. ${rejectedRows.length} unauthorized sites skipped.`, 
+                        message: `${validRows.length} valid records parsed for ${importMonthDisplay}. ${rejectedRows.length} unauthorized sites skipped.`, 
                         type: 'error' 
                     });
                 } else {
-                    setToast({ message: `${validRows.length} records parsed successfully. Please review.`, type: 'success' });
+                    setToast({ message: `${validRows.length} records parsed for ${importMonthDisplay}. Please review.`, type: 'success' });
                 }
             }
         } catch (err) {
@@ -498,26 +585,64 @@ const SiteAttendanceTracker: React.FC = () => {
     const currentRecords = activeSubTab === 'active' ? scopedRecords : scopedDeletedRecords;
 
     const siteOptions = useMemo(() => {
-        const sites = new Set(scopedRecords.map(r => r.siteName));
-        scopedSiteDefaults.forEach(s => sites.add(s.siteName));
-        return Array.from(sites).sort();
+        const sites = new Set(scopedRecords.map(r => r.siteName).filter(Boolean));
+        scopedSiteDefaults.forEach(s => { if (s.siteName) sites.add(s.siteName); });
+        return Array.from(sites).sort((a, b) => a.localeCompare(b));
     }, [scopedRecords, scopedSiteDefaults]);
+
+    const opsInchargeOptions = useMemo(() => {
+        const ops = new Set<string>();
+        scopedRecords.forEach(r => { if (r.opsIncharge?.trim()) ops.add(r.opsIncharge.trim()); });
+        matrixList.forEach(m => { if (m.opsManagerName?.trim()) ops.add(m.opsManagerName.trim()); });
+        return Array.from(ops).sort((a, b) => a.localeCompare(b));
+    }, [scopedRecords, matrixList]);
+
+    const hrInchargeOptions = useMemo(() => {
+        const hrs = new Set<string>();
+        scopedRecords.forEach(r => { if (r.hrIncharge?.trim()) hrs.add(r.hrIncharge.trim()); });
+        matrixList.forEach(m => { if (m.hrInchargeName?.trim()) hrs.add(m.hrInchargeName.trim()); });
+        return Array.from(hrs).sort((a, b) => a.localeCompare(b));
+    }, [scopedRecords, matrixList]);
+
+    const billingCycleOptions = useMemo(() => {
+        const cycles = new Set<string>();
+        scopedRecords.forEach(r => { if (r.billingCycle?.trim()) cycles.add(r.billingCycle.trim()); });
+        matrixList.forEach(m => { if (m.billingCycle?.trim()) cycles.add(m.billingCycle.trim()); });
+        return Array.from(cycles).sort((a, b) => a.localeCompare(b));
+    }, [scopedRecords, matrixList]);
 
     const filteredRecords = useMemo(() => {
         return currentRecords.filter(r => {
             const matchesSearch = r.siteName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                (r.companyName || '').toLowerCase().includes(searchQuery.toLowerCase());
+                (r.companyName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                (r.opsIncharge || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                (r.hrIncharge || '').toLowerCase().includes(searchQuery.toLowerCase());
             
+            const recordCompNorm = normalizeCompanyShortName(r.companyName);
+            const filterCompNorm = normalizeCompanyShortName(filters.company);
             const matchesCompany = !filters.company || filters.company === 'all' || 
-                (r.companyName || '').toUpperCase().includes((filters.company || '').toUpperCase());
+                recordCompNorm === filterCompNorm ||
+                (r.companyName || '').toUpperCase().includes(filters.company.toUpperCase());
 
             const matchesSiteName = !filters.siteName || 
-                r.siteName.toLowerCase().includes(filters.siteName.toLowerCase());
+                r.siteName.toLowerCase().trim() === filters.siteName.toLowerCase().trim() ||
+                r.siteName.toLowerCase().includes(filters.siteName.toLowerCase().trim());
                 
             const matchesStatus = !filters.status || (() => {
                 const isSent = !!r.invoiceSentDate;
                 return filters.status === 'sent' ? isSent : !isSent;
             })();
+
+            const matchesOps = !filters.opsIncharge || filters.opsIncharge === 'all' || 
+                (r.opsIncharge || '').toLowerCase().trim() === filters.opsIncharge.toLowerCase().trim() ||
+                (r.opsIncharge || '').toLowerCase().includes(filters.opsIncharge.toLowerCase().trim());
+
+            const matchesHr = !filters.hrIncharge || filters.hrIncharge === 'all' || 
+                (r.hrIncharge || '').toLowerCase().trim() === filters.hrIncharge.toLowerCase().trim() ||
+                (r.hrIncharge || '').toLowerCase().includes(filters.hrIncharge.toLowerCase().trim());
+
+            const matchesBillingCycle = !filters.billingCycle || filters.billingCycle === 'all' || 
+                (r.billingCycle || '').toLowerCase().trim() === filters.billingCycle.toLowerCase().trim();
 
             // Date filtering (based on managerTentativeDate or createdAt)
             const targetDateStr = r.managerTentativeDate || r.createdAt;
@@ -539,7 +664,7 @@ const SiteAttendanceTracker: React.FC = () => {
                 matchesCustomRange = false;
             }
 
-            return matchesSearch && matchesCompany && matchesSiteName && matchesStatus && matchesYear && matchesMonth && matchesCustomRange;
+            return matchesSearch && matchesCompany && matchesSiteName && matchesStatus && matchesOps && matchesHr && matchesBillingCycle && matchesYear && matchesMonth && matchesCustomRange;
         });
     }, [currentRecords, searchQuery, filters]);
 
@@ -581,19 +706,24 @@ const SiteAttendanceTracker: React.FC = () => {
     }, [searchQuery, filters, activeSubTab]);
 
     useEffect(() => {
+        const defaultPeriod = getDefaultBillingPeriod();
         setFilters({ 
             company: 'all',
             siteName: '', 
             status: '',
-            year: new Date().getFullYear().toString(),
-            month: 'all',
+            opsIncharge: 'all',
+            hrIncharge: 'all',
+            billingCycle: 'all',
+            year: defaultPeriod.year,
+            month: defaultPeriod.month,
             startDate: '',
             endDate: ''
         });
         setSelectedIds(new Set());
     }, [activeSubTab]);
 
-    const isAdmin = ['admin', 'super_admin', 'management', 'hr'].includes(user?.role || '');
+    // isAdmin is declared at the top of the component (BUG-06 FIX).
+    // The duplicate declaration that was here has been removed.
 
     if (isLoading) {
         return <LoadingScreen message="Loading page data..." />;
@@ -653,6 +783,42 @@ const SiteAttendanceTracker: React.FC = () => {
                             <option value="PPFMS">PPFMS</option>
                             <option value="PIFS & PPFMS">PIFS & PPFMS</option>
                             <option value="PPFMS & SWLLP">PPFMS & SWLLP</option>
+                        </select>
+
+                        <select
+                            value={filters.opsIncharge || 'all'}
+                            onChange={(e) => setFilters(prev => ({ ...prev, opsIncharge: e.target.value }))}
+                            className="h-10 px-3 bg-[#041b0f] md:bg-gray-50 border border-white/10 md:border-gray-200 rounded-lg text-xs md:text-sm text-white md:text-gray-900 focus:outline-none focus:border-[#00D27F] transition-all font-semibold cursor-pointer min-w-[120px]"
+                            title="Filter by Operations Incharge"
+                        >
+                            <option value="all">All Ops Incharge</option>
+                            {opsInchargeOptions.map(ops => (
+                                <option key={ops} value={ops}>{ops}</option>
+                            ))}
+                        </select>
+
+                        <select
+                            value={filters.hrIncharge || 'all'}
+                            onChange={(e) => setFilters(prev => ({ ...prev, hrIncharge: e.target.value }))}
+                            className="h-10 px-3 bg-[#041b0f] md:bg-gray-50 border border-white/10 md:border-gray-200 rounded-lg text-xs md:text-sm text-white md:text-gray-900 focus:outline-none focus:border-[#00D27F] transition-all font-semibold cursor-pointer min-w-[120px]"
+                            title="Filter by HR Incharge"
+                        >
+                            <option value="all">All HR Incharge</option>
+                            {hrInchargeOptions.map(hr => (
+                                <option key={hr} value={hr}>{hr}</option>
+                            ))}
+                        </select>
+
+                        <select
+                            value={filters.billingCycle || 'all'}
+                            onChange={(e) => setFilters(prev => ({ ...prev, billingCycle: e.target.value }))}
+                            className="h-10 px-3 bg-[#041b0f] md:bg-gray-50 border border-white/10 md:border-gray-200 rounded-lg text-xs md:text-sm text-white md:text-gray-900 focus:outline-none focus:border-[#00D27F] transition-all font-semibold cursor-pointer min-w-[120px]"
+                            title="Filter by Billing Cycle"
+                        >
+                            <option value="all">All Billing Cycles</option>
+                            {billingCycleOptions.map(cycle => (
+                                <option key={cycle} value={cycle}>{cycle}</option>
+                            ))}
                         </select>
                     </div>
 
@@ -1283,8 +1449,14 @@ const SiteAttendanceTracker: React.FC = () => {
                             <div>
                                 <h2 className="text-lg font-bold text-white">Attendance Import Preview</h2>
                                 <p className="text-sm text-emerald-400/40 mt-0.5">{previewData.length} records ready to import</p>
+                                {/* BUG-11 FIX: Show billing month badge so user can verify they're importing to the correct month */}
+                                {importedMonth && (
+                                    <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#00D27F]/10 border border-[#00D27F]/30">
+                                        <span className="text-[11px] font-bold text-[#00D27F] uppercase tracking-wider">📅 Importing to: {importedMonth}</span>
+                                    </div>
+                                )}
                             </div>
-                            <button onClick={() => setPreviewData([])} className="p-2 hover:bg-white/5 rounded-xl transition-colors">
+                            <button onClick={() => { setPreviewData([]); setImportedMonth(''); }} className="p-2 hover:bg-white/5 rounded-xl transition-colors">
                                 <X className="h-5 w-5 text-emerald-400/40" />
                             </button>
                         </div>
@@ -1313,7 +1485,7 @@ const SiteAttendanceTracker: React.FC = () => {
                             </table>
                         </div>
                         <div className="px-6 py-4 border-t border-white/5 bg-[#041b0f] flex justify-end gap-3">
-                            <button onClick={() => setPreviewData([])} className="px-5 py-2 text-sm font-bold text-emerald-400/60 hover:text-emerald-400 hover:bg-white/5 rounded-xl transition-all border border-white/10">Cancel</button>
+                            <button onClick={() => { setPreviewData([]); setImportedMonth(''); }} className="px-5 py-2 text-sm font-bold text-emerald-400/60 hover:text-emerald-400 hover:bg-white/5 rounded-xl transition-all border border-white/10">Cancel</button>
                             <button
                                 onClick={handleConfirmImport}
                                 disabled={isImporting}

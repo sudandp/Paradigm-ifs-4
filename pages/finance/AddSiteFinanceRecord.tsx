@@ -39,6 +39,7 @@ const AddSiteFinanceRecord: React.FC = () => {
             billedAmount: '' as any,
             billedManagementFee: '' as any,
             status: 'pending',
+            // BUG-02 FIX: Store as yyyy-MM for the month picker. startOfMonth keeps the day=01.
             billingMonth: format(startOfMonth(new Date()), 'yyyy-MM-dd')
         }
     });
@@ -251,6 +252,13 @@ const AddSiteFinanceRecord: React.FC = () => {
             .sort((a, b) => a.name.localeCompare(b.name));
     }, [sites, trackerSites]);
 
+    // BUG-10 FIX: Derive currentYear from the watched billingMonth value at render time,
+    // not inside the async callback where watch() could return a stale default value.
+    const watchedBillingMonth = watch('billingMonth');
+    const currentYearFromField = watchedBillingMonth
+        ? new Date(watchedBillingMonth).getFullYear()
+        : new Date().getFullYear();
+
     const handleSiteSelection = async (selectedSiteId: string, selectedSiteName: string) => {
         setValue('siteId', selectedSiteId);
         setValue('siteName', selectedSiteName);
@@ -262,7 +270,7 @@ const AddSiteFinanceRecord: React.FC = () => {
         }
         
         // Auto-fill from defaults if available - YEAR AWARE
-        const currentYear = new Date(watch('billingMonth') || new Date()).getFullYear();
+        const currentYear = currentYearFromField;
         
         const specificDefault = siteDefaults.find(d => 
             (d.siteId === selectedSiteId || d.siteName === selectedSiteName) && 
@@ -358,19 +366,43 @@ const AddSiteFinanceRecord: React.FC = () => {
                             />
                         </div>
                         <div className="space-y-2">
-                             <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Billing Date</label>
+                             <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Billing Month</label>
                             <Controller
                                 name="billingMonth"
                                 control={control}
-                                render={({ field }) => (
-                                    <Input 
-                                        type="date" 
-                                        {...field}
-                                        value={field.value ? field.value.split('T')[0] : ''} // Ensure YYYY-MM-DD
-                                        disabled={false}
-                                        className="h-12 !pl-4 border-gray-200 focus:border-emerald-500"
-                                    />
-                                )}
+                                rules={{ required: 'Billing month is required' }}
+                                render={({ field }) => {
+                                    // BUG-02 FIX: Use type="month" (yyyy-MM) so users pick month, not a specific day.
+                                    // Convert stored yyyy-MM-dd <-> yyyy-MM for the input.
+                                    const monthValue = field.value ? field.value.slice(0, 7) : '';
+                                    const now = new Date();
+                                    const maxMonth = format(now, 'yyyy-MM');
+                                    const selectedMonthLabel = monthValue ? format(new Date(monthValue + '-01'), 'MMMM yyyy') : '';
+                                    const isCurrentMonth = monthValue === maxMonth;
+                                    return (
+                                        <div className="space-y-2">
+                                            <Input
+                                                type="month"
+                                                value={monthValue}
+                                                max={maxMonth}
+                                                onChange={(e) => {
+                                                    // Store as yyyy-MM-01 (first of month) to match tracker filter
+                                                    const val = e.target.value;
+                                                    field.onChange(val ? val + '-01' : '');
+                                                }}
+                                                className="h-12 !pl-4 border-gray-200 focus:border-emerald-500"
+                                            />
+                                            {!isCurrentMonth && selectedMonthLabel && (
+                                                <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
+                                                    <span className="text-amber-600 text-xs">⚠️</span>
+                                                    <span className="text-xs font-semibold text-amber-700">
+                                                        You are entering data for <strong>{selectedMonthLabel}</strong> (past month)
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                }}
                             />
                         </div>
                     </div>

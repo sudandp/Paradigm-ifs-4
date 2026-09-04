@@ -10323,6 +10323,12 @@ export const api = {
       // Omit generated columns before insert
       delete snaked.total_billed_amount;
       snaked.status = 'pending';
+      // BUG-05 FIX: Validate billing_month before insert. A missing billing month means the user
+      // uploaded an old/incompatible template. Fail early with a clear error rather than inserting
+      // a null billing_month which would make records invisible to all month filters.
+      if (!snaked.billing_month) {
+        throw new Error('Billing month is missing in uploaded file. Please re-download the template and try again.');
+      }
       return snaked;
     });
     const { error } = await supabase.from('site_finance_tracker').insert(dbRecords);

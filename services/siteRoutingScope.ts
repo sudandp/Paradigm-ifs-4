@@ -159,22 +159,36 @@ export function getUserRoutingScope(
     };
   }
 
-  // Build permitted sites from matrix and user profile
+  // Build permitted sites and companies
   const permittedSites = new Set<string>();
   const permittedCompanies = new Set<string>();
 
-  // 1. Direct profile allocations (organizationName / organization_name)
+  // 1. Identify User's Assigned Companies from profile / role / email / canonical name
+  const userRoleStr = (user.role || '').toLowerCase();
+  const userOrgStr = (user.organizationName || (user as any).organization_name || (user as any).company || (user as any).companyName || '').toLowerCase();
+  
+  if (userOrgStr.includes('southwall') || userRoleStr.includes('southwall') || email.includes('southwall') || canonicalName === 'Arya Thomas' || userRoleStr.includes('swllp') || userOrgStr.includes('swllp')) {
+    permittedCompanies.add('SWLLP');
+  }
+  if (userOrgStr.includes('ppfms') || userRoleStr.includes('ppfms') || email.includes('ppfms')) {
+    permittedCompanies.add('PPFMS');
+  }
+  if (userOrgStr.includes('pifs') || userRoleStr.includes('pifs') || email.includes('pifs') || email.includes('paradigm')) {
+    permittedCompanies.add('PIFS');
+  }
+
+  // 2. Direct profile allocations (organizationName / organization_name)
   const orgNames = user.organizationName || (user as any).organization_name;
   if (orgNames) {
     orgNames.split(',').forEach((s: string) => {
       const trimmed = s.trim();
-      if (trimmed && trimmed.toLowerCase() !== 'head office') {
+      if (trimmed && trimmed.toLowerCase() !== 'head office' && trimmed.toLowerCase() !== 'all') {
         permittedSites.add(trimmed);
       }
     });
   }
 
-  // 2. Matrix-based role & employee allocations
+  // 3. Matrix-based role & employee allocations
   matrixList.forEach(m => {
     if (!m.siteName) return;
 
@@ -184,7 +198,7 @@ export function getUserRoutingScope(
     const siteMgrRoot = getCleanRoot(m.siteManagerName || '');
     const fieldOfficerRoot = getCleanRoot(m.fieldOfficerName || '');
 
-    const isAssigned = (
+    const isDirectlyAssigned = (
       (userCleanRoot && (
         accountsRoot === userCleanRoot ||
         hrRoot === userCleanRoot ||
@@ -199,10 +213,20 @@ export function getUserRoutingScope(
       (m.fieldOfficerId && m.fieldOfficerId === user.id)
     );
 
-    if (isAssigned) {
+    const mCompany = normalizeCompanyShortName(m.billingCompany);
+
+    if (isDirectlyAssigned) {
       permittedSites.add(m.siteName);
-      if (m.billingCompany) {
-        permittedCompanies.add(normalizeCompanyShortName(m.billingCompany));
+      if (mCompany) {
+        permittedCompanies.add(mCompany);
+      }
+    } else if (permittedCompanies.size > 0 && mCompany) {
+      // If user is assigned to a specific company (e.g. SWLLP), include all sites under that company
+      const matchesUserCompany = Array.from(permittedCompanies).some(c => 
+        c === mCompany || mCompany.includes(c) || c.includes(mCompany)
+      );
+      if (matchesUserCompany) {
+        permittedSites.add(m.siteName);
       }
     }
   });
@@ -210,11 +234,22 @@ export function getUserRoutingScope(
   // Extract allowed companies
   let allowedCompanies = Array.from(permittedCompanies).sort();
   if (allowedCompanies.length === 0) {
-    if (email.includes('southwall') || canonicalName === 'Arya Thomas') {
+    if (email.includes('southwall') || canonicalName === 'Arya Thomas' || userRoleStr.includes('southwall')) {
       allowedCompanies = ['SWLLP'];
     } else {
       allowedCompanies = ['PIFS', 'PPFMS'];
     }
+  }
+
+  // Fallback: If permittedSites is still empty, populate from matrix for the allowed companies
+  if (permittedSites.size === 0 && allowedCompanies.length > 0) {
+    matrixList.forEach(m => {
+      if (!m.siteName) return;
+      const mCompany = normalizeCompanyShortName(m.billingCompany);
+      if (allowedCompanies.some(c => c === mCompany || mCompany.includes(c))) {
+        permittedSites.add(m.siteName);
+      }
+    });
   }
 
   const permittedList = Array.from(permittedSites).sort();
@@ -222,20 +257,37 @@ export function getUserRoutingScope(
   const isSitePermitted = (siteName: string, companyName?: string): boolean => {
     if (!siteName) return false;
 
-    // Check by exact site name match
-    if (permittedSites.has(siteName)) return true;
+    const normComp = companyName ? normalizeCompanyShortName(companyName) : '';
 
-    // Check case-insensitive
-    const lower = siteName.toLowerCase().trim();
-    const hasMatch = permittedList.some(p => p.toLowerCase().trim() === lower);
-    if (hasMatch) return true;
+    // If companyName is provided and user has company restrictions:
+    if (normComp && allowedCompanies.length > 0) {
+      const isCompanyAllowed = allowedCompanies.some(ac => 
+        ac === normComp || normComp.includes(ac) || ac.includes(normComp)
+      );
+      if (!isCompanyAllowed) {
+        return false;
+      }
+    }
 
-    // Check if site prefix matches
-    const hasPrefixMatch = permittedList.some(p => {
-      const pLower = p.toLowerCase().trim();
-      return lower.startsWith(pLower) || pLower.startsWith(lower);
-    });
-    if (hasPrefixMatch) return true;
+    // If user has specific permitted sites:
+    if (permittedSites.size > 0) {
+      if (permittedSites.has(siteName)) return true;
+
+      const lower = siteName.toLowerCase().trim();
+      const hasMatch = permittedList.some(p => p.toLowerCase().trim() === lower);
+      if (hasMatch) return true;
+
+      const hasPrefixMatch = permittedList.some(p => {
+        const pLower = p.toLowerCase().trim();
+        return lower.startsWith(pLower) || pLower.startsWith(lower) || lower.includes(pLower);
+      });
+      if (hasPrefixMatch) return true;
+    }
+
+    // If company is allowed and no conflicting site restriction
+    if (allowedCompanies.length > 0 && normComp) {
+      return allowedCompanies.some(ac => ac === normComp || normComp.includes(ac));
+    }
 
     return false;
   };

@@ -43,15 +43,28 @@ const SiteFinanceTracker: React.FC = () => {
     const [revisionModal, setRevisionModal] = useState<{ isOpen: boolean; recordId: string; siteName: string }>({ isOpen: false, recordId: '', siteName: '' });
 
     // Filter & Pagination State
+    const getDefaultBillingPeriod = () => {
+        const d = new Date();
+        d.setDate(1);
+        d.setMonth(d.getMonth() - 1);
+        return {
+            month: (d.getMonth() + 1).toString(),
+            year: d.getFullYear().toString()
+        };
+    };
+
     const [searchQuery, setSearchQuery] = useState('');
-    const [filters, setFilters] = useState({ 
-        company: 'all',
-        siteName: '', 
-        status: '',
-        year: new Date().getFullYear().toString(),
-        month: (new Date().getMonth() + 1).toString(),
-        startDate: '',
-        endDate: ''
+    const [filters, setFilters] = useState(() => {
+        const defaultPeriod = getDefaultBillingPeriod();
+        return {
+            company: 'all',
+            siteName: '', 
+            status: '',
+            year: defaultPeriod.year,
+            month: defaultPeriod.month,
+            startDate: '',
+            endDate: ''
+        };
     });
     
     // Deletion State
@@ -130,10 +143,11 @@ const SiteFinanceTracker: React.FC = () => {
         setIsExporting(true);
         try {
             const { ExcelJS, saveAs } = await getExcelJS();
-            // Always use the CURRENT calendar month — finance team downloads for the present month
+            // BUG-01 FIX: Use the selected filter month, not always the current calendar month.
+            // This allows downloading templates for July / August when entered in September.
             const now = new Date();
-            const currentYear = now.getFullYear();
-            const currentMonth = now.getMonth() + 1; // 1-indexed
+            const currentYear = (filters.year !== 'all') ? Number(filters.year) : now.getFullYear();
+            const currentMonth = (filters.month !== 'all') ? Number(filters.month) : now.getMonth() + 1; // 1-indexed
             const billingMonthLabel = format(new Date(currentYear, currentMonth - 1, 1), 'MMMM yyyy'); // e.g. "July 2026"
             const billingMonthCode = format(new Date(currentYear, currentMonth - 1, 1), 'yyyy-MM-dd');  // stored in hidden cell
 
@@ -487,11 +501,13 @@ const SiteFinanceTracker: React.FC = () => {
             const ws = workbook.addWorksheet(exportDate);
             applySheetHeader(ws, `Paradigm Services — Finance Report  |  ${exportDate}`);
 
-            records.forEach((r, i) => writeDataRow(ws, r, i));
+            // BUG-08 FIX: Use filteredRecords (respects active year/month/company/search filters)
+            // instead of raw records (which would export ALL months regardless of filter).
+            filteredRecords.forEach((r, i) => writeDataRow(ws, r, i));
 
             const buffer = await workbook.xlsx.writeBuffer();
             saveAs(new Blob([buffer]), `Finance_Export_${exportDate.replace(' ', '_')}.xlsx`);
-            setToast({ message: `Exported ${records.length} records for ${exportDate}`, type: 'success' });
+            setToast({ message: `Exported ${filteredRecords.length} records for ${exportDate}`, type: 'success' });
         } catch (error) {
             console.error('Export error:', error);
             setToast({ message: 'Failed to export data', type: 'error' });
@@ -888,12 +904,13 @@ const SiteFinanceTracker: React.FC = () => {
     });
 
     const clearFilters = () => {
+        const defaultPeriod = getDefaultBillingPeriod();
         setFilters({ 
             company: 'all',
             siteName: '', 
             status: '',
-            year: new Date().getFullYear().toString(),
-            month: 'all',
+            year: defaultPeriod.year,
+            month: defaultPeriod.month,
             startDate: '',
             endDate: ''
         });
@@ -916,12 +933,13 @@ const SiteFinanceTracker: React.FC = () => {
 
     // Clear column filters and selection when switching sub-tabs
     useEffect(() => {
+        const defaultPeriod = getDefaultBillingPeriod();
         setFilters({ 
             company: 'all',
             siteName: '', 
             status: '',
-            year: new Date().getFullYear().toString(),
-            month: 'all',
+            year: defaultPeriod.year,
+            month: defaultPeriod.month,
             startDate: '',
             endDate: ''
         });

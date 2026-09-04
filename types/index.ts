@@ -729,6 +729,13 @@ export interface SiteInvoiceRecord {
   createdAt?: string;
   updatedAt?: string;
   
+  // Balance fields (cols 20-21 in template — BUG-03 fix)
+  receivedBalance?: string;
+  receivedBalanceReceipt?: string;
+
+  // Billing month for traceability (BUG-04 fix)
+  billingMonth?: string;
+
   // soft delete
   deletedAt?: string;
   deletedBy?: string;
