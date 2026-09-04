@@ -9,6 +9,7 @@ export interface AppliedFilters {
     company?: string;
     location?: string;
     site?: string;
+    staffCategory?: string;
     role?: string;
 }
 
@@ -36,7 +37,7 @@ const ReportHeader: React.FC<ReportHeaderProps> = ({ title, subtitle, logoUrl, g
                 </div>
             )}
         </div>
-        {filters && (filters.company || filters.location || filters.site || filters.role) ? (
+        {filters && (filters.company || filters.location || filters.site || filters.staffCategory || filters.role) ? (
             <div className="flex-grow flex flex-col items-center justify-center text-center px-4 py-2 mx-4 max-w-xl self-center">
                 <div className="text-[12px] text-gray-400 space-y-0.5 font-medium">
                     {filters.company && (
@@ -52,6 +53,11 @@ const ReportHeader: React.FC<ReportHeaderProps> = ({ title, subtitle, logoUrl, g
                     {filters.site && (
                         <p className="text-gray-500">
                             {filters.site}
+                        </p>
+                    )}
+                    {filters.staffCategory && (
+                        <p className="text-emerald-600 font-bold uppercase tracking-wider text-[11px]">
+                            {filters.staffCategory}
                         </p>
                     )}
                     {filters.role && (
@@ -243,8 +249,6 @@ export const MonthlyStatusView: React.FC<{
         ? days.map(d => d.getDate())
         : (data.length > 0 ? Array.from({ length: data[0].statuses.length }, (_, i) => i + 1) : []);
 
-    if (!data.length) return <EmptyState message="No monthly status records found." />;
-
     const numDays = dayHeaders.length;
 
     // Dynamic layout styles based on number of columns/days
@@ -288,6 +292,16 @@ export const MonthlyStatusView: React.FC<{
         }
     }, [numDays]);
 
+    const recalculatedRows = React.useMemo(() => {
+        if (!days || days.length === 0) return data;
+        return data.map(row => ({
+            ...row,
+            ...calculateStatsForDateRange(row.statuses, days)
+        }));
+    }, [data, days]);
+
+    if (!data.length) return <EmptyState message="No monthly status records found." />;
+
     const getStatusColor = (s: string) => {
         if (s.includes('+')) return 'text-[#0D9488] font-black'; // Combined Status Teal
         if (s === 'P') return 'text-[#059669]'; // Present Green
@@ -310,14 +324,6 @@ export const MonthlyStatusView: React.FC<{
         if (s === 'RC' || s.includes('RC')) return 'text-[#16A34A]'; // Correction Green
         return 'text-gray-700';
     };
-
-    const recalculatedRows = React.useMemo(() => {
-        if (!days || days.length === 0) return data;
-        return data.map(row => ({
-            ...row,
-            ...calculateStatsForDateRange(row.statuses, days)
-        }));
-    }, [data, days]);
 
     return (
         <div className="bg-white p-4 md:p-[24px] shadow-lg rounded-[16px] border border-gray-100 max-w-full mx-auto overflow-hidden space-y-6">

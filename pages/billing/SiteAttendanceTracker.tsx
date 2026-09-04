@@ -3,12 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import type { SiteInvoiceRecord, SiteInvoiceDefault } from '../../types';
 import { format, differenceInCalendarDays, parseISO, isBefore, isToday, startOfDay, subDays } from 'date-fns';
-import { Loader2, Plus, Trash2, Edit2, ClipboardList, CheckCircle2, Clock, Mail, AlertTriangle, Building2, Building, Download, Upload, FileSpreadsheet, X, Search, RotateCcw, ShieldX, Info, AlertCircle, FilterX, ShieldCheck } from 'lucide-react';
+import { Loader2, Plus, Trash2, Edit2, ClipboardList, CheckCircle2, Clock, Mail, AlertTriangle, Building2, Building, Download, Upload, FileSpreadsheet, X, Search, RotateCcw, ShieldX, Info, AlertCircle, FilterX, ShieldCheck, Lock } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import Toast from '../../components/ui/Toast';
 import RevisionHistoryModal from '../../components/modals/RevisionHistoryModal';
 import LoadingScreen from '../../components/ui/LoadingScreen';
-import { getUserRoutingScope, validateImportRows, getSiteMetadataFromMatrix, normalizeCompanyShortName, type UserRoutingScope } from '../../services/siteRoutingScope';
+import { getUserRoutingScope, validateImportRows, getSiteMetadataFromMatrix, normalizeCompanyShortName, isHistoricalLockedPeriod, type UserRoutingScope } from '../../services/siteRoutingScope';
+import SubmitSiteChangeRequestModal from '../../components/modals/SubmitSiteChangeRequestModal';
 import type { SiteResponsibilityMatrix } from '../../types/siteRouting';
 
 
@@ -25,6 +26,24 @@ const SiteAttendanceTracker: React.FC = () => {
     const [matrixList, setMatrixList] = useState<SiteResponsibilityMatrix[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [revisionModal, setRevisionModal] = useState<{ isOpen: boolean; recordId: string; siteName: string }>({ isOpen: false, recordId: '', siteName: '' });
+    const [changeRequestModal, setChangeRequestModal] = useState<{
+        isOpen: boolean;
+        requestType: 'ADD' | 'EDIT' | 'DELETE';
+        recordId?: string;
+        siteName: string;
+        companyName?: string;
+        targetMonth: string;
+        targetYear: string;
+        proposedData: Record<string, any>;
+        originalData?: Record<string, any>;
+    }>({
+        isOpen: false,
+        requestType: 'EDIT',
+        siteName: '',
+        targetMonth: '',
+        targetYear: '',
+        proposedData: {}
+    });
 
     const { user } = useAuthStore();
     // BUG-06 FIX: isAdmin must be declared BEFORE handler functions that reference it.
@@ -408,15 +427,27 @@ const SiteAttendanceTracker: React.FC = () => {
                 cell.value = h.header;
             });
             headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-            headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0D9488' } };
-            
-            // Only export sites authorized for the user, pre-filled with official matrix incharges
-            const templateDefaults = siteDefaults.filter(d => routingScope.isSitePermitted(d.siteName, d.companyName));
-            templateDefaults.forEach(d => {
-                const meta = getSiteMetadataFromMatrix(d.siteName, matrixList);
+            // Collect all authorized sites for the user, pre-filled with official matrix metadata
+            const allAuthorizedSiteNames = new Set<string>();
+            routingScope.permittedSiteList.forEach(s => { if (s) allAuthorizedSiteNames.add(s); });
+            siteDefaults.forEach(d => {
+                if (d.siteName && routingScope.isSitePermitted(d.siteName, d.companyName)) {
+                    allAuthorizedSiteNames.add(d.siteName);
+                }
+            });
+            matrixList.forEach(m => {
+                if (m.siteName && routingScope.isSitePermitted(m.siteName, m.billingCompany)) {
+                    allAuthorizedSiteNames.add(m.siteName);
+                }
+            });
+
+            const templateSites = Array.from(allAuthorizedSiteNames).sort((a, b) => a.localeCompare(b));
+            templateSites.forEach(sName => {
+                const meta = getSiteMetadataFromMatrix(sName, matrixList);
+                const defaultItem = siteDefaults.find(d => d.siteName === sName);
                 ws.addRow({
-                    siteName: d.siteName,
-                    companyName: meta?.billingCompany || d.companyName || '',
+                    siteName: sName,
+                    companyName: meta?.billingCompany || defaultItem?.companyName || 'PIFS',
                     billingCycle: meta?.billingCycle || '1st Billing Cycle',
                     opsIncharge: meta?.opsManagerName || '',
                     hrIncharge: meta?.hrInchargeName || '',
@@ -444,7 +475,7 @@ const SiteAttendanceTracker: React.FC = () => {
             
             const templateMonth = format(templateMonthDate, 'yyyy-MM');
             saveAs(blob, `Attendance_Tracker_Template_${templateMonth}.xlsx`);
-            setToast({ message: `Template for ${templateMonthLabel} downloaded (${templateDefaults.length} permitted sites)`, type: 'success' });
+            setToast({ message: `Template for ${templateMonthLabel} downloaded (${templateSites.length} authorized sites)`, type: 'success' });
         } catch (err) {
             console.error('Template error:', err);
             setToast({ message: 'Failed to download template', type: 'error' });
@@ -585,10 +616,17 @@ const SiteAttendanceTracker: React.FC = () => {
     const currentRecords = activeSubTab === 'active' ? scopedRecords : scopedDeletedRecords;
 
     const siteOptions = useMemo(() => {
-        const sites = new Set(scopedRecords.map(r => r.siteName).filter(Boolean));
+        const sites = new Set<string>();
+        routingScope.permittedSiteList.forEach(s => { if (s) sites.add(s); });
+        scopedRecords.forEach(r => { if (r.siteName) sites.add(r.siteName); });
         scopedSiteDefaults.forEach(s => { if (s.siteName) sites.add(s.siteName); });
+        matrixList.forEach(m => {
+            if (m.siteName && routingScope.isSitePermitted(m.siteName, m.billingCompany)) {
+                sites.add(m.siteName);
+            }
+        });
         return Array.from(sites).sort((a, b) => a.localeCompare(b));
-    }, [scopedRecords, scopedSiteDefaults]);
+    }, [routingScope, scopedRecords, scopedSiteDefaults, matrixList]);
 
     const opsInchargeOptions = useMemo(() => {
         const ops = new Set<string>();
@@ -890,8 +928,8 @@ const SiteAttendanceTracker: React.FC = () => {
                                 <ShieldCheck className="h-4 w-4 text-[#00D27F] md:text-emerald-600" />
                                 <span>
                                     {routingScope.allowedCompanies.length > 0 
-                                        ? `Scope: ${routingScope.allowedCompanies.join(', ')} (${scopedRecords.length} sites)` 
-                                        : `Assigned Sites (${scopedRecords.length})`}
+                                        ? `Scope: ${routingScope.allowedCompanies.join(', ')} (${routingScope.permittedSiteList.length} sites)` 
+                                        : `Assigned Sites (${routingScope.permittedSiteList.length})`}
                                 </span>
                             </div>
                         )}
@@ -1052,22 +1090,31 @@ const SiteAttendanceTracker: React.FC = () => {
                         <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center mb-5 border border-white/5">
                             <ClipboardList className="h-7 w-7 text-emerald-500/20" />
                         </div>
-                        <h3 className="text-lg font-bold text-white">
+                        <h3 className="text-lg font-bold text-white md:text-gray-900">
                             {activeSubTab === 'active' ? 'No attendance records' : 'Deletion log is empty'}
                         </h3>
-                        <p className="text-sm text-emerald-400/40 mt-1.5 max-w-xs leading-relaxed">
+                        <p className="text-sm text-emerald-400/60 md:text-gray-500 mt-1.5 max-w-md leading-relaxed">
                             {activeSubTab === 'active' 
-                                ? 'No records found for the current filter. Add a new entry to get started.' 
+                                ? `No attendance records found for ${filters.month !== 'all' ? format(new Date(2000, Number(filters.month) - 1, 1), 'MMMM') : ''} ${filters.year !== 'all' ? filters.year : ''}. You have ${routingScope.permittedSiteList.length} assigned site(s) in your authorized scope.` 
                                 : 'Records deleted in the last 7 days will appear here.'}
                         </p>
                         {activeSubTab === 'active' && (
-                            <button
-                                onClick={() => navigate('/finance/attendance/add')}
-                                className="mt-5 inline-flex items-center gap-1.5 px-5 py-2.5 text-sm font-bold text-[#041b0f] bg-[#00D27F] rounded-lg hover:bg-[#00b86e] transition-all shadow-lg shadow-emerald-500/20"
-                            >
-                                <Plus className="h-4 w-4" />
-                                Add First Entry
-                            </button>
+                            <div className="flex items-center gap-3 mt-5">
+                                <button
+                                    onClick={() => navigate('/finance/attendance/add')}
+                                    className="inline-flex items-center gap-1.5 px-5 py-2.5 text-sm font-bold text-[#041b0f] bg-[#00D27F] rounded-lg hover:bg-[#00b86e] transition-all shadow-lg shadow-emerald-500/20 active:scale-95"
+                                >
+                                    <Plus className="h-4 w-4" />
+                                    Add New Entry
+                                </button>
+                                <button
+                                    onClick={handleDownloadTemplate}
+                                    className="inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-bold text-emerald-400 md:text-emerald-700 bg-emerald-500/10 md:bg-emerald-50 border border-emerald-500/20 md:border-emerald-200 rounded-lg hover:bg-emerald-500/20 md:hover:bg-emerald-100 transition-all active:scale-95"
+                                >
+                                    <Download className="h-4 w-4" />
+                                    Download Template
+                                </button>
+                            </div>
                         )}
                     </div>
                 ) : (
@@ -1208,22 +1255,70 @@ const SiteAttendanceTracker: React.FC = () => {
                                                 <td className="px-4 py-3.5 text-center">
                                                     <div className="flex items-center justify-center gap-1">
                                                         {activeSubTab === 'active' ? (
-                                                            <>
-                                                                <button 
-                                                                    onClick={() => navigate(`/finance/attendance/edit/${record.id}`)} 
-                                                                    className="p-1.5 text-emerald-500 md:text-gray-500 hover:text-[#00D27F] md:hover:text-emerald-600 hover:bg-white/5 md:hover:bg-gray-100 rounded-md transition-all h-8 w-8 flex items-center justify-center border border-white/5 md:border-gray-100 shadow-sm"
-                                                                    title="Edit"
-                                                                >
-                                                                    <Edit2 className="h-3.5 w-3.5" />
-                                                                </button>
-                                                                <button 
-                                                                    onClick={() => { setRecordToDelete(record); setIsBulkDeleting(false); setShowDeleteModal(true); }} 
-                                                                    className="p-1.5 text-rose-500 md:text-gray-500 hover:text-rose-400 md:hover:text-rose-600 hover:bg-rose-500/10 md:hover:bg-rose-50 rounded-md transition-all h-8 w-8 flex items-center justify-center border border-white/5 md:border-gray-100 shadow-sm"
-                                                                    title="Delete"
-                                                                >
-                                                                    <Trash2 className="h-3.5 w-3.5" />
-                                                                </button>
-                                                            </>
+                                                            (() => {
+                                                                const recDateStr = record.billingMonth || record.managerTentativeDate || record.createdAt;
+                                                                const recDate = recDateStr ? parseISO(recDateStr) : new Date();
+                                                                const recYear = recDate.getFullYear().toString();
+                                                                const recMonth = (recDate.getMonth() + 1).toString();
+                                                                const isLocked = isHistoricalLockedPeriod(recYear, recMonth, user?.role);
+
+                                                                return (
+                                                                    <>
+                                                                        <button 
+                                                                            onClick={() => {
+                                                                                if (isLocked) {
+                                                                                    setChangeRequestModal({
+                                                                                        isOpen: true,
+                                                                                        requestType: 'EDIT',
+                                                                                        recordId: record.id,
+                                                                                        siteName: record.siteName,
+                                                                                        companyName: record.companyName,
+                                                                                        targetMonth: recMonth,
+                                                                                        targetYear: recYear,
+                                                                                        proposedData: record,
+                                                                                        originalData: record
+                                                                                    });
+                                                                                } else {
+                                                                                    navigate(`/finance/attendance/edit/${record.id}`);
+                                                                                }
+                                                                            }} 
+                                                                            className={`p-1.5 rounded-md transition-all h-8 w-8 flex items-center justify-center border border-white/5 md:border-gray-100 shadow-sm ${
+                                                                                isLocked 
+                                                                                    ? 'text-amber-400 hover:text-amber-300 hover:bg-amber-500/10' 
+                                                                                    : 'text-emerald-500 md:text-gray-500 hover:text-[#00D27F] md:hover:text-emerald-600 hover:bg-white/5 md:hover:bg-gray-100'
+                                                                            }`}
+                                                                            title={isLocked ? "Historical Record Locked — Submit Change Request" : "Edit Record"}
+                                                                        >
+                                                                            {isLocked ? <Lock className="h-3.5 w-3.5" /> : <Edit2 className="h-3.5 w-3.5" />}
+                                                                        </button>
+                                                                        <button 
+                                                                            onClick={() => {
+                                                                                if (isLocked) {
+                                                                                    setChangeRequestModal({
+                                                                                        isOpen: true,
+                                                                                        requestType: 'DELETE',
+                                                                                        recordId: record.id,
+                                                                                        siteName: record.siteName,
+                                                                                        companyName: record.companyName,
+                                                                                        targetMonth: recMonth,
+                                                                                        targetYear: recYear,
+                                                                                        proposedData: {},
+                                                                                        originalData: record
+                                                                                    });
+                                                                                } else {
+                                                                                    setRecordToDelete(record);
+                                                                                    setIsBulkDeleting(false);
+                                                                                    setShowDeleteModal(true);
+                                                                                }
+                                                                            }} 
+                                                                            className="p-1.5 text-rose-500 md:text-gray-500 hover:text-rose-400 md:hover:text-rose-600 hover:bg-rose-500/10 md:hover:bg-rose-50 rounded-md transition-all h-8 w-8 flex items-center justify-center border border-white/5 md:border-gray-100 shadow-sm"
+                                                                            title={isLocked ? "Historical Record Locked — Request Deletion" : "Delete"}
+                                                                        >
+                                                                            <Trash2 className="h-3.5 w-3.5" />
+                                                                        </button>
+                                                                    </>
+                                                                );
+                                                            })()
                                                         ) : (
                                                             <>
                                                                 <button 
@@ -1334,18 +1429,68 @@ const SiteAttendanceTracker: React.FC = () => {
                                                         {record.createdAt && format(parseISO(record.createdAt), 'dd MMM yyyy')} • <span className="text-white">{record.createdByName?.split(' ')[0] || 'System'}</span>
                                                     </div>
                                                     <div className="flex items-center gap-1">
-                                                        <button 
-                                                            onClick={(e) => { e.stopPropagation(); navigate(`/finance/attendance/edit/${record.id}`); }} 
-                                                            className="p-2 text-emerald-400/40 hover:text-[#00D27F] hover:bg-white/5 rounded-lg transition-all border border-white/5"
-                                                        >
-                                                            <Edit2 className="h-4 w-4" />
-                                                        </button>
-                                                        <button 
-                                                            onClick={(e) => { e.stopPropagation(); setRecordToDelete(record); setIsBulkDeleting(false); setShowDeleteModal(true); }} 
-                                                            className="p-2 text-rose-400/40 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-all border border-white/5"
-                                                        >
-                                                            <Trash2 className="h-4 w-4" />
-                                                        </button>
+                                                        {(() => {
+                                                            const recDateStr = record.billingMonth || record.managerTentativeDate || record.createdAt;
+                                                            const recDate = recDateStr ? parseISO(recDateStr) : new Date();
+                                                            const recYear = recDate.getFullYear().toString();
+                                                            const recMonth = (recDate.getMonth() + 1).toString();
+                                                            const isLocked = isHistoricalLockedPeriod(recYear, recMonth, user?.role);
+
+                                                            return (
+                                                                <>
+                                                                    <button 
+                                                                        onClick={(e) => { 
+                                                                            e.stopPropagation();
+                                                                            if (isLocked) {
+                                                                                setChangeRequestModal({
+                                                                                    isOpen: true,
+                                                                                    requestType: 'EDIT',
+                                                                                    recordId: record.id,
+                                                                                    siteName: record.siteName,
+                                                                                    companyName: record.companyName,
+                                                                                    targetMonth: recMonth,
+                                                                                    targetYear: recYear,
+                                                                                    proposedData: record,
+                                                                                    originalData: record
+                                                                                });
+                                                                            } else {
+                                                                                navigate(`/finance/attendance/edit/${record.id}`); 
+                                                                            }
+                                                                        }} 
+                                                                        className={`p-2 rounded-lg transition-all border border-white/5 ${isLocked ? 'text-amber-400/70 hover:text-amber-300 hover:bg-amber-500/10' : 'text-emerald-400/40 hover:text-[#00D27F] hover:bg-white/5'}`}
+                                                                        title={isLocked ? "Historical Month Locked - Request Edit" : "Edit"}
+                                                                    >
+                                                                        {isLocked ? <Lock className="h-4 w-4 text-amber-400" /> : <Edit2 className="h-4 w-4" />}
+                                                                    </button>
+                                                                    <button 
+                                                                        onClick={(e) => { 
+                                                                            e.stopPropagation();
+                                                                            if (isLocked) {
+                                                                                setChangeRequestModal({
+                                                                                    isOpen: true,
+                                                                                    requestType: 'DELETE',
+                                                                                    recordId: record.id,
+                                                                                    siteName: record.siteName,
+                                                                                    companyName: record.companyName,
+                                                                                    targetMonth: recMonth,
+                                                                                    targetYear: recYear,
+                                                                                    proposedData: {},
+                                                                                    originalData: record
+                                                                                });
+                                                                            } else {
+                                                                                setRecordToDelete(record); 
+                                                                                setIsBulkDeleting(false); 
+                                                                                setShowDeleteModal(true); 
+                                                                            }
+                                                                        }} 
+                                                                        className="p-2 text-rose-400/40 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-all border border-white/5"
+                                                                        title={isLocked ? "Historical Month Locked - Request Delete" : "Delete"}
+                                                                    >
+                                                                        {isLocked ? <Lock className="h-4 w-4 text-rose-400" /> : <Trash2 className="h-4 w-4" />}
+                                                                    </button>
+                                                                </>
+                                                            );
+                                                        })()}
                                                     </div>
                                                 </div>
                                             </div>
@@ -1634,6 +1779,23 @@ const SiteAttendanceTracker: React.FC = () => {
                 recordId={revisionModal.recordId}
                 siteName={revisionModal.siteName}
                 trackerType="attendance"
+            />
+
+            <SubmitSiteChangeRequestModal
+                isOpen={changeRequestModal.isOpen}
+                onClose={() => setChangeRequestModal({ ...changeRequestModal, isOpen: false })}
+                recordType="attendance"
+                requestType={changeRequestModal.requestType}
+                recordId={changeRequestModal.recordId}
+                siteName={changeRequestModal.siteName}
+                companyName={changeRequestModal.companyName}
+                targetMonth={changeRequestModal.targetMonth}
+                targetYear={changeRequestModal.targetYear}
+                proposedData={changeRequestModal.proposedData}
+                originalData={changeRequestModal.originalData}
+                onSuccess={() => {
+                    fetchInitialData();
+                }}
             />
         </div>
     );

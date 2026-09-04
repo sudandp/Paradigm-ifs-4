@@ -159,25 +159,26 @@ export function getUserRoutingScope(
     };
   }
 
-  // Build permitted sites and companies
-  const permittedSites = new Set<string>();
-  const permittedCompanies = new Set<string>();
-
   // 1. Identify User's Assigned Companies from profile / role / email / canonical name
   const userRoleStr = (user.role || '').toLowerCase();
   const userOrgStr = (user.organizationName || (user as any).organization_name || (user as any).company || (user as any).companyName || '').toLowerCase();
   
-  if (userOrgStr.includes('southwall') || userRoleStr.includes('southwall') || email.includes('southwall') || canonicalName === 'Arya Thomas' || userRoleStr.includes('swllp') || userOrgStr.includes('swllp')) {
+  const isSouthwall = userOrgStr.includes('southwall') || userRoleStr.includes('southwall') || email.includes('southwall') || canonicalName === 'Arya Thomas' || userRoleStr.includes('swllp') || userOrgStr.includes('swllp');
+  const isPPFMS = !isSouthwall && (userOrgStr.includes('ppfms') || userRoleStr.includes('ppfms') || email.includes('ppfms'));
+  const isPIFS = !isSouthwall && !isPPFMS && (userOrgStr.includes('pifs') || userRoleStr.includes('pifs') || email.includes('pifs') || email.includes('paradigm'));
+
+  const permittedSites = new Set<string>();
+  const permittedCompanies = new Set<string>();
+
+  if (isSouthwall) {
     permittedCompanies.add('SWLLP');
-  }
-  if (userOrgStr.includes('ppfms') || userRoleStr.includes('ppfms') || email.includes('ppfms')) {
+  } else if (isPPFMS) {
     permittedCompanies.add('PPFMS');
-  }
-  if (userOrgStr.includes('pifs') || userRoleStr.includes('pifs') || email.includes('pifs') || email.includes('paradigm')) {
+  } else if (isPIFS) {
     permittedCompanies.add('PIFS');
   }
 
-  // 2. Direct profile allocations (organizationName / organization_name)
+  // 2. Direct profile allocations (Assigned Site(s) from User Profile / organizationName / organizationId / assignedSites)
   const orgNames = user.organizationName || (user as any).organization_name;
   if (orgNames) {
     orgNames.split(',').forEach((s: string) => {
@@ -188,9 +189,38 @@ export function getUserRoutingScope(
     });
   }
 
-  // 3. Matrix-based role & employee allocations
+  const rawAssigned = (user as any).assignedSites || (user as any).assigned_sites || user.organizationId || (user as any).organization_id;
+  if (rawAssigned) {
+    const rawList = Array.isArray(rawAssigned) ? rawAssigned : String(rawAssigned).split(',');
+    rawList.forEach((item: any) => {
+      if (!item) return;
+      const str = String(item).trim();
+      if (!str || str.toLowerCase() === 'head office' || str.toLowerCase() === 'all') return;
+      
+      const mMatch = matrixList.find(m => m.id === str || m.siteId === str || (m.siteName && m.siteName.toLowerCase() === str.toLowerCase()));
+      if (mMatch && mMatch.siteName) {
+        permittedSites.add(mMatch.siteName);
+        const mCompany = normalizeCompanyShortName(mMatch.billingCompany);
+        if (mCompany) permittedCompanies.add(mCompany);
+      } else if (str.startsWith('ent_')) {
+        const formatted = str.replace(/^ent_/, '').replace(/_/g, ' ').trim();
+        const looseMatch = matrixList.find(m => m.siteName && m.siteName.toLowerCase().replace(/[^a-z0-9]/g, '') === formatted.replace(/[^a-z0-9]/g, ''));
+        if (looseMatch && looseMatch.siteName) {
+          permittedSites.add(looseMatch.siteName);
+          const mCompany = normalizeCompanyShortName(looseMatch.billingCompany);
+          if (mCompany) permittedCompanies.add(mCompany);
+        }
+      } else {
+        permittedSites.add(str);
+      }
+    });
+  }
+
+  // 3. Matrix-based role & employee allocations (Direct Incharge assignments)
   matrixList.forEach(m => {
     if (!m.siteName) return;
+
+    const mCompany = normalizeCompanyShortName(m.billingCompany);
 
     const accountsRoot = getCleanRoot(m.accountsInchargeName || '');
     const hrRoot = getCleanRoot(m.hrInchargeName || '');
@@ -213,40 +243,24 @@ export function getUserRoutingScope(
       (m.fieldOfficerId && m.fieldOfficerId === user.id)
     );
 
-    const mCompany = normalizeCompanyShortName(m.billingCompany);
-
+    // If user is directly assigned to this site in the matrix:
     if (isDirectlyAssigned) {
       permittedSites.add(m.siteName);
       if (mCompany) {
         permittedCompanies.add(mCompany);
       }
-    } else if (permittedCompanies.size > 0 && mCompany) {
-      // If user is assigned to a specific company (e.g. SWLLP), include all sites under that company
-      const matchesUserCompany = Array.from(permittedCompanies).some(c => 
-        c === mCompany || mCompany.includes(c) || c.includes(mCompany)
-      );
-      if (matchesUserCompany) {
-        permittedSites.add(m.siteName);
-      }
     }
   });
 
-  // Extract allowed companies
-  let allowedCompanies = Array.from(permittedCompanies).sort();
-  if (allowedCompanies.length === 0) {
-    if (email.includes('southwall') || canonicalName === 'Arya Thomas' || userRoleStr.includes('southwall')) {
-      allowedCompanies = ['SWLLP'];
-    } else {
-      allowedCompanies = ['PIFS', 'PPFMS'];
-    }
-  }
+  // Extract allowed companies list
+  const allowedCompanies = Array.from(permittedCompanies).sort();
 
-  // Fallback: If permittedSites is still empty, populate from matrix for the allowed companies
+  // Fallback: ONLY if the user has NO specific allocated sites anywhere, populate company sites
   if (permittedSites.size === 0 && allowedCompanies.length > 0) {
     matrixList.forEach(m => {
       if (!m.siteName) return;
       const mCompany = normalizeCompanyShortName(m.billingCompany);
-      if (allowedCompanies.some(c => c === mCompany || mCompany.includes(c))) {
+      if (allowedCompanies.some(c => c === mCompany || mCompany.includes(c) || c.includes(mCompany))) {
         permittedSites.add(m.siteName);
       }
     });
@@ -257,36 +271,29 @@ export function getUserRoutingScope(
   const isSitePermitted = (siteName: string, companyName?: string): boolean => {
     if (!siteName) return false;
 
-    const normComp = companyName ? normalizeCompanyShortName(companyName) : '';
+    // 1. Direct site match in permitted set
+    if (permittedSites.has(siteName)) return true;
 
-    // If companyName is provided and user has company restrictions:
-    if (normComp && allowedCompanies.length > 0) {
-      const isCompanyAllowed = allowedCompanies.some(ac => 
-        ac === normComp || normComp.includes(ac) || ac.includes(normComp)
-      );
-      if (!isCompanyAllowed) {
-        return false;
+    const lower = siteName.toLowerCase().trim();
+    const hasMatch = permittedList.some(p => p.toLowerCase().trim() === lower);
+    if (hasMatch) return true;
+
+    const hasPrefixMatch = permittedList.some(p => {
+      const pLower = p.toLowerCase().trim();
+      return lower.startsWith(pLower) || pLower.startsWith(lower) || lower.includes(pLower);
+    });
+    if (hasPrefixMatch) return true;
+
+    // 2. Only if user has NO specific site allocations (e.g. general role), allow by company
+    if (permittedSites.size === 0 && allowedCompanies.length > 0) {
+      let normComp = companyName ? normalizeCompanyShortName(companyName) : '';
+      if (!normComp) {
+        const match = matrixList.find(m => (m.siteName || '').toLowerCase().trim() === lower);
+        if (match) normComp = normalizeCompanyShortName(match.billingCompany);
       }
-    }
-
-    // If user has specific permitted sites:
-    if (permittedSites.size > 0) {
-      if (permittedSites.has(siteName)) return true;
-
-      const lower = siteName.toLowerCase().trim();
-      const hasMatch = permittedList.some(p => p.toLowerCase().trim() === lower);
-      if (hasMatch) return true;
-
-      const hasPrefixMatch = permittedList.some(p => {
-        const pLower = p.toLowerCase().trim();
-        return lower.startsWith(pLower) || pLower.startsWith(lower) || lower.includes(pLower);
-      });
-      if (hasPrefixMatch) return true;
-    }
-
-    // If company is allowed and no conflicting site restriction
-    if (allowedCompanies.length > 0 && normComp) {
-      return allowedCompanies.some(ac => ac === normComp || normComp.includes(ac));
+      if (normComp) {
+        return allowedCompanies.some(ac => normComp === ac || normComp.includes(ac) || ac.includes(normComp));
+      }
     }
 
     return false;
@@ -366,3 +373,115 @@ export function validateImportRows<T extends { siteName?: string; companyName?: 
 
   return { validRows, rejectedRows, warningMessage };
 }
+
+/**
+ * Determines whether a given billing period (year, month) is locked for direct modification.
+ * - Global admins / super_admins are never locked.
+ * - Active working period = current month and previous month (the active billing cycle).
+ * - Earlier periods (e.g. 2+ months past) are considered locked historical records.
+ */
+export function isHistoricalLockedPeriod(
+  year: string | number | undefined,
+  month: string | number | undefined,
+  userRole?: string
+): boolean {
+  const role = (userRole || '').toLowerCase();
+  if (['admin', 'super_admin', 'management', 'developer'].includes(role)) {
+    return false; // Admins can directly modify without blocking
+  }
+
+  const y = Number(year);
+  const m = Number(month);
+  if (!y || !m) return false;
+
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+
+  // Active working period starts from 1st of previous month
+  const activeStartDate = new Date(currentYear, currentMonth - 2, 1);
+  const targetDate = new Date(y, m - 1, 1);
+
+  return targetDate < activeStartDate;
+}
+
+export interface RoleFormPermissions {
+  isAdmin: boolean;
+  isHR: boolean;
+  isFinance: boolean;
+  canEditAttendance: boolean;
+  canEditInvoice: boolean;
+  canEditMetadata: boolean;
+  canEditOpsRemarks: boolean;
+  canEditHrRemarks: boolean;
+  canEditFinanceRemarks: boolean;
+}
+
+/**
+ * Evaluates role-based permissions for attendance and invoicing form interactions
+ */
+export function getUserFormPermissions(user: Partial<User> | null | undefined): RoleFormPermissions {
+  if (!user) {
+    return {
+      isAdmin: false,
+      isHR: false,
+      isFinance: false,
+      canEditAttendance: false,
+      canEditInvoice: false,
+      canEditMetadata: false,
+      canEditOpsRemarks: false,
+      canEditHrRemarks: false,
+      canEditFinanceRemarks: false,
+    };
+  }
+
+  const role = (user.role || '').toLowerCase();
+  const email = (user.email || '').toLowerCase();
+  const canonicalName = getCanonicalUserName(user);
+  const cleanName = canonicalName.toLowerCase();
+
+  const isAdmin = ['admin', 'super_admin', 'management', 'developer'].includes(role) ||
+    email.includes('admin') ||
+    email.includes('management') ||
+    email === 'sudhan@paradigmfms.com';
+
+  const isFinance = ['finance', 'finance_manager', 'accounts', 'billing'].includes(role) ||
+    email.includes('finance') ||
+    email.includes('accounts') ||
+    email === 'arpitha@paradigmfms.com' ||
+    email === 'sandeep.accounts@paradigmfms.com' ||
+    email === 'vishwa.finance@paradigmfms.com' ||
+    cleanName.includes('arpitha') ||
+    cleanName.includes('vishwa');
+
+  const isHR = ['hr', 'hr_ops', 'operations', 'site_manager', 'field_officer'].includes(role) ||
+    email.includes('hr') ||
+    email === 'onboarding@paradigmfms.com' ||
+    email === 'pooja@paradigmfms.in' ||
+    email === 'hr.kavya@paradigmfms.com' ||
+    email === 'sinchana@paradigmfms.in' ||
+    email === 'aryasouthwall@paradigmfms.in' ||
+    cleanName.includes('chandana') ||
+    cleanName.includes('chennamma') ||
+    cleanName.includes('poojashree') ||
+    cleanName.includes('kavya') ||
+    cleanName.includes('sinchana') ||
+    cleanName.includes('arya');
+
+  // If a user has an ambiguous or standard role (e.g. employee without specific prefix), default canEditAttendance if not finance
+  const canEditAttendance = isAdmin || isHR || (!isFinance && !isAdmin);
+  const canEditInvoice = isAdmin || isFinance;
+
+  return {
+    isAdmin,
+    isHR: isHR && !isAdmin,
+    isFinance: isFinance && !isAdmin,
+    canEditAttendance,
+    canEditInvoice,
+    canEditMetadata: isAdmin, // Only Admins can manually override Matrix metadata
+    canEditOpsRemarks: isAdmin || isHR || role.includes('ops') || role.includes('operations'),
+    canEditHrRemarks: isAdmin || isHR || (!isFinance && !isAdmin),
+    canEditFinanceRemarks: isAdmin || isFinance,
+  };
+}
+

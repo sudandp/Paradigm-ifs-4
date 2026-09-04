@@ -5,9 +5,12 @@ import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import { 
   CheckCircle2, XCircle, Clock, ShieldAlert, Loader2,
-  Lock, FileText, Check, Copy, User, HelpCircle, FileCheck, RefreshCw, Download
+  Lock, FileText, Check, Copy, User, HelpCircle, FileCheck, RefreshCw, Download,
+  History, Calendar, Building2, AlertCircle, Eye, FileSpreadsheet
 } from 'lucide-react';
 import type { OpsApprovalRequest, ApprovalStatus } from '../../types/enterprise';
+import type { SiteChangeRequest } from '../../types/siteRouting';
+import { api } from '../../services/api';
 import { supabase } from '../../services/supabase';
 import { exportGenericReportToExcel } from '../../utils/excelExport';
 import { Navigate } from 'react-router-dom';
@@ -283,10 +286,6 @@ const ApprovalsInbox: React.FC = () => {
   const { approvalRequests, fetchApprovalRequests, processApproval, isLoading } = useEnterpriseStore();
   const { user } = useAuthStore();
 
-  if (!user || !isAdmin(user.role)) {
-    return <Navigate to="/" replace />;
-  }
-
   const [toast, setToast] = useState<{message: string, type: 'success'|'error'} | null>(null);
   const [activeTab, setActiveTab] = useState<string>('ReportAccess');
   const [processingId, setProcessingId] = useState<string | null>(null);
@@ -304,6 +303,61 @@ const ApprovalsInbox: React.FC = () => {
   // Modals
   const [showRejectModal, setShowRejectModal] = useState<OpsApprovalRequest | null>(null);
   const [rejectReason, setRejectReason] = useState('');
+
+  // Historical Site Change Requests State
+  const [siteChangeRequests, setSiteChangeRequests] = useState<SiteChangeRequest[]>([]);
+  const [isLoadingSiteChanges, setIsLoadingSiteChanges] = useState(false);
+  const [processingSiteId, setProcessingSiteId] = useState<string | null>(null);
+  const [selectedDiffRequest, setSelectedDiffRequest] = useState<SiteChangeRequest | null>(null);
+  const [showSiteRejectModal, setShowSiteRejectModal] = useState<SiteChangeRequest | null>(null);
+  const [siteRejectReason, setSiteRejectReason] = useState('');
+
+  const fetchSiteChanges = async () => {
+    setIsLoadingSiteChanges(true);
+    try {
+      const data = await api.getSiteChangeRequests();
+      setSiteChangeRequests(data);
+    } catch (err) {
+      console.warn('Failed to fetch site change requests:', err);
+    } finally {
+      setIsLoadingSiteChanges(false);
+    }
+  };
+
+  const handleApproveSiteChange = async (req: SiteChangeRequest) => {
+    if (!user) return;
+    setProcessingSiteId(req.id);
+    try {
+      await api.approveSiteChangeRequest(req.id, user.id, user.name || 'Manager');
+      setToast({ message: `Approved ${req.requestType} request for ${req.siteName}`, type: 'success' });
+      await fetchSiteChanges();
+    } catch (err: any) {
+      setToast({ message: err?.message || 'Failed to approve request', type: 'error' });
+    } finally {
+      setProcessingSiteId(null);
+    }
+  };
+
+  const handleRejectSiteChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !showSiteRejectModal) return;
+    if (!siteRejectReason.trim()) {
+      setToast({ message: 'Please provide a rejection reason', type: 'error' });
+      return;
+    }
+    setProcessingSiteId(showSiteRejectModal.id);
+    try {
+      await api.rejectSiteChangeRequest(showSiteRejectModal.id, user.id, user.name || 'Manager', siteRejectReason.trim());
+      setToast({ message: `Rejected ${showSiteRejectModal.requestType} request for ${showSiteRejectModal.siteName}`, type: 'success' });
+      setShowSiteRejectModal(null);
+      setSiteRejectReason('');
+      await fetchSiteChanges();
+    } catch (err: any) {
+      setToast({ message: err?.message || 'Failed to reject request', type: 'error' });
+    } finally {
+      setProcessingSiteId(null);
+    }
+  };
 
   // Fetch count statistics from Supabase
   const fetchCounts = async () => {
@@ -425,6 +479,7 @@ const ApprovalsInbox: React.FC = () => {
 
   useEffect(() => {
     fetchApprovalRequests();
+    fetchSiteChanges();
   }, []);
 
   // Apply filters on the client-side
@@ -461,7 +516,9 @@ const ApprovalsInbox: React.FC = () => {
       try {
         const dateStr = new Date(req.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
         dailyCounts[dateStr] = (dailyCounts[dateStr] || 0) + 1;
-      } catch (e) {}
+      } catch (_err) {
+        // ignore invalid date parsing
+      }
 
       const reqName = req.requestedByName || 'System';
       requesterCounts[reqName] = (requesterCounts[reqName] || 0) + 1;
@@ -639,6 +696,10 @@ const ApprovalsInbox: React.FC = () => {
     }
   };
 
+  if (!user || !isAdmin(user.role)) {
+    return <Navigate to="/" replace />;
+  }
+
   return (
     <div className="space-y-6 animate-fade-in">
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
@@ -806,6 +867,7 @@ const ApprovalsInbox: React.FC = () => {
               { id: 'ReportAccess', label: 'Report Access', count: filteredRequests.filter(r => r.status === 'Pending' && r.moduleName === 'ReportAccess').length },
               { id: 'Quotations', label: 'Quotations', count: filteredRequests.filter(r => r.status === 'Pending' && r.moduleName === 'Quotation').length },
               { id: 'Contracts', label: 'Contracts', count: filteredRequests.filter(r => r.status === 'Pending' && r.moduleName === 'Contract').length },
+              { id: 'HistoricalChanges', label: 'Historical Site Changes', count: siteChangeRequests.filter(r => r.status === 'Pending').length },
               { id: 'Approved', label: 'Approved', count: filteredRequests.filter(r => r.status === 'Approved').length },
               { id: 'Rejected', label: 'Rejected', count: filteredRequests.filter(r => r.status === 'Rejected').length },
               { id: 'All', label: 'All Requests', count: filteredRequests.length }
@@ -832,7 +894,149 @@ const ApprovalsInbox: React.FC = () => {
 
         {/* Requests List Styled as Leave Approval Inbox Table */}
         <div className="flex-1 overflow-x-auto bg-gray-50/10">
-          {isLoading ? (
+          {activeTab === 'HistoricalChanges' ? (
+            /* Historical Site Changes Table */
+            isLoadingSiteChanges ? (
+              <div className="flex justify-center items-center py-20 flex-col gap-3">
+                <Loader2 className="w-9 h-9 animate-spin text-[#006b3f]" />
+                <p className="text-sm font-bold text-muted uppercase tracking-widest">Loading Change Requests...</p>
+              </div>
+            ) : siteChangeRequests.length === 0 ? (
+              <div className="text-center py-24 text-muted flex flex-col items-center max-w-sm mx-auto">
+                <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-full text-emerald-600 mb-4">
+                  <CheckCircle2 className="w-8 h-8" />
+                </div>
+                <h3 className="text-base font-bold text-gray-900 uppercase tracking-wide">No Pending Site Changes</h3>
+                <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">
+                  All past month modification requests have been reviewed.
+                </p>
+              </div>
+            ) : (
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50/50">
+                  <tr>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-muted uppercase tracking-wider">Requester</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-muted uppercase tracking-wider">Site & Period</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-muted uppercase tracking-wider">Type</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-muted uppercase tracking-wider">Justification Reason</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-muted uppercase tracking-wider">Status</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-muted uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-100">
+                  {siteChangeRequests.map(req => {
+                    const reqTypeBadge = req.requestType === 'ADD' 
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                      : req.requestType === 'DELETE' 
+                        ? 'bg-rose-50 text-rose-700 border-rose-200' 
+                        : 'bg-blue-50 text-blue-700 border-blue-200';
+
+                    const isPending = req.status === 'Pending';
+
+                    return (
+                      <tr key={req.id} className="hover:bg-gray-50/30 transition-colors">
+                        <td className="px-6 py-4.5 whitespace-nowrap">
+                          <div className="flex items-center gap-3">
+                            <div className="h-8 w-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold text-xs shrink-0 shadow-sm">
+                              {req.requestedByName?.charAt(0).toUpperCase() || 'U'}
+                            </div>
+                            <div>
+                              <div className="text-sm font-bold text-gray-900">{req.requestedByName}</div>
+                              <div className="text-[10px] text-muted uppercase font-semibold">{req.requestedByRole?.replace('_', ' ') || 'Staff'}</div>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="px-6 py-4.5">
+                          <div className="font-bold text-gray-900 text-sm flex items-center gap-1.5">
+                            <Building2 className="w-3.5 h-3.5 text-muted" />
+                            {req.siteName}
+                          </div>
+                          <div className="text-xs text-muted flex items-center gap-1.5 mt-0.5">
+                            <Calendar className="w-3 h-3 text-muted" />
+                            Period: <span className="font-bold text-gray-700">{req.targetMonth}/{req.targetYear}</span>
+                            {req.companyName && <span className="text-[10px] text-emerald-600 font-bold ml-1">({req.companyName})</span>}
+                          </div>
+                        </td>
+
+                        <td className="px-6 py-4.5 whitespace-nowrap">
+                          <div className="flex flex-col gap-1 items-start">
+                            <span className="text-[10px] font-black uppercase text-indigo-700 bg-indigo-50 border border-indigo-100/50 px-2 py-0.5 rounded-md inline-flex items-center gap-1">
+                              {req.recordType === 'attendance' ? <Clock className="w-3 h-3" /> : <FileSpreadsheet className="w-3 h-3" />}
+                              {req.recordType}
+                            </span>
+                            <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md border ${reqTypeBadge}`}>
+                              {req.requestType}
+                            </span>
+                          </div>
+                        </td>
+
+                        <td className="px-6 py-4.5">
+                          <div className="space-y-1">
+                            <p className="text-xs text-gray-800 italic leading-relaxed max-w-xs">
+                              "{req.reason || 'No justification provided'}"
+                            </p>
+                            <button
+                              onClick={() => setSelectedDiffRequest(req)}
+                              className="inline-flex items-center gap-1 text-[11px] font-bold text-[#006b3f] hover:underline"
+                            >
+                              <Eye className="w-3 h-3" />
+                              View Proposed Changes
+                            </button>
+                          </div>
+                        </td>
+
+                        <td className="px-6 py-4.5 whitespace-nowrap">
+                          <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border ${
+                            req.status === 'Approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                            req.status === 'Rejected' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                            'bg-amber-50 text-amber-700 border-amber-200'
+                          }`}>
+                            {req.status}
+                          </span>
+                          {req.reviewedByName && (
+                            <div className="text-[10px] text-muted mt-1">
+                              by {req.reviewedByName}
+                            </div>
+                          )}
+                        </td>
+
+                        <td className="px-6 py-4.5 whitespace-nowrap">
+                          {isPending ? (
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handleApproveSiteChange(req)}
+                                disabled={processingSiteId === req.id}
+                                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-sm transition-all disabled:opacity-50 active:scale-95"
+                                title="Approve and Apply to Database"
+                              >
+                                {processingSiteId === req.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                                Approve
+                              </button>
+                              <button
+                                onClick={() => setShowSiteRejectModal(req)}
+                                disabled={processingSiteId === req.id}
+                                className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 font-black text-xs uppercase tracking-wider border border-rose-200/50 flex items-center gap-1.5 transition-all active:scale-95"
+                                title="Reject Request"
+                              >
+                                <XCircle className="w-3.5 h-3.5" />
+                                Reject
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="text-xs text-muted">
+                              {req.reviewedAt && new Date(req.reviewedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )
+          ) : isLoading ? (
+            /* Regular Ops Requests Table */
             <div className="flex justify-center items-center py-20 flex-col gap-3">
               <Loader2 className="w-9 h-9 animate-spin text-[#006b3f]" />
               <p className="text-sm font-bold text-muted uppercase tracking-widest">Loading Requests...</p>
@@ -1067,6 +1271,121 @@ const ApprovalsInbox: React.FC = () => {
                   disabled={processingId === showRejectModal.id}
                 >
                   {processingId === showRejectModal.id ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : null}
+                  Confirm Rejection
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Site Change Request Diff Modal */}
+      {selectedDiffRequest && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl border border-gray-100 overflow-hidden animate-fade-in-up">
+            <div className="p-5 border-b border-gray-100 bg-[#006b3f]/5 flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-black text-gray-900 uppercase tracking-wide flex items-center gap-2">
+                  <History className="w-5 h-5 text-[#006b3f]" /> Change Request Details
+                </h3>
+                <p className="text-xs text-muted mt-0.5">
+                  {selectedDiffRequest.siteName} • Period: {selectedDiffRequest.targetMonth}/{selectedDiffRequest.targetYear}
+                </p>
+              </div>
+              <button onClick={() => setSelectedDiffRequest(null)} className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg">
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+              <div className="p-4 rounded-xl bg-amber-50/80 border border-amber-200/60 text-xs">
+                <div className="font-bold text-amber-900 uppercase tracking-wider mb-1">Reason for Historical Modification:</div>
+                <div className="text-amber-800 italic">{selectedDiffRequest.reason}</div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {selectedDiffRequest.originalData && (
+                  <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+                    <h4 className="text-xs font-black uppercase text-gray-600 tracking-wider mb-2">Original Data</h4>
+                    <pre className="text-xs font-mono bg-white p-3 rounded-lg border border-gray-100 overflow-x-auto text-gray-700 max-h-52">
+                      {JSON.stringify(selectedDiffRequest.originalData, null, 2)}
+                    </pre>
+                  </div>
+                )}
+
+                <div className={`p-4 bg-emerald-50/50 rounded-xl border border-emerald-200 ${!selectedDiffRequest.originalData ? 'md:col-span-2' : ''}`}>
+                  <h4 className="text-xs font-black uppercase text-emerald-800 tracking-wider mb-2">Proposed Changes ({selectedDiffRequest.requestType})</h4>
+                  <pre className="text-xs font-mono bg-white p-3 rounded-lg border border-emerald-100 overflow-x-auto text-emerald-900 max-h-52">
+                    {JSON.stringify(selectedDiffRequest.proposedData, null, 2)}
+                  </pre>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
+              <Button variant="outline" className="rounded-xl text-xs font-bold uppercase" onClick={() => setSelectedDiffRequest(null)}>
+                Close
+              </Button>
+              {selectedDiffRequest.status === 'Pending' && (
+                <Button 
+                  variant="primary" 
+                  className="bg-[#006b3f] hover:bg-emerald-800 text-white rounded-xl text-xs font-bold uppercase tracking-wider"
+                  onClick={() => {
+                    handleApproveSiteChange(selectedDiffRequest);
+                    setSelectedDiffRequest(null);
+                  }}
+                >
+                  Approve This Change
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reject Site Change Modal */}
+      {showSiteRejectModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-border overflow-hidden animate-fade-in-up">
+            <div className="p-5 border-b border-border bg-rose-50/50">
+              <h3 className="text-base font-black text-rose-700 flex items-center gap-2 uppercase tracking-wide">
+                <XCircle className="w-5 h-5" /> Reject Site Change Request
+              </h3>
+            </div>
+            <form onSubmit={handleRejectSiteChange} className="p-5 space-y-4">
+              <p className="text-xs text-muted font-semibold">
+                Rejecting modification request for:
+                <strong className="block text-sm text-gray-900 mt-1.5 leading-snug">{showSiteRejectModal.siteName} ({showSiteRejectModal.targetMonth}/{showSiteRejectModal.targetYear})</strong>
+              </p>
+              
+              <div className="space-y-1.5">
+                <label className="block text-xs font-black uppercase tracking-wider text-muted">Rejection Feedback *</label>
+                <textarea 
+                  className="form-input w-full min-h-[100px] text-sm py-2 px-3 rounded-xl border-border focus:ring-[#006b3f] focus:border-[#006b3f]"
+                  placeholder="Explain why this historical modification request cannot be approved..."
+                  value={siteRejectReason}
+                  onChange={e => setSiteRejectReason(e.target.value)}
+                  autoFocus
+                  required
+                />
+              </div>
+              
+              <div className="flex gap-3 pt-2">
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  className="flex-1 rounded-xl text-xs uppercase font-bold py-2.5" 
+                  onClick={() => { setShowSiteRejectModal(null); setSiteRejectReason(''); }}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  type="submit" 
+                  variant="primary" 
+                  className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs uppercase tracking-wider py-2.5 rounded-xl border-none shadow-sm shadow-rose-600/10" 
+                  disabled={processingSiteId === showSiteRejectModal.id}
+                >
+                  {processingSiteId === showSiteRejectModal.id ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : null}
                   Confirm Rejection
                 </Button>
               </div>

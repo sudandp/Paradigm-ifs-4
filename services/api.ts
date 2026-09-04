@@ -15,7 +15,7 @@ import type {
   GmcSubmission, UserHoliday, AttendanceUnlockRequest, LeaveType, SiteAttendanceRecord, SiteInvoiceRecord, SiteInvoiceDefault, SiteFinanceRecord,
   CommunicationLog, RevisionLog, UserChild, RoutePoint,
   AttendanceReportType, ReportEmailPayload,
-  SiteResponsibilityMatrix
+  SiteResponsibilityMatrix, SiteChangeRequest
 } from '../types';
 import { INITIAL_SITE_RESPONSIBILITY_DATA } from '../data/initialSiteResponsibilityData';
 import { normalizeCompanyShortName } from './siteRoutingScope';
@@ -1115,6 +1115,196 @@ export const api = {
     });
     const { error } = await supabase.from('site_invoice_tracker').insert(dbRecords);
     if (error) throw error;
+  },
+
+  // --- Site Change Requests (Historical Reporting Manager Approval Workflow) ---
+  getSiteChangeRequests: async (options?: { status?: string; managerId?: string; requesterId?: string }): Promise<SiteChangeRequest[]> => {
+    try {
+      let query = supabase
+        .from('site_change_requests')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (options?.status) {
+        query = query.eq('status', options.status);
+      }
+      if (options?.managerId) {
+        query = query.eq('reporting_manager_id', options.managerId);
+      }
+      if (options?.requesterId) {
+        query = query.eq('requested_by', options.requesterId);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return (data || []).map(toCamelCase);
+    } catch (err: any) {
+      console.warn('[API] Fetching site change requests fallback:', err?.message);
+      const local = localStorage.getItem('local_site_change_requests');
+      let list: SiteChangeRequest[] = local ? JSON.parse(local) : [];
+      if (options?.status) list = list.filter(r => r.status === options.status);
+      if (options?.managerId) list = list.filter(r => r.reportingManagerId === options.managerId);
+      if (options?.requesterId) list = list.filter(r => r.requestedBy === options.requesterId);
+      return list;
+    }
+  },
+
+  submitSiteChangeRequest: async (request: Partial<SiteChangeRequest>): Promise<SiteChangeRequest> => {
+    const payload = {
+      record_type: request.recordType || 'attendance',
+      record_id: request.recordId,
+      site_name: request.siteName,
+      company_name: request.companyName,
+      target_month: request.targetMonth,
+      target_year: request.targetYear,
+      request_type: request.requestType || 'EDIT',
+      proposed_data: request.proposedData || {},
+      original_data: request.originalData || {},
+      reason: request.reason || '',
+      requested_by: request.requestedBy,
+      requested_by_name: request.requestedByName,
+      requested_by_role: request.requestedByRole,
+      reporting_manager_id: request.reportingManagerId,
+      reporting_manager_name: request.reportingManagerName,
+      status: 'Pending',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    try {
+      const { data, error } = await supabase
+        .from('site_change_requests')
+        .insert(payload)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return toCamelCase(data);
+    } catch (err: any) {
+      console.warn('[API] Saving change request locally:', err?.message);
+      const localItem: SiteChangeRequest = {
+        id: `local_req_${Date.now()}`,
+        recordType: request.recordType || 'attendance',
+        recordId: request.recordId,
+        siteName: request.siteName || '',
+        companyName: request.companyName,
+        targetMonth: request.targetMonth || '',
+        targetYear: request.targetYear || '',
+        requestType: request.requestType || 'EDIT',
+        proposedData: request.proposedData || {},
+        originalData: request.originalData,
+        reason: request.reason || '',
+        requestedBy: request.requestedBy || '',
+        requestedByName: request.requestedByName || '',
+        requestedByRole: request.requestedByRole,
+        reportingManagerId: request.reportingManagerId,
+        reportingManagerName: request.reportingManagerName,
+        status: 'Pending',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      const existing = JSON.parse(localStorage.getItem('local_site_change_requests') || '[]');
+      existing.unshift(localItem);
+      localStorage.setItem('local_site_change_requests', JSON.stringify(existing));
+      return localItem;
+    }
+  },
+
+  approveSiteChangeRequest: async (
+    requestId: string,
+    reviewerId: string,
+    reviewerName: string,
+    comments?: string
+  ): Promise<void> => {
+    // 1. Fetch request details
+    let req: SiteChangeRequest | null = null;
+    const { data } = await supabase
+      .from('site_change_requests')
+      .select('*')
+      .eq('id', requestId)
+      .maybeSingle();
+
+    if (data) {
+      req = toCamelCase(data);
+    } else {
+      const local = JSON.parse(localStorage.getItem('local_site_change_requests') || '[]');
+      req = local.find((r: SiteChangeRequest) => r.id === requestId) || null;
+    }
+
+    if (!req) throw new Error('Change request not found');
+
+    // 2. Auto-apply the proposed change to database
+    if (req.recordType === 'attendance') {
+      if (req.requestType === 'DELETE' && req.recordId) {
+        await api.softDeleteSiteInvoiceRecord(req.recordId, `Approved change request: ${req.reason}`, reviewerId, reviewerName);
+      } else if (req.requestType === 'ADD') {
+        await api.saveSiteInvoiceRecord({ ...req.proposedData, createdBy: req.requestedBy, createdByName: req.requestedByName });
+      } else if (req.requestType === 'EDIT' && req.recordId) {
+        await api.saveSiteInvoiceRecord({ ...req.proposedData, id: req.recordId });
+      }
+    } else if (req.recordType === 'finance') {
+      if (req.requestType === 'DELETE' && req.recordId) {
+        await api.deleteSiteFinanceRecord(req.recordId, `Approved change request: ${req.reason}`, reviewerId, reviewerName);
+      } else if (req.requestType === 'ADD') {
+        await api.saveSiteFinanceRecord({ ...req.proposedData, createdBy: req.requestedBy, createdByName: req.requestedByName });
+      } else if (req.requestType === 'EDIT' && req.recordId) {
+        await api.saveSiteFinanceRecord({ ...req.proposedData, id: req.recordId });
+      }
+    }
+
+    // 3. Mark request as Approved
+    const updatePayload = {
+      status: 'Approved',
+      reviewed_by: reviewerId,
+      reviewed_by_name: reviewerName,
+      reviewed_at: new Date().toISOString(),
+      review_comments: comments || 'Approved by manager',
+      updated_at: new Date().toISOString()
+    };
+
+    const { error: updateErr } = await supabase
+      .from('site_change_requests')
+      .update(updatePayload)
+      .eq('id', requestId);
+
+    if (updateErr) {
+      const local = JSON.parse(localStorage.getItem('local_site_change_requests') || '[]');
+      const idx = local.findIndex((r: SiteChangeRequest) => r.id === requestId);
+      if (idx !== -1) {
+        local[idx] = { ...local[idx], status: 'Approved', reviewedBy: reviewerId, reviewedByName: reviewerName, reviewedAt: new Date().toISOString(), reviewComments: comments };
+        localStorage.setItem('local_site_change_requests', JSON.stringify(local));
+      }
+    }
+  },
+
+  rejectSiteChangeRequest: async (
+    requestId: string,
+    reviewerId: string,
+    reviewerName: string,
+    comments?: string
+  ): Promise<void> => {
+    const updatePayload = {
+      status: 'Rejected',
+      reviewed_by: reviewerId,
+      reviewed_by_name: reviewerName,
+      reviewed_at: new Date().toISOString(),
+      review_comments: comments || 'Rejected by manager',
+      updated_at: new Date().toISOString()
+    };
+
+    const { error } = await supabase
+      .from('site_change_requests')
+      .update(updatePayload)
+      .eq('id', requestId);
+
+    if (error) {
+      const local = JSON.parse(localStorage.getItem('local_site_change_requests') || '[]');
+      const idx = local.findIndex((r: SiteChangeRequest) => r.id === requestId);
+      if (idx !== -1) {
+        local[idx] = { ...local[idx], status: 'Rejected', reviewedBy: reviewerId, reviewedByName: reviewerName, reviewedAt: new Date().toISOString(), reviewComments: comments };
+        localStorage.setItem('local_site_change_requests', JSON.stringify(local));
+      }
+    }
   },
 
     // --- Settings ---
@@ -11468,3 +11658,4 @@ export const api = {
     }
   }
 };
+

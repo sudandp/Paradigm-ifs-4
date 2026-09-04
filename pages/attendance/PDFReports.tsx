@@ -413,11 +413,12 @@ export interface AppliedFilters {
   company?: string;
   location?: string;
   site?: string;
+  staffCategory?: string;
   role?: string;
 }
 
 const renderPDFHeaderCenter = (filters?: AppliedFilters) => {
-  if (!filters || !(filters.company || filters.location || filters.site || filters.role)) {
+  if (!filters || !(filters.company || filters.location || filters.site || filters.staffCategory || filters.role)) {
     return <View style={{ width: '30%' }} />;
   }
 
@@ -437,6 +438,11 @@ const renderPDFHeaderCenter = (filters?: AppliedFilters) => {
         {filters.site && (
           <Text style={{ fontSize: 8, color: '#6B7280' }}>
             {filters.site}
+          </Text>
+        )}
+        {filters.staffCategory && (
+          <Text style={{ fontSize: 8, color: '#059669', fontWeight: 'bold', textTransform: 'uppercase' }}>
+            {filters.staffCategory}
           </Text>
         )}
         {filters.role && (

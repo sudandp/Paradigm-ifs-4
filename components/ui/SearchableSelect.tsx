@@ -1,10 +1,17 @@
 import React, { useState, useRef, useEffect, useId } from 'react';
 import { Search, ChevronDown, X } from 'lucide-react';
 
+export interface SearchableSelectOption {
+  id: string | number;
+  name: string;
+  badge?: string;
+  subtitle?: string;
+}
+
 interface SearchableSelectProps {
   label?: string;
   placeholder?: string;
-  options: { id: string | number; name: string }[];
+  options: SearchableSelectOption[];
   value: string;
   onChange: (value: string) => void;
   error?: string;
@@ -15,6 +22,20 @@ interface SearchableSelectProps {
   allowCustom?: boolean;
   id?: string;
 }
+
+const getBadgeStyle = (badge: string) => {
+  const b = badge.toUpperCase();
+  if (b.includes('SWLLP') || b.includes('SOUTHWALL')) {
+    return 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30';
+  }
+  if (b.includes('PPFMS')) {
+    return 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30';
+  }
+  if (b.includes('PIFS')) {
+    return 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30';
+  }
+  return 'bg-gray-500/15 text-gray-700 dark:text-gray-300 border-gray-500/30';
+};
 
 const SearchableSelect: React.FC<SearchableSelectProps> = ({
   label,
@@ -68,10 +89,11 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   }, [value, allowCustom, searchTerm, onChange, options]);
 
   const filteredOptions = options.filter(option =>
-    option.name.toLowerCase().includes(searchTerm.toLowerCase())
+    option.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (option.badge && option.badge.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  const handleSelect = (option: { id: string | number; name: string }) => {
+  const handleSelect = (option: SearchableSelectOption) => {
     onChange(option.id.toString());
     setSearchTerm(option.name);
     setIsOpen(false);
@@ -166,7 +188,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
                 <button
                   key={option.id}
                   type="button"
-                  className={`w-full text-left px-4 py-3.5 text-sm transition-all border-l-4 ${
+                  className={`w-full text-left px-4 py-3 text-sm transition-all border-l-4 flex items-center justify-between gap-2 ${
                     isMobile
                       ? 'text-gray-300 hover:bg-white/10 hover:text-white'
                       : 'text-primary-text hover:bg-page'
@@ -175,7 +197,12 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
                     : 'border-transparent'}`}
                   onClick={() => handleSelect(option)}
                 >
-                  {option.name}
+                  <span className="truncate font-medium">{option.name}</span>
+                  {option.badge && (
+                    <span className={`px-2 py-0.5 text-xs font-bold rounded-md border shrink-0 ${getBadgeStyle(option.badge)}`}>
+                      {option.badge}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>

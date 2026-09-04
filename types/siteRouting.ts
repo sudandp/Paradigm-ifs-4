@@ -70,3 +70,29 @@ export interface SiteRoutingStats {
   billingCycleCounts: Record<string, number>;
   companyCounts: Record<string, number>;
 }
+
+export interface SiteChangeRequest {
+  id: string;
+  recordType: 'attendance' | 'finance';
+  recordId?: string;
+  siteName: string;
+  companyName?: string;
+  targetMonth: string;
+  targetYear: string;
+  requestType: 'ADD' | 'EDIT' | 'DELETE';
+  proposedData: Record<string, any>;
+  originalData?: Record<string, any>;
+  reason: string;
+  requestedBy: string;
+  requestedByName: string;
+  requestedByRole?: string;
+  reportingManagerId?: string;
+  reportingManagerName?: string;
+  status: 'Pending' | 'Approved' | 'Rejected';
+  reviewedBy?: string;
+  reviewedByName?: string;
+  reviewedAt?: string;
+  reviewComments?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}

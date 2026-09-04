@@ -16,12 +16,13 @@ const getExcelJS = async () => {
 };
 import { 
     Loader2, Plus, Edit2, Trash2, IndianRupee, FileSpreadsheet, TrendingUp, TrendingDown, 
-    ClipboardCheck, Building2, Download, Upload, AlertTriangle, RotateCcw, ShieldX, Search, Info, FilterX, X, Clock, ShieldCheck, Shield
+    ClipboardCheck, Building2, Download, Upload, AlertTriangle, RotateCcw, ShieldX, Search, Info, FilterX, X, Clock, ShieldCheck, Shield, Lock
 } from 'lucide-react';
 import Toast from '../../components/ui/Toast';
 import RevisionHistoryModal from '../../components/modals/RevisionHistoryModal';
+import SubmitSiteChangeRequestModal from '../../components/modals/SubmitSiteChangeRequestModal';
 import LoadingScreen from '../../components/ui/LoadingScreen';
-import { getUserRoutingScope, validateImportRows, normalizeCompanyShortName, type UserRoutingScope } from '../../services/siteRoutingScope';
+import { getUserRoutingScope, validateImportRows, normalizeCompanyShortName, isHistoricalLockedPeriod, type UserRoutingScope } from '../../services/siteRoutingScope';
 import type { SiteResponsibilityMatrix } from '../../types/siteRouting';
 
 
@@ -41,6 +42,18 @@ const SiteFinanceTracker: React.FC = () => {
     const exportDropdownRef = React.useRef<HTMLDivElement>(null);
     const { user } = useAuthStore();
     const [revisionModal, setRevisionModal] = useState<{ isOpen: boolean; recordId: string; siteName: string }>({ isOpen: false, recordId: '', siteName: '' });
+    const [changeRequestModalData, setChangeRequestModalData] = useState<{
+        isOpen: boolean;
+        recordType: 'attendance' | 'finance';
+        requestType: 'ADD' | 'EDIT' | 'DELETE';
+        originalRecord?: any;
+        targetMonth?: string;
+        targetYear?: string;
+    }>({
+        isOpen: false,
+        recordType: 'finance',
+        requestType: 'EDIT'
+    });
 
     // Filter & Pagination State
     const getDefaultBillingPeriod = () => {
@@ -221,6 +234,30 @@ const SiteFinanceTracker: React.FC = () => {
                     contractAmount: s.contractAmount || 0,
                     contractManagementFee: s.contractManagementFee || 0,
                 });
+            });
+
+            // Also add matrix sites
+            matrixList.forEach(m => {
+                if (m.siteName && !siteMap.has(m.siteName)) {
+                    siteMap.set(m.siteName, {
+                        siteName: m.siteName,
+                        companyName: m.billingCompany || 'PIFS',
+                        contractAmount: 0,
+                        contractManagementFee: 0,
+                    });
+                }
+            });
+
+            // Also add permitted sites
+            routingScope.permittedSiteList.forEach(sName => {
+                if (sName && !siteMap.has(sName)) {
+                    siteMap.set(sName, {
+                        siteName: sName,
+                        companyName: 'PIFS',
+                        contractAmount: 0,
+                        contractManagementFee: 0,
+                    });
+                }
             });
 
             // Enrich / add from records — records always have the latest contract values
@@ -918,10 +955,17 @@ const SiteFinanceTracker: React.FC = () => {
     };
 
     const siteOptions = useMemo(() => {
-        const sites = new Set(scopedRecords.map(r => r.siteName));
-        scopedSiteDefaults.forEach(s => sites.add(s.siteName));
+        const sites = new Set<string>();
+        routingScope.permittedSiteList.forEach(s => { if (s) sites.add(s); });
+        scopedRecords.forEach(r => { if (r.siteName) sites.add(r.siteName); });
+        scopedSiteDefaults.forEach(s => { if (s.siteName) sites.add(s.siteName); });
+        matrixList.forEach(m => {
+            if (m.siteName && routingScope.isSitePermitted(m.siteName, m.billingCompany)) {
+                sites.add(m.siteName);
+            }
+        });
         return Array.from(sites).sort();
-    }, [scopedRecords, scopedSiteDefaults]);
+    }, [routingScope, scopedRecords, scopedSiteDefaults, matrixList]);
 
     const totalPages = Math.ceil(filteredRecords.length / rowsPerPage);
     const paginatedRecords = filteredRecords.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
@@ -1094,8 +1138,8 @@ const SiteFinanceTracker: React.FC = () => {
                                 <ShieldCheck className="h-4 w-4 text-[#00D27F] md:text-emerald-600" />
                                 <span>
                                     {routingScope.allowedCompanies.length > 0 
-                                        ? `Scope: ${routingScope.allowedCompanies.join(', ')} (${scopedRecords.length} sites)` 
-                                        : `Assigned Sites (${scopedRecords.length})`}
+                                        ? `Scope: ${routingScope.allowedCompanies.join(', ')} (${routingScope.permittedSiteList.length} sites)` 
+                                        : `Assigned Sites (${routingScope.permittedSiteList.length})`}
                                 </span>
                             </div>
                         )}
@@ -1290,21 +1334,30 @@ const SiteFinanceTracker: React.FC = () => {
                             <ClipboardCheck className="h-8 w-8 text-emerald-500/20" />
                         </div>
                         <h3 className="text-lg font-black text-white uppercase tracking-tight">
-                            {activeSubTab === 'active' ? 'No Records Found' : 'Log is Empty'}
+                            {activeSubTab === 'active' ? 'No Finance Records' : 'Log is Empty'}
                         </h3>
-                        <p className="text-xs text-emerald-400/40 mt-2 max-w-[240px] font-bold uppercase tracking-tight leading-relaxed">
+                        <p className="text-xs text-emerald-400/60 mt-2 max-w-md font-medium leading-relaxed">
                             {activeSubTab === 'active' 
-                                ? 'No finance entries for this period yet.' 
+                                ? `No finance entries found for ${filters.month !== 'all' ? format(new Date(2000, Number(filters.month) - 1, 1), 'MMMM') : ''} ${filters.year !== 'all' ? filters.year : ''}. You have ${routingScope.permittedSiteList.length} assigned site(s) in your authorized scope.` 
                                 : 'No deletions recorded in the trailing 7 days.'}
                         </p>
                         {activeSubTab === 'active' && (
-                            <button
-                                onClick={() => navigate('/finance/site-tracker/add')}
-                                className="mt-8 inline-flex items-center gap-2 px-6 py-3 text-xs font-black text-[#041b0f] bg-[#00D27F] rounded-xl hover:bg-[#00b86e] transition-all shadow-xl shadow-emerald-500/20 uppercase tracking-widest"
-                            >
-                                <Plus className="h-4 w-4" />
-                                Add First Record
-                            </button>
+                            <div className="flex items-center gap-3 mt-6">
+                                <button
+                                    onClick={() => navigate('/finance/site-tracker/add')}
+                                    className="inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold text-[#041b0f] bg-[#00D27F] rounded-xl hover:bg-[#00b86e] transition-all shadow-xl shadow-emerald-500/20 active:scale-95"
+                                >
+                                    <Plus className="h-4 w-4" />
+                                    Add New Entry
+                                </button>
+                                <button
+                                    onClick={handleDownloadTemplate}
+                                    className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-emerald-400 md:text-emerald-700 bg-emerald-500/10 md:bg-emerald-50 border border-emerald-500/20 md:border-emerald-200 rounded-xl hover:bg-emerald-500/20 md:hover:bg-emerald-100 transition-all active:scale-95"
+                                >
+                                    <Download className="h-4 w-4" />
+                                    Download Template
+                                </button>
+                            </div>
                         )}
                     </div>
                 ) : (
@@ -1437,12 +1490,63 @@ const SiteFinanceTracker: React.FC = () => {
                                                         </td>
                                                         <td className="px-4 py-3.5 text-center">
                                                             <div className="flex items-center justify-center gap-1 transition-all duration-200">
-                                                                <button onClick={() => navigate(`/finance/site-tracker/edit/${record.id}`)} className="p-2 text-emerald-500 md:text-gray-500 hover:text-[#00D27F] md:hover:text-emerald-600 hover:bg-white/5 md:hover:bg-gray-100 rounded-xl transition-all border border-white/5 md:border-gray-100 shadow-sm" title="Edit">
-                                                                    <Edit2 className="h-4 w-4" />
-                                                                </button>
-                                                                <button onClick={() => { setRecordToDelete(record); setIsBulkDeleting(false); setShowDeleteModal(true); }} className="p-2 text-rose-500 md:text-gray-500 hover:text-rose-400 md:hover:text-rose-600 hover:bg-rose-500/10 md:hover:bg-rose-50 rounded-xl transition-all border border-white/5 md:border-gray-100 shadow-sm" title="Delete">
-                                                                    <Trash2 className="h-4 w-4" />
-                                                                </button>
+                                                                {(() => {
+                                                                    const bDate = record.billingMonth ? new Date(record.billingMonth) : new Date();
+                                                                    const recYear = bDate.getFullYear();
+                                                                    const recMonth = bDate.getMonth() + 1;
+                                                                    const isLocked = isHistoricalLockedPeriod(recYear, recMonth, user?.role);
+
+                                                                    return (
+                                                                        <>
+                                                                            <button 
+                                                                                onClick={() => {
+                                                                                    if (isLocked) {
+                                                                                        setChangeRequestModalData({
+                                                                                            isOpen: true,
+                                                                                            recordType: 'finance',
+                                                                                            requestType: 'EDIT',
+                                                                                            originalRecord: record,
+                                                                                            targetMonth: String(recMonth),
+                                                                                            targetYear: String(recYear)
+                                                                                        });
+                                                                                    } else {
+                                                                                        navigate(`/finance/site-tracker/edit/${record.id}`);
+                                                                                    }
+                                                                                }} 
+                                                                                className={`p-2 rounded-xl transition-all border border-white/5 md:border-gray-100 shadow-sm ${
+                                                                                    isLocked 
+                                                                                        ? 'text-amber-400 hover:text-amber-300 hover:bg-amber-500/10' 
+                                                                                        : 'text-emerald-500 md:text-gray-500 hover:text-[#00D27F] md:hover:text-emerald-600 hover:bg-white/5 md:hover:bg-gray-100'
+                                                                                }`} 
+                                                                                title={isLocked ? "Historical Month Locked - Request Edit" : "Edit"}
+                                                                            >
+                                                                                {isLocked ? <Lock className="h-4 w-4 text-amber-400" /> : <Edit2 className="h-4 w-4" />}
+                                                                            </button>
+                                                                            <button 
+                                                                                onClick={() => { 
+                                                                                    if (isLocked) {
+                                                                                        setChangeRequestModalData({
+                                                                                            isOpen: true,
+                                                                                            recordType: 'finance',
+                                                                                            requestType: 'DELETE',
+                                                                                            originalRecord: record,
+                                                                                            targetMonth: String(recMonth),
+                                                                                            targetYear: String(recYear)
+                                                                                        });
+                                                                                    } else {
+                                                                                        setRecordToDelete(record); 
+                                                                                        setIsBulkDeleting(false); 
+                                                                                        setShowDeleteModal(true); 
+                                                                                    }
+                                                                                }} 
+                                                                                className="p-2 text-rose-500 md:text-gray-500 hover:text-rose-400 md:hover:text-rose-600 hover:bg-rose-500/10 md:hover:bg-rose-50 rounded-xl transition-all border border-white/5 md:border-gray-100 shadow-sm" 
+                                                                                title={isLocked ? "Historical Month Locked - Request Delete" : "Delete"}
+                                                                            >
+                                                                                {isLocked ? <Lock className="h-4 w-4 text-rose-400" /> : <Trash2 className="h-4 w-4" />}
+                                                                            </button>
+                                                                        </>
+                                                                    );
+                                                                })()}
                                                             </div>
                                                         </td>
                                                     </>
@@ -1555,18 +1659,65 @@ const SiteFinanceTracker: React.FC = () => {
                                                         </p>
                                                     </div>
                                                     <div className="flex items-center gap-1.5">
-                                                        <button 
-                                                            onClick={(e) => { e.stopPropagation(); navigate(`/finance/site-tracker/edit/${record.id}`); }} 
-                                                            className="p-2.5 text-emerald-400/40 hover:text-[#00D27F] hover:bg-white/5 rounded-xl transition-all border border-white/5"
-                                                        >
-                                                            <Edit2 className="h-4 w-4" />
-                                                        </button>
-                                                        <button 
-                                                            onClick={(e) => { e.stopPropagation(); setRecordToDelete(record); setIsBulkDeleting(false); setShowDeleteModal(true); }} 
-                                                            className="p-2.5 text-emerald-400/40 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-all border border-white/5"
-                                                        >
-                                                            <Trash2 className="h-4 w-4" />
-                                                        </button>
+                                                        {(() => {
+                                                            const bDate = record.billingMonth ? new Date(record.billingMonth) : new Date();
+                                                            const recYear = bDate.getFullYear();
+                                                            const recMonth = bDate.getMonth() + 1;
+                                                            const isLocked = isHistoricalLockedPeriod(recYear, recMonth, user?.role);
+
+                                                            return (
+                                                                <>
+                                                                    <button 
+                                                                        onClick={(e) => { 
+                                                                            e.stopPropagation(); 
+                                                                            if (isLocked) {
+                                                                                setChangeRequestModalData({
+                                                                                    isOpen: true,
+                                                                                    recordType: 'finance',
+                                                                                    requestType: 'EDIT',
+                                                                                    originalRecord: record,
+                                                                                    targetMonth: String(recMonth),
+                                                                                    targetYear: String(recYear)
+                                                                                });
+                                                                            } else {
+                                                                                navigate(`/finance/site-tracker/edit/${record.id}`); 
+                                                                            }
+                                                                        }} 
+                                                                        className={`p-2.5 rounded-xl transition-all border border-white/5 ${
+                                                                            isLocked 
+                                                                                ? 'text-amber-400 hover:text-amber-300 hover:bg-amber-500/10' 
+                                                                                : 'text-emerald-400/40 hover:text-[#00D27F] hover:bg-white/5'
+                                                                        }`}
+                                                                        title={isLocked ? "Historical Month Locked - Request Edit" : "Edit"}
+                                                                    >
+                                                                        {isLocked ? <Lock className="h-4 w-4 text-amber-400" /> : <Edit2 className="h-4 w-4" />}
+                                                                    </button>
+                                                                    <button 
+                                                                        onClick={(e) => { 
+                                                                            e.stopPropagation(); 
+                                                                            if (isLocked) {
+                                                                                setChangeRequestModalData({
+                                                                                    isOpen: true,
+                                                                                    recordType: 'finance',
+                                                                                    requestType: 'DELETE',
+                                                                                    originalRecord: record,
+                                                                                    targetMonth: String(recMonth),
+                                                                                    targetYear: String(recYear)
+                                                                                });
+                                                                            } else {
+                                                                                setRecordToDelete(record); 
+                                                                                setIsBulkDeleting(false); 
+                                                                                setShowDeleteModal(true); 
+                                                                            }
+                                                                        }} 
+                                                                        className="p-2.5 text-emerald-400/40 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-all border border-white/5"
+                                                                        title={isLocked ? "Historical Month Locked - Request Delete" : "Delete"}
+                                                                    >
+                                                                        {isLocked ? <Lock className="h-4 w-4 text-rose-400" /> : <Trash2 className="h-4 w-4" />}
+                                                                    </button>
+                                                                </>
+                                                            );
+                                                        })()}
                                                     </div>
                                                 </div>
                                             </div>
@@ -1870,6 +2021,23 @@ const SiteFinanceTracker: React.FC = () => {
                     </div>
                 </div>
             )}
+            {/* Submit Historical Change Request Modal */}
+            <SubmitSiteChangeRequestModal
+                isOpen={changeRequestModalData.isOpen}
+                onClose={() => setChangeRequestModalData(prev => ({ ...prev, isOpen: false }))}
+                recordType={changeRequestModalData.recordType}
+                requestType={changeRequestModalData.requestType}
+                originalRecord={changeRequestModalData.originalRecord}
+                targetMonth={changeRequestModalData.targetMonth}
+                targetYear={changeRequestModalData.targetYear}
+                onSuccess={() => {
+                    setToast({
+                        message: 'Historical change request submitted to Reporting Manager for approval',
+                        type: 'success'
+                    });
+                    fetchData();
+                }}
+            />
         </div>
     );
 };

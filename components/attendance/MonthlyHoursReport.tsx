@@ -43,6 +43,7 @@ interface MonthlyHoursReportProps {
   selectedCompany?: string;
   selectedLocation?: string;
   selectedRole?: string;
+  selectedStaffCategory?: string;
   onDataLoaded?: (data: EmployeeMonthlyData[]) => void;
   users?: User[];
 }
@@ -50,6 +51,7 @@ interface MonthlyHoursReportProps {
 const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ 
   month, year, userId, data: externalData, hideHeader, scopedSettings = [],
   selectedStatus = 'all', selectedRecordType = 'all', selectedSite = 'all', selectedCompany = 'all', selectedLocation = 'all', selectedRole = 'all',
+  selectedStaffCategory = 'all',
   onDataLoaded, users: externalUsers
 }) => {
   const [reportData, setReportData] = useState<EmployeeMonthlyData[]>([]);
@@ -93,7 +95,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
 
   const prevDeps = React.useRef<any>({});
   useEffect(() => {
-    const currentDeps = { month, year, userId, externalData, selectedStatus, selectedRecordType, selectedSite, selectedCompany, selectedLocation, selectedRole };
+    const currentDeps = { month, year, userId, externalData, selectedStatus, selectedRecordType, selectedSite, selectedCompany, selectedLocation, selectedRole, selectedStaffCategory };
     const changed: string[] = [];
     Object.keys(currentDeps).forEach(key => {
       if (prevDeps.current[key] !== (currentDeps as any)[key]) {
@@ -110,7 +112,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
     } else {
       loadReportData();
     }
-  }, [month, year, userId, externalData, selectedStatus, selectedRecordType, selectedSite, selectedCompany, selectedLocation, selectedRole]);
+  }, [month, year, userId, externalData, selectedStatus, selectedRecordType, selectedSite, selectedCompany, selectedLocation, selectedRole, selectedStaffCategory]);
   const resolveUserLocation = (u: User, orgStructure: any[]) => {
     if (u.location || u.locationName) return u.location || u.locationName;
     if (!u.societyId || orgStructure.length === 0) return '';
@@ -237,6 +239,9 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
         if (userId && userId !== 'all') {
           targetUsers = usersData.filter(u => u.id === userId);
         } else {
+          if (selectedStaffCategory !== 'all') {
+            targetUsers = targetUsers.filter(u => getStaffCategory(u.role, u.societyId, attendance) === selectedStaffCategory);
+          }
           if (selectedRole !== 'all') targetUsers = targetUsers.filter(u => u.role === selectedRole);
           if (selectedSite !== 'all') targetUsers = targetUsers.filter(u => u.organizationId && u.organizationId.split(',').map(s => s.trim()).includes(selectedSite));
           if (selectedCompany !== 'all') targetUsers = targetUsers.filter(u => u.societyId === selectedCompany);
@@ -355,6 +360,9 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
       if (userId && userId !== 'all') {
         targetUsers = usersData.filter(u => u.id === userId);
       } else {
+        if (selectedStaffCategory !== 'all') {
+          targetUsers = targetUsers.filter(u => getStaffCategory(u.role, u.societyId, attendance) === selectedStaffCategory);
+        }
         if (selectedRole !== 'all') targetUsers = targetUsers.filter(u => u.role === selectedRole);
         if (selectedSite !== 'all') targetUsers = targetUsers.filter(u => u.organizationId && u.organizationId.split(',').map(s => s.trim()).includes(selectedSite));
         if (selectedCompany !== 'all') targetUsers = targetUsers.filter(u => u.societyId === selectedCompany);
@@ -443,7 +451,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
       const currentSiteHolidays = storeSiteHolidays?.length ? storeSiteHolidays : currentMasterHolidays.filter((h: any) => h.type === 'site');
       const currentRecurringHolidays = storeRecurringHolidays || [];
 
-      let employeeReports: EmployeeMonthlyData[] = targetUsers.map(user => {
+      const employeeReports: EmployeeMonthlyData[] = targetUsers.map(user => {
         const uid = String(user.id);
         const userEvents = eventsByUser.get(uid) || [];
         const userLeaves = leavesByUser.get(uid) || [];

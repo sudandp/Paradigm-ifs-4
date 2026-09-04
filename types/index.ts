@@ -975,3 +975,4 @@ export type FeedType = 'call_logged' | 'stage_changed' | 'note_added' | 'intervi
 export type LetterType = 'offer' | 'appointment' | 'confirmation' | 'promotion' | 'increment' | 'transfer' | 'warning' | 'show_cause' | 'experience' | 'termination';
 export type LetterStatus = 'draft' | 'pending_approval' | 'issued' | 'revoked';
 
+export * from './siteRouting';

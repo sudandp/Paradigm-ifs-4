@@ -1,33 +1,52 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../services/api';
-import { supabase } from '../../services/supabase';
 import { useAuthStore } from '../../store/authStore';
 import type { SiteInvoiceRecord, SiteInvoiceDefault, Organization } from '../../types';
 import Input from '../../components/ui/Input';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import SearchableSelect from '../../components/ui/SearchableSelect';
-import { Save, ArrowLeft, ClipboardList, TrendingUp, Building, Calendar, Users, Briefcase, FileText, Clock } from 'lucide-react';
+import { 
+    Save, 
+    ArrowLeft, 
+    ClipboardList, 
+    Building, 
+    Calendar, 
+    Users, 
+    Briefcase, 
+    FileText, 
+    Clock, 
+    ShieldCheck, 
+    Lock, 
+    Edit3, 
+    CheckCircle2, 
+    ChevronDown, 
+    ChevronUp,
+    Info
+} from 'lucide-react';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { format, getDate, getMonth, getYear, set, parseISO } from 'date-fns';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 
-
-import { getUserRoutingScope, getSiteMetadataFromMatrix } from '../../services/siteRoutingScope';
+import { getUserRoutingScope, getSiteMetadataFromMatrix, getUserFormPermissions } from '../../services/siteRoutingScope';
 import type { SiteResponsibilityMatrix } from '../../types/siteRouting';
-
 
 const AddSiteAttendanceRecord: React.FC = () => {
     const navigate = useNavigate();
     const { id } = useParams<{ id: string }>();
     const isEditing = !!id;
     const isMobile = useMediaQuery('(max-width: 767px)');
+    const { user: authUser } = useAuthStore();
+
+    const permissions = useMemo(() => getUserFormPermissions(authUser), [authUser]);
 
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [sites, setSites] = useState<Organization[]>([]);
     const [matrixList, setMatrixList] = useState<SiteResponsibilityMatrix[]>([]);
+    const [showAdminOverride, setShowAdminOverride] = useState(false);
+
     const [record, setRecord] = useState<Partial<SiteInvoiceRecord>>({
         siteId: '',
         siteName: '',
@@ -46,6 +65,7 @@ const AddSiteAttendanceRecord: React.FC = () => {
         attendanceReceivedTime: '',
         invoiceSharingTentativeDate: '',
         invoicePreparedDate: '',
+        invoiceSentDate: '',
         invoiceSentTime: '',
         invoiceSentMethodRemarks: ''
     });
@@ -63,7 +83,6 @@ const AddSiteAttendanceRecord: React.FC = () => {
         const fetchData = async () => {
             setIsLoading(true);
             try {
-                const { user: authUser } = useAuthStore.getState();
                 if (authUser) {
                     setCurrentUser({ id: authUser.id, name: authUser.name || 'Unknown' });
                 }
@@ -97,7 +116,12 @@ const AddSiteAttendanceRecord: React.FC = () => {
                 });
                 
                 // Filter sites strictly to user's authorized scope
-                const permittedSites = allSites.filter(s => scope.isSitePermitted(s.shortName || (s as any).name));
+                const permittedSites = allSites.filter(s => {
+                    const sName = s.shortName || (s as any).name || s.id;
+                    const matrixMeta = getSiteMetadataFromMatrix(sName, matrix);
+                    const company = matrixMeta?.billingCompany || (s as any).company || (s as any).companyName || '';
+                    return scope.isSitePermitted(sName, company);
+                });
                 setSites(permittedSites);
                 setSiteDefaults(fetchedDefaults || []);
 
@@ -128,6 +152,15 @@ const AddSiteAttendanceRecord: React.FC = () => {
                         if (!existingRecord.siteId && existingRecord.siteName) {
                             existingRecord.siteId = existingRecord.siteName;
                         }
+                        // Ensure matrix metadata is populated if missing
+                        const matrixMeta = getSiteMetadataFromMatrix(existingRecord.siteName || '', matrix);
+                        if (matrixMeta) {
+                            existingRecord.companyName = existingRecord.companyName || matrixMeta.billingCompany || '';
+                            existingRecord.billingCycle = existingRecord.billingCycle || matrixMeta.billingCycle || '';
+                            existingRecord.opsIncharge = existingRecord.opsIncharge || matrixMeta.opsManagerName || '';
+                            existingRecord.hrIncharge = existingRecord.hrIncharge || matrixMeta.hrInchargeName || '';
+                            existingRecord.invoiceIncharge = existingRecord.invoiceIncharge || matrixMeta.accountsInchargeName || '';
+                        }
                         setRecord(existingRecord);
                     } else {
                         setToast({ message: 'Record not found', type: 'error' });
@@ -142,7 +175,7 @@ const AddSiteAttendanceRecord: React.FC = () => {
             }
         };
         fetchData();
-    }, [id, isEditing, navigate]);
+    }, [id, isEditing, navigate, authUser]);
 
     const handleInputChange = (field: keyof SiteInvoiceRecord, value: any) => {
         setRecord(prev => {
@@ -158,7 +191,7 @@ const AddSiteAttendanceRecord: React.FC = () => {
                     updated.siteName = value;
                 }
                 
-                // 1. Auto-fill primary canonical incharge and company info from Site Responsibility Matrix (Image 1)
+                // 1. Auto-fill primary canonical incharge and company info from Site Responsibility Matrix
                 const matrixMeta = getSiteMetadataFromMatrix(updated.siteName || value, matrixList);
                 if (matrixMeta) {
                     updated.companyName = matrixMeta.billingCompany || updated.companyName;
@@ -179,7 +212,6 @@ const AddSiteAttendanceRecord: React.FC = () => {
                     if (!updated.hrIncharge) updated.hrIncharge = defs.hrIncharge;
                     if (!updated.invoiceIncharge) updated.invoiceIncharge = defs.invoiceIncharge;
 
-                    // Dynamic Date Adjustment: Use the day from defaults, but current Year & Month
                     const adjustDateToCurrentPeriod = (dateStr: string | undefined): string => {
                         if (!dateStr) return '';
                         try {
@@ -218,16 +250,13 @@ const AddSiteAttendanceRecord: React.FC = () => {
         try {
             const payload = { ...record };
             
-            // Validate UUID for siteId. If custom name (not UUID), set siteId to null to avoid 400 error
+            // Validate UUID for siteId. If custom name (not UUID), set siteId to null
             const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
             if (payload.siteId && !uuidRegex.test(payload.siteId)) {
-                // For SiteInvoiceRecord, site_id is nullable (based on migration script analysis)
-                // However, types might be strict. Let's force it to null/undefined for the API call
                 (payload as any).siteId = null;
             }
 
             if (!isEditing && currentUser) {
-                const { user: authUser } = useAuthStore.getState();
                 payload.createdBy = currentUser.id;
                 payload.createdByName = currentUser.name;
                 payload.createdByRole = authUser?.role;
@@ -252,11 +281,36 @@ const AddSiteAttendanceRecord: React.FC = () => {
         );
     }
 
-    const SectionHeader = ({ icon: Icon, title, bgColor }: { icon: any, title: string, bgColor: string }) => (
-        <h4 className={`text-sm font-bold uppercase tracking-wider border-b ${isMobile ? 'border-[#1f3d2b]' : 'border-border/60'} pb-3 mb-6 flex items-center ${bgColor}`}>
-            <Icon className="w-5 h-5 mr-2" />
-            {title}
-        </h4>
+    const SectionHeader = ({ 
+        icon: Icon, 
+        title, 
+        textColor, 
+        isLocked, 
+        lockedMessage 
+    }: { 
+        icon: any; 
+        title: string; 
+        textColor: string; 
+        isLocked?: boolean;
+        lockedMessage?: string;
+    }) => (
+        <div className={`flex flex-wrap items-center justify-between border-b ${isMobile ? 'border-[#1f3d2b]' : 'border-border/60'} pb-3 mb-6 gap-2`}>
+            <h4 className={`text-sm font-bold uppercase tracking-wider flex items-center ${textColor}`}>
+                <Icon className="w-5 h-5 mr-2" />
+                {title}
+            </h4>
+            {isLocked ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                    <Lock className="w-3.5 h-3.5" />
+                    {lockedMessage || 'Read-Only Section'}
+                </span>
+            ) : (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Editable by you
+                </span>
+            )}
+        </div>
     );
 
     const labelClass = isMobile ? "text-xs font-bold text-gray-400 uppercase tracking-tight ml-1" : "text-xs font-bold text-muted uppercase tracking-tight ml-1";
@@ -271,111 +325,224 @@ const AddSiteAttendanceRecord: React.FC = () => {
         : "bg-white/40 p-6 rounded-3xl border border-border/50 shadow-sm transition-all hover:shadow-md";
 
     const FormContent = (
-        <form onSubmit={handleSave} className="space-y-12">
-            {/* Description Section */}
+        <form onSubmit={handleSave} className="space-y-10">
+            {/* Top Description & Responsibility Section */}
             <div className={sectionContainerClass}>
-                <SectionHeader icon={Briefcase} title="Description" bgColor="text-orange-600" />
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <div className="space-y-1 group">
-                        <SearchableSelect
-                            label="Select Site"
-                            placeholder="Select or type site name..."
-                            options={sites.map(s => ({ id: s.id, name: s.shortName }))}
-                            value={record.siteId || record.siteName || ''}
-                            onChange={(id) => {
-                                handleInputChange('siteId', id);
-                            }}
-                            allowCustom
-                        />
+                <div className="flex flex-wrap items-center justify-between border-b pb-3 mb-6 gap-2">
+                    <h4 className="text-sm font-bold uppercase tracking-wider flex items-center text-orange-600 dark:text-orange-400">
+                        <Briefcase className="w-5 h-5 mr-2" />
+                        Site & Matrix Responsibility
+                    </h4>
+                    <div className="flex items-center gap-3">
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-primary/10 text-primary border border-primary/20">
+                            <ShieldCheck className="w-3.5 h-3.5" />
+                            Auto-Mapped from Responsibility Matrix
+                        </span>
+                        {permissions.canEditMetadata && (
+                            <button
+                                type="button"
+                                onClick={() => setShowAdminOverride(!showAdminOverride)}
+                                className="inline-flex items-center gap-1 text-xs font-bold text-muted hover:text-primary transition-colors py-1 px-2.5 rounded-lg bg-gray-100 dark:bg-white/5 border border-border"
+                            >
+                                <Edit3 className="w-3.5 h-3.5" />
+                                {showAdminOverride ? 'Hide Admin Override' : 'Admin Override'}
+                                {showAdminOverride ? <ChevronUp className="w-3 h-3 ml-0.5" /> : <ChevronDown className="w-3 h-3 ml-0.5" />}
+                            </button>
+                        )}
                     </div>
-                    <Input
-                        id="companyName"
-                        name="companyName"
-                        label="Company Name"
-                        placeholder="e.g. IFS, IBM"
-                        value={record.companyName || ''}
-                        onChange={(e) => handleInputChange('companyName', e.target.value)}
-                        className={inputClass}
+                </div>
+
+                {/* Primary Site Selector */}
+                <div className="mb-6">
+                    <SearchableSelect
+                        label="Select Site Name"
+                        placeholder="Choose or search authorized site..."
+                        options={sites.map(s => {
+                            const sName = s.shortName || (s as any).name || s.id;
+                            const matrixMeta = getSiteMetadataFromMatrix(sName, matrixList);
+                            const company = matrixMeta?.billingCompany || (s as any).company || 'PIFS';
+                            return {
+                                id: s.id,
+                                name: sName,
+                                badge: company
+                            };
+                        })}
+                        value={record.siteId || record.siteName || ''}
+                        onChange={(id) => handleInputChange('siteId', id)}
+                        allowCustom={permissions.isAdmin}
                     />
-                    <div className="space-y-1 group">
-                        <label htmlFor="billingCycle" className={labelClass}>Billing Cycle</label>
-                        <select
-                            id="billingCycle"
-                            name="billingCycle"
-                            className={selectClass}
-                            value={record.billingCycle || ''}
-                            onChange={(e) => handleInputChange('billingCycle', e.target.value)}
-                        >
-                            <option value="">Select cycle...</option>
-                            {BILLING_CYCLES.map(cycle => (
-                                <option key={cycle} value={cycle}>{cycle}</option>
-                            ))}
-                        </select>
+                </div>
+
+                {/* Assigned Responsibility Cards Grid (Center-based) */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 p-4 rounded-2xl bg-gray-50/80 dark:bg-[#072418] border border-border/60 mb-6">
+                    {/* Company */}
+                    <div className="flex flex-col items-center justify-center text-center p-3.5 rounded-xl bg-white dark:bg-[#0c2e1f] border border-border/40 shadow-xs hover:border-blue-500/30 transition-all">
+                        <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-muted uppercase tracking-tight mb-1.5">
+                            <Building className="w-3.5 h-3.5 text-blue-500" />
+                            <span>Company</span>
+                        </div>
+                        <div className="text-sm font-black text-primary-text truncate w-full text-center" title={record.companyName || 'Not Set'}>
+                            {record.companyName || <span className="text-muted/60 italic font-normal">Not Set</span>}
+                        </div>
                     </div>
-                    <div className="space-y-1 group">
-                        <SearchableSelect
-                            label="Ops Incharge"
-                            placeholder="Select or type name..."
-                            options={opsInchargeOptions.map(name => ({ id: name, name }))}
-                            value={record.opsIncharge || ''}
-                            onChange={(val) => handleInputChange('opsIncharge', val)}
-                            allowCustom
-                        />
+
+                    {/* Billing Cycle */}
+                    <div className="flex flex-col items-center justify-center text-center p-3.5 rounded-xl bg-white dark:bg-[#0c2e1f] border border-border/40 shadow-xs hover:border-amber-500/30 transition-all">
+                        <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-muted uppercase tracking-tight mb-1.5">
+                            <Calendar className="w-3.5 h-3.5 text-amber-500" />
+                            <span>Billing Cycle</span>
+                        </div>
+                        <div className="text-sm font-black text-primary-text truncate w-full text-center" title={record.billingCycle || 'Not Set'}>
+                            {record.billingCycle || <span className="text-muted/60 italic font-normal">Not Set</span>}
+                        </div>
                     </div>
-                    <div className="space-y-1 group">
-                        <SearchableSelect
-                            label="HR Incharge"
-                            placeholder="Select or type name..."
-                            options={hrInchargeOptions.map(name => ({ id: name, name }))}
-                            value={record.hrIncharge || ''}
-                            onChange={(val) => handleInputChange('hrIncharge', val)}
-                            allowCustom
-                        />
+
+                    {/* Ops Incharge */}
+                    <div className="flex flex-col items-center justify-center text-center p-3.5 rounded-xl bg-white dark:bg-[#0c2e1f] border border-border/40 shadow-xs hover:border-emerald-500/30 transition-all">
+                        <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-muted uppercase tracking-tight mb-1.5">
+                            <Users className="w-3.5 h-3.5 text-emerald-500" />
+                            <span>Ops Incharge</span>
+                        </div>
+                        <div className="text-sm font-black text-primary-text truncate w-full text-center" title={record.opsIncharge || 'Not Set'}>
+                            {record.opsIncharge || <span className="text-muted/60 italic font-normal">Not Set</span>}
+                        </div>
                     </div>
-                    <div className="space-y-1 group">
-                        <SearchableSelect
-                            label="Invoice Incharge"
-                            placeholder="Select or type name..."
-                            options={invoiceInchargeOptions.map(name => ({ id: name, name }))}
-                            value={record.invoiceIncharge || ''}
-                            onChange={(val) => handleInputChange('invoiceIncharge', val)}
-                            allowCustom
-                        />
+
+                    {/* HR Incharge */}
+                    <div className="flex flex-col items-center justify-center text-center p-3.5 rounded-xl bg-white dark:bg-[#0c2e1f] border border-border/40 shadow-xs hover:border-purple-500/30 transition-all">
+                        <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-muted uppercase tracking-tight mb-1.5">
+                            <ClipboardList className="w-3.5 h-3.5 text-purple-500" />
+                            <span>HR Incharge</span>
+                        </div>
+                        <div className="text-sm font-black text-primary-text truncate w-full text-center" title={record.hrIncharge || 'Not Set'}>
+                            {record.hrIncharge || <span className="text-muted/60 italic font-normal">Not Set</span>}
+                        </div>
                     </div>
+
+                    {/* Invoice Incharge */}
+                    <div className="flex flex-col items-center justify-center text-center p-3.5 rounded-xl bg-white dark:bg-[#0c2e1f] border border-border/40 shadow-xs hover:border-indigo-500/30 transition-all col-span-2 sm:col-span-1">
+                        <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-muted uppercase tracking-tight mb-1.5">
+                            <FileText className="w-3.5 h-3.5 text-indigo-500" />
+                            <span>Invoice Incharge</span>
+                        </div>
+                        <div className="text-sm font-black text-primary-text truncate w-full text-center" title={record.invoiceIncharge || 'Not Set'}>
+                            {record.invoiceIncharge || <span className="text-muted/60 italic font-normal">Not Set</span>}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Optional Admin Override Drawer */}
+                {permissions.canEditMetadata && showAdminOverride && (
+                    <div className="p-5 rounded-2xl bg-amber-500/5 border-2 border-amber-500/30 mb-6 space-y-4 animate-in fade-in slide-in-from-top-2">
+                        <div className="flex items-center gap-2 text-xs font-bold text-amber-700 dark:text-amber-400">
+                            <Info className="w-4 h-4" />
+                            Admin Override Mode: Modifying these fields overrides the default Site Responsibility Matrix mapping for this specific record.
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <Input
+                                id="companyName"
+                                name="companyName"
+                                label="Company Name"
+                                placeholder="e.g. PIFS, SWLLP, PPFMS"
+                                value={record.companyName || ''}
+                                onChange={(e) => handleInputChange('companyName', e.target.value)}
+                                className={inputClass}
+                            />
+                            <div className="space-y-1 group">
+                                <label htmlFor="billingCycle" className={labelClass}>Billing Cycle</label>
+                                <select
+                                    id="billingCycle"
+                                    name="billingCycle"
+                                    className={selectClass}
+                                    value={record.billingCycle || ''}
+                                    onChange={(e) => handleInputChange('billingCycle', e.target.value)}
+                                >
+                                    <option value="">Select cycle...</option>
+                                    {BILLING_CYCLES.map(cycle => (
+                                        <option key={cycle} value={cycle}>{cycle}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="space-y-1 group">
+                                <SearchableSelect
+                                    label="Ops Incharge"
+                                    placeholder="Select or type name..."
+                                    options={opsInchargeOptions.map(name => ({ id: name, name }))}
+                                    value={record.opsIncharge || ''}
+                                    onChange={(val) => handleInputChange('opsIncharge', val)}
+                                    allowCustom
+                                />
+                            </div>
+                            <div className="space-y-1 group">
+                                <SearchableSelect
+                                    label="HR Incharge"
+                                    placeholder="Select or type name..."
+                                    options={hrInchargeOptions.map(name => ({ id: name, name }))}
+                                    value={record.hrIncharge || ''}
+                                    onChange={(val) => handleInputChange('hrIncharge', val)}
+                                    allowCustom
+                                />
+                            </div>
+                            <div className="space-y-1 group">
+                                <SearchableSelect
+                                    label="Invoice Incharge"
+                                    placeholder="Select or type name..."
+                                    options={invoiceInchargeOptions.map(name => ({ id: name, name }))}
+                                    value={record.invoiceIncharge || ''}
+                                    onChange={(val) => handleInputChange('invoiceIncharge', val)}
+                                    allowCustom
+                                />
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Role-Aware Remarks Row */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
                     <Input
                         id="opsRemarks"
                         name="opsRemarks"
-                        label="Ops Remarks"
-                        placeholder="Operational notes"
+                        label="Ops Remarks (Operations)"
+                        placeholder="Operational notes..."
                         value={record.opsRemarks || ''}
                         onChange={(e) => handleInputChange('opsRemarks', e.target.value)}
+                        disabled={!permissions.canEditOpsRemarks}
                         className={inputClass}
                     />
                     <Input
                         id="hrRemarks"
                         name="hrRemarks"
-                        label="HR Remarks"
-                        placeholder="HR notes"
+                        label="HR Remarks (HR Team)"
+                        placeholder="HR notes..."
                         value={record.hrRemarks || ''}
                         onChange={(e) => handleInputChange('hrRemarks', e.target.value)}
+                        disabled={!permissions.canEditHrRemarks}
                         className={inputClass}
                     />
                     <Input
                         id="financeRemarks"
                         name="financeRemarks"
-                        label="Finance Remarks"
-                        placeholder="Finance notes"
+                        label="Finance Remarks (Accounts)"
+                        placeholder="Finance notes..."
                         value={record.financeRemarks || ''}
                         onChange={(e) => handleInputChange('financeRemarks', e.target.value)}
+                        disabled={!permissions.canEditFinanceRemarks}
                         className={inputClass}
                     />
                 </div>
             </div>
 
+            {/* Attendance Sections (HR & Managers) */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* Manager Status Section */}
-                <div className={`${sectionContainerClass} border-l-4 border-l-yellow-400`}>
-                    <SectionHeader icon={Users} title="Attendance Status (Managers)" bgColor="text-yellow-700" />
+                <div className={`${sectionContainerClass} border-l-4 border-l-yellow-400 ${!permissions.canEditAttendance ? 'opacity-90 bg-gray-50/50 dark:bg-black/20' : ''}`}>
+                    <SectionHeader 
+                        icon={Users} 
+                        title="Attendance Status (Managers)" 
+                        textColor="text-yellow-700 dark:text-yellow-400" 
+                        isLocked={!permissions.canEditAttendance}
+                        lockedMessage="HR / Ops Managed"
+                    />
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                         <Input
                             id="managerTentativeDate"
@@ -384,6 +551,7 @@ const AddSiteAttendanceRecord: React.FC = () => {
                             type="date"
                             value={record.managerTentativeDate || ''}
                             onChange={(e) => handleInputChange('managerTentativeDate', e.target.value)}
+                            disabled={!permissions.canEditAttendance}
                             className={inputClass}
                         />
                         <Input
@@ -393,14 +561,21 @@ const AddSiteAttendanceRecord: React.FC = () => {
                             type="date"
                             value={record.managerReceivedDate || ''}
                             onChange={(e) => handleInputChange('managerReceivedDate', e.target.value)}
+                            disabled={!permissions.canEditAttendance}
                             className={inputClass}
                         />
                     </div>
                 </div>
 
                 {/* HR Status Section */}
-                <div className={`${sectionContainerClass} border-l-4 border-l-blue-400`}>
-                    <SectionHeader icon={ClipboardList} title="Attendance Status (HR)" bgColor="text-blue-700" />
+                <div className={`${sectionContainerClass} border-l-4 border-l-blue-400 ${!permissions.canEditAttendance ? 'opacity-90 bg-gray-50/50 dark:bg-black/20' : ''}`}>
+                    <SectionHeader 
+                        icon={ClipboardList} 
+                        title="Attendance Status (HR)" 
+                        textColor="text-blue-700 dark:text-blue-400" 
+                        isLocked={!permissions.canEditAttendance}
+                        lockedMessage="HR Managed"
+                    />
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                         <Input
                             id="hrTentativeDate"
@@ -409,6 +584,7 @@ const AddSiteAttendanceRecord: React.FC = () => {
                             type="date"
                             value={record.hrTentativeDate || ''}
                             onChange={(e) => handleInputChange('hrTentativeDate', e.target.value)}
+                            disabled={!permissions.canEditAttendance}
                             className={inputClass}
                         />
                         <Input
@@ -418,26 +594,36 @@ const AddSiteAttendanceRecord: React.FC = () => {
                             type="date"
                             value={record.hrReceivedDate || ''}
                             onChange={(e) => handleInputChange('hrReceivedDate', e.target.value)}
+                            disabled={!permissions.canEditAttendance}
                             className={inputClass}
                         />
-                        <Input
-                            id="attendanceReceivedTime"
-                            name="attendanceReceivedTime"
-                            label="Attendance Received Time"
-                            placeholder="e.g. 5:00 AM"
-                            value={record.attendanceReceivedTime || ''}
-                            onChange={(e) => handleInputChange('attendanceReceivedTime', e.target.value)}
-                            icon={<Clock className="h-4 w-4" />}
-                            className={inputClass.replace('rounded-xl', '')} // Input handles rounded internally sometimes, or override here if needed, keeping simple. Actually Input assumes className appends.
-                        />
+                        <div className="sm:col-span-2">
+                            <Input
+                                id="attendanceReceivedTime"
+                                name="attendanceReceivedTime"
+                                label="Attendance Received Time"
+                                placeholder="e.g. 5:00 AM"
+                                value={record.attendanceReceivedTime || ''}
+                                onChange={(e) => handleInputChange('attendanceReceivedTime', e.target.value)}
+                                disabled={!permissions.canEditAttendance}
+                                icon={<Clock className="h-4 w-4" />}
+                                className={inputClass}
+                            />
+                        </div>
                     </div>
                 </div>
             </div>
 
-            {/* Invoice Status Section */}
-                <div className={`${sectionContainerClass} border-t-4 border-t-green-400`}>
-                <SectionHeader icon={FileText} title="Invoice Status" bgColor="text-green-700" />
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {/* Invoice Status Section (Finance Domain) */}
+            <div className={`${sectionContainerClass} border-t-4 border-t-green-500 ${!permissions.canEditInvoice ? 'opacity-90 bg-gray-50/50 dark:bg-black/20' : ''}`}>
+                <SectionHeader 
+                    icon={FileText} 
+                    title="Invoice Status (Finance)" 
+                    textColor="text-green-700 dark:text-green-400" 
+                    isLocked={!permissions.canEditInvoice}
+                    lockedMessage="Finance Managed"
+                />
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                     <Input
                         id="invoiceSharingTentativeDate"
                         name="invoiceSharingTentativeDate"
@@ -445,6 +631,7 @@ const AddSiteAttendanceRecord: React.FC = () => {
                         type="date"
                         value={record.invoiceSharingTentativeDate || ''}
                         onChange={(e) => handleInputChange('invoiceSharingTentativeDate', e.target.value)}
+                        disabled={!permissions.canEditInvoice}
                         className={inputClass}
                     />
                     <Input
@@ -454,6 +641,7 @@ const AddSiteAttendanceRecord: React.FC = () => {
                         type="date"
                         value={record.invoicePreparedDate || ''}
                         onChange={(e) => handleInputChange('invoicePreparedDate', e.target.value)}
+                        disabled={!permissions.canEditInvoice}
                         className={inputClass}
                     />
                     <Input
@@ -463,6 +651,7 @@ const AddSiteAttendanceRecord: React.FC = () => {
                         type="date"
                         value={record.invoiceSentDate || ''}
                         onChange={(e) => handleInputChange('invoiceSentDate', e.target.value)}
+                        disabled={!permissions.canEditInvoice}
                         className={inputClass}
                     />
                     <Input
@@ -472,6 +661,7 @@ const AddSiteAttendanceRecord: React.FC = () => {
                         placeholder="e.g. 12:35 PM"
                         value={record.invoiceSentTime || ''}
                         onChange={(e) => handleInputChange('invoiceSentTime', e.target.value)}
+                        disabled={!permissions.canEditInvoice}
                         icon={<Clock className="h-4 w-4" />}
                         className={inputClass}
                     />
@@ -550,3 +740,4 @@ const AddSiteAttendanceRecord: React.FC = () => {
 };
 
 export default AddSiteAttendanceRecord;
+
