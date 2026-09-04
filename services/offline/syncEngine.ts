@@ -177,8 +177,28 @@ async function syncItem(item: OutboxItem): Promise<'synced' | 'failed'> {
         'verified_by_photo',
         'verified_at',
         'verification_mode',
+        'verifiedBy',
+        'verifiedAt',
+        'verifiedByPhoto',
+        'verificationMode',
         'confirm_account_number',
         'file',
+        // Rejection columns stored inside personal JSON
+        'rejected_at',
+        'rejected_by',
+        'rejection_reason',
+        'rejectedAt',
+        'rejectedBy',
+        'rejectionReason',
+        'rejection_notes',
+        'rejectionNotes',
+        'rejectionReasonText',
+        'fcuStatus',
+        'fcuAcknowledgedBy',
+        'fcuAcknowledgedAt',
+        'fcuVerifiedBy',
+        'fcuVerifiedAt',
+        'fcuNotes',
       ] as const;
       for (const field of onboardingStripFields) {
         delete (payload as any)[field];

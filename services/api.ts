@@ -1793,10 +1793,6 @@ export const api = {
       organization_name: data.organization?.organizationName || null,
     };
 
-    // Remove any client-side only properties that don't have columns in onboarding_submissions.
-    // created_by_name / created_by_photo / created_by_role were added as frontend helper
-    // fields but were never migrated into the DB schema — sending them causes:
-    //   "Could not find the 'created_by_name' column of 'onboarding_submissions' in the schema cache"
     delete dbData.file;
     delete dbData.confirm_account_number;
     delete (dbData as any).is_qr_verified;
@@ -1804,12 +1800,28 @@ export const api = {
     delete (dbData as any).created_by_photo;
     delete (dbData as any).created_by_role;
     delete (dbData as any).created_by;
-    // submission_mode and verification tracking columns are stored separately after migration
+    delete (dbData as any).createdByName;
+    delete (dbData as any).createdByPhoto;
+    delete (dbData as any).createdByRole;
     delete (dbData as any).submission_mode;
     delete (dbData as any).verified_by;
     delete (dbData as any).verified_by_photo;
     delete (dbData as any).verified_at;
     delete (dbData as any).verification_mode;
+    delete (dbData as any).verifiedBy;
+    delete (dbData as any).verifiedAt;
+    delete (dbData as any).verifiedByPhoto;
+    delete (dbData as any).verificationMode;
+    delete (dbData as any).rejected_at;
+    delete (dbData as any).rejected_by;
+    delete (dbData as any).rejection_reason;
+    delete (dbData as any).rejectedAt;
+    delete (dbData as any).rejectedBy;
+    delete (dbData as any).rejectionReason;
+    delete (dbData as any).rejection_notes;
+    delete (dbData as any).rejectionNotes;
+    delete (dbData as any).pending;
+    delete (dbData as any).failed;
 
     try {
       const { data: savedData, error } = await supabase.from('onboarding_submissions').upsert(dbData, { onConflict: 'id' }).select('id').single();

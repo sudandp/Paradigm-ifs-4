@@ -113,11 +113,26 @@ class OfflineSyncEngine {
 
       try {
         let error = null;
+        const payload = { ...item.payload };
+        if (item.entityType === 'onboarding_submissions') {
+          const stripFields = [
+            'file', 'confirm_account_number', 'is_qr_verified', 'created_by_name',
+            'created_by_photo', 'created_by_role', 'created_by', 'submission_mode',
+            'verified_by', 'verified_by_photo', 'verified_at', 'verification_mode',
+            'verifiedBy', 'verifiedAt', 'verifiedByPhoto', 'verificationMode',
+            'rejected_at', 'rejected_by', 'rejection_reason', 'rejectedAt', 'rejectedBy',
+            'rejectionReason', 'rejection_notes', 'rejectionNotes', 'rejectionReasonText',
+            'fcuStatus', 'fcuAcknowledgedBy', 'fcuAcknowledgedAt', 'fcuVerifiedBy',
+            'fcuVerifiedAt', 'fcuNotes', 'pending', 'failed'
+          ];
+          stripFields.forEach(k => delete (payload as any)[k]);
+        }
+
         if (item.action === 'INSERT') {
-          const { error: err } = await supabase.from(item.entityType).insert(item.payload);
+          const { error: err } = await supabase.from(item.entityType).insert(payload);
           error = err;
         } else if (item.action === 'UPDATE') {
-          const { id, ...updateData } = item.payload;
+          const { id, ...updateData } = payload;
           const { error: err } = await supabase.from(item.entityType).update(updateData).eq('id', id || item.payload.entity_id);
           error = err;
         } else if (item.action === 'DELETE') {
