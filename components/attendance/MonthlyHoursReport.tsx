@@ -43,7 +43,8 @@ interface MonthlyHoursReportProps {
   selectedCompany?: string;
   selectedLocation?: string;
   selectedRole?: string;
-  selectedStaffCategory?: string;
+  selectedStaffCategory?: string | string[];
+  selectedStaffCategories?: string[] | string;
   onDataLoaded?: (data: EmployeeMonthlyData[]) => void;
   users?: User[];
 }
@@ -51,7 +52,8 @@ interface MonthlyHoursReportProps {
 const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ 
   month, year, userId, data: externalData, hideHeader, scopedSettings = [],
   selectedStatus = 'all', selectedRecordType = 'all', selectedSite = 'all', selectedCompany = 'all', selectedLocation = 'all', selectedRole = 'all',
-  selectedStaffCategory = 'all',
+  selectedStaffCategory,
+  selectedStaffCategories,
   onDataLoaded, users: externalUsers
 }) => {
   const [reportData, setReportData] = useState<EmployeeMonthlyData[]>([]);
@@ -93,9 +95,12 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
     }
   };
 
+  const rawStaffCats = selectedStaffCategories || selectedStaffCategory;
+  const staffCategoryKey = Array.isArray(rawStaffCats) ? rawStaffCats.join(',') : (rawStaffCats || 'all');
+
   const prevDeps = React.useRef<any>({});
   useEffect(() => {
-    const currentDeps = { month, year, userId, externalData, selectedStatus, selectedRecordType, selectedSite, selectedCompany, selectedLocation, selectedRole, selectedStaffCategory };
+    const currentDeps = { month, year, userId, externalData, selectedStatus, selectedRecordType, selectedSite, selectedCompany, selectedLocation, selectedRole, staffCategoryKey };
     const changed: string[] = [];
     Object.keys(currentDeps).forEach(key => {
       if (prevDeps.current[key] !== (currentDeps as any)[key]) {
@@ -112,7 +117,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
     } else {
       loadReportData();
     }
-  }, [month, year, userId, externalData, selectedStatus, selectedRecordType, selectedSite, selectedCompany, selectedLocation, selectedRole, selectedStaffCategory]);
+  }, [month, year, userId, externalData, selectedStatus, selectedRecordType, selectedSite, selectedCompany, selectedLocation, selectedRole, staffCategoryKey]);
   const resolveUserLocation = (u: User, orgStructure: any[]) => {
     if (u.location || u.locationName) return u.location || u.locationName;
     if (!u.societyId || orgStructure.length === 0) return '';
@@ -239,8 +244,9 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
         if (userId && userId !== 'all') {
           targetUsers = usersData.filter(u => u.id === userId);
         } else {
-          if (selectedStaffCategory !== 'all') {
-            targetUsers = targetUsers.filter(u => getStaffCategory(u.role, u.societyId, attendance) === selectedStaffCategory);
+          const activeCats = Array.isArray(rawStaffCats) ? rawStaffCats : (rawStaffCats && rawStaffCats !== 'all' ? [rawStaffCats] : []);
+          if (activeCats.length > 0 && !activeCats.includes('all') && activeCats.length < 3) {
+            targetUsers = targetUsers.filter(u => activeCats.includes(getStaffCategory(u.role, u.societyId, attendance)));
           }
           if (selectedRole !== 'all') targetUsers = targetUsers.filter(u => u.role === selectedRole);
           if (selectedSite !== 'all') targetUsers = targetUsers.filter(u => u.organizationId && u.organizationId.split(',').map(s => s.trim()).includes(selectedSite));
@@ -360,8 +366,9 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
       if (userId && userId !== 'all') {
         targetUsers = usersData.filter(u => u.id === userId);
       } else {
-        if (selectedStaffCategory !== 'all') {
-          targetUsers = targetUsers.filter(u => getStaffCategory(u.role, u.societyId, attendance) === selectedStaffCategory);
+        const activeCats = Array.isArray(rawStaffCats) ? rawStaffCats : (rawStaffCats && rawStaffCats !== 'all' ? [rawStaffCats] : []);
+        if (activeCats.length > 0 && !activeCats.includes('all') && activeCats.length < 3) {
+          targetUsers = targetUsers.filter(u => activeCats.includes(getStaffCategory(u.role, u.societyId, attendance)));
         }
         if (selectedRole !== 'all') targetUsers = targetUsers.filter(u => u.role === selectedRole);
         if (selectedSite !== 'all') targetUsers = targetUsers.filter(u => u.organizationId && u.organizationId.split(',').map(s => s.trim()).includes(selectedSite));

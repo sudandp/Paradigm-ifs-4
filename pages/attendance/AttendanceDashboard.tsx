@@ -155,6 +155,37 @@ const resolveUserLocation = (user: User, orgStructure: OrganizationGroup[]) => {
     return '';
 };
 
+const areCategoryArraysEqual = (a: string[], b: string[]) => {
+    if (a.length !== b.length) return false;
+    const sortedA = [...a].sort();
+    const sortedB = [...b].sort();
+    return sortedA.every((val, idx) => val === sortedB[idx]);
+};
+
+const getStaffCategoryLabel = (categories: string[]) => {
+    if (!categories || categories.length === 3 || categories.includes('all')) {
+        return 'All Staff';
+    }
+    if (categories.length === 0) {
+        return 'Select Staff';
+    }
+    const labelMap: Record<string, string> = {
+        office: 'Office Staff',
+        field: 'Field Staff',
+        site: 'Site Staff'
+    };
+    return categories.map(c => labelMap[c] || c).join(', ');
+};
+
+const matchesSelectedStaffCategories = (role?: string, societyId?: string, categories?: string[], attendanceSettings?: any) => {
+    if (!categories || categories.length === 3 || categories.includes('all') || categories.length === 0) {
+        return true;
+    }
+    const cat = getStaffCategory(role, societyId, attendanceSettings);
+    return categories.includes(cat);
+};
+
+
 
 // --- Plugins ---
 // CSS `zoom` breaks Chart.js coordinate mapping because offsetX is scaled but clientWidth is not.
@@ -1114,7 +1145,7 @@ const AttendanceDashboard: React.FC = () => {
 
     const [selectedUser, setSelectedUser] = useState<string>('all');
     const [selectedRole, setSelectedRole] = useState<string>('all');
-    const [selectedStaffCategory, setSelectedStaffCategory] = useState<string>('all');
+    const [selectedStaffCategories, setSelectedStaffCategories] = useState<string[]>(['office', 'field', 'site']);
     const [selectedCompany, setSelectedCompany] = useState<string>('all');
     const [selectedSite, setSelectedSite] = useState<string>('all');
     const [selectedLocation, setSelectedLocation] = useState<string>('all');
@@ -1681,7 +1712,9 @@ const AttendanceDashboard: React.FC = () => {
     const [pendingReportType, setPendingReportType] = useState<AttendanceReportType>(reportType);
     const [pendingSelectedCompany, setPendingSelectedCompany] = useState(selectedCompany);
     const [pendingSelectedSite, setPendingSelectedSite] = useState(selectedSite);
-    const [pendingSelectedStaffCategory, setPendingSelectedStaffCategory] = useState(selectedStaffCategory);
+    const [pendingSelectedStaffCategories, setPendingSelectedStaffCategories] = useState<string[]>(selectedStaffCategories);
+    const [isStaffCategoryOpen, setIsStaffCategoryOpen] = useState(false);
+    const staffCategoryRef = useRef<HTMLDivElement>(null);
     const [pendingSelectedRole, setPendingSelectedRole] = useState(selectedRole);
     const [pendingSelectedUser, setPendingSelectedUser] = useState(selectedUser);
     const [pendingSelectedLocation, setPendingSelectedLocation] = useState(selectedLocation);
@@ -1765,16 +1798,16 @@ const AttendanceDashboard: React.FC = () => {
         company: selectedCompany !== 'all' ? (activeOrganizations.find(org => org.id === selectedCompany)?.name || selectedCompany) : undefined,
         location: selectedLocation !== 'all' ? selectedLocation : undefined,
         site: selectedSite !== 'all' ? (activeSocieties.find(s => s.id === selectedSite)?.name || selectedSite) : undefined,
-        staffCategory: selectedStaffCategory !== 'all' ? (selectedStaffCategory === 'office' ? 'Office Staff' : selectedStaffCategory === 'field' ? 'Field Staff' : 'Site Staff') : undefined,
+        staffCategory: getStaffCategoryLabel(selectedStaffCategories) !== 'All Staff' ? getStaffCategoryLabel(selectedStaffCategories) : undefined,
         role: selectedRole !== 'all' ? selectedRole : undefined,
-    }), [selectedCompany, selectedLocation, selectedSite, selectedStaffCategory, selectedRole, activeOrganizations, activeSocieties]);
+    }), [selectedCompany, selectedLocation, selectedSite, selectedStaffCategories, selectedRole, activeOrganizations, activeSocieties]);
 
     // Watch for changes in pending filters vs applied filters
     useEffect(() => {
         const isDirty = 
             pendingSelectedCompany !== selectedCompany ||
             pendingSelectedSite !== selectedSite ||
-            pendingSelectedStaffCategory !== selectedStaffCategory ||
+            !areCategoryArraysEqual(pendingSelectedStaffCategories, selectedStaffCategories) ||
             pendingSelectedRole !== selectedRole ||
             pendingSelectedUser !== selectedUser ||
             pendingSelectedLocation !== selectedLocation ||
@@ -1789,7 +1822,7 @@ const AttendanceDashboard: React.FC = () => {
     }, [
         pendingSelectedCompany, selectedCompany,
         pendingSelectedSite, selectedSite,
-        pendingSelectedStaffCategory, selectedStaffCategory,
+        pendingSelectedStaffCategories, selectedStaffCategories,
         pendingSelectedRole, selectedRole,
         pendingSelectedUser, selectedUser,
         pendingSelectedLocation, selectedLocation,
@@ -1807,7 +1840,7 @@ const AttendanceDashboard: React.FC = () => {
         setSelectedCompany(pendingSelectedCompany);
         setSelectedSite(pendingSelectedSite);
         setSelectedLocation(pendingSelectedLocation);
-        setSelectedStaffCategory(pendingSelectedStaffCategory);
+        setSelectedStaffCategories(pendingSelectedStaffCategories);
         setSelectedRole(pendingSelectedRole);
         setSelectedUser(pendingSelectedUser);
         setSelectedStatus(pendingSelectedStatus);
@@ -1816,6 +1849,7 @@ const AttendanceDashboard: React.FC = () => {
         
         setIsFiltersDirty(false);
         setIsDatePickerOpen(false);
+        setIsStaffCategoryOpen(false);
         setToast({ message: 'Filters applied successfully', type: 'success' });
     };
 
@@ -1949,6 +1983,9 @@ const AttendanceDashboard: React.FC = () => {
         const handleClickOutside = (event: MouseEvent) => {
             if (datePickerRef.current && !datePickerRef.current.contains(event.target as Node)) {
                 setIsDatePickerOpen(false);
+            }
+            if (staffCategoryRef.current && !staffCategoryRef.current.contains(event.target as Node)) {
+                setIsStaffCategoryOpen(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
@@ -2261,7 +2298,9 @@ const AttendanceDashboard: React.FC = () => {
                 if (selectedCompany !== 'all') activeStaff = activeStaff.filter(u => u.societyId === selectedCompany);
                 if (selectedSite !== 'all') activeStaff = activeStaff.filter(u => u.organizationId && u.organizationId.split(',').map(s => s.trim()).includes(selectedSite));
                 if (selectedLocation !== 'all') activeStaff = activeStaff.filter(u => resolveUserLocation(u, orgStructure).toLowerCase() === selectedLocation.toLowerCase());
-                if (selectedStaffCategory !== 'all') activeStaff = activeStaff.filter(u => getStaffCategory(u.role, u.societyId, attendance) === selectedStaffCategory);
+                if (selectedStaffCategories.length > 0 && !selectedStaffCategories.includes('all') && selectedStaffCategories.length < 3) {
+                    activeStaff = activeStaff.filter(u => matchesSelectedStaffCategories(u.role, u.societyId, selectedStaffCategories, attendance));
+                }
                 if (selectedRole !== 'all') activeStaff = activeStaff.filter(u => u.role === selectedRole);
                 if (selectedUser !== 'all') activeStaff = activeStaff.filter(u => u.id === selectedUser);
                 
@@ -2692,7 +2731,7 @@ const AttendanceDashboard: React.FC = () => {
             }
         };
         loadData();
-    }, [user, selectedCompany, selectedSite, selectedLocation, selectedRole, selectedUser, users, reportType]);
+    }, [user, selectedCompany, selectedSite, selectedLocation, selectedRole, selectedUser, selectedStaffCategories, users, reportType]);
 
     
     // Phase 1 — KPI cards (loads in ~100ms)
@@ -2778,16 +2817,16 @@ const AttendanceDashboard: React.FC = () => {
             fetchDashboardData(dateRange.startDate, dateRange.endDate);
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [dateRange, fetchDashboardData, selectedCompany, selectedSite, selectedLocation, selectedStaffCategory, selectedRole, selectedUser, users, manualRefreshKey]);
+    }, [dateRange, fetchDashboardData, selectedCompany, selectedSite, selectedLocation, selectedStaffCategories, selectedRole, selectedUser, users, manualRefreshKey]);
 
     const availableRoles = useMemo(() => {
         let targetUsers = users;
-        if (pendingSelectedStaffCategory !== 'all') {
-            targetUsers = targetUsers.filter(u => getStaffCategory(u.role, u.societyId, attendance) === pendingSelectedStaffCategory);
+        if (pendingSelectedStaffCategories.length > 0 && !pendingSelectedStaffCategories.includes('all') && pendingSelectedStaffCategories.length < 3) {
+            targetUsers = targetUsers.filter(u => matchesSelectedStaffCategories(u.role, u.societyId, pendingSelectedStaffCategories, attendance));
         }
         const roles = new Set(targetUsers.map(u => u.role).filter(Boolean));
         return Array.from(roles).sort();
-    }, [users, pendingSelectedStaffCategory, attendance]);
+    }, [users, pendingSelectedStaffCategories, attendance]);
 
     const handleSetDateFilter = (filter: string) => {
         setPendingActiveDateFilter(filter);
@@ -2882,8 +2921,8 @@ const AttendanceDashboard: React.FC = () => {
         if (selectedUser !== 'all') {
             filteredUsers = filteredUsers.filter(u => u.id === selectedUser);
         }
-        if (selectedStaffCategory !== 'all') {
-            filteredUsers = filteredUsers.filter(u => getStaffCategory(u.role, u.societyId, attendance) === selectedStaffCategory);
+        if (selectedStaffCategories.length > 0 && !selectedStaffCategories.includes('all') && selectedStaffCategories.length < 3) {
+            filteredUsers = filteredUsers.filter(u => matchesSelectedStaffCategories(u.role, u.societyId, selectedStaffCategories, attendance));
         }
         if (selectedRole !== 'all') {
             filteredUsers = filteredUsers.filter(u => u.role === selectedRole);
@@ -3171,7 +3210,7 @@ const AttendanceDashboard: React.FC = () => {
             });
         }
         return filteredData;
-    }, [users, attendanceEvents, dateRange, selectedUser, selectedStaffCategory, selectedRole, selectedCompany, selectedSite, selectedLocation, selectedStatus, selectedRecordType, recurringHolidays, leaves, userHolidaysPool, officeHolidays, fieldHolidays, siteHolidays, orgStructure, attendance]);
+    }, [users, attendanceEvents, dateRange, selectedUser, selectedStaffCategories, selectedRole, selectedCompany, selectedSite, selectedLocation, selectedStatus, selectedRecordType, recurringHolidays, leaves, userHolidaysPool, officeHolidays, fieldHolidays, siteHolidays, orgStructure, attendance]);
 
     // 2. Attendance Log Data (Raw Events)
     const attendanceLogData: AttendanceLogDataRow[] = useMemo(() => {
@@ -3183,8 +3222,8 @@ const AttendanceDashboard: React.FC = () => {
         if (selectedUser !== 'all') {
             filteredUsers = filteredUsers.filter(u => u.id === selectedUser);
         }
-        if (selectedStaffCategory !== 'all') {
-            filteredUsers = filteredUsers.filter(u => getStaffCategory(u.role, u.societyId, attendance) === selectedStaffCategory);
+        if (selectedStaffCategories.length > 0 && !selectedStaffCategories.includes('all') && selectedStaffCategories.length < 3) {
+            filteredUsers = filteredUsers.filter(u => matchesSelectedStaffCategories(u.role, u.societyId, selectedStaffCategories, attendance));
         }
         if (selectedRole !== 'all') {
             filteredUsers = filteredUsers.filter(u => u.role === selectedRole);
@@ -3311,7 +3350,7 @@ const AttendanceDashboard: React.FC = () => {
             return b.time.localeCompare(a.time);
         });
 
-    }, [users, attendanceEvents, dateRange, selectedUser, selectedStaffCategory, selectedRole, selectedCompany, selectedSite, selectedLocation, selectedStatus, kioskDevices, orgStructure, attendance]);
+    }, [users, attendanceEvents, dateRange, selectedUser, selectedStaffCategories, selectedRole, selectedCompany, selectedSite, selectedLocation, selectedStatus, kioskDevices, orgStructure, attendance]);
 
     // 3. Monthly Report Data (Aggregated)
     // Legacy monthlyReportData removed - now handled by unified MonthlyHoursReport component
@@ -3325,7 +3364,9 @@ const AttendanceDashboard: React.FC = () => {
 
         let filteredUsers = users.filter(u => u.role !== 'management');
         if (selectedUser !== 'all') filteredUsers = filteredUsers.filter(u => u.id === selectedUser);
-        if (selectedStaffCategory !== 'all') filteredUsers = filteredUsers.filter(u => getStaffCategory(u.role, u.societyId, attendance) === selectedStaffCategory);
+        if (selectedStaffCategories.length > 0 && !selectedStaffCategories.includes('all') && selectedStaffCategories.length < 3) {
+            filteredUsers = filteredUsers.filter(u => matchesSelectedStaffCategories(u.role, u.societyId, selectedStaffCategories, attendance));
+        }
         if (selectedRole !== 'all') filteredUsers = filteredUsers.filter(u => u.role === selectedRole);
         if (selectedCompany !== 'all') filteredUsers = filteredUsers.filter(u => u.societyId === selectedCompany);
         if (selectedSite !== 'all') filteredUsers = filteredUsers.filter(u => u.organizationId && u.organizationId.split(',').map(s => s.trim()).includes(selectedSite));
@@ -3411,7 +3452,7 @@ const AttendanceDashboard: React.FC = () => {
         });
 
         return data.sort((a, b) => b.date.localeCompare(a.date));
-    }, [users, attendanceEvents, dateRange, selectedUser, selectedStaffCategory, selectedRole, selectedCompany, selectedSite, selectedLocation, selectedStatus, orgStructure, attendance]);
+    }, [users, attendanceEvents, dateRange, selectedUser, selectedStaffCategories, selectedRole, selectedCompany, selectedSite, selectedLocation, selectedStatus, orgStructure, attendance]);
 
 
     // Helper to map high-precision monthly data to the simple status grid format
@@ -3486,7 +3527,8 @@ const AttendanceDashboard: React.FC = () => {
                                         selectedLocation={selectedLocation}
                                         selectedCompany={selectedCompany}
                                         selectedRole={selectedRole}
-                                        selectedStaffCategory={selectedStaffCategory}
+                                        selectedStaffCategory={selectedStaffCategories}
+                                        selectedStaffCategories={selectedStaffCategories}
                                         users={users}
                                         onDataLoaded={(data) => {
                                             const monthKey = format(m, 'yyyy-MM');
@@ -3562,7 +3604,8 @@ const AttendanceDashboard: React.FC = () => {
                                             selectedLocation={selectedLocation}
                                             selectedCompany={selectedCompany}
                                             selectedRole={selectedRole}
-                                            selectedStaffCategory={selectedStaffCategory}
+                                            selectedStaffCategory={selectedStaffCategories}
+                                            selectedStaffCategories={selectedStaffCategories}
                                             users={users}
                                             onDataLoaded={(data) => {
                                                 if (monthsInRange[0] && m.getTime() === monthsInRange[0].getTime()) {
@@ -3615,7 +3658,7 @@ const AttendanceDashboard: React.FC = () => {
         if (reportType === 'leave_balance') return <LeaveBalanceTrackerDocument data={leaveBalances} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} generatedByRole={user?.role} targetUserName={targetUserName} targetUserRole={targetUserRole} filters={resolvedFilters} />;
         
         return null;
-    }, [reportType, basicReportData, attendanceLogData, site_otReportData, dateRange, auditLogs, user?.name, users, selectedCompany, selectedSite, selectedLocation, selectedStatus, selectedRole, selectedStaffCategory, scopedSettings, exportedMonthlyData, leaveBalances]);
+    }, [reportType, basicReportData, attendanceLogData, site_otReportData, dateRange, auditLogs, user?.name, users, selectedCompany, selectedSite, selectedLocation, selectedStatus, selectedRole, selectedStaffCategories, scopedSettings, exportedMonthlyData, leaveBalances]);
 
     const pdfContent = useMemo(() => renderReportContent(false), [renderReportContent]);
     const previewContent = useMemo(() => renderReportContent(true), [renderReportContent]);
@@ -4104,6 +4147,9 @@ const AttendanceDashboard: React.FC = () => {
             }
             if (selectedRole !== 'all') {
                 targetUsers = targetUsers.filter(u => u.role === selectedRole);
+            }
+            if (selectedStaffCategories.length > 0 && !selectedStaffCategories.includes('all') && selectedStaffCategories.length < 3) {
+                targetUsers = targetUsers.filter(u => matchesSelectedStaffCategories(u.role, u.societyId, selectedStaffCategories, attendance));
             }
             if (selectedSite !== 'all') {
                 targetUsers = targetUsers.filter(u => u.organizationId && u.organizationId.split(',').map(s => s.trim()).includes(selectedSite));
@@ -4864,28 +4910,76 @@ const AttendanceDashboard: React.FC = () => {
                                     </div>
                                 </div>
                             </div>
-                            <div className="col-span-1">
+                            <div className="col-span-1 relative" ref={staffCategoryRef}>
                                 <label className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Staff Category</label>
-                                <div className="relative">
-                                    <select
-                                        className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg pl-3 pr-10 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none transition-all"
-                                        value={pendingSelectedStaffCategory}
-                                        onChange={(e) => {
-                                            const cat = e.target.value;
-                                            setPendingSelectedStaffCategory(cat);
-                                            setPendingSelectedRole('all');
-                                            setPendingSelectedUser('all');
-                                        }}
-                                    >
-                                        <option value="all">All Staff</option>
-                                        <option value="office">Office Staff</option>
-                                        <option value="field">Field Staff</option>
-                                        <option value="site">Site Staff</option>
-                                    </select>
-                                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
-                                        <Filter className="h-3.5 w-3.5 opacity-50" />
+                                <button
+                                    type="button"
+                                    onClick={() => setIsStaffCategoryOpen(prev => !prev)}
+                                    className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg pl-3 pr-2 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none text-left flex items-center justify-between transition-all cursor-pointer shadow-sm"
+                                >
+                                    <span className="truncate pr-1 text-xs md:text-sm font-medium">
+                                        {getStaffCategoryLabel(pendingSelectedStaffCategories)}
+                                    </span>
+                                    <ChevronDown className={`h-3.5 w-3.5 text-gray-400 transition-transform duration-200 flex-shrink-0 ${isStaffCategoryOpen ? 'rotate-180' : ''}`} />
+                                </button>
+                                {isStaffCategoryOpen && (
+                                    <div className="absolute top-full left-0 mt-1 z-50 w-56 bg-white dark:bg-[#0b291a] border border-gray-200 dark:border-[#1a3d2c] rounded-xl shadow-xl p-2 space-y-1 animate-in fade-in zoom-in-95 duration-150">
+                                        {/* All Staff Option */}
+                                        <label
+                                            className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-emerald-50 dark:hover:bg-[#123621] cursor-pointer text-xs font-semibold text-gray-800 dark:text-gray-100 transition-colors"
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                className="w-4 h-4 rounded text-emerald-600 border-gray-300 dark:border-gray-600 focus:ring-emerald-500 cursor-pointer accent-emerald-600"
+                                                checked={pendingSelectedStaffCategories.length === 3}
+                                                onChange={(e) => {
+                                                    if (e.target.checked) {
+                                                        setPendingSelectedStaffCategories(['office', 'field', 'site']);
+                                                    } else {
+                                                        setPendingSelectedStaffCategories([]);
+                                                    }
+                                                    setPendingSelectedRole('all');
+                                                    setPendingSelectedUser('all');
+                                                }}
+                                            />
+                                            <span>All Staff</span>
+                                        </label>
+                                        <div className="h-px bg-gray-100 dark:bg-[#1a3d2c] my-1" />
+                                        {[
+                                            { id: 'office', label: 'Office Staff' },
+                                            { id: 'field', label: 'Field Staff' },
+                                            { id: 'site', label: 'Site Staff' }
+                                        ].map(cat => {
+                                            const isChecked = pendingSelectedStaffCategories.includes(cat.id);
+                                            return (
+                                                <label
+                                                    key={cat.id}
+                                                    className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-emerald-50 dark:hover:bg-[#123621] cursor-pointer text-xs font-medium text-gray-700 dark:text-gray-200 transition-colors"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        className="w-4 h-4 rounded text-emerald-600 border-gray-300 dark:border-gray-600 focus:ring-emerald-500 cursor-pointer accent-emerald-600"
+                                                        checked={isChecked}
+                                                        onChange={(e) => {
+                                                            let nextCats: string[];
+                                                            if (e.target.checked) {
+                                                                nextCats = [...pendingSelectedStaffCategories, cat.id];
+                                                            } else {
+                                                                nextCats = pendingSelectedStaffCategories.filter(c => c !== cat.id);
+                                                            }
+                                                            setPendingSelectedStaffCategories(nextCats);
+                                                            setPendingSelectedRole('all');
+                                                            setPendingSelectedUser('all');
+                                                        }}
+                                                    />
+                                                    <span>{cat.label}</span>
+                                                </label>
+                                            );
+                                        })}
                                     </div>
-                                </div>
+                                )}
                             </div>
                             <div className="col-span-1">
                                 <label className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Role</label>
@@ -4929,7 +5023,7 @@ const AttendanceDashboard: React.FC = () => {
                                     <option value="all">All Employees</option>
                                     {users
                                         .filter(u => 
-                                            (pendingSelectedStaffCategory === 'all' || getStaffCategory(u.role, u.societyId, attendance) === pendingSelectedStaffCategory) &&
+                                            matchesSelectedStaffCategories(u.role, u.societyId, pendingSelectedStaffCategories, attendance) &&
                                             (pendingSelectedRole === 'all' || u.role === pendingSelectedRole) && 
                                             (pendingSelectedCompany === 'all' || u.societyId === pendingSelectedCompany) &&
                                             (pendingSelectedSite === 'all' || (u.organizationId && u.organizationId.split(',').map(s => s.trim()).includes(pendingSelectedSite))) &&
