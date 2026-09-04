@@ -1,8 +1,10 @@
 import React from 'react';
-import { format } from 'date-fns';
+import { format, eachDayOfInterval } from 'date-fns';
 import { ClipboardList } from 'lucide-react';
 import type { BasicReportDataRow, AttendanceLogDataRow, SiteOtDataRow, MonthlyReportRow, WorkHoursReportDataRow } from '../../pages/attendance/PDFReports';
 import { calculateStatsForDateRange } from '../../utils/attendanceCalculations';
+import { FIXED_HOLIDAYS } from '../../utils/constants';
+import { useSettingsStore } from '../../store/settingsStore';
 
 // --- SHARED ---
 export interface AppliedFilters {
@@ -245,9 +247,120 @@ export const MonthlyStatusView: React.FC<{
         ? `Billing Cycle: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}`
         : 'Billing Cycle: Not Specified';
 
-    const dayHeaders = days && days.length > 0
-        ? days.map(d => d.getDate())
-        : (data.length > 0 ? Array.from({ length: data[0].statuses.length }, (_, i) => i + 1) : []);
+    // Fetch configured holidays from store
+    const { officeHolidays, fieldHolidays, siteHolidays } = useSettingsStore();
+
+    const allConfiguredHolidays = React.useMemo(() => {
+        return [
+            ...(officeHolidays || []),
+            ...(fieldHolidays || []),
+            ...(siteHolidays || []),
+        ];
+    }, [officeHolidays, fieldHolidays, siteHolidays]);
+
+    // Compute concrete Date objects for every day in interval
+    const resolvedDays = React.useMemo(() => {
+        if (days && days.length > 0) return days;
+        if (dateRange?.startDate && dateRange?.endDate) {
+            try {
+                return eachDayOfInterval({
+                    start: new Date(dateRange.startDate),
+                    end: new Date(dateRange.endDate)
+                });
+            } catch (err) {
+                console.warn('[MonthlyStatusView] Failed to compute eachDayOfInterval:', err);
+            }
+        }
+        if (data.length > 0 && data[0]?.statuses) {
+            const base = dateRange?.startDate ? new Date(dateRange.startDate) : new Date();
+            return Array.from({ length: data[0].statuses.length }, (_, i) => new Date(base.getFullYear(), base.getMonth(), i + 1));
+        }
+        return [];
+    }, [days, dateRange, data]);
+
+    const dayHeaders = React.useMemo(() => {
+        if (resolvedDays.length > 0) {
+            return resolvedDays.map((d, colIdx) => {
+                const dayNumber = d.getDate();
+                const dayOfWeek = format(d, 'EEE'); // e.g. "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"
+                const isSunday = d.getDay() === 0;
+                const isSaturday = d.getDay() === 6;
+                const dateStr = format(d, 'yyyy-MM-dd');
+                const mmdd = format(d, 'MM-dd');
+
+                // 1. Check fixed holidays (e.g. 08-15 Independence Day, 01-26 Republic Day, 05-01 May Day, 10-02, 11-01)
+                const fixedMatch = FIXED_HOLIDAYS.find(fh => fh.date === mmdd || dateStr.endsWith('-' + fh.date));
+                const isFixed = Boolean(fixedMatch);
+
+                // 2. Check company configured holidays from store
+                const configuredMatch = allConfiguredHolidays.find(h => {
+                    const hDate = String(h.date).split(' ')[0].split('T')[0];
+                    return hDate === dateStr || hDate.endsWith('-' + mmdd);
+                });
+                const isConfigured = Boolean(configuredMatch);
+
+                // 3. Check data statuses for company declared holiday (H, BL, H/P, HP, F/H) on this date
+                let hasDataHoliday = false;
+                let hasBlueLeave = false;
+                let hasHolidayStatus = false;
+                if (data && data.length > 0) {
+                    for (const row of data) {
+                        const st = row.statuses ? (row.statuses[d.getDate() - 1] || row.statuses[colIdx]) : '';
+                        if (st === 'H' || st === 'H/P' || st === 'HP' || (typeof st === 'string' && st.includes('F/H'))) {
+                            hasHolidayStatus = true;
+                            hasDataHoliday = true;
+                        }
+                        if (st === 'BL' || st === 'PL') {
+                            hasBlueLeave = true;
+                            hasDataHoliday = true;
+                        }
+                    }
+                }
+
+                const isHoliday = isFixed || isConfigured || hasDataHoliday;
+
+                // Determine specific holiday label/name
+                let holidayName = '';
+                if (fixedMatch?.name) {
+                    holidayName = fixedMatch.name;
+                } else if (configuredMatch?.name) {
+                    holidayName = configuredMatch.name;
+                } else if (hasBlueLeave && !hasHolidayStatus) {
+                    holidayName = isSaturday ? 'Recurring Saturday Off' : 'Company Leave / Holiday';
+                } else if (isHoliday) {
+                    holidayName = 'Company Provided Holiday';
+                }
+
+                return {
+                    dayNumber,
+                    dayOfWeek,
+                    isSunday,
+                    isSaturday,
+                    isHoliday,
+                    isFixed,
+                    holidayName,
+                    dateObj: d,
+                };
+            });
+        }
+        if (data.length > 0 && data[0]?.statuses) {
+            return Array.from({ length: data[0].statuses.length }, (_, i) => ({
+                dayNumber: i + 1,
+                dayOfWeek: '',
+                isSunday: false,
+                isSaturday: false,
+                isHoliday: false,
+                isFixed: false,
+                holidayName: '',
+                dateObj: null,
+            }));
+        }
+        return [];
+    }, [resolvedDays, data, allConfiguredHolidays]);
+
+    const holidaysInPeriod = React.useMemo(() => {
+        return dayHeaders.filter(dh => dh.isHoliday);
+    }, [dayHeaders]);
 
     const numDays = dayHeaders.length;
 
@@ -293,12 +406,12 @@ export const MonthlyStatusView: React.FC<{
     }, [numDays]);
 
     const recalculatedRows = React.useMemo(() => {
-        if (!days || days.length === 0) return data;
+        if (!resolvedDays || resolvedDays.length === 0) return data;
         return data.map(row => ({
             ...row,
-            ...calculateStatsForDateRange(row.statuses, days)
+            ...calculateStatsForDateRange(row.statuses, resolvedDays)
         }));
-    }, [data, days]);
+    }, [data, resolvedDays]);
 
     if (!data.length) return <EmptyState message="No monthly status records found." />;
 
@@ -334,7 +447,7 @@ export const MonthlyStatusView: React.FC<{
                 <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Monthly Presence</span>
                     <div className="text-2xl font-black text-green-600">
-                        {Math.round((recalculatedRows.reduce((acc, curr) => acc + (curr.presentDays || 0) + (curr.halfDays || 0) * 0.5, 0) / (recalculatedRows.length * (days?.length || 30) || 1)) * 100)}%
+                        {Math.round((recalculatedRows.reduce((acc, curr) => acc + (curr.presentDays || 0) + (curr.halfDays || 0) * 0.5, 0) / (recalculatedRows.length * (resolvedDays?.length || 30) || 1)) * 100)}%
                     </div>
                 </div>
                 <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
@@ -349,36 +462,136 @@ export const MonthlyStatusView: React.FC<{
                 </div>
             </div>
 
+            {/* Company & Fixed Holidays Bar */}
+            {holidaysInPeriod.length > 0 && (
+                <div className="bg-gradient-to-r from-rose-50 via-pink-50/50 to-rose-50 border border-rose-200/80 rounded-xl p-3 flex flex-wrap items-center gap-2 shadow-xs">
+                    <div className="flex items-center gap-1.5 text-rose-900 font-black text-[11px] uppercase tracking-wider mr-1">
+                        <span className="text-xs">📅</span>
+                        <span>Company & Fixed Holidays ({holidaysInPeriod.length}):</span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                        {holidaysInPeriod.map((h, i) => (
+                            <div 
+                                key={i} 
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white border border-rose-300 rounded-lg text-[10.5px] shadow-2xs font-medium hover:border-rose-400 transition-colors"
+                                title={h.isFixed ? 'Fixed Statutory Public Holiday' : 'Company Declared Holiday'}
+                            >
+                                <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                                <span className="font-black text-rose-700">{h.dayNumber} {h.dateObj ? format(h.dateObj, 'MMM') : ''} ({h.dayOfWeek}):</span>
+                                <span className="text-gray-900 font-bold">{h.holidayName}</span>
+                                {h.isFixed && (
+                                    <span className="text-[8.5px] px-1 py-0.2 bg-rose-100 text-rose-800 rounded font-black uppercase">Fixed</span>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             <div className="overflow-x-auto custom-scrollbar relative">
                 <table className={`w-full ${layout.tableText} border-collapse`}>
                     <thead>
-                        <tr className="bg-gray-50/50">
-                            <th className={`px-1 ${layout.paddingY} font-bold text-gray-700 sticky left-0 bg-[#F9FAFB] z-20 ${layout.employeeWidth} text-left border-b border-gray-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]`}>Employee</th>
-                            {dayHeaders.map(d => (
-                                <th key={d} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-semibold text-center text-gray-400 ${layout.dayColWidth}`}>{d}</th>
-                            ))}
-                            <th className={`px-0 ${layout.paddingY} border-b border-l border-gray-200 font-bold text-center text-[#059669] bg-green-50/30 ${layout.statColWidth || 'min-w-[15px]'}`}>P</th>
-                            <th className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#2563EB] bg-blue-50/30 ${layout.statColWidth || 'min-w-[16px]'}`}>0.5P</th>
-                            <th className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#0D9488] bg-teal-50/30 ${layout.statColWidth || 'min-w-[18px]'}`}>OT</th>
-                            <th className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#0891B2] bg-cyan-50/30 ${layout.statColWidth || 'min-w-[16px]'}`}>C/O</th>
-                            <th className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#4F46E5] bg-indigo-50/30 ${layout.statColWidth || 'min-w-[16px]'}`}>E/L</th>
-                            <th className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#9333EA] bg-purple-50/30 ${layout.statColWidth || 'min-w-[16px]'}`}>S/L</th>
-                            <th className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#DC2626] bg-red-50/30 ${layout.statColWidth || 'min-w-[14px]'}`}>A</th>
-                            <th className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#6B7280] bg-gray-50/50 ${layout.statColWidth || 'min-w-[16px]'}`}>W/O</th>
-                            <th className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#EA580C] bg-orange-50/30 ${layout.statColWidth || 'min-w-[14px]'}`}>H</th>
-                            <th className={`px-0 ${layout.paddingY} border-b border-l border-gray-200 font-bold text-center text-[#059669] bg-emerald-100 z-20 sticky right-0 ${layout.payWidth} shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]`}>Pay</th>
+                        {/* Row 1: Date numbers & Summary Statistics */}
+                        <tr className="bg-gray-50/70 border-b border-gray-100">
+                            <th 
+                                rowSpan={2} 
+                                className={`px-1 ${layout.paddingY} font-bold text-gray-800 sticky left-0 bg-[#F9FAFB] z-20 ${layout.employeeWidth} text-left border-b border-gray-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] align-middle`}
+                            >
+                                Employee
+                            </th>
+                            {dayHeaders.map((dh, idx) => {
+                                let dateHeaderClass = 'text-gray-700';
+                                let dateBgClass = '';
+                                if (dh.isHoliday) {
+                                    dateHeaderClass = 'text-rose-950 font-black';
+                                    dateBgClass = 'bg-rose-100 border-x border-rose-300';
+                                } else if (dh.isSunday) {
+                                    dateHeaderClass = 'text-rose-600 bg-rose-50/40';
+                                }
+                                const hoverTitle = dh.isHoliday 
+                                    ? `${dh.dayNumber} ${dh.dateObj ? format(dh.dateObj, 'MMM yyyy') : ''} (${dh.dayOfWeek}) — ${dh.holidayName} [${dh.isFixed ? 'Fixed Public Holiday' : 'Company Provided Holiday'}]`
+                                    : dh.isSunday
+                                    ? `${dh.dayNumber} ${dh.dateObj ? format(dh.dateObj, 'MMM yyyy') : ''} (${dh.dayOfWeek}) — Sunday Weekly Off`
+                                    : `${dh.dayNumber} ${dh.dateObj ? format(dh.dateObj, 'MMM yyyy') : ''} (${dh.dayOfWeek})`;
+
+                                return (
+                                    <th 
+                                        key={`date-${idx}`} 
+                                        className={`px-0 py-1 border-b border-gray-100 font-bold text-center ${dateHeaderClass} ${dateBgClass} ${layout.dayColWidth}`}
+                                        title={hoverTitle}
+                                    >
+                                        {dh.dayNumber}
+                                    </th>
+                                );
+                            })}
+                            <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-l border-gray-200 font-bold text-center text-[#059669] bg-green-50/30 align-middle ${layout.statColWidth || 'min-w-[15px]'}`}>P</th>
+                            <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#2563EB] bg-blue-50/30 align-middle ${layout.statColWidth || 'min-w-[16px]'}`}>0.5P</th>
+                            <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#0D9488] bg-teal-50/30 align-middle ${layout.statColWidth || 'min-w-[18px]'}`}>OT</th>
+                            <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#0891B2] bg-cyan-50/30 align-middle ${layout.statColWidth || 'min-w-[16px]'}`}>C/O</th>
+                            <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#4F46E5] bg-indigo-50/30 align-middle ${layout.statColWidth || 'min-w-[16px]'}`}>E/L</th>
+                            <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#9333EA] bg-purple-50/30 align-middle ${layout.statColWidth || 'min-w-[16px]'}`}>S/L</th>
+                            <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#DC2626] bg-red-50/30 align-middle ${layout.statColWidth || 'min-w-[14px]'}`}>A</th>
+                            <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#6B7280] bg-gray-50/50 align-middle ${layout.statColWidth || 'min-w-[16px]'}`}>W/O</th>
+                            <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#EA580C] bg-orange-50/30 align-middle ${layout.statColWidth || 'min-w-[14px]'}`}>H</th>
+                            <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-l border-gray-200 font-bold text-center text-[#059669] bg-emerald-100 z-20 sticky right-0 align-middle ${layout.payWidth} shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]`}>Pay</th>
+                        </tr>
+
+                        {/* Row 2: Specific calendar Day of the Week (Sun, Mon, Tue, Wed, Thu, Fri, Sat) */}
+                        <tr className="bg-gray-100/60 border-b border-gray-200">
+                            {dayHeaders.map((dh, idx) => {
+                                let subHeaderClass = 'text-gray-400';
+                                let subBgClass = '';
+                                if (dh.isHoliday) {
+                                    subHeaderClass = 'text-rose-800 font-black';
+                                    subBgClass = 'bg-rose-200/90 border-x border-rose-300';
+                                } else if (dh.isSunday) {
+                                    subHeaderClass = 'text-rose-500 font-bold bg-rose-50/60';
+                                }
+                                const hoverTitle = dh.isHoliday 
+                                    ? `${dh.dayNumber} ${dh.dateObj ? format(dh.dateObj, 'MMM yyyy') : ''} (${dh.dayOfWeek}) — ${dh.holidayName}` 
+                                    : undefined;
+
+                                return (
+                                    <th 
+                                        key={`day-${idx}`} 
+                                        className={`px-0 py-0.5 border-b border-gray-200 font-semibold text-center text-[0.88em] ${subHeaderClass} ${subBgClass} ${layout.dayColWidth}`}
+                                        title={hoverTitle}
+                                    >
+                                        {dh.dayOfWeek}
+                                    </th>
+                                );
+                            })}
                         </tr>
                     </thead>
                     <tbody>
                         {recalculatedRows.map((row, idx) => (
                             <tr key={idx} className="group hover:bg-gray-50/30 transition-colors">
                                 <td className={`px-1 ${layout.paddingY} font-medium text-gray-900 sticky left-0 bg-white group-hover:bg-gray-50/30 z-10 whitespace-nowrap border-b border-gray-100 ${layout.employeeWidth} overflow-hidden text-ellipsis capitalize`}>{row.userName}</td>
-                                {(days && days.length > 0 ? days : row.statuses).map((day, sIdx) => {
-                                    const status = days && days.length > 0
+                                {(resolvedDays.length > 0 ? resolvedDays : row.statuses).map((day, sIdx) => {
+                                    const status = resolvedDays.length > 0
                                         ? (row.statuses[(day as Date).getDate() - 1] || '-')
                                         : (day as string || '-');
+                                    const dh = dayHeaders[sIdx];
+                                    const isHolidayCol = dh?.isHoliday;
+
+                                    const cellTitle = isHolidayCol
+                                        ? `${dh?.dayNumber} ${dh?.dateObj ? format(dh.dateObj, 'MMM') : ''} (${dh?.dayOfWeek}) — ${dh?.holidayName}: Status is ${status}`
+                                        : dh?.isSunday
+                                        ? `${dh?.dayNumber} ${dh?.dateObj ? format(dh.dateObj, 'MMM') : ''} (${dh?.dayOfWeek}) — Sunday: Status is ${status}`
+                                        : `${dh?.dayNumber} ${dh?.dateObj ? format(dh?.dateObj || new Date(), 'MMM') : ''}: ${status}`;
+
                                     return (
-                                        <td key={sIdx} className={`px-0 ${layout.paddingY} border-b border-gray-50 text-center font-bold leading-tight`}>
+                                        <td 
+                                            key={sIdx} 
+                                            title={cellTitle}
+                                            className={`px-0 ${layout.paddingY} border-b border-gray-50 text-center font-bold leading-tight ${
+                                                isHolidayCol 
+                                                    ? 'bg-rose-50/70 border-x border-rose-200/60' 
+                                                    : dh?.isSunday 
+                                                    ? 'bg-slate-50/30' 
+                                                    : ''
+                                            }`}
+                                        >
                                             <span className={getStatusColor(status)}>{status}</span>
                                         </td>
                                     );
@@ -399,8 +612,16 @@ export const MonthlyStatusView: React.FC<{
                 </table>
             </div>
 
-            <div className="mt-5 border-t border-gray-200 pt-4">
-                <p className="text-[7px] font-black uppercase tracking-widest text-gray-400 mb-2.5">NOTATION REFERENCE</p>
+            <div className="mt-5 border-t border-gray-200 pt-4 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-[7px] font-black uppercase tracking-widest text-gray-400">NOTATION REFERENCE</p>
+                    {holidaysInPeriod.length > 0 && (
+                        <div className="flex items-center gap-1.5 text-[8px] font-bold text-rose-800 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                            <span className="w-2 h-2 rounded-xs bg-rose-300 border border-rose-400 inline-block"></span>
+                            <span>ROSE HIGHLIGHTED COLUMNS = Declared Holidays ({holidaysInPeriod.map(h => `${h.dayNumber} ${h.dateObj ? format(h.dateObj, 'MMM') : ''}: ${h.holidayName}`).join(' • ')})</span>
+                        </div>
+                    )}
+                </div>
                 <div className="grid grid-cols-2 gap-x-6 gap-y-0.5">
 
                     {/* Column 1 */}

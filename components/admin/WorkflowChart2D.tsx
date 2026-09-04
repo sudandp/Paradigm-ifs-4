@@ -4,6 +4,7 @@ import {
     Maximize2, 
     ChevronDown, 
     ChevronRight, 
+    ChevronLeft, 
     Mail, 
     Phone, 
     Building2, 
@@ -138,13 +139,41 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
 
     const searchQuery = externalSearchQuery !== undefined ? externalSearchQuery : '';
 
+    const branchScrollRef = useRef<HTMLDivElement | null>(null);
+    const [canScrollLeft, setCanScrollLeft] = useState(false);
+    const [canScrollRight, setCanScrollRight] = useState(false);
+
+    const checkBranchScroll = useCallback(() => {
+        if (!branchScrollRef.current) return;
+        const { scrollLeft, scrollWidth, clientWidth } = branchScrollRef.current;
+        setCanScrollLeft(scrollLeft > 2);
+        setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 2);
+    }, []);
+
+    const scrollBranches = useCallback((direction: 'left' | 'right') => {
+        if (!branchScrollRef.current) return;
+        const amount = direction === 'left' ? -280 : 280;
+        branchScrollRef.current.scrollBy({ left: amount, behavior: 'smooth' });
+        setTimeout(checkBranchScroll, 200);
+    }, [checkBranchScroll]);
+
+    const handleBranchWheel = (e: React.WheelEvent) => {
+        if (!branchScrollRef.current) return;
+        if (e.deltaY !== 0) {
+            e.preventDefault();
+            e.stopPropagation();
+            branchScrollRef.current.scrollLeft += e.deltaY;
+            checkBranchScroll();
+        }
+    };
+
     const getRoleDisplayName = useCallback((roleId: string = '') => {
         const found = allRoles.find(r => r.id === roleId || r.id.toLowerCase() === roleId.toLowerCase());
         if (found?.displayName) return found.displayName;
         return roleId ? roleId.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'Staff';
     }, [allRoles]);
 
-    // Build hierarchy
+    // Build hierarchy with cycle detection and fallback to guarantee all users are visible
     const { roots, topBranches } = useMemo(() => {
         const map = new Map<string, WorkflowNode>();
         users.forEach(user => {
@@ -156,44 +185,70 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
 
         users.forEach(user => {
             const node = map.get(user.id)!;
-            if (user.reportingManagerId && map.has(user.reportingManagerId) && user.reportingManagerId !== user.id) {
-                const parent = map.get(user.reportingManagerId)!;
+            const mgrId = user.reportingManagerId;
+
+            // Cycle protection
+            let cur = mgrId;
+            let isCycle = false;
+            const visited = new Set<string>([user.id]);
+            while (cur && map.has(cur)) {
+                if (visited.has(cur)) {
+                    isCycle = true;
+                    break;
+                }
+                visited.add(cur);
+                cur = map.get(cur)?.reportingManagerId;
+            }
+
+            if (mgrId && map.has(mgrId) && mgrId !== user.id && !isCycle) {
+                const parent = map.get(mgrId)!;
                 parent.children!.push(node);
                 hasParent.add(user.id);
             }
         });
 
+        // Top-level roots (either no manager or cycle breakers)
         users.forEach(user => {
             if (!hasParent.has(user.id)) {
                 rootList.push(map.get(user.id)!);
             }
         });
 
-        // Compute total descendants
+        // If for any reason rootList is still empty, add all users
+        if (rootList.length === 0 && users.length > 0) {
+            users.forEach(u => rootList.push(map.get(u.id)!));
+        }
+
+        // Compute total descendants with recursion protection
+        const visitedDescendants = new Set<string>();
         const countDescendants = (node: WorkflowNode): number => {
-            if (!node.children || node.children.length === 0) {
+            if (visitedDescendants.has(node.id) || !node.children || node.children.length === 0) {
                 node.totalDescendants = 0;
                 node.isLeaf = true;
                 return 0;
             }
+            visitedDescendants.add(node.id);
             let total = node.children.length;
             node.children.forEach(child => {
                 total += countDescendants(child);
             });
             node.totalDescendants = total;
-            node.isLeaf = false;
+            node.isLeaf = total === 0;
             return total;
         };
 
         rootList.forEach(r => countDescendants(r));
 
         // Identify major top branches (roots with teams)
-        const branches = rootList.map(r => ({
-            id: r.id,
-            name: r.name,
-            role: r.role,
-            totalMembers: (r.totalDescendants || 0) + 1
-        })).sort((a, b) => b.totalMembers - a.totalMembers);
+        const branches = rootList
+            .filter(r => (r.totalDescendants || 0) > 0 || !r.reportingManagerId)
+            .map(r => ({
+                id: r.id,
+                name: r.name || 'Unnamed',
+                role: r.role || 'Staff',
+                totalMembers: (r.totalDescendants || 0) + 1
+            }))
+            .sort((a, b) => b.totalMembers - a.totalMembers);
 
         return { roots: rootList, topBranches: branches };
     }, [users]);
@@ -214,8 +269,14 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
 
         const nodes: WorkflowNode[] = [];
         const connectors: { id: string; parent: WorkflowNode; child: WorkflowNode }[] = [];
+        const visitedLayoutNodes = new Set<string>();
 
         const layoutSubtree = (node: WorkflowNode, x: number, y: number, level: number): { width: number; height: number } => {
+            if (visitedLayoutNodes.has(node.id)) {
+                return { width: 0, height: 0 };
+            }
+            visitedLayoutNodes.add(node.id);
+
             node.level = level;
             node.width = CARD_WIDTH;
             node.height = CARD_HEIGHT;
@@ -236,7 +297,7 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
                 return { width: CARD_WIDTH, height: CARD_HEIGHT };
             }
 
-            const children = node.children!;
+            const children = node.children!.filter(c => !visitedLayoutNodes.has(c.id));
             const branchChildren = children.filter(c => c.children && c.children.length > 0);
             const leafChildren = children.filter(c => !c.children || c.children.length === 0);
 
@@ -247,15 +308,17 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
             // 1. Layout Branch Children Recursively
             branchChildren.forEach(child => {
                 const bLayout = layoutSubtree(child, currentBranchX, y + CARD_HEIGHT + VERTICAL_GAP, level + 1);
-                branchLayouts.push({ node: child, width: bLayout.width, height: bLayout.height });
-                currentBranchX += bLayout.width + HORIZONTAL_GAP;
-                childrenMaxHeight = Math.max(childrenMaxHeight, bLayout.height);
+                if (bLayout.width > 0) {
+                    branchLayouts.push({ node: child, width: bLayout.width, height: bLayout.height });
+                    currentBranchX += bLayout.width + HORIZONTAL_GAP;
+                    childrenMaxHeight = Math.max(childrenMaxHeight, bLayout.height);
 
-                connectors.push({
-                    id: `${node.id}->${child.id}`,
-                    parent: node,
-                    child: child
-                });
+                    connectors.push({
+                        id: `${node.id}->${child.id}`,
+                        parent: node,
+                        child: child
+                    });
+                }
             });
 
             const branchSectionWidth = branchLayouts.length > 0 
@@ -275,6 +338,7 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
                 const leafStartY = y + CARD_HEIGHT + VERTICAL_GAP;
 
                 leafChildren.forEach((leaf, idx) => {
+                    visitedLayoutNodes.add(leaf.id);
                     const colIdx = idx % cols;
                     const rowIdx = Math.floor(idx / cols);
 
@@ -325,12 +389,11 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
             };
         };
 
-        // Multi-Root Layout: Arrange roots in a clean wrapped 2-column layout if viewing all
+        // Multi-Root Layout: Arrange roots in a clean grid
         const startX = 60;
         const startY = 60;
 
         if (activeRoots.length > 2 && selectedBranchRoot === 'all') {
-            // Group roots in pairs to avoid infinite horizontal spread
             let rowY = startY;
             for (let i = 0; i < activeRoots.length; i += 2) {
                 const r1 = activeRoots[i];
@@ -344,13 +407,13 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
                     maxHeight = Math.max(maxHeight, l2.height);
                 }
 
-                rowY += maxHeight + VERTICAL_GAP * 1.5;
+                rowY += (maxHeight > 0 ? maxHeight : CARD_HEIGHT) + VERTICAL_GAP * 1.5;
             }
         } else {
             let curX = startX;
             activeRoots.forEach(root => {
                 const l = layoutSubtree(root, curX, startY, 0);
-                curX += l.width + HORIZONTAL_GAP * 2;
+                curX += (l.width > 0 ? l.width : CARD_WIDTH) + HORIZONTAL_GAP * 2;
             });
         }
 
@@ -370,19 +433,21 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
     const autoFit = useCallback((targetZoom?: number) => {
         if (!containerRef.current) return;
         const rect = containerRef.current.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
 
-        const contentW = bounds.width;
-        const contentH = bounds.height;
+        const contentW = Math.max(bounds.width, 800);
+        const contentH = Math.max(bounds.height, 600);
 
         const zoomX = (rect.width - 60) / contentW;
         const zoomY = (rect.height - 60) / contentH;
         let newZoom = Math.min(zoomX, zoomY);
-        newZoom = Math.max(0.45, Math.min(newZoom, 1.05));
+        newZoom = Math.max(0.4, Math.min(newZoom, 1.0));
 
         const finalZoom = targetZoom !== undefined ? targetZoom : (externalZoom !== undefined ? externalZoom : newZoom);
 
-        const newOffsetX = (rect.width - contentW * finalZoom) / 2;
-        const newOffsetY = Math.max(20, (rect.height - contentH * finalZoom) / 2);
+        // Position nodes starting neatly with ample breathing room
+        const newOffsetX = Math.max(30, (rect.width - (bounds.maxX - bounds.minX) * finalZoom) / 2) - bounds.minX * finalZoom;
+        const newOffsetY = 60 - bounds.minY * finalZoom;
 
         setZoom(finalZoom);
         setOffset({ x: newOffsetX, y: newOffsetY });
@@ -405,7 +470,6 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
 
         if (matched && matched.x !== undefined && matched.y !== undefined && containerRef.current) {
             const rect = containerRef.current.getBoundingClientRect();
-            // Center around matched card
             const targetX = rect.width / 2 - (matched.x + CARD_WIDTH / 2) * zoom;
             const targetY = rect.height / 2 - (matched.y + CARD_HEIGHT / 2) * zoom;
             setOffset({ x: targetX, y: targetY });
@@ -486,60 +550,110 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
         setTimeout(() => autoFit(), 100);
     };
 
+    // Check branch scroll on branch list change or resize
+    useEffect(() => {
+        checkBranchScroll();
+        const handleResize = () => checkBranchScroll();
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, [topBranches, checkBranchScroll]);
+
     return (
-        <div className="relative w-full h-full flex-1 min-h-0 bg-slate-50 select-none overflow-hidden flex flex-col" ref={containerRef}>
-            {/* Top Branch Selector & Action Bar */}
-            <div className="flex-shrink-0 bg-white border-b border-slate-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 z-10 shadow-xs">
-                {/* Branch Pills */}
-                <div className="flex items-center gap-1.5 overflow-x-auto max-w-[70vw] py-0.5">
-                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mr-1 flex items-center gap-1">
-                        <Layers className="w-3.5 h-3.5 text-primary" /> Branch:
+        <div className="relative w-full h-full flex-1 min-h-[550px] bg-slate-50 select-none overflow-hidden flex flex-col" ref={containerRef}>
+            {/* Top Branch Selector & Action Bar with Sliding Options */}
+            <div className="flex-shrink-0 bg-white border-b border-slate-200 px-3 py-2 flex items-center justify-between gap-2.5 z-10 shadow-xs">
+                {/* Branch Pills Container with Left & Right Slide Controls */}
+                <div className="flex-1 min-w-0 flex items-center gap-1.5 relative">
+                    <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1 flex-shrink-0 mr-1">
+                        <Layers className="w-3.5 h-3.5 text-emerald-700" /> Branch:
                     </span>
+
+                    {/* Left Slide Button */}
                     <button
                         type="button"
-                        onClick={() => setSelectedBranchRoot('all')}
-                        className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
-                            selectedBranchRoot === 'all'
-                                ? 'bg-primary text-white shadow-xs'
-                                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                        onClick={() => scrollBranches('left')}
+                        disabled={!canScrollLeft}
+                        title="Slide left"
+                        className={`p-1 rounded-md border flex items-center justify-center transition-all flex-shrink-0 ${
+                            canScrollLeft
+                                ? 'bg-white text-slate-800 border-slate-300 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 shadow-xs cursor-pointer'
+                                : 'bg-slate-50 text-slate-300 border-slate-200 cursor-not-allowed opacity-50'
                         }`}
                     >
-                        🌐 All Organization ({users.length})
+                        <ChevronLeft className="w-3.5 h-3.5" />
                     </button>
-                    {topBranches.slice(0, 6).map(branch => (
+
+                    {/* Scrollable Branch Pills Row */}
+                    <div 
+                        ref={branchScrollRef}
+                        onScroll={checkBranchScroll}
+                        onWheel={handleBranchWheel}
+                        className="flex-1 flex items-center gap-1.5 overflow-x-auto py-1 scroll-smooth no-scrollbar"
+                    >
                         <button
-                            key={branch.id}
                             type="button"
-                            onClick={() => setSelectedBranchRoot(branch.id)}
-                            className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors flex items-center gap-1.5 ${
-                                selectedBranchRoot === branch.id
-                                    ? 'bg-emerald-600 text-white shadow-xs'
-                                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                            onClick={() => setSelectedBranchRoot('all')}
+                            className={`px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-colors flex-shrink-0 border ${
+                                selectedBranchRoot === 'all'
+                                    ? 'bg-slate-900 text-white border-slate-950 shadow-xs'
+                                    : 'bg-slate-100 text-slate-800 border-slate-300 hover:bg-slate-200'
                             }`}
                         >
-                            <span>{branch.name}</span>
-                            <span className="text-[10px] opacity-80 font-bold px-1.5 py-0.2 bg-black/15 rounded-full">
-                                {branch.totalMembers}
-                            </span>
+                            🌐 All Organization ({users.length})
                         </button>
-                    ))}
+                        {topBranches.map(branch => (
+                            <button
+                                key={branch.id}
+                                type="button"
+                                onClick={() => setSelectedBranchRoot(branch.id)}
+                                title={`${branch.name} (${branch.totalMembers} members) - Click to focus branch`}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-colors flex items-center gap-1.5 flex-shrink-0 border ${
+                                    selectedBranchRoot === branch.id
+                                        ? 'bg-emerald-700 text-white border-emerald-800 shadow-xs'
+                                        : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-100'
+                                }`}
+                            >
+                                <span>{branch.name}</span>
+                                <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
+                                    selectedBranchRoot === branch.id ? 'bg-emerald-900/60 text-emerald-100' : 'bg-slate-100 text-slate-700'
+                                }`}>
+                                    {branch.totalMembers}
+                                </span>
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Right Slide Button */}
+                    <button
+                        type="button"
+                        onClick={() => scrollBranches('right')}
+                        disabled={!canScrollRight}
+                        title="Slide right"
+                        className={`p-1 rounded-md border flex items-center justify-center transition-all flex-shrink-0 ${
+                            canScrollRight
+                                ? 'bg-white text-slate-800 border-slate-300 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 shadow-xs cursor-pointer'
+                                : 'bg-slate-50 text-slate-300 border-slate-200 cursor-not-allowed opacity-50'
+                        }`}
+                    >
+                        <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
                 </div>
 
                 {/* Quick Toolbar Buttons */}
                 {showControls && (
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-shrink-0 pl-2.5 border-l border-slate-200">
                         <button
                             type="button"
                             onClick={handleExpandAll}
-                            className="px-2.5 py-1 text-xs font-semibold text-slate-700 hover:text-emerald-700 hover:bg-emerald-50 border border-slate-200 rounded-lg transition-colors flex items-center gap-1"
+                            className="px-2.5 py-1 text-xs font-bold text-slate-800 hover:text-emerald-800 hover:bg-emerald-50 border border-slate-300 rounded-lg transition-colors flex items-center gap-1 bg-white shadow-2xs whitespace-nowrap"
                         >
-                            <ChevronDown className="w-3.5 h-3.5 text-emerald-600" />
+                            <ChevronDown className="w-3.5 h-3.5 text-emerald-700" />
                             Expand All
                         </button>
                         <button
                             type="button"
                             onClick={handleCollapseToManagers}
-                            className="px-2.5 py-1 text-xs font-semibold text-slate-700 hover:text-amber-700 hover:bg-amber-50 border border-slate-200 rounded-lg transition-colors flex items-center gap-1"
+                            className="px-2.5 py-1 text-xs font-bold text-slate-800 hover:text-amber-800 hover:bg-amber-50 border border-slate-300 rounded-lg transition-colors flex items-center gap-1 bg-white shadow-2xs whitespace-nowrap"
                         >
                             <ChevronRight className="w-3.5 h-3.5 text-amber-600" />
                             Collapse
@@ -547,9 +661,9 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
                         <button
                             type="button"
                             onClick={() => autoFit()}
-                            className="px-2.5 py-1 text-xs font-semibold text-slate-700 hover:text-primary hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors flex items-center gap-1"
+                            className="px-2.5 py-1 text-xs font-bold text-slate-800 hover:text-slate-900 hover:bg-slate-100 border border-slate-300 rounded-lg transition-colors flex items-center gap-1 bg-white shadow-2xs whitespace-nowrap"
                         >
-                            <Maximize2 className="w-3.5 h-3.5 text-primary" />
+                            <Maximize2 className="w-3.5 h-3.5 text-slate-700" />
                             Fit
                         </button>
                     </div>
@@ -558,7 +672,7 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
 
             {/* Interactive Vector & DOM Tree Viewport */}
             <div 
-                className="flex-1 relative overflow-hidden cursor-grab active:cursor-grabbing bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:16px_16px]"
+                className="flex-1 min-h-[450px] relative overflow-hidden cursor-grab active:cursor-grabbing bg-[radial-gradient(#cbd5e1_1.2px,transparent_1.2px)] [background-size:18px_18px]"
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}

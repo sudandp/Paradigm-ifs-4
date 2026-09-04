@@ -1,8 +1,71 @@
--- RPC: delete_user
--- Deletes a user from both public.users and auth.users in one atomic operation.
--- Safely cleans up/nullifies all referencing foreign keys (security_audit_logs, audit_logs, tickets, tasks, etc.)
--- Must be run with SECURITY DEFINER so it can access auth.users and bypass RLS.
+-- ==============================================================================
+-- MIGRATION: Fix User Deletion Foreign Key Constraints & Enhance delete_user RPC
+-- Date: 2026-09-04
+-- Solves: "update or delete on table users violates foreign key constraint"
+-- ==============================================================================
 
+-- 1. Fix foreign key constraints on security_audit_logs
+DO $$
+BEGIN
+  -- Drop existing constraint if present
+  IF EXISTS (
+    SELECT 1 FROM information_schema.table_constraints 
+    WHERE constraint_name = 'security_audit_logs_user_id_fkey'
+  ) THEN
+    ALTER TABLE public.security_audit_logs DROP CONSTRAINT security_audit_logs_user_id_fkey;
+  END IF;
+
+  -- Re-add with ON DELETE SET NULL
+  ALTER TABLE public.security_audit_logs 
+    ADD CONSTRAINT security_audit_logs_user_id_fkey 
+    FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;
+EXCEPTION WHEN OTHERS THEN
+  NULL;
+END $$;
+
+-- 2. Fix foreign key constraints on audit_logs if any
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.table_constraints 
+    WHERE constraint_name = 'audit_logs_user_id_fkey'
+  ) THEN
+    ALTER TABLE public.audit_logs DROP CONSTRAINT audit_logs_user_id_fkey;
+    ALTER TABLE public.audit_logs 
+      ADD CONSTRAINT audit_logs_user_id_fkey 
+      FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;
+  END IF;
+EXCEPTION WHEN OTHERS THEN
+  NULL;
+END $$;
+
+-- 3. Fix foreign key constraints on support_tickets
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.table_constraints 
+    WHERE constraint_name = 'support_tickets_assigned_to_id_fkey'
+  ) THEN
+    ALTER TABLE public.support_tickets DROP CONSTRAINT support_tickets_assigned_to_id_fkey;
+    ALTER TABLE public.support_tickets 
+      ADD CONSTRAINT support_tickets_assigned_to_id_fkey 
+      FOREIGN KEY (assigned_to_id) REFERENCES public.users(id) ON DELETE SET NULL;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.table_constraints 
+    WHERE constraint_name = 'support_tickets_raised_by_id_fkey'
+  ) THEN
+    ALTER TABLE public.support_tickets DROP CONSTRAINT support_tickets_raised_by_id_fkey;
+    ALTER TABLE public.support_tickets 
+      ADD CONSTRAINT support_tickets_raised_by_id_fkey 
+      FOREIGN KEY (raised_by_id) REFERENCES public.users(id) ON DELETE SET NULL;
+  END IF;
+EXCEPTION WHEN OTHERS THEN
+  NULL;
+END $$;
+
+-- 4. Recreate delete_user RPC Function with pre-cleanup
 CREATE OR REPLACE FUNCTION delete_user(target_user_id uuid)
 RETURNS void
 LANGUAGE plpgsql
@@ -11,7 +74,6 @@ SET search_path = public, auth
 AS $$
 DECLARE
   is_admin boolean;
-  rec RECORD;
 BEGIN
   -- Guard: Only users with 'manage_users' permission or admin/super_admin/developer roles can delete users
   SELECT EXISTS (
@@ -25,7 +87,7 @@ BEGIN
       )
   ) INTO is_admin;
 
-  -- Also allow service role / postgres / direct admin execution
+  -- Also allow service role / direct admin execution
   IF NOT is_admin AND auth.role() != 'service_role' AND auth.uid() IS NOT NULL THEN
     RAISE EXCEPTION 'Access denied: Only admins can delete users.';
   END IF;
@@ -39,7 +101,7 @@ BEGIN
   -- 1. NULLIFY / CLEAN UP EXPLICIT FOREIGN KEY REFERENCES
   -- =========================================================================
   
-  -- Security & Audit Logs (The primary cause of FK violation)
+  -- Security & Audit Logs
   BEGIN
     UPDATE public.security_audit_logs SET user_id = NULL WHERE user_id = target_user_id;
   EXCEPTION WHEN undefined_table OR undefined_column THEN NULL;

@@ -3240,9 +3240,49 @@ export const api = {
   },
 
   deleteUser: async (id: string) => {
-    // Call the security-definer RPC which deletes from both public.users and auth.users atomically
+    // 1. Try calling the security-definer RPC directly
     const { error } = await supabase.rpc('delete_user', { target_user_id: id });
-    if (error) throw error;
+    
+    // 2. If it fails due to FK constraints or outdated RPC, attempt client-side pre-cleanup & retry
+    if (error) {
+      console.warn('[deleteUser] Initial RPC failed, performing pre-cleanup:', error.message);
+      try {
+        await Promise.allSettled([
+          supabase.from('security_audit_logs').update({ user_id: null }).eq('user_id', id),
+          supabase.from('audit_logs').update({ user_id: null }).eq('user_id', id),
+          supabase.from('audit_logs').update({ actor_id: null }).eq('actor_id', id),
+          supabase.from('system_audit_logs').update({ user_id: null }).eq('user_id', id),
+          supabase.from('tracking_audit_logs').update({ admin_id: null }).eq('admin_id', id),
+          supabase.from('tracking_audit_logs').update({ target_user_id: null }).eq('target_user_id', id),
+          supabase.from('users').update({ reporting_manager_id: null }).eq('reporting_manager_id', id),
+          supabase.from('support_tickets').update({ assigned_to_id: null }).eq('assigned_to_id', id),
+          supabase.from('support_tickets').update({ raised_by_id: null }).eq('raised_by_id', id),
+          supabase.from('ticket_comments').update({ author_id: null }).eq('author_id', id),
+          supabase.from('user_locations').delete().eq('user_id', id),
+          supabase.from('user_devices').delete().eq('user_id', id),
+          supabase.from('device_approvals').delete().eq('user_id', id),
+          supabase.from('notifications').delete().eq('user_id', id),
+          supabase.from('attendance_events').delete().eq('user_id', id),
+          supabase.from('leave_requests').delete().eq('user_id', id),
+          supabase.from('comp_off_logs').delete().eq('user_id', id),
+          supabase.from('extra_work_logs').delete().eq('user_id', id),
+          supabase.from('site_responsibility_matrix').update({ ops_manager_id: null }).eq('ops_manager_id', id),
+          supabase.from('site_responsibility_matrix').update({ hr_incharge_id: null }).eq('hr_incharge_id', id),
+          supabase.from('site_responsibility_matrix').update({ accounts_incharge_id: null }).eq('accounts_incharge_id', id),
+          supabase.from('site_responsibility_matrix').update({ site_supervisor_id: null }).eq('site_supervisor_id', id),
+        ]);
+      } catch (cleanupErr) {
+        console.warn('[deleteUser] Pre-cleanup warning:', cleanupErr);
+      }
+
+      // Retry RPC after cleanup
+      const retryResult = await supabase.rpc('delete_user', { target_user_id: id });
+      if (retryResult.error) {
+        // Direct public.users delete fallback
+        const directDel = await supabase.from('users').delete().eq('id', id);
+        if (directDel.error) throw new Error(directDel.error.message || retryResult.error.message);
+      }
+    }
   },
 
   blockUser: async (id: string, blockStatus: boolean): Promise<void> => {

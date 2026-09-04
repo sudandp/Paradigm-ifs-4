@@ -250,7 +250,7 @@ const ApprovalWorkflow: React.FC = () => {
     return (
         <div className={`border-0 shadow-none md:bg-card md:rounded-xl md:shadow-card flex flex-col flex-1 ${
             activeTab === '2d' 
-                ? 'p-2 sm:p-2.5 h-full min-h-[calc((100vh-80px)/0.68)] 2xl:min-h-[calc((100vh-80px)/0.78)]' 
+                ? 'p-2 sm:p-2.5 h-[calc(100vh-110px)] min-h-[650px] overflow-hidden' 
                 : 'p-4 md:p-6 space-y-4'
         }`}>
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
@@ -678,7 +678,7 @@ const ApprovalWorkflow: React.FC = () => {
                 {/* 2D Workflow Chart */}
                 {activeTab === '2d' && (
                     <OrgWorkflowCard 
-                        users={filteredUsers}
+                        users={users}
                         allRoles={allRoles}
                         finalConfirmationRole={finalConfirmationRole}
                         onManagerChange={handleManagerChange}

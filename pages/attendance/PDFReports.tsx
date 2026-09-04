@@ -2,6 +2,7 @@ import React from 'react';
 import { Document, Page, View, Text, StyleSheet, Image, Font } from '@react-pdf/renderer';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
 import { calculateStatsForDateRange } from '../../utils/attendanceCalculations';
+import { FIXED_HOLIDAYS } from '../../utils/constants';
 
 // Register a standard font if needed, or use defaults
 // Font.register({ family: 'Inter', src: '...' });
@@ -2026,21 +2027,86 @@ export const MonthlyMatrixReportDocument: React.FC<{
             </View>
 
             <View style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 4, overflow: 'hidden', flex: 1 }}>
+              {/* Row 1: Date Numbers */}
               <View style={{ flexDirection: 'row', backgroundColor: '#F8FAFC', borderBottomWidth: 1, borderBottomColor: '#E2E8F0' }}>
-                <View style={[styles.matrixRowLabel, { width: 140, textAlign: 'left', paddingLeft: 5, paddingVertical: 5 }]}><Text>Employee</Text></View>
-                {monthDays.map((d, i) => (
-                  <View key={i} style={[styles.matrixCell, { paddingVertical: 5 }]}><Text style={{ fontWeight: 'bold' }}>{format(d, 'd')}</Text></View>
-                ))}
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 5 }]}><Text style={{ fontWeight: 'bold', color: '#059669' }}>P</Text></View>
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 5 }]}><Text style={{ fontWeight: 'bold', color: '#2563EB' }}>0.5P</Text></View>
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 5 }]}><Text style={{ fontWeight: 'bold', color: '#0D9488' }}>OT</Text></View>
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 5 }]}><Text style={{ fontWeight: 'bold', color: '#0891B2' }}>C/O</Text></View>
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 5 }]}><Text style={{ fontWeight: 'bold', color: '#4F46E5' }}>E/L</Text></View>
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 5 }]}><Text style={{ fontWeight: 'bold', color: '#9333EA' }}>S/L</Text></View>
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 5, backgroundColor: '#FEF2F2' }]}><Text style={{ fontWeight: 'bold', color: '#DC2626' }}>A</Text></View>
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 5 }]}><Text style={{ fontWeight: 'bold', color: '#6B7280' }}>W/O</Text></View>
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 5 }]}><Text style={{ fontWeight: 'bold', color: '#EA580C' }}>H</Text></View>
-                <View style={[styles.matrixCell, { width: 28, paddingVertical: 5, backgroundColor: '#D1FAE5' }]}><Text style={{ fontWeight: 'bold', color: '#065F46' }}>Pay</Text></View>
+                <View style={[styles.matrixRowLabel, { width: 140, textAlign: 'left', paddingLeft: 5, paddingVertical: 4 }]}><Text>Employee</Text></View>
+                {monthDays.map((d, i) => {
+                  const mmdd = format(d, 'MM-dd');
+                  const isFixed = FIXED_HOLIDAYS.some(fh => fh.date === mmdd);
+                  const isSun = d.getDay() === 0;
+                  const isHol = isFixed || (pageData.some((emp: any) => {
+                    const st = (emp.statuses || [])[d.getDate() - 1];
+                    return st === 'H' || st === 'H/P' || st === 'HP' || st === 'BL';
+                  }));
+
+                  let bg = 'transparent';
+                  let textColor = '#0F172A';
+                  if (isHol) {
+                    bg = '#FFE4E6';
+                    textColor = '#881337';
+                  } else if (isSun) {
+                    bg = '#FFF1F2';
+                    textColor = '#E11D48';
+                  }
+
+                  return (
+                    <View key={i} style={[styles.matrixCell, { paddingVertical: 4, backgroundColor: bg }]}>
+                      <Text style={{ fontWeight: 'bold', color: textColor }}>{format(d, 'd')}</Text>
+                    </View>
+                  );
+                })}
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 4 }]}><Text style={{ fontWeight: 'bold', color: '#059669' }}>P</Text></View>
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 4 }]}><Text style={{ fontWeight: 'bold', color: '#2563EB' }}>0.5P</Text></View>
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 4 }]}><Text style={{ fontWeight: 'bold', color: '#0D9488' }}>OT</Text></View>
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 4 }]}><Text style={{ fontWeight: 'bold', color: '#0891B2' }}>C/O</Text></View>
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 4 }]}><Text style={{ fontWeight: 'bold', color: '#4F46E5' }}>E/L</Text></View>
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 4 }]}><Text style={{ fontWeight: 'bold', color: '#9333EA' }}>S/L</Text></View>
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 4, backgroundColor: '#FEF2F2' }]}><Text style={{ fontWeight: 'bold', color: '#DC2626' }}>A</Text></View>
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 4 }]}><Text style={{ fontWeight: 'bold', color: '#6B7280' }}>W/O</Text></View>
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 4 }]}><Text style={{ fontWeight: 'bold', color: '#EA580C' }}>H</Text></View>
+                <View style={[styles.matrixCell, { width: 28, paddingVertical: 4, backgroundColor: '#D1FAE5' }]}><Text style={{ fontWeight: 'bold', color: '#065F46' }}>Pay</Text></View>
+              </View>
+
+              {/* Row 2: Day of Week (Sun, Mon, Tue...) */}
+              <View style={{ flexDirection: 'row', backgroundColor: '#F1F5F9', borderBottomWidth: 1, borderBottomColor: '#E2E8F0' }}>
+                <View style={[styles.matrixRowLabel, { width: 140, textAlign: 'left', paddingLeft: 5, paddingVertical: 2, backgroundColor: 'transparent' }]}><Text style={{ fontSize: 6, color: '#94A3B8' }}>Day</Text></View>
+                {monthDays.map((d, i) => {
+                  const mmdd = format(d, 'MM-dd');
+                  const isFixed = FIXED_HOLIDAYS.some(fh => fh.date === mmdd);
+                  const isSun = d.getDay() === 0;
+                  const isHol = isFixed || (pageData.some((emp: any) => {
+                    const st = (emp.statuses || [])[d.getDate() - 1];
+                    return st === 'H' || st === 'H/P' || st === 'HP' || st === 'BL';
+                  }));
+
+                  let bg = 'transparent';
+                  let textColor = '#64748B';
+                  if (isHol) {
+                    bg = '#FECDD3';
+                    textColor = '#9F1239';
+                  } else if (isSun) {
+                    bg = '#FFE4E6';
+                    textColor = '#E11D48';
+                  }
+
+                  return (
+                    <View key={i} style={[styles.matrixCell, { paddingVertical: 2, backgroundColor: bg }]}>
+                      <Text style={{ fontSize: 6, color: textColor, fontWeight: (isHol || isSun) ? 'bold' : 'normal' }}>
+                        {format(d, 'EEE')}
+                      </Text>
+                    </View>
+                  );
+                })}
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 2 }]} />
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 2 }]} />
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 2 }]} />
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 2 }]} />
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 2 }]} />
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 2 }]} />
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 2, backgroundColor: '#FEF2F2' }]} />
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 2 }]} />
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 2 }]} />
+                <View style={[styles.matrixCell, { width: 28, paddingVertical: 2, backgroundColor: '#D1FAE5' }]} />
               </View>
 
               {pageData.map((emp: any, empIdx: number) => {
@@ -2052,8 +2118,18 @@ export const MonthlyMatrixReportDocument: React.FC<{
                     </View>
                     {monthDays.map((d, i) => {
                       const status = statuses[d.getDate() - 1] || '-';
+                      const mmdd = format(d, 'MM-dd');
+                      const isFixed = FIXED_HOLIDAYS.some(fh => fh.date === mmdd);
+                      const isHol = isFixed || (pageData.some((e: any) => {
+                        const st = (e.statuses || [])[d.getDate() - 1];
+                        return st === 'H' || st === 'H/P' || st === 'HP' || st === 'BL';
+                      }));
+
+                      const defaultBg = getStatusBg(status);
+                      const cellBg = (defaultBg === '#FFFFFF' || defaultBg === '#F8FAFC' || !defaultBg) && isHol ? '#FFF1F2' : defaultBg;
+
                       return (
-                        <View key={i} style={[styles.matrixCell, { backgroundColor: getStatusBg(status) }]}>
+                        <View key={i} style={[styles.matrixCell, { backgroundColor: cellBg }]}>
                           <Text style={{ color: getStatusColor(status), fontWeight: 'bold', fontSize: 7 }}>{status}</Text>
                         </View>
                       );
