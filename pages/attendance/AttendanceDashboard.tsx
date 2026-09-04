@@ -1448,11 +1448,57 @@ const AttendanceDashboard: React.FC = () => {
         }
     };
 
+    const isPastDateRange = (startDate?: Date | null, endDate?: Date | null, filterName?: string) => {
+        // Presets that are strictly current period
+        if (['Today', 'Yesterday', 'Last 3 Days', 'Last 7 Days', 'This Month'].includes(filterName || '')) {
+            return false;
+        }
+        // Presets that are explicitly past periods
+        if (['Last Month', 'Last 3 Months', 'Last 6 Months', 'This Year'].includes(filterName || '')) {
+            return true;
+        }
+        // For custom date range, check if start date is before the start of the current month
+        if (startDate) {
+            const today = new Date();
+            const currentMonthStart = startOfMonth(today);
+            return startDate.getTime() < currentMonthStart.getTime();
+        }
+        return false;
+    };
+
+    const isReportTypeLocked = (
+        val: string,
+        startDate?: Date | null,
+        endDate?: Date | null,
+        filterName?: string
+    ) => {
+        if (user?.role !== 'hr_ops') return false;
+
+        const isPast = isPastDateRange(startDate, endDate, filterName);
+        if (!isPast) {
+            return false;
+        }
+
+        // If today's calendar date is between 1st and 5th (inclusive), it's the free access window
+        const currentCalendarDay = new Date().getDate();
+        if (currentCalendarDay <= 5) {
+            return false;
+        }
+
+        // From 6th to 31st, past month report is locked unless unlocked with passcode within 2 hours
+        const isUnlocked = unlockedReports[val] && (Date.now() - unlockedReports[val] < 2 * 60 * 60 * 1000);
+        return !isUnlocked;
+    };
+
     const getReportLabel = (val: string, name: string) => {
         if (user?.role === 'hr_ops') {
-            // Free window: only dates 1st–5th of the month need no approval
-            const endDay = pendingDateRange.endDate ? pendingDateRange.endDate.getDate() : new Date().getDate();
-            if (endDay <= 5) return name;
+            const locked = isReportTypeLocked(
+                val,
+                pendingDateRange.startDate,
+                pendingDateRange.endDate,
+                pendingActiveDateFilter
+            );
+            if (!locked) return name;
 
             const isUnlocked = unlockedReports[val] && (Date.now() - unlockedReports[val] < 2 * 60 * 60 * 1000);
             return `${isUnlocked ? '🔓' : '🔒'} ${name}`;
@@ -1822,11 +1868,13 @@ const AttendanceDashboard: React.FC = () => {
         }
     }, [reportType, reportPageSize, fetchAuditLogs, dateRange.startDate, dateRange.endDate]);
 
-    // HR Ops free window: reports for the 1st–5th of the month need no passcode
-    const appliedEndDay = dateRange.endDate ? dateRange.endDate.getDate() : new Date().getDate();
-    const isReportLocked = user?.role === 'hr_ops' &&
-                           appliedEndDay > 5 &&
-                           (!unlockedReports[reportType] || Date.now() - unlockedReports[reportType] >= 2 * 60 * 60 * 1000);
+    // HR Ops lock check: past month reports require passcode if accessed after the 5th of the month
+    const isReportLocked = isReportTypeLocked(
+        reportType,
+        dateRange.startDate,
+        dateRange.endDate,
+        activeDateFilter
+    );
 
     const canDownloadReport = user && (isAdmin(user.role) || permissions[user.role]?.includes('download_attendance_report')) && !isReportLocked;
     const canViewAllAttendance = user && (isAdmin(user.role) || permissions[user.role]?.includes('view_all_attendance'));
