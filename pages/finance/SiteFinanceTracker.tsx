@@ -858,19 +858,6 @@ const SiteFinanceTracker: React.FC = () => {
         return siteDefaults.filter(s => routingScope.isSitePermitted(s.siteName, s.companyName));
     }, [siteDefaults, routingScope]);
 
-    // Calculate variations for stats based on user's authorized scope
-    let totalBillingVariation = 0;
-    let totalFeeVariation = 0;
-    let profitSitesCount = 0;
-
-    scopedRecords.forEach(r => {
-        const bDiff = (r.billedAmount || 0) - (r.contractAmount || 0);
-        const fDiff = (r.billedManagementFee || 0) - (r.contractManagementFee || 0);
-        totalBillingVariation += bDiff;
-        totalFeeVariation += fDiff;
-        if (bDiff + fDiff >= 0) profitSitesCount++;
-    });
-
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(20);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -942,6 +929,19 @@ const SiteFinanceTracker: React.FC = () => {
         }
 
         return matchesSearch && matchesCompany && matchesSiteName && matchesStatus && matchesYear && matchesMonth && matchesCustomRange;
+    });
+
+    // Calculate variations for stats based on user's authorized scope and active filters
+    let totalBillingVariation = 0;
+    let totalFeeVariation = 0;
+    let profitSitesCount = 0;
+
+    filteredRecords.forEach(r => {
+        const bDiff = (r.billedAmount || 0) - (r.contractAmount || 0);
+        const fDiff = (r.billedManagementFee || 0) - (r.contractManagementFee || 0);
+        totalBillingVariation += bDiff;
+        totalFeeVariation += fDiff;
+        if (bDiff + fDiff >= 0) profitSitesCount++;
     });
 
     const clearFilters = () => {
@@ -1276,9 +1276,9 @@ const SiteFinanceTracker: React.FC = () => {
                         <div className="flex items-start justify-between">
                             <div>
                                 <p className="text-[10px] md:text-[11px] font-semibold text-emerald-400/60 md:text-gray-500 uppercase tracking-wider">Profit Sites</p>
-                                <h3 className="text-lg md:text-xl font-bold text-white md:text-gray-900 mt-1.5">{profitSitesCount} <span className="text-xs md:text-sm font-normal text-emerald-700">/ {records.length}</span></h3>
+                                <h3 className="text-lg md:text-xl font-bold text-white md:text-gray-900 mt-1.5">{profitSitesCount} <span className="text-xs md:text-sm font-normal text-emerald-700">/ {filteredRecords.length}</span></h3>
                                 <p className="text-[9px] md:text-[10px] font-medium text-emerald-400 md:text-emerald-600/80 mt-1">
-                                    {records.length > 0 ? Math.round((profitSitesCount / records.length) * 100) : 0}% profitable
+                                    {filteredRecords.length > 0 ? Math.round((profitSitesCount / filteredRecords.length) * 100) : 0}% profitable
                                 </p>
                             </div>
                             <div className="w-8 h-8 md:w-10 md:h-10 rounded-lg bg-emerald-500/10 md:bg-emerald-50 flex items-center justify-center border border-emerald-500/20 md:border-emerald-100">
@@ -1292,7 +1292,7 @@ const SiteFinanceTracker: React.FC = () => {
                         <div className="flex items-start justify-between">
                             <div>
                                 <p className="text-[10px] md:text-[11px] font-semibold text-emerald-400/60 md:text-gray-500 uppercase tracking-wider">Total Records</p>
-                                <h3 className="text-lg md:text-xl font-bold text-white md:text-gray-900 mt-1.5">{records.length}</h3>
+                                <h3 className="text-lg md:text-xl font-bold text-white md:text-gray-900 mt-1.5">{filteredRecords.length}</h3>
                                 <p className="text-[9px] md:text-[10px] font-medium text-emerald-400/50 md:text-gray-400 mt-1">
                                     For {(filters.year === 'all' || filters.month === 'all') 
                                         ? 'All Periods' 
@@ -1342,7 +1342,7 @@ const SiteFinanceTracker: React.FC = () => {
                         </div>
                         <span className="text-xs text-emerald-400/40 font-black uppercase tracking-[0.2em]">Synchronizing Data...</span>
                     </div>
-                ) : currentRecords.length === 0 ? (
+                ) : filteredRecords.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
                         <div className="w-20 h-20 bg-white/5 rounded-[2.5rem] flex items-center justify-center mb-6 border border-white/5 rotate-3">
                             <ClipboardCheck className="h-8 w-8 text-emerald-500/20" />

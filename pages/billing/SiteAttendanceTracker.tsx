@@ -707,16 +707,16 @@ const SiteAttendanceTracker: React.FC = () => {
     }, [currentRecords, searchQuery, filters]);
 
     const stats = useMemo(() => {
-        const total = scopedRecords.length;
-        const sent = scopedRecords.filter(r => !!r.invoiceSentDate).length;
+        const total = filteredRecords.length;
+        const sent = filteredRecords.filter(r => !!r.invoiceSentDate).length;
         const pending = total - sent;
         const today = startOfDay(new Date());
-        const due = scopedRecords.filter(r => {
+        const due = filteredRecords.filter(r => {
             if (!!r.invoiceSentDate || !r.invoiceSharingTentativeDate) return false;
             return isBefore(parseISO(r.invoiceSharingTentativeDate), today) || isToday(parseISO(r.invoiceSharingTentativeDate));
         });
         return { total, sent, pending, due };
-    }, [scopedRecords]);
+    }, [filteredRecords]);
 
     const totalPages = Math.ceil(filteredRecords.length / rowsPerPage);
     const paginatedRecords = filteredRecords.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);

@@ -74,7 +74,7 @@ const NotificationIcon: React.FC<{ type: NotificationType; size?: string }> = ({
 
 export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void; isMobile?: boolean }> = ({ isOpen, onClose, isMobile = false }) => {
     const { user, isCheckedIn, isFieldCheckedIn, isSiteOtCheckedIn } = useAuthStore();
-    const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotificationStore();
+    const { notifications, unreadCount, markAsRead, markNotificationsAsRead, markAllAsRead } = useNotificationStore();
     const navigate = useNavigate();
     const [currentPage, setCurrentPage] = React.useState(1);
     const [pageSize, setPageSize] = React.useState(20);
@@ -103,6 +103,61 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
 
     const [inactiveEmployees, setInactiveEmployees] = React.useState<EmployeeScoreWithUser[]>([]);
     const [snoozedPunchOutIds, setSnoozedPunchOutIds] = React.useState<Set<string>>(new Set());
+
+    // Scoped team members for managers and directors
+    const [teamMemberIds, setTeamMemberIds] = React.useState<Set<string>>(new Set());
+    const [teamMemberNames, setTeamMemberNames] = React.useState<string[]>([]);
+    const [isTeamLoaded, setIsTeamLoaded] = React.useState(false);
+
+    React.useEffect(() => {
+        if (!user) return;
+        const role = (user.role || '').toLowerCase();
+        const isSuperAdmin = ['admin', 'super_admin', 'developer'].includes(role);
+        if (isSuperAdmin) {
+            setTeamMemberIds(new Set());
+            setTeamMemberNames([]);
+            setIsTeamLoaded(true);
+            return;
+        }
+
+        api.getTeamMembers(user.id).then(members => {
+            const ids = new Set((members || []).map(m => m.id));
+            const names = (members || []).map(m => (m.name || '').toLowerCase().trim()).filter(Boolean);
+            setTeamMemberIds(ids);
+            setTeamMemberNames(names);
+            setIsTeamLoaded(true);
+        }).catch(err => {
+            console.error('[NotificationPanel] Error fetching team members:', err);
+            setIsTeamLoaded(true);
+        });
+    }, [user]);
+
+    const isTeamMemberNotification = React.useCallback((notif: Notification) => {
+        const role = (user?.role || '').toLowerCase();
+        const isSuperAdmin = ['admin', 'super_admin', 'developer'].includes(role);
+        if (isSuperAdmin) return true;
+        if (!isTeamLoaded) return false;
+        if (teamMemberIds.size === 0 && teamMemberNames.length === 0) return false;
+
+        let meta = notif.metadata as any || {};
+        if (typeof meta === 'string') {
+            try { meta = JSON.parse(meta); } catch (e) { meta = {}; }
+        }
+
+        // 1. Direct employee ID match
+        const empId = meta.employeeId || meta.employee_id || meta.userId || meta.user_id;
+        if (empId && teamMemberIds.has(empId)) return true;
+
+        // 2. Metadata employee name match
+        const empName = (meta.employeeName || meta.employee_name || '').toLowerCase().trim();
+        if (empName && teamMemberNames.some(name => empName.includes(name) || name.includes(empName))) return true;
+
+        // 3. Notification message text match
+        const msgLower = (notif.message || '').toLowerCase();
+        if (teamMemberNames.some(name => msgLower.includes(name))) return true;
+
+        return false;
+    }, [user, isTeamLoaded, teamMemberIds, teamMemberNames]);
 
     const isManagerRole = useMemo(() => {
         if (!user) return false;
@@ -693,8 +748,13 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
 
     const securityViolations = useMemo(() => {
         if (isHRRole) return [];
-        return notifications.filter(n => (!n.isRead) && (n.type === 'security' || n.message.includes('Field attendance violation')));
-    }, [notifications, isHRRole]);
+        return notifications.filter(n => {
+            if (n.isRead) return false;
+            const isSec = n.type === 'security' || n.message.includes('Field attendance violation');
+            if (!isSec) return false;
+            return isTeamMemberNotification(n);
+        });
+    }, [notifications, isHRRole, isTeamMemberNotification]);
 
     const teamActivityNotifications = useMemo(() => {
         return notifications.filter(n => {
@@ -703,14 +763,23 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
             if (typeof meta === 'string') {
                 try { meta = JSON.parse(meta); } catch(e) { meta = {}; }
             }
-            return !n.isRead && (meta?.isTeamActivity || meta?.is_team_activity || 
+            const isTeamEvent = meta?.isTeamActivity || meta?.is_team_activity || 
                    n.message.includes('punched in') || 
                    n.message.includes('punched out') || 
-                                n.message.includes('checked in') || 
-                                n.message.includes('checked out') || 
-                   n.message.toLowerCase().includes('break'));
+                   n.message.includes('checked in') || 
+                   n.message.includes('checked out') || 
+                   n.message.toLowerCase().includes('break');
+            if (!isTeamEvent) return false;
+            if (!isTeamMemberNotification(n)) return false;
+
+            // Only show recent team activity (last 7 days) to avoid months-old punch logs flooding executive drawer
+            if (n.createdAt) {
+                const ageInDays = (Date.now() - new Date(n.createdAt).getTime()) / (1000 * 60 * 60 * 24);
+                if (ageInDays > 7) return false;
+            }
+            return true;
         });
-    }, [notifications]);
+    }, [notifications, isTeamMemberNotification]);
 
     const filteredNotifCount = notifications.filter(notif => {
         if (notif.isRead) return false;
@@ -740,6 +809,13 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
         ? (unlockRequests.length + leaveRequests.length + extraWorkClaims.length + financeRequests.length + onboardingApprovals.length + inactiveEmployees.length + invoiceAlerts.length + (isUserAdmin ? reportAccessRequests.length : 0)) 
         : invoiceAlerts.length;
 
+    const visibleUnreadCount = useMemo(() => {
+        if (isManagerRole) {
+            return pendingCount + securityViolations.length + teamActivityNotifications.length + filteredNotifCount;
+        }
+        return unreadCount + pendingCount;
+    }, [isManagerRole, pendingCount, securityViolations.length, teamActivityNotifications.length, filteredNotifCount, unreadCount]);
+
     if (!isOpen) return null;
 
     return (
@@ -748,18 +824,18 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
             <div className={`flex items-center justify-between px-6 pt-6 pb-5 border-b ${isMobile ? 'bg-[#0A3D2E] border-white/10' : 'bg-white border-gray-100'}`}>
                 <div className="flex items-center gap-3">
                     <h4 className={`font-bold text-xl ${isMobile ? 'text-white' : 'text-gray-900'}`}>Notifications</h4>
-                    {unreadCount > 0 && (
+                    {visibleUnreadCount > 0 && (
                         <span className={`px-2 py-0.5 text-xs rounded-full font-bold ${
                             isMobile 
                             ? 'bg-accent text-[#041b0f] shadow-[0_0_10px_rgba(34,197,94,0.2)]' 
                             : 'bg-accent/10 text-accent border border-accent/20'
                         }`}>
-                            {unreadCount} New
+                            {visibleUnreadCount} New
                         </span>
                     )}
                 </div>
                 <div className="flex items-center gap-2">
-                    {unreadCount > 0 && (
+                    {visibleUnreadCount > 0 && (
                         <button
                             onClick={() => markAllAsRead()}
                             className={`text-xs font-bold px-2 py-1 rounded-lg transition-colors ${isMobile ? 'text-accent hover:bg-white/5' : 'text-accent hover:bg-accent/5'}`}
@@ -1519,7 +1595,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                                                 <button
                                                     onClick={(e) => {
                                                         e.stopPropagation();
-                                                        securityViolations.forEach(n => markAsRead(n.id));
+                                                        markNotificationsAsRead(securityViolations.map(n => n.id));
                                                     }}
                                                     className={`text-[9px] font-bold px-2 py-1 rounded-lg transition-colors ${isMobile ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' : 'bg-red-100 text-red-700 hover:bg-red-200'}`}
                                                 >
@@ -1675,7 +1751,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                                                 <button
                                                     onClick={(e) => {
                                                         e.stopPropagation();
-                                                        teamActivityNotifications.forEach(n => markAsRead(n.id));
+                                                        markNotificationsAsRead(teamActivityNotifications.map(n => n.id));
                                                     }}
                                                     className={`text-[9px] font-bold px-2 py-1 rounded-lg transition-colors ${isMobile ? 'bg-sky-500/20 text-sky-400 hover:bg-sky-500/30' : 'bg-sky-100 text-sky-700 hover:bg-sky-200'}`}
                                                 >

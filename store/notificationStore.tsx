@@ -36,6 +36,7 @@ interface NotificationState {
   togglePanel: () => void;
   fetchNotifications: () => Promise<void>;
   markAsRead: (notificationId: string) => Promise<void>;
+  markNotificationsAsRead: (notificationIds: string[]) => Promise<void>;
   markAllAsRead: () => Promise<void>;
   acknowledgeNotification: (notificationId: string) => Promise<void>;
   subscribeToNotifications: () => () => void;
@@ -105,22 +106,45 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
 
     try {
       const notifications = await api.getNotifications(user.id);
-      const unreadCount = notifications.filter(n => !n.isRead).length;
-      console.log(`[NotificationStore] Fetched ${notifications.length} notifications, ${unreadCount} unread.`);
       
-      // Also fetch pending approvals count for admins/managers
-      let pendingApprovalsCount = 0;
       const role = (user.role || '').toLowerCase();
+      const isSuperAdmin = ['admin', 'super_admin', 'developer'].includes(role);
       const isManagerRole = [
         'admin', 'super_admin', 'management', 'hr', 'hr_ops', 'finance', 'finance_manager', 
         'developer', 'operation_manager', 'site_manager', 'director', 'business_developer'
       ].includes(role) || role.includes('manager');
 
+      // For managers/directors, routine punch-ins/breaks older than 7 days shouldn't inflate the unread count
+      let unreadItems = notifications.filter(n => !n.isRead);
+      if (isManagerRole && !isSuperAdmin) {
+          unreadItems = unreadItems.filter(n => {
+              let meta = n.metadata as any;
+              if (typeof meta === 'string') {
+                  try { meta = JSON.parse(meta); } catch(e) { meta = {}; }
+              }
+              const isRoutine = meta?.isTeamActivity || meta?.is_team_activity || 
+                     n.message.includes('punched in') || 
+                     n.message.includes('punched out') || 
+                     n.message.includes('checked in') || 
+                     n.message.includes('checked out') || 
+                     n.message.toLowerCase().includes('break');
+              if (isRoutine && n.createdAt) {
+                  const ageInDays = (Date.now() - new Date(n.createdAt).getTime()) / (1000 * 60 * 60 * 24);
+                  if (ageInDays > 7) return false;
+              }
+              return true;
+          });
+      }
+      const unreadCount = unreadItems.length;
+      console.log(`[NotificationStore] Fetched ${notifications.length} notifications, ${unreadCount} active unread.`);
+      
+      // Also fetch pending approvals count for admins/managers
+      let pendingApprovalsCount = 0;
+
       console.log(`[NotificationStore] User role: ${role}, isManagerRole: ${isManagerRole}`);
 
       if (isManagerRole) {
         try {
-          const isSuperAdmin = ['admin', 'super_admin', 'developer'].includes(role);
           const isDirector = role === 'director' || role.includes('director');
           const isFinanceRole = ['finance', 'finance_manager'].includes(role);
           
@@ -223,6 +247,30 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
       get().updateBadgeCount();
     } catch (err) {
       console.error("Failed to mark notification as read:", err);
+    }
+  },
+
+  markNotificationsAsRead: async (notificationIds: string[]) => {
+    if (!notificationIds || notificationIds.length === 0) return;
+    const idSet = new Set(notificationIds);
+    const previousNotifications = get().notifications;
+
+    set((state) => {
+      const updated = state.notifications.map(n => idSet.has(n.id) ? { ...n, isRead: true } : n);
+      const newUnreadCount = updated.filter(n => !n.isRead).length;
+      return {
+        notifications: updated,
+        unreadCount: newUnreadCount,
+        totalUnreadCount: newUnreadCount + state.pendingApprovalsCount
+      };
+    });
+
+    try {
+      await api.markNotificationsAsRead(notificationIds);
+      get().updateBadgeCount();
+    } catch (err) {
+      console.error("Failed to mark notifications as read:", err);
+      set({ notifications: previousNotifications });
     }
   },
 

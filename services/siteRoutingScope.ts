@@ -266,30 +266,96 @@ export function getUserRoutingScope(
     });
   }
 
-  const permittedList = Array.from(permittedSites).sort();
+  // Canonical display list for badges, headers, and UI filters (14 sites)
+  const canonicalSiteList = Array.from(permittedSites).sort();
+
+  // Expanded lookup set including billing legal names and legacy aliases for matching
+  const expandedLookupSet = new Set<string>();
+  permittedSites.forEach(s => expandedLookupSet.add(s.toLowerCase().trim()));
+
+  const normalizeSiteKey = (str: string): string => {
+    return (str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  };
+
+  const historicalAliases: Record<string, string[]> = {
+    'artisane projects': ['realserve', 'artisane', 'artisane forest breeze'],
+    'gk ispat pvt ltd': ['g k ispat pvt ltd', 'g.k.ispat pvt.ltd.', 'gk ispat'],
+    'habitat aura': ['h v ventures projects pvt ltd', 'hv ventures projects private limited', 'habitat aura'],
+    'iskcon - ttd': ['sri venkateshwara seva trust', 'iskcon ttd', 'ttd kalyan mantapa'],
+    'iskcon vaikunta hill': ['sankirtan seva trust  v k hill', 'sankirtan seva trust v k hill', 'vaikunta hill'],
+    'keshav setlur': ['keshava setlur'],
+    'sv grandur': ['sv garndur', 'sv garndur apartment co operative society ltd', 'sv grandur apartment co- operative society ltd'],
+    'trans indus': ['trands indus', 'trands indus residents association', 'trans indus residents association'],
+    'vrindhavan pg': ['hare krishna movement bangalore', 'vrindavan pg'],
+    'akshaya patra': ['the akshaya patra foundation', 'akshaya patra foundation'],
+    'prestige falcon city': ['prestige falcon city apartment owners association'],
+    'prestige park square': ['prestige park square owners association'],
+    'purva atmosphere': ['purva atmosphere apartment owners association'],
+    'iskcon': ['iskcon bangalore', 'hare krishna hill']
+  };
+
+  // Cross-reference matrixList to register billingLegalName and aliases
+  matrixList.forEach(m => {
+    const sName = m.siteName || '';
+    const lName = m.billingLegalName || (m as any).billing_legal_name || '';
+    const sKey = normalizeSiteKey(sName);
+
+    const matchesPermitted = Array.from(permittedSites).some(p => {
+      const pKey = normalizeSiteKey(p);
+      return pKey === sKey || p.toLowerCase().trim() === sName.toLowerCase().trim();
+    });
+
+    if (matchesPermitted) {
+      if (sName) expandedLookupSet.add(sName.toLowerCase().trim());
+      if (lName) expandedLookupSet.add(lName.toLowerCase().trim());
+
+      Object.entries(historicalAliases).forEach(([aliasKey, aliases]) => {
+        if (normalizeSiteKey(aliasKey) === sKey) {
+          aliases.forEach(a => expandedLookupSet.add(a.toLowerCase().trim()));
+        }
+      });
+    }
+  });
 
   const isSitePermitted = (siteName: string, companyName?: string): boolean => {
     if (!siteName) return false;
 
-    // 1. Direct site match in permitted set
+    // 1. Direct site match in permitted set or canonical list
     if (permittedSites.has(siteName)) return true;
 
     const lower = siteName.toLowerCase().trim();
-    const hasMatch = permittedList.some(p => p.toLowerCase().trim() === lower);
-    if (hasMatch) return true;
+    if (expandedLookupSet.has(lower)) return true;
 
-    const hasPrefixMatch = permittedList.some(p => {
-      const pLower = p.toLowerCase().trim();
-      return lower.startsWith(pLower) || pLower.startsWith(lower) || lower.includes(pLower);
+    const norm = normalizeSiteKey(siteName);
+    if (!norm) return false;
+
+    // 2. Normalized alphanumeric match
+    for (const item of expandedLookupSet) {
+      const itemNorm = normalizeSiteKey(item);
+      if (itemNorm === norm) return true;
+      if (itemNorm && (norm.startsWith(itemNorm) || itemNorm.startsWith(norm))) return true;
+      if (itemNorm.length >= 6 && (norm.includes(itemNorm) || itemNorm.includes(norm))) return true;
+    }
+
+    // 3. Matrix lookup: if siteName matches any matrix entry whose siteName is permitted
+    const matrixMatch = matrixList.find(m => {
+      const mSiteNorm = normalizeSiteKey(m.siteName);
+      const mLegalNorm = normalizeSiteKey(m.billingLegalName || (m as any).billing_legal_name || '');
+      return (mSiteNorm && mSiteNorm === norm) || (mLegalNorm && mLegalNorm === norm);
     });
-    if (hasPrefixMatch) return true;
 
-    // 2. Only if user has NO specific site allocations (e.g. general role), allow by company
+    if (matrixMatch) {
+      const mSiteNorm = normalizeSiteKey(matrixMatch.siteName);
+      for (const p of permittedSites) {
+        if (normalizeSiteKey(p) === mSiteNorm) return true;
+      }
+    }
+
+    // 4. If user has NO specific site allocations, allow by company
     if (permittedSites.size === 0 && allowedCompanies.length > 0) {
       let normComp = companyName ? normalizeCompanyShortName(companyName) : '';
-      if (!normComp) {
-        const match = matrixList.find(m => (m.siteName || '').toLowerCase().trim() === lower);
-        if (match) normComp = normalizeCompanyShortName(match.billingCompany);
+      if (!normComp && matrixMatch) {
+        normComp = normalizeCompanyShortName(matrixMatch.billingCompany);
       }
       if (normComp) {
         return allowedCompanies.some(ac => normComp === ac || normComp.includes(ac) || ac.includes(normComp));
@@ -305,7 +371,7 @@ export function getUserRoutingScope(
     userEmail: email,
     allowedCompanies,
     permittedSiteNames: permittedSites,
-    permittedSiteList: permittedList,
+    permittedSiteList: canonicalSiteList,
     isSitePermitted
   };
 }

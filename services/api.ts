@@ -7268,6 +7268,10 @@ export const api = {
   markAllNotificationsAsRead: async (userId: string): Promise<void> => {
     await supabase.from('notifications').update({ is_read: true }).eq('user_id', userId).eq('is_read', false);
   },
+  markNotificationsAsRead: async (ids: string[]): Promise<void> => {
+    if (!ids || ids.length === 0) return;
+    await supabase.from('notifications').update({ is_read: true }).in('id', ids);
+  },
   acknowledgeNotification: async (id: string): Promise<void> => {
     const { error } = await supabase.from('notifications').update({ 
       acknowledged_at: new Date().toISOString(),
