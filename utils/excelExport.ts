@@ -1,7 +1,7 @@
 import { saveAs } from 'file-saver';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
 import { type EmployeeMonthlyData } from '../components/attendance/MonthlyHoursReport';
-import { calculateStatsForDateRange } from './attendanceCalculations';
+import { calculateStatsForDateRange, resolveMonthlyDayHeaders } from './attendanceCalculations';
 
 export interface MonthlyReportRow {
     userName: string;
@@ -465,7 +465,12 @@ export const exportMonthlyMatrixToExcel = async (
     monthlyData: Record<string, any[]>,
     dateRange: { startDate: Date; endDate: Date },
     logoBase64?: string,
-    generatedBy?: string
+    generatedBy?: string,
+    generatedByRole?: string,
+    targetUserName?: string,
+    targetUserRole?: string,
+    filters?: any,
+    userHolidaysPool?: any[]
 ) => {
     const ExcelJS = await import('exceljs');
     const workbook = new ExcelJS.Workbook();
@@ -473,12 +478,58 @@ export const exportMonthlyMatrixToExcel = async (
     // Sort month keys to ensure chronological order in sheets
     const sortedMonthKeys = Object.keys(monthlyData).sort();
 
+    // Helper to convert 1-based column number to Excel letter (1 -> A, 27 -> AA, etc.)
+    const getColLetter = (n: number) => {
+        let letter = '';
+        while (n > 0) {
+            const temp = (n - 1) % 26;
+            letter = String.fromCharCode(65 + temp) + letter;
+            n = Math.floor((n - temp - 1) / 26);
+        }
+        return letter;
+    };
+
+    const thinBorder = {
+        top: { style: 'thin' as const, color: { argb: 'FFE5E7EB' } },
+        left: { style: 'thin' as const, color: { argb: 'FFE5E7EB' } },
+        bottom: { style: 'thin' as const, color: { argb: 'FFE5E7EB' } },
+        right: { style: 'thin' as const, color: { argb: 'FFE5E7EB' } },
+    };
+
     for (const monthKey of sortedMonthKeys) {
         const data = monthlyData[monthKey];
-        const monthDate = new Date(monthKey + '-01'); // Ensure it's treated as start of month
+        const monthDate = new Date(monthKey + '-01');
         const worksheet = workbook.addWorksheet(format(monthDate, 'MMMM yyyy'));
 
-        // 1. Add Logo if available
+        // Calculate days for this month within the global range
+        const monthStart = startOfMonth(monthDate);
+        const monthEnd = endOfMonth(monthDate);
+        const displayStart = monthStart > dateRange.startDate ? monthStart : dateRange.startDate;
+        const displayEnd = monthEnd < dateRange.endDate ? monthEnd : dateRange.endDate;
+        const monthDays = eachDayOfInterval({ start: displayStart, end: displayEnd });
+        const maxDays = monthDays.length;
+
+        // Recalculate employee rows using shared attendance calculation
+        const recalculatedData = data.map(employee => ({
+            ...employee,
+            ...calculateStatsForDateRange(employee.statuses || [], monthDays)
+        }));
+
+        // Resolve exact holidays using shared algorithm (guarantees 100% match with HTML view)
+        const dayHeaders = resolveMonthlyDayHeaders(monthDays, userHolidaysPool);
+        const holidaysInPeriod = dayHeaders.filter(dh => dh.isHoliday);
+
+        // Calculate Metric Summary Statistics
+        const totalPresence = recalculatedData.reduce((acc, curr) => acc + (curr.presentDays || 0) + (curr.halfDays || 0) * 0.5, 0);
+        const maxPossibleDays = recalculatedData.length * (monthDays.length || 30) || 1;
+        const monthlyPresencePct = Math.round((totalPresence / maxPossibleDays) * 100);
+        const totalPunches = Number(recalculatedData.reduce((acc, curr) => acc + (curr.presentDays || 0), 0).toFixed(2));
+        const activeStaff = recalculatedData.length;
+
+        const endColIndex = 1 + maxDays + 10; // 1 Employee + N Days + 10 Summary Stats (P, 0.5P, OT, C/O, E/L, S/L, A, W/O, H, Pay)
+        const mergeEndCol = getColLetter(endColIndex);
+
+        // --- 1. Header Block (Rows 1 to 4) ---
         if (logoBase64 && logoBase64.startsWith('data:image')) {
             try {
                 const base64Data = logoBase64.split(',')[1];
@@ -495,115 +546,229 @@ export const exportMonthlyMatrixToExcel = async (
             }
         }
 
-        // Paradigm Services label
-        worksheet.mergeCells('A3:E3');
+        // Company title on left
+        worksheet.mergeCells('A3:D3');
         const companyCell = worksheet.getCell('A3');
         companyCell.value = 'PARADIGM SERVICES';
-        companyCell.font = { bold: true, size: 9, color: { argb: 'FF9CA3AF' } };
+        companyCell.font = { bold: true, size: 11, color: { argb: 'FF006B3F' } };
         companyCell.alignment = { horizontal: 'left', vertical: 'middle' };
 
-        // Calculate days for this month within the global range
-        const monthStart = startOfMonth(monthDate);
-        const monthEnd = endOfMonth(monthDate);
-        const displayStart = monthStart > dateRange.startDate ? monthStart : dateRange.startDate;
-        const displayEnd = monthEnd < dateRange.endDate ? monthEnd : dateRange.endDate;
-        const monthDays = eachDayOfInterval({ start: displayStart, end: displayEnd });
-        const maxDays = monthDays.length;
+        // Subtitle filter on left
+        worksheet.mergeCells('A4:D4');
+        const subFilterCell = worksheet.getCell('A4');
+        let filterDesc = 'ALL EMPLOYEES';
+        if (targetUserName) {
+            filterDesc = `${targetUserName}${targetUserRole ? ` (${targetUserRole.replace(/_/g, ' ')})` : ''}`;
+        } else if (filters?.site) {
+            filterDesc = `Site: ${filters.site}`;
+        } else if (filters?.company) {
+            filterDesc = `Company: ${filters.company}`;
+        }
+        subFilterCell.value = filterDesc.toUpperCase();
+        subFilterCell.font = { bold: true, size: 8.5, color: { argb: 'FF6B7280' } };
+        subFilterCell.alignment = { horizontal: 'left', vertical: 'middle' };
 
-        const recalculatedData = data.map(employee => ({
-            ...employee,
-            ...calculateStatsForDateRange(employee.statuses || [], monthDays)
-        }));
-
-        const endColIndex = 1 + maxDays + 10; // Employee + Days + 10 stats columns
-        
-        // Helper to get column letter
-        const getColLetter = (n: number) => {
-            let letter = '';
-            while (n > 0) {
-                let temp = (n - 1) % 26;
-                letter = String.fromCharCode(65 + temp) + letter;
-                n = (n - temp - 1) / 26;
-            }
-            return letter;
-        };
-        const mergeEndCol = getColLetter(endColIndex);
-        
-        // 2. Add Title & Metadata at the top right
-        worksheet.mergeCells(`F1:${mergeEndCol}1`);
-        const titleCell = worksheet.getCell('F1');
+        // Top-Right Report Title & Metadata
+        worksheet.mergeCells(`E1:${mergeEndCol}1`);
+        const titleCell = worksheet.getCell('E1');
         titleCell.value = 'MONTHLY ATTENDANCE REPORT';
-        titleCell.font = { size: 22, bold: true, color: { argb: 'FF111827' } };
+        titleCell.font = { size: 18, bold: true, color: { argb: 'FF111827' } };
         titleCell.alignment = { horizontal: 'right', vertical: 'middle' };
 
-        worksheet.mergeCells(`F2:${mergeEndCol}2`);
-        const dateCell = worksheet.getCell('F2');
-        dateCell.value = format(monthDate, 'MMMM yyyy');
-        dateCell.font = { size: 12, bold: true, color: { argb: 'FF374151' } };
-        dateCell.alignment = { horizontal: 'right', vertical: 'middle' };
+        worksheet.mergeCells(`E2:${mergeEndCol}2`);
+        const cycleCell = worksheet.getCell('E2');
+        cycleCell.value = `Billing Cycle: ${format(displayStart, 'dd MMM yyyy')} - ${format(displayEnd, 'dd MMM yyyy')}`;
+        cycleCell.font = { size: 11, bold: true, color: { argb: 'FF374151' } };
+        cycleCell.alignment = { horizontal: 'right', vertical: 'middle' };
 
-        worksheet.mergeCells(`F3:${mergeEndCol}3`);
-        const genCell1 = worksheet.getCell('F3');
+        worksheet.mergeCells(`E3:${mergeEndCol}3`);
+        const genCell1 = worksheet.getCell('E3');
         genCell1.value = `Generated: ${format(new Date(), 'dd MMM yyyy HH:mm')}`;
-        genCell1.font = { size: 10, color: { argb: 'FF6B7280' } };
+        genCell1.font = { size: 9.5, color: { argb: 'FF6B7280' } };
         genCell1.alignment = { horizontal: 'right', vertical: 'middle' };
 
-        let currentRow = 5;
-        if (generatedBy) {
-            worksheet.mergeCells(`F4:${mergeEndCol}4`);
-            const genCell2 = worksheet.getCell('F4');
-            genCell2.value = `By: ${generatedBy}`;
-            genCell2.font = { size: 10, color: { argb: 'FF6B7280' } };
-            genCell2.alignment = { horizontal: 'right', vertical: 'middle' };
-            currentRow = 6;
+        worksheet.mergeCells(`E4:${mergeEndCol}4`);
+        const genCell2 = worksheet.getCell('E4');
+        genCell2.value = `By: ${generatedBy || 'Sudhan M'}${generatedByRole ? ` (${generatedByRole.toUpperCase()})` : ''}`;
+        genCell2.font = { size: 9.5, color: { argb: 'FF6B7280' } };
+        genCell2.alignment = { horizontal: 'right', vertical: 'middle' };
+
+        // --- 2. Stats Cards (Rows 6 & 7) ---
+        // Card 1: Monthly Presence
+        worksheet.mergeCells('B6:E6');
+        const pLabel = worksheet.getCell('B6');
+        pLabel.value = 'MONTHLY PRESENCE';
+        pLabel.font = { size: 8, bold: true, color: { argb: 'FF065F46' } };
+        pLabel.alignment = { horizontal: 'center', vertical: 'middle' };
+        pLabel.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDF4' } };
+
+        worksheet.mergeCells('B7:E7');
+        const pVal = worksheet.getCell('B7');
+        pVal.value = `${monthlyPresencePct}%`;
+        pVal.font = { size: 16, bold: true, color: { argb: 'FF059669' } };
+        pVal.alignment = { horizontal: 'center', vertical: 'middle' };
+        pVal.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDF4' } };
+        pVal.border = { bottom: { style: 'medium', color: { argb: 'FF10B981' } } };
+
+        // Card 2: Total Punches
+        worksheet.mergeCells('G6:J6');
+        const punchLabel = worksheet.getCell('G6');
+        punchLabel.value = 'TOTAL PUNCHES';
+        punchLabel.font = { size: 8, bold: true, color: { argb: 'FF1E40AF' } };
+        punchLabel.alignment = { horizontal: 'center', vertical: 'middle' };
+        punchLabel.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
+
+        worksheet.mergeCells('G7:J7');
+        const punchVal = worksheet.getCell('G7');
+        punchVal.value = totalPunches;
+        punchVal.font = { size: 16, bold: true, color: { argb: 'FF2563EB' } };
+        punchVal.alignment = { horizontal: 'center', vertical: 'middle' };
+        punchVal.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
+        punchVal.border = { bottom: { style: 'medium', color: { argb: 'FF3B82F6' } } };
+
+        // Card 3: Active Staff
+        worksheet.mergeCells('L6:O6');
+        const staffLabel = worksheet.getCell('L6');
+        staffLabel.value = 'ACTIVE STAFF';
+        staffLabel.font = { size: 8, bold: true, color: { argb: 'FF374151' } };
+        staffLabel.alignment = { horizontal: 'center', vertical: 'middle' };
+        staffLabel.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+
+        worksheet.mergeCells('L7:O7');
+        const staffVal = worksheet.getCell('L7');
+        staffVal.value = activeStaff;
+        staffVal.font = { size: 16, bold: true, color: { argb: 'FF111827' } };
+        staffVal.alignment = { horizontal: 'center', vertical: 'middle' };
+        staffVal.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+        staffVal.border = { bottom: { style: 'medium', color: { argb: 'FF6B7280' } } };
+
+        let currentRow = 9;
+
+        // --- 3. Company & Fixed Holidays Banner (Rows 9 & 10) ---
+        if (holidaysInPeriod.length > 0) {
+            worksheet.mergeCells(`A${currentRow}:${mergeEndCol}${currentRow}`);
+            const bannerTitle = worksheet.getCell(`A${currentRow}`);
+            bannerTitle.value = `📅  COMPANY & FIXED HOLIDAYS (${holidaysInPeriod.length}):`;
+            bannerTitle.font = { size: 9.5, bold: true, color: { argb: 'FF881337' } };
+            bannerTitle.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE4E6' } };
+            bannerTitle.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+            bannerTitle.border = { top: { style: 'thin', color: { argb: 'FFF43F5E' } }, left: { style: 'thin', color: { argb: 'FFF43F5E' } }, right: { style: 'thin', color: { argb: 'FFF43F5E' } } };
+
+            currentRow++;
+            worksheet.mergeCells(`A${currentRow}:${mergeEndCol}${currentRow}`);
+            const bannerBody = worksheet.getCell(`A${currentRow}`);
+            bannerBody.value = holidaysInPeriod.map(h => `• ${h.dayNumber} ${format(h.dateObj, 'MMM')} (${h.dayOfWeek}): ${h.holidayName}${h.isFixed ? ' [FIXED]' : ''}`).join('    ');
+            bannerBody.font = { size: 9, bold: true, color: { argb: 'FF9F1239' } };
+            bannerBody.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF1F2' } };
+            bannerBody.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+            bannerBody.border = { bottom: { style: 'thin', color: { argb: 'FFF43F5E' } }, left: { style: 'thin', color: { argb: 'FFF43F5E' } }, right: { style: 'thin', color: { argb: 'FFF43F5E' } } };
+
+            currentRow += 2; // Spacer
+        } else {
+            currentRow++;
         }
 
-        // 3. Render Matrix Header
-        const headerRow = worksheet.getRow(currentRow);
-        headerRow.height = 25;
-        
-        const headers = ['Employee'];
-        monthDays.forEach(d => headers.push(format(d, 'd')));
-        headers.push('P', '0.5P', 'OT', 'C/O', 'E/L', 'S/L', 'A', 'W/O', 'H', 'Pay');
-        
-        headerRow.values = headers;
-        
-        headerRow.eachCell((cell, colNumber) => {
-            cell.font = { bold: true, color: { argb: 'FF374151' } };
-            cell.alignment = { horizontal: 'center', vertical: 'middle' };
-            cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
-            
-            let bgColor = 'FFF9FAFB'; // Default
-            if (colNumber === 1) cell.alignment = { horizontal: 'left', vertical: 'middle' };
-            
-            const headerText = cell.value as string;
-            if (headerText === 'P') { bgColor = 'FFD1FAE5'; cell.font.color = { argb: 'FF065F46' }; }
-            else if (headerText === '0.5P') { bgColor = 'FFDBEAFE'; cell.font.color = { argb: 'FF1E40AF' }; }
-            else if (headerText === 'OT') { bgColor = 'FFCCFBF1'; cell.font.color = { argb: 'FF0F766E' }; }
-            else if (headerText === 'C/O') { bgColor = 'FFCFFAFE'; cell.font.color = { argb: 'FF0E7490' }; }
-            else if (headerText === 'E/L') { bgColor = 'FFE0E7FF'; cell.font.color = { argb: 'FF3730A3' }; }
-            else if (headerText === 'S/L') { bgColor = 'FFF3E8FF'; cell.font.color = { argb: 'FF6B21A8' }; }
-            else if (headerText === 'A') { bgColor = 'FFFEE2E2'; cell.font.color = { argb: 'FF991B1B' }; }
-            else if (headerText === 'H') { bgColor = 'FFFFEDD5'; cell.font.color = { argb: 'FF9A3412' }; }
-            else if (headerText === 'Pay') { bgColor = 'FFD1FAE5'; cell.font.color = { argb: 'FF065F46' }; }
-            
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } };
-        });
-        
-        currentRow++;
+        // --- 4. Two-Row Matrix Header ---
+        const hRow1Index = currentRow;
+        const hRow2Index = currentRow + 1;
 
-        // 4. Render Employee Rows
+        const hRow1 = worksheet.getRow(hRow1Index);
+        const hRow2 = worksheet.getRow(hRow2Index);
+        hRow1.height = 22;
+        hRow2.height = 18;
+
+        // Employee Header (Merged across Row 1 & Row 2)
+        worksheet.mergeCells(`A${hRow1Index}:A${hRow2Index}`);
+        const empHeader = worksheet.getCell(`A${hRow1Index}`);
+        empHeader.value = 'Employee';
+        empHeader.font = { bold: true, size: 10, color: { argb: 'FF1F2937' } };
+        empHeader.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+        empHeader.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF9FAFB' } };
+        empHeader.border = thinBorder;
+        worksheet.getCell(`A${hRow2Index}`).border = thinBorder;
+
+        // Day Columns (Date Number in Row 1, Day of Week in Row 2)
+        dayHeaders.forEach((dh, idx) => {
+            const colNum = 2 + idx;
+            const cell1 = worksheet.getCell(hRow1Index, colNum);
+            const cell2 = worksheet.getCell(hRow2Index, colNum);
+
+            cell1.value = dh.dayNumber;
+            cell2.value = dh.dayOfWeek;
+
+            cell1.alignment = { horizontal: 'center', vertical: 'middle' };
+            cell2.alignment = { horizontal: 'center', vertical: 'middle' };
+
+            if (dh.isHoliday) {
+                // High-visibility rose holiday styling
+                cell1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE4E6' } };
+                cell1.font = { bold: true, size: 9.5, color: { argb: 'FF881337' } };
+                cell1.border = { top: { style: 'thin', color: { argb: 'FFF43F5E' } }, left: { style: 'thin', color: { argb: 'FFF43F5E' } }, right: { style: 'thin', color: { argb: 'FFF43F5E' } }, bottom: { style: 'thin', color: { argb: 'FFF43F5E' } } };
+
+                cell2.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFECDD3' } };
+                cell2.font = { bold: true, size: 8, color: { argb: 'FF9F1239' } };
+                cell2.border = { top: { style: 'thin', color: { argb: 'FFF43F5E' } }, left: { style: 'thin', color: { argb: 'FFF43F5E' } }, right: { style: 'thin', color: { argb: 'FFF43F5E' } }, bottom: { style: 'thin', color: { argb: 'FFF43F5E' } } };
+            } else if (dh.isSunday) {
+                // Sunday styling
+                cell1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF1F2' } };
+                cell1.font = { bold: true, size: 9, color: { argb: 'FFE11D48' } };
+                cell1.border = thinBorder;
+
+                cell2.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE4E6' } };
+                cell2.font = { bold: true, size: 8, color: { argb: 'FFE11D48' } };
+                cell2.border = thinBorder;
+            } else {
+                // Normal working day styling
+                cell1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF9FAFB' } };
+                cell1.font = { bold: true, size: 9, color: { argb: 'FF374151' } };
+                cell1.border = thinBorder;
+
+                cell2.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } };
+                cell2.font = { size: 8, color: { argb: 'FF6B7280' } };
+                cell2.border = thinBorder;
+            }
+        });
+
+        // Summary Stats Column Headers (Merged across Row 1 & Row 2)
+        const summaryHeaders = [
+            { label: 'P', bg: 'FFD1FAE5', text: 'FF065F46' },
+            { label: '0.5P', bg: 'FFDBEAFE', text: 'FF1E40AF' },
+            { label: 'OT', bg: 'FFCCFBF1', text: 'FF0F766E' },
+            { label: 'C/O', bg: 'FFCFFAFE', text: 'FF0E7490' },
+            { label: 'E/L', bg: 'FFE0E7FF', text: 'FF3730A3' },
+            { label: 'S/L', bg: 'FFF3E8FF', text: 'FF6B21A8' },
+            { label: 'A', bg: 'FFFEE2E2', text: 'FF991B1B' },
+            { label: 'W/O', bg: 'FFF1F5F9', text: 'FF475569' },
+            { label: 'H', bg: 'FFFFEDD5', text: 'FF9A3412' },
+            { label: 'Pay', bg: 'FFA7F3D0', text: 'FF064E3B' },
+        ];
+
+        summaryHeaders.forEach((sh, idx) => {
+            const colNum = 2 + maxDays + idx;
+            worksheet.mergeCells(hRow1Index, colNum, hRow2Index, colNum);
+            const cell = worksheet.getCell(hRow1Index, colNum);
+            cell.value = sh.label;
+            cell.font = { bold: true, size: sh.label === 'Pay' ? 10 : 9, color: { argb: sh.text } };
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: sh.bg } };
+            cell.border = thinBorder;
+            worksheet.getCell(hRow2Index, colNum).border = thinBorder;
+        });
+
+        currentRow += 2;
+
+        // --- 5. Render Employee Data Rows ---
         recalculatedData.forEach((employee) => {
             const row = worksheet.getRow(currentRow);
             row.height = 20;
-            
-            const rowData = [employee.userName || employee.employeeName];
+
+            const rowData: (string | number)[] = [employee.userName || employee.employeeName || 'Unknown'];
             const statuses = employee.statuses || [];
-            
+
             monthDays.forEach((d) => {
                 rowData.push(statuses[d.getDate() - 1] || '-');
             });
-            
+
             rowData.push(
                 employee.presentDays || 0,
                 employee.halfDays || 0,
@@ -616,52 +781,158 @@ export const exportMonthlyMatrixToExcel = async (
                 employee.holidays || 0,
                 employee.totalPayableDays || 0
             );
-            
+
             row.values = rowData;
-            
+
+            // Apply conditional styling matching HTML view
             row.eachCell((cell, colNumber) => {
                 cell.alignment = { horizontal: 'center', vertical: 'middle' };
-                cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
-                
+                cell.border = thinBorder;
+
                 if (colNumber === 1) {
-                    cell.font = { bold: true };
-                    cell.alignment = { horizontal: 'left', vertical: 'middle' };
-                }
-                
-                if (colNumber > 1 + maxDays) {
-                    cell.font = { bold: true };
-                    const headerText = headers[colNumber - 1];
-                    if (headerText === 'P' || headerText === 'Pay') cell.font.color = { argb: 'FF059669' };
-                    else if (headerText === '0.5P') cell.font.color = { argb: 'FF2563EB' };
-                    else if (headerText === 'OT') cell.font.color = { argb: 'FF0D9488' };
-                    else if (headerText === 'C/O') cell.font.color = { argb: 'FF0891B2' };
-                    else if (headerText === 'E/L') cell.font.color = { argb: 'FF4F46E5' };
-                    else if (headerText === 'S/L') cell.font.color = { argb: 'FF9333EA' };
-                    else if (headerText === 'A') { cell.font.color = { argb: 'FFDC2626' }; cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } }; }
-                    else if (headerText === 'H') cell.font.color = { argb: 'FFEA580C' };
-                    else if (headerText === 'W/O') cell.font.color = { argb: 'FF6B7280' };
-                }
-                else if (colNumber > 1 && colNumber <= 1 + maxDays) {
-                    const s = cell.value as string;
-                    cell.font = { bold: true };
-                    if (s === 'P' || s === 'Present' || s === 'H/P' || s === 'W/P' || s === 'WOP' || s === 'BL/P' || s === 'PL/P') cell.font.color = { argb: 'FF059669' };
-                    else if (s === 'A' || s === 'Absent') cell.font.color = { argb: 'FFDC2626' };
-                    else if (s === 'W/O' || s === 'Weekly Off') cell.font.color = { argb: 'FF64748B' };
-                    else if (s === 'H' || s === 'Holiday') cell.font.color = { argb: 'FF4F46E5' };
-                    else if (s.includes('S/L') || s.includes('E/L') || s.includes('C/O') || s === 'W/H') cell.font.color = { argb: 'FF7C3AED' };
-                    else cell.font.color = { argb: 'FF475569' };
+                    cell.font = { bold: true, size: 9.5, color: { argb: 'FF111827' } };
+                    cell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+                } else if (colNumber >= 2 && colNumber <= 1 + maxDays) {
+                    const dIdx = colNumber - 2;
+                    const dh = dayHeaders[dIdx];
+                    const s = String(cell.value || '-');
+                    cell.font = { bold: true, size: 8.5 };
+
+                    // Semantic font color
+                    if (s === 'P' || s === 'Present' || s === 'H/P' || s === 'W/P' || s === 'WOP' || s === 'BL/P' || s === 'PL/P') {
+                        cell.font.color = { argb: 'FF059669' }; // Present Green
+                    } else if (s === 'A' || s === 'Absent') {
+                        cell.font.color = { argb: 'FFDC2626' }; // Absent Red
+                    } else if (s === 'W/O' || s === 'Weekly Off') {
+                        cell.font.color = { argb: 'FF6B7280' }; // WO Slate
+                    } else if (s === 'H' || s === 'Holiday') {
+                        cell.font.color = { argb: 'FFEA580C' }; // Holiday Orange
+                    } else if (s.includes('0.5')) {
+                        cell.font.color = { argb: 'FF2563EB' }; // Half Day Blue
+                    } else if (s.includes('OT')) {
+                        cell.font.color = { argb: 'FF0D9488' }; // OT Teal
+                    } else if (s.includes('C/O')) {
+                        cell.font.color = { argb: 'FF0891B2' }; // Comp Cyan
+                    } else if (s.includes('EL') || s.includes('E/L')) {
+                        cell.font.color = { argb: 'FF4F46E5' }; // Earned Indigo
+                    } else if (s.includes('SL') || s.includes('S/L')) {
+                        cell.font.color = { argb: 'FF9333EA' }; // Sick Purple
+                    } else if (s.includes('BL') || s.includes('F/H')) {
+                        cell.font.color = { argb: 'FF1D4ED8' }; // Blue Leave
+                    } else if (s.includes('PL')) {
+                        cell.font.color = { argb: 'FFDB2777' }; // Pink Leave
+                    } else if (s === 'W/H' || s === 'WH') {
+                        cell.font.color = { argb: 'FF0D9488' }; // WFH Teal
+                    } else if (s.includes('+')) {
+                        cell.font.color = { argb: 'FF0D9488' }; // Combined Teal
+                    } else {
+                        cell.font.color = { argb: 'FF374151' };
+                    }
+
+                    // Background highlight
+                    if (dh?.isHoliday) {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF1F2' } };
+                        cell.border = {
+                            top: { style: 'thin', color: { argb: 'FFFECDD3' } },
+                            bottom: { style: 'thin', color: { argb: 'FFFECDD3' } },
+                            left: { style: 'thin', color: { argb: 'FFFECDD3' } },
+                            right: { style: 'thin', color: { argb: 'FFFECDD3' } },
+                        };
+                    } else if (dh?.isSunday) {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+                    } else if (s === 'A' || s === 'Absent') {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF2F2' } };
+                    }
+                } else if (colNumber > 1 + maxDays) {
+                    // Summary Stat Columns styling
+                    const statOffset = colNumber - (2 + maxDays);
+                    const sh = summaryHeaders[statOffset];
+                    cell.font = { bold: true, size: 9 };
+
+                    if (sh?.label === 'P') {
+                        cell.font.color = { argb: 'FF059669' };
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDF4' } };
+                    } else if (sh?.label === '0.5P') {
+                        cell.font.color = { argb: 'FF2563EB' };
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
+                    } else if (sh?.label === 'OT') {
+                        cell.font.color = { argb: 'FF0D9488' };
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDFA' } };
+                    } else if (sh?.label === 'C/O') {
+                        cell.font.color = { argb: 'FF0891B2' };
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFECFEFF' } };
+                    } else if (sh?.label === 'E/L') {
+                        cell.font.color = { argb: 'FF4F46E5' };
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEF2FF' } };
+                    } else if (sh?.label === 'S/L') {
+                        cell.font.color = { argb: 'FF9333EA' };
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFAF5FF' } };
+                    } else if (sh?.label === 'A') {
+                        cell.font.color = { argb: 'FFDC2626' };
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF2F2' } };
+                    } else if (sh?.label === 'W/O') {
+                        cell.font.color = { argb: 'FF6B7280' };
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF9FAFB' } };
+                    } else if (sh?.label === 'H') {
+                        cell.font.color = { argb: 'FFEA580C' };
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF7ED' } };
+                    } else if (sh?.label === 'Pay') {
+                        cell.font = { bold: true, size: 9.5, color: { argb: 'FF064E3B' } };
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } };
+                        cell.border = {
+                            top: { style: 'thin', color: { argb: 'FF10B981' } },
+                            bottom: { style: 'thin', color: { argb: 'FF10B981' } },
+                            left: { style: 'medium', color: { argb: 'FF10B981' } },
+                            right: { style: 'thin', color: { argb: 'FF10B981' } },
+                        };
+                    }
                 }
             });
-            
+
             currentRow++;
         });
 
-        worksheet.getColumn(1).width = 25;
-        for (let i = 2; i <= 1 + maxDays; i++) worksheet.getColumn(i).width = 5;
-        for (let i = 2 + maxDays; i <= endColIndex; i++) worksheet.getColumn(i).width = 6;
+        // --- 6. Footer Notation Reference & Legend Block ---
+        currentRow++;
+        worksheet.mergeCells(`A${currentRow}:${mergeEndCol}${currentRow}`);
+        const legendCell = worksheet.getCell(`A${currentRow}`);
+        legendCell.value = 'NOTATION REFERENCE: P: Present | 0.5P: Half Day | OT: Overtime | C/O: Comp Off | E/L: Earned Leave | S/L: Sick Leave | A: Absent | W/O: Weekly Off | H: Holiday | Pay: Total Payable Days';
+        legendCell.font = { size: 8.5, color: { argb: 'FF4B5563' } };
+        legendCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+        legendCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } };
+        legendCell.border = thinBorder;
+
+        if (holidaysInPeriod.length > 0) {
+            currentRow++;
+            worksheet.mergeCells(`A${currentRow}:${mergeEndCol}${currentRow}`);
+            const holLegendCell = worksheet.getCell(`A${currentRow}`);
+            holLegendCell.value = `ROSE HIGHLIGHTED COLUMNS = Declared Company Holidays (${holidaysInPeriod.map(h => `${h.dayNumber} ${format(h.dateObj, 'MMM')}: ${h.holidayName}`).join(' • ')})`;
+            holLegendCell.font = { bold: true, size: 8.5, color: { argb: 'FF881337' } };
+            holLegendCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+            holLegendCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF1F2' } };
+            holLegendCell.border = {
+                top: { style: 'thin', color: { argb: 'FFFECDD3' } },
+                bottom: { style: 'thin', color: { argb: 'FFFECDD3' } },
+                left: { style: 'thin', color: { argb: 'FFFECDD3' } },
+                right: { style: 'thin', color: { argb: 'FFFECDD3' } },
+            };
+        }
+
+        // --- 7. Column Widths ---
+        worksheet.getColumn(1).width = 24; // Employee column
+        for (let i = 2; i <= 1 + maxDays; i++) {
+            worksheet.getColumn(i).width = 5.2; // Day columns
+        }
+        for (let i = 2 + maxDays; i <= endColIndex - 1; i++) {
+            worksheet.getColumn(i).width = 6.2; // Stats columns
+        }
+        worksheet.getColumn(endColIndex).width = 7.5; // Pay column
     }
 
     const buffer = await workbook.xlsx.writeBuffer();
-    const fileName = `Monthly_Attendance_Report_${format(dateRange.startDate, 'yyyy')}.xlsx`;
+    const monthStr = (dateRange.startDate instanceof Date && !isNaN(dateRange.startDate.getTime()))
+        ? format(dateRange.startDate, 'MMM_yyyy')
+        : format(new Date(), 'MMM_yyyy');
+    const fileName = `Monthly_Attendance_Report_${monthStr}.xlsx`;
     saveAs(new Blob([buffer]), fileName);
 };

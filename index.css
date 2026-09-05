@@ -2319,3 +2319,9 @@ html.dark input, html.dark select, html.dark textarea,
     background: rgba(255, 255, 255, 0.09);
     color: rgba(255, 255, 255, 0.7);
 }
+
+/* Attendance Dashboard: stale-while-revalidate progress bar sweep animation */
+@keyframes progressSweep {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}

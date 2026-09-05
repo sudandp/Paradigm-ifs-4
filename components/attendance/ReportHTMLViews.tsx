@@ -2,9 +2,10 @@ import React from 'react';
 import { format, eachDayOfInterval } from 'date-fns';
 import { ClipboardList } from 'lucide-react';
 import type { BasicReportDataRow, AttendanceLogDataRow, SiteOtDataRow, MonthlyReportRow, WorkHoursReportDataRow } from '../../pages/attendance/PDFReports';
-import { calculateStatsForDateRange } from '../../utils/attendanceCalculations';
+import { calculateStatsForDateRange, resolveMonthlyDayHeaders } from '../../utils/attendanceCalculations';
 import { FIXED_HOLIDAYS } from '../../utils/constants';
 import { useSettingsStore } from '../../store/settingsStore';
+import { api } from '../../services/api';
 
 // --- SHARED ---
 export interface AppliedFilters {
@@ -242,13 +243,30 @@ export const MonthlyStatusView: React.FC<{
     targetUserName?: string;
     targetUserRole?: string;
     filters?: AppliedFilters;
-}> = ({ data, dateRange, logoUrl, generatedBy, days, generatedByRole, targetUserName, targetUserRole, filters }) => {
+    userHolidaysPool?: any[];
+}> = ({ data, dateRange, logoUrl, generatedBy, days, generatedByRole, targetUserName, targetUserRole, filters, userHolidaysPool }) => {
     const subtitle = (dateRange?.startDate && dateRange?.endDate)
         ? `Billing Cycle: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}`
         : 'Billing Cycle: Not Specified';
 
     // Fetch configured holidays from store
-    const { officeHolidays, fieldHolidays, siteHolidays } = useSettingsStore();
+    const { officeHolidays, fieldHolidays, siteHolidays, recurringHolidays, attendance } = useSettingsStore();
+
+    // Fallback fetch for user holidays if not provided by parent
+    const [internalUserHolidays, setInternalUserHolidays] = React.useState<any[]>([]);
+    React.useEffect(() => {
+        if (!userHolidaysPool || userHolidaysPool.length === 0) {
+            api.getAllUserHolidays().then(res => {
+                if (res && Array.isArray(res)) {
+                    setInternalUserHolidays(res);
+                }
+            }).catch(err => console.warn('[MonthlyStatusView] Could not load user holidays:', err));
+        }
+    }, [userHolidaysPool]);
+
+    const activeUserHolidays = (userHolidaysPool && userHolidaysPool.length > 0)
+        ? userHolidaysPool
+        : internalUserHolidays;
 
     const allConfiguredHolidays = React.useMemo(() => {
         return [
@@ -280,83 +298,29 @@ export const MonthlyStatusView: React.FC<{
 
     const dayHeaders = React.useMemo(() => {
         if (resolvedDays.length > 0) {
-            return resolvedDays.map((d, colIdx) => {
-                const dayNumber = d.getDate();
-                const dayOfWeek = format(d, 'EEE'); // e.g. "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"
-                const isSunday = d.getDay() === 0;
-                const isSaturday = d.getDay() === 6;
-                const dateStr = format(d, 'yyyy-MM-dd');
-                const mmdd = format(d, 'MM-dd');
-
-                // 1. Check fixed holidays (e.g. 08-15 Independence Day, 01-26 Republic Day, 05-01 May Day, 10-02, 11-01)
-                const fixedMatch = FIXED_HOLIDAYS.find(fh => fh.date === mmdd || dateStr.endsWith('-' + fh.date));
-                const isFixed = Boolean(fixedMatch);
-
-                // 2. Check company configured holidays from store
-                const configuredMatch = allConfiguredHolidays.find(h => {
-                    const hDate = String(h.date).split(' ')[0].split('T')[0];
-                    return hDate === dateStr || hDate.endsWith('-' + mmdd);
-                });
-                const isConfigured = Boolean(configuredMatch);
-
-                // 3. Check data statuses for company declared holiday (H, BL, H/P, HP, F/H) on this date
-                let hasDataHoliday = false;
-                let hasBlueLeave = false;
-                let hasHolidayStatus = false;
-                if (data && data.length > 0) {
-                    for (const row of data) {
-                        const st = row.statuses ? (row.statuses[d.getDate() - 1] || row.statuses[colIdx]) : '';
-                        if (st === 'H' || st === 'H/P' || st === 'HP' || (typeof st === 'string' && st.includes('F/H'))) {
-                            hasHolidayStatus = true;
-                            hasDataHoliday = true;
-                        }
-                        if (st === 'BL' || st === 'PL') {
-                            hasBlueLeave = true;
-                            hasDataHoliday = true;
-                        }
-                    }
-                }
-
-                const isHoliday = isFixed || isConfigured || hasDataHoliday;
-
-                // Determine specific holiday label/name
-                let holidayName = '';
-                if (fixedMatch?.name) {
-                    holidayName = fixedMatch.name;
-                } else if (configuredMatch?.name) {
-                    holidayName = configuredMatch.name;
-                } else if (hasBlueLeave && !hasHolidayStatus) {
-                    holidayName = isSaturday ? 'Recurring Saturday Off' : 'Company Leave / Holiday';
-                } else if (isHoliday) {
-                    holidayName = 'Company Provided Holiday';
-                }
-
-                return {
-                    dayNumber,
-                    dayOfWeek,
-                    isSunday,
-                    isSaturday,
-                    isHoliday,
-                    isFixed,
-                    holidayName,
-                    dateObj: d,
-                };
-            });
+            return resolveMonthlyDayHeaders(
+                resolvedDays,
+                activeUserHolidays,
+                allConfiguredHolidays,
+                recurringHolidays,
+                attendance?.office?.holidayPool
+            );
         }
         if (data.length > 0 && data[0]?.statuses) {
             return Array.from({ length: data[0].statuses.length }, (_, i) => ({
                 dayNumber: i + 1,
                 dayOfWeek: '',
+                dayName: '',
                 isSunday: false,
                 isSaturday: false,
                 isHoliday: false,
                 isFixed: false,
                 holidayName: '',
-                dateObj: null,
+                dateObj: null as any,
             }));
         }
         return [];
-    }, [resolvedDays, data, allConfiguredHolidays]);
+    }, [resolvedDays, data, allConfiguredHolidays, recurringHolidays, activeUserHolidays, attendance]);
 
     const holidaysInPeriod = React.useMemo(() => {
         return dayHeaders.filter(dh => dh.isHoliday);

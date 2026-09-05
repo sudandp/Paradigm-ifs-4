@@ -50,7 +50,7 @@ import AssignLeaveModal from '../../components/attendance/AssignLeaveModal';
 import AttendanceAuditReport from '../../components/attendance/AttendanceAuditReport';
 import MonthlyHoursReport, { type EmployeeMonthlyData } from '../../components/attendance/MonthlyHoursReport';
 import { BasicReportView, AttendanceLogView, MonthlyStatusView, SiteOtReportView, WorkHoursReportView, LeaveBalanceTrackerView } from '../../components/attendance/ReportHTMLViews';
-import { calculateStatsForDateRange } from '../../utils/attendanceCalculations';
+import { calculateStatsForDateRange, resolveMonthlyDayHeaders } from '../../utils/attendanceCalculations';
 import {
     format,
     getDaysInMonth,
@@ -1078,6 +1078,33 @@ const AttendanceDashboard: React.FC = () => {
     const usersRef = useRef<User[]>([]);
     useEffect(() => { usersRef.current = users; }, [users]);
 
+    // Raw data cache: keyed by date-range string so filter changes recompute from cache (no network call)
+    const rawDataCacheRef = useRef<{
+        key: string;
+        events: AttendanceEvent[];
+        allLeaves: any[];           // approved-only leaves
+        allLeavesUnfiltered: any[]; // all statuses (needed for pending count)
+        holidays: UserHoliday[];
+        roles: Role[];
+        kioskDevices: KioskDevice[];
+        eventsByDate: Map<string, AttendanceEvent[]>;
+    } | null>(null);
+    // Debounce timer: only show loading spinner if fetch takes > 250ms
+    const loadingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const activeRequestIdRef = useRef<number>(0);
+    const rawDataCacheMapRef = useRef<Map<string, {
+        key: string;
+        events: AttendanceEvent[];
+        allLeaves: any[];
+        allLeavesUnfiltered: any[];
+        holidays: UserHoliday[];
+        roles: Role[];
+        kioskDevices: KioskDevice[];
+        eventsByDate: Map<string, AttendanceEvent[]>;
+        cachedAt: number;
+    }>>(new Map());
+    const [loadingFilter, setLoadingFilter] = useState<string | null>(null);
+
     const [attendanceEvents, setAttendanceEvents] = useState<AttendanceEvent[]>([]);
     const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
     const [userHolidaysPool, setUserHolidaysPool] = useState<UserHoliday[]>([]);
@@ -1091,6 +1118,7 @@ const AttendanceDashboard: React.FC = () => {
     const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
     const [recentlyActiveUserIds, setRecentlyActiveUserIds] = useState<Set<string>>(new Set());
     const [isLoading, setIsLoading] = useState(true);
+    const [isRefreshing, setIsRefreshing] = useState(false); // stale-while-revalidate: data visible, thin bar shows
     const [isReportLoading, setIsReportLoading] = useState(false);
     const [manualRefreshKey, setManualRefreshKey] = useState(0); // bumped after every manual entry to force re-fetch
     const [isInitialLoadComplete, setIsInitialLoadComplete] = useState(false);
@@ -2266,8 +2294,26 @@ const AttendanceDashboard: React.FC = () => {
 
     const fetchDashboardData = useCallback((startDate: Date, endDate: Date) => {
         const loadData = async () => {
+            const requestId = ++activeRequestIdRef.current;
             const startTime = Date.now();
-            setIsLoading(true);
+
+            // --- Multi-entry cache: date range lookup with 5-minute TTL ---
+            const cacheKey = `${startDate.toISOString()}_${endDate.toISOString()}`;
+            const cachedEntry = rawDataCacheMapRef.current.get(cacheKey);
+            const isCacheHit = Boolean(cachedEntry && (Date.now() - cachedEntry.cachedAt < 5 * 60 * 1000));
+
+            // Debounced spinner: only show loading overlay if fetch is actually needed AND slow
+            if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
+            if (!isCacheHit) {
+                // If we already have data, use a subtle refresh indicator (stale-while-revalidate)
+                // If first load (no data), use the full loading skeleton
+                if (dashboardData) {
+                    loadingTimerRef.current = setTimeout(() => setIsRefreshing(true), 150);
+                } else {
+                    loadingTimerRef.current = setTimeout(() => setIsLoading(true), 250);
+                }
+            }
+
             try {
                 // Ensure we have users data
                 let currentUsers = usersRef.current;
@@ -2294,7 +2340,8 @@ const AttendanceDashboard: React.FC = () => {
                         return managerOrgs.some(org => userOrgs.includes(org));
                     });
                 }
-                
+
+                // Apply client-side filters against all users (no network call needed for these)
                 if (selectedCompany !== 'all') activeStaff = activeStaff.filter(u => u.societyId === selectedCompany);
                 if (selectedSite !== 'all') activeStaff = activeStaff.filter(u => u.organizationId && u.organizationId.split(',').map(s => s.trim()).includes(selectedSite));
                 if (selectedLocation !== 'all') activeStaff = activeStaff.filter(u => resolveUserLocation(u, orgStructure).toLowerCase() === selectedLocation.toLowerCase());
@@ -2303,38 +2350,96 @@ const AttendanceDashboard: React.FC = () => {
                 }
                 if (selectedRole !== 'all') activeStaff = activeStaff.filter(u => u.role === selectedRole);
                 if (selectedUser !== 'all') activeStaff = activeStaff.filter(u => u.id === selectedUser);
-                
+
                 const activeStaffIds = new Set(activeStaff.map(u => u.id));
                 const today = new Date();
-                const queryStart = subDays(startDate, 3);
-                // Leave fetch needs a wider window: cross-month leaves (e.g. starting in prior month)
-                // must not be silently dropped. Use 45-day lookback for leaves only.
-                const leaveQueryStart = subDays(startDate, 45);
-                // Add 36-hour lookahead to capture night shift completions
-                const queryEnd = new Date(endDate.getTime() + 36 * 60 * 60 * 1000);
 
-                const [events, allLeavesResponse, holidaysResponse, rolesResponse, kioskDevicesResponse] = await Promise.all([
-                    api.getAllAttendanceEvents(queryStart.toISOString(), queryEnd.toISOString()),
-                    api.getLeaveRequests({ 
-                        startDate: leaveQueryStart.toISOString(), 
-                        endDate: queryEnd.toISOString()
-                    }),
-                    api.getAllUserHolidays(),
-                    api.getRoles(),
-                    fetchKioskDevices().catch(() => [])
-                ]);
+                // ----- Network fetch: only if date range changed (cache miss) -----
+                let events: AttendanceEvent[];
+                let leavesData: any[];          // approved-only leaves
+                let allLeavesUnfiltered: any[]; // all statuses (needed for pending/stats)
+                let holidaysResponse: UserHoliday[];
+                let rolesResponse: Role[];
+                let kioskDevicesResponse: KioskDevice[];
+                let eventsByDate: Map<string, AttendanceEvent[]>;
 
-                setAttendanceEvents(events);
-                setKioskDevices(kioskDevicesResponse || []);
-                const allLeaves = (Array.isArray(allLeavesResponse) ? allLeavesResponse : allLeavesResponse.data || []).filter(Boolean);
-                const leavesData = allLeaves.filter(l => ['approved', 'approved_by_reporting', 'approved_by_admin', 'correction_made'].includes(String(l.status).toLowerCase()));
-                setLeaves(leavesData);
-                setUserHolidaysPool(holidaysResponse || []);
-                setAllRoles(rolesResponse || []);
+                if (isCacheHit) {
+                    // Cache HIT: reuse raw data, only re-derive activeStaff subset — zero network calls
+                    const cache = cachedEntry!;
+                    events = cache.events;
+                    leavesData = cache.allLeaves;
+                    allLeavesUnfiltered = cache.allLeavesUnfiltered;
+                    holidaysResponse = cache.holidays;
+                    rolesResponse = cache.roles;
+                    kioskDevicesResponse = cache.kioskDevices;
+                    eventsByDate = cache.eventsByDate;
+                } else {
+                    // Cache MISS: fetch from network
+                    const queryStart = subDays(startDate, 3);
+                    const leaveQueryStart = subDays(startDate, 45);
+                    const queryEnd = new Date(endDate.getTime() + 36 * 60 * 60 * 1000);
 
+                    const [rawEvents, allLeavesResponse, rawHolidays, rawRoles, rawKiosk] = await Promise.all([
+                        api.getAllAttendanceEvents(queryStart.toISOString(), queryEnd.toISOString()),
+                        api.getLeaveRequests({
+                            startDate: leaveQueryStart.toISOString(),
+                            endDate: queryEnd.toISOString()
+                        }),
+                        api.getAllUserHolidays(),
+                        api.getRoles(),
+                        fetchKioskDevices().catch(() => [])
+                    ]);
+
+                    // Check if this request was superseded by a newer click while fetching
+                    if (activeRequestIdRef.current !== requestId) return;
+
+                    events = rawEvents;
+                    const allLeavesRaw = (Array.isArray(allLeavesResponse) ? allLeavesResponse : (allLeavesResponse as any).data || []).filter(Boolean);
+                    allLeavesUnfiltered = allLeavesRaw; // full list including pending (for stats)
+                    leavesData = allLeavesRaw.filter((l: any) => ['approved', 'approved_by_reporting', 'approved_by_admin', 'correction_made'].includes(String(l.status).toLowerCase()));
+                    holidaysResponse = rawHolidays || [];
+                    rolesResponse = rawRoles || [];
+                    kioskDevicesResponse = rawKiosk || [];
+
+                    // Pre-build eventsByDate lookup once and cache it
+                    const dayKeyMap = buildAttendanceDayKeyByEventId(events);
+                    eventsByDate = new Map<string, AttendanceEvent[]>();
+                    events.forEach(e => {
+                        const d = dayKeyMap[e.id];
+                        if (!d) return;
+                        if (!eventsByDate.has(d)) eventsByDate.set(d, []);
+                        eventsByDate.get(d)!.push(e);
+                    });
+
+                    // Store in multi-entry cache (retained for 5 minutes)
+                    const newEntry = {
+                        key: cacheKey,
+                        events,
+                        allLeaves: leavesData,
+                        allLeavesUnfiltered,
+                        holidays: holidaysResponse,
+                        roles: rolesResponse,
+                        kioskDevices: kioskDevicesResponse,
+                        eventsByDate,
+                        cachedAt: Date.now()
+                    };
+                    rawDataCacheMapRef.current.set(cacheKey, newEntry);
+                    rawDataCacheRef.current = newEntry;
+
+                    // Update shared state (these don't re-trigger expensive effects)
+                    setAttendanceEvents(events);
+                    setKioskDevices(kioskDevicesResponse);
+                    setLeaves(leavesData);
+                    setUserHolidaysPool(holidaysResponse);
+                    setAllRoles(rolesResponse);
+                }
+
+                // Leave balance: always re-fetch when reportType = leave_balance because
+                // active staff subset may have changed due to filters
                 if (reportType === 'leave_balance') {
                     setIsFetchingLeaveBalances(true);
                     try {
+                        // All calls run truly concurrently via Promise.all
                         const balances = await Promise.all(
                             activeStaff.map(async (u) => {
                                 const bal = await api.getLeaveBalancesForUser(u.id, format(endDate, 'yyyy-MM-dd'));
@@ -2355,15 +2460,7 @@ const AttendanceDashboard: React.FC = () => {
                     }
                 }
 
-                // Optimize lookups: Group events by session-aware business day
-                const dayKeyMap = buildAttendanceDayKeyByEventId(events);
-                const eventsByDate = new Map<string, AttendanceEvent[]>();
-                events.forEach(e => {
-                    const d = dayKeyMap[e.id];
-                    if (!d) return;
-                    if (!eventsByDate.has(d)) eventsByDate.set(d, []);
-                    eventsByDate.get(d)!.push(e);
-                });
+                // eventsByDate is now provided by cache (either from cache hit or built during cache miss above)
 
                 const fieldUsers = activeStaff.filter(u => !isOfficeUser(u.role));
                 const violationsMap: Record<string, FieldAttendanceViolation[]> = {};
@@ -2433,16 +2530,34 @@ const AttendanceDashboard: React.FC = () => {
                         return day >= start && day <= end && activeStaffIds.has(l.userId);
                     });
 
+                    // Pre-index by userId for O(1) lookups instead of O(N) array scans
+                    const dayEventsByUser = new Map<string, AttendanceEvent[]>();
+                    for (let i = 0; i < dayEvents.length; i++) {
+                        const e = dayEvents[i];
+                        const list = dayEventsByUser.get(e.userId);
+                        if (list) list.push(e);
+                        else dayEventsByUser.set(e.userId, [e]);
+                    }
+
+                    const dayLeavesByUser = new Map<string, any[]>();
+                    for (let i = 0; i < dayLeaves.length; i++) {
+                        const l = dayLeaves[i];
+                        const list = dayLeavesByUser.get(l.userId);
+                        if (list) list.push(l);
+                        else dayLeavesByUser.set(l.userId, [l]);
+                    }
+
                     let presentCount = 0;
                     let wfhCount = 0;
                     let leaveCount = 0;
                     let absentCount = 0;
 
+                    const isSundayCheck = day.getDay() === 0;
+
                     activeStaff.forEach(user => {
                         const userId = String(user.id);
-                        const userEvents = dayEvents.filter(e => e.userId === userId);
-                        
-                        const isSundayCheck = day.getDay() === 0;
+                        const userEvents = dayEventsByUser.get(userId) || [];
+                        const uLeaves = dayLeavesByUser.get(userId) || [];
                         
                         // Resolve user category for holiday check
                         let resolvedRole = user.role;
@@ -2459,8 +2574,8 @@ const AttendanceDashboard: React.FC = () => {
                             return hVal === dateStr;
                         });
 
-                        const hasApprovedLeave = dayLeaves.some(l => l.userId === userId && l.leaveType !== 'WFH');
-                        const hasWFH = dayLeaves.some(l => l.userId === userId && l.leaveType === 'WFH');
+                        const hasApprovedLeave = uLeaves.some(l => l.leaveType !== 'WFH');
+                        const hasWFH = uLeaves.some(l => l.leaveType === 'WFH');
                         const hasActivity = userEvents.length > 0;
 
                         if (hasActivity) {
@@ -2558,7 +2673,7 @@ const AttendanceDashboard: React.FC = () => {
                     });
 
                     // Leaves logic (for the selected date range)
-                    const rangeLeaves = allLeaves.filter(l => {
+                    const rangeLeaves = allLeavesUnfiltered.filter((l: any) => {
                         const dStart = new Date(l.startDate);
                         const dEnd = new Date(l.endDate);
                         return dStart <= endDate && dEnd >= startDate && activeStaffIds.has(l.userId);
@@ -2628,7 +2743,7 @@ const AttendanceDashboard: React.FC = () => {
 
                 // Calculate today's metrics client-side to respect all filters (Company, Site, Location, Role, Employee)
                 
-                const todayLeavesAll = allLeaves.filter(l => {
+                const todayLeavesAll = allLeavesUnfiltered.filter((l: any) => {
                     const dStart = startOfDay(new Date(l.startDate));
                     const dEnd = endOfDay(new Date(l.endDate));
                     return today >= dStart && today <= dEnd && activeStaffIds.has(l.userId);
@@ -2727,7 +2842,11 @@ const AttendanceDashboard: React.FC = () => {
                     approvedLeavesToday: 0,
                 });
             } finally {
+                // Clear the debounce timer and hide loading regardless
+                if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
                 setIsLoading(false);
+                setIsRefreshing(false);
+                setLoadingFilter(null);
             }
         };
         loadData();
@@ -2816,6 +2935,8 @@ const AttendanceDashboard: React.FC = () => {
         if (dateRange.startDate && dateRange.endDate) {
             fetchDashboardData(dateRange.startDate, dateRange.endDate);
         }
+    // Filter changes (company/site/role/user/staffCategory/location) no longer trigger a network
+    // fetch — fetchDashboardData checks rawDataCacheRef and recomputes from cached data instantly.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [dateRange, fetchDashboardData, selectedCompany, selectedSite, selectedLocation, selectedStaffCategories, selectedRole, selectedUser, users, manualRefreshKey]);
 
@@ -2829,6 +2950,7 @@ const AttendanceDashboard: React.FC = () => {
     }, [users, pendingSelectedStaffCategories, attendance]);
 
     const handleSetDateFilter = (filter: string) => {
+        setLoadingFilter(filter);
         setPendingActiveDateFilter(filter);
         setActiveDateFilter(filter);
         const today = new Date();
@@ -3577,6 +3699,7 @@ const AttendanceDashboard: React.FC = () => {
                                             targetUserRole={targetUserRole}
                                             days={eachDayOfInterval({ start: displayStart, end: displayEnd })}
                                             filters={resolvedFilters}
+                                            userHolidaysPool={userHolidaysPool}
                                         />
                                     ) : (
                                         <div className="p-12 flex flex-col items-center justify-center text-gray-400 bg-gray-50/50 rounded-2xl border border-dashed border-gray-200">
@@ -3641,6 +3764,7 @@ const AttendanceDashboard: React.FC = () => {
                 generatedBy={user?.name} 
                 generatedByRole={user?.role}
                 filters={resolvedFilters}
+                userHolidaysPool={userHolidaysPool}
             />;
         }
         if (reportType === 'work_hours') return <MonthlyReportDocument data={exportedMonthlyData} dateRange={dr} days={eachDayOfInterval({ start: dateRange.startDate!, end: dateRange.endDate! })} logoUrl={logoBase64} generatedBy={user?.name} generatedByRole={user?.role} targetUserName={targetUserName} targetUserRole={targetUserRole} filters={resolvedFilters} />;
@@ -3658,7 +3782,7 @@ const AttendanceDashboard: React.FC = () => {
         if (reportType === 'leave_balance') return <LeaveBalanceTrackerDocument data={leaveBalances} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} generatedByRole={user?.role} targetUserName={targetUserName} targetUserRole={targetUserRole} filters={resolvedFilters} />;
         
         return null;
-    }, [reportType, basicReportData, attendanceLogData, site_otReportData, dateRange, auditLogs, user?.name, users, selectedCompany, selectedSite, selectedLocation, selectedStatus, selectedRole, selectedStaffCategories, scopedSettings, exportedMonthlyData, leaveBalances]);
+    }, [reportType, basicReportData, attendanceLogData, site_otReportData, dateRange, auditLogs, user?.name, users, selectedCompany, selectedSite, selectedLocation, selectedStatus, selectedRole, selectedStaffCategories, scopedSettings, exportedMonthlyData, leaveBalances, userHolidaysPool]);
 
     const pdfContent = useMemo(() => renderReportContent(false), [renderReportContent]);
     const previewContent = useMemo(() => renderReportContent(true), [renderReportContent]);
@@ -3704,6 +3828,7 @@ const AttendanceDashboard: React.FC = () => {
                         targetUserRole={targetUserRole}
                         logoUrl={logoBase64}
                         filters={resolvedFilters}
+                        userHolidaysPool={userHolidaysPool}
                     />).toBlob();
                     break;
                 }
@@ -3806,6 +3931,9 @@ const AttendanceDashboard: React.FC = () => {
         setIsDownloading(true);
         try {
             const logoBase64 = logoForPdf;
+            const targetUserObj = selectedUser !== 'all' ? users.find(u => u.id === selectedUser) : undefined;
+            const targetUserName = targetUserObj ? targetUserObj.name : undefined;
+            const targetUserRole = targetUserObj ? targetUserObj.role : undefined;
 
             if (reportType === 'monthly') {
                 const mappedMap = Object.fromEntries(
@@ -3815,7 +3943,12 @@ const AttendanceDashboard: React.FC = () => {
                     mappedMap,
                     { startDate: dateRange.startDate!, endDate: dateRange.endDate! },
                     logoBase64,
-                    user?.name || 'Unknown User'
+                    user?.name || 'Unknown User',
+                    user?.role,
+                    targetUserName,
+                    targetUserRole,
+                    resolvedFilters,
+                    userHolidaysPool
                 );
             } else if (reportType === 'work_hours') {
                 await exportAttendanceToExcel(
@@ -3970,7 +4103,7 @@ const AttendanceDashboard: React.FC = () => {
                 case 'monthly': {
                     const monthsInRange = eachMonthOfInterval({ start: dateRange.startDate!, end: dateRange.endDate! });
                     
-                    // Build custom CSV string to include the PARADIGM SERVICES header
+                    // Build custom CSV string to include the PARADIGM SERVICES header matching HTML view
                     let csvContent = '\uFEFF';
                     
                     monthsInRange.forEach((m, idx) => {
@@ -3984,53 +4117,92 @@ const AttendanceDashboard: React.FC = () => {
 
                         if (idx > 0) csvContent += `\n\n`; // Spacer between months
 
+                        // Recalculate employee rows using shared attendance calculation
+                        const recalculatedData = monthData.map(emp => ({
+                            ...emp,
+                            ...calculateStatsForDateRange(emp.statuses || [], daysInMonth)
+                        }));
+
+                        // Resolve exact holidays using shared algorithm (guarantees 100% match with HTML view)
+                        const dayHeaders = resolveMonthlyDayHeaders(daysInMonth, userHolidaysPool);
+                        const holidaysInPeriod = dayHeaders.filter(dh => dh.isHoliday);
+
+                        // Calculate Metric Summary Statistics
+                        const totalPresence = recalculatedData.reduce((acc, curr) => acc + (curr.presentDays || 0) + (curr.halfDays || 0) * 0.5, 0);
+                        const maxPossibleDays = recalculatedData.length * (daysInMonth.length || 30) || 1;
+                        const monthlyPresencePct = Math.round((totalPresence / maxPossibleDays) * 100);
+                        const totalPunches = Number(recalculatedData.reduce((acc, curr) => acc + (curr.presentDays || 0), 0).toFixed(2));
+                        const activeStaff = recalculatedData.length;
+
                         // Metadata Header matching preview
                         csvContent += `"PARADIGM SERVICES",,,,,,,,,,,,,,,,"MONTHLY ATTENDANCE REPORT"\n`;
-                        csvContent += `,,,,,,,,,,,,,,,,,"Billing Cycle: ${format(m, 'MMMM yyyy')}"\n`;
+                        csvContent += `,,,,,,,,,,,,,,,,,"Billing Cycle: ${format(displayStart, 'dd MMM yyyy')} - ${format(displayEnd, 'dd MMM yyyy')}"\n`;
                         csvContent += `,,,,,,,,,,,,,,,,,"Generated: ${format(new Date(), 'dd MMM yyyy HH:mm')}"\n`;
                         
                         const targetUserObj = selectedUser !== 'all' ? users.find(u => u.id === selectedUser) : undefined;
                         if (targetUserObj) {
                             csvContent += `,,,,,,,,,,,,,,,,,"Report for: ${targetUserObj.name}"\n`;
                             csvContent += `,,,,,,,,,,,,,,,,,"Target Role: ${targetUserObj.role.replace(/_/g, ' ')}"\n`;
+                        } else if (resolvedFilters?.site) {
+                            csvContent += `,,,,,,,,,,,,,,,,,"Site: ${resolvedFilters.site}"\n`;
+                        } else if (resolvedFilters?.company) {
+                            csvContent += `,,,,,,,,,,,,,,,,,"Company: ${resolvedFilters.company}"\n`;
                         }
 
                         if (user?.name) csvContent += `,,,,,,,,,,,,,,,,,"By: ${user.name}"\n`;
                         if (user?.role) csvContent += `,,,,,,,,,,,,,,,,,"Role: ${user.role.replace(/_/g, ' ')}"\n`;
                         csvContent += `\n`; // Empty row
-                        
-                        // Column Headers
-                        const headerRow = [`"Employee Name"`];
-                        daysInMonth.forEach(d => headerRow.push(`"${format(d, 'd')}"`));
-                        headerRow.push(`"P"`, `"0.5P"`, `"OT"`, `"C/O"`, `"E/L"`, `"S/L"`, `"F/H"`, `"A"`, `"W/O"`, `"H"`, `"Pay"`);
-                        csvContent += headerRow.join(',') + '\n';
+
+                        // Summary Stat Cards
+                        csvContent += `"MONTHLY PRESENCE","${monthlyPresencePct}%","TOTAL PUNCHES","${totalPunches}","ACTIVE STAFF","${activeStaff}"\n\n`;
+
+                        // Company & Fixed Holidays Banner
+                        if (holidaysInPeriod.length > 0) {
+                            const holDescriptions = holidaysInPeriod.map(h => `${h.dayNumber} ${format(h.dateObj, 'MMM')} (${h.dayOfWeek}): ${h.holidayName}${h.isFixed ? ' [FIXED]' : ''}`).join(' | ');
+                            csvContent += `"COMPANY & FIXED HOLIDAYS (${holidaysInPeriod.length}):","${holDescriptions.replace(/"/g, '""')}"\n\n`;
+                        }
+
+                        // Column Headers - Row 1: Date numbers & Summary Column Names
+                        const headerRow1 = [`"Employee"`];
+                        dayHeaders.forEach(dh => headerRow1.push(`"${dh.dayNumber}"`));
+                        headerRow1.push(`"P"`, `"0.5P"`, `"OT"`, `"C/O"`, `"E/L"`, `"S/L"`, `"A"`, `"W/O"`, `"H"`, `"Pay"`);
+                        csvContent += headerRow1.join(',') + '\n';
+
+                        // Column Headers - Row 2: Day of Week Names (Sat, Sun, Mon...)
+                        const headerRow2 = [`""`];
+                        dayHeaders.forEach(dh => headerRow2.push(`"${dh.dayOfWeek}"`));
+                        for (let s = 0; s < 10; s++) {
+                            headerRow2.push(`""`);
+                        }
+                        csvContent += headerRow2.join(',') + '\n';
                         
                         // Data Rows
-                        monthData.forEach(emp => {
-                            const recalculatedEmp = {
-                                ...emp,
-                                ...calculateStatsForDateRange(emp.statuses || [], daysInMonth)
-                            };
-                            const rowData = [`"${String(recalculatedEmp.employeeName || recalculatedEmp.userName || 'Unknown').replace(/"/g, '""')}"`];
-                            const statuses = recalculatedEmp.statuses || [];
+                        recalculatedData.forEach(emp => {
+                            const rowData = [`"${String(emp.employeeName || emp.userName || 'Unknown').replace(/"/g, '""')}"`];
+                            const statuses = emp.statuses || [];
                             daysInMonth.forEach((d) => {
                                 rowData.push(`"${String(statuses[d.getDate() - 1] || '-').replace(/"/g, '""')}"`);
                             });
                             rowData.push(
-                                `"${recalculatedEmp.presentDays || 0}"`,
-                                `"${recalculatedEmp.halfDays || 0}"`,
-                                `"${recalculatedEmp.overtimeDays || 0}"`,
-                                `"${recalculatedEmp.compOffs || 0}"`,
-                                `"${recalculatedEmp.earnedLeaves || 0}"`,
-                                `"${recalculatedEmp.sickLeaves || 0}"`,
-                                `"${recalculatedEmp.floatingHolidays || 0}"`,
-                                `"${recalculatedEmp.absentDays || 0}"`,
-                                `"${recalculatedEmp.weekOffs || 0}"`,
-                                `"${recalculatedEmp.holidays || 0}"`,
-                                `"${recalculatedEmp.totalPayableDays || 0}"`
+                                `"${emp.presentDays || 0}"`,
+                                `"${emp.halfDays || 0}"`,
+                                `"${emp.overtimeDays || 0}"`,
+                                `"${emp.compOffs || 0}"`,
+                                `"${emp.earnedLeaves || 0}"`,
+                                `"${emp.sickLeaves || 0}"`,
+                                `"${emp.absentDays || 0}"`,
+                                `"${emp.weekOffs || 0}"`,
+                                `"${emp.holidays || 0}"`,
+                                `"${emp.totalPayableDays || 0}"`
                             );
                             csvContent += rowData.join(',') + '\n';
                         });
+
+                        // Notation Reference Legend
+                        csvContent += `\n"NOTATION REFERENCE: P: Present | 0.5P: Half Day | OT: Overtime | C/O: Comp Off | E/L: Earned Leave | S/L: Sick Leave | A: Absent | W/O: Weekly Off | H: Holiday | Pay: Total Payable Days"\n`;
+                        if (holidaysInPeriod.length > 0) {
+                            csvContent += `"DECLARED HOLIDAYS: ${holidaysInPeriod.map(h => `${h.dayNumber} ${format(h.dateObj, 'MMM')} (${h.holidayName})`).join('; ')}"\n`;
+                        }
                     });
                     
                     // Download custom CSV directly
@@ -4719,6 +4891,9 @@ const AttendanceDashboard: React.FC = () => {
                 onClose={() => setIsManualEntryModalOpen(false)}
                 onSuccess={() => {
                     setToast({ message: 'Manual entry added successfully', type: 'success' });
+                    // Invalidate raw data cache so the next fetch pulls fresh data from network
+                    rawDataCacheRef.current = null;
+                    rawDataCacheMapRef.current.clear();
                     // Increment refresh key to guarantee a fresh data re-fetch
                     setManualRefreshKey(k => k + 1);
                     if (reportType === 'audit') {
@@ -4735,9 +4910,10 @@ const AttendanceDashboard: React.FC = () => {
                 onClose={() => setIsAssignLeaveModalOpen(false)}
                 onSuccess={() => {
                     setToast({ message: 'Leave assigned successfully', type: 'success' });
-                    // No need to refresh attendance dashboard data here as it won't show the leave until it's approved
-                    // but we can refresh to be safe if there are approved leaves in view
+                    // Invalidate cache so fresh data is fetched
                     if (dateRange.startDate && dateRange.endDate) {
+                        rawDataCacheRef.current = null;
+                        rawDataCacheMapRef.current.clear();
                         fetchDashboardData(dateRange.startDate, dateRange.endDate);
                     }
                 }}
@@ -4751,34 +4927,42 @@ const AttendanceDashboard: React.FC = () => {
                 {/* Date Pills - Scrollable on mobile, with date picker outside scroll container to prevent clipping */}
                 <div className="relative" ref={datePickerRef}>
                     <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none no-scrollbar">
-                        {['Today', 'Yesterday', 'Last 3 Days', 'Last 7 Days', 'This Month', 'Last Month', 'Last 3 Months'].map(filter => (
-                            <button
-                                key={filter}
-                                type="button"
-                                onClick={() => handleSetDateFilter(filter)}
-                                className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition-all ${
-                                    pendingActiveDateFilter === filter
-                                        ? "bg-[#006b3f] text-white shadow-md border border-[#005632]"
-                                        : "bg-[#0b291a] md:bg-white text-gray-300 md:text-gray-700 border border-[#1a3d2c] md:border-gray-300 hover:opacity-80"
-                                }`}
-                            >
-                                {filter}
-                            </button>
-                        ))}
+                        {['Today', 'Yesterday', 'Last 3 Days', 'Last 7 Days', 'This Month', 'Last Month', 'Last 3 Months'].map(filter => {
+                            const isSelected = pendingActiveDateFilter === filter;
+                            const isLoadingThis = loadingFilter === filter;
+                            return (
+                                <button
+                                    key={filter}
+                                    type="button"
+                                    disabled={isLoadingThis}
+                                    onClick={() => handleSetDateFilter(filter)}
+                                    className={`whitespace-nowrap flex items-center justify-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold transition-all duration-150 active:scale-95 cursor-pointer shadow-xs ${
+                                        isSelected
+                                            ? "bg-[#006b3f] text-white shadow-md border border-[#005632]"
+                                            : "bg-white text-gray-700 hover:bg-gray-100 hover:text-gray-900 border border-gray-300 hover:border-gray-400"
+                                    } ${isLoadingThis ? "opacity-80 cursor-wait" : ""}`}
+                                >
+                                    {isLoadingThis && <Loader2 className="w-3.5 h-3.5 animate-spin text-current shrink-0" />}
+                                    <span>{filter}</span>
+                                </button>
+                            );
+                        })}
                         <div className="flex-shrink-0">
                              <button
                                 type="button"
                                 onClick={() => setIsDatePickerOpen(!isDatePickerOpen)}
-                                className={`whitespace-nowrap flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-all ${
+                                className={`whitespace-nowrap flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-all duration-150 active:scale-95 cursor-pointer shadow-xs ${
                                     pendingActiveDateFilter === 'Custom'
                                         ? "bg-[#006b3f] text-white shadow-md border border-[#005632]"
-                                        : "bg-[#0b291a] md:bg-white text-gray-300 md:text-gray-700 border border-[#1a3d2c] md:border-gray-300 hover:opacity-80"
+                                        : "bg-white text-gray-700 hover:bg-gray-100 hover:text-gray-900 border border-gray-300 hover:border-gray-400"
                                 }`}
                             >
                                 <Calendar className="h-4 w-4" />
-                                {pendingActiveDateFilter === 'Custom'
-                                    ? `${format(pendingDateRange.startDate!, 'dd MMM')} - ${format(pendingDateRange.endDate!, 'dd MMM')}`
-                                    : 'Custom Range'}
+                                <span>
+                                    {pendingActiveDateFilter === 'Custom' && pendingDateRange.startDate && pendingDateRange.endDate
+                                        ? `${format(pendingDateRange.startDate, 'dd MMM')} - ${format(pendingDateRange.endDate, 'dd MMM')}`
+                                        : 'Custom Range'}
+                                </span>
                             </button>
                         </div>
                     </div>
@@ -5186,6 +5370,16 @@ const AttendanceDashboard: React.FC = () => {
                 );
             })()}
 
+            {/* Stale-while-revalidate progress bar: shows during background refresh, never hides existing data */}
+            {isRefreshing && (
+                <div className="w-full h-0.5 bg-gray-200 rounded-full overflow-hidden -mt-1 mb-2 relative">
+                    <div
+                        className="absolute inset-y-0 w-1/2 bg-[#22c55e] rounded-full"
+                        style={{ animation: 'progressSweep 1.2s ease-in-out infinite' }}
+                    />
+                </div>
+            )}
+
             {/* Charts Section */}
             {isClientOrManagerView ? (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -5197,11 +5391,11 @@ const AttendanceDashboard: React.FC = () => {
                                 <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-blue-100"></div> Absent</div>
                             </div>
                         </div>
-                        <AttendanceCharts data={chartDatasets} loading={isLoading || !chartDatasets} />
+                        <AttendanceCharts data={chartDatasets} loading={isLoading && !chartDatasets} />
                     </div>
                     <div className="lg:col-span-1 flex flex-col gap-6">
                         <div className="bg-[#0b291a] md:bg-white p-4 md:p-6 rounded-2xl border border-[#1a3d2c] md:border-gray-100 shadow-sm h-[260px]">
-                            <TopPerformersList data={topPerformers} loading={isLoading || topPerformers.length === 0} />
+                            <TopPerformersList data={topPerformers} loading={isLoading && topPerformers.length === 0} />
                         </div>
                     </div>
                 </div>
@@ -5212,7 +5406,7 @@ const AttendanceDashboard: React.FC = () => {
                             <BarChart3 className="h-5 w-5 mr-3 text-[#22c55e] md:text-muted" />
                             <h3 className="font-semibold text-white md:text-primary-text">Attendance Trend</h3>
                         </div>
-                        <AttendanceCharts data={chartDatasets} loading={isLoading || !chartDatasets} />
+                        <AttendanceCharts data={chartDatasets} loading={isLoading && !chartDatasets} />
                     </div>
                     <div className="bg-[#0b291a] md:bg-card p-4 md:p-6 rounded-2xl border border-[#1a3d2c] md:border-border shadow-sm">
                         <div className="flex items-center mb-6">
@@ -5220,10 +5414,10 @@ const AttendanceDashboard: React.FC = () => {
                             <h3 className="font-semibold text-white md:text-primary-text">Productivity Trend</h3>
                         </div>
                         <div className="h-[320px] relative">
-                            {isLoading || !dashboardData?.productivityTrend ? (
+                            {isLoading && !dashboardData?.productivityTrend ? (
                                 <LineChartSkeleton />
                             ) : (
-                                <ProductivityChart data={dashboardData.productivityTrend} />
+                                <ProductivityChart data={dashboardData!.productivityTrend} />
                             )}
                         </div>
                     </div>
@@ -5240,10 +5434,10 @@ const AttendanceDashboard: React.FC = () => {
                             <h3 className="font-semibold text-white md:text-primary-text">Department Attendance (Present)</h3>
                         </div>
                         <div className="h-64 relative">
-                            {isLoading || !dashboardData?.departmentDistribution ? (
+                            {isLoading && !dashboardData?.departmentDistribution ? (
                                 <BarChartSkeleton />
                             ) : (
-                                <DepartmentAttendanceChart data={dashboardData.departmentDistribution} />
+                                <DepartmentAttendanceChart data={dashboardData!.departmentDistribution!} />
                             )}
                         </div>
                     </div>
@@ -5255,7 +5449,7 @@ const AttendanceDashboard: React.FC = () => {
                         <TrendingUp className="h-5 w-5 mr-3 text-[#22c55e] md:text-muted" />
                         <h3 className="font-semibold text-white md:text-primary-text">Department Performance (Avg Working Hours)</h3>
                     </div>
-                    {isLoading ? (
+                    {isLoading && !dashboardData ? (
                         <BarChartSkeleton />
                     ) : (
                         <DepartmentPerformanceChart 
@@ -5271,12 +5465,12 @@ const AttendanceDashboard: React.FC = () => {
                         <BarChart3 className="h-5 w-5 mr-3 text-[#22c55e] md:text-muted" />
                         <h3 className="font-semibold text-white md:text-primary-text">Staff Retention & Attrition Ratio</h3>
                     </div>
-                    {isLoading || !dashboardData ? (
+                    {isLoading && !dashboardData ? (
                         <LineChartSkeleton />
                     ) : (
                         <AttritionRatioChart 
-                            active={dashboardData.totalEmployees - dashboardData.inactiveCount} 
-                            inactive={dashboardData.inactiveCount} 
+                            active={dashboardData!.totalEmployees - dashboardData!.inactiveCount} 
+                            inactive={dashboardData!.inactiveCount} 
                         />
                     )}
                 </div>
@@ -5399,7 +5593,7 @@ const AttendanceDashboard: React.FC = () => {
                     )}
                 </div>
 
-                {isLoading || isReportLoading ? (
+                {isLoading && !dashboardData || isReportLoading ? (
                     <div className="w-full bg-[#041b0f] md:bg-gray-50 border border-[#1a3d2c] md:border-gray-200 rounded-xl min-h-[300px] md:min-h-[400px] flex items-center justify-center">
                         <ReportTableSkeleton />
                     </div>

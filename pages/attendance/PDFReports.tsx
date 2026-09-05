@@ -1,7 +1,7 @@
 import React from 'react';
 import { Document, Page, View, Text, StyleSheet, Image, Font } from '@react-pdf/renderer';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
-import { calculateStatsForDateRange } from '../../utils/attendanceCalculations';
+import { calculateStatsForDateRange, resolveMonthlyDayHeaders } from '../../utils/attendanceCalculations';
 import { FIXED_HOLIDAYS } from '../../utils/constants';
 
 // Register a standard font if needed, or use defaults
@@ -1953,27 +1953,43 @@ export const MonthlyMatrixReportDocument: React.FC<{
   logoUrl?: string;
   globalDateRange: { startDate: Date; endDate: Date };
   filters?: AppliedFilters;
-}> = ({ monthlyData, generatedBy, generatedByRole, targetUserName, targetUserRole, logoUrl, globalDateRange, filters }) => {
+  userHolidaysPool?: any[];
+}> = ({ monthlyData, generatedBy, generatedByRole, targetUserName, targetUserRole, logoUrl, globalDateRange, filters, userHolidaysPool }) => {
   const getStatusColor = (s: string) => {
+    if (s.includes('+')) return '#0D9488';
     if (s === 'P' || s === 'Present' || s === 'H/P' || s === 'W/P' || s === 'BL/P' || s === 'PL/P') return '#059669';
     if (s === 'A' || s === 'Absent') return '#DC2626';
     if (s === 'W/O' || s === 'Weekly Off') return '#64748B';
-    if (s === 'H' || s === 'Holiday') return '#4F46E5';
-    if (s.includes('S/L') || s.includes('E/L') || s.includes('C/O')) return '#7C3AED';
+    if (s === 'H' || s === 'Holiday') return '#EA580C';
+    if (s.includes('0.5')) return '#2563EB';
+    if (s.includes('OT')) return '#0D9488';
+    if (s.includes('C/O')) return '#0891B2';
+    if (s.includes('S/L') || s.includes('SL')) return '#9333EA';
+    if (s.includes('E/L') || s.includes('EL')) return '#4F46E5';
+    if (s.includes('BL') || s.includes('F/H')) return '#1D4ED8';
+    if (s.includes('PL')) return '#DB2777';
     if (s === 'W/H' || s === 'WH') return '#0D9488';
     return '#475569';
   };
 
   const getStatusBg = (s: string) => {
+    if (s.includes('+')) return '#F0FDFA';
     if (s === 'P' || s === 'Present' || s === 'H/P' || s === 'W/P' || s === 'BL/P' || s === 'PL/P') return '#ECFDF5';
     if (s === 'A' || s === 'Absent') return '#FEF2F2';
     if (s === 'W/O' || s === 'Weekly Off') return '#F8FAFC';
-    if (s === 'H' || s === 'Holiday') return '#EEF2FF';
+    if (s === 'H' || s === 'Holiday') return '#FFF7ED';
+    if (s.includes('0.5')) return '#EFF6FF';
+    if (s.includes('OT')) return '#F0FDFA';
+    if (s.includes('C/O')) return '#ECFEFF';
+    if (s.includes('S/L') || s.includes('SL')) return '#FAF5FF';
+    if (s.includes('E/L') || s.includes('EL')) return '#EEF2FF';
+    if (s.includes('BL') || s.includes('F/H')) return '#EFF6FF';
+    if (s.includes('PL')) return '#FDF2F8';
     if (s === 'W/H' || s === 'WH') return '#F0FDFA';
     return '#FFFFFF';
   };
 
-  const rowsPerPage = 18;
+  const rowsPerPage = 16;
   const sortedMonthKeys = Object.keys(monthlyData).sort();
 
   return (
@@ -1994,6 +2010,17 @@ export const MonthlyMatrixReportDocument: React.FC<{
           ...calculateStatsForDateRange(emp.statuses || [], monthDays)
         }));
 
+        // Resolve exact holidays using shared algorithm (guarantees 100% match with HTML view)
+        const dayHeaders = resolveMonthlyDayHeaders(monthDays, userHolidaysPool);
+        const holidaysInPeriod = dayHeaders.filter(dh => dh.isHoliday);
+
+        // Calculate Metric Summary Statistics
+        const totalPresence = recalculatedMonthData.reduce((acc: number, curr: any) => acc + (curr.presentDays || 0) + (curr.halfDays || 0) * 0.5, 0);
+        const maxPossibleDays = recalculatedMonthData.length * (monthDays.length || 30) || 1;
+        const monthlyPresencePct = Math.round((totalPresence / maxPossibleDays) * 100);
+        const totalPunches = Number(recalculatedMonthData.reduce((acc: number, curr: any) => acc + (curr.presentDays || 0), 0).toFixed(2));
+        const activeStaff = recalculatedMonthData.length;
+
         const pages: any[][] = [];
         for (let i = 0; i < recalculatedMonthData.length; i += rowsPerPage) {
           pages.push(recalculatedMonthData.slice(i, i + rowsPerPage));
@@ -2001,98 +2028,116 @@ export const MonthlyMatrixReportDocument: React.FC<{
         if (pages.length === 0) pages.push([]);
 
         return pages.map((pageData, pageIdx) => (
-          <Page key={`${monthKey}-${pageIdx}`} size="A3" orientation="landscape" style={[styles.page, { padding: '30 20' }]}>
-            <View style={[styles.header, { borderBottomWidth: 2, borderBottomColor: '#0F172A', paddingBottom: 10, marginBottom: 15 }]}>
+          <Page key={`${monthKey}-${pageIdx}`} size="A3" orientation="landscape" style={[styles.page, { padding: '24 20' }]}>
+            {/* Header */}
+            <View style={[styles.header, { borderBottomWidth: 2, borderBottomColor: '#0F172A', paddingBottom: 8, marginBottom: 10 }]}>
               <View style={styles.headerLeft}>
-                {logoUrl && <Image src={logoUrl} style={{ height: 40, width: 'auto', marginBottom: 4 }} />}
-                {targetUserName && (
-                  <View style={{ marginTop: 6 }}>
-                    <Text style={{ fontSize: 10, fontWeight: 'bold', color: '#0F172A' }}>{targetUserName}</Text>
+                {logoUrl && <Image src={logoUrl} style={{ height: 35, width: 'auto', marginBottom: 3 }} />}
+                <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#006B3F' }}>PARADIGM SERVICES</Text>
+                {targetUserName ? (
+                  <View style={{ marginTop: 2 }}>
+                    <Text style={{ fontSize: 9, fontWeight: 'bold', color: '#0F172A' }}>{targetUserName}</Text>
                     {targetUserRole && (
-                      <Text style={{ fontSize: 8, color: '#64748B', textTransform: 'uppercase', fontWeight: 'bold', marginTop: 2 }}>{targetUserRole.replace(/_/g, ' ')}</Text>
+                      <Text style={{ fontSize: 7, color: '#64748B', textTransform: 'uppercase', fontWeight: 'bold' }}>{targetUserRole.replace(/_/g, ' ')}</Text>
                     )}
                   </View>
+                ) : (
+                  <Text style={{ fontSize: 8, color: '#64748B', textTransform: 'uppercase', fontWeight: 'bold' }}>ALL EMPLOYEES</Text>
                 )}
               </View>
               {renderPDFHeaderCenter(filters)}
               <View style={styles.headerRight}>
-                <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#0F172A' }}>MONTHLY ATTENDANCE REPORT</Text>
-                <Text style={{ fontSize: 10, color: '#64748B' }}>
-                  {format(monthDate, 'MMMM yyyy')}
+                <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#0F172A' }}>MONTHLY ATTENDANCE REPORT</Text>
+                <Text style={{ fontSize: 9, color: '#475569', fontWeight: 'bold' }}>
+                  Billing Cycle: {format(displayStart, 'dd MMM yyyy')} - {format(displayEnd, 'dd MMM yyyy')}
                 </Text>
-                <Text style={{ fontSize: 8, color: '#94A3B8', marginTop: 4 }}>
+                <Text style={{ fontSize: 8, color: '#94A3B8', marginTop: 2 }}>
                   Generated: {format(new Date(), 'dd MMM yyyy HH:mm')} {generatedBy && `| By: ${generatedBy}${generatedByRole ? ` (${generatedByRole.toUpperCase()})` : ''}`}
                 </Text>
               </View>
             </View>
 
+            {/* Stats Summary Cards (Page 1 only) */}
+            {pageIdx === 0 && (
+              <View style={{ flexDirection: 'row', gap: 10, marginBottom: 8 }}>
+                <View style={{ flex: 1, padding: 6, backgroundColor: '#F0FDF4', borderRadius: 6, borderWidth: 1, borderColor: '#BBF7D0' }}>
+                  <Text style={{ fontSize: 7, fontWeight: 'bold', color: '#065F46', textTransform: 'uppercase' }}>Monthly Presence</Text>
+                  <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#059669', marginTop: 1 }}>{monthlyPresencePct}%</Text>
+                </View>
+                <View style={{ flex: 1, padding: 6, backgroundColor: '#EFF6FF', borderRadius: 6, borderWidth: 1, borderColor: '#BFDBFE' }}>
+                  <Text style={{ fontSize: 7, fontWeight: 'bold', color: '#1E40AF', textTransform: 'uppercase' }}>Total Punches</Text>
+                  <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#2563EB', marginTop: 1 }}>{totalPunches}</Text>
+                </View>
+                <View style={{ flex: 1, padding: 6, backgroundColor: '#F8FAFC', borderRadius: 6, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                  <Text style={{ fontSize: 7, fontWeight: 'bold', color: '#374151', textTransform: 'uppercase' }}>Active Staff</Text>
+                  <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#111827', marginTop: 1 }}>{activeStaff}</Text>
+                </View>
+              </View>
+            )}
+
+            {/* Company & Fixed Holidays Banner (Page 1 only) */}
+            {pageIdx === 0 && holidaysInPeriod.length > 0 && (
+              <View style={{ backgroundColor: '#FFF1F2', borderWidth: 1, borderColor: '#FECDD3', borderRadius: 6, padding: 5, marginBottom: 8 }}>
+                <Text style={{ fontSize: 8, fontWeight: 'bold', color: '#881337', marginBottom: 2 }}>
+                  📅 COMPANY & FIXED HOLIDAYS ({holidaysInPeriod.length}):
+                </Text>
+                <Text style={{ fontSize: 7, color: '#9F1239' }}>
+                  {holidaysInPeriod.map(h => `• ${h.dayNumber} ${format(h.dateObj, 'MMM')} (${h.dayOfWeek}): ${h.holidayName}${h.isFixed ? ' [FIXED]' : ''}`).join('    ')}
+                </Text>
+              </View>
+            )}
+
             <View style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 4, overflow: 'hidden', flex: 1 }}>
               {/* Row 1: Date Numbers */}
               <View style={{ flexDirection: 'row', backgroundColor: '#F8FAFC', borderBottomWidth: 1, borderBottomColor: '#E2E8F0' }}>
-                <View style={[styles.matrixRowLabel, { width: 140, textAlign: 'left', paddingLeft: 5, paddingVertical: 4 }]}><Text>Employee</Text></View>
-                {monthDays.map((d, i) => {
-                  const mmdd = format(d, 'MM-dd');
-                  const isFixed = FIXED_HOLIDAYS.some(fh => fh.date === mmdd);
-                  const isSun = d.getDay() === 0;
-                  const isHol = isFixed || (pageData.some((emp: any) => {
-                    const st = (emp.statuses || [])[d.getDate() - 1];
-                    return st === 'H' || st === 'H/P' || st === 'HP' || st === 'BL';
-                  }));
-
+                <View style={[styles.matrixRowLabel, { width: 140, textAlign: 'left', paddingLeft: 5, paddingVertical: 3 }]}><Text>Employee</Text></View>
+                {dayHeaders.map((dh, i) => {
                   let bg = 'transparent';
                   let textColor = '#0F172A';
-                  if (isHol) {
+                  if (dh.isHoliday) {
                     bg = '#FFE4E6';
                     textColor = '#881337';
-                  } else if (isSun) {
+                  } else if (dh.isSunday) {
                     bg = '#FFF1F2';
                     textColor = '#E11D48';
                   }
 
                   return (
-                    <View key={i} style={[styles.matrixCell, { paddingVertical: 4, backgroundColor: bg }]}>
-                      <Text style={{ fontWeight: 'bold', color: textColor }}>{format(d, 'd')}</Text>
+                    <View key={i} style={[styles.matrixCell, { paddingVertical: 3, backgroundColor: bg }]}>
+                      <Text style={{ fontWeight: 'bold', color: textColor }}>{dh.dayNumber}</Text>
                     </View>
                   );
                 })}
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 4 }]}><Text style={{ fontWeight: 'bold', color: '#059669' }}>P</Text></View>
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 4 }]}><Text style={{ fontWeight: 'bold', color: '#2563EB' }}>0.5P</Text></View>
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 4 }]}><Text style={{ fontWeight: 'bold', color: '#0D9488' }}>OT</Text></View>
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 4 }]}><Text style={{ fontWeight: 'bold', color: '#0891B2' }}>C/O</Text></View>
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 4 }]}><Text style={{ fontWeight: 'bold', color: '#4F46E5' }}>E/L</Text></View>
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 4 }]}><Text style={{ fontWeight: 'bold', color: '#9333EA' }}>S/L</Text></View>
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 4, backgroundColor: '#FEF2F2' }]}><Text style={{ fontWeight: 'bold', color: '#DC2626' }}>A</Text></View>
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 4 }]}><Text style={{ fontWeight: 'bold', color: '#6B7280' }}>W/O</Text></View>
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 4 }]}><Text style={{ fontWeight: 'bold', color: '#EA580C' }}>H</Text></View>
-                <View style={[styles.matrixCell, { width: 28, paddingVertical: 4, backgroundColor: '#D1FAE5' }]}><Text style={{ fontWeight: 'bold', color: '#065F46' }}>Pay</Text></View>
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 3 }]}><Text style={{ fontWeight: 'bold', color: '#059669' }}>P</Text></View>
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 3 }]}><Text style={{ fontWeight: 'bold', color: '#2563EB' }}>0.5P</Text></View>
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 3 }]}><Text style={{ fontWeight: 'bold', color: '#0D9488' }}>OT</Text></View>
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 3 }]}><Text style={{ fontWeight: 'bold', color: '#0891B2' }}>C/O</Text></View>
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 3 }]}><Text style={{ fontWeight: 'bold', color: '#4F46E5' }}>E/L</Text></View>
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 3 }]}><Text style={{ fontWeight: 'bold', color: '#9333EA' }}>S/L</Text></View>
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 3, backgroundColor: '#FEF2F2' }]}><Text style={{ fontWeight: 'bold', color: '#DC2626' }}>A</Text></View>
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 3 }]}><Text style={{ fontWeight: 'bold', color: '#6B7280' }}>W/O</Text></View>
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 3 }]}><Text style={{ fontWeight: 'bold', color: '#EA580C' }}>H</Text></View>
+                <View style={[styles.matrixCell, { width: 28, paddingVertical: 3, backgroundColor: '#D1FAE5' }]}><Text style={{ fontWeight: 'bold', color: '#065F46' }}>Pay</Text></View>
               </View>
 
               {/* Row 2: Day of Week (Sun, Mon, Tue...) */}
               <View style={{ flexDirection: 'row', backgroundColor: '#F1F5F9', borderBottomWidth: 1, borderBottomColor: '#E2E8F0' }}>
                 <View style={[styles.matrixRowLabel, { width: 140, textAlign: 'left', paddingLeft: 5, paddingVertical: 2, backgroundColor: 'transparent' }]}><Text style={{ fontSize: 6, color: '#94A3B8' }}>Day</Text></View>
-                {monthDays.map((d, i) => {
-                  const mmdd = format(d, 'MM-dd');
-                  const isFixed = FIXED_HOLIDAYS.some(fh => fh.date === mmdd);
-                  const isSun = d.getDay() === 0;
-                  const isHol = isFixed || (pageData.some((emp: any) => {
-                    const st = (emp.statuses || [])[d.getDate() - 1];
-                    return st === 'H' || st === 'H/P' || st === 'HP' || st === 'BL';
-                  }));
-
+                {dayHeaders.map((dh, i) => {
                   let bg = 'transparent';
                   let textColor = '#64748B';
-                  if (isHol) {
+                  if (dh.isHoliday) {
                     bg = '#FECDD3';
                     textColor = '#9F1239';
-                  } else if (isSun) {
+                  } else if (dh.isSunday) {
                     bg = '#FFE4E6';
                     textColor = '#E11D48';
                   }
 
                   return (
                     <View key={i} style={[styles.matrixCell, { paddingVertical: 2, backgroundColor: bg }]}>
-                      <Text style={{ fontSize: 6, color: textColor, fontWeight: (isHol || isSun) ? 'bold' : 'normal' }}>
-                        {format(d, 'EEE')}
+                      <Text style={{ fontSize: 6, color: textColor, fontWeight: (dh.isHoliday || dh.isSunday) ? 'bold' : 'normal' }}>
+                        {dh.dayOfWeek}
                       </Text>
                     </View>
                   );
@@ -2118,15 +2163,11 @@ export const MonthlyMatrixReportDocument: React.FC<{
                     </View>
                     {monthDays.map((d, i) => {
                       const status = statuses[d.getDate() - 1] || '-';
-                      const mmdd = format(d, 'MM-dd');
-                      const isFixed = FIXED_HOLIDAYS.some(fh => fh.date === mmdd);
-                      const isHol = isFixed || (pageData.some((e: any) => {
-                        const st = (e.statuses || [])[d.getDate() - 1];
-                        return st === 'H' || st === 'H/P' || st === 'HP' || st === 'BL';
-                      }));
+                      const dh = dayHeaders[i];
+                      const isHol = dh?.isHoliday;
 
                       const defaultBg = getStatusBg(status);
-                      const cellBg = (defaultBg === '#FFFFFF' || defaultBg === '#F8FAFC' || !defaultBg) && isHol ? '#FFF1F2' : defaultBg;
+                      const cellBg = isHol ? '#FFF1F2' : (defaultBg === '#FFFFFF' || defaultBg === '#F8FAFC' || !defaultBg) && dh?.isSunday ? '#F8FAFC' : defaultBg;
 
                       return (
                         <View key={i} style={[styles.matrixCell, { backgroundColor: cellBg }]}>
@@ -2148,6 +2189,14 @@ export const MonthlyMatrixReportDocument: React.FC<{
                 );
               })}
             </View>
+
+            {holidaysInPeriod.length > 0 && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, paddingHorizontal: 4 }}>
+                <Text style={{ fontSize: 6.5, color: '#881337', fontWeight: 'bold' }}>
+                  ROSE HIGHLIGHTED COLUMNS = Declared Company Holidays ({holidaysInPeriod.map(h => `${h.dayNumber} ${format(h.dateObj, 'MMM')}: ${h.holidayName}`).join(' • ')})
+                </Text>
+              </View>
+            )}
 
             {renderPDFNotationReference()}
             

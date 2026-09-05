@@ -6,6 +6,7 @@ import { getFieldStaffStatus } from './fieldStaffTracking';
 import { FIXED_HOLIDAYS } from './constants';
 import { evaluateSiteStaffStatus } from './siteStaffCalculations';
 import { calculateDistanceMeters } from './locationUtils';
+import { useSettingsStore } from '../store/settingsStore';
 
 /**
  * Robust check for roles that require night-shift/field-style session anchoring.
@@ -1488,8 +1489,137 @@ export function getEarlyDepartureDeductions(
   return earlyDeductions;
 }
 
+export interface ResolvedDayHeader {
+  dayNumber: number;
+  dayOfWeek: string;
+  dayName: string;
+  isSunday: boolean;
+  isSaturday: boolean;
+  isHoliday: boolean;
+  isFixed: boolean;
+  holidayName: string;
+  dateObj: Date;
+}
+
+export function resolveMonthlyDayHeaders(
+  monthDays: Date[],
+  userHolidaysPool?: any[],
+  allConfiguredHolidays?: any[],
+  recurringHolidays?: any[],
+  holidayPool?: any[]
+): ResolvedDayHeader[] {
+  let configured = allConfiguredHolidays;
+  let recurring = recurringHolidays;
+  let pool = holidayPool;
+
+  try {
+    const store = useSettingsStore.getState();
+    if (!configured || configured.length === 0) {
+      configured = [
+        ...(store.officeHolidays || []),
+        ...(store.fieldHolidays || []),
+        ...(store.siteHolidays || []),
+      ];
+    }
+    if (!recurring || recurring.length === 0) {
+      recurring = store.recurringHolidays || [];
+    }
+    if (!pool || pool.length === 0) {
+      pool = store.attendance?.office?.holidayPool || [];
+    }
+  } catch (err) {
+    console.warn('[resolveMonthlyDayHeaders] Error accessing settingsStore:', err);
+  }
+
+  const activeUserHolidays = userHolidaysPool || [];
+
+  return monthDays.map((d) => {
+    const dayNumber = d.getDate();
+    const dayOfWeek = format(d, 'EEE');
+    const dayName = format(d, 'EEEE');
+    const isSunday = d.getDay() === 0;
+    const isSaturday = d.getDay() === 6;
+    const dateStr = format(d, 'yyyy-MM-dd');
+    const mmdd = format(d, 'MM-dd');
+    const occurrence = Math.ceil(dayNumber / 7);
+
+    // 1. Fixed statutory public holidays (e.g. 08-15 Independence Day)
+    const fixedMatch = FIXED_HOLIDAYS.find(fh => fh.date === mmdd || dateStr.endsWith('-' + fh.date));
+    const isFixed = Boolean(fixedMatch);
+
+    // 2. Recurring holiday rules from database (e.g. 3rd Saturday Off)
+    const isRecurringOff = (recurring || []).some(rule => {
+      const ruleDay = String(rule.day || '').toLowerCase();
+      const ruleOcc = Number(rule.occurrence || (rule as any).n || 0);
+      return ruleDay === dayName.toLowerCase() && ruleOcc === occurrence;
+    });
+
+    // 3. Company configured holidays from admin settings
+    const configuredMatch = (configured || []).find(h => {
+      const hDate = String(h.date || '').split(' ')[0].split('T')[0];
+      return hDate === dateStr || hDate.endsWith('-' + mmdd);
+    });
+    const isConfigured = Boolean(configuredMatch);
+
+    // 4. User selected floating holidays & company holiday pool
+    const matchingUserHolidays = (activeUserHolidays || []).filter(uh => {
+      const uhDate = String(uh.holidayDate || uh.holiday_date || uh.date || '').split('T')[0].split(' ')[0];
+      return uhDate === dateStr || uhDate.endsWith('-' + mmdd);
+    });
+
+    const poolMatch = (pool || []).find((p: any) => {
+      const pDate = String(p.date || '').replace(/^-/, '');
+      return pDate === mmdd || dateStr.endsWith('-' + pDate);
+    });
+
+    const isPoolOrUserHoliday = matchingUserHolidays.length > 0 || Boolean(poolMatch);
+    const isHoliday = isFixed || isRecurringOff || isConfigured || isPoolOrUserHoliday;
+
+    let holidayName = '';
+    if (fixedMatch && isRecurringOff) {
+      holidayName = `${fixedMatch.name} / ${occurrence === 3 ? '3rd' : occurrence + 'th'} ${dayName} Recurring Off`;
+    } else if (fixedMatch?.name) {
+      holidayName = fixedMatch.name;
+    } else if (isRecurringOff) {
+      holidayName = `${occurrence === 3 ? '3rd' : occurrence + 'th'} ${dayName} Recurring Off`;
+    } else if (matchingUserHolidays.length > 0) {
+      const countsByName = new Map<string, number>();
+      matchingUserHolidays.forEach(uh => {
+        const name = (uh.holidayName || uh.holiday_name || uh.name || '').trim();
+        if (name) {
+          countsByName.set(name, (countsByName.get(name) || 0) + 1);
+        }
+      });
+      if (countsByName.size > 0) {
+        const parts: string[] = [];
+        countsByName.forEach((count, name) => {
+          parts.push(`${name} (selected by ${count} employee${count > 1 ? 's' : ''})`);
+        });
+        holidayName = parts.join(' / ');
+      } else if (poolMatch?.name) {
+        holidayName = poolMatch.name;
+      }
+    } else if (configuredMatch?.name) {
+      holidayName = configuredMatch.name;
+    } else if (poolMatch?.name) {
+      holidayName = poolMatch.name;
+    } else if (isHoliday) {
+      holidayName = 'Company Provided Holiday';
+    }
+
+    return {
+      dayNumber,
+      dayOfWeek,
+      dayName,
+      isSunday,
+      isSaturday,
+      isHoliday,
+      isFixed,
+      holidayName,
+      dateObj: d,
+    };
+  });
+}
+
 
 // Force Vite HMR
-
-
-
