@@ -548,9 +548,9 @@ export interface LocationErrorWithFlags extends Error {
 
 /**
  * Robustly acquire GPS coordinates with active retry, warm-up, and error classification.
- * Rejects coarse/approximate fixes (e.g., if iOS Precise Location is disabled).
+ * Uses progressive fallback (high-accuracy -> fused/network provider) to avoid blocking users.
  */
-export async function getPrecisePosition(accuracyThreshold: number = 35, timeoutMs: number = 10000): Promise<GeolocationPosition> {
+export async function getPrecisePosition(accuracyThreshold: number = 50, timeoutMs: number = 10000): Promise<GeolocationPosition> {
   // If a request is already active, wait for it
   if (activeLocationPromise) {
     console.log('[Location] Joining active location request flow...');
@@ -559,7 +559,8 @@ export async function getPrecisePosition(accuracyThreshold: number = 35, timeout
 
   const isNative = Capacitor.isNativePlatform();
   // Desktop web browsers use Wi-Fi/IP triangulation where accuracy is typically 40m - 200m
-  const effectiveThreshold = isNative ? accuracyThreshold : Math.max(accuracyThreshold, 200);
+  // On mobile native, we accept up to 150m (or custom threshold)
+  const effectiveThreshold = isNative ? Math.max(accuracyThreshold, 150) : Math.max(accuracyThreshold, 250);
 
   activeLocationPromise = (async () => {
     try {
@@ -570,24 +571,25 @@ export async function getPrecisePosition(accuracyThreshold: number = 35, timeout
           if (permission.location !== 'granted') {
             const requestResult = await Geolocation.requestPermissions();
             if (requestResult.location !== 'granted') {
-              const error = Object.assign(new Error('Location permission denied. Please enable location access in settings.'), {
+              const error = Object.assign(new Error('Location permission denied. Please enable location access in device settings.'), {
                 isPermissionError: true
               }) as LocationErrorWithFlags;
               throw error;
             }
           }
-        } catch (err) {
-          console.warn('[Location] Capacitor checkPermissions error:', err);
+        } catch (err: any) {
+          if (err?.isPermissionError) throw err;
+          console.warn('[Location] Capacitor checkPermissions warning:', err);
         }
       }
 
-      // Stage 1: Fast direct acquisition (High Accuracy, maximumAge: 0)
+      // Stage 1: Fast direct acquisition with cached position allowance (20s)
       try {
         const directPromise = isNative
           ? Geolocation.getCurrentPosition({
               enableHighAccuracy: true,
-              timeout: Math.min(timeoutMs, 4000),
-              maximumAge: 0 // ALWAYS FRESH!
+              timeout: Math.min(timeoutMs, 5000),
+              maximumAge: 20000 // Accept recent 20s fix for instant response
             })
           : new Promise<GeolocationPosition>((resolve, reject) => {
               if (typeof navigator === 'undefined' || !navigator.geolocation) {
@@ -599,7 +601,7 @@ export async function getPrecisePosition(accuracyThreshold: number = 35, timeout
               navigator.geolocation.getCurrentPosition(resolve, reject, {
                 enableHighAccuracy: true,
                 timeout: Math.min(timeoutMs, 5000),
-                maximumAge: 0 // ALWAYS FRESH!
+                maximumAge: 20000
               });
             });
 
@@ -608,30 +610,55 @@ export async function getPrecisePosition(accuracyThreshold: number = 35, timeout
           const acc = pos.coords.accuracy || 999;
           console.log(`[Location] Direct fix acquired: lat=${pos.coords.latitude}, lon=${pos.coords.longitude}, accuracy=${acc}m (threshold=${effectiveThreshold}m)`);
           
-          // Accept immediately if within acceptable threshold
           if (acc <= effectiveThreshold) {
             return pos;
           }
-          console.log(`[Location] Direct fix accuracy (${acc}m) is approximate. Warming up GPS via watchPosition...`);
+          console.log(`[Location] Direct fix accuracy (${acc}m) is approximate. Starting fallback listener...`);
         }
       } catch (stage1Err: unknown) {
         const errObj = stage1Err as { code?: number; message?: string } | undefined;
         console.warn('[Location] Direct high-accuracy failed or timed out:', errObj?.message);
         if (errObj?.code === 1 || errObj?.message?.toLowerCase().includes('denied') || errObj?.message?.toLowerCase().includes('permission')) {
-          const pError = Object.assign(new Error('Location permission denied. Please allow location access in your browser and device settings.'), {
+          const pError = Object.assign(new Error('Location permission denied. Please allow location access in your device settings.'), {
             isPermissionError: true
-          }) as LocationErrorWithFlags;
-          throw pError;
-        }
-        if (errObj?.code === 2 || errObj?.message?.toLowerCase().includes('unavailable')) {
-          const pError = Object.assign(new Error('Location is unavailable. Please ensure Windows/Device Location Services are turned ON.'), {
-            isPositionUnavailable: true
           }) as LocationErrorWithFlags;
           throw pError;
         }
       }
 
-      // Stage 2: Active Watch Listener
+      // Stage 1.5: Fast Fused/Network Location Provider Probe (Immediate 0.2s return on Android/iOS)
+      try {
+        const networkPromise = isNative
+          ? Geolocation.getCurrentPosition({
+              enableHighAccuracy: false, // Uses Cell/Wi-Fi fused provider
+              timeout: 3000,
+              maximumAge: 60000 // 1 minute cache
+            })
+          : new Promise<GeolocationPosition>((resolve, reject) => {
+              if (typeof navigator !== 'undefined' && navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(resolve, reject, {
+                  enableHighAccuracy: false,
+                  timeout: 3000,
+                  maximumAge: 60000
+                });
+              } else {
+                reject(new Error('Navigator geolocation unavailable'));
+              }
+            });
+
+        const netPos = (await networkPromise) as unknown as GeolocationPosition;
+        if (netPos?.coords?.latitude != null && netPos?.coords?.longitude != null) {
+          const netAcc = netPos.coords.accuracy || 999;
+          console.log(`[Location] Fast network/fused fix acquired: lat=${netPos.coords.latitude}, lon=${netPos.coords.longitude}, accuracy=${netAcc}m`);
+          if (netAcc <= effectiveThreshold) {
+            return netPos;
+          }
+        }
+      } catch (netErr) {
+        console.warn('[Location] Fast network probe skipped:', netErr);
+      }
+
+      // Stage 2: Active Watch Listener (Warmup & GPS Lock)
       return await new Promise<GeolocationPosition>((resolve, reject) => {
         let bestPos: GeolocationPosition | null = null;
         let watchId: string | null = null;
@@ -667,43 +694,30 @@ export async function getPrecisePosition(accuracyThreshold: number = 35, timeout
 
         const timer = setTimeout(() => {
           if (resolved) return;
-          if (bestPos) {
+          if (bestPos && bestPos.coords) {
             const finalAcc = bestPos.coords.accuracy || 999;
             console.log(`[Location] GPS warmup complete. Best accuracy=${finalAcc}m`);
-            // On mobile native, if accuracy > 150m, precise location might be off
-            if (isNative && finalAcc > 150) {
-              const err = Object.assign(new Error("Precise GPS location is required. Please turn ON 'Precise Location' in Settings > Location."), {
-                isPreciseError: true
-              }) as LocationErrorWithFlags;
-              safeReject(err);
-            } else if (!isNative && finalAcc > 500) {
-              const err = Object.assign(new Error("Location accuracy too low. Please turn ON Wi-Fi or Windows Location Services for better triangulation."), {
-                isLowAccuracy: true
-              }) as LocationErrorWithFlags;
-              safeReject(err);
-            } else {
-              safeResolve(bestPos);
-            }
+            safeResolve(bestPos);
           } else {
-            const err = Object.assign(new Error('GPS Signal Weak or Location Disabled. Please ensure Windows / Device Location Services are turned ON.'), {
+            const err = Object.assign(new Error('GPS Signal Weak or Location Disabled. Please ensure Location Services are turned ON in phone settings and retry.'), {
               isPositionUnavailable: true
             }) as LocationErrorWithFlags;
             safeReject(err);
           }
-        }, Math.min(timeoutMs, 6000));
+        }, Math.min(Math.max(timeoutMs, 6000), 10000));
 
         if (isNative) {
           Geolocation.watchPosition(
-            { enableHighAccuracy: true, timeout: 6000, maximumAge: 0 },
+            { enableHighAccuracy: true, timeout: 8000, maximumAge: 10000 },
             (position, err) => {
               if (err) {
-                console.warn('[Location] watchPosition error:', err);
+                console.warn('[Location] watchPosition notice:', err);
                 return;
               }
               if (position) {
                 const p = position as unknown as GeolocationPosition;
-                const acc = p.coords.accuracy || Infinity;
-                if (!bestPos || acc < (bestPos.coords.accuracy || Infinity)) {
+                const acc = p.coords?.accuracy || Infinity;
+                if (!bestPos || acc < (bestPos.coords?.accuracy || Infinity)) {
                   bestPos = p;
                 }
                 if (acc <= effectiveThreshold) {
@@ -715,13 +729,13 @@ export async function getPrecisePosition(accuracyThreshold: number = 35, timeout
           ).then(id => {
             watchId = id;
           }).catch(err => {
-            console.warn('[Location] watchPosition start failed:', err);
+            console.warn('[Location] watchPosition start notice:', err);
           });
         } else if (typeof navigator !== 'undefined' && navigator.geolocation) {
           const wId = navigator.geolocation.watchPosition(
             (pos) => {
-              const acc = pos.coords.accuracy || Infinity;
-              if (!bestPos || acc < (bestPos.coords.accuracy || Infinity)) {
+              const acc = pos.coords?.accuracy || Infinity;
+              if (!bestPos || acc < (bestPos.coords?.accuracy || Infinity)) {
                 bestPos = pos;
               }
               if (acc <= effectiveThreshold) {
@@ -730,16 +744,16 @@ export async function getPrecisePosition(accuracyThreshold: number = 35, timeout
               }
             },
             (err) => {
-              console.warn('[Location] browser watchPosition error:', err);
+              console.warn('[Location] browser watchPosition notice:', err);
               if (err.code === 1) {
-                const pError = Object.assign(new Error('Location permission denied in browser.'), {
+                const pError = Object.assign(new Error('Location permission denied in browser/device.'), {
                   isPermissionError: true
                 }) as LocationErrorWithFlags;
                 clearTimeout(timer);
                 safeReject(pError);
               }
             },
-            { enableHighAccuracy: true, timeout: 6000, maximumAge: 0 }
+            { enableHighAccuracy: true, timeout: 8000, maximumAge: 10000 }
           );
           watchId = String(wId);
         }

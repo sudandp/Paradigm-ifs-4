@@ -30,6 +30,16 @@ export function isTechnicalRole(role?: string | null): boolean {
 }
 
 /**
+ * Check if a role is exempt from daily punch-in/out and attendance tracking.
+ * Leadership and governance roles (Director, Management, Superadmin) do not punch.
+ */
+export function isAttendanceExemptRole(role?: string | null): boolean {
+  if (!role) return false;
+  const normalized = role.toLowerCase().replace(/[\s_-]+/g, '');
+  return normalized === 'director' || normalized.includes('director') || normalized === 'management' || normalized === 'superadmin';
+}
+
+/**
  * Calculate total hours between two timestamps
  */
 export function calculateDailyHours(checkIn: string, checkOut: string): number {

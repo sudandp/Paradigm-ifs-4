@@ -63,7 +63,7 @@ const STANDARD_BILLING_CYCLES = [
 ];
 
 // Primary Canonical Site Lead Incharges
-const PRIMARY_HR_LEADS = ['Chandana R', 'Poojashree S', 'Kavya M', 'Chennamma'];
+const PRIMARY_HR_LEADS = ['Chennamma', 'Poojashree S', 'Kavya M', 'Chandana R'];
 const PRIMARY_ACCOUNTS_LEADS = ['Arpitha Nair', 'Sinchana KM', 'Arya Thomas', 'Chethan V', 'Sandeep Biswas', 'Vishwa'];
 const PRIMARY_OPS_LEADS = [
   'Sandeep B',
@@ -147,7 +147,7 @@ const getCleanRoot = (name: string): string => {
 const getNormalizedUserName = (u: { name?: string; email?: string }): string => {
   const email = (u.email || '').toLowerCase();
   const rawName = (u.name || '').trim();
-  if (rawName.toLowerCase() === 'chennamma' || (email === 'chandana.hr@paradigmfms.com' && rawName.toLowerCase().includes('chennamma'))) return 'Chennamma';
+  if (rawName.toLowerCase().includes('chennamma') || email === 'chandana.hr@paradigmfms.com') return 'Chennamma';
   if (email === 'onboarding@paradigmfms.com') return 'Chandana R';
   if (email === 'pooja@paradigmfms.in') return 'Poojashree S';
   if (email === 'hr.kavya@paradigmfms.com') return 'Kavya M';
@@ -1329,7 +1329,7 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
                 opsManagerName: 'Sandeep B',
                 siteManagerName: '',
                 siteSupervisorName: '',
-                hrInchargeName: 'Chandana R',
+                hrInchargeName: 'Chennamma',
                 accountsInchargeName: 'Arpitha Nair',
                 fieldOfficerName: '',
                 billingCompany: 'PIFS',

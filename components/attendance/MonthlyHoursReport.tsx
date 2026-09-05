@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { format, getDaysInMonth, startOfMonth, endOfMonth, eachDayOfInterval, startOfDay, isAfter, isSameDay, isWithinInterval, endOfDay, startOfWeek, subDays, isBefore, addDays, startOfToday } from 'date-fns';
 import { Download, Lock, Loader2, Unlock, Mail, Phone } from 'lucide-react';
 import { api } from '../../services/api';
-import { processDailyEvents, calculateWorkingHours, isLateCheckIn, isEarlyCheckOut, evaluateAttendanceStatus, getStaffCategory, calculateDailyTravelKm, calculateDailyPathTravelKm } from '../../utils/attendanceCalculations';
+import { processDailyEvents, calculateWorkingHours, isLateCheckIn, isEarlyCheckOut, evaluateAttendanceStatus, getStaffCategory, calculateDailyTravelKm, calculateDailyPathTravelKm, isAttendanceExemptRole } from '../../utils/attendanceCalculations';
 import { getFieldStaffStatus } from '../../utils/fieldStaffTracking';
 import type { AttendanceEvent, User, StaffAttendanceRules, UserHoliday, Role, FieldAttendanceViolation, Holiday, RoutePoint } from '../../types';
 import Button from '../ui/Button';
@@ -447,8 +447,8 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
       });
       setPendingCorrectionDates(pendingCorrMap);
 
-      if ((userId === undefined || userId === 'all') && selectedRole !== 'management') {
-        targetUsers = targetUsers.filter(u => u.role !== 'management');
+      if ((userId === undefined || userId === 'all') && !isAttendanceExemptRole(selectedRole)) {
+        targetUsers = targetUsers.filter(u => !isAttendanceExemptRole(u.role));
       }
 
       // Use local variables to avoid stale state issues during initial load

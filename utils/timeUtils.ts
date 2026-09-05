@@ -1,17 +1,16 @@
 export async function getServerTime(): Promise<Date | null> {
     try {
-        // Use WorldTimeAPI for an independent time source
+        // Fast timeout so we don't block attendance punch if external API is slow
         const response = await fetch('https://worldtimeapi.org/api/timezone/Etc/UTC', { 
             cache: 'no-store',
-            // Small timeout so we don't block the punch if the API is down
-            signal: AbortSignal.timeout(3000)
+            signal: AbortSignal.timeout(1200)
         });
         if (response.ok) {
            const data = await response.json();
            return new Date(data.utc_datetime);
         }
     } catch (e) {
-        console.warn('[timeUtils] Failed to fetch server time:', e);
+        console.warn('[timeUtils] WorldTimeAPI check skipped or timed out:', e);
     }
     return null;
 }

@@ -17,7 +17,7 @@ export const getCanonicalUserName = (user: Partial<User> | null | undefined): st
   const rawName = (user.name || '').trim();
 
   // Canonical name mappings
-  if (rawName.toLowerCase() === 'chennamma' || (email === 'chandana.hr@paradigmfms.com' && rawName.toLowerCase().includes('chennamma'))) return 'Chennamma';
+  if (rawName.toLowerCase().includes('chennamma') || email === 'chandana.hr@paradigmfms.com') return 'Chennamma';
   if (email === 'onboarding@paradigmfms.com') return 'Chandana R';
   if (email === 'pooja@paradigmfms.in') return 'Poojashree S';
   if (email === 'hr.kavya@paradigmfms.com') return 'Kavya M';

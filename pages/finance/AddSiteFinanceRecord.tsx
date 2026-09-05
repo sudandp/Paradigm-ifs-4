@@ -62,7 +62,19 @@ const AddSiteFinanceRecord: React.FC = () => {
         setValue('totalBilledAmount', bAmount + bFee);
     }, [bAmount, bFee, setValue]);
 
+    const { user } = useAuthStore();
+    const roleLower = (user?.role || '').toLowerCase();
+    const roleIdLower = (user?.roleId || '').toLowerCase();
+    const isDirector = roleLower.includes('director') || roleIdLower.includes('director');
+
     useEffect(() => {
+        if (isDirector) {
+            navigate('/finance?tab=attendance', { replace: true });
+        }
+    }, [isDirector, navigate]);
+
+    useEffect(() => {
+        if (isDirector) return;
         const loadData = async () => {
             setIsLoading(true);
             try {
@@ -157,7 +169,7 @@ const AddSiteFinanceRecord: React.FC = () => {
             }
         };
         loadData();
-    }, [isEditing, id, reset, navigate]);
+    }, [isEditing, id, reset, navigate, isDirector]);
 
     const onSubmit = async (data: Partial<SiteFinanceRecord>) => {
         setIsLoading(true);
@@ -322,6 +334,10 @@ const AddSiteFinanceRecord: React.FC = () => {
             }
         }
     };
+
+    if (isDirector) {
+        return <LoadingScreen message="Redirecting to Attendance Tracker..." />;
+    }
 
     if (isLoading) {
         return <LoadingScreen message="Loading page data..." />;

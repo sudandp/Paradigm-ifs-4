@@ -174,7 +174,7 @@ const approveUser = async (userId: string, newRole: string) => {
 const signInWithGoogle = async () => {
     // Determine the redirect URL.
     const origin = window.location.origin;
-    let redirectUrl = origin.endsWith('/') ? origin : `${origin}/`;
+    const redirectUrl = origin.endsWith('/') ? origin : `${origin}/`;
     
     console.log("Initiating Google Sign-In...");
     
@@ -257,7 +257,17 @@ const signInWithGoogle = async () => {
     });
 };
 
+let _isExplicitSignOut = false;
+
+const isExplicitSignOut = (): boolean => _isExplicitSignOut;
+
+const setExplicitSignOut = (val: boolean): void => {
+    _isExplicitSignOut = val;
+};
+
 const signOut = async (): Promise<void> => {
+    // Mark that this sign out was explicitly initiated by the user
+    _isExplicitSignOut = true;
     // Use scope:'local' to sign out ONLY from this app's session.
     // This does NOT invalidate the Google account or other devices/browsers.
     // The user can re-open the app on a different device and still be signed in there.
@@ -286,6 +296,8 @@ export const authService = {
     signUpWithPassword,
     signInWithGoogle,
     signOut,
+    isExplicitSignOut,
+    setExplicitSignOut,
     resetPasswordForEmail,
     updateUserPassword,
     approveUser,

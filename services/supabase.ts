@@ -34,65 +34,96 @@ if (!supabaseUrl || !supabaseAnonKey) {
     );
 }
 
+import { Capacitor } from '@capacitor/core';
+
 const isBrowser = typeof window !== 'undefined';
 const memStorage: Record<string, string> = {};
 
-// Custom storage adapter for Capacitor
-const CapacitorStorage = {
+/**
+ * Hybrid Dual-Layer Storage Adapter:
+ * 1. Synchronously reads/writes localStorage for fast, non-blocking UI startup.
+ * 2. Asynchronously reads/writes @capacitor/preferences (backed by Android SharedPreferences).
+ * 
+ * Why this is crucial for Android:
+ * Android OS can clear Chromium WebView localStorage when background memory is under pressure
+ * or when the app process recycles. Native SharedPreferences (Preferences) are PERMANENT and NEVER cleared
+ * by OS memory management.
+ * This adapter ensures session tokens are never lost, and if one store is missing tokens, it automatically
+ * restores from the other.
+ */
+const HybridAuthStorage = {
   getItem: async (key: string): Promise<string | null> => {
     if (!isBrowser) return memStorage[key] || null;
-    const { value } = await Preferences.get({ key });
-    return value;
-  },
-  setItem: async (key: string, value: string): Promise<void> => {
-    if (!isBrowser) {
-      memStorage[key] = value;
-      return;
-    }
-    await Preferences.set({ key, value });
-  },
-  removeItem: async (key: string): Promise<void> => {
-    if (!isBrowser) {
-      delete memStorage[key];
-      return;
-    }
-    await Preferences.remove({ key });
-  },
-};
-
-// Safe localStorage wrapper to handle browser quota limits (QuotaExceededError)
-const SafeLocalStorage = {
-  getItem: (key: string): string | null => {
+    
+    // 1. Check Capacitor Preferences (Native Persistent Storage)
     try {
-      return window.localStorage.getItem(key);
-    } catch {
-      return memStorage[key] || null;
+      const { value } = await Preferences.get({ key });
+      if (value) {
+        // Keep localStorage in sync
+        try { window.localStorage.setItem(key, value); } catch {
+          // Ignore localStorage sync errors in background
+        }
+        return value;
+      }
+    } catch (e) {
+      console.warn('[HybridAuthStorage] Preferences read notice:', e);
     }
+
+    // 2. Fallback to localStorage
+    try {
+      const localVal = window.localStorage.getItem(key);
+      if (localVal) {
+        // Re-persist to Preferences in background
+        Preferences.set({ key, value: localVal }).catch(() => {
+          // Ignore background re-persist error
+        });
+        return localVal;
+      }
+    } catch {
+      // Ignore localStorage read errors in restricted contexts
+    }
+
+    return memStorage[key] || null;
   },
-  setItem: (key: string, value: string): void => {
+
+  setItem: async (key: string, value: string): Promise<void> => {
+    memStorage[key] = value;
+    if (!isBrowser) return;
+
+    // Write to localStorage immediately
     try {
       window.localStorage.setItem(key, value);
     } catch (e: any) {
-      console.warn('[Storage Warning] localStorage quota exceeded or unavailable, falling back to memory/sessionStorage:', e?.message);
-      memStorage[key] = value;
-      try {
-        window.sessionStorage.setItem(key, value);
-      } catch {}
+      console.warn('[HybridAuthStorage] localStorage set warning:', e?.message);
+    }
+
+    // Write to Capacitor Preferences (Android SharedPreferences)
+    try {
+      await Preferences.set({ key, value });
+    } catch (e: any) {
+      console.warn('[HybridAuthStorage] Preferences set warning:', e?.message);
     }
   },
-  removeItem: (key: string): void => {
+
+  removeItem: async (key: string): Promise<void> => {
+    delete memStorage[key];
+    if (!isBrowser) return;
+
     try {
       window.localStorage.removeItem(key);
-    } catch {}
-    delete memStorage[key];
+    } catch {
+      // Ignore localStorage removal errors
+    }
+
     try {
-      window.sessionStorage.removeItem(key);
-    } catch {}
+      await Preferences.remove({ key });
+    } catch {
+      // Ignore Preferences removal errors
+    }
   },
 };
 
-const isNativePlatform = isBrowser && !!(window as any).Capacitor?.isNativePlatform();
-const authStorage = isNativePlatform ? CapacitorStorage : (isBrowser ? SafeLocalStorage : CapacitorStorage);
+const isNativePlatform = isBrowser && (Capacitor.isNativePlatform() || !!(window as any).Capacitor?.isNativePlatform());
 
 // Custom fetch wrapper with a 15-second timeout to prevent dead socket hangs on mobile
 const customFetch = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -115,8 +146,8 @@ export const supabase = createClient(resolvedUrl, resolvedAnonKey, {
     auth: {
         // Persist the session across reloads and tabs.
         persistSession: true,
-        // Use synchronous localStorage on Web, CapacitorStorage on Native Mobile
-        storage: authStorage, 
+        // Use Hybrid Dual-Layer Storage on both Web and Native Android
+        storage: HybridAuthStorage, 
         autoRefreshToken: true,
         detectSessionInUrl: true,
         // Use 'implicit' flow on Web (avoids PKCE code verifier storage issues on web redirects)

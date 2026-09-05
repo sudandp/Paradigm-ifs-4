@@ -204,16 +204,16 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
         if (!user || user.role === 'field_staff' || user.role === 'unverified') return;
         try {
             const role = (user.role || '').toLowerCase();
-            const isSuperAdmin = ['admin', 'super_admin', 'developer', 'management', 'director', 'operation_manager'].includes(role);
+            const isSuperAdmin = ['admin', 'super_admin', 'developer'].includes(role);
+            const isDirector = role === 'director' || role.includes('director');
             const isHR = ['hr', 'hr_ops'].includes(role);
+            const isFinanceRole = ['finance', 'finance_manager'].includes(role);
 
-            console.log('[Approvals] Fetching for role:', role, '| isSuperAdmin:', isSuperAdmin, '| isHR:', isHR, '| userId:', user.id);
+            console.log('[Approvals] Fetching for role:', role, '| isSuperAdmin:', isSuperAdmin, '| isDirector:', isDirector, '| isHR:', isHR, '| userId:', user.id);
 
             let leavesPromise;
             if (isSuperAdmin) {
                 leavesPromise = api.getLeaveRequests({ status: 'pending_manager_approval' });
-            } else if (isHR) {
-                leavesPromise = api.getLeaveRequests({ status: 'pending_manager_approval', forApproverId: user.id });
             } else {
                 leavesPromise = api.getLeaveRequests({ 
                     status: 'pending_manager_approval',
@@ -235,6 +235,8 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                 })();
             }
 
+            const fetchInvoices = !isDirector && (isSuperAdmin || isFinanceRole);
+
             const [unlocksResult, leavesResult, claimsResult, financeResult, invoicesResult, reportAccessResult] = await Promise.allSettled([
                 api.getAttendanceUnlockRequests(isSuperAdmin ? undefined : user.id),
                 leavesPromise,
@@ -243,7 +245,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                     managerId: isSuperAdmin ? undefined : user.id 
                 }),
                 api.getPendingFinanceRecords(financeManagerId),
-                api.getSiteInvoiceRecords(financeManagerId),
+                fetchInvoices ? api.getSiteInvoiceRecords(financeManagerId) : Promise.resolve([]),
                 reportAccessPromise
             ]);
 
@@ -263,12 +265,14 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                 setInvoiceAlerts((invoicesResult.value || []).filter(inv => 
                     !inv.invoiceSentDate && inv.invoiceSharingTentativeDate && inv.invoiceSharingTentativeDate <= today
                 ));
+            } else {
+                setInvoiceAlerts([]);
             }
             if (reportAccessResult.status === 'fulfilled') {
                 setReportAccessRequests(reportAccessResult.value as any[]);
             }
 
-            if (isSuperAdmin || isHR) {
+            if (!isDirector && (isSuperAdmin || isHR)) {
                 const allScores = await calculateAllEmployeeScores();
                 setInactiveEmployees(allScores.filter(e => e.scores.performanceScore === 0 && e.scores.attendanceScore === 0 && e.scores.responseScore === 0));
             } else {
@@ -276,7 +280,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
             }
 
             // Fetch verified onboarding submissions pending FCU acknowledgment
-            if (isSuperAdmin || isHR) {
+            if (!isDirector && (isSuperAdmin || isHR)) {
                 try {
                     const pendingOnboarding = await api.getVerifiedOnboardingForApproval();
                     setOnboardingApprovals(pendingOnboarding);
@@ -733,8 +737,8 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
 
     const isUserAdmin = user && isAdmin(user.role);
     const pendingCount = isManagerRole 
-        ? (unlockRequests.length + leaveRequests.length + extraWorkClaims.length + financeRequests.length + inactiveEmployees.length + securityViolations.length + invoiceAlerts.length + teamActivityNotifications.length + onboardingApprovals.length + (isUserAdmin ? reportAccessRequests.length : 0)) 
-        : (securityViolations.length + invoiceAlerts.length);
+        ? (unlockRequests.length + leaveRequests.length + extraWorkClaims.length + financeRequests.length + onboardingApprovals.length + inactiveEmployees.length + invoiceAlerts.length + (isUserAdmin ? reportAccessRequests.length : 0)) 
+        : invoiceAlerts.length;
 
     if (!isOpen) return null;
 
@@ -765,7 +769,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                     )}
                     <button
                         onClick={onClose}
-                        className={`p-2 rounded-xl transition-all ${isMobile ? 'text-white/70 hover:text-white hover:bg-white/10' : 'text-muted hover:text-primary-text hover:bg-page'}`}
+                        className={`p-1.5 rounded-lg transition-colors ${isMobile ? 'text-white/70 hover:text-white hover:bg-white/10' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
                     >
                         <X className="h-5 w-5" />
                     </button>
@@ -778,7 +782,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                 className={`flex-1 overflow-y-auto custom-scrollbar ${isMobile ? 'bg-[#0A3D2E]' : 'bg-white'}`}
             >
                 {/* Pending Approvals Section */}
-                {(pendingCount > 0) && (
+                {(pendingCount > 0 || securityViolations.length > 0 || teamActivityNotifications.length > 0) && (
                     <div className={`border-b ${isMobile ? 'border-white/10 bg-gradient-to-b from-white/5 to-transparent' : 'border-gray-100 bg-amber-50/30'}`}>
                         <div className="px-6 py-4 flex items-center justify-between">
                             <div className="flex items-center gap-2">
@@ -795,6 +799,690 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                         </div>
 
                         <div className="px-4 pb-4 space-y-3">
+                            {/* Leave Requests */}
+                            {leaveRequests.length > 0 && (
+                                <div className={`group rounded-2xl overflow-hidden transition-all duration-300 border ${isMobile ? 'border-white/10 bg-transparent' : 'border-orange-100 bg-white hover:shadow-md'}`}>
+                                    <button 
+                                        onClick={() => toggleSection('leaves')}
+                                        className="w-full p-3 flex items-center justify-between bg-transparent"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className={`p-2 rounded-xl flex items-center justify-center ${isMobile ? 'bg-orange-500/20 text-orange-400' : 'bg-orange-100 text-orange-600'}`}>
+                                                <Calendar className="w-4 h-4" />
+                                            </div>
+                                            <div className="text-left">
+                                                <p className={`text-xs font-bold ${isMobile ? 'text-white' : 'text-gray-900'}`}>Leave Requests</p>
+                                                <p className={`text-[10px] ${isMobile ? 'text-white/50' : 'text-gray-500'}`}>Approvals needed</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className={`flex h-5 min-w-[20px] px-1.5 items-center justify-center rounded-full text-[10px] font-bold ${isMobile ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.4)]' : 'bg-orange-100 text-orange-700'}`}>
+                                                {leaveRequests.length}
+                                            </span>
+                                            {expandedSections.leaves ? <ChevronUp className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} /> : <ChevronDown className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} />}
+                                        </div>
+                                    </button>
+                                    
+                                    {expandedSections.leaves && (
+                                        <div className={`p-3 space-y-3 border-t ${isMobile ? 'border-white/5' : 'border-orange-100/50'}`}>
+                                            <div className="flex items-center gap-2 px-1 py-1">
+                                                <AlertTriangle className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
+                                                <span className={`text-[10px] font-black uppercase tracking-wider ${isMobile ? 'text-amber-400' : 'text-amber-700'}`}>
+                                                    Attention: Leave Verification
+                                                </span>
+                                            </div>
+                                            {leaveRequests.map(req => (
+                                                <div key={req.id} className={`rounded-xl p-3 border ${isMobile ? 'bg-black/20 border-white/5' : 'bg-orange-50/30 border-orange-100'}`}>
+                                                    <div className="flex items-center gap-3 mb-3">
+                                                        <div className={`overflow-hidden rounded-lg flex-shrink-0 w-8 h-8 ${isMobile ? 'bg-white/10' : 'bg-gray-100'}`}>
+                                                            <ProfilePlaceholder 
+                                                                className="w-8 h-8"
+                                                                photoUrl={req.userPhotoUrl}
+                                                                seed={req.userId}
+                                                            />
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center justify-between">
+                                                                <p className={`text-xs font-bold truncate ${isMobile ? 'text-white' : 'text-gray-900'}`}>{req.userName}</p>
+                                                                <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-orange-500/10 text-orange-500 border border-orange-500/20`}>{req.leaveType}</span>
+                                                            </div>
+                                                            <p className={`text-[9px] ${isMobile ? 'text-white/50' : 'text-orange-700/60'}`}>
+                                                                {format(parseISO(req.startDate), 'dd MMM')} - {format(parseISO(req.endDate), 'dd MMM')}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    <div className={`rounded-lg p-2.5 border mb-3 ${isMobile ? 'bg-black/20 border-white/5' : 'bg-white border-orange-100/50'}`}>
+                                                        <p className={`text-[11px] italic leading-relaxed ${isMobile ? 'text-white/70' : 'text-gray-700'}`}>"{req.reason}"</p>
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <Button 
+                                                            size="sm" 
+                                                            variant="outline"
+                                                            className={`flex-1 text-[9px] uppercase font-bold h-8 ${isMobile ? 'border-white/10 text-white hover:bg-white/5' : 'border-orange-200 text-orange-700 hover:bg-orange-50'}`}
+                                                            onClick={() => {
+                                                                onClose();
+                                                                navigate(`/hr/leave-management?employeeId=${req.userId}`);
+                                                            }}
+                                                        >
+                                                            <FileText className="w-3 h-3 mr-1" /> Direct
+                                                        </Button>
+                                                        <Button 
+                                                            size="sm" 
+                                                            disabled={isActionLoading === req.id}
+                                                            className="flex-1 bg-orange-600 hover:bg-orange-700 border-none text-[9px] uppercase font-bold h-8 shadow-lg shadow-orange-900/20"
+                                                            onClick={() => handleRespondToLeave(req.id, req.status === 'pending_hr_confirmation' ? 'confirm' : 'approve')}
+                                                        >
+                                                            <CheckCircle className="w-3 h-3 mr-1" /> {req.status === 'pending_hr_confirmation' ? 'Confirm' : 'Approve'}
+                                                        </Button>
+                                                        <Button 
+                                                            size="sm" 
+                                                            variant="outline"
+                                                            disabled={isActionLoading === req.id}
+                                                            className={`flex-1 text-[9px] uppercase font-bold h-8 ${isMobile ? 'border-white/10 text-white hover:bg-white/5' : 'border-orange-200 text-orange-700 hover:bg-orange-50'}`}
+                                                            onClick={() => handleRespondToLeave(req.id, 'reject')}
+                                                        >
+                                                            <XCircle className="w-3 h-3 mr-1" /> Reject
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Attendance Unlock Requests */}
+                            {unlockRequests.length > 0 && (
+                                <div className={`group rounded-2xl overflow-hidden transition-all duration-300 border ${isMobile ? 'border-white/10 bg-transparent' : 'border-emerald-100 bg-white hover:shadow-md'}`}>
+                                    <button 
+                                        onClick={() => toggleSection('unlocks')}
+                                        className="w-full p-3 flex items-center justify-between bg-transparent"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className={`p-2 rounded-xl flex items-center justify-center ${isMobile ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-100 text-emerald-600'}`}>
+                                                <MapPin className="w-4 h-4" />
+                                            </div>
+                                            <div className="text-left">
+                                                <p className={`text-xs font-bold ${isMobile ? 'text-white' : 'text-gray-900'}`}>Punch In Requests</p>
+                                                <p className={`text-[10px] ${isMobile ? 'text-white/50' : 'text-gray-500'}`}>Approvals needed</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className={`flex h-5 min-w-[20px] px-1.5 items-center justify-center rounded-full text-[10px] font-bold ${isMobile ? 'bg-emerald-500 text-black shadow-[0_0_10px_rgba(16,185,129,0.4)]' : 'bg-emerald-100 text-emerald-700'}`}>
+                                                {unlockRequests.length}
+                                            </span>
+                                            {expandedSections.unlocks ? <ChevronUp className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} /> : <ChevronDown className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} />}
+                                        </div>
+                                    </button>
+                                    
+                                    {expandedSections.unlocks && (
+                                        <div className={`p-3 space-y-3 border-t ${isMobile ? 'border-white/5' : 'border-emerald-100/50'}`}>
+                                            <div className="flex items-center gap-2 px-1 py-1">
+                                                <AlertTriangle className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
+                                                <span className={`text-[10px] font-black uppercase tracking-wider ${isMobile ? 'text-amber-400' : 'text-amber-700'}`}>
+                                                    Attention: Approval Required
+                                                </span>
+                                            </div>
+                                            {unlockRequests.map(req => (
+                                                <div key={req.id} className={`rounded-xl p-3 border ${isMobile ? 'bg-black/20 border-white/5' : 'bg-emerald-50/30 border-emerald-100'}`}>
+                                                    <div className="flex items-center gap-3 mb-3">
+                                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isMobile ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-100 text-emerald-600'}`}>
+                                                            <UserPlus className="w-4 h-4" />
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center justify-between">
+                                                                <p className={`text-xs font-bold truncate ${isMobile ? 'text-white' : 'text-gray-900'}`}>{req.userName}</p>
+                                                                <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-500 border border-emerald-500/20`}>Unlock</span>
+                                                            </div>
+                                                            <p className={`text-[9px] ${isMobile ? 'text-white/50' : 'text-emerald-700/60'}`}>{formatDistanceToNow(parseISO(req.requestedAt), { addSuffix: true })}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className={`rounded-lg p-2.5 border mb-3 ${isMobile ? 'bg-black/20 border-white/5' : 'bg-white border-emerald-100/50'}`}>
+                                                        <p className={`text-[11px] italic leading-relaxed ${isMobile ? 'text-white/70' : 'text-gray-700'}`}>"{req.reason}"</p>
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <Button 
+                                                            size="sm" 
+                                                            disabled={isActionLoading === req.id}
+                                                            className="flex-1 bg-emerald-600 hover:bg-emerald-700 border-none text-[9px] uppercase font-bold h-8 shadow-lg shadow-emerald-900/20"
+                                                            onClick={() => handleRespondToUnlock(req.id, 'approved')}
+                                                        >
+                                                            <CheckCircle className="w-3 h-3 mr-1" /> Approve
+                                                        </Button>
+                                                        <Button 
+                                                            size="sm" 
+                                                            variant="outline"
+                                                            disabled={isActionLoading === req.id}
+                                                            className={`flex-1 text-[9px] uppercase font-bold h-8 ${isMobile ? 'border-white/10 text-white hover:bg-white/5' : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'}`}
+                                                            onClick={() => handleRespondToUnlock(req.id, 'rejected')}
+                                                        >
+                                                            <XCircle className="w-3 h-3 mr-1" /> Reject
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Extra Work Claims */}
+                            {extraWorkClaims.length > 0 && (
+                                <div className={`group rounded-2xl overflow-hidden transition-all duration-300 border ${isMobile ? 'border-white/10 bg-transparent' : 'border-blue-100 bg-white hover:shadow-md'}`}>
+                                    <button 
+                                        onClick={() => toggleSection('claims')}
+                                        className="w-full p-3 flex items-center justify-between bg-transparent"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className={`p-2 rounded-xl flex items-center justify-center ${isMobile ? 'bg-blue-500/20 text-blue-400' : 'bg-blue-100 text-blue-600'}`}>
+                                                <FileText className="w-4 h-4" />
+                                            </div>
+                                            <div className="text-left">
+                                                <p className={`text-xs font-bold ${isMobile ? 'text-white' : 'text-gray-900'}`}>Extra Work Claims</p>
+                                                <p className={`text-[10px] ${isMobile ? 'text-white/50' : 'text-gray-500'}`}>Review claims</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className={`flex h-5 min-w-[20px] px-1.5 items-center justify-center rounded-full text-[10px] font-bold ${isMobile ? 'bg-blue-500 text-black shadow-[0_0_10px_rgba(59,130,246,0.4)]' : 'bg-blue-100 text-blue-700'}`}>
+                                                {extraWorkClaims.length}
+                                            </span>
+                                            {expandedSections.claims ? <ChevronUp className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} /> : <ChevronDown className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} />}
+                                        </div>
+                                    </button>
+                                    
+                                    {expandedSections.claims && (
+                                        <div className={`p-3 space-y-3 border-t ${isMobile ? 'border-white/5' : 'border-blue-100/50'}`}>
+                                            <div className="flex items-center gap-2 px-1 py-1">
+                                                <AlertTriangle className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
+                                                <span className={`text-[10px] font-black uppercase tracking-wider ${isMobile ? 'text-amber-400' : 'text-amber-700'}`}>
+                                                    Attention: Extra Work Review
+                                                </span>
+                                            </div>
+                                            {extraWorkClaims.map(claim => (
+                                                <div key={claim.id} className={`rounded-xl p-3 border ${isMobile ? 'bg-black/20 border-white/5' : 'bg-blue-50/30 border-blue-100'}`}>
+                                                    <div className="flex items-center gap-3 mb-3">
+                                                        <div className={`overflow-hidden rounded-lg flex-shrink-0 w-8 h-8 ${isMobile ? 'bg-white/10' : 'bg-gray-100'}`}>
+                                                            <ProfilePlaceholder 
+                                                                className="w-8 h-8"
+                                                                photoUrl={claim.userPhotoUrl}
+                                                                seed={claim.userId}
+                                                            />
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center justify-between">
+                                                                <p className={`text-xs font-bold truncate ${isMobile ? 'text-white' : 'text-gray-900'}`}>{claim.userName}</p>
+                                                                <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500 border border-blue-500/20`}>{claim.claimType}</span>
+                                                            </div>
+                                                            <p className={`text-[9px] ${isMobile ? 'text-white/50' : 'text-blue-700/60'}`}>{format(parseISO(claim.workDate), 'dd MMM yyyy')}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className={`rounded-lg p-2.5 border mb-3 ${isMobile ? 'bg-black/20 border-white/5' : 'bg-white border-blue-100/50'}`}>
+                                                        <p className={`text-[11px] italic leading-relaxed ${isMobile ? 'text-white/70' : 'text-gray-700'}`}>"{claim.reason}"</p>
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <Button 
+                                                            size="sm" 
+                                                            disabled={isActionLoading === claim.id}
+                                                            className="flex-1 bg-blue-600 hover:bg-blue-700 border-none text-[9px] uppercase font-bold h-8 shadow-lg shadow-blue-900/20"
+                                                            onClick={() => handleRespondToClaim(claim.id, 'approve')}
+                                                        >
+                                                            <CheckCircle className="w-3 h-3 mr-1" /> Approve
+                                                        </Button>
+                                                        <Button 
+                                                            size="sm" 
+                                                            variant="outline"
+                                                            disabled={isActionLoading === claim.id}
+                                                            className={`flex-1 text-[9px] uppercase font-bold h-8 ${isMobile ? 'border-white/10 text-white hover:bg-white/5' : 'border-blue-200 text-blue-700 hover:bg-blue-50'}`}
+                                                            onClick={() => handleRespondToClaim(claim.id, 'reject')}
+                                                        >
+                                                            <XCircle className="w-3 h-3 mr-1" /> Reject
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Finance Requests */}
+                            {financeRequests.length > 0 && (
+                                <div className={`group rounded-2xl overflow-hidden transition-all duration-300 border ${isMobile ? 'border-white/10 bg-transparent' : 'border-rose-100 bg-white hover:shadow-md'}`}>
+                                    <button 
+                                        onClick={() => toggleSection('finance')}
+                                        className="w-full p-3 flex items-center justify-between bg-transparent"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className={`p-2 rounded-xl flex items-center justify-center ${isMobile ? 'bg-rose-500/20 text-rose-400' : 'bg-rose-100 text-rose-600'}`}>
+                                                <IndianRupee className="w-4 h-4" />
+                                            </div>
+                                            <div className="text-left">
+                                                <p className={`text-xs font-bold ${isMobile ? 'text-white' : 'text-gray-900'}`}>Tracker Updates</p>
+                                                <p className={`text-[10px] ${isMobile ? 'text-white/50' : 'text-gray-500'}`}>Review updates</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className={`flex h-5 min-w-[20px] px-1.5 items-center justify-center rounded-full text-[10px] font-bold ${isMobile ? 'bg-rose-500 text-black shadow-[0_0_10px_rgba(244,63,94,0.4)]' : 'bg-rose-100 text-rose-700'}`}>
+                                                {financeRequests.length}
+                                            </span>
+                                            {expandedSections.finance ? <ChevronUp className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} /> : <ChevronDown className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} />}
+                                        </div>
+                                    </button>
+                                    
+                                    {expandedSections.finance && (
+                                        <div className={`p-3 space-y-3 border-t ${isMobile ? 'border-white/5' : 'border-rose-100/50'}`}>
+                                            <div className="flex items-center gap-2 px-1 py-1">
+                                                <AlertTriangle className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
+                                                <span className={`text-[10px] font-black uppercase tracking-wider ${isMobile ? 'text-amber-400' : 'text-amber-700'}`}>
+                                                    Attention: Tracker Approval Required
+                                                </span>
+                                            </div>
+                                            {financeRequests.map(req => (
+                                                <div key={req.id} className={`rounded-xl p-3 border ${isMobile ? 'bg-black/20 border-white/5' : 'bg-rose-50/30 border-rose-100'}`}>
+                                                    <div className="flex items-center gap-3 mb-3">
+                                                        <div className={`overflow-hidden rounded-lg flex-shrink-0 w-8 h-8 ${isMobile ? 'bg-white/10' : 'bg-gray-100'}`}>
+                                                            <ProfilePlaceholder 
+                                                                className="w-8 h-8"
+                                                                seed={req.createdBy}
+                                                            />
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center justify-between">
+                                                                <p className={`text-xs font-bold truncate ${isMobile ? 'text-white' : 'text-gray-900'}`}>{req.createdByName}</p>
+                                                                <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-500 border border-rose-500/20`}>Tracker</span>
+                                                            </div>
+                                                            <div className="flex items-center justify-between mt-0.5">
+                                                                <p className={`text-[9px] ${isMobile ? 'text-white/50' : 'text-rose-700/60'}`}>
+                                                                    {req.createdByRole ? (
+                                                                        <span className="uppercase tracking-tighter mr-2">{req.createdByRole.replace('_', ' ')}</span>
+                                                                    ) : null}
+                                                                    {req.createdAt && format(parseISO(req.createdAt), 'dd MMM, hh:mm a')}
+                                                                </p>
+                                                                <span className="text-[10px] font-bold text-gray-900">
+                                                                    ₹{(req.totalBilledAmount || (req.billedAmount + req.billedManagementFee)).toLocaleString()}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className={`rounded-lg p-2.5 border mb-3 ${isMobile ? 'bg-black/20 border-white/5' : 'bg-white border-rose-100/50'}`}>
+                                                      <p className={`text-[11px] font-bold ${isMobile ? 'text-white/90' : 'text-gray-900'}`}>{req.siteName}</p>
+                                                      <p className={`text-[10px] italic leading-relaxed ${isMobile ? 'text-white/70' : 'text-gray-600'}`}>{req.remarks || 'No remarks provided'}</p>
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <Button 
+                                                            size="sm" 
+                                                            disabled={isActionLoading === req.id}
+                                                            className="flex-1 bg-rose-600 hover:bg-rose-700 border-none text-[9px] uppercase font-bold h-8 shadow-lg shadow-rose-900/20"
+                                                            onClick={() => handleRespondToFinance(req.id, 'approved')}
+                                                        >
+                                                            <CheckCircle className="w-3 h-3 mr-1" /> Approve
+                                                        </Button>
+                                                        <Button 
+                                                            size="sm" 
+                                                            variant="outline"
+                                                            disabled={isActionLoading === req.id}
+                                                            className={`flex-1 text-[9px] uppercase font-bold h-8 ${isMobile ? 'border-white/10 text-white hover:bg-white/5' : 'border-rose-200 text-rose-700 hover:bg-rose-50'}`}
+                                                            onClick={() => handleRespondToFinance(req.id, 'rejected')}
+                                                        >
+                                                            <XCircle className="w-3 h-3 mr-1" /> Reject
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Report Access Requests */}
+                            {isUserAdmin && reportAccessRequests.length > 0 && (
+                                <div className={`group rounded-2xl overflow-hidden transition-all duration-300 border ${isMobile ? 'border-white/10 bg-transparent' : 'border-emerald-100 bg-white hover:shadow-md'}`}>
+                                    <button 
+                                        onClick={() => toggleSection('reportAccess')}
+                                        className="w-full p-3 flex items-center justify-between bg-transparent"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className={`p-2 rounded-xl flex items-center justify-center ${isMobile ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-100 text-emerald-600'}`}>
+                                                <Key className="w-4 h-4" />
+                                            </div>
+                                            <div className="text-left">
+                                                <p className={`text-xs font-bold ${isMobile ? 'text-white' : 'text-gray-900'}`}>Report Access Requests</p>
+                                                <p className={`text-[10px] ${isMobile ? 'text-white/50' : 'text-gray-500'}`}>Approvals needed</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className={`flex h-5 min-w-[20px] px-1.5 items-center justify-center rounded-full text-[10px] font-bold ${isMobile ? 'bg-emerald-500 text-black shadow-[0_0_10px_rgba(16,185,129,0.4)]' : 'bg-emerald-100 text-emerald-700'}`}>
+                                                {reportAccessRequests.filter(r => r.status === 'Pending').length}
+                                            </span>
+                                            {expandedSections.reportAccess ? <ChevronUp className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} /> : <ChevronDown className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} />}
+                                        </div>
+                                    </button>
+                                    
+                                    {expandedSections.reportAccess && (
+                                        <div className={`p-3 space-y-3 border-t ${isMobile ? 'border-white/5' : 'border-emerald-100/50'}`}>
+                                            <div className="flex items-center gap-2 px-1 py-1">
+                                                <AlertTriangle className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
+                                                <span className={`text-[10px] font-black uppercase tracking-wider ${isMobile ? 'text-amber-400' : 'text-amber-700'}`}>
+                                                    Attention: Report Unlock Required
+                                                </span>
+                                            </div>
+                                            {reportAccessRequests.map(req => (
+                                                <div key={req.id} className={`rounded-xl p-3 border ${isMobile ? 'bg-black/20 border-white/5' : 'bg-emerald-50/30 border-emerald-100'}`}>
+                                                    <div className="flex items-center gap-3 mb-3">
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center justify-between">
+                                                                <p className={`text-xs font-bold truncate ${isMobile ? 'text-white' : 'text-gray-900'}`}>{req.requestedByName || 'Employee'}</p>
+                                                                <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded ${req.status === 'Approved' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' : req.status === 'Rejected' ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20' : 'bg-amber-500/10 text-amber-500 border border-amber-500/20'}`}>
+                                                                    {req.status}
+                                                                </span>
+                                                            </div>
+                                                            <p className={`text-[9px] ${isMobile ? 'text-white/50' : 'text-emerald-700/60'}`}>{req.title}</p>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Reason/Comments for Request */}
+                                                    <div className={`rounded-lg p-2.5 border mb-3 ${isMobile ? 'bg-black/20 border-white/5' : 'bg-white border-emerald-100/50'}`}>
+                                                        <p className={`text-[11px] italic leading-relaxed ${isMobile ? 'text-white/70' : 'text-gray-700'}`}>
+                                                            "{(req.status === 'Pending' ? req.comments : extractReason(req.comments)) || 'No reason provided'}"
+                                                        </p>
+                                                    </div>
+
+                                                    {req.status === 'Pending' ? (
+                                                        <div className="flex gap-2">
+                                                            <Button 
+                                                                size="sm" 
+                                                                disabled={isActionLoading === req.id}
+                                                                className="flex-1 bg-emerald-600 hover:bg-emerald-700 border-none text-[9px] uppercase font-bold h-8 shadow-lg shadow-emerald-900/20"
+                                                                onClick={() => handleRespondToReportAccess(req.id, 'Approved')}
+                                                            >
+                                                                Approve
+                                                            </Button>
+                                                            <Button 
+                                                                size="sm" 
+                                                                variant="outline"
+                                                                disabled={isActionLoading === req.id}
+                                                                className={`flex-1 text-[9px] uppercase font-bold h-8 ${isMobile ? 'border-white/10 text-white hover:bg-white/5' : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'}`}
+                                                                onClick={() => handleRejectClick(req.id)}
+                                                            >
+                                                                Reject
+                                                            </Button>
+                                                        </div>
+                                                    ) : req.status === 'Approved' ? (
+                                                        <div className="space-y-3">
+                                                            <div className="p-2.5 bg-emerald-500/5 border border-emerald-500/10 rounded-xl flex items-center justify-between">
+                                                                <div className="text-left">
+                                                                    <p className="text-[9px] uppercase font-bold tracking-wider text-emerald-500/70">Passcode</p>
+                                                                    <p className="text-sm font-black text-emerald-500 font-mono tracking-widest">
+                                                                        {extractPasscode(req.comments) || generateDeterministicPasscode(req.id)}
+                                                                    </p>
+                                                                </div>
+                                                                <Button 
+                                                                    size="sm"
+                                                                    className="bg-emerald-600 hover:bg-emerald-700 text-[9px] uppercase font-bold h-7 py-0 px-3 border-none text-white"
+                                                                    onClick={() => handleSharePasscode(req)}
+                                                                >
+                                                                    Share / Send
+                                                                </Button>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="p-2 bg-rose-500/5 border border-rose-500/10 rounded-xl">
+                                                            <p className="text-[9px] uppercase font-bold tracking-wider text-rose-500/70">Rejection Reason</p>
+                                                            <p className="text-xs text-rose-500 font-medium italic">
+                                                                {req.comments?.split('|')[0] || 'Rejected'}
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Onboarding Approvals - AI Verified, pending FCU acknowledgment */}
+                            {onboardingApprovals.length > 0 && (
+                                <div className={`group rounded-2xl overflow-hidden transition-all duration-300 border ${isMobile ? 'border-teal-500/30 bg-teal-500/5' : 'border-teal-100 bg-white hover:shadow-md'}`}>
+                                    <button 
+                                        onClick={() => toggleSection('onboarding')}
+                                        className="w-full p-3 flex items-center justify-between bg-transparent"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className={`p-2 rounded-xl flex items-center justify-center ${isMobile ? 'bg-teal-500/20 text-teal-400 shadow-[0_0_10px_rgba(20,184,166,0.2)]' : 'bg-teal-100 text-teal-600'}`}>
+                                                <UserPlus className="w-4 h-4" />
+                                            </div>
+                                            <div className="text-left">
+                                                <p className={`text-xs font-bold ${isMobile ? 'text-white' : 'text-gray-900'}`}>Onboarding Approvals</p>
+                                                <p className={`text-[10px] ${isMobile ? 'text-teal-400' : 'text-teal-500'}`}>AI Verified — Acknowledge for FCU</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className={`flex h-5 min-w-[20px] px-1.5 items-center justify-center rounded-full text-[10px] font-bold ${isMobile ? 'bg-teal-500 text-white shadow-[0_0_10px_rgba(20,184,166,0.4)]' : 'bg-teal-100 text-teal-700'}`}>
+                                                {onboardingApprovals.length}
+                                            </span>
+                                            {expandedSections.onboarding ? <ChevronUp className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} /> : <ChevronDown className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} />}
+                                        </div>
+                                    </button>
+                                    
+                                    {expandedSections.onboarding && (
+                                        <div className={`p-3 space-y-3 border-t ${isMobile ? 'border-teal-500/10' : 'border-teal-100/50'}`}>
+                                            <div className="flex items-center gap-2 px-1 py-1">
+                                                <CheckCircle className="w-3.5 h-3.5 text-teal-500" />
+                                                <span className={`text-[10px] font-black uppercase tracking-wider ${isMobile ? 'text-teal-400' : 'text-teal-700'}`}>
+                                                    Documents Verified — Start Field Check
+                                                </span>
+                                            </div>
+                                            {onboardingApprovals.map(sub => {
+                                                const candidateName = `${(sub.personal as any)?.firstName || ''} ${(sub.personal as any)?.lastName || ''}`.trim() || 'Candidate';
+                                                const empId = (sub.personal as any)?.employeeId || sub.id?.slice(0, 8) || '';
+                                                const siteName = sub.organizationName || (sub.organization as any)?.organizationName || '';
+                                                const designation = (sub.organization as any)?.designation || '';
+                                                const verifiedAt = sub.verifiedAt || (sub as any)?.verified_at;
+                                                const verifiedBy = sub.verifiedBy || (sub as any)?.verified_by || 'AI Agent';
+                                                
+                                                return (
+                                                    <div key={sub.id} className={`rounded-xl p-3 border ${isMobile ? 'bg-black/20 border-white/5' : 'bg-teal-50/30 border-teal-100'}`}>
+                                                        <div className="flex items-center gap-3 mb-3">
+                                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isMobile ? 'bg-teal-500/20 text-teal-400' : 'bg-teal-100 text-teal-600'}`}>
+                                                                <UserPlus className="w-4 h-4" />
+                                                            </div>
+                                                            <div className="flex-1 min-w-0">
+                                                                <div className="flex items-center justify-between">
+                                                                    <p className={`text-xs font-bold truncate ${isMobile ? 'text-white' : 'text-gray-900'}`}>{candidateName}</p>
+                                                                    <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-teal-500/10 text-teal-500 border border-teal-500/20">
+                                                                        {empId}
+                                                                    </span>
+                                                                </div>
+                                                                <p className={`text-[9px] ${isMobile ? 'text-white/50' : 'text-teal-700/60'}`}>
+                                                                    {designation}{siteName ? ` · ${siteName}` : ''}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <div className={`grid grid-cols-2 gap-2 mb-3`}>
+                                                            <div className={`rounded-lg p-2 ${isMobile ? 'bg-black/20' : 'bg-white/50 border border-teal-100/50'}`}>
+                                                                <p className={`text-[8px] uppercase font-bold mb-0.5 ${isMobile ? 'text-white/40' : 'text-gray-400'}`}>Verified By</p>
+                                                                <p className={`text-[10px] font-bold ${isMobile ? 'text-white/80' : 'text-gray-700'}`}>
+                                                                    {verifiedBy === 'Paradigm AI Agent' ? '🤖 AI Agent' : verifiedBy}
+                                                                </p>
+                                                            </div>
+                                                            <div className={`rounded-lg p-2 ${isMobile ? 'bg-black/20' : 'bg-white/50 border border-teal-100/50'}`}>
+                                                                <p className={`text-[8px] uppercase font-bold mb-0.5 ${isMobile ? 'text-white/40' : 'text-gray-400'}`}>Verified On</p>
+                                                                <p className={`text-[10px] font-bold ${isMobile ? 'text-white/80' : 'text-gray-700'}`}>
+                                                                    {verifiedAt ? format(parseISO(verifiedAt), 'dd MMM yyyy, hh:mm a') : '—'}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex gap-2">
+                                                            <Button 
+                                                                size="sm" 
+                                                                disabled={isActionLoading === sub.id}
+                                                                className="flex-1 bg-teal-600 hover:bg-teal-700 border-none text-[9px] uppercase font-bold h-8 shadow-lg shadow-teal-900/20"
+                                                                onClick={() => sub.id && handleAcknowledgeOnboarding(sub.id)}
+                                                            >
+                                                                <CheckCircle className="w-3 h-3 mr-1" /> Acknowledge & Start FCU
+                                                            </Button>
+                                                            <Button 
+                                                                size="sm" 
+                                                                variant="outline"
+                                                                className={`flex-1 text-[9px] uppercase font-bold h-8 ${isMobile ? 'border-white/10 text-white hover:bg-white/5' : 'border-teal-200 text-teal-700 hover:bg-teal-50'}`}
+                                                                onClick={() => {
+                                                                    onClose();
+                                                                    navigate(`/onboarding/review/${sub.id}`);
+                                                                }}
+                                                            >
+                                                                <FileText className="w-3 h-3 mr-1" /> View Details
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Invoice Alerts */}
+                            {invoiceAlerts.length > 0 && (
+                                <div className={`group rounded-2xl overflow-hidden transition-all duration-300 border ${isMobile ? 'border-white/10 bg-transparent' : 'border-amber-100 bg-white hover:shadow-md'}`}>
+                                    <button 
+                                        onClick={() => toggleSection('invoices')}
+                                        className="w-full p-3 flex items-center justify-between bg-transparent"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className={`p-2 rounded-xl flex items-center justify-center ${isMobile ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-100 text-amber-600'}`}>
+                                                <IndianRupee className="w-4 h-4" />
+                                            </div>
+                                            <div className="text-left">
+                                                <p className={`text-xs font-bold ${isMobile ? 'text-white' : 'text-gray-900'}`}>Invoice Alerts</p>
+                                                <p className={`text-[10px] ${isMobile ? 'text-white/50' : 'text-gray-500'}`}>Due for sharing</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className={`flex h-5 min-w-[20px] px-1.5 items-center justify-center rounded-full text-[10px] font-bold ${isMobile ? 'bg-amber-500 text-black shadow-[0_0_10px_rgba(245,158,11,0.4)]' : 'bg-amber-100 text-amber-700'}`}>
+                                                {invoiceAlerts.length}
+                                            </span>
+                                            {expandedSections.invoices ? <ChevronUp className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} /> : <ChevronDown className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} />}
+                                        </div>
+                                    </button>
+                                    
+                                    {expandedSections.invoices && (
+                                        <div className={`p-3 space-y-3 border-t ${isMobile ? 'border-white/5' : 'border-amber-100/50'}`}>
+                                            <div className="flex items-center gap-2 px-1 py-1">
+                                                <AlertTriangle className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
+                                                <span className={`text-[10px] font-black uppercase tracking-wider ${isMobile ? 'text-amber-400' : 'text-amber-700'}`}>
+                                                    Warning: Invoices Due for Sharing
+                                                </span>
+                                            </div>
+                                            {invoiceAlerts.map(inv => (
+                                                <div key={inv.id} className={`rounded-xl p-3 border ${isMobile ? 'bg-black/20 border-white/5' : 'bg-amber-50/30 border-amber-100'}`}>
+                                                    <div className="flex items-center gap-3 mb-3">
+                                                        <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center font-bold text-amber-700 overflow-hidden relative text-xs">
+                                                            {inv.siteName.charAt(0)}
+                                                            <IndianRupee className="w-4 h-4" />
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center justify-between">
+                                                                <p className={`text-xs font-bold truncate ${isMobile ? 'text-white' : 'text-gray-900'}`}>{inv.siteName}</p>
+                                                                <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/20`}>Due</span>
+                                                            </div>
+                                                            <p className={`text-[9px] ${isMobile ? 'text-white/50' : 'text-amber-700/60'}`}>
+                                                                Tentative: {inv.invoiceSharingTentativeDate ? format(parseISO(inv.invoiceSharingTentativeDate), 'dd MMM yyyy') : 'N/A'}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    <Button 
+                                                        size="sm" 
+                                                        className="w-full bg-amber-600 hover:bg-amber-700 border-none text-[9px] uppercase font-bold h-8 shadow-lg shadow-amber-900/20"
+                                                        onClick={() => {
+                                                            navigate('/finance?tab=attendance');
+                                                            onClose();
+                                                        }}
+                                                    >
+                                                        View Tracker
+                                                    </Button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Inactive Employees */}
+                            {inactiveEmployees.length > 0 && (
+                                <div className={`group rounded-2xl overflow-hidden transition-all duration-300 border ${isMobile ? 'border-red-500/30 bg-red-500/5' : 'border-red-200 bg-white hover:shadow-md'}`}>
+                                    <button 
+                                        onClick={() => toggleSection('inactive')}
+                                        className="w-full p-3 flex items-center justify-between bg-transparent"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className={`p-2 rounded-xl flex items-center justify-center ${isMobile ? 'bg-red-500/20 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.2)]' : 'bg-red-100 text-red-600'}`}>
+                                                <UserX className="w-4 h-4" />
+                                            </div>
+                                            <div className="text-left">
+                                                <p className={`text-xs font-bold ${isMobile ? 'text-white' : 'text-gray-900'}`}>Inactive Employees</p>
+                                                <p className={`text-[10px] ${isMobile ? 'text-red-400' : 'text-red-500'}`}>Zero activity - may have left</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className={`flex h-5 min-w-[20px] px-1.5 items-center justify-center rounded-full text-[10px] font-bold ${isMobile ? 'bg-red-500 text-white shadow-[0_0_10px_rgba(239,68,68,0.4)]' : 'bg-red-100 text-red-700'}`}>
+                                                {inactiveEmployees.length}
+                                            </span>
+                                            {expandedSections.inactive ? <ChevronUp className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} /> : <ChevronDown className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} />}
+                                        </div>
+                                    </button>
+
+                                    {expandedSections.inactive && (
+                                        <div className={`p-3 space-y-3 border-t ${isMobile ? 'border-red-500/10' : 'border-red-100'}`}>
+                                            <div className="flex items-center gap-2 px-1 py-1">
+                                                <AlertTriangle className="w-3.5 h-3.5 text-red-500 animate-pulse" />
+                                                <span className={`text-[10px] font-black uppercase tracking-wider ${isMobile ? 'text-red-400' : 'text-red-700'}`}>
+                                                    All scores are zero — review for removal
+                                                </span>
+                                            </div>
+                                            {inactiveEmployees.map(emp => (
+                                                <div key={emp.userId} className={`rounded-xl p-3 border ${isMobile ? 'bg-black/20 border-white/5' : 'bg-red-50/30 border-red-100'}`}>
+                                                    <div className="flex items-center gap-3 mb-3">
+                                                        <ProfilePlaceholder photoUrl={emp.userPhotoUrl} seed={emp.userId} className="w-8 h-8 rounded-lg" />
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center justify-between">
+                                                                <p className={`text-xs font-bold truncate ${isMobile ? 'text-white' : 'text-gray-900'}`}>{emp.userName}</p>
+                                                                <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-red-500/10 text-red-500 border border-red-500/20`}>Inactive</span>
+                                                            </div>
+                                                            <p className={`text-[9px] ${isMobile ? 'text-white/50' : 'text-red-700/60'}`}>
+                                                                {emp.userRole.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    <div className={`rounded-lg p-2.5 border mb-3 ${isMobile ? 'bg-black/20 border-white/5' : 'bg-white border-red-100/50'}`}>
+                                                        <p className={`text-[11px] leading-relaxed ${isMobile ? 'text-white/70' : 'text-gray-600'}`}>
+                                                            Performance: <strong>0</strong> · Attendance: <strong>0</strong> · Response: <strong>0</strong>
+                                                        </p>
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <Button 
+                                                            size="sm" 
+                                                            disabled={isActionLoading === emp.userId}
+                                                            className="flex-1 bg-red-600 hover:bg-red-700 border-none text-[9px] uppercase font-bold h-8 shadow-lg shadow-red-900/20"
+                                                            onClick={() => handleRemoveInactiveEmployee(emp)}
+                                                        >
+                                                            <Trash2 className="w-3 h-3 mr-1" /> Approve Removal
+                                                        </Button>
+                                                        <Button 
+                                                            size="sm" 
+                                                            variant="outline"
+                                                            className={`flex-1 text-[9px] uppercase font-bold h-8 ${isMobile ? 'border-white/10 text-white hover:bg-white/5' : 'border-red-200 text-red-700 hover:bg-red-50'}`}
+                                                            onClick={() => handleDenyInactive(emp)}
+                                                        >
+                                                            <XCircle className="w-3 h-3 mr-1" /> Deny
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             {/* Security Violations (Violations found in Notification table) */}
                             {securityViolations.length > 0 && (
                                 <div className={`group rounded-2xl overflow-hidden transition-all duration-300 border ${isMobile ? 'border-red-500/30 bg-red-500/5' : 'border-red-100 bg-red-50/10 hover:shadow-md'}`}>
@@ -980,6 +1668,20 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
 
                                     {expandedSections.team && (
                                         <div className={`p-3 space-y-2 border-t ${isMobile ? 'border-sky-500/10' : 'border-sky-100'}`}>
+                                            <div className="flex items-center justify-between px-1 py-1">
+                                                <span className={`text-[10px] font-black uppercase tracking-wider ${isMobile ? 'text-sky-400' : 'text-sky-700'}`}>
+                                                    Routine Activity Logs
+                                                </span>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        teamActivityNotifications.forEach(n => markAsRead(n.id));
+                                                    }}
+                                                    className={`text-[9px] font-bold px-2 py-1 rounded-lg transition-colors ${isMobile ? 'bg-sky-500/20 text-sky-400 hover:bg-sky-500/30' : 'bg-sky-100 text-sky-700 hover:bg-sky-200'}`}
+                                                >
+                                                    Mark All Read
+                                                </button>
+                                            </div>
                                             {teamActivityNotifications.map(notif => {
                                                 let metadata = notif.metadata as any || {};
                                                 if (typeof metadata === 'string') {
@@ -1070,689 +1772,8 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                                     )}
                                 </div>
                             )}
-                            {/* Attendance Unlock Requests */}
-                            {unlockRequests.length > 0 && (
-                                <div className={`group rounded-2xl overflow-hidden transition-all duration-300 border ${isMobile ? 'border-white/10 bg-transparent' : 'border-emerald-100 bg-white hover:shadow-md'}`}>
-                                    <button 
-                                        onClick={() => toggleSection('unlocks')}
-                                        className="w-full p-3 flex items-center justify-between bg-transparent"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className={`p-2 rounded-xl flex items-center justify-center ${isMobile ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-100 text-emerald-600'}`}>
-                                                <MapPin className="w-4 h-4" />
-                                            </div>
-                                            <div className="text-left">
-                                                <p className={`text-xs font-bold ${isMobile ? 'text-white' : 'text-gray-900'}`}>Punch In Requests</p>
-                                                <p className={`text-[10px] ${isMobile ? 'text-white/50' : 'text-gray-500'}`}>Approvals needed</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-3">
-                                            <span className={`flex h-5 min-w-[20px] px-1.5 items-center justify-center rounded-full text-[10px] font-bold ${isMobile ? 'bg-emerald-500 text-black shadow-[0_0_10px_rgba(16,185,129,0.4)]' : 'bg-emerald-100 text-emerald-700'}`}>
-                                                {unlockRequests.length}
-                                            </span>
-                                            {expandedSections.unlocks ? <ChevronUp className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} /> : <ChevronDown className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} />}
-                                        </div>
-                                    </button>
-                                    
-                                    {expandedSections.unlocks && (
-                                        <div className={`p-3 space-y-3 border-t ${isMobile ? 'border-white/5' : 'border-emerald-100/50'}`}>
-                                            <div className="flex items-center gap-2 px-1 py-1">
-                                                <AlertTriangle className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
-                                                <span className={`text-[10px] font-black uppercase tracking-wider ${isMobile ? 'text-amber-400' : 'text-amber-700'}`}>
-                                                    Attention: Approval Required
-                                                </span>
-                                            </div>
-                                            {unlockRequests.map(req => (
-                                                <div key={req.id} className={`rounded-xl p-3 border ${isMobile ? 'bg-black/20 border-white/5' : 'bg-emerald-50/30 border-emerald-100'}`}>
-                                                    <div className="flex items-center gap-3 mb-3">
-                                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isMobile ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-100 text-emerald-600'}`}>
-                                                            <UserPlus className="w-4 h-4" />
-                                                        </div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="flex items-center justify-between">
-                                                                <p className={`text-xs font-bold truncate ${isMobile ? 'text-white' : 'text-gray-900'}`}>{req.userName}</p>
-                                                                <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-500 border border-emerald-500/20`}>Unlock</span>
-                                                            </div>
-                                                            <p className={`text-[9px] ${isMobile ? 'text-white/50' : 'text-emerald-700/60'}`}>{formatDistanceToNow(parseISO(req.requestedAt), { addSuffix: true })}</p>
-                                                        </div>
-                                                    </div>
-                                                    <div className={`rounded-lg p-2.5 border mb-3 ${isMobile ? 'bg-black/20 border-white/5' : 'bg-white border-emerald-100/50'}`}>
-                                                        <p className={`text-[11px] italic leading-relaxed ${isMobile ? 'text-white/70' : 'text-gray-700'}`}>"{req.reason}"</p>
-                                                    </div>
-                                                    <div className="flex gap-2">
-                                                        <Button 
-                                                            size="sm" 
-                                                            disabled={isActionLoading === req.id}
-                                                            className="flex-1 bg-emerald-600 hover:bg-emerald-700 border-none text-[9px] uppercase font-bold h-8 shadow-lg shadow-emerald-900/20"
-                                                            onClick={() => handleRespondToUnlock(req.id, 'approved')}
-                                                        >
-                                                            <CheckCircle className="w-3 h-3 mr-1" /> Approve
-                                                        </Button>
-                                                        <Button 
-                                                            size="sm" 
-                                                            variant="outline"
-                                                            disabled={isActionLoading === req.id}
-                                                            className={`flex-1 text-[9px] uppercase font-bold h-8 ${isMobile ? 'border-white/10 text-white hover:bg-white/5' : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'}`}
-                                                            onClick={() => handleRespondToUnlock(req.id, 'rejected')}
-                                                        >
-                                                            <XCircle className="w-3 h-3 mr-1" /> Reject
-                                                        </Button>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
 
-                            {/* Leave Requests */}
-                            {leaveRequests.length > 0 && (
-                                <div className={`group rounded-2xl overflow-hidden transition-all duration-300 border ${isMobile ? 'border-white/10 bg-transparent' : 'border-orange-100 bg-white hover:shadow-md'}`}>
-                                    <button 
-                                        onClick={() => toggleSection('leaves')}
-                                        className="w-full p-3 flex items-center justify-between bg-transparent"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className={`p-2 rounded-xl flex items-center justify-center ${isMobile ? 'bg-orange-500/20 text-orange-400' : 'bg-orange-100 text-orange-600'}`}>
-                                                <Calendar className="w-4 h-4" />
-                                            </div>
-                                            <div className="text-left">
-                                                <p className={`text-xs font-bold ${isMobile ? 'text-white' : 'text-gray-900'}`}>Leave Requests</p>
-                                                <p className={`text-[10px] ${isMobile ? 'text-white/50' : 'text-gray-500'}`}>Approvals needed</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-3">
-                                            <span className={`flex h-5 min-w-[20px] px-1.5 items-center justify-center rounded-full text-[10px] font-bold ${isMobile ? 'bg-orange-500 text-black shadow-[0_0_10px_rgba(249,115,22,0.4)]' : 'bg-orange-100 text-orange-700'}`}>
-                                                {leaveRequests.length}
-                                            </span>
-                                            {expandedSections.leaves ? <ChevronUp className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} /> : <ChevronDown className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} />}
-                                        </div>
-                                    </button>
-                                    
-                                    {expandedSections.leaves && (
-                                        <div className={`p-3 space-y-3 border-t ${isMobile ? 'border-white/5' : 'border-orange-100/50'}`}>
-                                            <div className="flex items-center gap-2 px-1 py-1">
-                                                <AlertTriangle className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
-                                                <span className={`text-[10px] font-black uppercase tracking-wider ${isMobile ? 'text-amber-400' : 'text-amber-700'}`}>
-                                                    Attention: Leave Verification
-                                                </span>
-                                            </div>
-                                            {leaveRequests.map(req => (
-                                                <div key={req.id} className={`rounded-xl p-3 border ${isMobile ? 'bg-black/20 border-white/5' : 'bg-orange-50/30 border-orange-100'}`}>
-                                                    <div className="flex items-center gap-3 mb-3">
-                                                        <div className={`overflow-hidden rounded-lg flex-shrink-0 w-8 h-8 ${isMobile ? 'bg-white/10' : 'bg-gray-100'}`}>
-                                                            <ProfilePlaceholder 
-                                                                className="w-8 h-8"
-                                                                photoUrl={req.userPhotoUrl}
-                                                                seed={req.userId}
-                                                            />
-                                                        </div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="flex items-center justify-between">
-                                                                <p className={`text-xs font-bold truncate ${isMobile ? 'text-white' : 'text-gray-900'}`}>{req.userName}</p>
-                                                                <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-orange-500/10 text-orange-500 border border-orange-500/20`}>{req.leaveType}</span>
-                                                            </div>
-                                                            <p className={`text-[9px] ${isMobile ? 'text-white/50' : 'text-orange-700/60'}`}>
-                                                                {format(parseISO(req.startDate), 'dd MMM')} - {format(parseISO(req.endDate), 'dd MMM')}
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                    <div className={`rounded-lg p-2.5 border mb-3 ${isMobile ? 'bg-black/20 border-white/5' : 'bg-white border-orange-100/50'}`}>
-                                                        <p className={`text-[11px] italic leading-relaxed ${isMobile ? 'text-white/70' : 'text-gray-700'}`}>"{req.reason}"</p>
-                                                    </div>
-                                                    <div className="flex gap-2">
-                                                        <Button 
-                                                            size="sm" 
-                                                            variant="outline"
-                                                            className={`flex-1 text-[9px] uppercase font-bold h-8 ${isMobile ? 'border-white/10 text-white hover:bg-white/5' : 'border-orange-200 text-orange-700 hover:bg-orange-50'}`}
-                                                            onClick={() => {
-                                                                onClose();
-                                                                navigate(`/hr/leave-management?employeeId=${req.userId}`);
-                                                            }}
-                                                        >
-                                                            <FileText className="w-3 h-3 mr-1" /> Direct
-                                                        </Button>
-                                                        <Button 
-                                                            size="sm" 
-                                                            disabled={isActionLoading === req.id}
-                                                            className="flex-1 bg-orange-600 hover:bg-orange-700 border-none text-[9px] uppercase font-bold h-8 shadow-lg shadow-orange-900/20"
-                                                            onClick={() => handleRespondToLeave(req.id, req.status === 'pending_hr_confirmation' ? 'confirm' : 'approve')}
-                                                        >
-                                                            <CheckCircle className="w-3 h-3 mr-1" /> {req.status === 'pending_hr_confirmation' ? 'Confirm' : 'Approve'}
-                                                        </Button>
-                                                        <Button 
-                                                            size="sm" 
-                                                            variant="outline"
-                                                            disabled={isActionLoading === req.id}
-                                                            className={`flex-1 text-[9px] uppercase font-bold h-8 ${isMobile ? 'border-white/10 text-white hover:bg-white/5' : 'border-orange-200 text-orange-700 hover:bg-orange-50'}`}
-                                                            onClick={() => handleRespondToLeave(req.id, 'reject')}
-                                                        >
-                                                            <XCircle className="w-3 h-3 mr-1" /> Reject
-                                                        </Button>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                            {/* Onboarding Approvals - AI Verified, pending FCU acknowledgment */}
-                            {onboardingApprovals.length > 0 && (
-                                <div className={`group rounded-2xl overflow-hidden transition-all duration-300 border ${isMobile ? 'border-teal-500/30 bg-teal-500/5' : 'border-teal-100 bg-white hover:shadow-md'}`}>
-                                    <button 
-                                        onClick={() => toggleSection('onboarding')}
-                                        className="w-full p-3 flex items-center justify-between bg-transparent"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className={`p-2 rounded-xl flex items-center justify-center ${isMobile ? 'bg-teal-500/20 text-teal-400 shadow-[0_0_10px_rgba(20,184,166,0.2)]' : 'bg-teal-100 text-teal-600'}`}>
-                                                <UserPlus className="w-4 h-4" />
-                                            </div>
-                                            <div className="text-left">
-                                                <p className={`text-xs font-bold ${isMobile ? 'text-white' : 'text-gray-900'}`}>Onboarding Approvals</p>
-                                                <p className={`text-[10px] ${isMobile ? 'text-teal-400' : 'text-teal-500'}`}>AI Verified — Acknowledge for FCU</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-3">
-                                            <span className={`flex h-5 min-w-[20px] px-1.5 items-center justify-center rounded-full text-[10px] font-bold ${isMobile ? 'bg-teal-500 text-white shadow-[0_0_10px_rgba(20,184,166,0.4)]' : 'bg-teal-100 text-teal-700'}`}>
-                                                {onboardingApprovals.length}
-                                            </span>
-                                            {expandedSections.onboarding ? <ChevronUp className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} /> : <ChevronDown className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} />}
-                                        </div>
-                                    </button>
-                                    
-                                    {expandedSections.onboarding && (
-                                        <div className={`p-3 space-y-3 border-t ${isMobile ? 'border-teal-500/10' : 'border-teal-100/50'}`}>
-                                            <div className="flex items-center gap-2 px-1 py-1">
-                                                <CheckCircle className="w-3.5 h-3.5 text-teal-500" />
-                                                <span className={`text-[10px] font-black uppercase tracking-wider ${isMobile ? 'text-teal-400' : 'text-teal-700'}`}>
-                                                    Documents Verified — Start Field Check
-                                                </span>
-                                            </div>
-                                            {onboardingApprovals.map(sub => {
-                                                const candidateName = `${(sub.personal as any)?.firstName || ''} ${(sub.personal as any)?.lastName || ''}`.trim() || 'Candidate';
-                                                const empId = (sub.personal as any)?.employeeId || sub.id?.slice(0, 8) || '';
-                                                const siteName = sub.organizationName || (sub.organization as any)?.organizationName || '';
-                                                const designation = (sub.organization as any)?.designation || '';
-                                                const verifiedAt = sub.verifiedAt || (sub as any)?.verified_at;
-                                                const verifiedBy = sub.verifiedBy || (sub as any)?.verified_by || 'AI Agent';
-                                                
-                                                return (
-                                                    <div key={sub.id} className={`rounded-xl p-3 border ${isMobile ? 'bg-black/20 border-white/5' : 'bg-teal-50/30 border-teal-100'}`}>
-                                                        <div className="flex items-center gap-3 mb-3">
-                                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isMobile ? 'bg-teal-500/20 text-teal-400' : 'bg-teal-100 text-teal-600'}`}>
-                                                                <UserPlus className="w-4 h-4" />
-                                                            </div>
-                                                            <div className="flex-1 min-w-0">
-                                                                <div className="flex items-center justify-between">
-                                                                    <p className={`text-xs font-bold truncate ${isMobile ? 'text-white' : 'text-gray-900'}`}>{candidateName}</p>
-                                                                    <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-teal-500/10 text-teal-500 border border-teal-500/20">
-                                                                        {empId}
-                                                                    </span>
-                                                                </div>
-                                                                <p className={`text-[9px] ${isMobile ? 'text-white/50' : 'text-teal-700/60'}`}>
-                                                                    {designation}{siteName ? ` · ${siteName}` : ''}
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                        <div className={`grid grid-cols-2 gap-2 mb-3`}>
-                                                            <div className={`rounded-lg p-2 ${isMobile ? 'bg-black/20' : 'bg-white/50 border border-teal-100/50'}`}>
-                                                                <p className={`text-[8px] uppercase font-bold mb-0.5 ${isMobile ? 'text-white/40' : 'text-gray-400'}`}>Verified By</p>
-                                                                <p className={`text-[10px] font-bold ${isMobile ? 'text-white/80' : 'text-gray-700'}`}>
-                                                                    {verifiedBy === 'Paradigm AI Agent' ? '🤖 AI Agent' : verifiedBy}
-                                                                </p>
-                                                            </div>
-                                                            <div className={`rounded-lg p-2 ${isMobile ? 'bg-black/20' : 'bg-white/50 border border-teal-100/50'}`}>
-                                                                <p className={`text-[8px] uppercase font-bold mb-0.5 ${isMobile ? 'text-white/40' : 'text-gray-400'}`}>Verified On</p>
-                                                                <p className={`text-[10px] font-bold ${isMobile ? 'text-white/80' : 'text-gray-700'}`}>
-                                                                    {verifiedAt ? format(parseISO(verifiedAt), 'dd MMM yyyy, hh:mm a') : '—'}
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                        <div className="flex gap-2">
-                                                            <Button 
-                                                                size="sm" 
-                                                                disabled={isActionLoading === sub.id}
-                                                                className="flex-1 bg-teal-600 hover:bg-teal-700 border-none text-[9px] uppercase font-bold h-8 shadow-lg shadow-teal-900/20"
-                                                                onClick={() => sub.id && handleAcknowledgeOnboarding(sub.id)}
-                                                            >
-                                                                <CheckCircle className="w-3 h-3 mr-1" /> Acknowledge & Start FCU
-                                                            </Button>
-                                                            <Button 
-                                                                size="sm" 
-                                                                variant="outline"
-                                                                className={`flex-1 text-[9px] uppercase font-bold h-8 ${isMobile ? 'border-white/10 text-white hover:bg-white/5' : 'border-teal-200 text-teal-700 hover:bg-teal-50'}`}
-                                                                onClick={() => {
-                                                                    onClose();
-                                                                    navigate(`/onboarding/review/${sub.id}`);
-                                                                }}
-                                                            >
-                                                                <FileText className="w-3 h-3 mr-1" /> View Details
-                                                            </Button>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                            {/* Report Access Requests */}
-                            {isUserAdmin && reportAccessRequests.length > 0 && (
-                                <div className={`group rounded-2xl overflow-hidden transition-all duration-300 border ${isMobile ? 'border-white/10 bg-transparent' : 'border-emerald-100 bg-white hover:shadow-md'}`}>
-                                    <button 
-                                        onClick={() => toggleSection('reportAccess')}
-                                        className="w-full p-3 flex items-center justify-between bg-transparent"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className={`p-2 rounded-xl flex items-center justify-center ${isMobile ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-100 text-emerald-600'}`}>
-                                                <Key className="w-4 h-4" />
-                                            </div>
-                                            <div className="text-left">
-                                                <p className={`text-xs font-bold ${isMobile ? 'text-white' : 'text-gray-900'}`}>Report Access Requests</p>
-                                                <p className={`text-[10px] ${isMobile ? 'text-white/50' : 'text-gray-500'}`}>Approvals needed</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-3">
-                                            <span className={`flex h-5 min-w-[20px] px-1.5 items-center justify-center rounded-full text-[10px] font-bold ${isMobile ? 'bg-emerald-500 text-black shadow-[0_0_10px_rgba(16,185,129,0.4)]' : 'bg-emerald-100 text-emerald-700'}`}>
-                                                {reportAccessRequests.filter(r => r.status === 'Pending').length}
-                                            </span>
-                                            {expandedSections.reportAccess ? <ChevronUp className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} /> : <ChevronDown className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} />}
-                                        </div>
-                                    </button>
-                                    
-                                    {expandedSections.reportAccess && (
-                                        <div className={`p-3 space-y-3 border-t ${isMobile ? 'border-white/5' : 'border-emerald-100/50'}`}>
-                                            <div className="flex items-center gap-2 px-1 py-1">
-                                                <AlertTriangle className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
-                                                <span className={`text-[10px] font-black uppercase tracking-wider ${isMobile ? 'text-amber-400' : 'text-amber-700'}`}>
-                                                    Attention: Report Unlock Required
-                                                </span>
-                                            </div>
-                                            {reportAccessRequests.map(req => (
-                                                <div key={req.id} className={`rounded-xl p-3 border ${isMobile ? 'bg-black/20 border-white/5' : 'bg-emerald-50/30 border-emerald-100'}`}>
-                                                    <div className="flex items-center gap-3 mb-3">
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="flex items-center justify-between">
-                                                                <p className={`text-xs font-bold truncate ${isMobile ? 'text-white' : 'text-gray-900'}`}>{req.requestedByName || 'Employee'}</p>
-                                                                <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded ${req.status === 'Approved' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' : req.status === 'Rejected' ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20' : 'bg-amber-500/10 text-amber-500 border border-amber-500/20'}`}>
-                                                                    {req.status}
-                                                                </span>
-                                                            </div>
-                                                            <p className={`text-[9px] ${isMobile ? 'text-white/50' : 'text-emerald-700/60'}`}>{req.title}</p>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Reason/Comments for Request */}
-                                                    <div className={`rounded-lg p-2.5 border mb-3 ${isMobile ? 'bg-black/20 border-white/5' : 'bg-white border-emerald-100/50'}`}>
-                                                        <p className={`text-[11px] italic leading-relaxed ${isMobile ? 'text-white/70' : 'text-gray-700'}`}>
-                                                            "{(req.status === 'Pending' ? req.comments : extractReason(req.comments)) || 'No reason provided'}"
-                                                        </p>
-                                                    </div>
-
-                                                    {req.status === 'Pending' ? (
-                                                        <div className="flex gap-2">
-                                                            <Button 
-                                                                size="sm" 
-                                                                disabled={isActionLoading === req.id}
-                                                                className="flex-1 bg-emerald-600 hover:bg-emerald-700 border-none text-[9px] uppercase font-bold h-8 shadow-lg shadow-emerald-900/20"
-                                                                onClick={() => handleRespondToReportAccess(req.id, 'Approved')}
-                                                            >
-                                                                Approve
-                                                            </Button>
-                                                            <Button 
-                                                                size="sm" 
-                                                                variant="outline"
-                                                                disabled={isActionLoading === req.id}
-                                                                className={`flex-1 text-[9px] uppercase font-bold h-8 ${isMobile ? 'border-white/10 text-white hover:bg-white/5' : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'}`}
-                                                                onClick={() => handleRejectClick(req.id)}
-                                                            >
-                                                                Reject
-                                                            </Button>
-                                                        </div>
-                                                    ) : req.status === 'Approved' ? (
-                                                        <div className="space-y-3">
-                                                            <div className="p-2.5 bg-emerald-500/5 border border-emerald-500/10 rounded-xl flex items-center justify-between">
-                                                                <div className="text-left">
-                                                                    <p className="text-[9px] uppercase font-bold tracking-wider text-emerald-500/70">Passcode</p>
-                                                                    <p className="text-sm font-black text-emerald-500 font-mono tracking-widest">
-                                                                        {extractPasscode(req.comments) || generateDeterministicPasscode(req.id)}
-                                                                    </p>
-                                                                </div>
-                                                                <Button 
-                                                                    size="sm"
-                                                                    className="bg-emerald-600 hover:bg-emerald-700 text-[9px] uppercase font-bold h-7 py-0 px-3 border-none text-white"
-                                                                    onClick={() => handleSharePasscode(req)}
-                                                                >
-                                                                    Share / Send
-                                                                </Button>
-                                                            </div>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="p-2 bg-rose-500/5 border border-rose-500/10 rounded-xl">
-                                                            <p className="text-[9px] uppercase font-bold tracking-wider text-rose-500/70">Rejection Reason</p>
-                                                            <p className="text-xs text-rose-500 font-medium italic">
-                                                                {req.comments?.split('|')[0] || 'Rejected'}
-                                                            </p>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {/* Extra Work Claims */}
-                            {extraWorkClaims.length > 0 && (
-                                <div className={`group rounded-2xl overflow-hidden transition-all duration-300 border ${isMobile ? 'border-white/10 bg-transparent' : 'border-blue-100 bg-white hover:shadow-md'}`}>
-                                    <button 
-                                        onClick={() => toggleSection('claims')}
-                                        className="w-full p-3 flex items-center justify-between bg-transparent"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className={`p-2 rounded-xl flex items-center justify-center ${isMobile ? 'bg-blue-500/20 text-blue-400' : 'bg-blue-100 text-blue-600'}`}>
-                                                <FileText className="w-4 h-4" />
-                                            </div>
-                                            <div className="text-left">
-                                                <p className={`text-xs font-bold ${isMobile ? 'text-white' : 'text-gray-900'}`}>Extra Work Claims</p>
-                                                <p className={`text-[10px] ${isMobile ? 'text-white/50' : 'text-gray-500'}`}>Review claims</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-3">
-                                            <span className={`flex h-5 min-w-[20px] px-1.5 items-center justify-center rounded-full text-[10px] font-bold ${isMobile ? 'bg-blue-500 text-black shadow-[0_0_10px_rgba(59,130,246,0.4)]' : 'bg-blue-100 text-blue-700'}`}>
-                                                {extraWorkClaims.length}
-                                            </span>
-                                            {expandedSections.claims ? <ChevronUp className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} /> : <ChevronDown className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} />}
-                                        </div>
-                                    </button>
-                                    
-                                    {expandedSections.claims && (
-                                        <div className={`p-3 space-y-3 border-t ${isMobile ? 'border-white/5' : 'border-blue-100/50'}`}>
-                                            <div className="flex items-center gap-2 px-1 py-1">
-                                                <AlertTriangle className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
-                                                <span className={`text-[10px] font-black uppercase tracking-wider ${isMobile ? 'text-amber-400' : 'text-amber-700'}`}>
-                                                    Attention: Extra Work Review
-                                                </span>
-                                            </div>
-                                            {extraWorkClaims.map(claim => (
-                                                <div key={claim.id} className={`rounded-xl p-3 border ${isMobile ? 'bg-black/20 border-white/5' : 'bg-blue-50/30 border-blue-100'}`}>
-                                                    <div className="flex items-center gap-3 mb-3">
-                                                        <div className={`overflow-hidden rounded-lg flex-shrink-0 w-8 h-8 ${isMobile ? 'bg-white/10' : 'bg-gray-100'}`}>
-                                                            <ProfilePlaceholder 
-                                                                className="w-8 h-8"
-                                                                photoUrl={claim.userPhotoUrl}
-                                                                seed={claim.userId}
-                                                            />
-                                                        </div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="flex items-center justify-between">
-                                                                <p className={`text-xs font-bold truncate ${isMobile ? 'text-white' : 'text-gray-900'}`}>{claim.userName}</p>
-                                                                <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500 border border-blue-500/20`}>{claim.claimType}</span>
-                                                            </div>
-                                                            <p className={`text-[9px] ${isMobile ? 'text-white/50' : 'text-blue-700/60'}`}>{format(parseISO(claim.workDate), 'dd MMM yyyy')}</p>
-                                                        </div>
-                                                    </div>
-                                                    <div className={`rounded-lg p-2.5 border mb-3 ${isMobile ? 'bg-black/20 border-white/5' : 'bg-white border-blue-100/50'}`}>
-                                                        <p className={`text-[11px] italic leading-relaxed ${isMobile ? 'text-white/70' : 'text-gray-700'}`}>"{claim.reason}"</p>
-                                                    </div>
-                                                    <div className="flex gap-2">
-                                                        <Button 
-                                                            size="sm" 
-                                                            disabled={isActionLoading === claim.id}
-                                                            className="flex-1 bg-blue-600 hover:bg-blue-700 border-none text-[9px] uppercase font-bold h-8 shadow-lg shadow-blue-900/20"
-                                                            onClick={() => handleRespondToClaim(claim.id, 'approve')}
-                                                        >
-                                                            <CheckCircle className="w-3 h-3 mr-1" /> Approve
-                                                        </Button>
-                                                        <Button 
-                                                            size="sm" 
-                                                            variant="outline"
-                                                            disabled={isActionLoading === claim.id}
-                                                            className={`flex-1 text-[9px] uppercase font-bold h-8 ${isMobile ? 'border-white/10 text-white hover:bg-white/5' : 'border-blue-200 text-blue-700 hover:bg-blue-50'}`}
-                                                            onClick={() => handleRespondToClaim(claim.id, 'reject')}
-                                                        >
-                                                            <XCircle className="w-3 h-3 mr-1" /> Reject
-                                                        </Button>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {/* Invoice Alerts */}
-                            {invoiceAlerts.length > 0 && (
-                                <div className={`group rounded-2xl overflow-hidden transition-all duration-300 border ${isMobile ? 'border-white/10 bg-transparent' : 'border-amber-100 bg-white hover:shadow-md'}`}>
-                                    <button 
-                                        onClick={() => toggleSection('invoices')}
-                                        className="w-full p-3 flex items-center justify-between bg-transparent"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className={`p-2 rounded-xl flex items-center justify-center ${isMobile ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-100 text-amber-600'}`}>
-                                                <IndianRupee className="w-4 h-4" />
-                                            </div>
-                                            <div className="text-left">
-                                                <p className={`text-xs font-bold ${isMobile ? 'text-white' : 'text-gray-900'}`}>Invoice Alerts</p>
-                                                <p className={`text-[10px] ${isMobile ? 'text-white/50' : 'text-gray-500'}`}>Due for sharing</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-3">
-                                            <span className={`flex h-5 min-w-[20px] px-1.5 items-center justify-center rounded-full text-[10px] font-bold ${isMobile ? 'bg-amber-500 text-black shadow-[0_0_10px_rgba(245,158,11,0.4)]' : 'bg-amber-100 text-amber-700'}`}>
-                                                {invoiceAlerts.length}
-                                            </span>
-                                            {expandedSections.invoices ? <ChevronUp className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} /> : <ChevronDown className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} />}
-                                        </div>
-                                    </button>
-                                    
-                                    {expandedSections.invoices && (
-                                        <div className={`p-3 space-y-3 border-t ${isMobile ? 'border-white/5' : 'border-amber-100/50'}`}>
-                                            <div className="flex items-center gap-2 px-1 py-1">
-                                                <AlertTriangle className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
-                                                <span className={`text-[10px] font-black uppercase tracking-wider ${isMobile ? 'text-amber-400' : 'text-amber-700'}`}>
-                                                    Warning: Invoices Due for Sharing
-                                                </span>
-                                            </div>
-                                            {invoiceAlerts.map(inv => (
-                                                <div key={inv.id} className={`rounded-xl p-3 border ${isMobile ? 'bg-black/20 border-white/5' : 'bg-amber-50/30 border-amber-100'}`}>
-                                                    <div className="flex items-center gap-3 mb-3">
-                                                        <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center font-bold text-amber-700 overflow-hidden relative text-xs">
-                                                            {inv.siteName.charAt(0)}
-                                                            <IndianRupee className="w-4 h-4" />
-                                                        </div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="flex items-center justify-between">
-                                                                <p className={`text-xs font-bold truncate ${isMobile ? 'text-white' : 'text-gray-900'}`}>{inv.siteName}</p>
-                                                                <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/20`}>Due</span>
-                                                            </div>
-                                                            <p className={`text-[9px] ${isMobile ? 'text-white/50' : 'text-amber-700/60'}`}>
-                                                                Tentative: {inv.invoiceSharingTentativeDate ? format(parseISO(inv.invoiceSharingTentativeDate), 'dd MMM yyyy') : 'N/A'}
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                    <Button 
-                                                        size="sm" 
-                                                        className="w-full bg-amber-600 hover:bg-amber-700 border-none text-[9px] uppercase font-bold h-8 shadow-lg shadow-amber-900/20"
-                                                        onClick={() => {
-                                                            navigate('/finance?tab=attendance');
-                                                            onClose();
-                                                        }}
-                                                    >
-                                                        View Tracker
-                                                    </Button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {/* Finance Requests */}
-                            {financeRequests.length > 0 && (
-                                <div className={`group rounded-2xl overflow-hidden transition-all duration-300 border ${isMobile ? 'border-white/10 bg-transparent' : 'border-rose-100 bg-white hover:shadow-md'}`}>
-                                    <button 
-                                        onClick={() => toggleSection('finance')}
-                                        className="w-full p-3 flex items-center justify-between bg-transparent"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className={`p-2 rounded-xl flex items-center justify-center ${isMobile ? 'bg-rose-500/20 text-rose-400' : 'bg-rose-100 text-rose-600'}`}>
-                                                <IndianRupee className="w-4 h-4" />
-                                            </div>
-                                            <div className="text-left">
-                                                <p className={`text-xs font-bold ${isMobile ? 'text-white' : 'text-gray-900'}`}>Tracker Updates</p>
-                                                <p className={`text-[10px] ${isMobile ? 'text-white/50' : 'text-gray-500'}`}>Review updates</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-3">
-                                            <span className={`flex h-5 min-w-[20px] px-1.5 items-center justify-center rounded-full text-[10px] font-bold ${isMobile ? 'bg-rose-500 text-black shadow-[0_0_10px_rgba(244,63,94,0.4)]' : 'bg-rose-100 text-rose-700'}`}>
-                                                {financeRequests.length}
-                                            </span>
-                                            {expandedSections.finance ? <ChevronUp className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} /> : <ChevronDown className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} />}
-                                        </div>
-                                    </button>
-                                    
-                                    {expandedSections.finance && (
-                                        <div className={`p-3 space-y-3 border-t ${isMobile ? 'border-white/5' : 'border-rose-100/50'}`}>
-                                            <div className="flex items-center gap-2 px-1 py-1">
-                                                <AlertTriangle className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
-                                                <span className={`text-[10px] font-black uppercase tracking-wider ${isMobile ? 'text-amber-400' : 'text-amber-700'}`}>
-                                                    Attention: Tracker Approval Required
-                                                </span>
-                                            </div>
-                                            {financeRequests.map(req => (
-                                                <div key={req.id} className={`rounded-xl p-3 border ${isMobile ? 'bg-black/20 border-white/5' : 'bg-rose-50/30 border-rose-100'}`}>
-                                                    <div className="flex items-center gap-3 mb-3">
-                                                        <div className={`overflow-hidden rounded-lg flex-shrink-0 w-8 h-8 ${isMobile ? 'bg-white/10' : 'bg-gray-100'}`}>
-                                                            <ProfilePlaceholder 
-                                                                className="w-8 h-8"
-                                                                seed={req.createdBy}
-                                                            />
-                                                        </div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="flex items-center justify-between">
-                                                                <p className={`text-xs font-bold truncate ${isMobile ? 'text-white' : 'text-gray-900'}`}>{req.createdByName}</p>
-                                                                <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-500 border border-rose-500/20`}>Tracker</span>
-                                                            </div>
-                                                            <div className="flex items-center justify-between mt-0.5">
-                                                                <p className={`text-[9px] ${isMobile ? 'text-white/50' : 'text-rose-700/60'}`}>
-                                                                    {req.createdByRole ? (
-                                                                        <span className="uppercase tracking-tighter mr-2">{req.createdByRole.replace('_', ' ')}</span>
-                                                                    ) : null}
-                                                                    {req.createdAt && format(parseISO(req.createdAt), 'dd MMM, hh:mm a')}
-                                                                </p>
-                                                                <span className="text-[10px] font-bold text-gray-900">
-                                                                    ₹{(req.totalBilledAmount || (req.billedAmount + req.billedManagementFee)).toLocaleString()}
-                                                                </span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                    <div className={`rounded-lg p-2.5 border mb-3 ${isMobile ? 'bg-black/20 border-white/5' : 'bg-white border-rose-100/50'}`}>
-                                                      <p className={`text-[11px] font-bold ${isMobile ? 'text-white/90' : 'text-gray-900'}`}>{req.siteName}</p>
-                                                      <p className={`text-[10px] italic leading-relaxed ${isMobile ? 'text-white/70' : 'text-gray-600'}`}>{req.remarks || 'No remarks provided'}</p>
-                                                    </div>
-                                                    <div className="flex gap-2">
-                                                        <Button 
-                                                            size="sm" 
-                                                            disabled={isActionLoading === req.id}
-                                                            className="flex-1 bg-rose-600 hover:bg-rose-700 border-none text-[9px] uppercase font-bold h-8 shadow-lg shadow-rose-900/20"
-                                                            onClick={() => handleRespondToFinance(req.id, 'approved')}
-                                                        >
-                                                            <CheckCircle className="w-3 h-3 mr-1" /> Approve
-                                                        </Button>
-                                                        <Button 
-                                                            size="sm" 
-                                                            variant="outline"
-                                                            disabled={isActionLoading === req.id}
-                                                            className={`flex-1 text-[9px] uppercase font-bold h-8 ${isMobile ? 'border-white/10 text-white hover:bg-white/5' : 'border-rose-200 text-rose-700 hover:bg-rose-50'}`}
-                                                            onClick={() => handleRespondToFinance(req.id, 'rejected')}
-                                                        >
-                                                            <XCircle className="w-3 h-3 mr-1" /> Reject
-                                                        </Button>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {/* Inactive Employees */}
-                            {inactiveEmployees.length > 0 && (
-                                <div className={`group rounded-2xl overflow-hidden transition-all duration-300 border ${isMobile ? 'border-red-500/30 bg-red-500/5' : 'border-red-200 bg-white hover:shadow-md'}`}>
-                                    <button 
-                                        onClick={() => toggleSection('inactive')}
-                                        className="w-full p-3 flex items-center justify-between bg-transparent"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className={`p-2 rounded-xl flex items-center justify-center ${isMobile ? 'bg-red-500/20 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.2)]' : 'bg-red-100 text-red-600'}`}>
-                                                <UserX className="w-4 h-4" />
-                                            </div>
-                                            <div className="text-left">
-                                                <p className={`text-xs font-bold ${isMobile ? 'text-white' : 'text-gray-900'}`}>Inactive Employees</p>
-                                                <p className={`text-[10px] ${isMobile ? 'text-red-400' : 'text-red-500'}`}>Zero activity - may have left</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-3">
-                                            <span className={`flex h-5 min-w-[20px] px-1.5 items-center justify-center rounded-full text-[10px] font-bold ${isMobile ? 'bg-red-500 text-white shadow-[0_0_10px_rgba(239,68,68,0.4)]' : 'bg-red-100 text-red-700'}`}>
-                                                {inactiveEmployees.length}
-                                            </span>
-                                            {expandedSections.inactive ? <ChevronUp className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} /> : <ChevronDown className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} />}
-                                        </div>
-                                    </button>
-
-                                    {expandedSections.inactive && (
-                                        <div className={`p-3 space-y-3 border-t ${isMobile ? 'border-red-500/10' : 'border-red-100'}`}>
-                                            <div className="flex items-center gap-2 px-1 py-1">
-                                                <AlertTriangle className="w-3.5 h-3.5 text-red-500 animate-pulse" />
-                                                <span className={`text-[10px] font-black uppercase tracking-wider ${isMobile ? 'text-red-400' : 'text-red-700'}`}>
-                                                    All scores are zero — review for removal
-                                                </span>
-                                            </div>
-                                            {inactiveEmployees.map(emp => (
-                                                <div key={emp.userId} className={`rounded-xl p-3 border ${isMobile ? 'bg-black/20 border-white/5' : 'bg-red-50/30 border-red-100'}`}>
-                                                    <div className="flex items-center gap-3 mb-3">
-                                                        <ProfilePlaceholder photoUrl={emp.userPhotoUrl} seed={emp.userId} className="w-8 h-8 rounded-lg" />
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="flex items-center justify-between">
-                                                                <p className={`text-xs font-bold truncate ${isMobile ? 'text-white' : 'text-gray-900'}`}>{emp.userName}</p>
-                                                                <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-red-500/10 text-red-500 border border-red-500/20`}>Inactive</span>
-                                                            </div>
-                                                            <p className={`text-[9px] ${isMobile ? 'text-white/50' : 'text-red-700/60'}`}>
-                                                                {emp.userRole.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                    <div className={`rounded-lg p-2.5 border mb-3 ${isMobile ? 'bg-black/20 border-white/5' : 'bg-white border-red-100/50'}`}>
-                                                        <p className={`text-[11px] leading-relaxed ${isMobile ? 'text-white/70' : 'text-gray-600'}`}>
-                                                            Performance: <strong>0</strong> · Attendance: <strong>0</strong> · Response: <strong>0</strong>
-                                                        </p>
-                                                    </div>
-                                                    <div className="flex gap-2">
-                                                        <Button 
-                                                            size="sm" 
-                                                            disabled={isActionLoading === emp.userId}
-                                                            className="flex-1 bg-red-600 hover:bg-red-700 border-none text-[9px] uppercase font-bold h-8 shadow-lg shadow-red-900/20"
-                                                            onClick={() => handleRemoveInactiveEmployee(emp)}
-                                                        >
-                                                            <Trash2 className="w-3 h-3 mr-1" /> Approve Removal
-                                                        </Button>
-                                                        <Button 
-                                                            size="sm" 
-                                                            variant="outline"
-                                                            className={`flex-1 text-[9px] uppercase font-bold h-8 ${isMobile ? 'border-white/10 text-white hover:bg-white/5' : 'border-red-200 text-red-700 hover:bg-red-50'}`}
-                                                            onClick={() => handleDenyInactive(emp)}
-                                                        >
-                                                            <XCircle className="w-3 h-3 mr-1" /> Deny
-                                                        </Button>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                        </div>
+                            </div>
                     </div>
                 )}
 

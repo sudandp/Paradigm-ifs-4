@@ -120,20 +120,21 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
 
       if (isManagerRole) {
         try {
-          const isSuperAdmin = ['admin', 'super_admin', 'developer', 'management', 'director', 'operation_manager'].includes(role);
-          const isHR = ['hr', 'hr_ops'].includes(role);
+          const isSuperAdmin = ['admin', 'super_admin', 'developer'].includes(role);
+          const isDirector = role === 'director' || role.includes('director');
+          const isFinanceRole = ['finance', 'finance_manager'].includes(role);
           
           let leavesPromise;
           if (isSuperAdmin) {
               leavesPromise = api.getLeaveRequests({ status: 'pending_manager_approval' });
-          } else if (isHR) {
-              leavesPromise = api.getLeaveRequests({ status: 'pending_manager_approval', forApproverId: user.id });
           } else {
               leavesPromise = api.getLeaveRequests({ 
                   status: 'pending_manager_approval',
                   forApproverId: user.id 
               });
           }
+
+          const fetchInvoices = !isDirector && (isSuperAdmin || isFinanceRole);
 
           const [unlocks, leaves, claims, finance, invoices] = await Promise.all([
               api.getAttendanceUnlockRequests(isSuperAdmin ? undefined : user.id).catch(() => []),
@@ -143,7 +144,7 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
                   managerId: isSuperAdmin ? undefined : user.id 
               }).catch(() => ({ data: [] })),
               api.getPendingFinanceRecords(user.id).catch(() => []),
-              api.getSiteInvoiceRecords(user.id).catch(() => [])
+              fetchInvoices ? api.getSiteInvoiceRecords(user.id).catch(() => []) : Promise.resolve([])
           ]);
 
           const today = new Date().toISOString().split('T')[0];

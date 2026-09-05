@@ -19,6 +19,7 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { PingAlarmOverlay } from '../notifications/PingAlarmOverlay';
 import ReferralModal from '../modals/ReferralModal';
 import { useImpersonationStore } from '../../store/impersonationStore';
+import { isAttendanceExemptRole } from '../../utils/attendanceCalculations';
 
 export interface NavLinkConfig {
     to: string;
@@ -184,6 +185,26 @@ const CATEGORY_ICONS: Record<string, any> = {
     'Support & Profile': LifeBuoy,
 };
 
+const EXECUTIVE_CATEGORY_ORDER = [
+    'Dashboards',
+    'Enterprise Controls',
+    'Finance & Invoicing',
+    'CRM & Sales',
+    'Operations & Team',
+    'Leaves & Rules',
+    'Employee Onboarding',
+    'Client Management',
+    'Site Management',
+    'Security & Roles',
+    'Attendance Logs',
+    'Real-time Tracking',
+    'Audit & Snag Reports',
+    'Biometric Devices',
+    'Gate Attendance',
+    'System Config',
+    'Support & Profile'
+];
+
 
 const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void, onExpand?: () => void, hideHeader?: boolean, mode?: 'light' | 'dark', isMobile?: boolean }> = React.memo(({ isCollapsed, onLinkClick, onExpand, hideHeader = false, mode = 'light', isMobile = false }) => {
     const { user } = useAuthStore();
@@ -211,9 +232,16 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
 
     const availableNavLinks = useMemo(() => {
         if (!user) return [];
+        const roleLower = (user.role || '').toLowerCase();
+        const roleIdLower = (user.roleId || '').toLowerCase();
+        const isDirector = roleLower.includes('director') || roleIdLower.includes('director');
+
         return allNavLinks
             .filter(link => {
                 if (link.category === 'Enterprise Controls' && !isAdmin(user.role)) {
+                    return false;
+                }
+                if (isDirector && (link.category === 'Finance & Invoicing' || link.category === 'Finance Hub' || link.permission === 'view_verification_costing')) {
                     return false;
                 }
                 return isAdmin(user.role) || userPermissions.includes(link.permission);
@@ -223,11 +251,18 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
 
     const groupedLinks = useMemo(() => {
         const groups: Record<string, NavLinkConfig[]> = {};
+        if (!user) return groups;
+
+        const roleLower = (user.role || '').toLowerCase();
+        const roleIdLower = (user.roleId || '').toLowerCase();
+        const isDirector = roleLower.includes('director') || roleIdLower.includes('director');
         
         // Use allNavLinks to maintain logical order within categories
         allNavLinks.forEach(link => {
-            if (!user) return;
             if (link.category === 'Enterprise Controls' && !isAdmin(user.role)) {
+                return;
+            }
+            if (isDirector && (link.category === 'Finance & Invoicing' || link.category === 'Finance Hub' || link.permission === 'view_verification_costing')) {
                 return;
             }
             if (isAdmin(user.role) || userPermissions.includes(link.permission)) {
@@ -236,12 +271,26 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
                 groups[cat].push(link);
             }
         });
-        
-        // Sort categories alphabetically A-Z
+
+        const isExecutive = isAttendanceExemptRole(user?.role);
         const sortedGroups: Record<string, NavLinkConfig[]> = {};
-        Object.keys(groups).sort().forEach(key => {
-            sortedGroups[key] = groups[key];
-        });
+        const availableKeys = Object.keys(groups);
+
+        if (isExecutive) {
+            // Prioritize executive categories for Director/C-Suite leadership
+            const orderedKeys = [
+                ...EXECUTIVE_CATEGORY_ORDER.filter(k => availableKeys.includes(k)),
+                ...availableKeys.filter(k => !EXECUTIVE_CATEGORY_ORDER.includes(k)).sort()
+            ];
+            orderedKeys.forEach(key => {
+                sortedGroups[key] = groups[key];
+            });
+        } else {
+            // Sort categories alphabetically A-Z for standard staff
+            availableKeys.sort().forEach(key => {
+                sortedGroups[key] = groups[key];
+            });
+        }
         
         return sortedGroups;
     }, [user, userPermissions]);

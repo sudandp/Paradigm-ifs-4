@@ -88,11 +88,15 @@ const SiteFinanceTracker: React.FC = () => {
     const [isDeleting, setIsDeleting] = useState(false);
     const [isRestoring, setIsRestoring] = useState<string | null>(null);
 
+    const roleLower = (user?.role || '').toLowerCase();
+    const roleIdLower = (user?.roleId || '').toLowerCase();
+    const isDirector = roleLower.includes('director') || roleIdLower.includes('director');
+
     // Compute site routing scope based on Image 1 matrix
     const routingScope = useMemo(() => getUserRoutingScope(user, matrixList), [user, matrixList]);
 
     const fetchData = useCallback(async () => {
-        if (!user) return;
+        if (!user || isDirector) return;
         setIsLoading(true);
         try {
             const [recordsData, defaultsData, deletedData, matrixData] = await Promise.all([
@@ -1007,6 +1011,16 @@ const SiteFinanceTracker: React.FC = () => {
             return next;
         });
     };
+
+    if (isDirector) {
+        return (
+            <div className="p-8 text-center bg-[#06251c] md:bg-white rounded-xl border border-white/5 md:border-gray-200 shadow-sm">
+                <p className="text-sm font-medium text-emerald-400/80 md:text-gray-600">
+                    Monthly Invoice Tracker is restricted for Director accounts.
+                </p>
+            </div>
+        );
+    }
 
     if (isLoading) {
         return <LoadingScreen message="Loading page data..." />;

@@ -14,7 +14,7 @@
 import { supabase } from './supabase';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, differenceInMinutes, differenceInDays } from 'date-fns';
 import type { EmployeeScore, RoleCategory, RoleWeights, Task, AttendanceEvent } from '../types';
-import { isLateCheckIn } from '../utils/attendanceCalculations';
+import { isLateCheckIn, isAttendanceExemptRole } from '../utils/attendanceCalculations';
 const offlineDb = { getCache: async (key?: string) => null, setCache: async (key?: string, val?: any) => {}, addToOutbox: async (val?: any) => {}, deleteOldDescriptors: async (userId?: string) => {}, getCacheWithMeta: async (key?: string) => null, setLastOnlineTimestamp: async () => {}, getSyncTime: async () => null };
 import { Network } from '@capacitor/network';
 
@@ -284,11 +284,15 @@ export async function calculateEmployeeScores(
       calculateResponseScore(userId, monthStartISO, monthEndISO),
     ]);
 
-    // Weighted overall score (exact match to SQL sync script)
+    // Weighted overall score
+    const isExempt = isAttendanceExemptRole(userRole);
+    const effectiveAttendanceScore = isExempt ? 100 : attendanceScore;
     const overallScore = clamp(
-      roleCategory === 'field_staff' 
-        ? (performanceScore * 0.4 + attendanceScore * 0.4 + responseScore * 0.2)
-        : (performanceScore * 0.3 + attendanceScore * 0.4 + responseScore * 0.3),
+      isExempt
+        ? (performanceScore * 0.6 + responseScore * 0.4)
+        : roleCategory === 'field_staff' 
+          ? (performanceScore * 0.4 + attendanceScore * 0.4 + responseScore * 0.2)
+          : (performanceScore * 0.3 + attendanceScore * 0.4 + responseScore * 0.3),
       0, 100
     );
 
@@ -299,7 +303,7 @@ export async function calculateEmployeeScores(
       user_id: userId,
       month: monthKey,
       performance_score: performanceScore,
-      attendance_score: attendanceScore,
+      attendance_score: effectiveAttendanceScore,
       response_score: responseScore,
       overall_score: overallScore,
       tiebreaker_score: tiebreakerScore,

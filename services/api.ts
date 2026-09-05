@@ -591,20 +591,18 @@ export const api = {
     }
 
     // --- GENUINE AUTH FAILURES ---
-    // Only 401 Unauthorized, 403 Forbidden, or a 400 specifically about invalid/expired tokens
-    // should be treated as definitive authentication failures.
-    const isTokenError = 
+    // Only definitive refresh-token revocations (invalid refresh token, revoked user)
+    // should trigger an auth failure. 403 Forbidden is an RLS / row-permission restriction
+    // on a specific table and MUST NEVER log out the user.
+    const isDefinitiveTokenRevocation = 
         (error.status === 400 || error.code === '400') && 
-        (error.message?.includes('invalid') || error.message?.includes('expired') || error.message?.includes('token'));
+        (error.message?.includes('invalid_grant') || error.message?.includes('refresh_token_not_found') || error.message?.includes('invalid refresh token'));
     
-    const isUnauthorized = error.status === 401 || error.code === '401' || error.status === 403 || error.code === '403';
-    
-    // Extra safety: only fire supabase-auth-failure if we are currently online.
-    // If the device is offline, even a 400/401 could be a stale cached error — skip it.
+    // Extra safety: only fire supabase-auth-failure if we are currently online and token is definitively revoked.
     const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
     
-    if ((isTokenError || isUnauthorized) && isOnline) {
-        console.error('CRITICAL AUTH ERROR (400/401) DETECTED:', error.message);
+    if (isDefinitiveTokenRevocation && isOnline) {
+        console.error('CRITICAL AUTH ERROR (Definitive Token Revocation):', error.message);
         // Trigger event that App.tsx listens to for forced logout
         window.dispatchEvent(new CustomEvent('supabase-auth-failure', { detail: error }));
     }
@@ -6982,18 +6980,17 @@ export const api = {
       }
     }
     
-    // Multi-manager support: if forApproverId is set, also match employees who have
-    // this person as their 2nd or 3rd reporting manager
+    // Multi-manager support: if forApproverId is set, match employees who have
+    // this person as their 1st, 2nd, or 3rd reporting manager, or where current_approver_id is this person
     if (filter?.forApproverId) {
-      // First, find all user IDs who have this approver as manager 2 or 3
       const { data: extraUsers } = await supabase.from('users')
         .select('id')
-        .or(`reporting_manager_2_id.eq.${filter.forApproverId},reporting_manager_3_id.eq.${filter.forApproverId}`);
+        .or(`reporting_manager_id.eq.${filter.forApproverId},reporting_manager_2_id.eq.${filter.forApproverId},reporting_manager_3_id.eq.${filter.forApproverId}`);
       
       const extraUserIds = (extraUsers || []).map(u => u.id);
       
       if (extraUserIds.length > 0) {
-        // Match: current_approver_id = this approver OR user_id is in the extra users list
+        // Match: current_approver_id = this approver OR user_id is in the team users list
         query = query.or(`current_approver_id.eq.${filter.forApproverId},user_id.in.(${extraUserIds.join(',')})`);
       } else {
         query = query.eq('current_approver_id', filter.forApproverId);
@@ -8443,7 +8440,7 @@ export const api = {
         camel.userPhotoUrl = camel.user.photoUrl;
       }
       return camel;
-    }), total: count || filteredData.length };
+    }), total: filter?.managerId ? filteredData.length : (count || filteredData.length) };
   },
   approveExtraWorkClaim: async (claimId: string, approverId: string): Promise<void> => {
     const { data: approverData, error: nameError } = await supabase.from('users').select('name').eq('id', approverId).single();

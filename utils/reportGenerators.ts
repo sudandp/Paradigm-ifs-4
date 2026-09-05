@@ -1,6 +1,7 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { format, startOfDay } from 'date-fns';
 import { FIXED_HOLIDAYS } from './constants';
+import { isAttendanceExemptRole } from './attendanceCalculations';
 
 const IST_OFFSET = 5.5 * 60 * 60 * 1000;
 
@@ -128,7 +129,7 @@ export const reportGenerators = {
     const configStartTime = settingsRes.data?.attendance_settings?.office?.fixedOfficeHours?.checkInTime || '09:30';
     const filteredUsers = (usersRes.data || []).filter((u: any) => {
       const roleName = (Array.isArray(u.role) ? u.role[0]?.display_name : u.role?.display_name) || '';
-      return roleName.toLowerCase() !== 'management';
+      return !isAttendanceExemptRole(roleName);
     });
     
     const staffIds = new Set(filteredUsers.map((u: any) => u.id));
@@ -307,7 +308,7 @@ export const reportGenerators = {
       startOfFirstWeek.setDate(firstDay.getDate() - (firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1)); // Mon
       
       if (firstDay > startOfFirstWeek) {
-        let check = new Date(startOfFirstWeek);
+        const check = new Date(startOfFirstWeek);
         while (check < firstDay) {
           const cStr = getISTDateString(check);
           const isSun = (user.weeklyOffDays && user.weeklyOffDays.length > 0) ? user.weeklyOffDays.includes(check.getDay()) : check.getDay() === 0;
@@ -671,7 +672,7 @@ export const reportGenerators = {
       if (log.target_user_id) userIds.add(log.target_user_id);
     });
 
-    let userMap: Record<string, string> = {};
+    const userMap: Record<string, string> = {};
     if (userIds.size > 0) {
       const { data: usersData } = await supabase
         .from('users')

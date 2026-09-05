@@ -8,6 +8,7 @@ import {
 } from 'date-fns';
 import { api } from '../services/api';
 import { processEmployeeMonth, type EmployeeMonthlyData } from './monthlyReportCalculations';
+import { isAttendanceExemptRole } from './attendanceCalculations';
 import type { AttendanceEvent, User, UserHoliday, Role, Holiday, RoutePoint } from '../types';
 
 export interface AutoLockResult {
@@ -69,8 +70,8 @@ export async function autoLockPreviousMonth(
     const currentSiteHolidays = storeSiteHolidays.length ? storeSiteHolidays : currentMasterHolidays.filter((h: any) => h.type === 'site');
     const currentRecurringHolidays = storeRecurringHolidays;
 
-    // Filter target users (exclude management role)
-    const targetUsers = usersData.filter(u => u.role !== 'management');
+    // Filter target users (exclude exempt roles such as management and director)
+    const targetUsers = usersData.filter(u => !isAttendanceExemptRole(u.role));
 
     // 2. Fetch events and route points in parallel for all target users
     const targetUserIds = targetUsers.map(u => u.id);

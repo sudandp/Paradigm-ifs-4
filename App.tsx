@@ -1678,16 +1678,51 @@ const App: React.FC = () => {
           }, 0);
         }
       } else if (event === 'SIGNED_OUT') {
-        if (isMounted) {
-          setUser(null);
-          resetAttendance();
-          useOnboardingStore.getState().reset();
-          secureRemove('supabase.auth.rememberMe').catch(e => console.warn('[App] secureRemove failed:', e));
-          secureRemove('rememberedEmail').catch(() => {});
-          Preferences.remove({ key: 'supabase.auth.rememberMe' }).catch(() => {});
-          Preferences.remove({ key: 'rememberedEmail' }).catch(() => {});
-          localStorage.removeItem('paradigm:cachedUser');
-          localStorage.removeItem('paradigm:lastOnlineTimestamp');
+        const isExplicit = authService.isExplicitSignOut();
+        const isMobileDevice = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || Capacitor.isNativePlatform();
+
+        if (isExplicit) {
+          // Explicit user-initiated logout (e.g., clicked Logout in Settings/Profile)
+          authService.setExplicitSignOut(false);
+          if (isMounted) {
+            setUser(null);
+            resetAttendance();
+            useOnboardingStore.getState().reset();
+            secureRemove('supabase.auth.rememberMe').catch(e => console.warn('[App] secureRemove failed:', e));
+            secureRemove('rememberedEmail').catch(() => {});
+            Preferences.remove({ key: 'supabase.auth.rememberMe' }).catch(() => {});
+            Preferences.remove({ key: 'rememberedEmail' }).catch(() => {});
+            localStorage.removeItem('paradigm:cachedUser');
+            localStorage.removeItem('paradigm:lastOnlineTimestamp');
+          }
+        } else if (isMobileDevice) {
+          // On mobile, keep the user logged in and auto-renew the session in the background.
+          console.warn('[AuthEvent] SIGNED_OUT received on Mobile without explicit user logout. Attempting silent token renewal...');
+          secureGet('supabase.auth.rememberMe').then(async (storedToken) => {
+            const token = storedToken ?? (await Preferences.get({ key: 'supabase.auth.rememberMe' })).value;
+            if (token) {
+              supabase.auth.refreshSession({ refresh_token: token }).then(({ data }) => {
+                if (data?.session) {
+                  console.log('[AuthEvent] ✅ Session auto-renewed successfully on mobile.');
+                }
+              }).catch((rErr) => {
+                console.warn('[AuthEvent] Silent token renewal notice:', rErr?.message || rErr);
+              });
+            }
+          }).catch(() => {});
+        } else {
+          // Desktop web non-explicit sign out
+          if (isMounted) {
+            setUser(null);
+            resetAttendance();
+            useOnboardingStore.getState().reset();
+            secureRemove('supabase.auth.rememberMe').catch(e => console.warn('[App] secureRemove failed:', e));
+            secureRemove('rememberedEmail').catch(() => {});
+            Preferences.remove({ key: 'supabase.auth.rememberMe' }).catch(() => {});
+            Preferences.remove({ key: 'rememberedEmail' }).catch(() => {});
+            localStorage.removeItem('paradigm:cachedUser');
+            localStorage.removeItem('paradigm:lastOnlineTimestamp');
+          }
         }
       }
     });
@@ -1792,13 +1827,33 @@ const App: React.FC = () => {
     window.addEventListener('appResumeRecovery', onNativeResume);
 
     // Listen for global auth failures from API
-    const handleAuthFailure = (e: any) => {
+    const handleAuthFailure = async (e: any) => {
         const error = e.detail;
-        useAuthStore.getState().forceLogout(
-            error?.message?.includes('expired') 
-                ? 'Your session has expired. Please log in again.' 
-                : 'Authentication error. Please log in again.'
-        );
+        const isMobileDevice = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || Capacitor.isNativePlatform();
+        try {
+            const refreshToken = (await secureGet('supabase.auth.rememberMe'))
+                ?? (await Preferences.get({ key: 'supabase.auth.rememberMe' })).value;
+            if (refreshToken) {
+                console.log('[App] Auth failure event received — attempting silent session recovery...');
+                const { data, error: refreshErr } = await supabase.auth.refreshSession({ refresh_token: refreshToken });
+                if (data?.session) {
+                    console.log('[App] ✅ Session silently recovered after auth failure event.');
+                    return;
+                }
+            }
+        } catch (rErr) {
+            console.warn('[App] Session recovery attempt notice:', rErr);
+        }
+
+        if (!isMobileDevice) {
+            useAuthStore.getState().forceLogout(
+                error?.message?.includes('expired') 
+                    ? 'Your session has expired. Please log in again.' 
+                    : 'Authentication error. Please log in again.'
+            );
+        } else {
+            console.warn('[App] Suppressed automatic logout on mobile device. Session preserved.');
+        }
     };
     window.addEventListener('supabase-auth-failure', handleAuthFailure);
 

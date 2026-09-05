@@ -23,7 +23,7 @@ const Network = {
 };
 import { authService } from '../services/authService';
 import { Preferences } from '@capacitor/preferences';
-import { secureSet, secureRemove } from '../utils/secureStorage';
+import { secureSet, secureRemove, secureGet } from '../utils/secureStorage';
 import type { User, AttendanceEventType } from '../types';
 import { supabase } from '../services/supabase';
 // FIX: Import the 'api' object to resolve 'Cannot find name' errors.
@@ -33,7 +33,7 @@ import { withTimeout } from '../utils/async';
 import { format } from 'date-fns';
 import { routeTrackingService } from '../services/routeTrackingService';
 import { calculateDistanceMeters, reverseGeocode, getPrecisePosition } from '../utils/locationUtils';
-import { processDailyEvents } from '../utils/attendanceCalculations';
+import { processDailyEvents, isAttendanceExemptRole } from '../utils/attendanceCalculations';
 import { useSettingsStore } from './settingsStore';
 import { dispatchNotificationFromRules } from '../services/notificationService';
 import { LocalNotifications } from '@capacitor/local-notifications';
@@ -378,11 +378,29 @@ export const useAuthStore = create<AuthState>()(
             }
         },
         forceLogout: async (reason) => {
+            const isMobileUserDevice = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || Capacitor.isNativePlatform();
+            if (isMobileUserDevice) {
+                console.warn(`[authStore] Suppressing forceLogout on Mobile device. Reason: ${reason}. Keeping user session active and auto-renewing token.`);
+                try {
+                    const refreshToken = (await secureGet('supabase.auth.rememberMe'))
+                        ?? (await Preferences.get({ key: 'supabase.auth.rememberMe' })).value;
+                    if (refreshToken) {
+                        console.log('[authStore] Attempting automatic token renewal for mobile user...');
+                        supabase.auth.refreshSession({ refresh_token: refreshToken }).then(({ data }) => {
+                            if (data?.session) {
+                                console.log('[authStore] ✅ Auto-renewed session token successfully on mobile.');
+                            }
+                        }).catch((err) => {
+                            console.warn('[authStore] Background session renewal notice:', err?.message || err);
+                        });
+                    }
+                } catch (e) {
+                    console.warn('[authStore] Silent refresh notice:', e);
+                }
+                return;
+            }
+
             console.log(`Force logout triggered. Reason: ${reason || 'Unknown'}`);
-            // Only clear in-memory state. DO NOT remove persistent tokens or call signOut().
-            // The next app open / foreground resume will silently restore the session
-            // via the saved refresh token. Tokens should only be destroyed on explicit
-            // user-initiated logout() — not on inactivity or transient auth errors.
             set({ error: reason || 'Your session has expired. Please log in again.', loading: false, user: null });
             get().resetAttendance();
         },
@@ -461,6 +479,12 @@ export const useAuthStore = create<AuthState>()(
 
         syncRouteTracking: async () => {
             const { user, isCheckedIn, isFieldCheckedIn, isSiteOtCheckedIn } = get();
+            // Leadership and exempt roles (Director, Management, Superadmin) are never tracked via GPS
+            if (isAttendanceExemptRole(user?.role)) {
+                routeTrackingService.stopTracking();
+                return;
+            }
+
             // Track any employee who is actively checked in (field, site, or office with GPS)
             const isAnyCheckedIn = isCheckedIn || isFieldCheckedIn || isSiteOtCheckedIn;
             if (!user || !isAnyCheckedIn) {
@@ -572,11 +596,12 @@ export const useAuthStore = create<AuthState>()(
                         severity: 'info',
                         details: { role: appUser.role, method: 'email' }
                     });
-                    // [SECURITY] Start session inactivity monitor on WEB only (30 min timeout).
-                    // On mobile (Android/iOS), users expect persistent sessions until manual logout.
+                    // [SECURITY] Start session inactivity monitor on Desktop WEB only.
+                    // On mobile (Android/iOS/PWA/mobile browser), users expect persistent sessions until manual logout.
                     // Backgrounding the app, screen-off, or idle periods should NOT trigger logout
                     // — the refresh token handles silent re-auth automatically.
-                    if (!Capacitor.isNativePlatform()) {
+                    const isMobileUserDevice = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || Capacitor.isNativePlatform();
+                    if (!isMobileUserDevice) {
                         startSessionMonitor(() => {
                             get().forceLogout('Your session has expired due to inactivity. Please log in again.');
                             logSecurityEvent({
@@ -1014,7 +1039,7 @@ export const useAuthStore = create<AuthState>()(
                 let hasActiveOpenSession = false;
                 let previousDaySessionInfo: { date: string; lastEventType: string; lastEventTime: string; firstIn?: string | null; lastOut?: string | null; firstBreakIn?: string | null; lastBreakOut?: string | null; workingHours?: number; isRegularPunchOpen: boolean; isSiteDutyOpen: boolean; isFieldDutyOpen: boolean; hoursElapsed: number; } | null = null;
 
-                if (lastEvent) {
+                if (lastEvent && !isAttendanceExemptRole(user?.role)) {
                     const todayDateStr = getLocalDateKey(today);
                     const openSessions: Date[] = [];
 
@@ -1260,7 +1285,7 @@ export const useAuthStore = create<AuthState>()(
                 if (!position) {
                     try {
                         const isBreakAction = newType === 'break-in' || newType === 'break-out';
-                        const gpsTimeout = isBreakAction ? 5000 : 10000;
+                        const gpsTimeout = isBreakAction ? 4000 : 8000;
                         position = await getPrecisePosition(150, gpsTimeout);
                     } catch (err: any) {
                         console.warn('[Location] Location acquisition failed:', err.message);
@@ -1278,30 +1303,35 @@ export const useAuthStore = create<AuthState>()(
                     let distanceKmValue: number | undefined = undefined;
 
                     if (newType === 'punch-out' || newType === 'site-ot-out' || newType === 'site-out') {
-                             try {
-                              const { stepCounterService } = await import('../services/stepCounterService');
-                              await stepCounterService.getStepCountFromNative();
-                              stepsValue = stepCounterService.getStepsCount();
-                              await stepCounterService.stopCounting();
-                              set({ liveSteps: 0 }); // Reset live display after checkout
+                        try {
+                            const { stepCounterService } = await import('../services/stepCounterService');
+                            await stepCounterService.getStepCountFromNative();
+                            stepsValue = stepCounterService.getStepsCount();
+                            await stepCounterService.stopCounting();
+                            set({ liveSteps: 0 }); // Reset live display after checkout
                             console.log(`[authStore] Saved steps: ${stepsValue}`);
                         } catch (err) {
                             console.warn('[authStore] Failed to capture step count on checkout:', err);
                         }
 
-                        // Calculate total GPS distance for this session from route history
+                        // Calculate total GPS distance for this session with a fast 1.5s timeout
                         try {
                             const { calculateDailyPathTravelKm } = await import('../utils/attendanceCalculations');
                             const today = new Date();
                             const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0).toISOString();
                             const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999).toISOString();
-                            const [todayEvents, routePoints] = await Promise.all([
-                                api.getAttendanceEvents(user.id, startOfDay, endOfDay),
-                                api.getRoutePoints(user.id, startOfDay, endOfDay).catch(() => [])
-                            ]);
-                            const { distance } = calculateDailyPathTravelKm(todayEvents, routePoints);
-                            distanceKmValue = Number(distance.toFixed(3));
-                            console.log(`[authStore] GPS distance for session: ${distanceKmValue} km`);
+                            const [todayEvents, routePoints] = await Promise.race([
+                                Promise.all([
+                                    api.getAttendanceEvents(user.id, startOfDay, endOfDay),
+                                    api.getRoutePoints(user.id, startOfDay, endOfDay).catch(() => [])
+                                ]),
+                                new Promise<any>((_, reject) => setTimeout(() => reject(new Error('timeout')), 1500))
+                            ]).catch(() => [[], []]);
+                            if (todayEvents?.length || routePoints?.length) {
+                                const { distance } = calculateDailyPathTravelKm(todayEvents, routePoints);
+                                distanceKmValue = Number(distance.toFixed(3));
+                                console.log(`[authStore] GPS distance for session: ${distanceKmValue} km`);
+                            }
                         } catch (err) {
                             console.warn('[authStore] Failed to calculate session distance on checkout:', err);
                         }

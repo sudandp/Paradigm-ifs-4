@@ -65,6 +65,24 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ requiredPermission, chi
   const isEssentialPermission = requiredPermission === 'view_profile' || 
                                requiredPermission === 'view_own_attendance';
 
+  const roleLower = (user.role || '').toLowerCase();
+  const roleIdLower = (user.roleId || '').toLowerCase();
+  const isDirector = roleLower.includes('director') || roleIdLower.includes('director');
+
+  const RESTRICTED_DIRECTOR_PERMISSIONS: Permission[] = [
+    'view_invoice_summary',
+    'view_verification_costing',
+    'manage_finance_settings',
+    'view_finance_reports',
+    'view_profitability',
+    'view_payment_tracker',
+  ];
+
+  if (isDirector && RESTRICTED_DIRECTOR_PERMISSIONS.includes(requiredPermission)) {
+    console.warn(`[ProtectedRoute] Access Denied to Director for restricted finance permission: ${requiredPermission}`);
+    return <Navigate to="/forbidden" replace />;
+  }
+
   const isUserAdmin = isAdmin(user.role);
   const hasAccess = isUserAdmin || userPermissions.includes(requiredPermission) || (isEssentialPermission && user.role !== 'unverified');
 

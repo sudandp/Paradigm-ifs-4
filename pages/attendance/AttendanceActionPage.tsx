@@ -243,10 +243,18 @@ const AttendanceActionPage: React.FC = () => {
                 return;
             }
 
-            const { spoofed } = await isDeviceTimeSpoofed();
-            if (spoofed) { setToast({ message: 'Time mismatch! Please enable Automatic Time.', type: 'error' }); setIsSubmitting(false); return; }
+            // Parallel pre-punch security & device checks
+            const [timeSpoofResult, deviceData] = await Promise.all([
+                isDeviceTimeSpoofed().catch(() => ({ spoofed: false })),
+                getCurrentDevice().catch(() => ({ deviceIdentifier: 'unknown', deviceType: 'unknown', deviceName: 'Device', deviceInfo: {} }))
+            ]);
+            if (timeSpoofResult.spoofed) { 
+                setToast({ message: 'Time mismatch! Please enable Automatic Time.', type: 'error' }); 
+                setIsSubmitting(false); 
+                return; 
+            }
 
-            const { deviceIdentifier, deviceType, deviceName, deviceInfo } = await getCurrentDevice();
+            const { deviceIdentifier, deviceType, deviceName, deviceInfo } = deviceData;
             const deviceCheck = await isDeviceAuthorized(user.id, deviceIdentifier);
             if (!deviceCheck.authorized) {
                 const result = await registerDevice(user.id, user.role, deviceIdentifier, deviceType as DeviceType, deviceName, deviceInfo);

@@ -223,8 +223,17 @@ const MobileHome: React.FC = () => {
 
     const userPermissions = getUserPermissions();
 
+    const roleLower = (user.role || '').toLowerCase();
+    const roleIdLower = (user.roleId || '').toLowerCase();
+    const isDirector = roleLower.includes('director') || roleIdLower.includes('director');
+
     const availableLinks = user
-        ? allNavLinks.filter(link => isAdmin(user.role) || userPermissions.includes(link.permission))
+        ? allNavLinks.filter(link => {
+            if (isDirector && (link.category === 'Finance & Invoicing' || link.category === 'Finance Hub' || link.permission === 'view_verification_costing')) {
+                return false;
+            }
+            return isAdmin(user.role) || userPermissions.includes(link.permission);
+        })
         : [];
 
     // Group by category preserving allNavLinks order

@@ -41,23 +41,23 @@ export const LocationPermissionModal: React.FC<LocationPermissionModalProps> = (
         setIsRetrying(true);
         setRetryStatus(null);
         try {
-            const pos = await getPrecisePosition(150, 8000);
-            if (pos && pos.coords && pos.coords.latitude) {
+            const pos = await getPrecisePosition(200, 10000);
+            if (pos && pos.coords && pos.coords.latitude != null) {
                 setRetryStatus({
                     success: true,
-                    message: `Location acquired successfully (${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)})!`
+                    message: `Location verified (${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)})!`
                 });
                 setTimeout(() => {
                     if (onLocationAcquired) {
                         onLocationAcquired(pos);
                     }
                     onClose();
-                }, 1000);
+                }, 600);
             } else {
                 throw new Error('Coordinates missing from location service.');
             }
         } catch (err: unknown) {
-            const errorMsg = err instanceof Error ? err.message : 'Unable to obtain GPS fix. Please follow the instructions below.';
+            const errorMsg = err instanceof Error ? err.message : 'Unable to obtain GPS fix. Please ensure location is turned ON in your phone settings.';
             console.warn('[LocationModal] Retry failed:', errorMsg);
             setRetryStatus({
                 success: false,

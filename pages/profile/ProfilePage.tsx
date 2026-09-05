@@ -17,11 +17,11 @@ import Toast from '../../components/ui/Toast';
 import { api } from '../../services/api';
 import { registerGateUser, uploadGatePhoto } from '../../services/gateApi';
 import { dispatchNotificationFromRules } from '../../services/notificationService';
-import { User as UserIcon, Loader2, ClipboardList, LogOut, LogIn, Crosshair, CheckCircle, Info, MapPin, AlertTriangle, Clock, Lock, Edit, Camera, Mail, Baby, PlusCircle, Trash2, FileCheck, FileX, Zap, Volume2, Coffee, FileText, Shield, Settings, ArrowLeft, Sparkles, QrCode, Footprints, Maximize, Navigation, HelpCircle, RefreshCw, Home, Bike, Car, Bus, Building2 } from 'lucide-react';
+import { User as UserIcon, Loader2, ClipboardList, LogOut, LogIn, Crosshair, CheckCircle, Info, MapPin, AlertTriangle, Clock, Lock, Edit, Camera, Mail, Baby, PlusCircle, Trash2, FileCheck, FileX, Zap, Volume2, Coffee, FileText, Shield, Settings, ArrowLeft, Sparkles, QrCode, Footprints, Maximize, Navigation, HelpCircle, RefreshCw, Home, Bike, Car, Bus, Building2, Building, ShieldCheck, BarChart3, CheckCircle2, IndianRupee, Users, ArrowUpRight } from 'lucide-react';
 import { AvatarUpload } from '../../components/onboarding/AvatarUpload';
 import AlertTonePicker from '../../components/attendance/AlertTonePicker';
 import { format, startOfDay, endOfDay, startOfMonth, endOfMonth } from 'date-fns';
-import { calculateDailyPathTravelKm } from '../../utils/attendanceCalculations';
+import { calculateDailyPathTravelKm, isAttendanceExemptRole } from '../../utils/attendanceCalculations';
 import CameraCaptureModal from '../../components/CameraCaptureModal';
 import HelpTicketModal from '../../components/support/HelpTicketModal';
 import Modal from '../../components/ui/Modal';
@@ -95,6 +95,7 @@ const ProfilePage: React.FC = () => {
     } = useAuthStore();
     const { permissions } = usePermissionsStore();
     const navigate = useNavigate();
+    const isDirector = (user?.role || '').toLowerCase().includes('director') || (user?.roleId || '').toLowerCase().includes('director');
 
     // Haptic feedback helper
     const triggerHaptic = async (style: ImpactStyle = ImpactStyle.Medium) => {
@@ -920,6 +921,7 @@ const ProfilePage: React.FC = () => {
     const isSiteStaffRole = (roleMapping.site || []).some((r: string) => r.toLowerCase() === userRoleLower || (r.toLowerCase() === userRoleIdLower && userRoleIdLower !== '')) || isTechnicalReliever;
     const isFieldStaffRole = (roleMapping.field || []).some((r: string) => r.toLowerCase() === userRoleLower || (r.toLowerCase() === userRoleIdLower && userRoleIdLower !== ''));
     const isOfficeStaffRole = (roleMapping.office || []).some((r: string) => r.toLowerCase() === userRoleLower || (r.toLowerCase() === userRoleIdLower && userRoleIdLower !== ''));
+    const isAttendanceExempt = isAttendanceExemptRole(user?.role) || isAttendanceExemptRole(user?.roleId);
 
     // Check for existing unlock request
     // Check for existing unlock request on mount/update
@@ -1414,7 +1416,7 @@ const ProfilePage: React.FC = () => {
 
 
 
-                    {user.role !== 'management' && (
+                    {!isAttendanceExempt && (
                         <section className="relative">
                             <div className="flex items-center justify-between mb-6 px-2">
                                 <div className="flex items-center gap-3">
@@ -1578,7 +1580,7 @@ const ProfilePage: React.FC = () => {
                     )}
 
                     {/* ═══ COMMAND CENTER ═══ */}
-                    {user.role !== 'management' && (
+                    {!isAttendanceExempt && (
                         <section className="flex flex-col items-center justify-center py-8 relative">
                             {/* Monthly Missed Punches Banner */}
                             {monthlyMissedPunchesCount > 0 && (
@@ -2742,74 +2744,113 @@ const ProfilePage: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Performance Badges — centered on the green/white boundary line (desktop only) */}
-                <div className="hidden md:flex absolute top-1/2 right-8 -translate-y-[1.75rem] z-20 items-center gap-4">
-                    <div className="flex flex-col items-center gap-1.5">
-                        <div className="relative flex justify-center items-center w-14 h-14 transform hover:scale-105 transition-all text-[#F97316] drop-shadow-md" title="Performance Score: 99">
-                            <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full fill-current z-0">
-                                <path d="M50 0L58.8 11.5L73.5 7.6L78.4 21.6L92.4 24.3L91.2 38.6L100 50L91.2 61.4L92.4 75.7L78.4 78.4L73.5 92.4L58.8 88.5L50 100L41.2 88.5L26.5 92.4L21.6 78.4L7.6 75.7L8.8 61.4L0 50L8.8 38.6L7.6 24.3L21.6 21.6L26.5 7.6L41.2 11.5Z" />
-                            </svg>
-                            <span className="relative z-10 text-white font-bold text-sm tracking-tight">{isScoresLoading ? '—' : (employeeScores?.performanceScore ?? '—')}</span>
+                {/* Header Badges: Executive Governance Seal for Leadership vs Performance Badges for Staff */}
+                {isAttendanceExempt ? (
+                    <div className="hidden md:flex absolute top-1/2 right-8 -translate-y-[1.75rem] z-20 items-center gap-3">
+                        <div className="flex items-center gap-3.5 px-4 py-2.5 rounded-xl bg-slate-900/95 text-white border border-slate-700/70 shadow-xl backdrop-blur-md">
+                            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-slate-950 font-black shadow-md flex-shrink-0">
+                                <ShieldCheck className="w-5 h-5 text-slate-950" />
+                            </div>
+                            <div className="text-left">
+                                <div className="text-[10px] font-black uppercase tracking-widest text-amber-400 flex items-center gap-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" /> Executive Governance
+                                </div>
+                                <div className="text-sm font-black text-white tracking-wide">Board Director</div>
+                            </div>
                         </div>
-                        <span className="text-[11px] uppercase font-bold text-gray-500 tracking-widest">Performance</span>
-                    </div>
-                    <div className="flex flex-col items-center gap-1.5">
-                        <div className="relative flex justify-center items-center w-14 h-14 transform hover:scale-105 transition-all text-[#6366f1] drop-shadow-md" title="Attendance: 98%">
-                            <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full fill-current z-0">
-                                <path d="M50 0L58.8 11.5L73.5 7.6L78.4 21.6L92.4 24.3L91.2 38.6L100 50L91.2 61.4L92.4 75.7L78.4 78.4L73.5 92.4L58.8 88.5L50 100L41.2 88.5L26.5 92.4L21.6 78.4L7.6 75.7L8.8 61.4L0 50L8.8 38.6L7.6 24.3L21.6 21.6L26.5 7.6L41.2 11.5Z" />
-                            </svg>
-                            <span className="relative z-10 text-white font-bold text-sm tracking-tight">{isScoresLoading ? '—' : (employeeScores?.attendanceScore ?? '—')}</span>
+                        <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-emerald-950/80 text-white border border-emerald-500/30 shadow-lg backdrop-blur-md">
+                            <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400 flex-shrink-0">
+                                <Building className="w-4 h-4" />
+                            </div>
+                            <div className="text-left">
+                                <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-300/80">Corporate Scope</div>
+                                <div className="text-xs font-black text-white">Full Authority</div>
+                            </div>
                         </div>
-                        <span className="text-[11px] uppercase font-bold text-gray-500 tracking-widest">Attendance</span>
                     </div>
-                    <div className="flex flex-col items-center gap-1.5">
-                        <div className="relative flex justify-center items-center w-14 h-14 transform hover:scale-105 transition-all text-[#111827] drop-shadow-md" title="Response Time: 99%">
-                            <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full fill-current z-0">
-                                <path d="M50 0L58.8 11.5L73.5 7.6L78.4 21.6L92.4 24.3L91.2 38.6L100 50L91.2 61.4L92.4 75.7L78.4 78.4L73.5 92.4L58.8 88.5L50 100L41.2 88.5L26.5 92.4L21.6 78.4L7.6 75.7L8.8 61.4L0 50L8.8 38.6L7.6 24.3L21.6 21.6L26.5 7.6L41.2 11.5Z" />
-                            </svg>
-                            <span className="relative z-10 text-white font-bold text-sm tracking-tight">{isScoresLoading ? '—' : (employeeScores?.responseScore ?? '—')}</span>
+                ) : (
+                    <div className="hidden md:flex absolute top-1/2 right-8 -translate-y-[1.75rem] z-20 items-center gap-4">
+                        <div className="flex flex-col items-center gap-1.5">
+                            <div className="relative flex justify-center items-center w-14 h-14 transform hover:scale-105 transition-all text-[#F97316] drop-shadow-md" title="Performance Score: 99">
+                                <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full fill-current z-0">
+                                    <path d="M50 0L58.8 11.5L73.5 7.6L78.4 21.6L92.4 24.3L91.2 38.6L100 50L91.2 61.4L92.4 75.7L78.4 78.4L73.5 92.4L58.8 88.5L50 100L41.2 88.5L26.5 92.4L21.6 78.4L7.6 75.7L8.8 61.4L0 50L8.8 38.6L7.6 24.3L21.6 21.6L26.5 7.6L41.2 11.5Z" />
+                                </svg>
+                                <span className="relative z-10 text-white font-bold text-sm tracking-tight">{isScoresLoading ? '—' : (employeeScores?.performanceScore ?? '—')}</span>
+                            </div>
+                            <span className="text-[11px] uppercase font-bold text-gray-500 tracking-widest">Performance</span>
                         </div>
-                        <span className="text-[11px] uppercase font-bold text-gray-500 tracking-widest">Response</span>
+                        <div className="flex flex-col items-center gap-1.5">
+                            <div className="relative flex justify-center items-center w-14 h-14 transform hover:scale-105 transition-all text-[#6366f1] drop-shadow-md" title="Attendance Score">
+                                <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full fill-current z-0">
+                                    <path d="M50 0L58.8 11.5L73.5 7.6L78.4 21.6L92.4 24.3L91.2 38.6L100 50L91.2 61.4L92.4 75.7L78.4 78.4L73.5 92.4L58.8 88.5L50 100L41.2 88.5L26.5 92.4L21.6 78.4L7.6 75.7L8.8 61.4L0 50L8.8 38.6L7.6 24.3L21.6 21.6L26.5 7.6L41.2 11.5Z" />
+                                </svg>
+                                <span className="relative z-10 text-white font-bold text-sm tracking-tight">{isScoresLoading ? '—' : (employeeScores?.attendanceScore ?? '—')}</span>
+                            </div>
+                            <span className="text-[11px] uppercase font-bold text-gray-500 tracking-widest">Attendance</span>
+                        </div>
+                        <div className="flex flex-col items-center gap-1.5">
+                            <div className="relative flex justify-center items-center w-14 h-14 transform hover:scale-105 transition-all text-[#111827] drop-shadow-md" title="Response Time: 99%">
+                                <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full fill-current z-0">
+                                    <path d="M50 0L58.8 11.5L73.5 7.6L78.4 21.6L92.4 24.3L91.2 38.6L100 50L91.2 61.4L92.4 75.7L78.4 78.4L73.5 92.4L58.8 88.5L50 100L41.2 88.5L26.5 92.4L21.6 78.4L7.6 75.7L8.8 61.4L0 50L8.8 38.6L7.6 24.3L21.6 21.6L26.5 7.6L41.2 11.5Z" />
+                                </svg>
+                                <span className="relative z-10 text-white font-bold text-sm tracking-tight">{isScoresLoading ? '—' : (employeeScores?.responseScore ?? '—')}</span>
+                            </div>
+                            <span className="text-[11px] uppercase font-bold text-gray-500 tracking-widest">Response</span>
+                        </div>
                     </div>
-                </div>
+                )}
 
-                {/* Mobile-only badges (inside normal flow) */}
-                <div className="md:hidden flex items-center justify-center gap-3 w-full px-6 pb-4">
-                    <div className="flex flex-col items-center gap-1.5">
-                        <div className="relative flex justify-center items-center w-12 h-12 text-[#F97316] drop-shadow-sm">
-                            <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full fill-current z-0">
-                                <path d="M50 0L58.8 11.5L73.5 7.6L78.4 21.6L92.4 24.3L91.2 38.6L100 50L91.2 61.4L92.4 75.7L78.4 78.4L73.5 92.4L58.8 88.5L50 100L41.2 88.5L26.5 92.4L21.6 78.4L7.6 75.7L8.8 61.4L0 50L8.8 38.6L7.6 24.3L21.6 21.6L26.5 7.6L41.2 11.5Z" />
-                            </svg>
-                            <span className="relative z-10 text-white font-bold text-[13px]">{isScoresLoading ? '—' : (employeeScores?.performanceScore ?? '—')}</span>
+                {/* Mobile-only Badges */}
+                {isAttendanceExempt ? (
+                    <div className="md:hidden flex items-center justify-center gap-2.5 w-full px-6 pb-4">
+                        <div className="flex items-center gap-2.5 px-4 py-2 rounded-xl bg-slate-900/95 text-white border border-slate-700/60 shadow-md">
+                            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-slate-950 flex-shrink-0">
+                                <ShieldCheck className="w-4 h-4" />
+                            </div>
+                            <div className="text-left">
+                                <div className="text-[9px] font-black uppercase tracking-wider text-amber-400">Executive Governance</div>
+                                <div className="text-xs font-black text-white">Board Director</div>
+                            </div>
                         </div>
-                        <span className="text-[11px] uppercase font-bold text-gray-500 tracking-widest">Performance</span>
                     </div>
-                    <div className="flex flex-col items-center gap-1.5">
-                        <div className="relative flex justify-center items-center w-12 h-12 text-[#6366f1] drop-shadow-sm">
-                            <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full fill-current z-0">
-                                <path d="M50 0L58.8 11.5L73.5 7.6L78.4 21.6L92.4 24.3L91.2 38.6L100 50L91.2 61.4L92.4 75.7L78.4 78.4L73.5 92.4L58.8 88.5L50 100L41.2 88.5L26.5 92.4L21.6 78.4L7.6 75.7L8.8 61.4L0 50L8.8 38.6L7.6 24.3L21.6 21.6L26.5 7.6L41.2 11.5Z" />
-                            </svg>
-                            <span className="relative z-10 text-white font-bold text-[13px]">{isScoresLoading ? '—' : (employeeScores?.attendanceScore ?? '—')}</span>
+                ) : (
+                    <div className="md:hidden flex items-center justify-center gap-3 w-full px-6 pb-4">
+                        <div className="flex flex-col items-center gap-1.5">
+                            <div className="relative flex justify-center items-center w-12 h-12 text-[#F97316] drop-shadow-sm">
+                                <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full fill-current z-0">
+                                    <path d="M50 0L58.8 11.5L73.5 7.6L78.4 21.6L92.4 24.3L91.2 38.6L100 50L91.2 61.4L92.4 75.7L78.4 78.4L73.5 92.4L58.8 88.5L50 100L41.2 88.5L26.5 92.4L21.6 78.4L7.6 75.7L8.8 61.4L0 50L8.8 38.6L7.6 24.3L21.6 21.6L26.5 7.6L41.2 11.5Z" />
+                                </svg>
+                                <span className="relative z-10 text-white font-bold text-[13px]">{isScoresLoading ? '—' : (employeeScores?.performanceScore ?? '—')}</span>
+                            </div>
+                            <span className="text-[11px] uppercase font-bold text-gray-500 tracking-widest">Performance</span>
                         </div>
-                        <span className="text-[11px] uppercase font-bold text-gray-500 tracking-widest">Attendance</span>
-                    </div>
-                    <div className="flex flex-col items-center gap-1.5">
-                        <div className="relative flex justify-center items-center w-12 h-12 text-[#111827] drop-shadow-sm">
-                            <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full fill-current z-0">
-                                <path d="M50 0L58.8 11.5L73.5 7.6L78.4 21.6L92.4 24.3L91.2 38.6L100 50L91.2 61.4L92.4 75.7L78.4 78.4L73.5 92.4L58.8 88.5L50 100L41.2 88.5L26.5 92.4L21.6 78.4L7.6 75.7L8.8 61.4L0 50L8.8 38.6L7.6 24.3L21.6 21.6L26.5 7.6L41.2 11.5Z" />
-                            </svg>
-                            <span className="relative z-10 text-white font-bold text-[13px]">{isScoresLoading ? '—' : (employeeScores?.responseScore ?? '—')}</span>
+                        <div className="flex flex-col items-center gap-1.5">
+                            <div className="relative flex justify-center items-center w-12 h-12 text-[#6366f1] drop-shadow-sm">
+                                <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full fill-current z-0">
+                                    <path d="M50 0L58.8 11.5L73.5 7.6L78.4 21.6L92.4 24.3L91.2 38.6L100 50L91.2 61.4L92.4 75.7L78.4 78.4L73.5 92.4L58.8 88.5L50 100L41.2 88.5L26.5 92.4L21.6 78.4L7.6 75.7L8.8 61.4L0 50L8.8 38.6L7.6 24.3L21.6 21.6L26.5 7.6L41.2 11.5Z" />
+                                </svg>
+                                <span className="relative z-10 text-white font-bold text-[13px]">{isScoresLoading ? '—' : (employeeScores?.attendanceScore ?? '—')}</span>
+                            </div>
+                            <span className="text-[11px] uppercase font-bold text-gray-500 tracking-widest">Attendance</span>
                         </div>
-                        <span className="text-[10px] uppercase font-bold text-gray-500 tracking-widest">Response</span>
+                        <div className="flex flex-col items-center gap-1.5">
+                            <div className="relative flex justify-center items-center w-12 h-12 text-[#111827] drop-shadow-sm">
+                                <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full fill-current z-0">
+                                    <path d="M50 0L58.8 11.5L73.5 7.6L78.4 21.6L92.4 24.3L91.2 38.6L100 50L91.2 61.4L92.4 75.7L78.4 78.4L73.5 92.4L58.8 88.5L50 100L41.2 88.5L26.5 92.4L21.6 78.4L7.6 75.7L8.8 61.4L0 50L8.8 38.6L7.6 24.3L21.6 21.6L26.5 7.6L41.2 11.5Z" />
+                                </svg>
+                                <span className="relative z-10 text-white font-bold text-[13px]">{isScoresLoading ? '—' : (employeeScores?.responseScore ?? '—')}</span>
+                            </div>
+                            <span className="text-[10px] uppercase font-bold text-gray-500 tracking-widest">Response</span>
+                        </div>
                     </div>
-                </div>
+                )}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-5">
                 
                 {/* Unified Horizontal Layout (All cards in 1 row) */}
                 <div className="lg:col-span-12 space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 items-stretch">
+                    <div className={`grid grid-cols-1 ${isAttendanceExempt ? 'md:grid-cols-2' : 'md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'} gap-5 items-stretch`}>
 
                     {/* Side-by-Side: Profile Details & Work Hours Tracking */}
                         
@@ -2918,7 +2959,7 @@ const ProfilePage: React.FC = () => {
                     )}
 
                     {/* Work Hours Tracking */}
-                    {user.role !== 'management' ? (
+                    {!isAttendanceExempt && user.role !== 'management' && (
                         <div className={`relative transition-all duration-500 md:bg-white md:p-3 md:rounded-xl md:shadow-[0_4px_12px_rgba(0,0,0,0.06)] border ${isOnBreak ? 'border-rose-500 ring-2 ring-rose-100' : 'border-gray-100'} h-full`}>
                             {isOnBreak && (
                                 <div className="absolute -top-3 left-6 z-20 bg-rose-600 text-white text-xs font-bold px-3 py-1 rounded-md shadow-sm uppercase tracking-wider">
@@ -3183,7 +3224,7 @@ const ProfilePage: React.FC = () => {
                                 )}
                             </div>
                         </div>
-                    ) : <div></div>}
+                    )}
 
                     {/* Passcode Management Desktop */}
                     <div className="md:bg-white md:p-3 md:rounded-xl md:shadow-[0_4px_12px_rgba(0,0,0,0.06)] border border-gray-100 transition-shadow">
@@ -3195,7 +3236,11 @@ const ProfilePage: React.FC = () => {
                                 <h3 className="text-sm font-bold text-gray-900">Security Passcode</h3>
                             </div>
                         </div>
-                        <p className="text-sm text-gray-500 mb-6 leading-relaxed">Update your 4-digit security passcode for attendance authentication. Keep this private for secure check-ins.</p>
+                        <p className="text-sm text-gray-500 mb-6 leading-relaxed">
+                            {isAttendanceExempt
+                                ? 'Update your 4-digit corporate security passcode for executive authorization and account protection.'
+                                : 'Update your 4-digit security passcode for attendance authentication. Keep this private for secure check-ins.'}
+                        </p>
                         
                         <form onSubmit={handlePasscodeSubmit(onPasscodeSubmit)} className="space-y-3">
                             <div className="grid grid-cols-1 gap-3">
@@ -3350,7 +3395,7 @@ const ProfilePage: React.FC = () => {
                     )}
 
                     {/* Today's Activity Card */}
-                    {user.role !== 'management' && (
+                    {!isAttendanceExempt && user.role !== 'management' && (
                         <div className="md:bg-white md:p-3 md:rounded-xl md:shadow-[0_4px_12px_rgba(0,0,0,0.06)] border border-gray-100 h-full transition-shadow">
                             <div className="flex items-center gap-3 mb-5">
                                 <div className={`p-2 rounded-lg ${isOfficeStaffRole ? 'bg-blue-50' : 'bg-emerald-50'}`}>
@@ -3455,363 +3500,526 @@ const ProfilePage: React.FC = () => {
                         </div>
                     )}
 
-                    {/* Home Location Card */}
-                    <div className="md:bg-white md:p-3 md:rounded-xl md:shadow-[0_4px_12px_rgba(0,0,0,0.06)] border border-gray-100 h-full transition-shadow flex flex-col justify-between">
-                        <div>
-                            <div className="flex items-center gap-3 mb-5">
-                                <div className="p-2 bg-emerald-50 rounded-lg">
-                                    <MapPin className="h-5 w-5 text-emerald-600" />
-                                </div>
-                                <h3 className="text-sm font-bold text-gray-900">Home Location</h3>
-                            </div>
-                            <form 
-                                onSubmit={async (e) => {
-                                    if (isFirstTime) {
-                                        await handleSaveHomeLocation(e);
-                                    } else {
-                                        await handleRequestLocationChange(e);
-                                    }
-                                }} 
-                                className="space-y-3"
-                            >
+                    {isAttendanceExempt ? (
+                        <>
+                            {/* Corporate Governance Profile Card */}
+                            <div className="md:bg-white md:p-5 md:rounded-xl md:shadow-[0_4px_12px_rgba(0,0,0,0.06)] border border-slate-200/80 h-full transition-shadow flex flex-col justify-between relative overflow-hidden group">
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-amber-500/10 to-transparent rounded-full -mr-16 -mt-16 pointer-events-none" />
                                 <div>
-                                    <label className="block text-xs font-semibold text-gray-500 mb-1">Location Name</label>
-                                    <input
-                                        type="text"
-                                        value={homeLocationName}
-                                        disabled
-                                        className="form-input bg-gray-50 border-gray-200 text-sm h-[40px] rounded-lg w-full text-gray-500 cursor-not-allowed"
-                                    />
-                                </div>
-                                <div className="grid grid-cols-2 gap-2">
-                                    <div>
-                                        <label className="block text-xs font-semibold text-gray-500 mb-1">Latitude</label>
-                                        <input
-                                            type="text"
-                                            value={homeLatitude}
-                                            onChange={e => setHomeLatitude(e.target.value)}
-                                            className="form-input bg-white border-gray-200 text-sm h-[40px] rounded-lg w-full"
-                                            placeholder="Latitude"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-semibold text-gray-500 mb-1">Longitude</label>
-                                        <input
-                                            type="text"
-                                            value={homeLongitude}
-                                            onChange={e => setHomeLongitude(e.target.value)}
-                                            className="form-input bg-white border-gray-200 text-sm h-[40px] rounded-lg w-full"
-                                            placeholder="Longitude"
-                                        />
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-semibold text-gray-500 mb-1">Home Address</label>
-                                    <textarea
-                                        value={homeAddress}
-                                        onChange={e => setHomeAddress(e.target.value)}
-                                        rows={2}
-                                        className="form-input bg-white border-gray-200 text-sm py-2 px-3 rounded-lg w-full resize-none"
-                                        placeholder="Enter your home address"
-                                    />
-                                </div>
-
-                                {/* Subsequent Change Requests Flow */}
-                                {!isFirstTime && (
-                                    <div className="space-y-3 pt-2">
-                                        <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg text-[11px] text-amber-800 space-y-1">
-                                            <p className="font-bold flex items-center gap-1.5">⚠️ Calendar Year Update Limit</p>
-                                            <p>You can update your home location only 3 times per calendar year.</p>
-                                            <p>Approved updates this year: <strong className="text-amber-900">{updateCount} / 3</strong></p>
-                                        </div>
-                                        {updateCount >= 3 ? (
-                                            <div className="text-rose-600 font-bold text-xs p-3 text-center bg-rose-50 rounded-lg border border-rose-200">
-                                                You have reached the maximum limit of 3 home location updates for this calendar year.
+                                    <div className="flex items-center justify-between mb-4 border-b border-gray-100 pb-3">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2.5 bg-slate-900 rounded-xl text-amber-400 shadow-sm">
+                                                <Building className="h-5 w-5" />
                                             </div>
-                                        ) : (
                                             <div>
-                                                <label className="block text-xs font-semibold text-amber-600 mb-1">Reason for Updating Address</label>
-                                                <textarea
-                                                    value={changeReason}
-                                                    onChange={e => setChangeReason(e.target.value)}
-                                                    rows={2}
-                                                    required
-                                                    className="form-input bg-white border-gray-200 text-sm py-2 px-3 rounded-lg w-full resize-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
-                                                    placeholder="Please explain why you are updating your home address..."
-                                                />
+                                                <h3 className="text-sm font-black text-slate-900 tracking-tight">Corporate Governance & Authority</h3>
+                                                <p className="text-[11px] text-gray-500 font-medium">Paradigm Executive Leadership Division</p>
                                             </div>
-                                        )}
+                                        </div>
+                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200/70">
+                                            <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
+                                            C-Suite Scope
+                                        </span>
                                     </div>
-                                )}
 
-                                <div className="flex gap-2 justify-end pt-3 mt-3 border-t border-gray-100">
-                                    <Button 
-                                        type="button" 
-                                        onClick={handleSyncHomeLocation} 
-                                        isLoading={isSyncingLocation}
-                                        variant="outline"
-                                        className="!h-[38px] text-xs font-semibold"
-                                    >
-                                        <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
-                                        Sync Location
-                                    </Button>
-                                    <Button 
-                                        type="submit" 
-                                        isLoading={isSavingLocation}
-                                        disabled={!isFirstTime && (updateCount >= 3 || !changeReason.trim())}
-                                        className={`!h-[38px] text-xs font-semibold text-white ${!isFirstTime ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
-                                    >
-                                        {isFirstTime ? 'Save' : 'Request Update'}
-                                    </Button>
+                                    <div className="space-y-3 pt-1">
+                                        <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between">
+                                            <div>
+                                                <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Jurisdiction & Standing</div>
+                                                <div className="text-xs font-black text-slate-800 mt-0.5">Board Member / Director</div>
+                                            </div>
+                                            <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800">
+                                                Active Standing
+                                            </span>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-2.5">
+                                            <div className="p-3 rounded-xl bg-slate-50/70 border border-slate-100">
+                                                <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Biometric Geofencing</div>
+                                                <div className="text-xs font-extrabold text-slate-800 mt-1 flex items-center gap-1">
+                                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                                    Fully Exempt
+                                                </div>
+                                            </div>
+                                            <div className="p-3 rounded-xl bg-slate-50/70 border border-slate-100">
+                                                <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Security Clearance</div>
+                                                <div className="text-xs font-extrabold text-slate-800 mt-1 flex items-center gap-1">
+                                                    <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
+                                                    Enterprise Admin
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="p-3 rounded-xl bg-amber-50/50 border border-amber-200/60 text-[11px] text-amber-900 leading-relaxed">
+                                            <span className="font-bold">Executive Exemption Notice:</span> As Board Director, standard staff geo-fencing, punch-in boundaries, and daily vehicle odometer verification are automatically exempted in accordance with executive policy.
+                                        </div>
+                                    </div>
                                 </div>
-                            </form>
-                        </div>
-                    </div>
 
-                    {/* ── Vehicle Details Card (desktop) ── */}
-                    <div className="md:bg-white md:p-3 md:rounded-xl md:shadow-[0_4px_12px_rgba(0,0,0,0.06)] border border-gray-100 h-full transition-shadow flex flex-col justify-between">
-                        <div>
-                            <div className="flex items-center justify-between mb-4 border-b border-gray-100 pb-2">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-amber-50 rounded-lg">
-                                        <Bike className="h-5 w-5 text-amber-600" />
-                                    </div>
-                                    <div>
-                                        <h3 className="text-sm font-bold text-gray-900">My Vehicles</h3>
-                                        <p className="text-[10px] text-gray-400 font-medium">Reimbursement details</p>
-                                    </div>
+                                <div className="pt-4 border-t border-gray-100 mt-4 flex items-center justify-between text-xs text-gray-400 font-medium">
+                                    <span>Corporate ID: {(user as any)?.employeeId || user?.id || 'DIR-001'}</span>
+                                    <span className="text-emerald-600 font-bold flex items-center gap-1">
+                                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                                        Verified Executive
+                                    </span>
                                 </div>
                             </div>
 
-                            {/* Vehicles List */}
-                            {isLoadingVehicles ? (
-                                <div className="py-4 text-center text-xs text-gray-400">Loading vehicles...</div>
-                            ) : vehiclesList.length === 0 ? (
-                                <div className="py-4 text-center text-xs text-gray-400 border border-dashed border-gray-200 rounded-xl mb-4 bg-gray-50/40">
-                                    No vehicles registered. Please add one below.
-                                </div>
-                            ) : (
-                                <div className="space-y-2.5 mb-4">
-                                    {vehiclesList.map((v) => (
-                                        <div key={v.id} className="p-3 bg-gray-50 border border-gray-100 rounded-xl flex items-center justify-between">
-                                            <div className="flex items-center gap-3">
-                                                <div className="p-1.5 bg-white rounded-lg border border-gray-100">
-                                                    {v.vehicle_type === 'two_wheeler' ? <Bike className="w-4 h-4 text-amber-500" /> : <Car className="w-4 h-4 text-blue-500" />}
-                                                </div>
-                                                <div>
-                                                    <p className="text-xs font-bold text-gray-800">{v.brand_name}</p>
-                                                    <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">
-                                                        {v.vehicle_type.replace('_', ' ')} {v.engine_cc ? `• ${v.engine_cc}cc` : ''}
-                                                    </p>
-                                                </div>
+                            {/* Executive Command Center Shortcuts Card */}
+                            <div className="md:bg-white md:p-5 md:rounded-xl md:shadow-[0_4px_12px_rgba(0,0,0,0.06)] border border-slate-200/80 h-full transition-shadow flex flex-col justify-between relative overflow-hidden">
+                                <div>
+                                    <div className="flex items-center justify-between mb-4 border-b border-gray-100 pb-3">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2.5 bg-slate-900 rounded-xl text-amber-400 shadow-sm">
+                                                <BarChart3 className="h-5 w-5" />
                                             </div>
-                                            <div className="text-right">
-                                                <p className="text-[10px] font-bold text-gray-900">{v.odometer_reading.toLocaleString()} km</p>
-                                                <span className={`inline-block px-1.5 py-0.5 text-[8px] font-black uppercase rounded-md tracking-wider mt-1 ${
-                                                    v.status === 'approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                                                }`}>
-                                                    {v.status}
-                                                </span>
+                                            <div>
+                                                <h3 className="text-sm font-black text-slate-900 tracking-tight">Executive Command Center</h3>
+                                                <p className="text-[11px] text-gray-500 font-medium">Rapid Director Navigation & Directives</p>
                                             </div>
                                         </div>
-                                    ))}
-                                </div>
-                            )}
+                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Quick Actions</span>
+                                    </div>
 
-                            {/* Add Vehicle Form */}
-                            {(vehiclesList.length === 0 || vehiclesList.filter(v => v.status === 'approved').length >= 1) && (
-                                <form onSubmit={handleAddVehicle} className="space-y-3 pt-2 border-t border-gray-100">
-                                    <h4 className="text-xs font-bold text-gray-700">
-                                        {vehiclesList.filter(v => v.status === 'approved').length >= 1 
-                                            ? 'Request to Add Another Vehicle' 
-                                            : 'Register First Vehicle'}
-                                    </h4>
+                                    <div className="grid grid-cols-2 gap-3 pt-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => navigate('/client/dashboard')}
+                                            className="p-3.5 rounded-xl border border-gray-200/90 hover:border-slate-800 bg-white hover:bg-slate-50 transition-all text-left flex flex-col justify-between group shadow-sm"
+                                        >
+                                            <div className="flex items-center justify-between w-full mb-2">
+                                                <div className="p-2 rounded-lg bg-emerald-50 text-emerald-700 group-hover:bg-slate-900 group-hover:text-white transition-colors">
+                                                    <BarChart3 className="w-4 h-4" />
+                                                </div>
+                                                <ArrowUpRight className="w-3.5 h-3.5 text-gray-400 group-hover:text-slate-900 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                                            </div>
+                                            <div className="text-xs font-black text-slate-900">Operations Dashboard</div>
+                                            <div className="text-[10px] text-gray-500 font-medium mt-0.5">Live enterprise performance</div>
+                                        </button>
 
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <div>
-                                            <label className="block text-[10px] font-bold text-gray-500 mb-1">Vehicle Type</label>
-                                            <select
-                                                value={vehicleType}
-                                                onChange={e => setVehicleType(e.target.value)}
-                                                className="w-full bg-white border border-gray-200 rounded-lg text-xs h-[36px] px-2"
+                                        <button
+                                            type="button"
+                                            onClick={() => navigate('/verification/dashboard')}
+                                            className="p-3.5 rounded-xl border border-gray-200/90 hover:border-slate-800 bg-white hover:bg-slate-50 transition-all text-left flex flex-col justify-between group shadow-sm"
+                                        >
+                                            <div className="flex items-center justify-between w-full mb-2">
+                                                <div className="p-2 rounded-lg bg-amber-50 text-amber-700 group-hover:bg-slate-900 group-hover:text-white transition-colors">
+                                                    <CheckCircle2 className="w-4 h-4" />
+                                                </div>
+                                                <ArrowUpRight className="w-3.5 h-3.5 text-gray-400 group-hover:text-slate-900 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                                            </div>
+                                            <div className="text-xs font-black text-slate-900">Approvals & Inbox</div>
+                                            <div className="text-[10px] text-gray-500 font-medium mt-0.5">Review pending authorizations</div>
+                                        </button>
+
+                                        {!isDirector ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => navigate('/billing/summary')}
+                                                className="p-3.5 rounded-xl border border-gray-200/90 hover:border-slate-800 bg-white hover:bg-slate-50 transition-all text-left flex flex-col justify-between group shadow-sm"
                                             >
-                                                <option value="two_wheeler">Two Wheeler</option>
-                                                <option value="four_wheeler_petrol">4W Petrol</option>
-                                                <option value="four_wheeler_diesel">4W Diesel</option>
-                                                <option value="public_transport">Public Transport</option>
-                                                <option value="company_vehicle">Company Vehicle</option>
-                                            </select>
+                                                <div className="flex items-center justify-between w-full mb-2">
+                                                    <div className="p-2 rounded-lg bg-blue-50 text-blue-700 group-hover:bg-slate-900 group-hover:text-white transition-colors">
+                                                        <IndianRupee className="w-4 h-4" />
+                                                    </div>
+                                                    <ArrowUpRight className="w-3.5 h-3.5 text-gray-400 group-hover:text-slate-900 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                                                </div>
+                                                <div className="text-xs font-black text-slate-900">Finance & Invoicing</div>
+                                                <div className="text-[10px] text-gray-500 font-medium mt-0.5">Revenue and billing matrix</div>
+                                            </button>
+                                        ) : (
+                                            <button
+                                                type="button"
+                                                onClick={() => navigate('/finance?tab=attendance')}
+                                                className="p-3.5 rounded-xl border border-gray-200/90 hover:border-slate-800 bg-white hover:bg-slate-50 transition-all text-left flex flex-col justify-between group shadow-sm"
+                                            >
+                                                <div className="flex items-center justify-between w-full mb-2">
+                                                    <div className="p-2 rounded-lg bg-emerald-50 text-emerald-700 group-hover:bg-slate-900 group-hover:text-white transition-colors">
+                                                        <ClipboardList className="w-4 h-4" />
+                                                    </div>
+                                                    <ArrowUpRight className="w-3.5 h-3.5 text-gray-400 group-hover:text-slate-900 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                                                </div>
+                                                <div className="text-xs font-black text-slate-900">Attendance Tracker</div>
+                                                <div className="text-[10px] text-gray-500 font-medium mt-0.5">Authorized team & site logs</div>
+                                            </button>
+                                        )}
+
+                                        <button
+                                            type="button"
+                                            onClick={() => navigate('/my-team')}
+                                            className="p-3.5 rounded-xl border border-gray-200/90 hover:border-slate-800 bg-white hover:bg-slate-50 transition-all text-left flex flex-col justify-between group shadow-sm"
+                                        >
+                                            <div className="flex items-center justify-between w-full mb-2">
+                                                <div className="p-2 rounded-lg bg-slate-100 text-slate-800 group-hover:bg-slate-900 group-hover:text-white transition-colors">
+                                                    <Users className="w-4 h-4" />
+                                                </div>
+                                                <ArrowUpRight className="w-3.5 h-3.5 text-gray-400 group-hover:text-slate-900 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                                            </div>
+                                            <div className="text-xs font-black text-slate-900">Workforce & Team</div>
+                                            <div className="text-[10px] text-gray-500 font-medium mt-0.5">Organization roster & sites</div>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="pt-4 border-t border-gray-100 mt-4 flex items-center justify-between text-[11px] text-gray-400">
+                                    <span>Paradigm Office ERP 4.0</span>
+                                    <span className="font-semibold text-slate-700">Executive Tier</span>
+                                </div>
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            {/* Home Location Card */}
+                            <div className="md:bg-white md:p-3 md:rounded-xl md:shadow-[0_4px_12px_rgba(0,0,0,0.06)] border border-gray-100 h-full transition-shadow flex flex-col justify-between">
+                                <div>
+                                    <div className="flex items-center gap-3 mb-5">
+                                        <div className="p-2 bg-emerald-50 rounded-lg">
+                                            <MapPin className="h-5 w-5 text-emerald-600" />
                                         </div>
+                                        <h3 className="text-sm font-bold text-gray-900">Home Location</h3>
+                                    </div>
+                                    <form 
+                                        onSubmit={async (e) => {
+                                            if (isFirstTime) {
+                                                await handleSaveHomeLocation(e);
+                                            } else {
+                                                await handleRequestLocationChange(e);
+                                            }
+                                        }} 
+                                        className="space-y-3"
+                                    >
                                         <div>
-                                            <label className="block text-[10px] font-bold text-gray-500 mb-1">Brand Name</label>
+                                            <label className="block text-xs font-semibold text-gray-500 mb-1">Location Name</label>
                                             <input
                                                 type="text"
-                                                value={vehicleBrand}
-                                                onChange={e => setVehicleBrand(e.target.value)}
-                                                placeholder="e.g. Honda, Suzuki"
-                                                className="w-full bg-white border border-gray-200 rounded-lg text-xs h-[36px] px-2.5"
-                                                required
+                                                value={homeLocationName}
+                                                disabled
+                                                className="form-input bg-gray-50 border-gray-200 text-sm h-[40px] rounded-lg w-full text-gray-500 cursor-not-allowed"
                                             />
                                         </div>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-2">
-                                        {vehicleType === 'two_wheeler' && (
+                                        <div className="grid grid-cols-2 gap-2">
                                             <div>
-                                                <label className="block text-[10px] font-bold text-gray-500 mb-1">Engine CC</label>
+                                                <label className="block text-xs font-semibold text-gray-500 mb-1">Latitude</label>
                                                 <input
-                                                    type="number"
-                                                    value={vehicleCC}
-                                                    onChange={e => setVehicleCC(e.target.value)}
-                                                    placeholder="e.g. 150"
-                                                    className="w-full bg-white border border-gray-200 rounded-lg text-xs h-[36px] px-2.5"
+                                                    type="text"
+                                                    value={homeLatitude}
+                                                    onChange={e => setHomeLatitude(e.target.value)}
+                                                    className="form-input bg-white border-gray-200 text-sm h-[40px] rounded-lg w-full"
+                                                    placeholder="Latitude"
                                                 />
                                             </div>
-                                        )}
-                                        <div className={vehicleType !== 'two_wheeler' ? 'col-span-2' : ''}>
-                                            <label className="block text-[10px] font-bold text-gray-500 mb-1">Odometer Reading (KM)</label>
-                                            <input
-                                                type="number"
-                                                value={vehicleOdo}
-                                                onChange={e => setVehicleOdo(e.target.value)}
-                                                placeholder="e.g. 12450"
-                                                className="w-full bg-white border border-gray-200 rounded-lg text-xs h-[36px] px-2.5"
-                                                required
+                                            <div>
+                                                <label className="block text-xs font-semibold text-gray-500 mb-1">Longitude</label>
+                                                <input
+                                                    type="text"
+                                                    value={homeLongitude}
+                                                    onChange={e => setHomeLongitude(e.target.value)}
+                                                    className="form-input bg-white border-gray-200 text-sm h-[40px] rounded-lg w-full"
+                                                    placeholder="Longitude"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-gray-500 mb-1">Home Address</label>
+                                            <textarea
+                                                value={homeAddress}
+                                                onChange={e => setHomeAddress(e.target.value)}
+                                                rows={2}
+                                                className="form-input bg-white border-gray-200 text-sm py-2 px-3 rounded-lg w-full resize-none"
+                                                placeholder="Enter your home address"
                                             />
+                                        </div>
+
+                                        {/* Subsequent Change Requests Flow */}
+                                        {!isFirstTime && (
+                                            <div className="space-y-3 pt-2">
+                                                <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg text-[11px] text-amber-800 space-y-1">
+                                                    <p className="font-bold flex items-center gap-1.5">⚠️ Calendar Year Update Limit</p>
+                                                    <p>You can update your home location only 3 times per calendar year.</p>
+                                                    <p>Approved updates this year: <strong className="text-amber-900">{updateCount} / 3</strong></p>
+                                                </div>
+                                                {updateCount >= 3 ? (
+                                                    <div className="text-rose-600 font-bold text-xs p-3 text-center bg-rose-50 rounded-lg border border-rose-200">
+                                                        You have reached the maximum limit of 3 home location updates for this calendar year.
+                                                    </div>
+                                                ) : (
+                                                    <div>
+                                                        <label className="block text-xs font-semibold text-amber-600 mb-1">Reason for Updating Address</label>
+                                                        <textarea
+                                                            value={changeReason}
+                                                            onChange={e => setChangeReason(e.target.value)}
+                                                            rows={2}
+                                                            required
+                                                            className="form-input bg-white border-gray-200 text-sm py-2 px-3 rounded-lg w-full resize-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                                                            placeholder="Please explain why you are updating your home address..."
+                                                        />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        <div className="flex gap-2 justify-end pt-3 mt-3 border-t border-gray-100">
+                                            <Button 
+                                                type="button" 
+                                                onClick={handleSyncHomeLocation} 
+                                                isLoading={isSyncingLocation}
+                                                variant="outline"
+                                                className="!h-[38px] text-xs font-semibold"
+                                            >
+                                                <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+                                                Sync Location
+                                            </Button>
+                                            <Button 
+                                                type="submit" 
+                                                isLoading={isSavingLocation}
+                                                disabled={!isFirstTime && (updateCount >= 3 || !changeReason.trim())}
+                                                className={`!h-[38px] text-xs font-semibold text-white ${!isFirstTime ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+                                            >
+                                                {isFirstTime ? 'Save' : 'Request Update'}
+                                            </Button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+
+                            {/* Vehicle Details Card */}
+                            <div className="md:bg-white md:p-3 md:rounded-xl md:shadow-[0_4px_12px_rgba(0,0,0,0.06)] border border-gray-100 h-full transition-shadow flex flex-col justify-between">
+                                <div>
+                                    <div className="flex items-center justify-between mb-4 border-b border-gray-100 pb-2">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 bg-amber-50 rounded-lg">
+                                                <Bike className="h-5 w-5 text-amber-600" />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-sm font-bold text-gray-900">My Vehicles</h3>
+                                                <p className="text-[10px] text-gray-400 font-medium">Reimbursement details</p>
+                                            </div>
                                         </div>
                                     </div>
 
-                                    <div>
-                                        <label className="block text-[10px] font-bold text-gray-500 mb-1">Odometer Picture</label>
-                                        <input 
-                                            id="odometer-file-input-edit" 
-                                            type="file" 
-                                            className="sr-only" 
-                                            onChange={handleOdometerImageChange} 
-                                            accept="image/*"
-                                        />
-                                        {odoImagePreview ? (
-                                            <div className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 flex flex-col items-center justify-center min-h-[140px] relative overflow-hidden group">
-                                                <div className="relative w-full h-[110px] bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center border border-gray-200">
-                                                    <img 
-                                                        src={odoImagePreview} 
-                                                        alt="Odometer Preview" 
-                                                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
-                                                    />
-                                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                                        <label 
-                                                            htmlFor="odometer-file-input-edit" 
-                                                            className="p-2 bg-white/10 hover:bg-white/20 backdrop-blur-md rounded-lg cursor-pointer transition-all active:scale-95"
-                                                            title="Change Photo"
-                                                        >
-                                                            <RefreshCw className="h-4 w-4 text-white" />
-                                                        </label>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                setVehicleOdoImage(null);
-                                                                setOdoImagePreview(null);
-                                                            }}
-                                                            className="p-2 bg-rose-500/20 hover:bg-rose-500/30 backdrop-blur-md rounded-lg transition-all active:scale-95"
-                                                            title="Remove Photo"
-                                                        >
-                                                            <Trash2 className="h-4 w-4 text-rose-400" />
-                                                        </button>
+                                    {/* Vehicles List */}
+                                    {isLoadingVehicles ? (
+                                        <div className="py-4 text-center text-xs text-gray-400">Loading vehicles...</div>
+                                    ) : vehiclesList.length === 0 ? (
+                                        <div className="py-4 text-center text-xs text-gray-400 border border-dashed border-gray-200 rounded-xl mb-4 bg-gray-50/40">
+                                            No vehicles registered. Please add one below.
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-2.5 mb-4">
+                                            {vehiclesList.map((v) => (
+                                                <div key={v.id} className="p-3 bg-gray-50 border border-gray-100 rounded-xl flex items-center justify-between">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="p-1.5 bg-white rounded-lg border border-gray-100">
+                                                            {v.vehicle_type === 'two_wheeler' ? <Bike className="w-4 h-4 text-amber-500" /> : <Car className="w-4 h-4 text-blue-500" />}
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-xs font-bold text-gray-800">{v.brand_name}</p>
+                                                            <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">
+                                                                {v.vehicle_type.replace('_', ' ')} {v.engine_cc ? `• ${v.engine_cc}cc` : ''}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className="text-[10px] font-bold text-gray-900">{v.odometer_reading.toLocaleString()} km</p>
+                                                        <span className={`inline-block px-1.5 py-0.5 text-[8px] font-black uppercase rounded-md tracking-wider mt-1 ${
+                                                            v.status === 'approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                                                        }`}>
+                                                            {v.status}
+                                                        </span>
                                                     </div>
                                                 </div>
-                                                <div className="w-full mt-1.5 flex justify-between items-center px-0.5 text-[9px] font-bold text-gray-400">
-                                                    <span className="truncate max-w-[150px]">{vehicleOdoImage?.name || 'odometer.jpg'}</span>
-                                                    <span>{vehicleOdoImage ? `${(vehicleOdoImage.size / (1024 * 1024)).toFixed(2)} MB` : 'Captured'}</span>
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <div 
-                                                onDragOver={(e) => {
-                                                    e.preventDefault();
-                                                    setIsDraggingOdo(true);
-                                                }}
-                                                onDragLeave={(e) => {
-                                                    e.preventDefault();
-                                                    setIsDraggingOdo(false);
-                                                }}
-                                                onDrop={(e) => {
-                                                    e.preventDefault();
-                                                    setIsDraggingOdo(false);
-                                                    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-                                                        const file = e.dataTransfer.files[0];
-                                                        setVehicleOdoImage(file);
-                                                        setOdoImagePreview(URL.createObjectURL(file));
-                                                    }
-                                                }}
-                                                className={`w-full bg-gray-50 border border-dashed rounded-xl p-4 flex flex-col items-center justify-center min-h-[140px] transition-all relative ${
-                                                    isDraggingOdo 
-                                                        ? 'border-emerald-500 bg-emerald-50/50' 
-                                                        : 'border-gray-200 hover:border-emerald-500/50 hover:bg-gray-100/50'
-                                                }`}
-                                            >
-                                                <label htmlFor="odometer-file-input-edit" className="absolute inset-0 cursor-pointer z-0" />
-                                                <div className="relative z-10 flex flex-col items-center text-center w-full pointer-events-none mb-0.5">
-                                                    <div className="p-2 bg-emerald-50 rounded-full text-emerald-600 mb-2">
-                                                        <Camera className="h-6 w-6 text-emerald-600" />
-                                                    </div>
-                                                    <p className="font-bold text-gray-700 text-xs">Click to upload</p>
-                                                    <p className="text-[9px] font-semibold mt-0.5 uppercase tracking-wider text-gray-400">or drag & drop</p>
-                                                </div>
-                                                
-                                                <div className="relative z-10 flex items-center w-full max-w-[100px] my-2 pointer-events-none">
-                                                    <div className="h-px flex-1 bg-gray-200"></div>
-                                                    <span className="px-2 text-[8px] font-semibold text-gray-400">OR</span>
-                                                    <div className="h-px flex-1 bg-gray-200"></div>
-                                                </div>
-                                                
-                                                <button 
-                                                    type="button" 
-                                                    onClick={(e) => { 
-                                                        e.stopPropagation(); 
-                                                        setIsOdometerCameraOpen(true); 
-                                                    }} 
-                                                    className="relative z-10 flex items-center justify-center font-bold text-gray-700 hover:bg-gray-100 transition-colors text-xs py-1 px-3 bg-white rounded-lg border border-gray-200 active:scale-95"
-                                                >
-                                                    <Camera className="h-3.5 w-3.5 mr-1.5 text-rose-500" />
-                                                    Capture with Camera
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {vehiclesList.filter(v => v.status === 'approved').length >= 1 && (
-                                        <div>
-                                            <label className="block text-[10px] font-bold text-amber-600 mb-1 uppercase tracking-wider">Reason for Adding Vehicle</label>
-                                            <textarea
-                                                value={vehicleChangeReason}
-                                                onChange={e => setVehicleChangeReason(e.target.value)}
-                                                rows={2}
-                                                className="w-full bg-white border border-gray-200 rounded-lg text-xs p-2 resize-none"
-                                                placeholder="Explain why you need an additional vehicle..."
-                                                required
-                                            />
+                                            ))}
                                         </div>
                                     )}
 
-                                    <div className="flex justify-end pt-2">
-                                        <Button
-                                            type="submit"
-                                            isLoading={isSubmittingVehicle}
-                                            className={`!h-[38px] text-xs font-bold w-full uppercase tracking-wider text-white ${
-                                                vehiclesList.filter(v => v.status === 'approved').length >= 1 
-                                                    ? '!bg-amber-600 hover:!bg-amber-700' 
-                                                    : '!bg-emerald-600 hover:!bg-emerald-700'
-                                            }`}
-                                        >
-                                            {vehiclesList.filter(v => v.status === 'approved').length >= 1 
-                                                ? 'Request Approval to Add' 
-                                                : 'Save Vehicle'}
-                                        </Button>
-                                    </div>
-                                </form>
-                            )}
-                        </div>
-                    </div>
+                                    {/* Add Vehicle Form */}
+                                    {(vehiclesList.length === 0 || vehiclesList.filter(v => v.status === 'approved').length >= 1) && (
+                                        <form onSubmit={handleAddVehicle} className="space-y-3 pt-2 border-t border-gray-100">
+                                            <h4 className="text-xs font-bold text-gray-700">
+                                                {vehiclesList.filter(v => v.status === 'approved').length >= 1 
+                                                    ? 'Request to Add Another Vehicle' 
+                                                    : 'Register First Vehicle'}
+                                            </h4>
+
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <div>
+                                                    <label className="block text-[10px] font-bold text-gray-500 mb-1">Vehicle Type</label>
+                                                    <select
+                                                        value={vehicleType}
+                                                        onChange={e => setVehicleType(e.target.value)}
+                                                        className="w-full bg-white border border-gray-200 rounded-lg text-xs h-[36px] px-2"
+                                                    >
+                                                        <option value="two_wheeler">Two Wheeler</option>
+                                                        <option value="four_wheeler_petrol">4W Petrol</option>
+                                                        <option value="four_wheeler_diesel">4W Diesel</option>
+                                                        <option value="public_transport">Public Transport</option>
+                                                        <option value="company_vehicle">Company Vehicle</option>
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[10px] font-bold text-gray-500 mb-1">Brand Name</label>
+                                                    <input
+                                                        type="text"
+                                                        value={vehicleBrand}
+                                                        onChange={e => setVehicleBrand(e.target.value)}
+                                                        placeholder="e.g. Honda, Suzuki"
+                                                        className="w-full bg-white border border-gray-200 rounded-lg text-xs h-[36px] px-2.5"
+                                                        required
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-2">
+                                                {vehicleType === 'two_wheeler' && (
+                                                    <div>
+                                                        <label className="block text-[10px] font-bold text-gray-500 mb-1">Engine CC</label>
+                                                        <input
+                                                            type="number"
+                                                            value={vehicleCC}
+                                                            onChange={e => setVehicleCC(e.target.value)}
+                                                            placeholder="e.g. 150"
+                                                            className="w-full bg-white border border-gray-200 rounded-lg text-xs h-[36px] px-2.5"
+                                                        />
+                                                    </div>
+                                                )}
+                                                <div className={vehicleType !== 'two_wheeler' ? 'col-span-2' : ''}>
+                                                    <label className="block text-[10px] font-bold text-gray-500 mb-1">Odometer Reading (KM)</label>
+                                                    <input
+                                                        type="number"
+                                                        value={vehicleOdo}
+                                                        onChange={e => setVehicleOdo(e.target.value)}
+                                                        placeholder="e.g. 12450"
+                                                        className="w-full bg-white border border-gray-200 rounded-lg text-xs h-[36px] px-2.5"
+                                                        required
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-[10px] font-bold text-gray-500 mb-1">Odometer Picture</label>
+                                                <input 
+                                                    id="odometer-file-input-edit" 
+                                                    type="file" 
+                                                    className="sr-only" 
+                                                    onChange={handleOdometerImageChange} 
+                                                    accept="image/*"
+                                                />
+                                                {odoImagePreview ? (
+                                                    <div className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 flex flex-col items-center justify-center min-h-[140px] relative overflow-hidden group">
+                                                        <div className="relative w-full h-[110px] bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center border border-gray-200">
+                                                            <img 
+                                                                src={odoImagePreview} 
+                                                                alt="Odometer Preview" 
+                                                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
+                                                            />
+                                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                                                <label 
+                                                                    htmlFor="odometer-file-input-edit" 
+                                                                    className="p-2 bg-white/10 hover:bg-white/20 backdrop-blur-md rounded-lg cursor-pointer transition-all active:scale-95"
+                                                                    title="Change Photo"
+                                                                >
+                                                                    <RefreshCw className="h-4 w-4 text-white" />
+                                                                </label>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setVehicleOdoImage(null);
+                                                                        setOdoImagePreview(null);
+                                                                    }}
+                                                                    className="p-2 bg-rose-500/20 hover:bg-rose-500/30 backdrop-blur-md rounded-lg transition-all active:scale-95"
+                                                                    title="Remove Photo"
+                                                                >
+                                                                    <Trash2 className="h-4 w-4 text-rose-400" />
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                        <div className="w-full mt-1.5 flex justify-between items-center px-0.5 text-[9px] font-bold text-gray-400">
+                                                            <span className="truncate max-w-[150px]">{vehicleOdoImage?.name || 'odometer.jpg'}</span>
+                                                            <span>{vehicleOdoImage ? `${(vehicleOdoImage.size / (1024 * 1024)).toFixed(2)} MB` : 'Captured'}</span>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div 
+                                                        onDragOver={(e) => {
+                                                            e.preventDefault();
+                                                            setIsDraggingOdo(true);
+                                                        }}
+                                                        onDragLeave={(e) => {
+                                                            e.preventDefault();
+                                                            setIsDraggingOdo(false);
+                                                        }}
+                                                        onDrop={(e) => {
+                                                            e.preventDefault();
+                                                            setIsDraggingOdo(false);
+                                                            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                                                                const file = e.dataTransfer.files[0];
+                                                                if (file.type.startsWith('image/')) {
+                                                                    setVehicleOdoImage(file);
+                                                                    const previewUrl = URL.createObjectURL(file);
+                                                                    setOdoImagePreview(previewUrl);
+                                                                }
+                                                            }
+                                                        }}
+                                                        onClick={() => document.getElementById('odometer-file-input-edit')?.click()}
+                                                        className={`w-full border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer transition-colors ${
+                                                            isDraggingOdo ? 'border-amber-500 bg-amber-50/20' : 'border-gray-200 hover:border-amber-400 bg-gray-50/50'
+                                                        }`}
+                                                    >
+                                                        <div className="p-2.5 bg-amber-50 text-amber-600 rounded-full mb-2">
+                                                            <Camera className="h-4 w-4" />
+                                                        </div>
+                                                        <p className="text-[11px] font-bold text-gray-700">Drop odometer photo here, or browse</p>
+                                                        <p className="text-[9px] text-gray-400 mt-0.5 mb-2.5">JPG, PNG up to 10MB</p>
+                                                        <button 
+                                                            type="button" 
+                                                            onClick={(e) => { 
+                                                                e.stopPropagation(); 
+                                                                setIsOdometerCameraOpen(true); 
+                                                            }} 
+                                                            className="flex items-center justify-center font-bold text-gray-700 hover:bg-gray-100 transition-colors text-xs py-1.5 px-3 bg-white rounded-lg border border-gray-200 active:scale-95"
+                                                        >
+                                                            <Camera className="h-3.5 w-3.5 mr-1.5 text-rose-500" />
+                                                            Capture with Camera
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {vehiclesList.filter(v => v.status === 'approved').length >= 1 && (
+                                                <div>
+                                                    <label className="block text-[10px] font-bold text-amber-600 mb-1 uppercase tracking-wider">Reason for Adding Vehicle</label>
+                                                    <textarea
+                                                        value={vehicleChangeReason}
+                                                        onChange={e => setVehicleChangeReason(e.target.value)}
+                                                        rows={2}
+                                                        className="w-full bg-white border border-gray-200 rounded-lg text-xs p-2 resize-none"
+                                                        placeholder="Explain why you need an additional vehicle..."
+                                                        required
+                                                    />
+                                                </div>
+                                            )}
+
+                                            <div className="flex justify-end pt-2">
+                                                <Button
+                                                    type="submit"
+                                                    isLoading={isSubmittingVehicle}
+                                                    className={`!h-[38px] text-xs font-bold w-full uppercase tracking-wider text-white ${
+                                                        vehiclesList.filter(v => v.status === 'approved').length >= 1 
+                                                            ? '!bg-amber-600 hover:!bg-amber-700' 
+                                                            : '!bg-emerald-600 hover:!bg-emerald-700'
+                                                    }`}
+                                                >
+                                                    {vehiclesList.filter(v => v.status === 'approved').length >= 1 
+                                                        ? 'Request Approval to Add' 
+                                                        : 'Save Vehicle'}
+                                                </Button>
+                                            </div>
+                                        </form>
+                                    )}
+                                </div>
+                            </div>
+                        </>
+                    )}
 
                     </div> {/* End Horizontal Grid Row */}
                 </div> {/* End col-span-12 container */}

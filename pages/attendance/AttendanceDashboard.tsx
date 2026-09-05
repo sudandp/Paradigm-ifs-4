@@ -103,7 +103,7 @@ import {
     GenericReportColumn,
     LeaveBalanceRow
 } from '../../utils/excelExport';
-import { calculateWorkingHours, processDailyEvents, evaluateAttendanceStatus, getStaffCategory, isLateCheckIn, isTechnicalRole } from '../../utils/attendanceCalculations';
+import { calculateWorkingHours, processDailyEvents, evaluateAttendanceStatus, getStaffCategory, isLateCheckIn, isTechnicalRole, isAttendanceExemptRole } from '../../utils/attendanceCalculations';
 import { getFieldStaffStatus } from '../../utils/fieldStaffTracking';
 import { FIXED_HOLIDAYS } from '../../utils/constants';
 import { exportToCsv } from '../../utils/fastExport';
@@ -2331,7 +2331,7 @@ const AttendanceDashboard: React.FC = () => {
                     usersRef.current = currentUsers;
                 }
 
-                let activeStaff = currentUsers.filter(u => u.role !== 'management');
+                let activeStaff = currentUsers.filter(u => !isAttendanceExemptRole(u.role));
                 if (isClientOrManagerView && user?.organizationId) {
                     const managerOrgs = user.organizationId.split(',').map(s => s.trim());
                     activeStaff = activeStaff.filter(u => {
@@ -3036,8 +3036,8 @@ const AttendanceDashboard: React.FC = () => {
         // Filter users based on selection, and exclude management users unless specifically requested
         let filteredUsers = users;
 
-        if (selectedUser === 'all' && selectedRole !== 'management') {
-            filteredUsers = filteredUsers.filter(u => u.role !== 'management');
+        if (selectedUser === 'all' && !isAttendanceExemptRole(selectedRole)) {
+            filteredUsers = filteredUsers.filter(u => !isAttendanceExemptRole(u.role));
         }
 
         if (selectedUser !== 'all') {
@@ -3338,8 +3338,8 @@ const AttendanceDashboard: React.FC = () => {
     const attendanceLogData: AttendanceLogDataRow[] = useMemo(() => {
         if (!dateRange.startDate || !dateRange.endDate) return [];
 
-        // Exclude management users from logs
-        let filteredUsers = users.filter(u => u.role !== 'management');
+        // Exclude exempt leadership users from logs
+        let filteredUsers = users.filter(u => !isAttendanceExemptRole(u.role));
 
         if (selectedUser !== 'all') {
             filteredUsers = filteredUsers.filter(u => u.id === selectedUser);
@@ -3484,7 +3484,7 @@ const AttendanceDashboard: React.FC = () => {
     const site_otReportData: SiteOtDataRow[] = useMemo(() => {
         if (!dateRange.startDate || !dateRange.endDate) return [];
 
-        let filteredUsers = users.filter(u => u.role !== 'management');
+        let filteredUsers = users.filter(u => !isAttendanceExemptRole(u.role));
         if (selectedUser !== 'all') filteredUsers = filteredUsers.filter(u => u.id === selectedUser);
         if (selectedStaffCategories.length > 0 && !selectedStaffCategories.includes('all') && selectedStaffCategories.length < 3) {
             filteredUsers = filteredUsers.filter(u => matchesSelectedStaffCategories(u.role, u.societyId, selectedStaffCategories, attendance));
@@ -4335,8 +4335,8 @@ const AttendanceDashboard: React.FC = () => {
                 );
             }
 
-            // Exclude management if needed (usually reports exclude them)
-            targetUsers = targetUsers.filter(u => u.role !== 'management' && u.role !== 'super_admin');
+            // Exclude exempt leadership roles from reports
+            targetUsers = targetUsers.filter(u => !isAttendanceExemptRole(u.role));
 
             if (targetUsers.length === 0) {
                 setToast({ message: 'No users found with current filters.', type: 'error' });
