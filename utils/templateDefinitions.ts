@@ -268,7 +268,7 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
         header: (i + 1).toString(),
         required: false,
         type: 'enum' as const,
-        enumValues: ['P', 'A', '1/4P', '0.25P', '0.5P', '1/2P', '2/4P', '3/4P', '0.75P', 'EL', 'SL', 'CL', 'LOP', 'S', 'H', 'W/O', 'W/H', '0.5P+0.5 EL', '0.5P+0.5 SL', '0.5P+0.5 CL', '0.5P+0.5 LOP', '0.5P EL', '0.5P SL', '0.5P CL', '0.5P LOP', 'C/D', 'W/P', 'H/P', 'C/O', 'BL/P', 'PL/P'],
+        enumValues: ['P', 'A', '1/4P', '0.25P', '0.5P', '1/2P', '2/4P', '3/4P', '0.75P', '0.75P+0.25RP', '0.5P+0.5RP', 'RP', 'RC', 'EL', 'SL', 'CL', 'LOP', 'S', 'H', 'W/O', 'W/H', '0.5P+0.5 EL', '0.5P+0.5 SL', '0.5P+0.5 CL', '0.5P+0.5 LOP', '0.5P EL', '0.5P SL', '0.5P CL', '0.5P LOP', 'C/D', 'W/P', 'H/P', 'C/O', 'BL/P', 'PL/P'],
         width: 10,
         description: 'Select from allowed notations only'
       }))

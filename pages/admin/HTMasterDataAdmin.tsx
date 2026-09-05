@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Edit2, Trash2, Box, RefreshCw, RotateCcw, Plus, Eye, X, Layers, List, Check, Tag, ChevronDown, Maximize2, Minimize2, Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle2, FileText, BookOpen, Lock, Settings2, Calendar, QrCode } from 'lucide-react';
+import { Search, Edit2, Trash2, Box, RefreshCw, RotateCcw, Plus, Eye, X, Layers, List, Check, Tag, ChevronDown, Maximize2, Minimize2, Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle2, FileText, BookOpen, Lock, Settings2, Calendar, QrCode, Copy, Factory, Zap, ZapOff, Cpu, Gauge, Shield, ShieldCheck, ShieldAlert, Camera, MapPin, PenTool, ListFilter, Sliders, Hash, Activity, Boxes, Thermometer, Droplets, ToggleLeft, ToggleRight, Wrench, Sparkles, Building2, CheckSquare, Clock, BatteryCharging, BatteryMedium, ArrowRightLeft, ArrowUpRight, GitFork, Split, BellRing, Radio, DoorClosed, Flame, Wind, Calculator, Scale, Volume2, CircuitBoard, SlidersHorizontal, AlertOctagon, Lightbulb, CheckCheck } from 'lucide-react';
 import { HTMasterOption, HTMasterCategory, HTFieldTarget, CustomFieldSpec, HTFieldType } from '../../types/htYard';
 import { htYardMasterDataService } from '../../services/htYardMasterDataService';
 import { htYardFieldSpecService, CATEGORY_TO_MODULE_MAP } from '../../services/htYardFieldSpecService';
@@ -229,6 +229,523 @@ const INITIAL_FIELD_TARGETS_MAP: Record<HTMasterCategory, HTFieldTarget[]> = {
   ]
 };
 
+export const getFieldIconAndStyle = (group: { fieldKey?: string; label?: string; fieldType?: string; section?: string }) => {
+  const key = (group.fieldKey || '').toLowerCase();
+  const label = (group.label || '').toLowerCase();
+  const type = (group.fieldType || '').toLowerCase();
+
+  // 1. Emergency Trip Button
+  if (key.includes('emergency') || label.includes('emergency')) {
+    return {
+      icon: AlertOctagon,
+      bgColor: 'bg-red-50 dark:bg-red-950/50',
+      activeBg: 'bg-red-600 shadow-red-600/20',
+      textColor: 'text-red-600 dark:text-red-400',
+      borderColor: 'border-red-200 dark:border-red-800/60',
+    };
+  }
+
+  // 2. Master Trip Relay (Lockout Relay - 86)
+  if (key.includes('master_trip') || label.includes('master trip')) {
+    return {
+      icon: ZapOff,
+      bgColor: 'bg-rose-50 dark:bg-rose-950/50',
+      activeBg: 'bg-rose-600 shadow-rose-600/20',
+      textColor: 'text-rose-600 dark:text-rose-400',
+      borderColor: 'border-rose-200 dark:border-rose-800/60',
+    };
+  }
+
+  // 3. Trip Circuit Supervision Relay (TCS - 95 / Circuit Watch)
+  if (key.includes('tc_supervision') || key.includes('supervision') || label.includes('supervision')) {
+    return {
+      icon: Radio,
+      bgColor: 'bg-sky-50 dark:bg-sky-950/50',
+      activeBg: 'bg-sky-600 shadow-sky-600/20',
+      textColor: 'text-sky-600 dark:text-sky-400',
+      borderColor: 'border-sky-200 dark:border-sky-800/60',
+    };
+  }
+
+  // 4. Annunciator Panel (Alarm warning window)
+  if (key.includes('annunciator') || label.includes('annunciator')) {
+    return {
+      icon: BellRing,
+      bgColor: 'bg-amber-50 dark:bg-amber-950/50',
+      activeBg: 'bg-amber-600 shadow-amber-600/20',
+      textColor: 'text-amber-600 dark:text-amber-400',
+      borderColor: 'border-amber-200 dark:border-amber-800/60',
+    };
+  }
+
+  // 5. Space Heater / Panel Heater / Heater MCB
+  if (key.includes('heater') || label.includes('heater')) {
+    return {
+      icon: Flame,
+      bgColor: 'bg-orange-50 dark:bg-orange-950/50',
+      activeBg: 'bg-orange-600 shadow-orange-600/20',
+      textColor: 'text-orange-600 dark:text-orange-400',
+      borderColor: 'border-orange-200 dark:border-orange-800/60',
+    };
+  }
+
+  // 6. DC to DC Converter / Power Converters
+  if (key.includes('dc_converter') || key.includes('converter') || label.includes('converter')) {
+    return {
+      icon: Cpu,
+      bgColor: 'bg-indigo-50 dark:bg-indigo-950/50',
+      activeBg: 'bg-indigo-600 shadow-indigo-600/20',
+      textColor: 'text-indigo-600 dark:text-indigo-400',
+      borderColor: 'border-indigo-200 dark:border-indigo-800/60',
+    };
+  }
+
+  // 7. Input AC Protector / Surge Suppressor
+  if (key.includes('protector') || key.includes('surge') || label.includes('protector')) {
+    return {
+      icon: Shield,
+      bgColor: 'bg-teal-50 dark:bg-teal-950/50',
+      activeBg: 'bg-teal-600 shadow-teal-600/20',
+      textColor: 'text-teal-600 dark:text-teal-400',
+      borderColor: 'border-teal-200 dark:border-teal-800/60',
+    };
+  }
+
+  // 8. Battery Charger / Power Pack Backup
+  if (key.includes('power_pack') || key.includes('battery_charger') || label.includes('power pack') || label.includes('battery charger')) {
+    return {
+      icon: BatteryCharging,
+      bgColor: 'bg-emerald-50 dark:bg-emerald-950/50',
+      activeBg: 'bg-emerald-600 shadow-emerald-600/20',
+      textColor: 'text-emerald-600 dark:text-emerald-400',
+      borderColor: 'border-emerald-200 dark:border-emerald-800/60',
+    };
+  }
+
+  // 9. Control Battery Bank / Station Battery
+  if (key.includes('battery') || label.includes('battery')) {
+    return {
+      icon: BatteryMedium,
+      bgColor: 'bg-emerald-50 dark:bg-emerald-950/50',
+      activeBg: 'bg-emerald-600 shadow-emerald-600/20',
+      textColor: 'text-emerald-600 dark:text-emerald-400',
+      borderColor: 'border-emerald-200 dark:border-emerald-800/60',
+    };
+  }
+
+  // 10. ACB Breaker (Air Circuit Breaker)
+  if (key.includes('acb') || label.includes('acb')) {
+    return {
+      icon: ToggleRight,
+      bgColor: 'bg-cyan-50 dark:bg-cyan-950/50',
+      activeBg: 'bg-cyan-600 shadow-cyan-600/20',
+      textColor: 'text-cyan-700 dark:text-cyan-300',
+      borderColor: 'border-cyan-200 dark:border-cyan-800/60',
+    };
+  }
+
+  // 11. VCB Breaker (Vacuum Circuit Breaker)
+  if (key.includes('vcb') || label.includes('vcb') || key.includes('vacuum') || label.includes('vacuum')) {
+    return {
+      icon: ToggleRight,
+      bgColor: 'bg-blue-50 dark:bg-blue-950/50',
+      activeBg: 'bg-blue-600 shadow-blue-600/20',
+      textColor: 'text-blue-700 dark:text-blue-300',
+      borderColor: 'border-blue-200 dark:border-blue-800/60',
+    };
+  }
+
+  // 12. MCCB / MCB Breakers (Control MCB, Incomer MCCB, Outgoing MCCB)
+  if (key.includes('mcb') || key.includes('mccb') || key.includes('breaker') || label.includes('mcb') || label.includes('mccb') || label.includes('breaker')) {
+    return {
+      icon: ToggleRight,
+      bgColor: 'bg-teal-50 dark:bg-teal-950/50',
+      activeBg: 'bg-teal-600 shadow-teal-600/20',
+      textColor: 'text-teal-700 dark:text-teal-300',
+      borderColor: 'border-teal-200 dark:border-teal-800/60',
+    };
+  }
+
+  // 13. NO/NC Contactor
+  if (key.includes('contactor') || key.includes('nonc') || key.includes('no_nc') || label.includes('contactor') || label.includes('no/nc')) {
+    return {
+      icon: ToggleLeft,
+      bgColor: 'bg-amber-50 dark:bg-amber-950/50',
+      activeBg: 'bg-amber-600 shadow-amber-600/20',
+      textColor: 'text-amber-700 dark:text-amber-300',
+      borderColor: 'border-amber-200 dark:border-amber-800/60',
+    };
+  }
+
+  // 14. Selector Switch 1 / 2 / Make
+  if (key.includes('selector_switch') || label.includes('selector switch')) {
+    return {
+      icon: key.includes('_2') || label.includes(' 2') ? Sliders : SlidersHorizontal,
+      bgColor: 'bg-orange-50 dark:bg-orange-950/50',
+      activeBg: 'bg-orange-600 shadow-orange-600/20',
+      textColor: 'text-orange-600 dark:text-orange-400',
+      borderColor: 'border-orange-200 dark:border-orange-800/60',
+    };
+  }
+
+  // 15. Testing Connections / Test Terminal Block (TTB)
+  if (key.includes('testing') || key.includes('test') || label.includes('testing')) {
+    return {
+      icon: Wrench,
+      bgColor: 'bg-slate-100 dark:bg-slate-800/60',
+      activeBg: 'bg-slate-700 shadow-slate-700/20',
+      textColor: 'text-slate-700 dark:text-slate-300',
+      borderColor: 'border-slate-200 dark:border-slate-700/60',
+    };
+  }
+
+  // 16. CT Chamber / PT Chamber / Busbar Chamber
+  if (key.includes('chamber') || label.includes('chamber')) {
+    return {
+      icon: Boxes,
+      bgColor: 'bg-emerald-50 dark:bg-emerald-950/50',
+      activeBg: 'bg-emerald-600 shadow-emerald-600/20',
+      textColor: 'text-emerald-700 dark:text-emerald-300',
+      borderColor: 'border-emerald-200 dark:border-emerald-800/60',
+    };
+  }
+
+  // 17. Multi Function Meter 1 & 2 / Volt Meter / Ammeter
+  if (key.includes('mf_meter_2') || label.includes('meter 2')) {
+    return {
+      icon: Gauge,
+      bgColor: 'bg-sky-50 dark:bg-sky-950/50',
+      activeBg: 'bg-sky-600 shadow-sky-600/20',
+      textColor: 'text-sky-600 dark:text-sky-400',
+      borderColor: 'border-sky-200 dark:border-sky-800/60',
+    };
+  }
+  if (key.includes('meter') || key.includes('voltmeter') || key.includes('ammeter') || label.includes('meter') || label.includes('volt meter') || label.includes('ammeter')) {
+    return {
+      icon: Activity,
+      bgColor: 'bg-blue-50 dark:bg-blue-950/50',
+      activeBg: 'bg-blue-600 shadow-blue-600/20',
+      textColor: 'text-blue-600 dark:text-blue-400',
+      borderColor: 'border-blue-200 dark:border-blue-800/60',
+    };
+  }
+
+  // 18. Line Charge Indicator / Indication Lamps / Phase Lamps
+  if (key.includes('power_indicator') || key.includes('line_charge') || key.includes('lamp') || key.includes('indicat') || label.includes('lamp') || label.includes('line charge') || label.includes('indicat')) {
+    return {
+      icon: Lightbulb,
+      bgColor: 'bg-amber-50 dark:bg-amber-950/50',
+      activeBg: 'bg-amber-600 shadow-amber-600/20',
+      textColor: 'text-amber-600 dark:text-amber-400',
+      borderColor: 'border-amber-200 dark:border-amber-800/60',
+    };
+  }
+
+  // 19. Protection Relays (Transformer Protection, Earth Leakage, Overcurrent, Relay 1)
+  if (key.includes('tr_protection') || label.includes('transformer protection')) {
+    return {
+      icon: ShieldCheck,
+      bgColor: 'bg-emerald-50 dark:bg-emerald-950/50',
+      activeBg: 'bg-emerald-600 shadow-emerald-600/20',
+      textColor: 'text-emerald-600 dark:text-emerald-400',
+      borderColor: 'border-emerald-200 dark:border-emerald-800/60',
+    };
+  }
+  if (key.includes('relay') || key.includes('protection') || label.includes('relay') || label.includes('protection')) {
+    return {
+      icon: ShieldCheck,
+      bgColor: 'bg-red-50 dark:bg-red-950/50',
+      activeBg: 'bg-red-600 shadow-red-600/20',
+      textColor: 'text-red-600 dark:text-red-400',
+      borderColor: 'border-red-200 dark:border-red-800/60',
+    };
+  }
+
+  // 20. Feeder / Outgoing / Incoming / I/C/OG / Bus Coupler
+  if (key.includes('outgoing') || key.includes('ic_og') || key.includes('incoming') || key.includes('incomer') || key.includes('bus_coupler') || label.includes('outgoing') || label.includes('i/c/og') || label.includes('incoming') || label.includes('bus coupler')) {
+    return {
+      icon: ArrowRightLeft,
+      bgColor: 'bg-sky-50 dark:bg-sky-950/50',
+      activeBg: 'bg-sky-600 shadow-sky-600/20',
+      textColor: 'text-sky-600 dark:text-sky-400',
+      borderColor: 'border-sky-200 dark:border-sky-800/60',
+    };
+  }
+
+  // 21. Fire Extinguishers
+  if (key.includes('fire') || label.includes('fire')) {
+    return {
+      icon: Flame,
+      bgColor: 'bg-red-50 dark:bg-red-950/50',
+      activeBg: 'bg-red-600 shadow-red-600/20',
+      textColor: 'text-red-600 dark:text-red-400',
+      borderColor: 'border-red-200 dark:border-red-800/60',
+    };
+  }
+
+  // 22. Temperature (Oil / Winding)
+  if (key.includes('temp') || label.includes('temp') || label.includes('temperature')) {
+    return {
+      icon: Thermometer,
+      bgColor: 'bg-rose-50 dark:bg-rose-950/50',
+      activeBg: 'bg-rose-600 shadow-rose-600/20',
+      textColor: 'text-rose-600 dark:text-rose-400',
+      borderColor: 'border-rose-200 dark:border-rose-800/60',
+    };
+  }
+
+  // 23. Oil Level / Oil Leakage / Conservator / Drain Valve
+  if (key.includes('oil') || key.includes('conservator') || key.includes('drain_valve') || label.includes('oil') || label.includes('conservator') || label.includes('drain valve')) {
+    return {
+      icon: Droplets,
+      bgColor: 'bg-sky-50 dark:bg-sky-950/50',
+      activeBg: 'bg-sky-600 shadow-sky-600/20',
+      textColor: 'text-sky-600 dark:text-sky-400',
+      borderColor: 'border-sky-200 dark:border-sky-800/60',
+    };
+  }
+
+  // 24. Pressure Relief Valve (PRV) / SF6 Gas / Explosion Vent
+  if (key.includes('prv') || key.includes('pressure') || key.includes('sf6') || key.includes('explosion_vent') || key.includes('gas') || label.includes('prv') || label.includes('pressure') || label.includes('sf-6') || label.includes('sf6') || label.includes('vent') || label.includes('gas')) {
+    return {
+      icon: Gauge,
+      bgColor: 'bg-teal-50 dark:bg-teal-950/50',
+      activeBg: 'bg-teal-600 shadow-teal-600/20',
+      textColor: 'text-teal-600 dark:text-teal-400',
+      borderColor: 'border-teal-200 dark:border-teal-800/60',
+    };
+  }
+
+  // 25. Silica Gel Breather / Air Breather / Ventilation / Louvers
+  if (key.includes('silica') || key.includes('breather') || key.includes('louver') || label.includes('silica') || label.includes('breather') || label.includes('louver')) {
+    return {
+      icon: Wind,
+      bgColor: 'bg-cyan-50 dark:bg-cyan-950/50',
+      activeBg: 'bg-cyan-600 shadow-cyan-600/20',
+      textColor: 'text-cyan-600 dark:text-cyan-400',
+      borderColor: 'border-cyan-200 dark:border-cyan-800/60',
+    };
+  }
+
+  // 26. CT / PT / Ratio / APFC / Capacitor Bank
+  if (key.includes('ct_') || key.includes('ratio') || key.includes('constant') || key.includes('cap_bank') || key.includes('pfc') || label.includes('ct ratio') || label.includes('ct constant') || label.includes('ct va') || label.includes('ct cl') || label.includes('capacitor bank') || label.includes('apfc') || label.includes('pfc controller')) {
+    return {
+      icon: Calculator,
+      bgColor: 'bg-emerald-50 dark:bg-emerald-950/50',
+      activeBg: 'bg-emerald-600 shadow-emerald-600/20',
+      textColor: 'text-emerald-600 dark:text-emerald-400',
+      borderColor: 'border-emerald-200 dark:border-emerald-800/60',
+    };
+  }
+
+  // 27. Sound / Humming
+  if (key.includes('sound') || key.includes('humming') || label.includes('sound') || label.includes('humming')) {
+    return {
+      icon: Volume2,
+      bgColor: 'bg-slate-100 dark:bg-slate-800/60',
+      activeBg: 'bg-slate-700 shadow-slate-700/20',
+      textColor: 'text-slate-700 dark:text-slate-300',
+      borderColor: 'border-slate-200 dark:border-slate-700/60',
+    };
+  }
+
+  // 28. Earthing / Ground Grid / Terminals / Copper Bus
+  if (key.includes('earth') || key.includes('ground') || label.includes('earth') || label.includes('ground')) {
+    return {
+      icon: Wrench,
+      bgColor: 'bg-emerald-50 dark:bg-emerald-950/50',
+      activeBg: 'bg-emerald-600 shadow-emerald-600/20',
+      textColor: 'text-emerald-600 dark:text-emerald-400',
+      borderColor: 'border-emerald-200 dark:border-emerald-800/60',
+    };
+  }
+
+  // 29. Doors / Locks / Safety Interlocks
+  if (key.includes('door') || key.includes('lock') || label.includes('door') || label.includes('lock') || label.includes('interlock')) {
+    return {
+      icon: DoorClosed,
+      bgColor: 'bg-slate-100 dark:bg-slate-800/60',
+      activeBg: 'bg-slate-700 shadow-slate-700/20',
+      textColor: 'text-slate-700 dark:text-slate-300',
+      borderColor: 'border-slate-200 dark:border-slate-700/60',
+    };
+  }
+
+  // 30. Seals, Signage & Danger Board
+  if (key.includes('seal') || key.includes('label') || key.includes('danger') || key.includes('signage') || label.includes('seal') || label.includes('label') || label.includes('danger') || label.includes('signage')) {
+    return {
+      icon: CheckSquare,
+      bgColor: 'bg-amber-50 dark:bg-amber-950/50',
+      activeBg: 'bg-amber-600 shadow-amber-600/20',
+      textColor: 'text-amber-600 dark:text-amber-400',
+      borderColor: 'border-amber-200 dark:border-amber-800/60',
+    };
+  }
+
+  // 31. Tap Changer / Tap Position
+  if (key.includes('tap_') || label.includes('tap changer') || label.includes('tap position')) {
+    return {
+      icon: Sliders,
+      bgColor: 'bg-indigo-50 dark:bg-indigo-950/50',
+      activeBg: 'bg-indigo-600 shadow-indigo-600/20',
+      textColor: 'text-indigo-600 dark:text-indigo-400',
+      borderColor: 'border-indigo-200 dark:border-indigo-800/60',
+    };
+  }
+
+  // 32. Manufacturer / OEM / Brand
+  if (key.includes('mfr') || key.includes('make') || key.includes('brand') || label.includes('manufacturer') || label.includes('make') || label.includes('brand')) {
+    return {
+      icon: Factory,
+      bgColor: 'bg-indigo-50 dark:bg-indigo-950/50',
+      activeBg: 'bg-indigo-600 shadow-indigo-600/20',
+      textColor: 'text-indigo-600 dark:text-indigo-400',
+      borderColor: 'border-indigo-200 dark:border-indigo-800/60',
+    };
+  }
+
+  // 33. Year / Date / Commissioning / Time in Sec
+  if (type === 'date' || key.includes('year') || key.includes('date') || key.includes('mfg') || key.includes('time') || label.includes('year') || label.includes('date') || label.includes('age') || label.includes('time')) {
+    return {
+      icon: key.includes('time') || label.includes('time') || label.includes('sec') ? Clock : Calendar,
+      bgColor: 'bg-amber-50 dark:bg-amber-950/50',
+      activeBg: 'bg-amber-600 shadow-amber-600/20',
+      textColor: 'text-amber-600 dark:text-amber-400',
+      borderColor: 'border-amber-200 dark:border-amber-800/60',
+    };
+  }
+
+  // 34. Serial Number / Asset Tag / QR Code
+  if (key.includes('serial') || key.includes('sl_no') || key.includes('tag') || key.includes('qr') || key.includes('barcode') || label.includes('serial') || label.includes('sl no') || label.includes('tag') || label.includes('asset')) {
+    return {
+      icon: QrCode,
+      bgColor: 'bg-cyan-50 dark:bg-cyan-950/50',
+      activeBg: 'bg-cyan-600 shadow-cyan-600/20',
+      textColor: 'text-cyan-600 dark:text-cyan-400',
+      borderColor: 'border-cyan-200 dark:border-cyan-800/60',
+    };
+  }
+
+  // 35. Capacity / Current Rating / Voltage / Power / kVA
+  if (key.includes('capacity') || key.includes('rating') || key.includes('volt') || key.includes('current') || key.includes('power') || key.includes('amp') || key.includes('kva') || label.includes('capacity') || label.includes('rating') || label.includes('current') || label.includes('voltage') || label.includes('kva') || label.includes('power')) {
+    return {
+      icon: Zap,
+      bgColor: 'bg-emerald-50 dark:bg-emerald-950/50',
+      activeBg: 'bg-emerald-600 shadow-emerald-600/20',
+      textColor: 'text-emerald-600 dark:text-emerald-400',
+      borderColor: 'border-emerald-200 dark:border-emerald-800/60',
+    };
+  }
+
+  // 36. Model Number / Spec
+  if (key.includes('model') || key.includes('spec') || key.includes('catalog') || label.includes('model') || label.includes('spec')) {
+    return {
+      icon: Cpu,
+      bgColor: 'bg-sky-50 dark:bg-sky-950/50',
+      activeBg: 'bg-sky-600 shadow-sky-600/20',
+      textColor: 'text-sky-600 dark:text-sky-400',
+      borderColor: 'border-sky-200 dark:border-sky-800/60',
+    };
+  }
+
+  // 37. Cables / Foundation / Glands / Plinth / Winding Coil Material
+  if (key.includes('cable') || key.includes('gland') || key.includes('foundation') || key.includes('laying') || key.includes('coil') || label.includes('cable') || label.includes('gland') || label.includes('foundation') || label.includes('laying') || label.includes('winding material') || label.includes('coil')) {
+    return {
+      icon: Layers,
+      bgColor: 'bg-slate-100 dark:bg-slate-800/60',
+      activeBg: 'bg-slate-700 shadow-slate-700/20',
+      textColor: 'text-slate-700 dark:text-slate-300',
+      borderColor: 'border-slate-200 dark:border-slate-700/60',
+    };
+  }
+
+  // 38. Cleanliness / Yard Infrastructure
+  if (key.includes('clean') || label.includes('clean')) {
+    return {
+      icon: Sparkles,
+      bgColor: 'bg-teal-50 dark:bg-teal-950/50',
+      activeBg: 'bg-teal-600 shadow-teal-600/20',
+      textColor: 'text-teal-600 dark:text-teal-400',
+      borderColor: 'border-teal-200 dark:border-teal-800/60',
+    };
+  }
+
+  // 39. No of Ways / Sections / Count / Numbers / Panels
+  if (type === 'number' || key.includes('no_of') || key.includes('count') || key.includes('section') || key.includes('panel') || label.includes('no. of') || label.includes('sections') || label.includes('ways') || label.includes('panels')) {
+    return {
+      icon: Hash,
+      bgColor: 'bg-teal-50 dark:bg-teal-950/50',
+      activeBg: 'bg-teal-600 shadow-teal-600/20',
+      textColor: 'text-teal-600 dark:text-teal-400',
+      borderColor: 'border-teal-200 dark:border-teal-800/60',
+    };
+  }
+
+  // 40. Photo / Camera
+  if (type === 'photo' || key.includes('photo') || key.includes('image') || label.includes('photo') || label.includes('picture')) {
+    return {
+      icon: Camera,
+      bgColor: 'bg-pink-50 dark:bg-pink-950/50',
+      activeBg: 'bg-pink-600 shadow-pink-600/20',
+      textColor: 'text-pink-600 dark:text-pink-400',
+      borderColor: 'border-pink-200 dark:border-pink-800/60',
+    };
+  }
+
+  // 41. GPS / Location / Geo
+  if (type === 'gps_location' || key.includes('gps') || key.includes('location') || label.includes('gps') || label.includes('location') || label.includes('geo')) {
+    return {
+      icon: MapPin,
+      bgColor: 'bg-red-50 dark:bg-red-950/50',
+      activeBg: 'bg-red-600 shadow-red-600/20',
+      textColor: 'text-red-600 dark:text-red-400',
+      borderColor: 'border-red-200 dark:border-red-800/60',
+    };
+  }
+
+  // 42. Digital Signature / Signoff
+  if (type === 'digital_signature' || key.includes('sign') || label.includes('signature') || label.includes('signoff')) {
+    return {
+      icon: PenTool,
+      bgColor: 'bg-emerald-50 dark:bg-emerald-950/50',
+      activeBg: 'bg-emerald-600 shadow-emerald-600/20',
+      textColor: 'text-emerald-600 dark:text-emerald-400',
+      borderColor: 'border-emerald-200 dark:border-emerald-800/60',
+    };
+  }
+
+  // 43. Textarea / Remarks / Notes / Description
+  if (type === 'textarea' || key.includes('remark') || key.includes('desc') || key.includes('note') || label.includes('remark') || label.includes('note')) {
+    return {
+      icon: FileText,
+      bgColor: 'bg-orange-50 dark:bg-orange-950/50',
+      activeBg: 'bg-orange-600 shadow-orange-600/20',
+      textColor: 'text-orange-600 dark:text-orange-400',
+      borderColor: 'border-orange-200 dark:border-orange-800/60',
+    };
+  }
+
+  // 44. Dropdown / Select fallback
+  if (type === 'select' || type === 'searchable_select' || type === 'cascading_select') {
+    return {
+      icon: ListFilter,
+      bgColor: 'bg-blue-50 dark:bg-blue-950/50',
+      activeBg: 'bg-blue-600 shadow-blue-600/20',
+      textColor: 'text-blue-600 dark:text-blue-400',
+      borderColor: 'border-blue-200 dark:border-blue-800/60',
+    };
+  }
+
+  // Default Fallback
+  return {
+    icon: Sliders,
+    bgColor: 'bg-teal-50 dark:bg-teal-950/50',
+    activeBg: 'bg-teal-600 shadow-teal-600/20',
+    textColor: 'text-teal-600 dark:text-teal-400',
+    borderColor: 'border-teal-200 dark:border-teal-800/60',
+  };
+};
+
 export const HTMasterDataAdmin: React.FC = () => {
   const [activeTab, setActiveTab] = useState<HTMasterCategory>('RMUMD');
   const [options, setOptions] = useState<HTMasterOption[]>([]);
@@ -296,6 +813,10 @@ export const HTMasterDataAdmin: React.FC = () => {
   const [showAddTargetModal, setShowAddTargetModal] = useState(false);
   const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
   const [showTemplateInfoModal, setShowTemplateInfoModal] = useState(false);
+  const [showSectionManagerModal, setShowSectionManagerModal] = useState(false);
+  const [newSectionHeaderInput, setNewSectionHeaderInput] = useState('');
+  const [editingSectionHeader, setEditingSectionHeader] = useState<{ oldName: string; newName: string } | null>(null);
+  const [isSectionOpInProgress, setIsSectionOpInProgress] = useState(false);
   const [isCustomKey, setIsCustomKey] = useState(false);
 
   const [editingOption, setEditingOption] = useState<Partial<HTMasterOption>>({
@@ -320,6 +841,7 @@ export const HTMasterDataAdmin: React.FC = () => {
     placeholder?: string;
     isCustom?: boolean;
     initialChoice?: string;
+    parentFieldKey?: string;
   } | null>(null);
 
   // Custom Target Field & Category states
@@ -332,6 +854,15 @@ export const HTMasterDataAdmin: React.FC = () => {
   const [newTargetParentKey, setNewTargetParentKey] = useState<string | undefined>(undefined);
   const [parentFieldLabel, setParentFieldLabel] = useState<string>('');
   const [newCategoryName, setNewCategoryName] = useState('');
+
+  // Duplication State for Master Data Repeatability
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  const [duplicatingGroup, setDuplicatingGroup] = useState<any>(null);
+  const [duplicateLabel, setDuplicateLabel] = useState('');
+  const [duplicateSection, setDuplicateSection] = useState('');
+  const [duplicateIncludeChoices, setDuplicateIncludeChoices] = useState(true);
+  const [duplicateIncludeSubQuestions, setDuplicateIncludeSubQuestions] = useState(true);
+  const [isDuplicating, setIsDuplicating] = useState(false);
 
   // Category Dropdown State
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
@@ -920,6 +1451,19 @@ export const HTMasterDataAdmin: React.FC = () => {
     });
   };
 
+  const handleOpenAddQuestionModal = (parentKey?: string, parentLabel?: string) => {
+    setNewTargetLabel('');
+    setNewTargetKey('');
+    const defaultSec = (selectedSection !== 'All' ? selectedSection : availableSections[0]) || 'Stage 1: Yard Infrastructure & Environment';
+    setNewTargetSection(defaultSec);
+    setNewTargetChoices('');
+    setNewTargetUnit('');
+    setNewTargetType('select');
+    setNewTargetParentKey(parentKey);
+    setParentFieldLabel(parentLabel || '');
+    setShowAddTargetModal(true);
+  };
+
   const handleCreateNewTargetField = async (e: React.FormEvent) => {
     e.preventDefault();
     const label = newTargetLabel.trim();
@@ -928,12 +1472,16 @@ export const HTMasterDataAdmin: React.FC = () => {
       return;
     }
 
-    // Auto-generate technical key from question name if not provided
-    const autoKey = label.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || `field_${Date.now()}`;
-    const cleanKey = (newTargetKey.trim() || autoKey).toLowerCase().replace(/[^a-z0-9_]/g, '_');
-    const sectionTitle = newTargetSection.trim() || 'Equipment Accessories';
+    const defaultSec = (selectedSection !== 'All' ? selectedSection : availableSections[0]) || 'Stage 1: Yard Infrastructure & Environment';
+    const sectionTitle = newTargetSection.trim() || defaultSec;
     const sectionKey = sectionTitle.toLowerCase().replace(/[^a-z0-9]/g, '_');
-    const moduleType = CATEGORY_TO_MODULE_MAP[activeTab] || 'RMU';
+    const moduleType = CATEGORY_TO_MODULE_MAP[activeTab] || 'HT_Yard_Common';
+
+    // Auto-generate unique key from question name
+    const baseCleanKey = label.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || 'question';
+    const cleanKey = newTargetKey.trim()
+      ? newTargetKey.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_')
+      : (newTargetParentKey ? `sub_${baseCleanKey}_${Date.now().toString().slice(-4)}` : `custom_${baseCleanKey}_${Date.now().toString().slice(-4)}`);
 
     try {
       // 1. Save Field Spec to htYardFieldSpecService
@@ -957,7 +1505,7 @@ export const HTMasterDataAdmin: React.FC = () => {
 
       // 2. If dropdown and initial choices provided, save them
       if (newTargetChoices.trim() && (newTargetType === 'select' || newTargetType === 'searchable_select')) {
-        const choices = newTargetChoices.split(',').map(c => c.trim()).filter(Boolean);
+        const choices = newTargetChoices.split(/[,\n]/).map(c => c.trim()).filter(Boolean);
         for (const choice of choices) {
           await htYardMasterDataService.saveMasterOption({
             category: activeTab,
@@ -1001,8 +1549,134 @@ export const HTMasterDataAdmin: React.FC = () => {
 
       await loadCustomSpecs();
       await loadOptions();
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('ht_field_specs_updated', { detail: { category: activeTab } }));
+      }
     } catch (err) {
       toast.error('Failed to create field');
+    }
+  };
+
+  const handleOpenDuplicateModal = (group: any) => {
+    setDuplicatingGroup(group);
+    // Calculate smart next label: e.g. "Fire Extinguisher 1 Details" -> "Fire Extinguisher 2 Details"
+    const nextLabel = (() => {
+      const match = group.label.match(/^(.*?)(\d+)(\s*.*)$/);
+      if (match) {
+        const prefix = match[1];
+        const num = parseInt(match[2], 10) + 1;
+        const suffix = match[3];
+        return `${prefix}${num}${suffix}`;
+      }
+      return `${group.label} (Unit 2)`;
+    })();
+    setDuplicateLabel(nextLabel);
+    setDuplicateSection(group.section || (availableSections[0] || 'Stage 1: Yard Infrastructure & Environment'));
+    setDuplicateIncludeChoices(true);
+    setDuplicateIncludeSubQuestions(true);
+    setShowDuplicateModal(true);
+  };
+
+  const handleConfirmDuplicate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!duplicatingGroup || !duplicateLabel.trim()) return;
+    setIsDuplicating(true);
+    try {
+      const label = duplicateLabel.trim();
+      const sectionTitle = duplicateSection.trim() || duplicatingGroup.section || (availableSections[0] || 'Equipment Details');
+      const sectionKey = sectionTitle.toLowerCase().replace(/[^a-z0-9]/g, '_');
+      const moduleType = CATEGORY_TO_MODULE_MAP[activeTab] || 'HT_Yard_Common';
+      const timestamp = Date.now().toString().slice(-4);
+      const cleanBase = label.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || 'field';
+      const newFieldKey = `custom_${cleanBase}_${timestamp}`;
+
+      // 1. Save main field spec
+      const newSpec: CustomFieldSpec = {
+        category: activeTab,
+        moduleType: moduleType,
+        sectionKey: sectionKey,
+        sectionTitle: sectionTitle,
+        fieldKey: newFieldKey,
+        fieldLabel: label,
+        fieldType: duplicatingGroup.fieldType,
+        unit: duplicatingGroup.unit,
+        placeholder: duplicatingGroup.placeholder,
+        optionsCategory: activeTab,
+        optionsFieldKey: newFieldKey,
+        isCustom: true,
+        isActive: true
+      };
+      await htYardFieldSpecService.saveFieldSpec(newSpec);
+
+      // 2. Clone choices if requested
+      if (duplicateIncludeChoices && duplicatingGroup.items && duplicatingGroup.items.length > 0) {
+        for (const item of duplicatingGroup.items) {
+          await htYardMasterDataService.saveMasterOption({
+            category: activeTab,
+            fieldKey: newFieldKey,
+            optionValue: item.optionValue,
+            manufacturer: item.manufacturer,
+            isActive: true
+          });
+        }
+      }
+
+      // 3. Clone all follow-up sub-questions if requested
+      if (duplicateIncludeSubQuestions && duplicatingGroup.subQuestions && duplicatingGroup.subQuestions.length > 0) {
+        for (const sub of duplicatingGroup.subQuestions) {
+          const subTimestamp = Date.now().toString().slice(-4) + Math.random().toString(36).substring(2, 5);
+          const cleanSubBase = sub.label.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || 'sub';
+          const newSubKey = `sub_${cleanSubBase}_${subTimestamp}`;
+
+          const subSpec: CustomFieldSpec = {
+            category: activeTab,
+            moduleType: moduleType,
+            sectionKey: sectionKey,
+            sectionTitle: sectionTitle,
+            fieldKey: newSubKey,
+            fieldLabel: sub.label,
+            fieldType: sub.fieldType,
+            unit: sub.unit,
+            placeholder: sub.placeholder,
+            optionsCategory: activeTab,
+            optionsFieldKey: newSubKey,
+            parentFieldKey: newFieldKey,
+            isCustom: true,
+            isActive: true
+          };
+          await htYardFieldSpecService.saveFieldSpec(subSpec);
+
+          // Clone sub-question choices if any
+          if (duplicateIncludeChoices && sub.items && sub.items.length > 0) {
+            for (const subItem of sub.items) {
+              await htYardMasterDataService.saveMasterOption({
+                category: activeTab,
+                fieldKey: newSubKey,
+                optionValue: subItem.optionValue,
+                manufacturer: subItem.manufacturer,
+                isActive: true
+              });
+            }
+          }
+        }
+      }
+
+      logMasterDataActivity('CREATE', label, `Duplicated question "${duplicatingGroup.label}" as "${label}" (${newFieldKey}) with ${(duplicatingGroup.items || []).length} choices and ${(duplicatingGroup.subQuestions || []).length} sub-questions`);
+      toast.success(`Duplicated "${duplicatingGroup.label}" as "${label}"!`);
+      setShowDuplicateModal(false);
+      setDuplicatingGroup(null);
+
+      await loadCustomSpecs();
+      await loadOptions();
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('ht_field_specs_updated', { detail: { category: activeTab } }));
+      }
+    } catch (err) {
+      toast.error('Failed to duplicate question');
+    } finally {
+      setIsDuplicating(false);
     }
   };
 
@@ -1025,6 +1699,7 @@ export const HTMasterDataAdmin: React.FC = () => {
         placeholder: configuringField.placeholder || undefined,
         optionsCategory: configuringField.category,
         optionsFieldKey: configuringField.fieldKey,
+        parentFieldKey: configuringField.parentFieldKey || undefined,
         isCustom: true,
         isActive: true
       };
@@ -1036,8 +1711,18 @@ export const HTMasterDataAdmin: React.FC = () => {
         const currentList = prev[configuringField.category] || [];
         const exists = currentList.some(t => t.key === configuringField.fieldKey);
         const updatedList = exists
-          ? currentList.map(t => t.key === configuringField.fieldKey ? { ...t, label: configuringField.fieldLabel, section: sectionTitle } : t)
-          : [...currentList, { key: configuringField.fieldKey, label: configuringField.fieldLabel, section: sectionTitle }];
+          ? currentList.map(t => t.key === configuringField.fieldKey ? { 
+              ...t, 
+              label: configuringField.fieldLabel, 
+              section: sectionTitle,
+              parentFieldKey: configuringField.parentFieldKey !== undefined ? configuringField.parentFieldKey : t.parentFieldKey
+            } : t)
+          : [...currentList, { 
+              key: configuringField.fieldKey, 
+              label: configuringField.fieldLabel, 
+              section: sectionTitle,
+              parentFieldKey: configuringField.parentFieldKey
+            }];
         const updated = {
           ...prev,
           [configuringField.category]: updatedList
@@ -1163,7 +1848,7 @@ export const HTMasterDataAdmin: React.FC = () => {
         const catName = deletePasswordModal.targetName;
         const categoryOptions = await htYardMasterDataService.getMasterOptions(catName);
         for (const opt of categoryOptions) {
-          await htYardMasterDataService.deleteMasterOption(opt.id, catName);
+          await htYardMasterDataService.deleteMasterOption(opt.id, catName, opt.optionValue, opt.fieldKey);
         }
         const updated = categories.filter(c => c !== catName);
         setCategories(updated);
@@ -1194,7 +1879,7 @@ export const HTMasterDataAdmin: React.FC = () => {
         // 2. Delete all options belonging to this field in this category
         const fieldOptions = options.filter(o => o.fieldKey === fieldKey);
         for (const opt of fieldOptions) {
-          await htYardMasterDataService.deleteMasterOption(opt.id, activeTab);
+          await htYardMasterDataService.deleteMasterOption(opt.id, activeTab, opt.optionValue, opt.fieldKey);
         }
 
         // 3. Remove from fieldTargetsMap and localStorage
@@ -1218,7 +1903,7 @@ export const HTMasterDataAdmin: React.FC = () => {
         await loadCustomSpecs();
         await loadOptions();
       } else if (deletePasswordModal.type === 'OPTION' && deletePasswordModal.targetId) {
-        await htYardMasterDataService.deleteMasterOption(deletePasswordModal.targetId, activeTab);
+        await htYardMasterDataService.deleteMasterOption(deletePasswordModal.targetId, activeTab, deletePasswordModal.targetName);
         logMasterDataActivity('DELETE', deletePasswordModal.targetName, `Deleted choice option "${deletePasswordModal.targetName}" from category "${activeTab}"`);
         toast.success(`Option "${deletePasswordModal.targetName}" deleted successfully!`);
         loadOptions();
@@ -1248,10 +1933,66 @@ export const HTMasterDataAdmin: React.FC = () => {
     }
   };
 
+  // Section Header Management Handlers
+  const handleCreateSectionHeader = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSectionHeaderInput.trim()) return;
+    setIsSectionOpInProgress(true);
+    try {
+      await htYardFieldSpecService.saveSection(activeTab, newSectionHeaderInput.trim());
+      toast.success(`Created section "${newSectionHeaderInput.trim()}"`);
+      setNewSectionHeaderInput('');
+      await loadCustomSpecs();
+      await loadOptions();
+    } catch (err) {
+      toast.error('Failed to create section');
+    } finally {
+      setIsSectionOpInProgress(false);
+    }
+  };
+
+  const handleSaveRenameSectionHeader = async (oldName: string, newName: string) => {
+    if (!newName.trim() || oldName === newName.trim()) {
+      setEditingSectionHeader(null);
+      return;
+    }
+    setIsSectionOpInProgress(true);
+    try {
+      await htYardFieldSpecService.renameSection(activeTab, oldName, newName.trim());
+      toast.success(`Renamed section to "${newName.trim()}"`);
+      setEditingSectionHeader(null);
+      if (selectedSection === oldName) setSelectedSection(newName.trim());
+      await loadCustomSpecs();
+      await loadOptions();
+    } catch (err) {
+      toast.error('Failed to rename section');
+    } finally {
+      setIsSectionOpInProgress(false);
+    }
+  };
+
+  const handleDeleteSectionHeader = async (sectionName: string) => {
+    if (!window.confirm(`Are you sure you want to delete section header "${sectionName}" and all its questions from this category?`)) {
+      return;
+    }
+    setIsSectionOpInProgress(true);
+    try {
+      await htYardFieldSpecService.deleteSection(activeTab, sectionName);
+      toast.success(`Deleted section "${sectionName}"`);
+      if (selectedSection === sectionName) setSelectedSection('All');
+      await loadCustomSpecs();
+      await loadOptions();
+    } catch (err) {
+      toast.error('Failed to delete section');
+    } finally {
+      setIsSectionOpInProgress(false);
+    }
+  };
+
   const availableFieldTargets = fieldTargetsMap[activeTab] || [];
 
   // Group options by field target key with full baseline + custom field spec merge and hierarchical sub-questions
-  const groupedFields = useMemo(() => {
+  const allGroupedFields = useMemo(() => {
     type GroupItem = { 
       fieldKey: string; 
       label: string; 
@@ -1267,16 +2008,41 @@ export const HTMasterDataAdmin: React.FC = () => {
     };
     const map = new Map<string, GroupItem>();
 
+    const hiddenSections: string[] = (() => {
+      try {
+        const raw = localStorage.getItem(`ht_hidden_sections_${activeTab}`);
+        return raw ? JSON.parse(raw) : [];
+      } catch {
+        return [];
+      }
+    })();
+
+    const sectionRenames: Record<string, string> = (() => {
+      try {
+        const raw = localStorage.getItem(`ht_section_renames_${activeTab}`);
+        return raw ? JSON.parse(raw) : {};
+      } catch {
+        return {};
+      }
+    })();
+
     // 1. Module Spec baseline fields from HT_YARD_FIELD_SPECS for this category
     const moduleType = CATEGORY_TO_MODULE_MAP[activeTab] || 'RMU';
     const baseModule = HT_YARD_FIELD_SPECS[moduleType];
     if (baseModule) {
       baseModule.sections.forEach(sec => {
+        const isHidden = hiddenSections.some(h => 
+          h.toLowerCase() === sec.sectionKey.toLowerCase() || 
+          h.toLowerCase() === sec.title.toLowerCase()
+        );
+        if (isHidden) return;
+        const renamedTitle = sectionRenames[sec.sectionKey] || sectionRenames[sec.title] || sec.title;
+
         sec.fields.forEach(f => {
           map.set(f.key, {
             fieldKey: f.key,
             label: f.label.replace(/^\d+\.\s*/, ''), // clean leading number for admin title
-            section: sec.title,
+            section: renamedTitle,
             category: activeTab,
             fieldType: f.type || 'text',
             unit: f.unit,
@@ -1292,11 +2058,15 @@ export const HTMasterDataAdmin: React.FC = () => {
 
     // 2. Pre-populate with all known field targets for activeTab
     availableFieldTargets.forEach(t => {
+      const isHidden = hiddenSections.some(h => h.toLowerCase() === t.section?.toLowerCase());
+      if (isHidden) return;
+      const renamedSection = t.section ? (sectionRenames[t.section] || t.section) : undefined;
+
       if (!map.has(t.key)) {
         map.set(t.key, {
           fieldKey: t.key,
           label: t.label,
-          section: t.section,
+          section: renamedSection,
           category: activeTab,
           fieldType: 'select',
           parentFieldKey: t.parentFieldKey,
@@ -1306,7 +2076,7 @@ export const HTMasterDataAdmin: React.FC = () => {
         });
       } else {
         const existing = map.get(t.key)!;
-        if (t.section) existing.section = t.section;
+        if (renamedSection) existing.section = renamedSection;
         if (t.parentFieldKey) existing.parentFieldKey = t.parentFieldKey;
       }
     });
@@ -1317,15 +2087,25 @@ export const HTMasterDataAdmin: React.FC = () => {
         map.delete(cs.fieldKey);
         return;
       }
+      const isHidden = hiddenSections.some(h => 
+        h.toLowerCase() === cs.sectionKey?.toLowerCase() || 
+        h.toLowerCase() === cs.sectionTitle?.toLowerCase()
+      );
+      if (isHidden) {
+        map.delete(cs.fieldKey);
+        return;
+      }
+      const renamedSection = cs.sectionTitle ? (sectionRenames[cs.sectionKey] || sectionRenames[cs.sectionTitle] || cs.sectionTitle) : undefined;
+
       map.set(cs.fieldKey, {
         fieldKey: cs.fieldKey,
         label: cs.fieldLabel,
-        section: cs.sectionTitle,
+        section: renamedSection,
         category: activeTab,
         fieldType: cs.fieldType || 'select',
         unit: cs.unit,
         placeholder: cs.placeholder,
-        parentFieldKey: cs.parentFieldKey,
+        parentFieldKey: cs.parentFieldKey !== undefined ? cs.parentFieldKey : map.get(cs.fieldKey)?.parentFieldKey,
         isCustom: cs.isCustom ?? true,
         items: map.get(cs.fieldKey)?.items || [],
         subQuestions: []
@@ -1337,10 +2117,15 @@ export const HTMasterDataAdmin: React.FC = () => {
       const key = opt.fieldKey || 'generic';
       if (!map.has(key)) {
         const friendly = availableFieldTargets.find(t => t.key === key);
+        const sec = friendly?.section || opt.section;
+        const isHidden = sec ? hiddenSections.some(h => h.toLowerCase() === sec.toLowerCase()) : false;
+        if (isHidden) return;
+        const renamedSec = sec ? (sectionRenames[sec] || sec) : undefined;
+
         map.set(key, {
           fieldKey: key,
           label: friendly ? friendly.label : key,
-          section: friendly?.section || opt.section,
+          section: renamedSec,
           category: activeTab,
           fieldType: 'select',
           parentFieldKey: opt.parentFieldKey,
@@ -1379,25 +2164,81 @@ export const HTMasterDataAdmin: React.FC = () => {
         );
 
       const matchesFieldKey = selectedFieldKey === 'All' || g.fieldKey === selectedFieldKey;
-      const matchesSection = selectedSection === 'All' || g.section === selectedSection;
-      return matchesSearch && matchesFieldKey && matchesSection;
+      return matchesSearch && matchesFieldKey;
     });
-  }, [options, activeTab, searchQuery, selectedFieldKey, selectedSection, fieldTargetsMap, customFieldSpecs]);
+  }, [options, activeTab, searchQuery, selectedFieldKey, fieldTargetsMap, customFieldSpecs]);
 
-  // Available unique sections in activeTab derived from groupedFields
+  // Section-filtered grouped fields for on-screen list rendering
+  const groupedFields = useMemo(() => {
+    if (selectedSection === 'All') return allGroupedFields;
+    return allGroupedFields.filter(g => g.section === selectedSection);
+  }, [allGroupedFields, selectedSection]);
+
+  // Available unique sections in activeTab derived from groupedFields + baseline + custom registered sections
   const availableSections = useMemo(() => {
     const sectionsSet = new Set<string>();
-    groupedFields.forEach(t => {
-      if (t.section) sectionsSet.add(t.section);
+    const hiddenSections: string[] = (() => {
+      try {
+        const raw = localStorage.getItem(`ht_hidden_sections_${activeTab}`);
+        return raw ? JSON.parse(raw) : [];
+      } catch {
+        return [];
+      }
+    })();
+    const sectionRenames: Record<string, string> = (() => {
+      try {
+        const raw = localStorage.getItem(`ht_section_renames_${activeTab}`);
+        return raw ? JSON.parse(raw) : {};
+      } catch {
+        return {};
+      }
+    })();
+
+    // 1. From baseline
+    const moduleType = CATEGORY_TO_MODULE_MAP[activeTab] || 'RMU';
+    const baseModule = HT_YARD_FIELD_SPECS[moduleType];
+    if (baseModule) {
+      baseModule.sections.forEach(s => {
+        const isHidden = hiddenSections.some(h => 
+          h.toLowerCase() === s.sectionKey.toLowerCase() || 
+          h.toLowerCase() === s.title.toLowerCase()
+        );
+        if (!isHidden) {
+          const renamed = sectionRenames[s.sectionKey] || sectionRenames[s.title] || s.title;
+          sectionsSet.add(renamed);
+        }
+      });
+    }
+
+    // 2. From custom registered sections
+    const customSections = htYardFieldSpecService.getCustomSections(activeTab);
+    customSections.forEach(cs => {
+      const isHidden = hiddenSections.some(h => 
+        h.toLowerCase() === cs.sectionKey.toLowerCase() || 
+        h.toLowerCase() === cs.title.toLowerCase()
+      );
+      if (!isHidden) {
+        const renamed = sectionRenames[cs.sectionKey] || sectionRenames[cs.title] || cs.title;
+        sectionsSet.add(renamed);
+      }
     });
+
+    // 3. From grouped fields
+    allGroupedFields.forEach(t => {
+      if (t.section) {
+        const isHidden = hiddenSections.some(h => h.toLowerCase() === t.section!.toLowerCase());
+        if (!isHidden) sectionsSet.add(t.section);
+      }
+    });
+
     return Array.from(sectionsSet);
-  }, [groupedFields]);
+  }, [allGroupedFields, activeTab]);
 
   // Active viewing target group for List Modal
   const activeViewingGroup = useMemo(() => {
     if (!viewingTargetKey) return null;
-    return groupedFields.find(g => g.fieldKey === viewingTargetKey) || null;
-  }, [viewingTargetKey, groupedFields]);
+    return allGroupedFields.find(g => g.fieldKey === viewingTargetKey) || null;
+  }, [viewingTargetKey, allGroupedFields]);
 
   // Category helpers for custom dropdown
   const getCategoryIcon = (cat: string) => {
@@ -1468,7 +2309,7 @@ export const HTMasterDataAdmin: React.FC = () => {
               </span>
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-extrabold bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/60">
                 <Tag className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                {groupedFields.length} Form Fields
+                {allGroupedFields.length} Form Fields
               </span>
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-extrabold bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/60">
                 <List className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
@@ -1522,6 +2363,14 @@ export const HTMasterDataAdmin: React.FC = () => {
             {/* Utility Tools */}
             <div className="flex items-center gap-1.5">
               <button
+                onClick={() => setShowSectionManagerModal(true)}
+                title="Manage Section Headers in this Category"
+                className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 rounded-2xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
+              >
+                <Layers className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> Section Headers ({availableSections.length})
+              </button>
+
+              <button
                 onClick={() => setShowTemplateInfoModal(true)}
                 title="Open Template Guide & Reference"
                 className="px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer"
@@ -1549,7 +2398,7 @@ export const HTMasterDataAdmin: React.FC = () => {
             {/* Primary Action Buttons */}
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setShowAddTargetModal(true)}
+                onClick={() => handleOpenAddQuestionModal()}
                 className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white rounded-2xl text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
                 title="Create a new target field / question"
               >
@@ -1717,7 +2566,7 @@ export const HTMasterDataAdmin: React.FC = () => {
 
       {/* Section Filter Pills */}
       {availableSections.length > 0 && (
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 mb-5 scrollbar-thin">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 mb-4 scrollbar-thin">
           <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 shrink-0 mr-1.5 flex items-center gap-1">
             <Layers className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> Section:
           </span>
@@ -1726,7 +2575,7 @@ export const HTMasterDataAdmin: React.FC = () => {
               setSelectedSection('All');
               setSelectedFieldKey('All');
             }}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 shrink-0 ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 shrink-0 cursor-pointer ${
               selectedSection === 'All'
                 ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/20'
                 : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'
@@ -1734,11 +2583,11 @@ export const HTMasterDataAdmin: React.FC = () => {
           >
             All Sections
             <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${selectedSection === 'All' ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
-              {availableFieldTargets.length}
+              {allGroupedFields.length}
             </span>
           </button>
           {availableSections.map((sec) => {
-            const count = availableFieldTargets.filter(t => t.section === sec).length;
+            const count = allGroupedFields.filter(t => t.section === sec).length;
             const isSelected = selectedSection === sec;
             return (
               <button
@@ -1747,7 +2596,7 @@ export const HTMasterDataAdmin: React.FC = () => {
                   setSelectedSection(sec);
                   setSelectedFieldKey('All');
                 }}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 shrink-0 ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 shrink-0 cursor-pointer ${
                   isSelected
                     ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/20'
                     : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'
@@ -1760,6 +2609,57 @@ export const HTMasterDataAdmin: React.FC = () => {
               </button>
             );
           })}
+
+          <button
+            onClick={() => setShowSectionManagerModal(true)}
+            className="px-2.5 py-1.5 rounded-xl text-xs font-bold border border-dashed border-emerald-400 dark:border-emerald-700 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors whitespace-nowrap flex items-center gap-1 cursor-pointer shrink-0"
+            title="Create or Manage Section Headers"
+          >
+            <Plus className="w-3 h-3" /> Add Section
+          </button>
+        </div>
+      )}
+
+      {/* Active Section Quick Actions Banner */}
+      {selectedSection !== 'All' && (
+        <div className="mb-5 p-3.5 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/70 dark:border-emerald-800/60 flex items-center justify-between gap-3 flex-wrap animate-in fade-in">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="p-1.5 rounded-xl bg-emerald-600 text-white shrink-0">
+              <Layers className="w-4 h-4" />
+            </span>
+            <div className="min-w-0">
+              <h3 className="text-xs font-extrabold text-emerald-900 dark:text-emerald-200 truncate">
+                Active Section: {selectedSection}
+              </h3>
+              <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                {groupedFields.filter(g => g.section === selectedSection).length} questions configured
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => {
+                setEditingSectionHeader({ oldName: selectedSection, newName: selectedSection });
+                setShowSectionManagerModal(true);
+              }}
+              className="px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-emerald-100 text-slate-700 dark:text-slate-200 border border-emerald-200 dark:border-slate-700 text-xs font-bold flex items-center gap-1 cursor-pointer"
+            >
+              <Edit2 className="w-3 h-3 text-emerald-600" /> Rename
+            </button>
+            <button
+              onClick={() => handleDeleteSectionHeader(selectedSection)}
+              className="px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-rose-50 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900/60 text-xs font-bold flex items-center gap-1 cursor-pointer"
+            >
+              <Trash2 className="w-3 h-3 text-rose-500" /> Delete Section
+            </button>
+            <button
+              onClick={() => handleOpenAddQuestionModal()}
+              className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer"
+            >
+              <Plus className="w-3 h-3" /> + Add Question Here
+            </button>
+          </div>
         </div>
       )}
 
@@ -1868,13 +2768,19 @@ export const HTMasterDataAdmin: React.FC = () => {
                     className="p-4 sm:p-5 flex items-center justify-between gap-4 cursor-pointer select-none hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors"
                   >
                     <div className="flex items-center gap-3.5 min-w-0">
-                      <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-bold text-xs shrink-0 transition-colors ${
-                        isExpanded
-                          ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
-                          : 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800/60'
-                      }`}>
-                        <Box className="w-5 h-5" />
-                      </div>
+                      {(() => {
+                        const fieldTheme = getFieldIconAndStyle(group);
+                        const IconComponent = fieldTheme.icon;
+                        return (
+                          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-bold text-xs shrink-0 transition-all ${
+                            isExpanded
+                              ? `${fieldTheme.activeBg} text-white shadow-md`
+                              : `${fieldTheme.bgColor} ${fieldTheme.textColor} border ${fieldTheme.borderColor}`
+                          }`}>
+                            <IconComponent className="w-5 h-5" />
+                          </div>
+                        );
+                      })()}
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <h3 className="font-extrabold text-slate-900 dark:text-white text-base">
@@ -1974,15 +2880,7 @@ export const HTMasterDataAdmin: React.FC = () => {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          setNewTargetParentKey(group.fieldKey);
-                          setParentFieldLabel(group.label);
-                          setNewTargetSection(group.section || 'Equipment Accessories');
-                          setNewTargetLabel('');
-                          setNewTargetKey('');
-                          setNewTargetType('select');
-                          setNewTargetChoices('');
-                          setNewTargetUnit('');
-                          setShowAddTargetModal(true);
+                          handleOpenAddQuestionModal(group.fieldKey, group.label);
                         }}
                         className="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-bold transition-all flex items-center gap-1 shadow-2xs cursor-pointer"
                         title={`Add a follow-up question directly under "${group.label}"`}
@@ -2018,6 +2916,19 @@ export const HTMasterDataAdmin: React.FC = () => {
                       >
                         <Edit2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                         <span className="hidden sm:inline">Edit Field</span>
+                      </button>
+
+                      {/* Duplicate Question Button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenDuplicateModal(group);
+                        }}
+                        className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-emerald-50 dark:bg-slate-800 dark:hover:bg-emerald-950/60 text-slate-700 hover:text-emerald-700 dark:text-slate-300 dark:hover:text-emerald-300 border border-slate-200/80 dark:border-slate-700 text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                        title="Duplicate question structure with choices & sub-questions (e.g. for Unit 2, Unit 3)"
+                      >
+                        <Copy className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                        <span className="hidden sm:inline">Duplicate</span>
                       </button>
 
                       {/* Delete Field Button */}
@@ -2267,15 +3178,7 @@ export const HTMasterDataAdmin: React.FC = () => {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            setNewTargetParentKey(group.fieldKey);
-                            setParentFieldLabel(group.label);
-                            setNewTargetSection(group.section || 'Equipment Accessories');
-                            setNewTargetLabel('');
-                            setNewTargetKey('');
-                            setNewTargetType('select');
-                            setNewTargetChoices('');
-                            setNewTargetUnit('');
-                            setShowAddTargetModal(true);
+                            handleOpenAddQuestionModal(group.fieldKey, group.label);
                           }}
                           className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 shrink-0 cursor-pointer"
                           title={`Add a follow-up question under ${group.label}`}
@@ -2298,9 +3201,15 @@ export const HTMasterDataAdmin: React.FC = () => {
                               {/* Sub-Question Header */}
                               <div className="flex items-center justify-between gap-3 flex-wrap">
                                 <div className="flex items-center gap-2.5">
-                                  <div className="w-7 h-7 rounded-xl bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-bold text-xs flex items-center justify-center">
-                                    ↳
-                                  </div>
+                                  {(() => {
+                                    const subTheme = getFieldIconAndStyle(sub);
+                                    const SubIcon = subTheme.icon;
+                                    return (
+                                      <div className={`w-7 h-7 rounded-xl ${subTheme.bgColor} ${subTheme.textColor} border ${subTheme.borderColor} font-bold text-xs flex items-center justify-center shrink-0`}>
+                                        <SubIcon className="w-3.5 h-3.5" />
+                                      </div>
+                                    );
+                                  })()}
                                   <div>
                                     <h5 className="font-bold text-xs text-slate-900 dark:text-white">
                                       {sub.label}
@@ -2328,6 +3237,7 @@ export const HTMasterDataAdmin: React.FC = () => {
                                         unit: sub.unit || '',
                                         placeholder: sub.placeholder || '',
                                         isCustom: sub.isCustom,
+                                        parentFieldKey: sub.parentFieldKey || group.fieldKey,
                                         initialChoice: ''
                                       });
                                       setShowConfigureFieldModal(true);
@@ -2476,7 +3386,11 @@ export const HTMasterDataAdmin: React.FC = () => {
                       <td colSpan={5} className="px-6 py-3">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2 font-extrabold text-slate-900 dark:text-white text-xs flex-wrap">
-                            <Box className="w-4 h-4 text-emerald-600 shrink-0" />
+                            {(() => {
+                              const tblTheme = getFieldIconAndStyle(group);
+                              const TblIcon = tblTheme.icon;
+                              return <TblIcon className={`w-4 h-4 ${tblTheme.textColor} shrink-0`} />;
+                            })()}
                             <span>{group.label}</span>
                             <code className="text-[10px] text-slate-400 font-mono bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-200/60 dark:border-slate-700/60">
                               #{group.fieldKey}
@@ -2512,6 +3426,13 @@ export const HTMasterDataAdmin: React.FC = () => {
                               title="Edit Field Settings"
                             >
                               <Edit2 className="w-3 h-3 text-emerald-600" /> Edit Field
+                            </button>
+                            <button
+                              onClick={() => handleOpenDuplicateModal(group)}
+                              className="px-2.5 py-1 rounded-xl text-xs font-bold text-slate-700 hover:text-emerald-700 dark:text-slate-300 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center gap-1 shadow-2xs cursor-pointer"
+                              title="Duplicate question structure"
+                            >
+                              <Copy className="w-3 h-3 text-emerald-600" /> Duplicate
                             </button>
                             <button
                               onClick={() => promptDeleteField(group.fieldKey, group.label, group.section)}
@@ -2864,7 +3785,9 @@ export const HTMasterDataAdmin: React.FC = () => {
                   <option value="text">🔤 Short Text (Single-line typing)</option>
                   <option value="number">🔢 Number / Rating (Measurement with unit)</option>
                   <option value="textarea">📝 Detailed Notes / Observations</option>
-                  <option value="date">📅 Date (Calendar picker)</option>
+                  <option value="date">📅 Date (DD/MM/YYYY Calendar Picker)</option>
+                  <option value="time">⏰ Time Picker (HH:MM)</option>
+                  <option value="datetime">📅⏰ Date & Time (DD/MM/YYYY HH:MM)</option>
                   <option value="photo">📷 Photo Capture & Upload</option>
                   <option value="digital_signature">✍️ Digital Signature</option>
                   <option value="gps_location">📍 GPS Location (Auto-capture coordinates)</option>
@@ -3029,7 +3952,9 @@ export const HTMasterDataAdmin: React.FC = () => {
                   <option value="text">🔤 Short Text (Single-line typing)</option>
                   <option value="number">🔢 Number / Rating (Measurement with unit)</option>
                   <option value="textarea">📝 Detailed Notes / Observations</option>
-                  <option value="date">📅 Date (Calendar picker)</option>
+                  <option value="date">📅 Date (DD/MM/YYYY Calendar Picker)</option>
+                  <option value="time">⏰ Time Picker (HH:MM)</option>
+                  <option value="datetime">📅⏰ Date & Time (DD/MM/YYYY HH:MM)</option>
                   <option value="photo">📷 Photo Capture & Upload</option>
                   <option value="digital_signature">✍️ Digital Signature</option>
                   <option value="gps_location">📍 GPS Location (Auto-capture coordinates)</option>
@@ -3240,6 +4165,123 @@ export const HTMasterDataAdmin: React.FC = () => {
                   className="px-4 py-2 text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-sm transition-all"
                 >
                   Save Option
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* DUPLICATE QUESTION / REPEATABILITY MODAL */}
+      {showDuplicateModal && duplicatingGroup && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Copy className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                  Duplicate Question / Structure
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Source: <strong className="text-slate-800 dark:text-slate-200">{duplicatingGroup.label}</strong> ({activeTab})
+                </p>
+              </div>
+              <button 
+                onClick={() => { setShowDuplicateModal(false); setDuplicatingGroup(null); }} 
+                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmDuplicate} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                  New Question / Checkpoint Name <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  placeholder="e.g. Fire Extinguisher 2 Details, Transformer 2 Details..."
+                  value={duplicateLabel}
+                  onChange={(e) => setDuplicateLabel(e.target.value)}
+                  className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 font-semibold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                  Target Section / Stage
+                </label>
+                <input
+                  type="text"
+                  list="duplicate-section-suggestions"
+                  placeholder="e.g. Stage 1: Yard Infrastructure & Environment..."
+                  value={duplicateSection}
+                  onChange={(e) => setDuplicateSection(e.target.value)}
+                  className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
+                />
+                <datalist id="duplicate-section-suggestions">
+                  {availableSections.map(s => <option key={s} value={s} />)}
+                </datalist>
+              </div>
+
+              <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 space-y-2.5">
+                <div className="text-xs font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <Layers className="w-4 h-4 text-emerald-600" />
+                  What to include in duplicate:
+                </div>
+
+                <label className="flex items-center gap-2.5 text-xs text-slate-700 dark:text-slate-300 font-medium cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={duplicateIncludeChoices}
+                    onChange={(e) => setDuplicateIncludeChoices(e.target.checked)}
+                    className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500"
+                  />
+                  <span>
+                    Copy all <strong>{(duplicatingGroup.items || []).length} choices</strong> {(duplicatingGroup.items || []).length > 0 ? `(${duplicatingGroup.items.slice(0, 3).map((i: any) => i.optionValue).join(', ')}${duplicatingGroup.items.length > 3 ? '...' : ''})` : ''}
+                  </span>
+                </label>
+
+                {(duplicatingGroup.subQuestions || []).length > 0 && (
+                  <label className="flex items-center gap-2.5 text-xs text-slate-700 dark:text-slate-300 font-medium cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={duplicateIncludeSubQuestions}
+                      onChange={(e) => setDuplicateIncludeSubQuestions(e.target.checked)}
+                      className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500"
+                    />
+                    <span>
+                      Copy all <strong>{duplicatingGroup.subQuestions.length} follow-up sub-questions</strong> ({duplicatingGroup.subQuestions.map((s: any) => s.label).join(', ')})
+                    </span>
+                  </label>
+                )}
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => { setShowDuplicateModal(false); setDuplicatingGroup(null); }}
+                  className="px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isDuplicating || !duplicateLabel.trim()}
+                  className="px-5 py-2 text-xs font-bold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {isDuplicating ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" /> Duplicating...
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4" /> Duplicate Question
+                    </>
+                  )}
                 </button>
               </div>
             </form>
@@ -3624,6 +4666,157 @@ export const HTMasterDataAdmin: React.FC = () => {
                   )}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SECTION HEADER MANAGEMENT MODAL */}
+      {showSectionManagerModal && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-2xl w-full shadow-2xl max-h-[90vh] flex flex-col">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 flex items-center justify-center shrink-0">
+                  <Layers className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                    Manage Section Headers
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Category: <strong className="text-emerald-700 dark:text-emerald-300">{getCategoryFriendlyLabel(activeTab)}</strong> ({activeTab})
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowSectionManagerModal(false);
+                  setEditingSectionHeader(null);
+                }}
+                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Quick Add Section Header Form */}
+            <form onSubmit={handleCreateSectionHeader} className="py-4 border-b border-slate-100 dark:border-slate-800 flex items-center gap-2">
+              <div className="relative flex-1">
+                <Layers className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  required
+                  placeholder="Enter new Section Heading title..."
+                  value={newSectionHeaderInput}
+                  onChange={(e) => setNewSectionHeaderInput(e.target.value)}
+                  className="w-full pl-10 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={isSectionOpInProgress || !newSectionHeaderInput.trim()}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
+              >
+                <Plus className="w-3.5 h-3.5" /> Add Section
+              </button>
+            </form>
+
+            {/* Sections List */}
+            <div className="flex-1 overflow-y-auto py-3 space-y-2.5">
+              {availableSections.map((secName, idx) => {
+                const questionCount = allGroupedFields.filter(g => g.section === secName).length;
+                const isEditing = editingSectionHeader?.oldName === secName;
+
+                return (
+                  <div
+                    key={secName}
+                    className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-between gap-3"
+                  >
+                    {isEditing ? (
+                      <div className="flex items-center gap-2 flex-1">
+                        <input
+                          type="text"
+                          value={editingSectionHeader.newName}
+                          onChange={(e) => setEditingSectionHeader({ ...editingSectionHeader, newName: e.target.value })}
+                          className="flex-1 px-3 py-1.5 bg-white dark:bg-slate-900 border border-emerald-500 rounded-xl text-xs font-bold text-slate-900 dark:text-white outline-none"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSaveRenameSectionHeader(editingSectionHeader.oldName, editingSectionHeader.newName);
+                            if (e.key === 'Escape') setEditingSectionHeader(null);
+                          }}
+                        />
+                        <button
+                          onClick={() => handleSaveRenameSectionHeader(editingSectionHeader.oldName, editingSectionHeader.newName)}
+                          disabled={isSectionOpInProgress}
+                          className="px-3 py-1.5 bg-emerald-600 text-white rounded-xl text-xs font-bold cursor-pointer"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => setEditingSectionHeader(null)}
+                          className="px-3 py-1.5 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold flex items-center justify-center shrink-0">
+                            {idx + 1}
+                          </span>
+                          <div className="min-w-0">
+                            <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
+                              {secName}
+                            </h4>
+                            <span className="text-[10px] text-slate-500 font-medium">
+                              {questionCount} question{questionCount !== 1 ? 's' : ''} mapped
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            onClick={() => setEditingSectionHeader({ oldName: secName, newName: secName })}
+                            className="p-1.5 rounded-lg bg-white dark:bg-slate-700 hover:bg-slate-100 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 text-xs font-bold cursor-pointer"
+                            title="Rename Section Heading"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteSectionHeader(secName)}
+                            className="p-1.5 rounded-lg bg-white dark:bg-slate-700 hover:bg-rose-50 text-rose-600 dark:text-rose-400 border border-slate-200 dark:border-slate-600 text-xs font-bold cursor-pointer"
+                            title="Delete Section Heading"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+
+              {availableSections.length === 0 && (
+                <div className="py-8 text-center text-xs text-slate-400">
+                  No section headers found. Create one using the input above!
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end">
+              <button
+                onClick={() => {
+                  setShowSectionManagerModal(false);
+                  setEditingSectionHeader(null);
+                }}
+                className="px-5 py-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl text-xs font-bold cursor-pointer"
+              >
+                Done
+              </button>
             </div>
           </div>
         </div>

@@ -721,7 +721,7 @@ export const MonthlyStatusView: React.FC<{
                     </div>
 
                 </div>
-                <p className="text-[6.5px] text-gray-400 mt-2">* Prefix 0.5 indicates half-day variant (e.g., 0.5EL = Half Earned Leave). H/P and W/P attract 1.5x payable credit.</p>
+                <p className="text-[6.5px] text-gray-400 mt-2">* Prefix 0.5 indicates half-day variant (e.g., 0.5EL = Half Earned Leave). Combinations like 0.75P+0.25RP and 0.5P+0.5RP reflect physical work + auto-approved/approved permission (counted as 1.0 Full Day). H/P and W/P attract 1.5x payable credit.</p>
             </div>
 
             <Footer label="PARADIGM SERVICES - MONTHLY STATUS REPORT" />

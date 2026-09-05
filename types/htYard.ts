@@ -125,6 +125,8 @@ export type HTFieldType =
   | 'text' 
   | 'number' 
   | 'date' 
+  | 'time'
+  | 'datetime'
   | 'select' 
   | 'searchable_select' 
   | 'cascading_select' 

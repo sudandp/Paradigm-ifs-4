@@ -2413,6 +2413,7 @@ const DetailedAuditReportView: React.FC<{
                   const st = d.status;
                   const bg = st === 'P' ? 'bg-emerald-100 text-emerald-800 font-bold'
                            : st === 'A' ? 'bg-red-100 text-red-800 font-bold'
+                           : st.includes('+') ? 'bg-teal-100 text-teal-900 font-bold'
                            : st === '0.25P' || st === '0.5P' || st === '0.75P' ? 'bg-cyan-100 text-cyan-800 font-bold'
                            : 'bg-slate-200 text-slate-700 font-medium';
                   return (

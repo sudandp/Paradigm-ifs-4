@@ -69,7 +69,7 @@ export function calculateWorkingHours(
   let isOnBreak = false;
   let lastEventTime: Date | null = null;
 
-  let breakIntervals: { start: string; end: string | null; duration: number }[] = [];
+  const breakIntervals: { start: string; end: string | null; duration: number }[] = [];
   let activeBreakStart: string | null = null;
 
   // 2. Process intervals between events
@@ -646,7 +646,7 @@ export function evaluateAttendanceStatus(params: {
       });
   };
 
-  let isConfiguredHoliday = hasHolidayMatch(categoryHolidays) || 
+  const isConfiguredHoliday = hasHolidayMatch(categoryHolidays) || 
                             hasHolidayMatch(officeHolidays) || 
                             hasHolidayMatch(fieldHolidays) || 
                             hasHolidayMatch(siteHolidays);
@@ -686,11 +686,11 @@ export function evaluateAttendanceStatus(params: {
 
   // 3. Resolve Leaves
   const approvedLeavesList = leaves?.filter(l => {
-      const lStartDate = l.startDate || l.date || l.leave_date;
-      const lEndDate = l.endDate || l.date || l.leave_date;
+      const lStartDate = l.startDate || l.start_date || l.date || l.leave_date;
+      const lEndDate = l.endDate || l.end_date || l.date || l.leave_date;
       if (!lStartDate || !lEndDate) return false;
       const lUserId = l.userId || l.user_id;
-      if (String(lUserId) !== String(userId)) return false;
+      if (lUserId && String(lUserId) !== String(userId)) return false;
       const lStatus = String(l.status || l.leaveStatus || '').toLowerCase();
       if (!['approved', 'approved_by_reporting', 'approved_by_admin', 'correction_made'].includes(lStatus)) return false;
 
@@ -708,13 +708,16 @@ export function evaluateAttendanceStatus(params: {
 
   const approvedLeave = approvedLeavesList && approvedLeavesList.length > 0 ? approvedLeavesList[0] : undefined;
   
-  const approvedPermission = approvedLeavesList?.find(l => String(l.leaveType || '').toLowerCase().includes('permission'));
+  const approvedPermission = approvedLeavesList?.find(l => {
+      const lType = String(l.leaveType || l.leave_type || (l as any).type || '').toLowerCase();
+      return lType.includes('permission') || lType === 'rp' || lType.includes('rp');
+  });
   const approvedCorrection = approvedLeavesList?.find(l => String(l.leaveType || (l as any).type || '').toLowerCase().includes('correction') || String(l.status || (l as any).leaveStatus || '').toLowerCase() === 'correction_made');
   
   // Find a main leave that is not permission/correction (e.g. 0.5EL, SL, etc.)
   const approvedMainLeave = approvedLeavesList?.find(l => {
-      const lType = String(l.leaveType || '').toLowerCase();
-      return !lType.includes('permission') && !lType.includes('correction') && String(l.status || '').toLowerCase() !== 'correction_made';
+      const lType = String(l.leaveType || l.leave_type || (l as any).type || '').toLowerCase();
+      return !lType.includes('permission') && !lType.includes('rp') && !lType.includes('correction') && String(l.status || (l as any).leaveStatus || '').toLowerCase() !== 'correction_made';
   });
 
   // Helper to determine leave code (EL, SL, etc.)
@@ -765,47 +768,78 @@ export function evaluateAttendanceStatus(params: {
   };
 
   // 4. Status Determination logic
-  const isApprovedPermission = !!approvedPermission;
+  const hasAutoInsertedPermEvents = dayEvents.some(e => 
+      e.reason === 'Auto-inserted from approved Permission Request' || 
+      (e.reason && String(e.reason).toLowerCase().includes('permission'))
+  );
+  const isApprovedPermission = Boolean(approvedPermission || hasAutoInsertedPermEvents);
   const isApprovedCorrection = !!approvedCorrection;
   let effectiveWorkingHours = workingHours || 0;
 
-  const permDetails = approvedPermission?.correctionDetails || (approvedPermission as any)?.correction_details;
-  if (isApprovedPermission && permDetails) {
-      const getMinutes = (timeStr: string) => {
-          if (!timeStr) return 0;
-          const [h, m] = timeStr.split(':').map(Number);
-          return h * 60 + m;
-      };
-      const punchInVal = permDetails.punchIn || permDetails.punch_in;
-      const punchOutVal = permDetails.punchOut || permDetails.punch_out;
-      const punchIn2Val = permDetails.punchIn2 || permDetails.punch_in2;
-      const punchOut2Val = permDetails.punchOut2 || permDetails.punch_out2;
-      const includeBreakVal = permDetails.includeBreak !== undefined ? permDetails.includeBreak : permDetails.include_break;
-      const breakInVal = permDetails.breakIn || permDetails.break_in;
-      const breakOutVal = permDetails.breakOut || permDetails.break_out;
-
-      const inMins = getMinutes(punchInVal);
-      const outMins = getMinutes(punchOutVal);
-      let diffMins = outMins - inMins;
-      if (diffMins < 0) diffMins += 24 * 60; // wrap around
-      
-      if (punchIn2Val && punchOut2Val) {
-          const inMins2 = getMinutes(punchIn2Val);
-          const outMins2 = getMinutes(punchOut2Val);
-          let diffMins2 = outMins2 - inMins2;
-          if (diffMins2 < 0) diffMins2 += 24 * 60;
-          diffMins += diffMins2;
+  // Calculate permission hours from approvedPermission or auto-inserted events
+  let permHours = 0;
+  if (approvedPermission) {
+      const permDetails = approvedPermission?.correctionDetails || (approvedPermission as any)?.correction_details;
+      if (permDetails) {
+          const getMinutes = (timeStr: string) => {
+              if (!timeStr) return 0;
+              const [h, m] = timeStr.split(':').map(Number);
+              return h * 60 + m;
+          };
+          const punchInVal = permDetails.punchIn || permDetails.punch_in;
+          const punchOutVal = permDetails.punchOut || permDetails.punch_out;
+          if (punchInVal && punchOutVal) {
+              const inMins = getMinutes(punchInVal);
+              const outMins = getMinutes(punchOutVal);
+              let diffMins = outMins - inMins;
+              if (diffMins < 0) diffMins += 24 * 60; // wrap around
+              
+              const includeBreakVal = permDetails.includeBreak !== undefined ? permDetails.includeBreak : permDetails.include_break;
+              const breakInVal = permDetails.breakIn || permDetails.break_in;
+              const breakOutVal = permDetails.breakOut || permDetails.break_out;
+              if (includeBreakVal && breakInVal && breakOutVal) {
+                  const bIn = getMinutes(breakInVal);
+                  const bOut = getMinutes(breakOutVal);
+                  let bDiff = bOut - bIn;
+                  if (bDiff < 0) bDiff += 24 * 60;
+                  diffMins -= bDiff;
+              }
+              permHours = diffMins / 60;
+          } else if (permDetails.permissionMinutes || permDetails.permission_minutes) {
+              permHours = Number(permDetails.permissionMinutes || permDetails.permission_minutes) / 60;
+          }
       }
-
-      if (includeBreakVal && breakInVal && breakOutVal) {
-          const bIn = getMinutes(breakInVal);
-          const bOut = getMinutes(breakOutVal);
-          let bDiff = bOut - bIn;
-          if (bDiff < 0) bDiff += 24 * 60;
-          diffMins -= bDiff;
+      if (!permHours && approvedPermission.permission_duration) {
+          permHours = parseFloat(String(approvedPermission.permission_duration)) || 0;
       }
-      // For Permission, add the permission duration to effective hours
-      effectiveWorkingHours = Math.max(0, (workingHours || 0) + (diffMins / 60));
+      if (!permHours && typeof approvedPermission.duration === 'number') {
+          permHours = approvedPermission.duration <= 1 ? approvedPermission.duration * (userRules?.minimumHoursFullDay || 8) : approvedPermission.duration;
+      }
+      if (!permHours && approvedPermission.reason) {
+          const hrMatch = String(approvedPermission.reason).match(/(\d+(?:\.\d+)?)\s*(?:hr|hour|h)/i);
+          if (hrMatch) permHours = parseFloat(hrMatch[1]);
+          const minMatch = String(approvedPermission.reason).match(/(\d+)\s*(?:mint|min|m)/i);
+          if (minMatch) permHours += parseInt(minMatch[1], 10) / 60;
+      }
+      if (!permHours) {
+          permHours = 2; // standard 2 hour default permission
+      }
+  } else if (hasAutoInsertedPermEvents) {
+      const permPunches = dayEvents.filter(e => e.reason === 'Auto-inserted from approved Permission Request' || (e.reason && String(e.reason).toLowerCase().includes('permission')));
+      const pIn = permPunches.find(e => e.type === 'punch-in');
+      const pOut = permPunches.find(e => e.type === 'punch-out');
+      if (pIn && pOut) {
+          const d1 = new Date(pIn.timestamp).getTime();
+          const d2 = new Date(pOut.timestamp).getTime();
+          if (d2 > d1) {
+              permHours = (d2 - d1) / (1000 * 60 * 60);
+          }
+      }
+      if (!permHours) permHours = 2;
+  }
+
+  if (isApprovedPermission && permHours > 0) {
+      effectiveWorkingHours = Math.max(0, (workingHours || 0) + permHours);
   }
   
   const corrDetails = approvedCorrection?.correctionDetails || (approvedCorrection as any)?.correction_details;
@@ -880,15 +914,15 @@ export function evaluateAttendanceStatus(params: {
   let workStatus = '';
   if (hasActivity || (effectiveWorkingHours !== undefined && effectiveWorkingHours > 0)) {
       if (userCategory === 'office') {
-          workStatus = resolveHoursStatus(effectiveWorkingHours || 0);
+          workStatus = resolveHoursStatus(workingHours || 0);
       } else {
           // Field/Site: trust real presence statuses from site tracking.
           // If site tracking returns 'A' but employee has real hours AND
           // hours-based fallback is enabled, evaluate on hours instead.
           if (fieldStatus && fieldStatus !== 'A') {
               workStatus = fieldStatus;
-          } else if (hoursBasedFallback && effectiveWorkingHours !== undefined && effectiveWorkingHours > 0) {
-              workStatus = resolveHoursStatus(effectiveWorkingHours);
+          } else if (hoursBasedFallback && workingHours !== undefined && workingHours > 0) {
+              workStatus = resolveHoursStatus(workingHours);
           } else {
               workStatus = hasPunchIn && (hasPunchOut || isToday || isWeekend || isHoliday) ? 'P' : 'A';
           }
@@ -896,62 +930,51 @@ export function evaluateAttendanceStatus(params: {
   }
 
   if (isApprovedPermission) {
-      const pCode = getLeaveCode(approvedPermission);
+      const pCode = approvedPermission ? getLeaveCode(approvedPermission) : 'RP';
       const leaveCode = approvedMainLeave ? getLeaveCode(approvedMainLeave) : '';
-      const leave_fraction = approvedMainLeave ? (leaveCode.startsWith('0.5') ? 0.5 : 1) : 0;
       const baseHrs = userRules?.minimumHoursFullDay || userRules?.dailyWorkingHours?.min || 8;
       
-      // Calculate permission hours from approvedPermission
-      let permHours = 0;
-      const permDetails = approvedPermission?.correctionDetails || (approvedPermission as any)?.correction_details;
-      if (permDetails) {
-          const getMinutes = (timeStr: string) => {
-              if (!timeStr) return 0;
-              const [h, m] = timeStr.split(':').map(Number);
-              return h * 60 + m;
-          };
-          const punchInVal = permDetails.punchIn || permDetails.punch_in;
-          const punchOutVal = permDetails.punchOut || permDetails.punch_out;
-          const includeBreakVal = permDetails.includeBreak !== undefined ? permDetails.includeBreak : permDetails.include_break;
-          const breakInVal = permDetails.breakIn || permDetails.break_in;
-          const breakOutVal = permDetails.breakOut || permDetails.break_out;
-
-          const inMins = getMinutes(punchInVal);
-          const outMins = getMinutes(punchOutVal);
-          let diffMins = outMins - inMins;
-          if (diffMins < 0) diffMins += 24 * 60; // wrap around
-          
-          if (includeBreakVal && breakInVal && breakOutVal) {
-              const bIn = getMinutes(breakInVal);
-              const bOut = getMinutes(breakOutVal);
-              let bDiff = bOut - bIn;
-              if (bDiff < 0) bDiff += 24 * 60;
-              diffMins -= bDiff;
+      // If there is an approved main leave (e.g. 0.5EL, 0.5SL)
+      if (approvedMainLeave) {
+          if (workStatus && workStatus !== 'A' && workStatus !== 'P') {
+              return `${workStatus}+${leaveCode}`;
           }
-          permHours = diffMins / 60;
+          return `${pCode}+${leaveCode}`;
       }
 
-      const total_effective = (workingHours || 0) + permHours + (leave_fraction * baseHrs);
+      if (isConfiguredHoliday || isPoolHoliday || isFixedHoliday) {
+          return (workingHours || 0) > 0 ? 'H/P' : 'H';
+      }
+      if (isWeekend || isRecurringHoliday) {
+          if (isRecurringHoliday) {
+              return recurringHolidayType === 'BL' ? 'BL/P' : (recurringHolidayType === 'PL' ? 'PL/P' : 'W/P');
+          }
+          return (workingHours || 0) > 0 ? 'W/P' : (isEligible ? 'W/O' : 'A');
+      }
 
-      if (total_effective >= full) {
-          if (approvedMainLeave) {
-              return `${pCode}+${leaveCode}`;
+      const workedHrs = workingHours || 0;
+
+      // If employee physically worked partial day (e.g. 0.75P, 0.5P, 0.25P)
+      if (workedHrs > 0 && workedHrs < full) {
+          let workedFraction = Math.round((workedHrs / baseHrs) * 100) / 100;
+          let permFraction = Math.round((permHours / baseHrs) * 100) / 100;
+
+          // Normalize standard 0.75, 0.5, 0.25 fractions
+          if (workedFraction >= 0.68 && workedFraction <= 0.82) workedFraction = 0.75;
+          else if (workedFraction >= 0.42 && workedFraction <= 0.58) workedFraction = 0.5;
+          else if (workedFraction >= 0.18 && workedFraction <= 0.32) workedFraction = 0.25;
+
+          if (workedFraction + permFraction >= 1.0) {
+              permFraction = Math.round((1.0 - workedFraction) * 100) / 100;
           }
-          if (isConfiguredHoliday || isPoolHoliday || isFixedHoliday) return 'H/P';
-          if (isWeekend || isRecurringHoliday) {
-              if (isRecurringHoliday) {
-                  return recurringHolidayType === 'BL' ? 'BL/P' : (recurringHolidayType === 'PL' ? 'PL/P' : 'W/P');
-              }
-              return 'W/P';
-          }
+
+          const workedStr = workedFraction === 0.75 ? '0.75P' : workedFraction === 0.5 ? '0.5P' : workedFraction === 0.25 ? '0.25P' : `${workedFraction}P`;
+          const permStr = permFraction === 0.25 ? '0.25RP' : permFraction === 0.5 ? '0.5RP' : permFraction === 0.75 ? '0.75RP' : `${permFraction}RP`;
+
+          return `${workedStr}+${permStr}`;
+      } else if (workedHrs >= full) {
           return 'P';
       } else {
-          if (approvedMainLeave) {
-              return `${pCode}+${leaveCode}`;
-          }
-          if (workStatus && workStatus !== 'A' && workStatus !== 'P') {
-              return `${pCode}+${workStatus}`;
-          }
           return pCode;
       }
   }
@@ -1264,13 +1287,23 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
               floatingHolidays += inc;
           }
       }
+      else if (part.endsWith('RP') && part !== 'RP') {
+          const val = parseFloat(part.slice(0, -2));
+          if (!isNaN(val)) presentDays += val;
+      }
       else if (part === '3/4P' || part === '0.75P') presentDays += 0.75;
-      else if (part === 'Half Day' || part === '0.5P' || part === '1/2P' || part === '2/4P') halfDays++;
+      else if (part === 'Half Day' || part === '0.5P' || part === '1/2P' || part === '2/4P') {
+          if (parts.length > 1 && parts.some(p => p.endsWith('RP'))) {
+              presentDays += 0.5;
+          } else {
+              halfDays++;
+          }
+      }
       else if (part === '1/4P' || part === '0.25P') presentDays += 0.25;
       else if (part.endsWith('P') && part !== 'LOP' && !part.includes('+') && !part.includes('/')) {
         const val = parseFloat(part.slice(0, -1));
         if (!isNaN(val)) {
-          if (val === 0.5) {
+          if (val === 0.5 && !parts.some(p => p.endsWith('RP'))) {
             halfDays++;
           } else {
             presentDays += val;

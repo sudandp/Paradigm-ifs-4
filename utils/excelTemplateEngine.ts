@@ -77,7 +77,7 @@ export const downloadTemplate = async (
   }
 
   // Day status values stored here to bypass Excel's 255-char inline formula limit
-  const dayStatuses = ['P','A','0.5P','1/2P','2/4P','1/4P','0.25P','3/4P','0.75P','EL','SL','CL','LOP','H','W/O','W/H','C/O','C/D','W/P','H/P','0.5P+0.5 EL','0.5P+0.5 SL','0.5P+0.5 CL','0.5P+0.5 LOP','BL/P','PL/P'];
+  const dayStatuses = ['P','A','0.5P','1/2P','2/4P','1/4P','0.25P','3/4P','0.75P','0.75P+0.25RP','0.5P+0.5RP','RP','RC','EL','SL','CL','LOP','H','W/O','W/H','C/O','C/D','W/P','H/P','0.5P+0.5 EL','0.5P+0.5 SL','0.5P+0.5 CL','0.5P+0.5 LOP','BL/P','PL/P'];
 
   // Generate Month & Year list from current year + 1 down to 2018
   const monthYears: string[] = [];
@@ -875,7 +875,7 @@ export const parseMasterFile = async (file: File): Promise<MasterParseResult> =>
     const masterResult: MasterParseResult = {};
 
     for (const template of TEMPLATE_DEFINITIONS) {
-      let worksheet = workbook.getWorksheet(template.name);
+      const worksheet = workbook.getWorksheet(template.name);
       if (!worksheet) continue;
       masterResult[template.id] = await parseWorksheet(worksheet, template);
     }
@@ -956,7 +956,7 @@ const parseWorksheet = async (
         }
         if (col.type === 'date' && value) {
           const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-          let dateStr = value instanceof Date ? value.toISOString().split('T')[0] : String(value);
+          const dateStr = value instanceof Date ? value.toISOString().split('T')[0] : String(value);
           mappedData[col.key] = dateStr;
           if (!dateRegex.test(dateStr)) {
             errors.push({ row: rowIndex, column: col.header, message: `${col.header} must be in YYYY-MM-DD format`, value });

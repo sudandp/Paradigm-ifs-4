@@ -68,6 +68,29 @@ export const htYardMasterDataService = {
       /* ignore localStorage read error */
     }
 
+    // ── Deleted options blacklist ──
+    const deletedSet = new Set<string>();
+    try {
+      const rawDeleted = localStorage.getItem('ht_deleted_master_options');
+      if (rawDeleted) {
+        const list: string[] = JSON.parse(rawDeleted);
+        list.forEach(item => deletedSet.add(item.toLowerCase()));
+      }
+    } catch {
+      /* ignore localStorage read error */
+    }
+
+    const isDeleted = (opt: HTMasterOption) => {
+      if (opt.isActive === false) return true;
+      if (opt.id && deletedSet.has(opt.id.toLowerCase())) return true;
+      const valLower = (opt.optionValue || '').trim().toLowerCase();
+      if (!valLower) return true;
+      if (deletedSet.has(`opt_${valLower}`)) return true;
+      if (opt.category && opt.fieldKey && deletedSet.has(`${opt.category}_${opt.fieldKey}_${valLower}`.toLowerCase())) return true;
+      if (opt.category && deletedSet.has(`${opt.category}_${valLower}`.toLowerCase())) return true;
+      return false;
+    };
+
     // ── Seed items ──
     const seedOptions = getInitialSeedOptions(category, manufacturer);
 
@@ -77,6 +100,7 @@ export const htYardMasterDataService = {
     const seenKeys = new Set<string>();
 
     const addOption = (opt: HTMasterOption) => {
+      if (isDeleted(opt)) return;
       const dedupKey = `${opt.category}_${opt.fieldKey}_${(opt.optionValue || '').trim().toLowerCase()}`;
       if (!seenKeys.has(dedupKey)) {
         seenKeys.add(dedupKey);
@@ -103,6 +127,25 @@ export const htYardMasterDataService = {
       option_value: option.optionValue,
       is_active: option.isActive ?? true
     };
+
+    // Un-blacklist if re-adding this option
+    try {
+      const rawDeleted = localStorage.getItem('ht_deleted_master_options');
+      if (rawDeleted && option.optionValue) {
+        const valLower = option.optionValue.trim().toLowerCase();
+        const deletedList: string[] = JSON.parse(rawDeleted);
+        const filtered = deletedList.filter(item => {
+          if (option.id && item.toLowerCase() === option.id.toLowerCase()) return false;
+          if (item.toLowerCase() === `opt_${valLower}`) return false;
+          if (option.category && item.toLowerCase() === `${option.category}_${valLower}`.toLowerCase()) return false;
+          if (option.category && option.fieldKey && item.toLowerCase() === `${option.category}_${option.fieldKey}_${valLower}`.toLowerCase()) return false;
+          return true;
+        });
+        localStorage.setItem('ht_deleted_master_options', JSON.stringify(filtered));
+      }
+    } catch {
+      /* ignore */
+    }
 
     try {
       if (option.id && !option.id.startsWith('seed-') && !option.id.startsWith('local-')) {
@@ -180,30 +223,88 @@ export const htYardMasterDataService = {
     return newOption;
   },
 
-  // Soft delete option
-  async deleteMasterOption(id: string, category?: HTMasterCategory): Promise<boolean> {
+  // Soft & Hard delete option with persistent blacklist across seed, cache, and DB
+  async deleteMasterOption(id: string, category?: HTMasterCategory, optionValue?: string, fieldKey?: string): Promise<boolean> {
     try {
-      if (!id.startsWith('seed-') && !id.startsWith('local-')) {
+      if (id && !id.startsWith('seed-') && !id.startsWith('local-')) {
         await supabase
           .from('ht_master_options')
           .update({ is_active: false })
           .eq('id', id);
-        // Invalidate IDB cache for this category
-        if (category) invalidateMasterOptions(category).catch(() => {});
+        await supabase
+          .from('ht_master_options')
+          .delete()
+          .eq('id', id);
+      } else if (optionValue && category) {
+        await supabase
+          .from('ht_master_options')
+          .update({ is_active: false })
+          .eq('category', category)
+          .eq('option_value', optionValue);
       }
     } catch (e) {
-      console.warn('Supabase delete failed, falling back to local storage', e);
+      console.warn('Supabase delete option failed, proceeding with local deletion & blacklist', e);
+    }
+
+    // 1. Blacklist in ht_deleted_master_options so seed/local/remote never reappears
+    try {
+      const rawDeleted = localStorage.getItem('ht_deleted_master_options');
+      const deletedList: string[] = rawDeleted ? JSON.parse(rawDeleted) : [];
+      if (id && !deletedList.includes(id)) deletedList.push(id);
+      if (id && !deletedList.includes(id.toLowerCase())) deletedList.push(id.toLowerCase());
+
+      if (optionValue) {
+        const valLower = optionValue.trim().toLowerCase();
+        if (category && fieldKey) {
+          const sig1 = `${category}_${fieldKey}_${valLower}`;
+          if (!deletedList.includes(sig1)) deletedList.push(sig1);
+        }
+        if (category) {
+          const sig2 = `${category}_${valLower}`;
+          if (!deletedList.includes(sig2)) deletedList.push(sig2);
+        }
+        const sig3 = `opt_${valLower}`;
+        if (!deletedList.includes(sig3)) deletedList.push(sig3);
+      }
+      localStorage.setItem('ht_deleted_master_options', JSON.stringify(deletedList));
+    } catch (e) {
+      console.debug('Failed to update ht_deleted_master_options', e);
+    }
+
+    // 2. Remove from LocalStorage caches for this category (or all categories if unspecified)
+    const catsToClean: string[] = category
+      ? [category]
+      : ['RMUMD', 'TRMaster Data', 'LTKMD', 'Cable Details', 'HTYardCommon', 'VCB', 'Switchgear', 'HT_Panel', 'Meter_Cubicle', 'CSS'];
+
+    for (const cat of catsToClean) {
+      try {
+        const stored = localStorage.getItem(`ht_master_options_${cat}`);
+        if (stored) {
+          const options: HTMasterOption[] = JSON.parse(stored);
+          const updated = options.filter(o => {
+            if (id && o.id === id) return false;
+            if (optionValue && o.optionValue && o.optionValue.trim().toLowerCase() === optionValue.trim().toLowerCase()) {
+              if (fieldKey && o.fieldKey && o.fieldKey !== fieldKey) return true;
+              return false;
+            }
+            return true;
+          });
+          localStorage.setItem(`ht_master_options_${cat}`, JSON.stringify(updated));
+        }
+      } catch (err) {
+        console.debug('Failed to clean local storage options', err);
+      }
     }
 
     if (category) {
-      const currentOptions = await this.getMasterOptions(category);
-      const updated = currentOptions.filter(o => o.id !== id);
-      localStorage.setItem(`ht_master_options_${category}`, JSON.stringify(updated));
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('ht_field_specs_updated', { detail: { category } }));
-        window.dispatchEvent(new CustomEvent('ht_master_options_updated', { detail: { category } }));
-      }
+      invalidateMasterOptions(category).catch(() => {});
     }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('ht_field_specs_updated', { detail: { category, fieldKey, optionValue } }));
+      window.dispatchEvent(new CustomEvent('ht_master_options_updated', { detail: { category, fieldKey, optionValue } }));
+    }
+
     return true;
   },
 
@@ -212,6 +313,9 @@ export const htYardMasterDataService = {
     const cats: HTMasterCategory[] = category ? [category] : ['RMUMD', 'TRMaster Data', 'LTKMD', 'Cable Details', 'HTYardCommon', 'VCB', 'Switchgear', 'HT_Panel', 'Meter_Cubicle', 'CSS'];
     for (const cat of cats) {
       localStorage.removeItem(`ht_master_options_${cat}`);
+    }
+    if (!category) {
+      localStorage.removeItem('ht_deleted_master_options');
     }
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('ht_field_specs_updated', { detail: { category } }));

@@ -319,6 +319,10 @@ export function processEmployeeMonth(
         // we must manually increment halfDays to account for the physical work.
         if ((s.includes('RP+') || s.includes('+RP')) && (s.includes('0.5EL') || s.includes('0.5SL') || s.includes('0.5CL') || s.includes('0.5CO') || s.includes('0.5WH'))) {
             halfDays++;
+        } else if (s.includes('RP') && (s.includes('0.75P') || s.includes('0.5P') || s.includes('0.25P'))) {
+            // Count full present day for composite work + permission day (0.75P+0.25RP, 0.5P+0.5RP)
+            presentDays++;
+            return;
         }
         s.split('+').forEach(part => updateCounters(part.trim()));
         return;
@@ -395,8 +399,8 @@ export function processEmployeeMonth(
     let currentDayInTime = '-', currentDayOutTime = '-', currentDayGrossDuration = '-', currentDayBreakDuration = '-', currentDayNetWorkedHours = '-', currentDayOT = '-', currentDayShortfall = '-', currentDayShift = '-', currentDayBreakIn = '-', currentDayBreakOut = '-', currentDayPermDuration = '-';
     let currentDayTravelKm = 0;
     let currentDayTravelDuration = 0;
-    let currentDaySteps = 0;
-    let netHours = 0, grossHours = 0, breakHours = 0;
+    const currentDaySteps = 0;
+    let netHours = 0, grossHours = 0, breakHours = 0, physicalWorkHours = 0;
     let fieldResultStatus = '';
     let resolvedShift: any = null;
     const dateStr = format(currentDate, 'yyyy-MM-dd');
@@ -456,6 +460,7 @@ export function processEmployeeMonth(
       
       const { checkIn: actualIn, checkOut: actualOut, firstBreakIn, breakOut, workingHours: wHours, breakHours: bHrs, totalHours } = processDailyEvents(actualPunches, currentDate);
       
+      physicalWorkHours = wHours;
       let baseNetHours = wHours;
       let baseGrossHours = totalHours;
       
@@ -598,9 +603,9 @@ export function processEmployeeMonth(
         fieldHolidays: activeFieldHolidays, 
         siteHolidays: activeSiteHolidays, 
         recurringHolidays: activeRecurringHolidays,
-        userHolidaysPool: userHolidays, leaves: allLeaves, daysPresentInWeek: daysPresentInCurrentWeek,
+        userHolidaysPool: userHolidays, leaves: leavesToSearch, daysPresentInWeek: daysPresentInCurrentWeek,
         isActiveInPreviousWeek,
-        workingHours: netHours,
+        workingHours: hasActivity ? physicalWorkHours : netHours,
         fieldStatus: fieldResultStatus,
         floatingHolidayMonths: rules?.floatingHolidayMonths,
         userGender: user.gender,
@@ -620,7 +625,7 @@ export function processEmployeeMonth(
     const isApprovedLeave = (status.includes('L') && !status.includes('LOP')) || status === 'W/H' || status === 'WH' || status.includes('CO');
     
     if (isPresence || isApprovedLeave) {
-      const val = (status.includes('0.5') || status === 'Half Day') ? 0.5 : 1;
+      const val = status.includes('+') ? resolvePayableValue(status) : ((status.includes('0.5') || status === 'Half Day') ? 0.5 : 1);
       daysActiveInCurrentWeek += val;
       if (isPresence) {
         daysPresentInCurrentWeek += val;

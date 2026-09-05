@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   CheckCircle2, HelpCircle, Check, Plus, Minus, Pencil, X, Calendar, 
   Image, Hash, AlignLeft, MapPin, Sparkles, Clock, ExternalLink, 
   Activity, Cpu, Layers, ShieldCheck, Sliders, RefreshCw, AlertTriangle,
-  Trash2, Settings2, Tag
+  Trash2, Settings2, Tag, Copy
 } from 'lucide-react';
-import { ModuleSpec, HTAuditResponse } from '../../types/htYard';
+import { ModuleSpec, HTAuditResponse, FieldSpec } from '../../types/htYard';
 import { htYardMasterDataService } from '../../services/htYardMasterDataService';
 import { htYardFieldSpecService, resolveCategoryForModule } from '../../services/htYardFieldSpecService';
 import { htEquipmentCatalogService, EquipmentCatalogItem } from '../../services/htEquipmentCatalogService';
@@ -13,6 +13,253 @@ import { reverseGeocode } from '../../utils/locationUtils';
 import { Geolocation } from '@capacitor/geolocation';
 import { HTPhotoCaptureWidget } from './HTPhotoCaptureWidget.tsx';
 import toast from 'react-hot-toast';
+
+// Reusable Date Picker with strict DD/MM/YYYY formatting & pop-up calendar trigger
+const HTDatePickerInput: React.FC<{
+  value: string;
+  onChange: (val: string) => void;
+  placeholder?: string;
+  className?: string;
+  disabled?: boolean;
+}> = ({ value, onChange, placeholder = 'DD/MM/YYYY', className = '', disabled = false }) => {
+  const hiddenDateRef = useRef<HTMLInputElement>(null);
+
+  // Format value for display: if it comes as YYYY-MM-DD, show as DD/MM/YYYY
+  const displayVal = useMemo(() => {
+    if (!value) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      const [y, m, d] = value.split('-');
+      return `${d}/${m}/${y}`;
+    }
+    return value;
+  }, [value]);
+
+  const isoVal = useMemo(() => {
+    if (!value) return '';
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(value)) {
+      const [d, m, y] = value.split('/');
+      return `${y}-${m}-${d}`;
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+    return '';
+  }, [value]);
+
+  const handleTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let input = e.target.value.replace(/[^\d/]/g, '');
+    if (input.length === 2 && !input.includes('/') && e.target.value.length > (displayVal?.length || 0)) {
+      input = `${input}/`;
+    } else if (input.length === 5 && input.split('/').length === 2 && e.target.value.length > (displayVal?.length || 0)) {
+      input = `${input}/`;
+    }
+    if (input.length > 10) input = input.slice(0, 10);
+    onChange(input);
+  };
+
+  const handleNativeDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawIso = e.target.value; // YYYY-MM-DD
+    if (rawIso && /^\d{4}-\d{2}-\d{2}$/.test(rawIso)) {
+      const [y, m, d] = rawIso.split('-');
+      onChange(`${d}/${m}/${y}`);
+    } else {
+      onChange(rawIso);
+    }
+  };
+
+  const openPicker = () => {
+    if (hiddenDateRef.current) {
+      if (typeof hiddenDateRef.current.showPicker === 'function') {
+        try {
+          hiddenDateRef.current.showPicker();
+        } catch {
+          hiddenDateRef.current.focus();
+          hiddenDateRef.current.click();
+        }
+      } else {
+        hiddenDateRef.current.focus();
+        hiddenDateRef.current.click();
+      }
+    }
+  };
+
+  return (
+    <div className="relative flex items-center w-full">
+      <input
+        type="text"
+        disabled={disabled}
+        value={displayVal}
+        onChange={handleTextChange}
+        placeholder={placeholder}
+        maxLength={10}
+        className={`w-full pl-3.5 pr-10 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-900 dark:text-white rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 transition-all ${className}`}
+      />
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={openPicker}
+        className="absolute right-2 p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors cursor-pointer"
+        title="Open Calendar Picker (DD/MM/YYYY)"
+      >
+        <Calendar className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+      </button>
+      <input
+        ref={hiddenDateRef}
+        type="date"
+        tabIndex={-1}
+        value={isoVal}
+        onChange={handleNativeDateChange}
+        className="sr-only absolute pointer-events-none opacity-0"
+      />
+    </div>
+  );
+};
+
+// Reusable Time Picker with HH:MM format & pop-up clock trigger
+const HTTimePickerInput: React.FC<{
+  value: string;
+  onChange: (val: string) => void;
+  placeholder?: string;
+  className?: string;
+  disabled?: boolean;
+}> = ({ value, onChange, placeholder = 'HH:MM (e.g. 14:30)', className = '', disabled = false }) => {
+  const hiddenTimeRef = useRef<HTMLInputElement>(null);
+
+  const openPicker = () => {
+    if (hiddenTimeRef.current) {
+      if (typeof hiddenTimeRef.current.showPicker === 'function') {
+        try {
+          hiddenTimeRef.current.showPicker();
+        } catch {
+          hiddenTimeRef.current.focus();
+          hiddenTimeRef.current.click();
+        }
+      } else {
+        hiddenTimeRef.current.focus();
+        hiddenTimeRef.current.click();
+      }
+    }
+  };
+
+  return (
+    <div className="relative flex items-center w-full">
+      <input
+        type="text"
+        disabled={disabled}
+        value={value || ''}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className={`w-full pl-3.5 pr-10 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-900 dark:text-white rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 transition-all ${className}`}
+      />
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={openPicker}
+        className="absolute right-2 p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors cursor-pointer"
+        title="Open Clock / Time Picker"
+      >
+        <Clock className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+      </button>
+      <input
+        ref={hiddenTimeRef}
+        type="time"
+        tabIndex={-1}
+        value={value && /^\d{2}:\d{2}/.test(value) ? value.slice(0, 5) : ''}
+        onChange={(e) => onChange(e.target.value)}
+        className="sr-only absolute pointer-events-none opacity-0"
+      />
+    </div>
+  );
+};
+
+// Reusable Date & Time Picker with DD/MM/YYYY HH:MM format
+const HTDateTimePickerInput: React.FC<{
+  value: string;
+  onChange: (val: string) => void;
+  placeholder?: string;
+  className?: string;
+  disabled?: boolean;
+}> = ({ value, onChange, placeholder = 'DD/MM/YYYY HH:MM', className = '', disabled = false }) => {
+  const hiddenDateTimeRef = useRef<HTMLInputElement>(null);
+
+  const displayVal = useMemo(() => {
+    if (!value) return '';
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value)) {
+      const [dPart, tPart] = value.split('T');
+      const [y, m, d] = dPart.split('-');
+      return `${d}/${m}/${y} ${tPart.slice(0, 5)}`;
+    }
+    return value;
+  }, [value]);
+
+  const isoVal = useMemo(() => {
+    if (!value) return '';
+    if (/^\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2}/.test(value)) {
+      const [dPart, tPart] = value.split(/\s+/);
+      const [d, m, y] = dPart.split('/');
+      return `${y}-${m}-${d}T${tPart}`;
+    }
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value)) {
+      return value.slice(0, 16);
+    }
+    return '';
+  }, [value]);
+
+  const openPicker = () => {
+    if (hiddenDateTimeRef.current) {
+      if (typeof hiddenDateTimeRef.current.showPicker === 'function') {
+        try {
+          hiddenDateTimeRef.current.showPicker();
+        } catch {
+          hiddenDateTimeRef.current.focus();
+          hiddenDateTimeRef.current.click();
+        }
+      } else {
+        hiddenDateTimeRef.current.focus();
+        hiddenDateTimeRef.current.click();
+      }
+    }
+  };
+
+  const handleNativeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value; // YYYY-MM-DDTHH:MM
+    if (raw && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(raw)) {
+      const [dPart, tPart] = raw.split('T');
+      const [y, m, d] = dPart.split('-');
+      onChange(`${d}/${m}/${y} ${tPart}`);
+    } else {
+      onChange(raw);
+    }
+  };
+
+  return (
+    <div className="relative flex items-center w-full">
+      <input
+        type="text"
+        disabled={disabled}
+        value={displayVal}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className={`w-full pl-3.5 pr-10 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-900 dark:text-white rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 transition-all ${className}`}
+      />
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={openPicker}
+        className="absolute right-2 p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors cursor-pointer"
+        title="Open Date & Time Picker (DD/MM/YYYY HH:MM)"
+      >
+        <Calendar className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+      </button>
+      <input
+        ref={hiddenDateTimeRef}
+        type="datetime-local"
+        tabIndex={-1}
+        value={isoVal}
+        onChange={handleNativeChange}
+        className="sr-only absolute pointer-events-none opacity-0"
+      />
+    </div>
+  );
+};
 
 export interface CustomStage {
   key: string;
@@ -75,6 +322,7 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
     placeholder: string;
     optionsCategory?: string;
     optionsFieldKey?: string;
+    parentFieldKey?: string;
     isCustom?: boolean;
   } | null>(null);
   const [fieldModalChoices, setFieldModalChoices] = useState<any[]>([]);
@@ -89,6 +337,20 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
   const [newFieldChoices, setNewFieldChoices] = useState('');
   const [isAddingField, setIsAddingField] = useState(false);
 
+  // Add Section / Stage Modal State
+  const [showAddSectionModal, setShowAddSectionModal] = useState(false);
+  const [newSectionTitle, setNewSectionTitle] = useState('');
+  const [isAddingSection, setIsAddingSection] = useState(false);
+
+  // Duplicate Question / Unit Modal State (e.g. Fire Extinguishers Unit 2, Unit 3)
+  const [duplicatingField, setDuplicatingField] = useState<{
+    field: FieldSpec;
+    sectionKey: string;
+    sectionTitle: string;
+    newLabel: string;
+  } | null>(null);
+  const [isDuplicatingField, setIsDuplicatingField] = useState(false);
+
   const MODULE_TO_CAT_MAP: Record<string, string> = {
     'RMU': 'RMUMD',
     'Transformer': 'TRMaster Data',
@@ -99,6 +361,38 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
     'Meter_Cubicle': 'Meter_Cubicle',
     'CSS': 'CSS',
     'HT_Yard_Common': 'HTYardCommon'
+  };
+
+  const handleConfirmDuplicateQuestion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!duplicatingField || !duplicatingField.newLabel.trim()) return;
+    setIsDuplicatingField(true);
+    try {
+      const cat = (MODULE_TO_CAT_MAP[spec.moduleType] || resolveCategoryForModule(spec.moduleType) || 'RMUMD') as any;
+      await htYardFieldSpecService.duplicateField(
+        cat,
+        spec.moduleType,
+        duplicatingField.sectionKey,
+        duplicatingField.sectionTitle,
+        duplicatingField.field,
+        duplicatingField.newLabel.trim()
+      );
+      toast.success(`Duplicated "${duplicatingField.field.label}" → "${duplicatingField.newLabel.trim()}" with all follow-up questions!`);
+      if (onLogAction) {
+        onLogAction({
+          actionType: 'DUPLICATE',
+          target: duplicatingField.field.label,
+          details: `Duplicated question "${duplicatingField.field.label}" to "${duplicatingField.newLabel.trim()}"`
+        });
+      }
+      setDuplicatingField(null);
+      await loadMergedSpec();
+      await loadCategoryOptions();
+    } catch (err) {
+      toast.error('Failed to duplicate question');
+    } finally {
+      setIsDuplicatingField(false);
+    }
   };
 
   // Load choices when editing a field
@@ -134,7 +428,7 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
     if (!editingField || !editingField.fieldLabel.trim()) return;
     setIsSavingField(true);
     try {
-      const cat = (editingField.optionsCategory || MODULE_TO_CAT_MAP[spec.moduleType] || 'LTKMD') as any;
+      const cat = (editingField.optionsCategory || resolveCategoryForModule(spec.moduleType) || MODULE_TO_CAT_MAP[spec.moduleType] || 'LTKMD') as any;
       await htYardFieldSpecService.saveFieldSpec({
         category: cat,
         moduleType: spec.moduleType,
@@ -144,11 +438,24 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
         fieldLabel: editingField.fieldLabel.trim(),
         fieldType: editingField.fieldType as any,
         optionsCategory: cat,
-        optionsFieldKey: editingField.fieldKey,
+        optionsFieldKey: editingField.optionsFieldKey || editingField.fieldKey,
+        parentFieldKey: editingField.parentFieldKey,
         unit: editingField.unit.trim() || undefined,
         placeholder: editingField.placeholder.trim() || undefined,
         isCustom: editingField.isCustom ?? true
       });
+
+      // Also update fieldLabel in existing responses state so that it reflects immediately
+      const activeStage = allStages.find(s => s.key === activeSectionKey);
+      const instancePrefix = activeStage?.isDuplicate ? `${equipmentInstanceId}_${activeStage.key}` : `${equipmentInstanceId}_${activeSection?.sectionKey}`;
+      const itemKey = `${instancePrefix}_${editingField.fieldKey}`;
+      if (responses[itemKey]) {
+        onChangeResponse(itemKey, {
+          ...responses[itemKey],
+          fieldLabel: editingField.fieldLabel.trim()
+        });
+      }
+
       toast.success(`Updated question "${editingField.fieldLabel}"!`);
       setEditingField(null);
       await loadMergedSpec();
@@ -370,8 +677,10 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
   // Delete choice option from dropdown
   const handleDeleteChoiceOption = async (optId: string, optValue: string) => {
     try {
-      await htYardMasterDataService.deleteMasterOption(optId);
-      setFieldModalChoices(prev => prev.filter(o => o.id !== optId));
+      const cat = (editingField?.optionsCategory || resolveCategoryForModule(spec.moduleType) || 'RMUMD') as any;
+      const targetKey = editingField?.optionsFieldKey || editingField?.fieldKey;
+      await htYardMasterDataService.deleteMasterOption(optId, cat, optValue, targetKey);
+      setFieldModalChoices(prev => prev.filter(o => o.id !== optId && o.optionValue !== optValue));
       toast.success(`Removed option "${optValue}"`);
       await loadCategoryOptions();
     } catch (err) {
@@ -383,12 +692,21 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
   const loadMergedSpec = async () => {
     try {
       const merged = await htYardFieldSpecService.getMergedModuleSpec(spec.moduleType);
-      setActiveSpecState(merged);
+      setActiveSpecState({
+        ...merged,
+        sections: merged.sections.map(s => ({
+          ...s,
+          fields: s.fields.map(f => ({
+            ...f,
+            subFields: f.subFields ? f.subFields.map(sf => ({ ...sf })) : []
+          }))
+        }))
+      });
       if (merged.sections.length > 0 && !activeSectionKey) {
         setActiveSectionKey(merged.sections[0].sectionKey);
       }
     } catch (e) {
-      setActiveSpecState(spec);
+      setActiveSpecState({ ...spec });
     }
   };
 
@@ -467,39 +785,125 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
     if (editingTitleId === dupId) setEditingTitleId(null);
   };
 
-  // Commit live-typed value back into duplicatedStages so sidebar stays in sync
+  // Commit live-typed value back
   const handleTitleChange = (newVal: string, originalKey: string, dupId: string) => {
     setEditingTitleValue(newVal);
-    const updated = {
-      ...duplicatedStages,
-      [originalKey]: (duplicatedStages[originalKey] || []).map(d => d.id === dupId ? { ...d, label: newVal } : d)
-    };
-    updateDuplicatedStages(updated);
+    if (dupId.startsWith('dup_')) {
+      const updated = {
+        ...duplicatedStages,
+        [originalKey]: (duplicatedStages[originalKey] || []).map(d => d.id === dupId ? { ...d, label: newVal } : d)
+      };
+      updateDuplicatedStages(updated);
+    }
   };
 
-  const handleTitleBlur = () => {
-    // Trim on blur; if empty restore a fallback
-    setDuplicatedStages(prev => {
-      const updated = { ...prev };
-      Object.keys(updated).forEach(origKey => {
-        updated[origKey] = updated[origKey].map(d => {
-          if (d.id === editingTitleId) {
-            const finalLabel = d.label.trim() || 'Untitled Stage';
-            if (onLogAction && finalLabel !== editingTitleValue) {
-              onLogAction({
-                actionType: 'EDIT',
-                target: finalLabel,
-                details: `Renamed duplicate stage to "${finalLabel}"`
-              });
+  const handleTitleBlur = async () => {
+    if (!editingTitleId) return;
+    const finalLabel = editingTitleValue.trim();
+    if (!finalLabel) {
+      setEditingTitleId(null);
+      return;
+    }
+
+    if (editingTitleId.startsWith('dup_')) {
+      // 1. Duplicate stage rename
+      setDuplicatedStages(prev => {
+        const updated = { ...prev };
+        Object.keys(updated).forEach(origKey => {
+          updated[origKey] = updated[origKey].map(d => {
+            if (d.id === editingTitleId) {
+              if (onLogAction && finalLabel !== d.label) {
+                onLogAction({
+                  actionType: 'EDIT',
+                  target: finalLabel,
+                  details: `Renamed duplicate stage to "${finalLabel}"`
+                });
+              }
+              return { ...d, label: finalLabel };
             }
-            return { ...d, label: finalLabel };
-          }
-          return d;
+            return d;
+          });
         });
+        return updated;
       });
-      return updated;
-    });
+      toast.success(`Renamed heading to "${finalLabel}"`);
+    } else {
+      // 2. Original / custom section rename
+      const cat = (MODULE_TO_CAT_MAP[spec.moduleType] || resolveCategoryForModule(spec.moduleType) || 'RMUMD') as any;
+      const targetStage = allStages.find(s => s.key === editingTitleId);
+      const oldTitle = targetStage?.title || editingTitleId;
+      const secKey = targetStage?.originalKey || targetStage?.key || editingTitleId;
+      try {
+        await htYardFieldSpecService.renameSection(cat, oldTitle, finalLabel, secKey);
+        toast.success(`Renamed section heading to "${finalLabel}"`);
+        if (onLogAction) {
+          onLogAction({
+            actionType: 'EDIT',
+            target: finalLabel,
+            details: `Renamed section "${oldTitle}" to "${finalLabel}"`
+          });
+        }
+        await loadMergedSpec();
+      } catch (err) {
+        toast.error('Failed to rename section');
+      }
+    }
     setEditingTitleId(null);
+  };
+
+  // Delete/remove any stage or section
+  const handleDeleteSection = async (stageKey: string, stageTitle: string, isDuplicate: boolean, originalKey?: string) => {
+    if (isDuplicate) {
+      handleRemoveDuplicate(originalKey!, stageKey, { stopPropagation: () => {} } as any);
+      return;
+    }
+
+    if (!window.confirm(`Are you sure you want to remove section "${stageTitle}" and its questions? This action can be undone by resetting defaults in Master Data.`)) {
+      return;
+    }
+
+    try {
+      const cat = (MODULE_TO_CAT_MAP[spec.moduleType] || resolveCategoryForModule(spec.moduleType) || 'RMUMD') as any;
+      await htYardFieldSpecService.deleteSection(cat, stageKey);
+      await htYardFieldSpecService.deleteSection(cat, stageTitle);
+      toast.success(`Removed section "${stageTitle}"`);
+      if (onLogAction) {
+        onLogAction({
+          actionType: 'DELETE',
+          target: stageTitle,
+          details: `Deleted section "${stageTitle}"`
+        });
+      }
+      await loadMergedSpec();
+      if (activeSectionKey === stageKey) {
+        const remaining = allStages.filter(s => s.key !== stageKey);
+        if (remaining.length > 0) {
+          setActiveSectionKey(remaining[0].key);
+        }
+      }
+    } catch (err) {
+      toast.error('Failed to remove section');
+    }
+  };
+
+  // Add brand new section to module
+  const handleAddNewSection = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSectionTitle.trim()) return;
+    setIsAddingSection(true);
+    try {
+      const cat = (MODULE_TO_CAT_MAP[spec.moduleType] || resolveCategoryForModule(spec.moduleType) || 'RMUMD') as any;
+      const created = await htYardFieldSpecService.saveSection(cat, newSectionTitle.trim());
+      toast.success(`Created section "${newSectionTitle.trim()}"!`);
+      setShowAddSectionModal(false);
+      setNewSectionTitle('');
+      await loadMergedSpec();
+      setActiveSectionKey(created.sectionKey);
+    } catch (err) {
+      toast.error('Failed to create section');
+    } finally {
+      setIsAddingSection(false);
+    }
   };
 
   const loadCategoryOptions = async () => {
@@ -872,34 +1276,46 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
                     </button>
 
                     {/* Right-side action icons */}
-                    <div className="flex flex-col items-center gap-1 shrink-0 pt-0.5">
-                      {/* + Duplicate: on ALL non-duplicate stages (spec and custom) */}
-                      {!stage.isDuplicate && (
-                        <button
-                          onClick={e => handleDuplicateStage(stage.key, stage.title, e)}
-                          className="w-5 h-5 rounded-full bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:hover:bg-emerald-800/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center transition-colors"
-                          title="Duplicate this stage"
-                        >
-                          <Plus className="w-3 h-3" />
-                        </button>
-                      )}
+                    <div className="flex items-center gap-1 shrink-0 pt-0.5">
+                      {/* + Duplicate: on ALL stages */}
+                      <button
+                        onClick={e => handleDuplicateStage(stage.originalKey || stage.key, stage.title, e)}
+                        className="w-5 h-5 rounded-full bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:hover:bg-emerald-800/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center transition-colors cursor-pointer"
+                        title="Duplicate this stage"
+                      >
+                        <Plus className="w-3 h-3" />
+                      </button>
 
-                      {/* − Remove: only on duplicate stages */}
-                      {stage.isDuplicate && (
-                        <button
-                          onClick={e => handleRemoveDuplicate(stage.originalKey!, stage.key, e)}
-                          className="w-5 h-5 rounded-full bg-rose-100 hover:bg-rose-200 dark:bg-rose-900/40 dark:hover:bg-rose-800/60 text-rose-500 dark:text-rose-400 flex items-center justify-center transition-colors"
-                          title="Remove this duplicate stage"
-                        >
-                          <Minus className="w-3 h-3" />
-                        </button>
-                      )}
+                      {/* Delete / Remove button */}
+                      <button
+                        onClick={e => {
+                          e.stopPropagation();
+                          handleDeleteSection(stage.key, stage.title, !!stage.isDuplicate, stage.originalKey);
+                        }}
+                        className="w-5 h-5 rounded-full bg-rose-100 hover:bg-rose-200 dark:bg-rose-900/40 dark:hover:bg-rose-800/60 text-rose-500 dark:text-rose-400 flex items-center justify-center transition-colors cursor-pointer"
+                        title={stage.isDuplicate ? "Remove duplicate stage" : "Delete this section"}
+                      >
+                        {stage.isDuplicate ? <Minus className="w-3 h-3" /> : <Trash2 className="w-2.5 h-2.5" />}
+                      </button>
                     </div>
                   </div>
                 </div>
               );
             })}
           </div>
+
+          {/* + Add Section / Stage Button */}
+          <button
+            type="button"
+            onClick={() => {
+              setNewSectionTitle('');
+              setShowAddSectionModal(true);
+            }}
+            className="w-full mt-6 py-2.5 px-3 rounded-xl border border-dashed border-emerald-400 dark:border-emerald-700 bg-emerald-50/50 hover:bg-emerald-100/70 dark:bg-emerald-950/20 dark:hover:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+          >
+            <Plus className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+            <span>+ Add Section / Stage</span>
+          </button>
         </div>
       </div>
 
@@ -957,6 +1373,15 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
                   >
                     <Pencil className="w-3.5 h-3.5 text-emerald-600" />
                     <span>Rename Heading</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteSection(activeStage.key, activeStage.title, !!activeStage.isDuplicate, activeStage.originalKey)}
+                    className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-rose-50 dark:bg-slate-800 dark:hover:bg-rose-950/40 text-slate-500 hover:text-rose-600 dark:text-slate-400 text-xs font-bold transition-all flex items-center gap-1 border border-slate-200 dark:border-slate-700 shadow-2xs cursor-pointer shrink-0"
+                    title="Delete this Section"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                    <span>Delete Section</span>
                   </button>
                 </div>
               )}
@@ -1102,6 +1527,26 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
                           title={`+ Add Follow-up Question inside "${field.label}"`}
                         >
                           <Plus className="w-3.5 h-3.5" />
+                        </button>
+
+                        {/* Duplicate Question / Add Multiple Units (e.g. Fire Extinguishers Unit 2, Unit 3) */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const rawTitle = field.label.replace(/\s*\(Unit\s*\d+\)$/i, '').trim();
+                            const existingCount = activeSection.fields.filter(f => f.key.startsWith(field.key.replace(/_unit_\d+$/, '')) || f.label.toLowerCase().includes(rawTitle.toLowerCase())).length;
+                            const defaultLabel = `${rawTitle} (Unit ${existingCount + 1})`;
+                            setDuplicatingField({
+                              field,
+                              sectionKey: activeSection.sectionKey,
+                              sectionTitle: activeStage.title,
+                              newLabel: defaultLabel
+                            });
+                          }}
+                          className="p-1.5 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-950 text-slate-400 hover:text-emerald-600 transition-colors border border-slate-200/60 dark:border-slate-700/60 cursor-pointer"
+                          title={`Duplicate "${field.label}" to add multiple units (e.g. Unit 2, Unit 3)`}
+                        >
+                          <Copy className="w-3.5 h-3.5" />
                         </button>
 
                         {/* Edit Field Question Button */}
@@ -1381,16 +1826,34 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
                               )}
                             </select>
                           ) : field.type === 'date' ? (
-                            <input
-                              type="date"
+                            <HTDatePickerInput
                               value={currentResponse.responseValue || ''}
-                              onChange={(e) =>
+                              onChange={(val) =>
                                 onChangeResponse(itemKey, {
                                   ...currentResponse,
-                                  responseValue: e.target.value
+                                  responseValue: val
                                 })
                               }
-                              className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-900 dark:text-white rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 transition-all"
+                            />
+                          ) : field.type === 'time' ? (
+                            <HTTimePickerInput
+                              value={currentResponse.responseValue || ''}
+                              onChange={(val) =>
+                                onChangeResponse(itemKey, {
+                                  ...currentResponse,
+                                  responseValue: val
+                                })
+                              }
+                            />
+                          ) : field.type === 'datetime' ? (
+                            <HTDateTimePickerInput
+                              value={currentResponse.responseValue || ''}
+                              onChange={(val) =>
+                                onChangeResponse(itemKey, {
+                                  ...currentResponse,
+                                  responseValue: val
+                                })
+                              }
                             />
                           ) : field.type === 'number' ? (
                             <div className="relative">
@@ -1449,23 +1912,6 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
                               className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-900 dark:text-white rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 transition-all"
                             />
                           )}
-                        </div>
-
-                        {/* Remarks */}
-                        <div>
-                          <span className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5">Remarks</span>
-                          <input
-                            type="text"
-                            placeholder="Add specific remarks..."
-                            value={currentResponse.remarks || ''}
-                            onChange={(e) =>
-                              onChangeResponse(itemKey, {
-                                ...currentResponse,
-                                remarks: e.target.value
-                              })
-                            }
-                            className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-900 dark:text-white rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 transition-all"
-                          />
                         </div>
 
                         {/* Sub-Questions & Follow-up Details (e.g. Status, Time in Sec, CT parameters, etc.) */}
@@ -1553,115 +1999,191 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
                                     )
                                   );
 
-                                  const isSelectType = subField.type === 'select' || subField.type === 'searchable_select' || cleanSubOptions.length > 0;
+                                   const isDateQuestion = subField.type === 'date' || (!subField.type && /date|due|expiry|refill/i.test(subField.label));
+                                   const isTimeQuestion = subField.type === 'time';
+                                   const isDateTimeQuestion = subField.type === 'datetime';
+                                   const isNumberQuestion = subField.type === 'number';
+                                   const isBooleanQuestion = subField.type === 'boolean';
+                                   const isSelectType = (subField.type === 'select' || subField.type === 'searchable_select' || (!subField.type && cleanSubOptions.length > 0 && !isDateQuestion)) && !isDateQuestion && !isTimeQuestion && !isDateTimeQuestion && !isNumberQuestion && !isBooleanQuestion;
 
-                                  return (
-                                    <div key={subField.key} className="space-y-1">
-                                      <div className="flex items-center justify-between">
-                                        <span className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                                          {subField.label}
-                                        </span>
-                                        <button
-                                          type="button"
-                                          onClick={() => handleDeleteSubQuestion(subField.key, subField.label)}
-                                          className="text-slate-300 hover:text-rose-500 p-0.5 rounded cursor-pointer transition-colors"
-                                          title={`Remove follow-up question "${subField.label}"`}
-                                        >
-                                          <Trash2 className="w-3 h-3" />
-                                        </button>
-                                      </div>
+                                   return (
+                                     <div key={subField.key} className="space-y-1">
+                                       <div className="flex items-center justify-between">
+                                         <span className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                                           {subField.label}
+                                         </span>
+                                         <div className="flex items-center gap-1">
+                                           <button
+                                             type="button"
+                                             onClick={() => {
+                                               setEditingField({
+                                                 sectionKey: activeSection.sectionKey,
+                                                 sectionTitle: activeStage.title,
+                                                 fieldKey: subField.key,
+                                                 fieldLabel: subField.label,
+                                                 fieldType: subField.type || (isDateQuestion ? 'date' : cleanSubOptions.length > 0 ? 'select' : 'text'),
+                                                 unit: subField.unit || '',
+                                                 placeholder: subField.placeholder || '',
+                                                 optionsCategory: subField.optionsCategory || primaryCategory,
+                                                 optionsFieldKey: subField.optionsFieldKey || subField.key,
+                                                 parentFieldKey: field.key,
+                                                 isCustom: true
+                                               });
+                                             }}
+                                             className="p-1 rounded-md text-slate-300 hover:text-emerald-600 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition-colors"
+                                             title={`Edit follow-up question "${subField.label}"`}
+                                           >
+                                             <Pencil className="w-3 h-3" />
+                                           </button>
+                                           <button
+                                             type="button"
+                                             onClick={() => handleDeleteSubQuestion(subField.key, subField.label)}
+                                             className="p-1 rounded-md text-slate-300 hover:text-rose-500 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition-colors"
+                                             title={`Remove follow-up question "${subField.label}"`}
+                                           >
+                                             <Trash2 className="w-3 h-3" />
+                                           </button>
+                                         </div>
+                                       </div>
 
-                                      {isSelectType ? (
-                                        <select
-                                          value={subResponse.responseValue || ''}
-                                          onChange={(e) => {
-                                            const val = e.target.value;
-                                            onChangeResponse(subItemKey, {
-                                              ...subResponse,
-                                              responseValue: val
-                                            });
-                                            if (onLogAction) {
-                                              onLogAction({
-                                                actionType: 'EDIT',
-                                                target: `${field.label} → ${subField.label}`,
-                                                details: `Selected "${val}" for "${subField.label}"`
-                                              });
-                                            }
-                                          }}
-                                          className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-900 dark:text-white rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 transition-all"
-                                        >
-                                          <option value="">Select option...</option>
-                                          {cleanSubOptions.map((opt, optIdx) => (
-                                            <option key={optIdx} value={opt}>
-                                              {opt}
-                                            </option>
-                                          ))}
-                                          {!cleanSubOptions.some(opt => opt.toLowerCase().includes('other')) && cleanSubOptions.length > 0 && (
-                                            <option value="Other — Specify in Remarks">Other — Specify in Remarks</option>
-                                          )}
-                                        </select>
-                                      ) : subField.type === 'number' ? (
-                                        <div className="relative">
-                                          <input
-                                            type="number"
-                                            step="any"
-                                            placeholder={subField.placeholder || `Enter number${subField.unit ? ` in ${subField.unit}` : ''}...`}
-                                            value={subResponse.responseValue || ''}
-                                            onChange={(e) =>
-                                              onChangeResponse(subItemKey, {
-                                                ...subResponse,
-                                                responseValue: e.target.value
-                                              })
-                                            }
-                                            className="w-full pl-3.5 pr-12 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-900 dark:text-white rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 transition-all"
-                                          />
-                                          {subField.unit && (
-                                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">
-                                              {subField.unit}
-                                            </span>
-                                          )}
-                                        </div>
-                                      ) : subField.type === 'boolean' ? (
-                                        <div className="flex items-center gap-3 py-1">
-                                          {['Yes / Compliant', 'No / Defect', 'N/A'].map((bVal) => (
-                                            <label key={bVal} className="flex items-center gap-1.5 text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
-                                              <input
-                                                type="radio"
-                                                name={`sub_radio_${subItemKey}`}
-                                                checked={subResponse.responseValue === bVal}
-                                                onChange={() =>
-                                                  onChangeResponse(subItemKey, {
-                                                    ...subResponse,
-                                                    responseValue: bVal
-                                                  })
-                                                }
-                                                className="text-emerald-600 focus:ring-emerald-500/20 w-3.5 h-3.5"
-                                              />
-                                              <span>{bVal}</span>
-                                            </label>
-                                          ))}
-                                        </div>
-                                      ) : (
-                                        <input
-                                          type="text"
-                                          placeholder={subField.placeholder || `Enter ${subField.label.toLowerCase()}...`}
-                                          value={subResponse.responseValue || ''}
-                                          onChange={(e) =>
-                                            onChangeResponse(subItemKey, {
-                                              ...subResponse,
-                                              responseValue: e.target.value
-                                            })
-                                          }
-                                          className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-900 dark:text-white rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 transition-all"
-                                        />
-                                      )}
-                                    </div>
+                                       {isSelectType ? (
+                                         <select
+                                           value={subResponse.responseValue || ''}
+                                           onChange={(e) => {
+                                             const val = e.target.value;
+                                             onChangeResponse(subItemKey, {
+                                               ...subResponse,
+                                               responseValue: val
+                                             });
+                                             if (onLogAction) {
+                                               onLogAction({
+                                                 actionType: 'EDIT',
+                                                 target: `${field.label} → ${subField.label}`,
+                                                 details: `Selected "${val}" for "${subField.label}"`
+                                               });
+                                             }
+                                           }}
+                                           className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-900 dark:text-white rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 transition-all"
+                                         >
+                                           <option value="">Select option...</option>
+                                           {cleanSubOptions.map((opt, optIdx) => (
+                                             <option key={optIdx} value={opt}>
+                                               {opt}
+                                             </option>
+                                           ))}
+                                           {!cleanSubOptions.some(opt => opt.toLowerCase().includes('other')) && cleanSubOptions.length > 0 && (
+                                             <option value="Other — Specify in Remarks">Other — Specify in Remarks</option>
+                                           )}
+                                         </select>
+                                       ) : isNumberQuestion ? (
+                                         <div className="relative">
+                                           <input
+                                             type="number"
+                                             step="any"
+                                             placeholder={subField.placeholder || `Enter number${subField.unit ? ` in ${subField.unit}` : ''}...`}
+                                             value={subResponse.responseValue || ''}
+                                             onChange={(e) =>
+                                               onChangeResponse(subItemKey, {
+                                                 ...subResponse,
+                                                 responseValue: e.target.value
+                                               })
+                                             }
+                                             className="w-full pl-3.5 pr-12 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-900 dark:text-white rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 transition-all"
+                                           />
+                                           {subField.unit && (
+                                             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">
+                                               {subField.unit}
+                                             </span>
+                                           )}
+                                         </div>
+                                       ) : isDateQuestion ? (
+                                         <HTDatePickerInput
+                                           value={subResponse.responseValue || ''}
+                                           onChange={(val) =>
+                                             onChangeResponse(subItemKey, {
+                                               ...subResponse,
+                                               responseValue: val
+                                             })
+                                           }
+                                         />
+                                       ) : isTimeQuestion ? (
+                                         <HTTimePickerInput
+                                           value={subResponse.responseValue || ''}
+                                           onChange={(val) =>
+                                             onChangeResponse(subItemKey, {
+                                               ...subResponse,
+                                               responseValue: val
+                                             })
+                                           }
+                                         />
+                                       ) : isDateTimeQuestion ? (
+                                         <HTDateTimePickerInput
+                                           value={subResponse.responseValue || ''}
+                                           onChange={(val) =>
+                                             onChangeResponse(subItemKey, {
+                                               ...subResponse,
+                                               responseValue: val
+                                             })
+                                           }
+                                         />
+                                       ) : isBooleanQuestion ? (
+                                         <div className="flex items-center gap-3 py-1">
+                                           {['Yes / Compliant', 'No / Defect', 'N/A'].map((bVal) => (
+                                             <label key={bVal} className="flex items-center gap-1.5 text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
+                                               <input
+                                                 type="radio"
+                                                 name={`sub_radio_${subItemKey}`}
+                                                 checked={subResponse.responseValue === bVal}
+                                                 onChange={() =>
+                                                   onChangeResponse(subItemKey, {
+                                                     ...subResponse,
+                                                     responseValue: bVal
+                                                   })
+                                                 }
+                                                 className="text-emerald-600 focus:ring-emerald-500/20 w-3.5 h-3.5"
+                                               />
+                                               <span>{bVal}</span>
+                                             </label>
+                                           ))}
+                                         </div>
+                                       ) : (
+                                         <input
+                                           type="text"
+                                           placeholder={subField.placeholder || `Enter ${subField.label.toLowerCase()}...`}
+                                           value={subResponse.responseValue || ''}
+                                           onChange={(e) =>
+                                             onChangeResponse(subItemKey, {
+                                               ...subResponse,
+                                               responseValue: e.target.value
+                                             })
+                                           }
+                                           className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-900 dark:text-white rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 transition-all"
+                                         />
+                                       )}
+                                     </div>
                                   );
                                 })}
                               </div>
                             </div>
                           );
                         })()}
+
+                        {/* Remarks */}
+                        <div>
+                          <span className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5">Remarks</span>
+                          <input
+                            type="text"
+                            placeholder="Add specific remarks..."
+                            value={currentResponse.remarks || ''}
+                            onChange={(e) =>
+                              onChangeResponse(itemKey, {
+                                ...currentResponse,
+                                remarks: e.target.value
+                              })
+                            }
+                            className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-900 dark:text-white rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 transition-all"
+                          />
+                        </div>
 
                         {/* Photo */}
                         <div className="mt-auto pt-2">
@@ -1861,10 +2383,12 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
                 </div>
                 <div>
                   <h2 className="text-base font-extrabold text-slate-900 dark:text-white">
-                    Edit Question Specification
+                    {editingField.parentFieldKey ? 'Edit Follow-up Question' : 'Edit Question Specification'}
                   </h2>
                   <p className="text-xs text-slate-400">
-                    Customize the question title, answer format, unit, or choices
+                    {editingField.parentFieldKey
+                      ? 'Customize this follow-up question title, answer format, unit, or choices'
+                      : 'Customize the question title, answer format, unit, or choices'}
                   </p>
                 </div>
               </div>
@@ -1906,7 +2430,9 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
                     <option value="text">📝 Short Text Input</option>
                     <option value="textarea">📄 Multi-line Detailed Remarks</option>
                     <option value="number">🔢 Number / Measurement Value</option>
-                    <option value="date">📅 Calendar Date</option>
+                    <option value="date">📅 Calendar Date (DD/MM/YYYY)</option>
+                    <option value="time">⏰ Time Picker (HH:MM)</option>
+                    <option value="datetime">📅⏰ Date & Time (DD/MM/YYYY HH:MM)</option>
                     <option value="boolean">🔘 Yes / No Switch</option>
                     <option value="photo">📷 Photo Attachment</option>
                     <option value="gps_location">📍 GPS Location Verified</option>
@@ -1951,11 +2477,15 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
                           <span className="font-semibold">{opt.optionValue}</span>
                           <button
                             type="button"
-                            onClick={() => handleDeleteChoiceOption(opt.id, opt.optionValue)}
-                            className="text-slate-400 hover:text-rose-500 p-1 rounded-lg"
-                            title="Delete choice"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleDeleteChoiceOption(opt.id, opt.optionValue);
+                            }}
+                            className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/60 transition-colors cursor-pointer"
+                            title={`Delete choice "${opt.optionValue}"`}
                           >
-                            <Trash2 className="w-3 h-3" />
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       ))
@@ -2060,7 +2590,9 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
                     <option value="text">📝 Short Text Input</option>
                     <option value="textarea">📄 Multi-line Detailed Remarks</option>
                     <option value="number">🔢 Number / Measurement Value</option>
-                    <option value="date">📅 Calendar Date</option>
+                    <option value="date">📅 Calendar Date (DD/MM/YYYY)</option>
+                    <option value="time">⏰ Time Picker (HH:MM)</option>
+                    <option value="datetime">📅⏰ Date & Time (DD/MM/YYYY HH:MM)</option>
                     <option value="boolean">🔘 Yes / No Switch</option>
                     <option value="photo">📷 Photo Attachment</option>
                   </select>
@@ -2168,6 +2700,9 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
                     <option value="select">🔘 Select from Dropdown List</option>
                     <option value="text">📝 Short Text Input</option>
                     <option value="number">🔢 Number / Measurement Value</option>
+                    <option value="date">📅 Calendar Date (DD/MM/YYYY)</option>
+                    <option value="time">⏰ Time Picker (HH:MM)</option>
+                    <option value="datetime">📅⏰ Date & Time (DD/MM/YYYY HH:MM)</option>
                     <option value="boolean">🔘 Yes / No Switch</option>
                   </select>
                 </div>
@@ -2216,6 +2751,140 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
                   className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer disabled:opacity-50"
                 >
                   {isAddingSubQuestion ? 'Adding...' : `Add Question inside ${targetParentField.label}`}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add New Section / Stage Modal */}
+      {showAddSectionModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Layers className="w-5 h-5 text-emerald-600" /> Create New Section / Stage
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Module: <strong className="text-emerald-700 dark:text-emerald-300">{spec.title}</strong>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddSectionModal(false)}
+                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddNewSection} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Section Heading / Stage Name <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newSectionTitle}
+                  onChange={(e) => setNewSectionTitle(e.target.value)}
+                  placeholder="e.g. Stage 4: HT Cable Terminations & Hi-Pot Testing"
+                  className="w-full px-3.5 py-2.5 border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 outline-none"
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowAddSectionModal(false)}
+                  className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isAddingSection}
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer disabled:opacity-50"
+                >
+                  {isAddingSection ? 'Creating...' : 'Create Section'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Duplicate Question / Add Unit Modal (e.g. Fire Extinguishers Unit 2, Unit 3) */}
+      {duplicatingField && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Copy className="w-5 h-5 text-emerald-600" /> Duplicate Question / Add Unit
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Clone <strong className="text-emerald-700 dark:text-emerald-300">{duplicatingField.field.label}</strong> with all its follow-up questions
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDuplicatingField(null)}
+                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmDuplicateQuestion} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  New Question / Unit Title <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={duplicatingField.newLabel}
+                  onChange={(e) => setDuplicatingField({ ...duplicatingField, newLabel: e.target.value })}
+                  placeholder="e.g. Fire Extinguishers (Unit 2) or Fire Extinguisher #2 - Control Room"
+                  className="w-full px-3.5 py-2.5 border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 outline-none"
+                  autoFocus
+                />
+              </div>
+
+              {duplicatingField.field.subFields && duplicatingField.field.subFields.length > 0 && (
+                <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 space-y-1.5 text-xs text-slate-600 dark:text-slate-300">
+                  <span className="font-bold text-[11px] text-slate-400 uppercase tracking-wider block">
+                    Will auto-clone {duplicatingField.field.subFields.length} follow-up questions:
+                  </span>
+                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pt-1">
+                    {duplicatingField.field.subFields.map(sf => (
+                      <span key={sf.key} className="px-2 py-0.5 bg-white dark:bg-slate-700 rounded-md border border-slate-200 dark:border-slate-600 text-[11px] font-medium text-slate-700 dark:text-slate-200">
+                        {sf.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setDuplicatingField(null)}
+                  className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isDuplicatingField}
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  {isDuplicatingField ? 'Duplicating...' : 'Duplicate Question & Sub-Questions'}
                 </button>
               </div>
             </form>

@@ -1022,6 +1022,8 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
                     {[
                         { code: 'P',    label: 'Present',              bg: 'bg-emerald-50',  text: 'text-emerald-700' },
                         { code: '0.5P', label: 'Half Day',             bg: 'bg-blue-50',     text: 'text-blue-700'   },
+                        { code: '0.75P+0.25RP', label: '3/4 Day + Permission', bg: 'bg-teal-50',    text: 'text-teal-700'   },
+                        { code: '0.5P+0.5RP',   label: 'Half Day + Permission',bg: 'bg-teal-50',    text: 'text-teal-700'   },
                         { code: '0.75P', label: 'Three-Quarter Day',   bg: 'bg-emerald-50',  text: 'text-emerald-600'},
                         { code: '0.25P', label: 'Quarter Day',          bg: 'bg-sky-50',      text: 'text-sky-600'    },
                         { code: 'A',    label: 'Absent',               bg: 'bg-rose-50',     text: 'text-rose-700'   },
