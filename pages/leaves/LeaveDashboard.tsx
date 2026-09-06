@@ -4,7 +4,7 @@ import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
 import { supabase } from '../../services/supabase';
 import type { LeaveBalance, LeaveRequest, LeaveType, LeaveRequestStatus, UploadedFile, CompOffLog, AttendanceEvent, UserHoliday, AttendanceSettings, StaffAttendanceRules, RecurringHolidayRule, UserChild, RoutePoint } from '../../types';
-import { Loader2, Plus, ArrowLeft, AlertTriangle, Briefcase, HeartPulse, Plane, CalendarClock, Clock, Edit, Trash2, XCircle, Search, Calendar, Settings, Check, Baby, Heart, Calculator, MapPin, Upload, Footprints, Eye, Info } from 'lucide-react';
+import { Loader2, Plus, ArrowLeft, AlertTriangle, Briefcase, HeartPulse, Plane, CalendarClock, Clock, Edit, Trash2, XCircle, Search, Calendar, Settings, Check, Baby, Heart, Calculator, MapPin, Upload, Footprints, Eye, Info, ChevronLeft, ChevronRight } from 'lucide-react';
 import { HOLIDAY_SELECTION_POOL, FIXED_HOLIDAYS } from '../../utils/constants';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
@@ -12,7 +12,7 @@ import Select from '../../components/ui/Select';
 import { useForm, Controller, SubmitHandler, Resolver } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
-import { format, differenceInCalendarDays, isSameDay, startOfMonth, endOfMonth, differenceInMinutes, getDay, startOfYear, endOfYear, startOfWeek, subDays, eachDayOfInterval, startOfDay } from 'date-fns';
+import { format, differenceInCalendarDays, isSameDay, startOfMonth, endOfMonth, differenceInMinutes, getDay, startOfYear, endOfYear, startOfWeek, subDays, eachDayOfInterval, startOfDay, subMonths, addMonths } from 'date-fns';
 import { calculateWorkingHours, getStaffCategory, isTechnicalRole, calculateDailyTravelKm, calculateDailyPathTravelKm, getEarlyDepartureDeductions } from '../../utils/attendanceCalculations';
 import { parsePermissionDurationFromReason } from '../../utils/monthlyReportCalculations';
 
@@ -796,12 +796,26 @@ const LeaveDashboard: React.FC = () => {
         }).filter(Boolean) as LeaveRequest[];
     }, [earlyDepartureDeductionsList, requests, user]);
 
+    const [dateScope, setDateScope] = useState<'month' | 'all'>('month');
+
     const allDisplayRequests = useMemo(() => {
         const combined = [...requests, ...autoEarlyDepartureRequests];
         combined.sort((a, b) => new Date(b.startDate.replace(/-/g, '/')).getTime() - new Date(a.startDate.replace(/-/g, '/')).getTime());
-        if (filter === 'all') return combined;
-        return combined.filter(r => r.status === filter);
-    }, [requests, autoEarlyDepartureRequests, filter]);
+        
+        let filtered = combined;
+        if (dateScope === 'month') {
+            const mStart = format(startOfMonth(viewingDate), 'yyyy-MM-dd');
+            const mEnd = format(endOfMonth(viewingDate), 'yyyy-MM-dd');
+            filtered = filtered.filter(r => {
+                const sDate = r.startDate || '';
+                const eDate = r.endDate || r.startDate || '';
+                return sDate <= mEnd && eDate >= mStart;
+            });
+        }
+
+        if (filter === 'all') return filtered;
+        return filtered.filter(r => r.status === filter);
+    }, [requests, autoEarlyDepartureRequests, filter, dateScope, viewingDate]);
 
     // ── Smooth fade-in: double-rAF guarantees the opacity:0 frame is painted
     // before we flip to opacity:1, so CSS transition always fires cleanly.
@@ -1284,6 +1298,69 @@ const LeaveDashboard: React.FC = () => {
 
 
             <div className="border-0 shadow-none md:bg-card md:p-6 md:rounded-xl md:shadow-card w-full md:w-full">
+                {/* Table Header & Month Scope Filter */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-border/60">
+                    <div className="flex items-center gap-2.5">
+                        <h3 className="text-base md:text-lg font-bold text-primary-text">
+                            {dateScope === 'month' ? `Leave Requests for ${format(viewingDate, 'MMMM yyyy')}` : 'All Leave Requests (Full History)'}
+                        </h3>
+                        <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-bold">
+                            {allDisplayRequests.length}
+                        </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        {dateScope === 'month' && (
+                            <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5 border border-border/50">
+                                <button
+                                    type="button"
+                                    onClick={() => setViewingDate(subMonths(viewingDate, 1))}
+                                    className="p-1 hover:bg-white dark:hover:bg-gray-700 rounded text-muted-foreground hover:text-primary-text transition-colors"
+                                    title="Previous Month"
+                                >
+                                    <ChevronLeft className="w-3.5 h-3.5" />
+                                </button>
+                                <span className="text-xs font-semibold px-2 text-primary-text">
+                                    {format(viewingDate, 'MMM yyyy')}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => setViewingDate(addMonths(viewingDate, 1))}
+                                    className="p-1 hover:bg-white dark:hover:bg-gray-700 rounded text-muted-foreground hover:text-primary-text transition-colors"
+                                    title="Next Month"
+                                >
+                                    <ChevronRight className="w-3.5 h-3.5" />
+                                </button>
+                            </div>
+                        )}
+
+                        <div className="flex items-center bg-gray-100 dark:bg-gray-800/80 p-0.5 rounded-lg border border-border/40 text-xs font-semibold">
+                            <button
+                                type="button"
+                                onClick={() => setDateScope('month')}
+                                className={`px-2.5 py-1 rounded-md transition-all ${
+                                    dateScope === 'month'
+                                        ? 'bg-white dark:bg-gray-700 text-emerald-700 dark:text-emerald-300 shadow-xs font-bold'
+                                        : 'text-muted-foreground hover:text-primary-text'
+                                }`}
+                            >
+                                {format(viewingDate, 'MMMM')}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setDateScope('all')}
+                                className={`px-2.5 py-1 rounded-md transition-all ${
+                                    dateScope === 'all'
+                                        ? 'bg-white dark:bg-gray-700 text-emerald-700 dark:text-emerald-300 shadow-xs font-bold'
+                                        : 'text-muted-foreground hover:text-primary-text'
+                                }`}
+                            >
+                                All History
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <div className="mb-6">
                     <div className="w-full sm:w-auto border-b border-border relative overflow-x-auto">
                         <nav className="flex space-x-8 px-1" aria-label="Tabs">
@@ -1322,7 +1399,30 @@ const LeaveDashboard: React.FC = () => {
                             {isLoading ? (
                                 <tr><td colSpan={5} className="text-center py-10 text-muted">Loading...</td></tr>
                             ) : allDisplayRequests.length === 0 ? (
-                                <tr><td colSpan={5} className="text-center py-10 text-muted text-lg">No requests found.</td></tr>
+                                <tr>
+                                    <td colSpan={5} className="text-center py-12 text-muted">
+                                        <Calendar className="w-8 h-8 mx-auto mb-2 text-muted-foreground/30" />
+                                        <p className="font-semibold text-base text-primary-text mb-1">
+                                            {dateScope === 'month' 
+                                                ? `No leave requests found for ${format(viewingDate, 'MMMM yyyy')}`
+                                                : 'No leave requests found.'}
+                                        </p>
+                                        <p className="text-xs text-muted-foreground max-w-sm mx-auto mb-3">
+                                            {dateScope === 'month'
+                                                ? `There are no leave or permission requests recorded in ${format(viewingDate, 'MMMM yyyy')}.`
+                                                : 'Your submitted leave requests will appear here.'}
+                                        </p>
+                                        {dateScope === 'month' && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setDateScope('all')}
+                                                className="inline-flex items-center text-xs font-semibold text-emerald-600 hover:text-emerald-700 underline cursor-pointer"
+                                            >
+                                                View all request history ({requests.length})
+                                            </button>
+                                        )}
+                                    </td>
+                                </tr>
                             ) : (
                                 allDisplayRequests.map(req => {
                                     const lType = String(req.leaveType || (req as any).leave_type || '').toLowerCase();
