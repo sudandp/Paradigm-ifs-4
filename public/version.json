@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 111,
-  "latestVersionName": "20.1.0",
+  "latestVersionCode": 112,
+  "latestVersionName": "20.2.0",
   "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
   "apkDownloadUrl": "https://app.paradigmfms.com",
-  "releaseNotes": "feat: implement comprehensive monthly attendance calculation and reporting infrastructure\nfeat: add SiteFinanceTracker and SiteAttendanceTracker pages with supporting routing, notification, and API services\nfeat: implement comprehensive notification system with management dashboard and status tracking modules\nfeat: implement attendance reporting dashboard with PDF and Excel export functionality\nfeat: implement HT-Yard module audit engine, reporting components, and supporting calculation utilities",
+  "releaseNotes": "fix(leaves): scope leave requests table to viewing month with history toggle\nchore: bump version to 20.1.0 (code 111), export APP_BUILD_NUMBER, and scope mobile CI pipeline\nfeat: implement comprehensive monthly attendance calculation and reporting infrastructure\nfeat: add SiteFinanceTracker and SiteAttendanceTracker pages with supporting routing, notification, and API services\nfeat: implement comprehensive notification system with management dashboard and status tracking modules",
   "isMandatory": true
 }
