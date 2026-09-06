@@ -5,7 +5,7 @@
  * 
  * Auto-increments the app version across all version files:
  *   - android/app/build.gradle (versionCode & versionName)
- *   - src/config/appVersion.ts  (APP_VERSION constant)
+ *   - src/config/appVersion.ts  (APP_VERSION & APP_BUILD_NUMBER constants)
  *   - package.json              (version field)
  * 
  * Usage:
@@ -157,7 +157,7 @@ async function main() {
 
   // --- 4. Update src/config/appVersion.ts ---
   const appVersionPath = 'src/config/appVersion.ts';
-  const appVersionContent = `export const APP_VERSION = '${newName}';\n`;
+  const appVersionContent = `export const APP_VERSION = '${newName}';\nexport const APP_BUILD_NUMBER = ${newCode};\n`;
   writeFile(appVersionPath, appVersionContent);
   console.log(`✅ Updated ${appVersionPath}`);
 
