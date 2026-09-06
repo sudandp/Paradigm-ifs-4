@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
 import type { SiteInvoiceRecord, SiteInvoiceDefault, Organization } from '../../types';
@@ -29,15 +29,33 @@ import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { format, getDate, getMonth, getYear, set, parseISO } from 'date-fns';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 
-import { getUserRoutingScope, getSiteMetadataFromMatrix, getUserFormPermissions } from '../../services/siteRoutingScope';
+import { getUserRoutingScope, getSiteMetadataFromMatrix, getUserFormPermissions, normalizeHrInchargeName, normalizeOpsInchargeName, normalizeAccountsInchargeName } from '../../services/siteRoutingScope';
 import type { SiteResponsibilityMatrix } from '../../types/siteRouting';
 
 const AddSiteAttendanceRecord: React.FC = () => {
     const navigate = useNavigate();
     const { id } = useParams<{ id: string }>();
+    const [searchParams] = useSearchParams();
     const isEditing = !!id;
     const isMobile = useMediaQuery('(max-width: 767px)');
     const { user: authUser } = useAuthStore();
+
+    const queryMonth = searchParams.get('month');
+    const queryYear = searchParams.get('year');
+
+    const initialBillingMonth = useMemo(() => {
+        if (queryYear && queryYear !== 'all' && queryMonth && queryMonth !== 'all') {
+            return `${queryYear}-${queryMonth.padStart(2, '0')}-01`;
+        }
+        const d = new Date();
+        d.setDate(1);
+        d.setMonth(d.getMonth() - 1);
+        return format(d, 'yyyy-MM-01');
+    }, [queryMonth, queryYear]);
+
+    const [selectedBillingMonth, setSelectedBillingMonth] = useState<string>(initialBillingMonth);
+    const [trackerRecordsList, setTrackerRecordsList] = useState<SiteInvoiceRecord[]>([]);
+    const [existingRecordFound, setExistingRecordFound] = useState(false);
 
     const permissions = useMemo(() => getUserFormPermissions(authUser), [authUser]);
 
@@ -79,6 +97,33 @@ const AddSiteAttendanceRecord: React.FC = () => {
     const [siteDefaults, setSiteDefaults] = useState<SiteInvoiceDefault[]>([]);
     const [currentUser, setCurrentUser] = useState<{ id: string; name: string } | null>(null);
 
+    // Helper: Check and load existing record for selected site and month
+    const checkAndApplyExistingRecord = useCallback((targetSiteName: string, monthDateStr: string, recordsList: SiteInvoiceRecord[]): boolean => {
+        if (!targetSiteName || isEditing) return false;
+        const targetYM = monthDateStr.substring(0, 7);
+        const match = recordsList.find(r => 
+            r.siteName?.toLowerCase().trim() === targetSiteName.toLowerCase().trim() &&
+            (
+                (r.billingMonth && r.billingMonth.substring(0, 7) === targetYM) ||
+                (r.managerTentativeDate && r.managerTentativeDate.substring(0, 7) === targetYM) ||
+                (r.invoiceSharingTentativeDate && r.invoiceSharingTentativeDate.substring(0, 7) === targetYM) ||
+                (r.createdAt && r.createdAt.substring(0, 7) === targetYM)
+            )
+        );
+
+        if (match) {
+            setRecord({
+                ...match,
+                billingMonth: `${targetYM}-01`
+            });
+            setExistingRecordFound(true);
+            return true;
+        } else {
+            setExistingRecordFound(false);
+            return false;
+        }
+    }, [isEditing]);
+
     useEffect(() => {
         const fetchData = async () => {
             setIsLoading(true);
@@ -96,6 +141,7 @@ const AddSiteAttendanceRecord: React.FC = () => {
 
                 const matrix = matrixData || [];
                 setMatrixList(matrix);
+                setTrackerRecordsList(trackerRecords || []);
 
                 const scope = getUserRoutingScope(authUser, matrix);
 
@@ -131,15 +177,21 @@ const AddSiteAttendanceRecord: React.FC = () => {
                 const invoiceSet = new Set<string>();
 
                 matrix.forEach(m => {
-                    if (m.opsManagerName) opsSet.add(m.opsManagerName);
-                    if (m.hrInchargeName) hrSet.add(m.hrInchargeName);
-                    if (m.accountsInchargeName) invoiceSet.add(m.accountsInchargeName);
+                    const ops = normalizeOpsInchargeName(m.opsManagerName);
+                    const hr = normalizeHrInchargeName(m.hrInchargeName);
+                    const inv = normalizeAccountsInchargeName(m.accountsInchargeName);
+                    if (ops) opsSet.add(ops);
+                    if (hr) hrSet.add(hr);
+                    if (inv) invoiceSet.add(inv);
                 });
 
                 trackerRecords.forEach(r => {
-                    if (r.opsIncharge) opsSet.add(r.opsIncharge);
-                    if (r.hrIncharge) hrSet.add(r.hrIncharge);
-                    if (r.invoiceIncharge) invoiceSet.add(r.invoiceIncharge);
+                    const ops = normalizeOpsInchargeName(r.opsIncharge);
+                    const hr = normalizeHrInchargeName(r.hrIncharge);
+                    const inv = normalizeAccountsInchargeName(r.invoiceIncharge);
+                    if (ops) opsSet.add(ops);
+                    if (hr) hrSet.add(hr);
+                    if (inv) invoiceSet.add(inv);
                 });
 
                 setOpsInchargeOptions(Array.from(opsSet).sort());
@@ -161,6 +213,11 @@ const AddSiteAttendanceRecord: React.FC = () => {
                             existingRecord.hrIncharge = existingRecord.hrIncharge || matrixMeta.hrInchargeName || '';
                             existingRecord.invoiceIncharge = existingRecord.invoiceIncharge || matrixMeta.accountsInchargeName || '';
                         }
+                        if (existingRecord.billingMonth) {
+                            setSelectedBillingMonth(existingRecord.billingMonth.substring(0, 10));
+                        } else if (existingRecord.managerTentativeDate) {
+                            setSelectedBillingMonth(`${existingRecord.managerTentativeDate.substring(0, 7)}-01`);
+                        }
                         setRecord(existingRecord);
                     } else {
                         setToast({ message: 'Record not found', type: 'error' });
@@ -177,22 +234,38 @@ const AddSiteAttendanceRecord: React.FC = () => {
         fetchData();
     }, [id, isEditing, navigate, authUser]);
 
-    const handleInputChange = (field: keyof SiteInvoiceRecord, value: any) => {
-        setRecord(prev => {
-            const updated = { ...prev, [field]: value };
+    const handleBillingMonthChange = (newMonthValue: string) => {
+        if (!newMonthValue) return;
+        const formattedMonth = `${newMonthValue}-01`;
+        setSelectedBillingMonth(formattedMonth);
+        if (record.siteName) {
+            checkAndApplyExistingRecord(record.siteName, formattedMonth, trackerRecordsList);
+        }
+    };
 
-            if (field === 'siteId') {
-                const site = sites.find(s => s.id === value || s.shortName === value);
-                if (site) {
-                    updated.siteId = site.id;
-                    updated.siteName = site.shortName;
-                } else {
-                    updated.siteId = value;
-                    updated.siteName = value;
-                }
-                
-                // 1. Auto-fill primary canonical incharge and company info from Site Responsibility Matrix
-                const matrixMeta = getSiteMetadataFromMatrix(updated.siteName || value, matrixList);
+    const handleInputChange = (field: keyof SiteInvoiceRecord, value: any) => {
+        if (field === 'siteId') {
+            const site = sites.find(s => s.id === value || s.shortName === value);
+            const resolvedSiteName = site ? site.shortName : value;
+            const resolvedSiteId = site ? site.id : value;
+
+            // Check if record already exists for this site & month
+            const matchedExisting = checkAndApplyExistingRecord(resolvedSiteName, selectedBillingMonth, trackerRecordsList);
+            if (matchedExisting) {
+                return;
+            }
+            
+            // Otherwise, initialize blank state with matrix defaults
+            setRecord(prev => {
+                const updated: Partial<SiteInvoiceRecord> = {
+                    ...prev,
+                    id: undefined,
+                    siteId: resolvedSiteId,
+                    siteName: resolvedSiteName
+                };
+
+                // Auto-fill primary canonical incharge and company info from Site Responsibility Matrix
+                const matrixMeta = getSiteMetadataFromMatrix(resolvedSiteName, matrixList);
                 if (matrixMeta) {
                     updated.companyName = matrixMeta.billingCompany || updated.companyName;
                     updated.billingCycle = matrixMeta.billingCycle || updated.billingCycle;
@@ -201,7 +274,7 @@ const AddSiteAttendanceRecord: React.FC = () => {
                     updated.invoiceIncharge = matrixMeta.accountsInchargeName || updated.invoiceIncharge;
                 }
 
-                // 2. Auto-fill additional date defaults if available
+                // Auto-fill additional date defaults if available
                 const targetId = site ? site.id : value;
                 const defaults = siteDefaults.find(d => d.siteId === targetId || d.siteName === value);
                 if (defaults) {
@@ -212,15 +285,15 @@ const AddSiteAttendanceRecord: React.FC = () => {
                     if (!updated.hrIncharge) updated.hrIncharge = defs.hrIncharge;
                     if (!updated.invoiceIncharge) updated.invoiceIncharge = defs.invoiceIncharge;
 
-                    const adjustDateToCurrentPeriod = (dateStr: string | undefined): string => {
+                    const adjustDateToSelectedPeriod = (dateStr: string | undefined): string => {
                         if (!dateStr) return '';
                         try {
                             const defaultDate = parseISO(dateStr);
-                            const today = new Date();
-                            const adjustedDate = set(today, { 
+                            const baseDate = parseISO(selectedBillingMonth);
+                            const adjustedDate = set(baseDate, { 
                                 date: getDate(defaultDate),
-                                month: getMonth(today), 
-                                year: getYear(today) 
+                                month: getMonth(baseDate), 
+                                year: getYear(baseDate) 
                             });
                             return format(adjustedDate, 'yyyy-MM-dd');
                         } catch (e) {
@@ -229,14 +302,24 @@ const AddSiteAttendanceRecord: React.FC = () => {
                         }
                     };
 
-                    updated.managerTentativeDate = adjustDateToCurrentPeriod(defs.managerTentativeDate) || updated.managerTentativeDate;
-                    updated.hrTentativeDate = adjustDateToCurrentPeriod(defs.hrTentativeDate) || updated.hrTentativeDate;
-                    updated.invoiceSharingTentativeDate = adjustDateToCurrentPeriod(defs.invoiceSharingTentativeDate) || updated.invoiceSharingTentativeDate;
+                    updated.managerTentativeDate = adjustDateToSelectedPeriod(defs.managerTentativeDate) || updated.managerTentativeDate;
+                    updated.hrTentativeDate = adjustDateToSelectedPeriod(defs.hrTentativeDate) || updated.hrTentativeDate;
+                    updated.invoiceSharingTentativeDate = adjustDateToSelectedPeriod(defs.invoiceSharingTentativeDate) || updated.invoiceSharingTentativeDate;
                 }
-            }
 
-            return updated;
-        });
+                // If managerTentativeDate still empty, set to end of month based on billingCycle
+                if (!updated.managerTentativeDate && selectedBillingMonth) {
+                    const [y, m] = selectedBillingMonth.substring(0, 7).split('-').map(Number);
+                    const lastDay = new Date(y, m, 0).getDate();
+                    updated.managerTentativeDate = `${selectedBillingMonth.substring(0, 7)}-${String(lastDay).padStart(2, '0')}`;
+                }
+
+                return updated;
+            });
+            return;
+        }
+
+        setRecord(prev => ({ ...prev, [field]: value }));
     };
 
     const handleSave = async (e: React.FormEvent) => {
@@ -248,12 +331,21 @@ const AddSiteAttendanceRecord: React.FC = () => {
 
         setIsSaving(true);
         try {
-            const payload = { ...record };
+            const payload: Partial<SiteInvoiceRecord> = { ...record };
+            payload.billingMonth = selectedBillingMonth;
             
             // Validate UUID for siteId. If custom name (not UUID), set siteId to null
             const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
             if (payload.siteId && !uuidRegex.test(payload.siteId)) {
                 (payload as any).siteId = null;
+            }
+
+            // Ensure tentative date exists for the billing month if empty
+            if (!payload.managerTentativeDate && selectedBillingMonth) {
+                const targetYM = selectedBillingMonth.substring(0, 7);
+                const [y, m] = targetYM.split('-').map(Number);
+                const lastDay = new Date(y, m, 0).getDate();
+                payload.managerTentativeDate = `${targetYM}-${String(lastDay).padStart(2, '0')}`;
             }
 
             if (!isEditing && currentUser) {
@@ -262,7 +354,12 @@ const AddSiteAttendanceRecord: React.FC = () => {
                 payload.createdByRole = authUser?.role;
             }
             await api.saveSiteInvoiceRecord(payload);
-            setToast({ message: `Record ${isEditing ? 'updated' : 'created'} successfully!`, type: 'success' });
+            setToast({ 
+                message: existingRecordFound 
+                    ? `Unified tracker entry for ${payload.siteName} updated successfully!` 
+                    : `Record ${isEditing ? 'updated' : 'created'} successfully!`, 
+                type: 'success' 
+            });
             setTimeout(() => navigate('/finance?tab=attendance'), 1500);
         } catch (error) {
             console.error('Save error:', error);
@@ -352,26 +449,51 @@ const AddSiteAttendanceRecord: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Primary Site Selector */}
-                <div className="mb-6">
-                    <SearchableSelect
-                        label="Select Site Name"
-                        placeholder="Choose or search authorized site..."
-                        options={sites.map(s => {
-                            const sName = s.shortName || (s as any).name || s.id;
-                            const matrixMeta = getSiteMetadataFromMatrix(sName, matrixList);
-                            const company = matrixMeta?.billingCompany || (s as any).company || 'PIFS';
-                            return {
-                                id: s.id,
-                                name: sName,
-                                badge: company
-                            };
-                        })}
-                        value={record.siteId || record.siteName || ''}
-                        onChange={(id) => handleInputChange('siteId', id)}
-                        allowCustom={permissions.isAdmin}
-                    />
+                {/* Primary Site & Billing Month Selector Row */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <div className="md:col-span-2">
+                        <SearchableSelect
+                            label="Select Site Name"
+                            placeholder="Choose or search authorized site..."
+                            options={sites.map(s => {
+                                const sName = s.shortName || (s as any).name || s.id;
+                                const matrixMeta = getSiteMetadataFromMatrix(sName, matrixList);
+                                const company = matrixMeta?.billingCompany || (s as any).company || 'PIFS';
+                                return {
+                                    id: s.id,
+                                    name: sName,
+                                    badge: company
+                                };
+                            })}
+                            value={record.siteId || record.siteName || ''}
+                            onChange={(id) => handleInputChange('siteId', id)}
+                            allowCustom={permissions.isAdmin}
+                        />
+                    </div>
+                    <div>
+                        <label className={labelClass}>Billing Month</label>
+                        <input
+                            type="month"
+                            value={selectedBillingMonth.substring(0, 7)}
+                            onChange={(e) => handleBillingMonthChange(e.target.value)}
+                            className={isMobile 
+                                ? "w-full flex h-11 rounded-xl border border-[#1f3d2b] bg-[#0c2e1f] px-3 py-2 text-sm text-white focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all shadow-sm"
+                                : "w-full flex h-11 rounded-xl border border-border bg-white px-3 py-2 text-sm text-primary-text focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all shadow-sm"
+                            }
+                        />
+                    </div>
                 </div>
+
+                {/* Existing Record Match Banner */}
+                {existingRecordFound && (
+                    <div className="flex items-center gap-3 p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-200 mb-6 animate-in fade-in">
+                        <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        <div className="text-xs">
+                            <span className="font-bold text-sm block">Unified Entry Synced ({format(parseISO(selectedBillingMonth), 'MMMM yyyy')})</span>
+                            <span>An active tracker entry already exists for <strong className="font-semibold">{record.siteName}</strong>. Your edits will update this record directly without creating duplicate entries, keeping Ops, HR, and Finance counterpart entries synchronized.</span>
+                        </div>
+                    </div>
+                )}
 
                 {/* Assigned Responsibility Cards Grid (Center-based) */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 p-4 rounded-2xl bg-gray-50/80 dark:bg-[#072418] border border-border/60 mb-6">
@@ -409,9 +531,9 @@ const AddSiteAttendanceRecord: React.FC = () => {
                     </div>
 
                     {/* HR Incharge */}
-                    <div className="flex flex-col items-center justify-center text-center p-3.5 rounded-xl bg-white dark:bg-[#0c2e1f] border border-border/40 shadow-xs hover:border-purple-500/30 transition-all">
+                    <div className="flex flex-col items-center justify-center text-center p-3.5 rounded-xl bg-white dark:bg-[#0c2e1f] border border-border/40 shadow-xs hover:border-teal-500/30 transition-all">
                         <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-muted uppercase tracking-tight mb-1.5">
-                            <ClipboardList className="w-3.5 h-3.5 text-purple-500" />
+                            <ClipboardList className="w-3.5 h-3.5 text-teal-500" />
                             <span>HR Incharge</span>
                         </div>
                         <div className="text-sm font-black text-primary-text truncate w-full text-center" title={record.hrIncharge || 'Not Set'}>

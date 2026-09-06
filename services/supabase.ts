@@ -15,9 +15,11 @@ import { Preferences } from '@capacitor/preferences';
 export const supabaseUrl = (typeof import.meta !== 'undefined' && import.meta.env)
   ? import.meta.env.VITE_SUPABASE_URL
   : process.env.VITE_SUPABASE_URL;
-export const supabaseAnonKey = (typeof import.meta !== 'undefined' && import.meta.env)
-  ? import.meta.env.VITE_SUPABASE_ANON_KEY
-  : (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY);
+export const supabaseAnonKey = (typeof window === 'undefined' && process.env.SUPABASE_SERVICE_ROLE_KEY)
+  ? process.env.SUPABASE_SERVICE_ROLE_KEY
+  : ((typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_SUPABASE_ANON_KEY)
+    ? (import.meta as any).env.VITE_SUPABASE_ANON_KEY
+    : (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY));
 
 // When credentials are missing log a warning and use dummy values.  Using
 // `http://localhost` as the URL and a placeholder anon key is sufficient to

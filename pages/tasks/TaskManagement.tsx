@@ -15,6 +15,8 @@ import TableSkeleton from '../../components/skeletons/TableSkeleton';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import Pagination from '../../components/ui/Pagination';
 import Input from '../../components/ui/Input';
+import type { SiteResponsibilityMatrix } from '../../types/siteRouting';
+import { getUserRoutingScope, getCanonicalUserName } from '../../services/siteRoutingScope';
 
 const getNextDueDateInfo = (task: Task): { date: string | null; isOverdue: boolean } => {
     const today = new Date();
@@ -78,12 +80,15 @@ const TaskManagement: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
 
     const [users, setUsers] = useState<User[]>([]);
+    const [matrixList, setMatrixList] = useState<SiteResponsibilityMatrix[]>([]);
     const [statusFilter, setStatusFilter] = useState<'all' | TaskStatus>('all');
     const [priorityFilter, setPriorityFilter] = useState<'all' | TaskPriority>('all');
     const [assignedToFilter, setAssignedToFilter] = useState<'all' | string>('all');
     const [viewMode, setViewMode] = useState<'kanban' | 'table'>('kanban');
     const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
     const isMobile = useMediaQuery('(max-width: 767px)');
+
+    const routingScope = useMemo(() => getUserRoutingScope(user, matrixList), [user, matrixList]);
 
     const loadTasks = useCallback(async () => {
         useTaskStore.setState({ isLoading: true });
@@ -100,17 +105,39 @@ const TaskManagement: React.FC = () => {
     useEffect(() => {
         const init = async () => {
             if (user) {
-                const isPrivileged = ['admin', 'hr', 'developer'].includes(user.role);
-                if (isPrivileged) {
-                    api.getUsers().then(u => setUsers(u as User[]));
-                } else {
-                    const team = await api.getTeamMembers(user.id);
-                    setUsers([user, ...team]);
+                try {
+                    const [matrixData, allSysUsers] = await Promise.all([
+                        api.getSiteResponsibilityMatrix().catch(() => [] as SiteResponsibilityMatrix[]),
+                        api.getUsers().catch(() => [] as User[])
+                    ]);
+                    setMatrixList(matrixData || []);
+
+                    const scope = getUserRoutingScope(user, matrixData || []);
+                    if (scope.isGlobalAdmin) {
+                        setUsers(allSysUsers);
+                    } else {
+                        const team = await api.getTeamMembers(user.id).catch(() => []);
+                        const teamUserIds = new Set([user.id, ...team.map((t: User) => t.id)]);
+
+                        // Include user, direct reports, and site team counterparts (Chennamma, Arpitha Nair, Field Officer, Site Manager)
+                        const siteTeamUsers = allSysUsers.filter(u => {
+                            if (teamUserIds.has(u.id)) return true;
+                            if (scope.siteTeamMemberIds.has(u.id)) return true;
+                            if (scope.isTeamMemberPermitted(u.name || '')) return true;
+                            const canonical = getCanonicalUserName(u);
+                            if (canonical && scope.isTeamMemberPermitted(canonical)) return true;
+                            return false;
+                        });
+
+                        setUsers(siteTeamUsers.length > 0 ? siteTeamUsers : [user, ...team]);
+                    }
+                } catch (e) {
+                    console.error('Failed to init task management scoping:', e);
                 }
             }
             await loadTasks();
             await runAutomaticEscalations();
-        }
+        };
         init();
     }, [user, loadTasks, runAutomaticEscalations]);
 
@@ -173,12 +200,26 @@ const TaskManagement: React.FC = () => {
     };
 
     const filteredTasks = useMemo(() => {
-        const isPrivileged = user && ['admin', 'hr', 'developer'].includes(user.role);
         const allowedUserIds = users.map(u => u.id);
 
         return tasks.filter(task => {
-            if (!isPrivileged && task.assignedToId && !allowedUserIds.includes(task.assignedToId)) {
-                return false;
+            if (!routingScope.isGlobalAdmin) {
+                // 1. Task assigned directly to user
+                const isAssignedToMe = task.assignedToId === user?.id || 
+                    (task.assignedToName && user?.name && task.assignedToName.toLowerCase() === user.name.toLowerCase());
+                // 2. Task assigned to a site team counterpart (e.g. Chennamma, Arpitha Nair, Field Officer, Site Mgr)
+                const isAssignedToTeamMember = (task.assignedToId && (allowedUserIds.includes(task.assignedToId) || routingScope.siteTeamMemberIds.has(task.assignedToId))) ||
+                    (task.assignedToName && routingScope.isTeamMemberPermitted(task.assignedToName));
+                // 3. Task referencing one of user's permitted sites in its name or description
+                const referencesPermittedSite = Array.from(routingScope.permittedSiteNames).some(siteName => {
+                    const lowerSite = siteName.toLowerCase();
+                    return (task.name && task.name.toLowerCase().includes(lowerSite)) ||
+                           (task.description && task.description.toLowerCase().includes(lowerSite));
+                });
+
+                if (!isAssignedToMe && !isAssignedToTeamMember && !referencesPermittedSite) {
+                    return false;
+                }
             }
 
             if (statusFilter !== 'all' && task.status !== statusFilter) {
@@ -199,7 +240,7 @@ const TaskManagement: React.FC = () => {
             
             return true;
         });
-    }, [tasks, statusFilter, priorityFilter, assignedToFilter, user, users, searchTerm]);
+    }, [tasks, statusFilter, priorityFilter, assignedToFilter, user, users, searchTerm, routingScope]);
 
     const clearFilters = () => {
         setStatusFilter('all');

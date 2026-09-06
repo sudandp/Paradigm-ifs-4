@@ -1344,11 +1344,41 @@ const AttendanceDashboard: React.FC = () => {
         }
     }, [user]);
 
+    // Auto-prefill passcode input whenever the active report type has an approved request
+    useEffect(() => {
+        if (!accessRequests || accessRequests.length === 0) return;
+        const reportUuids: Record<string, string> = {
+            basic: '00000000-0000-0000-0000-000000000000',
+            monthly: '44444444-4444-4444-4444-444444444444',
+            leave_balance: '55555555-5555-5555-5555-555555555555',
+            site_ot: '66666666-6666-6666-6666-666666666666',
+            work_hours: '11111111-1111-1111-1111-111111111111',
+            log: '22222222-2222-2222-2222-222222222222',
+            audit: '33333333-3333-3333-3333-333333333333'
+        };
+        const targetUuid = reportUuids[reportType];
+        const rawLatestRequest = accessRequests.find(r => r.record_id === targetUuid);
+        const isExpired = rawLatestRequest && rawLatestRequest.status === 'Approved' && rawLatestRequest.updated_at &&
+            (Date.now() - new Date(rawLatestRequest.updated_at).getTime() > 2 * 60 * 60 * 1000);
+
+        if (rawLatestRequest && rawLatestRequest.status === 'Approved' && !isExpired) {
+            const code = extractPasscode(rawLatestRequest.comments) || generateDeterministicPasscode(rawLatestRequest.id);
+            if (code) {
+                setPasscodeInput(code);
+            }
+        }
+    }, [reportType, accessRequests]);
+
     useEffect(() => {
         if (user && user.role === 'hr_ops') {
             fetchAccessRequests();
 
-            const channel = supabase.channel('access-requests-dashboard')
+            // Periodic auto-refresh poll every 3 seconds to immediately catch approvals
+            const pollInterval = setInterval(() => {
+                fetchAccessRequests();
+            }, 3000);
+
+            const channel = supabase.channel(`access-requests-dashboard-${user.id}`)
                 .on(
                     'postgres_changes',
                     { event: '*', schema: 'public', table: 'ops_approval_requests', filter: `requested_by=eq.${user.id}` },
@@ -1359,6 +1389,7 @@ const AttendanceDashboard: React.FC = () => {
                 .subscribe();
 
             return () => {
+                clearInterval(pollInterval);
                 supabase.removeChannel(channel);
             };
         }

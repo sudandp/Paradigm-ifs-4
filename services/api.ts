@@ -18,12 +18,20 @@ import type {
   SiteResponsibilityMatrix, SiteChangeRequest
 } from '../types';
 import { INITIAL_SITE_RESPONSIBILITY_DATA } from '../data/initialSiteResponsibilityData';
-import { normalizeCompanyShortName } from './siteRoutingScope';
+import { 
+  normalizeCompanyShortName, 
+  normalizeOpsInchargeName, 
+  normalizeHrInchargeName, 
+  normalizeAccountsInchargeName,
+  getCanonicalUserName,
+  getCleanRoot,
+  isSiteActiveForUser
+} from './siteRoutingScope';
 import { getObjectDiff } from '../utils/diff';
 import { 
   differenceInCalendarDays, differenceInCalendarMonths, differenceInMonths, differenceInYears, format, startOfMonth, endOfMonth, 
   startOfDay, endOfDay, eachDayOfInterval, isSameDay, getDay, getDate, getDaysInMonth, addMonths, addDays,
-  subDays, subMonths, eachMonthOfInterval, isSameMonth, startOfWeek
+  subDays, subMonths, eachMonthOfInterval, isSameMonth, startOfWeek, parseISO
 } from 'date-fns';
 import { useAuthStore } from '../store/authStore';
 import { compressImageFile, CLIENT_COMPRESSION_PRESETS } from '../utils/imageCompression';
@@ -883,7 +891,24 @@ export const api = {
       const { data, error } = await query;
       if (error) throw error;
 
-      return (data || []).map(toCamelCase);
+      return (data || []).map(r => {
+        const item = toCamelCase(r);
+        const dateRef = item.managerTentativeDate || item.invoiceSharingTentativeDate || item.createdAt;
+        let bMonth = '';
+        if (dateRef) {
+          try {
+            bMonth = format(parseISO(dateRef), 'yyyy-MM-01');
+          } catch {
+            bMonth = (dateRef.substring(0, 7)) + '-01';
+          }
+        } else {
+          bMonth = format(new Date(), 'yyyy-MM-01');
+        }
+        return {
+          ...item,
+          billingMonth: item.billingMonth || bMonth
+        };
+      });
     });
   },
 
@@ -897,22 +922,115 @@ export const api = {
       
       const { data, error } = await query;
       if (error) throw error;
-      return (data || []).map(toCamelCase);
+      return (data || []).map(r => {
+        const item = toCamelCase(r);
+        const dateRef = item.managerTentativeDate || item.invoiceSharingTentativeDate || item.createdAt;
+        let bMonth = '';
+        if (dateRef) {
+          try {
+            bMonth = format(parseISO(dateRef), 'yyyy-MM-01');
+          } catch {
+            bMonth = (dateRef.substring(0, 7)) + '-01';
+          }
+        } else {
+          bMonth = format(new Date(), 'yyyy-MM-01');
+        }
+        return {
+          ...item,
+          billingMonth: item.billingMonth || bMonth
+        };
+      });
     });
   },
 
   saveSiteInvoiceRecord: async (record: Partial<SiteInvoiceRecord>): Promise<SiteInvoiceRecord> => {
     const { id, sNo, createdAt, updatedAt, revisionCount, ...rest } = record;
-    const dbData = toSnakeCase(rest);
-    let query;
-    if (id) {
-      // Fetch the existing record for diff comparison
-      const { data: existingRaw } = await supabase.from('site_invoice_tracker').select('*').eq('id', id).single();
+    
+    // Whitelist genuine database columns in PostgreSQL to prevent PostgREST schema cache errors
+    const VALID_SITE_INVOICE_DB_COLUMNS = new Set([
+      'id', 'site_id', 'site_name', 'company_name', 'billing_cycle',
+      'ops_remarks', 'hr_remarks', 'finance_remarks',
+      'ops_incharge', 'hr_incharge', 'invoice_incharge',
+      'manager_tentative_date', 'manager_received_date',
+      'hr_tentative_date', 'hr_received_date', 'attendance_received_time',
+      'invoice_sharing_tentative_date', 'invoice_prepared_date',
+      'invoice_sent_date', 'invoice_sent_time', 'invoice_sent_method_remarks',
+      'created_by', 'created_by_name', 'created_by_role',
+      'deleted_at', 'deleted_by', 'deleted_by_name', 'deleted_reason',
+      'created_at', 'updated_at'
+    ]);
+
+    const rawDbData = toSnakeCase(rest);
+    const dbData: Record<string, any> = {};
+    for (const [k, v] of Object.entries(rawDbData)) {
+      if (VALID_SITE_INVOICE_DB_COLUMNS.has(k)) {
+        dbData[k] = v;
+      }
+    }
+
+    // Preserve balance fields into finance_remarks if present
+    const bal = rawDbData.received_balance || (record as any).receivedBalance;
+    const rec = rawDbData.received_balance_receipt || (record as any).receivedBalanceReceipt;
+    if (bal) {
+      const balTag = `[Bal: ${bal}${rec ? ` / Rec: ${rec}` : ''}]`;
+      const curRemarks = dbData.finance_remarks || '';
+      if (!curRemarks.includes(balTag)) {
+        dbData.finance_remarks = curRemarks ? `${curRemarks} ${balTag}` : balTag;
+      }
+    }
+
+    const targetMonthStr = record.billingMonth 
+      ? record.billingMonth.substring(0, 7) 
+      : (record.managerTentativeDate ? record.managerTentativeDate.substring(0, 7) : format(new Date(), 'yyyy-MM'));
+
+    if (!dbData.manager_tentative_date && targetMonthStr) {
+      const [y, m] = targetMonthStr.split('-').map(Number);
+      const lastDay = new Date(y, m, 0).getDate();
+      dbData.manager_tentative_date = `${targetMonthStr}-${String(lastDay).padStart(2, '0')}`;
+    }
+    dbData.updated_at = new Date().toISOString();
+
+    let recordIdToUpdate = id;
+
+    // Check if an active record already exists for the same site & month to avoid duplicate creation
+    if (!recordIdToUpdate && record.siteName) {
+      const cleanSite = record.siteName.trim();
+      const { data: existingMatches } = await supabase
+        .from('site_invoice_tracker')
+        .select('*')
+        .is('deleted_at', null)
+        .ilike('site_name', cleanSite);
+
+      if (existingMatches && existingMatches.length > 0) {
+        const match = existingMatches.find(m => {
+          const mDate = m.manager_tentative_date || m.invoice_sharing_tentative_date || m.created_at;
+          return mDate && mDate.substring(0, 7) === targetMonthStr;
+        });
+        if (match) {
+          recordIdToUpdate = match.id;
+        }
+      }
+    }
+
+    let savedData;
+    if (recordIdToUpdate) {
+      // Fetch the existing record for diff comparison and non-destructive merge
+      const { data: existingRaw } = await supabase.from('site_invoice_tracker').select('*').eq('id', recordIdToUpdate).single();
       const existingRecord = existingRaw ? toCamelCase(existingRaw) : null;
 
-      query = supabase.from('site_invoice_tracker').update(dbData).eq('id', id);
-      const { data, error } = await query.select().single();
+      // Non-destructive field merge: preserve existing values if incoming field is undefined or empty
+      const mergedDbData: Record<string, any> = { ...(existingRaw || {}) };
+      for (const [k, v] of Object.entries(dbData)) {
+        if (v !== undefined && v !== null && v !== '') {
+          mergedDbData[k] = v;
+        }
+      }
+      mergedDbData.updated_at = new Date().toISOString();
+      delete mergedDbData.id;
+
+      const { data, error } = await supabase.from('site_invoice_tracker').update(mergedDbData).eq('id', recordIdToUpdate).select().single();
       if (error) throw error;
+      savedData = data;
 
       // Log revision if there are differences
       if (existingRecord) {
@@ -920,23 +1038,24 @@ export const api = {
         if (Object.keys(diff).length > 0) {
           const newRevisionNumber = (existingRecord.revisionCount || 0) + 1;
           await supabase.from('site_invoice_revisions').insert({
-            record_id: id,
+            record_id: recordIdToUpdate,
             revised_by: record.createdBy || null,
             revised_by_name: record.createdByName || 'Unknown',
             diff: diff,
             revision_number: newRevisionNumber
           });
-          // Update revision count on the main record
-          await supabase.from('site_invoice_tracker').update({ revision_count: newRevisionNumber }).eq('id', id);
+          await supabase.from('site_invoice_tracker').update({ revision_count: newRevisionNumber }).eq('id', recordIdToUpdate);
         }
       }
-      return toCamelCase(data);
     } else {
-      query = supabase.from('site_invoice_tracker').insert(dbData);
-      const { data, error } = await query.select().single();
+      const { data, error } = await supabase.from('site_invoice_tracker').insert(dbData).select().single();
       if (error) throw error;
-      return toCamelCase(data);
+      savedData = data;
     }
+
+    // Invalidate local cache so UI displays updated data immediately
+    await offlineDb.removeCache('site_invoice_records_all');
+    return toCamelCase(savedData);
   },
 
   softDeleteSiteInvoiceRecord: async (id: string, reason: string, userId: string, userName: string): Promise<void> => {
@@ -1106,13 +1225,135 @@ export const api = {
     if (error) throw error;
   },
 
-  bulkSaveSiteInvoiceRecords: async (records: Partial<SiteInvoiceRecord>[]): Promise<void> => {
-    const dbRecords = records.map(r => {
-      const { id, sNo, createdAt, updatedAt, ...rest } = r;
-      return toSnakeCase(rest);
+  bulkSaveSiteInvoiceRecords: async (records: Partial<SiteInvoiceRecord>[]): Promise<{ updatedCount: number; createdCount: number }> => {
+    if (!records || records.length === 0) return { updatedCount: 0, createdCount: 0 };
+
+    const VALID_SITE_INVOICE_DB_COLUMNS = new Set([
+      'id', 'site_id', 'site_name', 'company_name', 'billing_cycle',
+      'ops_remarks', 'hr_remarks', 'finance_remarks',
+      'ops_incharge', 'hr_incharge', 'invoice_incharge',
+      'manager_tentative_date', 'manager_received_date',
+      'hr_tentative_date', 'hr_received_date', 'attendance_received_time',
+      'invoice_sharing_tentative_date', 'invoice_prepared_date',
+      'invoice_sent_date', 'invoice_sent_time', 'invoice_sent_method_remarks',
+      'created_by', 'created_by_name', 'created_by_role',
+      'deleted_at', 'deleted_by', 'deleted_by_name', 'deleted_reason',
+      'created_at', 'updated_at'
+    ]);
+
+    // Fetch all active records to check for existing site + month pairs
+    const { data: allActiveRaw } = await supabase
+      .from('site_invoice_tracker')
+      .select('*')
+      .is('deleted_at', null);
+    
+    const activeList = allActiveRaw || [];
+    
+    // Index active records by ID and by normalized key: `site_name___YYYY-MM`
+    const idMap = new Map<string, any>();
+    const siteMonthMap = new Map<string, any>();
+    
+    activeList.forEach(r => {
+      idMap.set(r.id, r);
+      const sName = (r.site_name || '').toLowerCase().trim();
+      const dateRef = r.manager_tentative_date || r.invoice_sharing_tentative_date || r.created_at;
+      if (sName && dateRef) {
+        const ym = dateRef.substring(0, 7);
+        siteMonthMap.set(`${sName}___${ym}`, r);
+      }
     });
-    const { error } = await supabase.from('site_invoice_tracker').insert(dbRecords);
-    if (error) throw error;
+
+    let updatedCount = 0;
+    let createdCount = 0;
+
+    const toUpdate: { id: string; payload: any }[] = [];
+    const toInsert: any[] = [];
+
+    for (const rec of records) {
+      const { id, sNo, createdAt, updatedAt, revisionCount, ...rest } = rec;
+      const rawDbData = toSnakeCase(rest);
+      const dbData: Record<string, any> = {};
+      for (const [k, v] of Object.entries(rawDbData)) {
+        if (VALID_SITE_INVOICE_DB_COLUMNS.has(k)) {
+          dbData[k] = v;
+        }
+      }
+
+      // Preserve balance fields into finance_remarks if provided
+      const bal = rawDbData.received_balance || (rec as any).receivedBalance;
+      const recNo = rawDbData.received_balance_receipt || (rec as any).receivedBalanceReceipt;
+      if (bal) {
+        const balTag = `[Bal: ${bal}${recNo ? ` / Rec: ${recNo}` : ''}]`;
+        const curRemarks = dbData.finance_remarks || '';
+        if (!curRemarks.includes(balTag)) {
+          dbData.finance_remarks = curRemarks ? `${curRemarks} ${balTag}` : balTag;
+        }
+      }
+      
+      const targetMonthStr = rec.billingMonth 
+        ? rec.billingMonth.substring(0, 7) 
+        : (rec.managerTentativeDate ? rec.managerTentativeDate.substring(0, 7) : format(new Date(), 'yyyy-MM'));
+
+      if (!dbData.manager_tentative_date && targetMonthStr) {
+        const [y, m] = targetMonthStr.split('-').map(Number);
+        const lastDay = new Date(y, m, 0).getDate();
+        dbData.manager_tentative_date = `${targetMonthStr}-${String(lastDay).padStart(2, '0')}`;
+      }
+
+      const sName = (rec.siteName || '').toLowerCase().trim();
+      const key = `${sName}___${targetMonthStr}`;
+
+      const existingRecord = (id && idMap.get(id)) || siteMonthMap.get(key);
+
+      if (existingRecord) {
+        // Non-destructive merge: preserve existing values if incoming field is empty/null/undefined
+        const merged: Record<string, any> = { ...existingRecord };
+        for (const [k, v] of Object.entries(dbData)) {
+          if (v !== undefined && v !== null && v !== '') {
+            merged[k] = v;
+          }
+        }
+        merged.updated_at = new Date().toISOString();
+        delete merged.id;
+        delete merged.created_at;
+
+        // Ensure only valid DB columns are kept in payload
+        const finalPayload: Record<string, any> = {};
+        for (const [k, v] of Object.entries(merged)) {
+          if (VALID_SITE_INVOICE_DB_COLUMNS.has(k)) {
+            finalPayload[k] = v;
+          }
+        }
+        toUpdate.push({ id: existingRecord.id, payload: finalPayload });
+      } else {
+        dbData.created_at = dbData.created_at || new Date().toISOString();
+        dbData.updated_at = new Date().toISOString();
+        toInsert.push(dbData);
+      }
+    }
+
+    // Execute updates
+    for (const u of toUpdate) {
+      const { error } = await supabase.from('site_invoice_tracker').update(u.payload).eq('id', u.id);
+      if (!error) updatedCount++;
+      else console.error(`[API] Bulk update failed for record ${u.id}:`, error);
+    }
+
+    // Execute inserts in batches of 50
+    const BATCH_SIZE = 50;
+    for (let i = 0; i < toInsert.length; i += BATCH_SIZE) {
+      const batch = toInsert.slice(i, i + BATCH_SIZE);
+      const { error } = await supabase.from('site_invoice_tracker').insert(batch);
+      if (!error) createdCount += batch.length;
+      else {
+        console.error('[API] Bulk insert batch failed:', error);
+        throw error;
+      }
+    }
+
+    // Invalidate local cache
+    await offlineDb.removeCache('site_invoice_records_all');
+    return { updatedCount, createdCount };
   },
 
   // --- Site Change Requests (Historical Reporting Manager Approval Workflow) ---
@@ -3136,6 +3377,7 @@ export const api = {
     if (societyId !== undefined) dbUpdates.society_id = societyId;
     if (societyName !== undefined) dbUpdates.society_name = societyName;
     if (locationId !== undefined) dbUpdates.location_id = locationId;
+    if (location !== undefined) dbUpdates.location = location;
 
     if ('photo_url' in dbUpdates) {
       const { data: { session } } = await supabase.auth.getSession();
@@ -3209,6 +3451,20 @@ export const api = {
       } catch (authErr) {
         console.warn('[updateUser] Could not sync auth email via RPC:', authErr);
       }
+    }
+
+    try {
+      const updatedCamel = toCamelCase({ ...data, role: data.role_id });
+      const cachedAll = await offlineDb.getCache('users_all');
+      if (cachedAll && Array.isArray(cachedAll)) {
+        await offlineDb.setCache('users_all', cachedAll.map((u: any) => u.id === id ? { ...u, ...updatedCamel } : u));
+      }
+      const cached = await offlineDb.getCache('users');
+      if (cached && Array.isArray(cached)) {
+        await offlineDb.setCache('users', cached.map((u: any) => u.id === id ? { ...u, ...updatedCamel } : u));
+      }
+    } catch (cErr) {
+      console.warn('[updateUser] Failed to sync cache:', cErr);
     }
 
     return toCamelCase({ ...data, role: data.role_id });
@@ -3355,7 +3611,7 @@ export const api = {
   bulkUpdateUsers: async (userIds: string[], updates: Partial<User>): Promise<void> => {
     if (userIds.length === 0) return;
 
-    const { role, organizationId, organizationName, societyId, societyName, locationId, ...rest } = updates;
+    const { role, organizationId, organizationName, societyId, societyName, locationId, location, ...rest } = updates;
     const dbUpdates: any = toSnakeCase(rest);
     if (role) dbUpdates.role_id = role;
     if (organizationId !== undefined) dbUpdates.organization_id = organizationId;
@@ -3363,6 +3619,7 @@ export const api = {
     if (societyId !== undefined) dbUpdates.society_id = societyId;
     if (societyName !== undefined) dbUpdates.society_name = societyName;
     if (locationId !== undefined) dbUpdates.location_id = locationId;
+    if (location !== undefined) dbUpdates.location = location;
 
     // Final surgical cleanup: converting empty strings and undefined to null for database compatibility.
     // This prevents errors with non-text columns (like DATE or UUID) when optional fields are left empty.
@@ -3699,6 +3956,38 @@ export const api = {
     // This will create new records or update existing basic info without overwriting manually managed manpower limits.
     const { error: orgError } = await supabase.from('organizations').upsert(orgData, { onConflict: 'id' });
     if (orgError) throw orgError;
+
+    // 5. Update offline DB cache and sync site matrix + user site allocations
+    await offlineDb.setCache('organization_structure', groups);
+    
+    // Auto-sync Site Responsibility Matrix for all entities in groups
+    try {
+      const allEntities = groups.flatMap(g => g.companies.flatMap(c => c.entities.map(e => ({ ...e, companyName: c.name }))));
+      for (const ent of allEntities) {
+        if (!ent.name) continue;
+        const compName = ent.companyName || '';
+        const opComp = normalizeCompanyShortName(compName || 'PIFS');
+        await api.upsertSiteResponsibility({
+          siteName: ent.name,
+          siteId: ent.id,
+          billingCompany: opComp,
+          billingCycle: ent.billingControls?.billingCycle || (ent as any).billingCycle || '3rd Billing Cycle',
+          billingLegalName: ent.billingName || (ent as any).billingLegalName || ent.name,
+          unitsCount: ent.siteManagement?.unitCount || (ent as any).unitsCount || null,
+          takeoverDate: ent.siteTakeoverDate || (ent as any).takeoverDate || null,
+          gstin: ent.gstNumber || null,
+          pan: ent.panNumber || null,
+          opsManagerName: (ent as any).opsManager || (ent as any).opsManagerName || ent.siteManagement?.opsManager || ent.siteManagement?.keyAccountManager || 'Sandeep B',
+          hrInchargeName: (ent as any).hrIncharge || (ent as any).hrInchargeName || ent.siteManagement?.hrIncharge || 'Poojashree S',
+          accountsInchargeName: (ent as any).accountsIncharge || (ent as any).accountsInchargeName || ent.siteManagement?.accountsIncharge || 'Arpitha Nair',
+          siteManagerName: (ent as any).siteManager || (ent as any).siteManagerName || ent.siteManagement?.siteManager || null,
+          fieldOfficerName: (ent as any).fieldOfficer || (ent as any).fieldOfficerName || ent.siteManagement?.fieldOfficer || null,
+          isActive: true
+        });
+      }
+    } catch (e) {
+      console.warn('[API] Warning during matrix sync in bulkSaveOrganizationStructure:', e);
+    }
   },
   createOrganizationGroup: async (group: Partial<OrganizationGroup>): Promise<OrganizationGroup> => {
     const { data, error } = await supabase.from('organization_groups').insert(toSnakeCase(group)).select().single();
@@ -3794,11 +4083,61 @@ export const api = {
       console.error('Supabase error saving entity:', error);
       throw error;
     }
-    return toCamelCase(data);
+    const savedEntity: Entity = toCamelCase(data);
+
+    // Automatic Site Responsibility Matrix & User Site Allocation Propagation
+    try {
+      let operatingComp = 'PIFS';
+      if (entity.companyId) {
+        const structure = (await offlineDb.getCache('organization_structure')) || [];
+        const matchedComp = (structure as any[]).flatMap(g => g.companies || []).find(c => c.id === entity.companyId);
+        if (matchedComp?.name) {
+          operatingComp = normalizeCompanyShortName(matchedComp.name);
+        }
+      }
+      if (!operatingComp || operatingComp === 'PIFS') {
+        const op = (entity.billingControls?.operatingCompany || (entity as any).operatingCompany || (entity as any).companyName || '').toUpperCase();
+        if (op) operatingComp = normalizeCompanyShortName(op);
+      }
+
+      const sitePayload: Partial<SiteResponsibilityMatrix> = {
+        siteName: entity.name || savedEntity.name,
+        siteId: savedEntity.id || entity.id,
+        billingCompany: operatingComp,
+        billingCycle: entity.billingControls?.billingCycle || (entity as any).billingCycle || '3rd Billing Cycle',
+        billingLegalName: entity.billingName || (entity as any).billingLegalName || entity.name,
+        unitsCount: entity.siteManagement?.unitCount || (entity as any).unitsCount || null,
+        takeoverDate: entity.siteTakeoverDate || (entity as any).takeoverDate || null,
+        gstin: entity.gstNumber || null,
+        pan: entity.panNumber || null,
+        opsManagerName: (entity as any).opsManager || (entity as any).opsManagerName || entity.siteManagement?.opsManager || entity.siteManagement?.keyAccountManager || (entity as any).managerName || 'Sandeep B',
+        hrInchargeName: (entity as any).hrIncharge || (entity as any).hrInchargeName || entity.siteManagement?.hrIncharge || 'Poojashree S',
+        accountsInchargeName: (entity as any).accountsIncharge || (entity as any).accountsInchargeName || entity.siteManagement?.accountsIncharge || 'Arpitha Nair',
+        siteManagerName: (entity as any).siteManager || (entity as any).siteManagerName || entity.siteManagement?.siteManager || null,
+        fieldOfficerName: (entity as any).fieldOfficer || (entity as any).fieldOfficerName || entity.siteManagement?.fieldOfficer || null,
+        isActive: true
+      };
+
+      await api.upsertSiteResponsibility(sitePayload);
+    } catch (matrixErr) {
+      console.warn('[API] Non-critical warning auto-syncing site matrix on saveEntity:', matrixErr);
+    }
+
+    return savedEntity;
   },
   deleteEntity: async (id: string): Promise<void> => {
     const { error } = await supabase.from('entities').delete().eq('id', id);
     if (error) throw error;
+
+    try {
+      const cachedMatrix = (await offlineDb.getCache('site_responsibility_matrix')) || [];
+      const match = cachedMatrix.find((m: any) => m.siteId === id || m.id === id);
+      if (match) {
+        await api.deleteSiteResponsibility(match.id);
+      }
+    } catch (e) {
+      console.warn('[API] Warning deleting site matrix mapping for deleted entity:', e);
+    }
   },
   saveSiteConfiguration: async (organizationId: string, config: SiteConfiguration): Promise<void> => {
     const status = await Network.getStatus();
@@ -11495,6 +11834,18 @@ export const api = {
         if (item.billingCompany) {
           item.billingCompany = normalizeCompanyShortName(item.billingCompany);
         }
+        if (item.opsManagerName) {
+          item.opsManagerName = normalizeOpsInchargeName(item.opsManagerName);
+        }
+        if (item.hrInchargeName) {
+          item.hrInchargeName = normalizeHrInchargeName(item.hrInchargeName);
+        }
+        if ((item.billingCompany || '').toUpperCase().includes('SWLLP') && item.hrInchargeName === 'Chennamma') {
+          item.hrInchargeName = 'Baskar A';
+        }
+        if (item.accountsInchargeName) {
+          item.accountsInchargeName = normalizeAccountsInchargeName(item.accountsInchargeName);
+        }
         if (!item.fieldOfficerName && row.routing_rules?.field_officer_name) {
           item.fieldOfficerName = row.routing_rules.field_officer_name;
         } else if (!item.fieldOfficerName && Array.isArray(row.routing_rules?.field_officers)) {
@@ -11517,7 +11868,24 @@ export const api = {
         } else if (!item.siteSupervisorId && item.siteManagerId) {
           item.siteSupervisorId = item.siteManagerId;
         }
+
+        // Parse change_log from JSON string stored in DB
+        if (row.change_log) {
+          try {
+            item.changeLog = typeof row.change_log === 'string'
+              ? JSON.parse(row.change_log)
+              : row.change_log;
+          } catch {
+            item.changeLog = [];
+          }
+        }
+        // Map effective_from column
+        if (row.effective_from !== undefined) {
+          item.effectiveFrom = row.effective_from || null;
+        }
+
         return item;
+
       });
       await offlineDb.setCache('site_responsibility_matrix', formatted);
       return formatted;
@@ -11538,6 +11906,57 @@ export const api = {
       if (!isValidUUID) {
         delete payload.id;
       }
+
+      // ── Change log snapshotting ───────────────────────────────────────────
+      // 1. Find the existing record from cache to snapshot old values
+      const cachedMatrix: SiteResponsibilityMatrix[] = (await offlineDb.getCache('site_responsibility_matrix')) || [];
+      const existingRecord = Array.isArray(cachedMatrix)
+        ? cachedMatrix.find(m => m.siteName?.toLowerCase() === matrix.siteName?.toLowerCase())
+        : null;
+
+      // 2. Detect which incharge fields actually changed
+      const inchargeFields: Array<[keyof SiteResponsibilityMatrix, string, string]> = [
+        ['opsManagerName',       'previousOpsManager',       'newOpsManager'],
+        ['hrInchargeName',       'previousHrIncharge',       'newHrIncharge'],
+        ['accountsInchargeName', 'previousAccountsIncharge', 'newAccountsIncharge'],
+        ['siteManagerName',      'previousSiteManager',      'newSiteManager'],
+        ['fieldOfficerName',     'previousFieldOfficer',     'newFieldOfficer'],
+      ];
+
+      const inchargesChanged = existingRecord && inchargeFields.some(([field]) => {
+        const oldVal = (existingRecord[field] || '') as string;
+        const newVal = (matrix[field] || '') as string;
+        return oldVal.trim().toLowerCase() !== newVal.trim().toLowerCase();
+      });
+
+      if (inchargesChanged && existingRecord) {
+        // 3. Build the new log entry
+        const effectiveFrom = matrix.effectiveFrom || new Date().toISOString().slice(0, 10);
+        const logEntry: import('../types/siteRouting').SiteInchargeChangeEntry = {
+          changedAt: new Date().toISOString(),
+          effectiveFrom,
+          changedBy: (matrix as any).changedBy || undefined,
+          previousOpsManager:       existingRecord.opsManagerName,
+          previousHrIncharge:       existingRecord.hrInchargeName,
+          previousAccountsIncharge: existingRecord.accountsInchargeName,
+          previousSiteManager:      existingRecord.siteManagerName || existingRecord.siteSupervisorName || undefined,
+          previousFieldOfficer:     existingRecord.fieldOfficerName || undefined,
+          newOpsManager:       matrix.opsManagerName,
+          newHrIncharge:       matrix.hrInchargeName,
+          newAccountsIncharge: matrix.accountsInchargeName,
+          newSiteManager:      matrix.siteManagerName || matrix.siteSupervisorName || undefined,
+          newFieldOfficer:     matrix.fieldOfficerName || undefined,
+        };
+
+        // 4. Append to existing change log
+        const existingLog = existingRecord.changeLog || [];
+        const updatedLog = [...existingLog, logEntry];
+        payload.change_log = JSON.stringify(updatedLog);
+      }
+
+      // 5. Store effective_from in the row (or null if not provided)
+      payload.effective_from = matrix.effectiveFrom || null;
+      // ─────────────────────────────────────────────────────────────────────
 
       // Clean date
       if (payload.takeover_date === '' || payload.takeover_date === undefined) {
@@ -11630,6 +12049,11 @@ export const api = {
       }
       await offlineDb.setCache('site_responsibility_matrix', updatedList);
 
+      // Auto-trigger universal system sync across users, roles, and site allocations
+      setTimeout(() => {
+        api.syncMatrixWithSystemEntitiesAndUsers([matrix.siteName].filter(Boolean) as string[]).catch(() => {});
+      }, 50);
+
       return result;
     } catch (err: any) {
       console.warn('Error in upsertSiteResponsibility, saving to local cache:', err);
@@ -11643,6 +12067,11 @@ export const api = {
         updatedList.push(result);
       }
       await offlineDb.setCache('site_responsibility_matrix', updatedList);
+
+      setTimeout(() => {
+        api.syncMatrixWithSystemEntitiesAndUsers([matrix.siteName].filter(Boolean) as string[]).catch(() => {});
+      }, 50);
+
       return result;
     }
   },
@@ -11666,6 +12095,10 @@ export const api = {
       const filtered = cached.filter(m => m.id !== id);
       await offlineDb.setCache('site_responsibility_matrix', filtered);
     }
+
+    setTimeout(() => {
+      api.syncMatrixWithSystemEntitiesAndUsers().catch(() => {});
+    }, 50);
   },
 
   bulkUpdateSiteIncharges: async (
@@ -11677,13 +12110,17 @@ export const api = {
       hrInchargeId?: string | null;
       accountsInchargeName?: string;
       accountsInchargeId?: string | null;
+      siteManagerName?: string;
+      siteManagerId?: string | null;
+      fieldOfficerName?: string;
+      fieldOfficerId?: string | null;
     }
   ): Promise<void> => {
     try {
       const payload = toSnakeCase(updates);
       payload.updated_at = new Date().toISOString();
 
-      ['ops_manager_id', 'hr_incharge_id', 'accounts_incharge_id'].forEach(key => {
+      ['ops_manager_id', 'hr_incharge_id', 'accounts_incharge_id', 'site_manager_id', 'field_officer_id'].forEach(key => {
         if (payload[key] && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payload[key])) {
           payload[key] = null;
         }
@@ -11708,6 +12145,145 @@ export const api = {
         return site;
       });
       await offlineDb.setCache('site_responsibility_matrix', updated);
+    }
+
+    setTimeout(() => {
+      api.syncMatrixWithSystemEntitiesAndUsers(siteNames).catch(() => {});
+    }, 50);
+  },
+
+  /**
+   * Universal Auto-Sync Engine:
+   * Propagates Site Responsibility Matrix changes across all User Site Allocations,
+   * Staff Roles, Entity Relationships, and System Caches.
+   */
+  syncMatrixWithSystemEntitiesAndUsers: async (affectedSiteNames?: string[]): Promise<{ updatedUsersCount: number }> => {
+    try {
+      console.info('[API] Universal Matrix Sync started for sites:', affectedSiteNames || 'ALL');
+      const [matrixList, usersList, structure, orgs] = await Promise.all([
+        api.getSiteResponsibilityMatrix(),
+        api.getUsers({ fetchAll: true }).catch(() => [] as any[]),
+        api.getOrganizationStructure().catch(() => [] as any[]),
+        api.getOrganizations().catch(() => [] as any[])
+      ]);
+
+      const rawUsers: User[] = Array.isArray(usersList) 
+        ? usersList 
+        : ((usersList as any)?.users || (usersList as any)?.data || []);
+      
+      if (!matrixList || matrixList.length === 0 || rawUsers.length === 0) {
+        return { updatedUsersCount: 0 };
+      }
+
+      // Helper to find entity ID and clean name
+      const resolveEntity = (siteName: string): { id: string; name: string } => {
+        const rawClean = (siteName || '').toLowerCase().trim();
+        const alphaClean = rawClean.replace(/[^a-z0-9]/g, '');
+
+        for (const group of structure) {
+          for (const comp of group.companies || []) {
+            for (const ent of comp.entities || []) {
+              const entRaw = (ent.name || '').toLowerCase().trim();
+              const entAlpha = entRaw.replace(/[^a-z0-9]/g, '');
+              if (entRaw === rawClean || entAlpha === alphaClean) {
+                return { id: ent.id, name: ent.name };
+              }
+            }
+          }
+        }
+
+        for (const org of orgs) {
+          const orgRaw = (org.shortName || org.name || '').toLowerCase().trim();
+          const orgAlpha = orgRaw.replace(/[^a-z0-9]/g, '');
+          if (orgRaw === rawClean || orgAlpha === alphaClean) {
+            return { id: org.id, name: org.shortName || org.name };
+          }
+        }
+
+        return { id: `ent_${rawClean.replace(/[^a-z0-9]+/g, '_')}`, name: siteName };
+      };
+
+      let updatedUsersCount = 0;
+      const userUpdates: Promise<any>[] = [];
+
+      for (const u of rawUsers) {
+        if (!u.id) continue;
+        const uCleanName = (u.name || '').trim();
+        const uCanonical = getCanonicalUserName(u);
+        const uCleanRoot = getCleanRoot(uCanonical || uCleanName);
+
+        // Find all matrix sites mapped to this user, respecting effective dates
+        const nowForSync = new Date();
+        const matchingSites = matrixList.filter(m => {
+          if (!m.siteName) return false;
+          return isSiteActiveForUser(m, u.id, uCleanRoot, nowForSync);
+        });
+
+
+        // Only update users who have matrix allocations or previously had assigned sites
+        if (matchingSites.length > 0) {
+          const targetSocId = u.societyId || 'comp_1774006215885';
+          const headOfficeId = `${targetSocId}_head_office`;
+          
+          const newSiteIds = new Set<string>();
+          const newSiteNames = new Set<string>();
+
+          // Mandatory Head Office
+          newSiteIds.add(headOfficeId);
+          newSiteNames.add('Head Office');
+
+          matchingSites.forEach(m => {
+            const res = resolveEntity(m.siteName);
+            newSiteIds.add(res.id);
+            newSiteNames.add(res.name || m.siteName);
+          });
+
+          const finalIdsStr = Array.from(newSiteIds).join(',');
+          const finalNamesStr = Array.from(newSiteNames).join(', ');
+
+          // Role alignment if user is default or unassigned
+          let updatedRole = u.role;
+          const isOpsUser = matchingSites.some(m => getCleanRoot(m.opsManagerName || '') === uCleanRoot);
+          const isHrUser = matchingSites.some(m => getCleanRoot(m.hrInchargeName || '') === uCleanRoot);
+          const isFinanceUser = matchingSites.some(m => getCleanRoot(m.accountsInchargeName || '') === uCleanRoot);
+          const isSiteMgr = matchingSites.some(m => getCleanRoot(m.siteManagerName || m.siteSupervisorName || '') === uCleanRoot);
+          const isFO = matchingSites.some(m => getCleanRoot(m.fieldOfficerName || '') === uCleanRoot);
+
+          if ((!u.role || u.role === 'field_staff' || u.role === 'user') && isOpsUser) updatedRole = 'operations_manager';
+          else if ((!u.role || u.role === 'field_staff' || u.role === 'user') && isHrUser) updatedRole = 'hr';
+          else if ((!u.role || u.role === 'field_staff' || u.role === 'user') && isFinanceUser) updatedRole = 'finance';
+          else if ((!u.role || u.role === 'field_staff' || u.role === 'user') && isSiteMgr) updatedRole = 'site_manager';
+          else if ((!u.role || u.role === 'field_staff' || u.role === 'user') && isFO) updatedRole = 'field_officer';
+
+          const hasSiteDiff = u.organizationId !== finalIdsStr || u.organizationName !== finalNamesStr;
+          const hasRoleDiff = updatedRole && updatedRole !== u.role;
+
+          if (hasSiteDiff || hasRoleDiff) {
+            updatedUsersCount++;
+            userUpdates.push(
+              api.updateUser(u.id, {
+                organizationId: finalIdsStr,
+                organizationName: finalNamesStr,
+                ...(hasRoleDiff ? { role: updatedRole } : {})
+              }).catch(e => console.warn(`[API] Failed syncing user ${u.name}:`, e))
+            );
+          }
+        }
+      }
+
+      await Promise.allSettled(userUpdates);
+      console.info(`[API] Universal Matrix Sync complete. Updated ${updatedUsersCount} user records.`);
+
+      // Broadcast global event for instant UI re-renders across tabs
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('site_matrix_synced', { detail: { updatedCount: updatedUsersCount, timestamp: Date.now() } }));
+        window.dispatchEvent(new CustomEvent('site_matrix_updated', { detail: { timestamp: Date.now() } }));
+      }
+
+      return { updatedUsersCount };
+    } catch (err) {
+      console.warn('[API] Error in syncMatrixWithSystemEntitiesAndUsers:', err);
+      return { updatedUsersCount: 0 };
     }
   }
 };

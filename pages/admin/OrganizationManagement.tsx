@@ -1,6 +1,6 @@
 
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import type { Organization, Entity, ManpowerDetail, SiteStaffDesignation, UploadedFile } from '../../types';
@@ -20,6 +20,9 @@ import Input from '../../components/ui/Input';
 import Pagination from '../../components/ui/Pagination';
 import { Search } from 'lucide-react';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import { useAuthStore } from '../../store/authStore';
+import type { SiteResponsibilityMatrix } from '../../types/siteRouting';
+import { getUserRoutingScope } from '../../services/siteRoutingScope';
 
 
 const siteCsvColumns = ['id', 'shortName', 'fullName', 'address', 'manpowerApprovedCount', 'reportingManagerName', 'managerName', 'fieldStaffNames', 'backendFieldStaffName'];
@@ -72,7 +75,9 @@ const fromCSV = (csvText: string): Record<string, string>[] => {
 
 export const SiteManagement: React.FC = () => {
     const navigate = useNavigate();
+    const { user } = useAuthStore();
     const [organizations, setOrganizations] = useState<Organization[]>([]);
+    const [matrixList, setMatrixList] = useState<SiteResponsibilityMatrix[]>([]);
     const [allClients, setAllClients] = useState<(Entity & { companyName: string })[]>([]);
     const [siteStaffDesignations, setSiteStaffDesignations] = useState<SiteStaffDesignation[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -81,8 +86,6 @@ export const SiteManagement: React.FC = () => {
     const [pageSize, setPageSize] = useState(20);
     const [totalSites, setTotalSites] = useState(0);
     const [searchTerm, setSearchTerm] = useState('');
-
-
 
     const [entityFormState, setEntityFormState] = useState<{ isOpen: boolean; initialData: Entity | null; companyName: string }>({ isOpen: false, initialData: null, companyName: '' });
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -97,11 +100,10 @@ export const SiteManagement: React.FC = () => {
     const isMobile = useMediaQuery('(max-width: 767px)');
     const { siteManagement } = useSettingsStore();
 
-
     const fetchData = useCallback(async () => {
         setIsLoading(true);
         try {
-            const [orgsResult, structureResult, designationsResult] = await Promise.all([
+            const [orgsResult, structureResult, designationsResult, matrixResult] = await Promise.all([
                 api.getOrganizations().catch(e => { console.error("Failed to fetch organizations:", e); return []; }),
                 api.getOrganizationStructure().catch(e => { console.error("Failed to fetch organization structure:", e); return []; }),
                 api.getSiteStaffDesignations().catch(e => {
@@ -109,9 +111,10 @@ export const SiteManagement: React.FC = () => {
                     setToast({ message: 'Could not load designation list. Manpower editing may be affected.', type: 'error' });
                     return [];
                 }),
+                api.getSiteResponsibilityMatrix().catch(() => [] as SiteResponsibilityMatrix[])
             ]);
             setOrganizations(orgsResult);
-            setTotalSites(orgsResult.length);
+            setMatrixList(matrixResult || []);
             setSiteStaffDesignations(designationsResult);
             const clients = structureResult.flatMap(group =>
                 group.companies.flatMap(company =>
@@ -120,12 +123,33 @@ export const SiteManagement: React.FC = () => {
             );
             setAllClients(clients);
         } catch (error) {
-            // This block will now only catch truly unexpected errors, not single API call failures.
             setToast({ message: 'An unexpected error occurred while fetching data.', type: 'error' });
         } finally {
             setIsLoading(false);
         }
     }, []);
+
+    const routingScope = useMemo(() => getUserRoutingScope(user, matrixList), [user, matrixList]);
+
+    const scopedOrganizations = useMemo(() => {
+        return organizations.filter(org => {
+            const sName = org.shortName || org.fullName || '';
+            return routingScope.isSitePermitted(sName, (org as any).companyName);
+        });
+    }, [organizations, routingScope]);
+
+    const filteredOrganizations = useMemo(() => {
+        if (!searchTerm.trim()) return scopedOrganizations;
+        const term = searchTerm.toLowerCase().trim();
+        return scopedOrganizations.filter(org =>
+            (org.shortName || '').toLowerCase().includes(term) ||
+            (org.fullName || '').toLowerCase().includes(term)
+        );
+    }, [scopedOrganizations, searchTerm]);
+
+    useEffect(() => {
+        setTotalSites(filteredOrganizations.length);
+    }, [filteredOrganizations]);
 
     useEffect(() => {
         setCurrentPage(1);
@@ -427,12 +451,7 @@ export const SiteManagement: React.FC = () => {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-border">
-                                    {organizations
-                                    .filter(org => 
-                                        searchTerm === '' || 
-                                        org.shortName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                        org.fullName.toLowerCase().includes(searchTerm.toLowerCase())
-                                    )
+                                    {filteredOrganizations
                                     .slice((currentPage - 1) * pageSize, currentPage * pageSize)
                                     .map((org) => {
                                         const isProvisional = !!org.provisionalCreationDate;
@@ -528,11 +547,7 @@ export const SiteManagement: React.FC = () => {
 
                             <Pagination 
                                 currentPage={currentPage}
-                                totalItems={organizations.filter(org => 
-                                    searchTerm === '' || 
-                                    org.shortName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                    org.fullName.toLowerCase().includes(searchTerm.toLowerCase())
-                                ).length}
+                                totalItems={filteredOrganizations.length}
                                 pageSize={pageSize}
                                 onPageChange={setCurrentPage}
                                 onPageSizeChange={setPageSize}

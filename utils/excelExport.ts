@@ -896,7 +896,7 @@ export const exportMonthlyMatrixToExcel = async (
         currentRow++;
         worksheet.mergeCells(`A${currentRow}:${mergeEndCol}${currentRow}`);
         const legendCell = worksheet.getCell(`A${currentRow}`);
-        legendCell.value = 'NOTATION REFERENCE: P: Present | 0.5P: Half Day | OT: Overtime | C/O: Comp Off | E/L: Earned Leave | S/L: Sick Leave | A: Absent | W/O: Weekly Off | H: Holiday | Pay: Total Payable Days';
+        legendCell.value = 'NOTATION REFERENCE: P: Present | 0.5P: Half Day | OT: Overtime | C/O: Comp Off | E/L: Earned Leave | S/L: Sick Leave | A: Absent | W/O: Weekly Off | H: Holiday | RP: Permission (e.g. 0.75P+0.25RP) | Pay: Total Payable Days';
         legendCell.font = { size: 8.5, color: { argb: 'FF4B5563' } };
         legendCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
         legendCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } };

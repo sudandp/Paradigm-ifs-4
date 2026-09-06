@@ -19,6 +19,7 @@ import {
   evaluateAttendanceStatus,
   getStaffCategory,
   calculateDailyPathTravelKm,
+  getEarlyDepartureDeductions,
 } from './attendanceCalculations';
 import { getFieldStaffStatus } from './fieldStaffTracking';
 import { FIXED_HOLIDAYS } from './constants';
@@ -388,6 +389,29 @@ export function processEmployeeMonth(
   const hasLeavesInMonth = allLeaves.length > 0;
   const isZeroActivityMonth = !hasEventsInMonth && !hasLeavesInMonth;
 
+  // Synthesize auto-deducted early departures for this month
+  const targetShiftMins = (rules?.minimumHoursFullDay || rules?.dailyWorkingHours?.min || 8) * 60;
+  const baseLeaves = (allLeaves && allLeaves.length > 0) ? allLeaves : (userLeaves || []);
+  const earlyDepartureList = getEarlyDepartureDeductions(events, targetShiftMins, baseLeaves, baseLeaves, monthStartStr);
+  const autoEarlyDepartureLeaves = earlyDepartureList.map(ed => ({
+      id: `early-dep-${ed.dateStr}-${user.id}`,
+      userId: user.id,
+      user_id: user.id,
+      userName: user.name,
+      leaveType: 'Request for Permission (RP)',
+      startDate: ed.dateStr,
+      endDate: ed.dateStr,
+      dayOption: 'full',
+      status: 'approved',
+      correctionDetails: {
+          punchIn: ed.punchOutTime,
+          punchOut: ed.permissionEndTime,
+          permissionMinutes: ed.earlyMins,
+          reason: `Leaving work early (${ed.permissionTimeRange}) automatically deducted from monthly permission pool.`
+      }
+  }));
+  const leavesToSearch = [...baseLeaves, ...autoEarlyDepartureLeaves];
+
   for (let day = 1; day <= daysInPeriod; day++) {
     const currentDate = new Date(year, month - 1, day);
     if (currentDate.getDay() === 1) {
@@ -406,7 +430,6 @@ export function processEmployeeMonth(
     const dateStr = format(currentDate, 'yyyy-MM-dd');
     
     // Find approved permission for the current day
-    const leavesToSearch = (allLeaves && allLeaves.length > 0) ? allLeaves : (userLeaves || []);
     const approvedPermissionOnDay = leavesToSearch.find(l => {
       const lStartDate = l.startDate || l.start_date || l.date || l.leave_date;
       const lEndDate = l.endDate || l.end_date || l.date || l.leave_date;

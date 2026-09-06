@@ -87,6 +87,13 @@ const entitySchema = yup.object({
         is: (val: string) => val && val.length > 0,
         then: schema => schema.required('Effective date is mandatory if KAM is set')
     }),
+    opsManager: yup.string().optional(),
+    hrIncharge: yup.string().optional(),
+    accountsIncharge: yup.string().optional(),
+    siteManager: yup.string().optional(),
+    fieldOfficer: yup.string().optional(),
+    billingCycle: yup.string().optional(),
+    operatingCompany: yup.string().optional(),
     siteAreaSqFt: yup.number().typeError('Must be a number').nullable().optional(),
     projectType: yup.string().optional(),
     unitCount: yup.number().typeError('Must be a number').nullable().optional(),
@@ -1200,26 +1207,57 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                         </p>
                     </div>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 bg-accent/5 border border-accent/20 rounded-xl">
-                        <Input label="Key Account Manager (Ops Manager)" id="keyAccountManager" registration={register('siteManagement.keyAccountManager')} error={errors.siteManagement?.keyAccountManager?.message} />
-                        <Controller name="siteManagement.kamEffectiveDate" control={control} render={({ field }) => (
-                            <Input type="date" label="KAM Effective Date" id="kamEffectiveDate" value={field.value} onChange={field.onChange} error={errors.siteManagement?.kamEffectiveDate?.message} requiredIndicator={!!watch('siteManagement.keyAccountManager')} />
-                        )} />
-                    </div>
+                    <div className="bg-emerald-50/50 border border-emerald-200/80 p-5 rounded-2xl space-y-4">
+                        <div className="flex items-center gap-2 pb-2 border-b border-emerald-100">
+                            <ShieldCheck className="h-5 w-5 text-emerald-600" />
+                            <div>
+                                <h4 className="font-bold text-sm text-emerald-950">Site Responsibility & Operational Incharges</h4>
+                                <p className="text-xs text-emerald-700/80">Auto-synced directly to the Site Responsibility Matrix & employee site allocations</p>
+                            </div>
+                        </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 bg-accent/5 border border-accent/10 rounded-xl">
-                        <Input label="Site Area (Sq.ft)" id="siteAreaSqFt" type="number" registration={register('siteManagement.siteAreaSqFt')} error={errors.siteManagement?.siteAreaSqFt?.message} />
-                        <Select label="Project Type" id="projectType" registration={register('siteManagement.projectType')} error={errors.siteManagement?.projectType?.message}>
-                            <option value="Apartment">Apartment</option>
-                            <option value="Villa">Villa</option>
-                            <option value="Rowhouse">Rowhouse</option>
-                            <option value="Commercial">Commercial</option>
-                            <option value="Industrial">Industrial</option>
-                            <option value="Retail">Retail</option>
-                        </Select>
-                        {['Apartment', 'Villa'].includes(watch('siteManagement.projectType') || '') && (
-                            <Input label="Units / Flats" id="unitCount" type="number" registration={register('siteManagement.unitCount')} error={errors.siteManagement?.unitCount?.message} />
-                        )}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <Input 
+                                label="Operations Manager" 
+                                id="opsManager" 
+                                registration={register('siteManagement.opsManager')} 
+                                placeholder="e.g. Sandeep B" 
+                            />
+                            <Input 
+                                label="HR Lead / Incharge" 
+                                id="hrIncharge" 
+                                registration={register('siteManagement.hrIncharge')} 
+                                placeholder="e.g. Poojashree S / Baskar A" 
+                            />
+                            <Input 
+                                label="Accounts / Finance Lead" 
+                                id="accountsIncharge" 
+                                registration={register('siteManagement.accountsIncharge')} 
+                                placeholder="e.g. Arpitha Nair" 
+                            />
+                            <Input 
+                                label="Site Manager / Supervisor" 
+                                id="siteManager" 
+                                registration={register('siteManagement.siteManager')} 
+                                placeholder="e.g. Site Supervisor" 
+                            />
+                            <Input 
+                                label="Field Officer" 
+                                id="fieldOfficer" 
+                                registration={register('siteManagement.fieldOfficer')} 
+                                placeholder="e.g. Field Officer" 
+                            />
+                            <Select 
+                                label="Billing Cycle" 
+                                id="billingCycle" 
+                                registration={register('siteManagement.billingCycle')}
+                            >
+                                <option value="1st Billing Cycle">1st Billing Cycle</option>
+                                <option value="2nd Billing Cycle">2nd Billing Cycle</option>
+                                <option value="3rd Billing Cycle">3rd Billing Cycle</option>
+                                <option value="4th Salary-only">4th Salary-only</option>
+                            </Select>
+                        </div>
                     </div>
                 </div>
             )}

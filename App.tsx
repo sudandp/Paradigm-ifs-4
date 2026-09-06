@@ -127,6 +127,7 @@ const HolidaySelectionPage = lazyWithRetry(() => import('./pages/leaves/HolidayS
 const LeaveManagement = lazyWithRetry(() => import('./pages/hr/LeaveManagement'));
 const FamilyVerification = lazyWithRetry(() => import('./pages/hr/FamilyVerification'));
 const ApprovalWorkflow = lazyWithRetry(() => import('./pages/admin/ApprovalWorkflow'));
+const WorkflowChartPage = lazyWithRetry(() => import('./pages/admin/WorkflowChartPage'));
 const WorkflowChartFullScreen = lazyWithRetry(() => import('./pages/admin/WorkflowChartFullScreen'));
 const TaskManagement = lazyWithRetry(() => import('./pages/tasks/TaskManagement'));
 const EntityManagement = lazyWithRetry(() => import('./pages/hr/EntityManagement'));
@@ -2163,6 +2164,8 @@ const App: React.FC = () => {
           </Route>
           <Route element={<ProtectedRoute requiredPermission="manage_approval_workflow" />}>
             <Route path="admin/approval-workflow" element={<ApprovalWorkflow />} />
+            <Route path="admin/workflow-chart" element={<WorkflowChartPage />} />
+            <Route path="security/workflow-chart" element={<WorkflowChartPage />} />
             <Route path="admin/approval-workflow/chart" element={<WorkflowChartFullScreen />} />
           </Route>
 

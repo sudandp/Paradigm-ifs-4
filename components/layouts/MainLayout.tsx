@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Outlet, NavLink, Navigate, useLocation } from 'react-router-dom';
-import { Bell, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, ChevronRight, ShieldCheck, ClipboardCheck, Map as MapIcon, ClipboardList, User, Briefcase, ListTodo, Building, Users, Shirt, Settings, GitBranch, Calendar, CalendarCheck2, ShieldHalf, FileDigit, GitPullRequest, Home, BriefcaseBusiness, UserPlus, UserCheck, IndianRupee, PackagePlus, LifeBuoy, MapPin, ArrowLeft, Navigation, Cpu, FileText, Smartphone, Baby, Grid3X3, LayoutDashboard, Target, Ticket, Wrench, FileSignature, Wallet, LineChart, History, CheckCircle2, Calculator, Badge, HeartPulse, Archive, CalendarDays, BarChart, BarChart3, Mail, UserX, LayoutTemplate, FileSpreadsheet, Sun, Phone, Car, Zap, Camera, Activity, QrCode, Layers } from 'lucide-react';
+import { Bell, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, ChevronRight, ShieldCheck, ClipboardCheck, Map as MapIcon, ClipboardList, User, Briefcase, ListTodo, Building, Users, Shirt, Settings, GitBranch, Calendar, CalendarCheck2, ShieldHalf, FileDigit, GitPullRequest, Home, BriefcaseBusiness, UserPlus, UserCheck, IndianRupee, PackagePlus, LifeBuoy, MapPin, ArrowLeft, Navigation, Cpu, FileText, Smartphone, Baby, Grid3X3, LayoutDashboard, Target, Ticket, Wrench, FileSignature, Wallet, LineChart, History, CheckCircle2, Calculator, Badge, HeartPulse, Archive, CalendarDays, BarChart, BarChart3, Mail, UserX, LayoutTemplate, FileSpreadsheet, Sun, Phone, Car, Zap, Camera, Activity, QrCode, Layers, Network } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
 import { usePermissionsStore } from '../../store/permissionsStore';
@@ -150,6 +150,7 @@ export const allNavLinks: NavLinkConfig[] = [
     { to: '/admin/user-home-details', label: 'User Home Details', icon: Home, permission: 'manage_users', category: 'Security & Roles' },
     { to: '/admin/user-vehicles', label: 'User Vehicles', icon: Car, permission: 'manage_user_vehicles', category: 'Security & Roles' },
     { to: '/admin/modules', label: 'Access Tasks', icon: PackagePlus, permission: 'manage_modules', category: 'Security & Roles' },
+    { to: '/admin/workflow-chart', label: '2D Workflow Chart', icon: Network, permission: 'manage_approval_workflow', category: 'Security & Roles' },
 
     // System Config
     { to: '/developer/api', label: 'API Settings', icon: Settings, permission: 'view_developer_settings', category: 'System Config' },

@@ -1,16 +1,24 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useForm, SubmitHandler, Resolver } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import type { User, UserRole, Organization, Role, BiometricDevice, OrganizationGroup, AttendanceSettings } from '../../types';
+import type { SiteResponsibilityMatrix } from '../../types/siteRouting';
+import { 
+  getCanonicalUserName, 
+  getCleanRoot, 
+  normalizeHrInchargeName, 
+  normalizeOpsInchargeName, 
+  normalizeAccountsInchargeName 
+} from '../../services/siteRoutingScope';
 import { getStaffCategory } from '../../utils/attendanceCalculations';
 import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import { api } from '../../services/api';
-import { UserPlus, ArrowLeft, Calendar } from 'lucide-react';
+import { UserPlus, ArrowLeft, Calendar, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useAuthStore } from '../../store/authStore';
 
@@ -33,9 +41,69 @@ const addMonthsToDateStr = (dateStr: string, months: number): string => {
   return `${y}-${m}-${d}`;
 };
 
+/** Helper to extract all matrix site entries assigned to a given user */
+export const getMatrixSitesForUser = (
+  user: Partial<User> | null | undefined,
+  matrixList: SiteResponsibilityMatrix[]
+): SiteResponsibilityMatrix[] => {
+  if (!user) return [];
+  const canonicalName = getCanonicalUserName(user);
+  const userCleanRoot = getCleanRoot(canonicalName);
+  const userEmail = (user.email || '').toLowerCase().trim();
+  const userName = (user.name || '').toLowerCase().trim();
+  const userId = user.id;
+
+  return matrixList.filter(m => {
+    if (!m.siteName) return false;
+
+    // 1. Direct ID matches
+    if (userId && (
+      m.hrInchargeId === userId ||
+      m.opsManagerId === userId ||
+      m.accountsInchargeId === userId ||
+      m.siteManagerId === userId ||
+      m.fieldOfficerId === userId
+    )) {
+      return true;
+    }
+
+    // 2. Clean root matching for canonical names
+    const hrRoot = getCleanRoot(m.hrInchargeName || '');
+    const opsRoot = getCleanRoot(m.opsManagerName || '');
+    const accRoot = getCleanRoot(m.accountsInchargeName || '');
+    const smRoot = getCleanRoot(m.siteManagerName || '');
+    const foRoot = getCleanRoot(m.fieldOfficerName || '');
+
+    if (userCleanRoot && (
+      hrRoot === userCleanRoot ||
+      opsRoot === userCleanRoot ||
+      accRoot === userCleanRoot ||
+      smRoot === userCleanRoot ||
+      foRoot === userCleanRoot
+    )) {
+      return true;
+    }
+
+    // 3. String inclusions and normalized names
+    const hrNorm = normalizeHrInchargeName(m.hrInchargeName);
+    const opsNorm = normalizeOpsInchargeName(m.opsManagerName);
+    const accNorm = normalizeAccountsInchargeName(m.accountsInchargeName);
+
+    if (canonicalName && (
+      hrNorm.toLowerCase().includes(canonicalName.toLowerCase()) ||
+      opsNorm.toLowerCase().includes(canonicalName.toLowerCase()) ||
+      accNorm.toLowerCase().includes(canonicalName.toLowerCase()) ||
+      (m.siteManagerName && m.siteManagerName.toLowerCase().includes(userName)) ||
+      (m.fieldOfficerName && m.fieldOfficerName.toLowerCase().includes(userName))
+    )) {
+      return true;
+    }
+
+    return false;
+  });
+};
 
 const createUserSchema = yup.object({
-
   id: yup.string().optional(),
   name: yup.string().required('Name is required'),
   email: yup.string().email('Invalid email').required('Email is required'),
@@ -69,6 +137,7 @@ const createUserSchema = yup.object({
   societyId: yup.string().optional().nullable(),
   societyName: yup.string().optional().nullable(),
   locationId: yup.string().optional().nullable(),
+  location: yup.string().optional().nullable(),
   weeklyOffDays: yup.array().of(yup.number().required()).optional().nullable(),
 }).defined();
 
@@ -102,6 +171,7 @@ const editUserSchema = yup.object({
   societyId: yup.string().optional().nullable(),
   societyName: yup.string().optional().nullable(),
   locationId: yup.string().optional().nullable(),
+  location: yup.string().optional().nullable(),
   weeklyOffDays: yup.array().of(yup.number().required()).optional().nullable(),
 }).defined();
 
@@ -118,6 +188,7 @@ const AddUserPage: React.FC = () => {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [initialData, setInitialData] = useState<User | null>(null);
   const [orgStructure, setOrgStructure] = useState<OrganizationGroup[]>([]);
+  const [matrixData, setMatrixData] = useState<SiteResponsibilityMatrix[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<string>('');
   const [selectedSociety, setSelectedSociety] = useState<string>('');
   const [selectedSiteIds, setSelectedSiteIds] = useState<string[]>([]);
@@ -157,13 +228,13 @@ const AddUserPage: React.FC = () => {
   const societyId = watch('societyId');
 
   useEffect(() => {
-    if (locationId !== undefined) {
+    if (locationId !== undefined && locationId !== selectedLocation) {
       setSelectedLocation(locationId || '');
     }
   }, [locationId]);
 
   useEffect(() => {
-    if (societyId !== undefined) {
+    if (societyId !== undefined && societyId !== selectedSociety) {
       setSelectedSociety(societyId || '');
     }
   }, [societyId]);
@@ -237,16 +308,54 @@ const AddUserPage: React.FC = () => {
     dirtyFields.childCareLeaveOpeningDate
   ]);
 
+  /** Helper to resolve matching entity ID for a site name */
+  const resolveSiteEntityId = useCallback((
+    siteName: string, 
+    structure: OrganizationGroup[], 
+    orgs: Organization[], 
+    mRecord?: SiteResponsibilityMatrix
+  ): string => {
+    const rawClean = (siteName || '').toLowerCase().trim();
+    const alphaClean = rawClean.replace(/[^a-z0-9]/g, '');
+
+    // 1. Search structure companies and entities
+    for (const group of structure) {
+      for (const company of group.companies) {
+        for (const ent of company.entities) {
+          const entRaw = ent.name.toLowerCase().trim();
+          const entAlpha = entRaw.replace(/[^a-z0-9]/g, '');
+          if (entRaw === rawClean || entAlpha === alphaClean) {
+            return ent.id;
+          }
+        }
+      }
+    }
+
+    // 2. Search legacy organizations list
+    for (const org of orgs) {
+      const orgRaw = (org.shortName || (org as any).name || (org as any).fullName || '').toLowerCase().trim();
+      const orgAlpha = orgRaw.replace(/[^a-z0-9]/g, '');
+      if (orgRaw === rawClean || orgAlpha === alphaClean) {
+        return org.id;
+      }
+    }
+
+    // 3. Fallback to matrix id or synthetic entity ID
+    if (mRecord?.id) return mRecord.id;
+    return `ent_${rawClean.replace(/[^a-z0-9]+/g, '_')}`;
+  }, []);
+
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [orgs, fetchedRoles, fetchedDevices, structure, settings, designations] = await Promise.all([
+        const [orgs, fetchedRoles, fetchedDevices, structure, settings, designations, matrix] = await Promise.all([
           api.getOrganizations(),
           api.getRoles(),
           api.getBiometricDevices ? api.getBiometricDevices() : Promise.resolve([]),
           api.getOrganizationStructure(),
           api.getAttendanceSettings(),
-          api.getSiteStaffDesignations()
+          api.getSiteStaffDesignations(),
+          api.getSiteResponsibilityMatrix().catch(() => [] as SiteResponsibilityMatrix[])
         ]);
         
         // Deduplicate fetchedRoles by displayName (in case DB has two entries for same role)
@@ -291,16 +400,88 @@ const AddUserPage: React.FC = () => {
         setAllDevices(fetchedDevices);
         setOrgStructure(structure);
         setAttendanceSettings(settings);
+        setMatrixData(matrix);
 
         if (isEditing && id) {
           const users = await api.getUsers();
           const user = users.find(u => u.id === id);
           if (user) {
             setInitialData(user);
-            
+
+            // Collect all unique locations
+            const uniqueLocations = new Set<string>();
+            structure.forEach(group => {
+              if (Array.isArray(group.locations)) {
+                group.locations.forEach(loc => { if (loc) uniqueLocations.add(loc); });
+              }
+              group.companies.forEach(company => {
+                if (company.location) uniqueLocations.add(company.location);
+                company.entities.forEach(entity => {
+                  if (entity.location) uniqueLocations.add(entity.location);
+                });
+              });
+            });
+
+            // Auto-resolve hierarchy for edit mode
+            let targetSocietyId = user.societyId || '';
+            let targetLocation = '';
+
+            // Priority 1: Direct user.location
+            if (user.location && (uniqueLocations.has(user.location) || uniqueLocations.size === 0)) {
+              targetLocation = user.location;
+            } else if (user.location) {
+              const matched = Array.from(uniqueLocations).find(l => l.toLowerCase() === user.location!.toLowerCase());
+              if (matched) targetLocation = matched;
+            }
+
+            // Priority 2: If user.locationId is a location name rather than a group ID
+            if (!targetLocation && user.locationId && uniqueLocations.has(user.locationId)) {
+              targetLocation = user.locationId;
+            }
+
+            // Priority 3: Resolve through company (society)
+            if (!targetLocation && targetSocietyId) {
+              for (const group of structure) {
+                for (const company of group.companies) {
+                  if (company.id === targetSocietyId && company.location) {
+                    targetLocation = company.location;
+                    break;
+                  }
+                }
+                if (targetLocation) break;
+              }
+            }
+
+            // Priority 4: Resolve through user.locationId if it is a group ID
+            if (!targetLocation && user.locationId) {
+              const matchedGroup = structure.find(g => g.id === user.locationId);
+              if (matchedGroup?.locations && matchedGroup.locations.length > 0) {
+                targetLocation = matchedGroup.locations[0];
+              }
+            }
+
+            // Priority 5: Fallback to first available location or 'Bangalore'
+            if (!targetLocation) {
+              const availableLocs = Array.from(uniqueLocations);
+              targetLocation = availableLocs[0] || 'Bangalore';
+            }
+
+            // Resolve company if not already set
+            if (!targetSocietyId) {
+              const firstCompany = structure.flatMap(g => g.companies).find(c => c.location === targetLocation) || structure[0]?.companies[0];
+              if (firstCompany) {
+                targetSocietyId = firstCompany.id;
+              }
+            }
+
+            const resolvedCompany = structure.flatMap(g => g.companies).find(c => c.id === targetSocietyId);
             const defaultDateStr = user.createdAt ? user.createdAt.split('T')[0] : undefined;
             const updatedUser = {
               ...user,
+              location: targetLocation,
+              locationId: targetLocation,
+              societyId: targetSocietyId,
+              societyName: resolvedCompany?.name || user.societyName || 'PARADIGM INTEGRATED FACILITY SERVICES PVT LTD',
               joiningDate: user.joiningDate || defaultDateStr,
               earnedLeaveOpeningDate: user.earnedLeaveOpeningDate || user.joiningDate || defaultDateStr,
               sickLeaveOpeningDate: user.sickLeaveOpeningDate || user.joiningDate || defaultDateStr,
@@ -310,142 +491,79 @@ const AddUserPage: React.FC = () => {
             };
             reset(updatedUser);
 
-            // Auto-resolve hierarchy for edit mode
+            setSelectedSociety(targetSocietyId);
+            setSelectedLocation(targetLocation);
+            setValue('societyId', targetSocietyId);
+            setValue('societyName', updatedUser.societyName);
+            setValue('locationId', targetLocation);
+            setValue('location', targetLocation);
+
+            // 2. AUTOMATIC MATRIX SITE MAPPING + MANDATORY HEAD OFFICE
+            const headOfficeId = targetSocietyId ? `${targetSocietyId}_head_office` : 'head_office';
+            const assignedIdsSet = new Set<string>();
+            
+            // Mandatory Head Office check
+            assignedIdsSet.add(headOfficeId);
+
+            // Existing IDs on user profile
             if (user.organizationId) {
-              const ids = user.organizationId.split(',').map(s => s.trim()).filter(Boolean);
-              setSelectedSiteIds(ids);
-
-              // Find the entity in the structure
-              let foundEntity: any = null;
-              let foundSociety: any = null;
-              let foundLocation: string | null = null;
-
-              const uniqueLocations = new Set<string>();
-              structure.forEach(group => {
-                group.companies.forEach(company => {
-                  if (company.location) uniqueLocations.add(company.location);
-                  company.entities.forEach(entity => {
-                    if (entity.location) uniqueLocations.add(entity.location);
-                  });
-                });
+              user.organizationId.split(',').map(s => s.trim()).filter(Boolean).forEach(id => {
+                assignedIdsSet.add(id);
               });
-
-              for (const siteId of ids) {
-                for (const group of structure) {
-                  for (const company of group.companies) {
-                    const ent = company.entities.find(e => e.id === siteId);
-                    if (ent) {
-                      foundEntity = ent;
-                      foundSociety = company;
-                      foundLocation = company.location || ent.location || null;
-                      if (!foundLocation) {
-                        // fallback to finding matching location
-                        const availableLocs = Array.from(uniqueLocations);
-                        if (availableLocs.length > 0) foundLocation = availableLocs[0];
-                      }
-                      break;
-                    }
-                  }
-                  if (foundEntity) break;
-                }
-                if (foundEntity) break;
-              }
-
-              // Fallback to checking legacy orgs list
-              if (!foundEntity) {
-                for (const siteId of ids) {
-                  const site = orgs.find(o => o.id === siteId);
-                  if (site && site.parentId) {
-                    for (const group of structure) {
-                      for (const company of group.companies) {
-                        if (company.id === site.parentId) {
-                          foundSociety = company;
-                          foundLocation = company.location || site.location || null;
-                          if (!foundLocation) {
-                            const availableLocs = Array.from(uniqueLocations);
-                            if (availableLocs.length > 0) foundLocation = availableLocs[0];
-                          }
-                          break;
-                        }
-                      }
-                      if (foundSociety) break;
-                    }
-                  }
-                  if (foundSociety) break;
-                }
-              }
-
-              if (foundSociety && foundLocation) {
-                setSelectedSociety(foundSociety.id);
-                setSelectedLocation(foundLocation);
-                setValue('societyId', foundSociety.id);
-                setValue('societyName', foundSociety.name);
-                // Location name is now the string location
-                setValue('locationId', foundLocation);
-              }
-            } else if (user.societyId) {
-              // User has a company but no specific site (Entity). Treat as Head Office.
-              const uniqueLocations = new Set<string>();
-              structure.forEach(group => {
-                group.companies.forEach(company => {
-                  if (company.location) uniqueLocations.add(company.location);
-                });
-              });
-              
-              let foundLocation: string | null = null;
-              let foundSociety: any = null;
-
-              for (const group of structure) {
-                for (const company of group.companies) {
-                  if (company.id === user.societyId) {
-                    foundSociety = company;
-                    foundLocation = company.location || null;
-                    if (!foundLocation) {
-                      const availableLocs = Array.from(uniqueLocations);
-                      if (availableLocs.length > 0) foundLocation = availableLocs[0];
-                    }
-                    break;
-                  }
-                }
-                if (foundSociety) break;
-              }
-
-              if (foundSociety && foundLocation) {
-                setSelectedSociety(foundSociety.id);
-                setSelectedLocation(foundLocation);
-                setValue('societyId', foundSociety.id);
-                setValue('societyName', foundSociety.name);
-                setValue('locationId', foundLocation);
-                
-                setSelectedSiteIds([`${foundSociety.id}_head_office`]);
-              }
             }
+
+            // Auto-detect matching matrix records for this user (e.g. Poojashree S -> 52 sites)
+            const userMatrixSites = getMatrixSitesForUser(user, matrix);
+            userMatrixSites.forEach(m => {
+              const siteEntityId = resolveSiteEntityId(m.siteName, structure, orgs, m);
+              if (siteEntityId) {
+                assignedIdsSet.add(siteEntityId);
+              }
+            });
+
+            const finalIds = Array.from(assignedIdsSet);
+            setSelectedSiteIds(finalIds);
           }
         } else {
-          reset({ name: '', email: '', role: 'field_staff', joiningDate: maxJoiningDate });
+          const uniqueLocations = new Set<string>();
+          structure.forEach(group => {
+            if (Array.isArray(group.locations)) {
+              group.locations.forEach(loc => { if (loc) uniqueLocations.add(loc); });
+            }
+            group.companies.forEach(company => {
+              if (company.location) uniqueLocations.add(company.location);
+              company.entities.forEach(entity => {
+                if (entity.location) uniqueLocations.add(entity.location);
+              });
+            });
+          });
+          const availableLocs = Array.from(uniqueLocations);
+          const defaultLoc = availableLocs[0] || 'Bangalore';
+          setSelectedLocation(defaultLoc);
+          reset({ name: '', email: '', role: 'field_staff', joiningDate: maxJoiningDate, locationId: defaultLoc, location: defaultLoc });
         }
       } catch (error) {
         setToast({ message: 'Failed to load form data.', type: 'error' });
       }
     };
     fetchData();
-  }, [id, isEditing, reset, maxJoiningDate]);
+  }, [id, isEditing, reset, maxJoiningDate, resolveSiteEntityId]);
 
   const handleLocationChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const locId = e.target.value;
     setSelectedLocation(locId);
-    setSelectedSociety('');
-    setValue('organizationId', '');
-    setValue('organizationName', '');
-    setValue('societyId', '');
-    setValue('societyName', '');
-    setValue('locationId', locId);
+    setValue('locationId', locId, { shouldDirty: true, shouldValidate: true });
+    setValue('location', locId, { shouldDirty: true, shouldValidate: true });
+    // Note: Do NOT clear selectedSiteIds or organizationId to prevent accidental wiping of user sites
   };
 
   // Derived options for Societies and Entities
   const locations = React.useMemo(() => {
     const uniqueLocations = new Set<string>();
     orgStructure.forEach(group => {
+      if (Array.isArray(group.locations)) {
+        group.locations.forEach(loc => { if (loc) uniqueLocations.add(loc); });
+      }
       group.companies.forEach(company => {
         if (company.location) uniqueLocations.add(company.location);
         company.entities.forEach(entity => {
@@ -457,7 +575,10 @@ const AddUserPage: React.FC = () => {
   }, [orgStructure]);
 
   const availableCompanies = React.useMemo(() => {
-    if (!selectedLocation) return [];
+    if (!selectedLocation) {
+      // Fallback: return all companies across structure
+      return orgStructure.flatMap(g => g.companies).map(c => ({ id: c.id, name: c.name }));
+    }
     const companies: { id: string, name: string }[] = [];
     orgStructure.forEach(group => {
       group.companies.forEach(company => {
@@ -468,18 +589,17 @@ const AddUserPage: React.FC = () => {
         }
       });
     });
-    return companies;
+    return companies.length > 0 ? companies : orgStructure.flatMap(g => g.companies).map(c => ({ id: c.id, name: c.name }));
   }, [orgStructure, selectedLocation]);
 
   const availableEntities = React.useMemo(() => {
-    if (!selectedSociety) return [];
     const entities: { id: string, name: string }[] = [];
     const seen = new Set<string>();
 
     // 1. Entities belonging to the selected company
     orgStructure.forEach(group => {
       group.companies.forEach(company => {
-        if (company.id === selectedSociety) {
+        if (!selectedSociety || company.id === selectedSociety) {
           company.entities.forEach(entity => {
             if (!seen.has(entity.id)) {
               seen.add(entity.id);
@@ -490,7 +610,30 @@ const AddUserPage: React.FC = () => {
       });
     });
 
-    // 2. Also include any entities currently selected in selectedSiteIds even if from another company
+    // 2. Also include legacy organizations
+    organizations.forEach(org => {
+      const orgDisplayName = org.shortName || (org as any).name || (org as any).fullName;
+      if (!seen.has(org.id) && orgDisplayName) {
+        seen.add(org.id);
+        entities.push({ id: org.id, name: orgDisplayName });
+      }
+    });
+
+    // 3. Also include all sites from matrixData so that any mapped site can be checked
+    matrixData.forEach(m => {
+      if (!m.siteName) return;
+      const cleanAlpha = m.siteName.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const existing = entities.find(e => e.name.toLowerCase().replace(/[^a-z0-9]/g, '') === cleanAlpha);
+      if (!existing) {
+        const synthId = m.id || `ent_${m.siteName.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
+        if (!seen.has(synthId)) {
+          seen.add(synthId);
+          entities.push({ id: synthId, name: m.siteName });
+        }
+      }
+    });
+
+    // 4. Also include any entities currently selected in selectedSiteIds even if from another company
     if (selectedSiteIds.length > 0) {
       orgStructure.forEach(group => {
         group.companies.forEach(company => {
@@ -504,8 +647,9 @@ const AddUserPage: React.FC = () => {
       });
     }
 
-    return entities;
-  }, [orgStructure, selectedSociety, selectedSiteIds]);
+    // Sort entities alphabetically by name
+    return entities.sort((a, b) => a.name.localeCompare(b.name));
+  }, [orgStructure, organizations, matrixData, selectedSociety, selectedSiteIds]);
 
   // Synchronize selectedSiteIds changes to form values
   useEffect(() => {
@@ -514,7 +658,7 @@ const AddUserPage: React.FC = () => {
       
       const names: string[] = [];
       selectedSiteIds.forEach(id => {
-        if (id.endsWith('_head_office')) {
+        if (id.endsWith('_head_office') || id === 'head_office') {
           names.push('Head Office');
         } else {
           // Check organizations first
@@ -523,7 +667,12 @@ const AddUserPage: React.FC = () => {
             names.push(org.shortName);
           } else {
             const ent = availableEntities.find(e => e.id === id);
-            if (ent) names.push(ent.name);
+            if (ent) {
+              names.push(ent.name);
+            } else {
+              const m = matrixData.find(mat => mat.id === id);
+              if (m) names.push(m.siteName);
+            }
           }
         }
       });
@@ -533,31 +682,58 @@ const AddUserPage: React.FC = () => {
       setValue('organizationId', '');
       setValue('organizationName', '');
     }
-  }, [selectedSiteIds, availableEntities, organizations, setValue]);
+  }, [selectedSiteIds, availableEntities, organizations, matrixData, setValue]);
 
   const handleSocietyChange = (socId: string) => {
     setSelectedSociety(socId);
-    setSelectedSiteIds([]); // Clear selections when company changes
     setValue('societyId', socId);
     const socName = availableCompanies.find(c => c.id === socId)?.name || '';
     setValue('societyName', socName);
+
+    // Keep all selected site IDs and update the head office ID to match the new company
+    setSelectedSiteIds(prev => {
+      const filtered = prev.filter(id => !id.endsWith('_head_office') && id !== 'head_office');
+      return [`${socId}_head_office`, ...filtered];
+    });
   };
 
-  const renderSiteMultiSelect = () => {
-    if (!selectedSociety) {
-      return (
-        <div>
-          <label className="block text-sm font-medium text-muted">Assigned Site(s) (Entity)</label>
-          <div className="mt-1 border border-gray-200 rounded-lg p-3 bg-gray-50 text-xs text-muted italic text-center">
-            Please select a Society first.
-          </div>
-        </div>
-      );
-    }
+  /** Manual / One-click Remap from Site Responsibility Matrix */
+  const handleRemapFromMatrix = useCallback(() => {
+    const userForMapping: Partial<User> = {
+      ...(initialData || {}),
+      name: watch('name') || initialData?.name,
+      email: watch('email') || initialData?.email,
+      role: watch('role') || initialData?.role,
+      id: id || initialData?.id
+    };
 
+    const targetSocId = selectedSociety || watch('societyId') || 'comp_1774006215885';
+    const headOfficeId = `${targetSocId}_head_office`;
+    const newAssignedSet = new Set<string>();
+
+    // Mandatory Head Office
+    newAssignedSet.add(headOfficeId);
+
+    // Matrix matches
+    const matchedMatrixSites = getMatrixSitesForUser(userForMapping, matrixData);
+    matchedMatrixSites.forEach(m => {
+      const entId = resolveSiteEntityId(m.siteName, orgStructure, organizations, m);
+      if (entId) newAssignedSet.add(entId);
+    });
+
+    const newIds = Array.from(newAssignedSet);
+    setSelectedSiteIds(newIds);
+    setToast({ 
+      message: `⚡ Auto-mapped ${newIds.length - 1} sites from Responsibility Matrix (+ Head Office).`, 
+      type: 'success' 
+    });
+  }, [initialData, watch, id, selectedSociety, matrixData, orgStructure, organizations, resolveSiteEntityId]);
+
+  const renderSiteMultiSelect = () => {
+    const headOfficeId = selectedSociety ? `${selectedSociety}_head_office` : 'head_office';
     const options = [
-      { id: `${selectedSociety}_head_office`, name: 'Head Office' },
-      ...availableEntities
+      { id: headOfficeId, name: 'Head Office', isHeadOffice: true },
+      ...availableEntities.filter(e => !e.id.endsWith('_head_office') && e.id !== 'head_office')
     ];
 
     const filteredOptions = options.filter(opt => {
@@ -567,21 +743,34 @@ const AddUserPage: React.FC = () => {
 
     const handleSelectAllFiltered = () => {
       const idsToAdd = filteredOptions.map(o => o.id);
-      setSelectedSiteIds(prev => Array.from(new Set([...prev, ...idsToAdd])));
+      setSelectedSiteIds(prev => Array.from(new Set([...prev, headOfficeId, ...idsToAdd])));
     };
 
     const handleClearAll = () => {
-      setSelectedSiteIds([]);
+      // Head Office is mandatory for office staff working from HQ
+      setSelectedSiteIds([headOfficeId]);
     };
 
     return (
       <div>
-        <div className="mb-1 flex flex-wrap justify-between items-center gap-2">
+        <div className="mb-1.5 flex flex-wrap justify-between items-center gap-2">
           <label className="block text-sm font-medium text-muted">
-            <span>Assigned Site(s) (Entity)</span>
-            <span className="ml-2 text-xs text-emerald-600 font-bold">({selectedSiteIds.length} selected)</span>
+            <span className="font-semibold text-slate-800">Assigned Site(s) (Entity)</span>
+            <span className="ml-2 text-xs text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+              {selectedSiteIds.length} selected
+            </span>
           </label>
           <div className="flex items-center gap-2 text-xs">
+            <button
+              type="button"
+              onClick={handleRemapFromMatrix}
+              title="Auto-fetch and select all sites mapped to this user in the Site Responsibility Matrix"
+              className="flex items-center gap-1 text-emerald-700 hover:text-emerald-800 font-bold bg-emerald-50 hover:bg-emerald-100/80 px-2.5 py-1 rounded-md border border-emerald-300 transition-colors shadow-xs"
+            >
+              <RefreshCw className="h-3 w-3" />
+              <span>⚡ Remap from Matrix</span>
+            </button>
+            <span className="text-gray-300">|</span>
             <button
               type="button"
               onClick={handleSelectAllFiltered}
@@ -607,38 +796,53 @@ const AddUserPage: React.FC = () => {
             placeholder="Search & filter assigned sites..."
             value={siteSearchTerm}
             onChange={(e) => setSiteSearchTerm(e.target.value)}
-            className="w-full text-xs px-3 py-1.5 border border-gray-200 rounded-lg bg-gray-50 focus:bg-white focus:outline-none focus:border-emerald-500 transition-all"
+            className="w-full text-xs px-3 py-1.5 border border-gray-200 rounded-lg bg-gray-50 focus:bg-white focus:outline-none focus:border-emerald-500 transition-all shadow-xs"
           />
         </div>
 
-        <div className="border border-gray-200 rounded-xl p-3 bg-white max-h-56 overflow-y-auto space-y-1.5 shadow-sm transition-all focus-within:ring-2 focus-within:ring-emerald-500/20 focus-within:border-emerald-500">
+        <div className="border border-gray-200 rounded-xl p-2 bg-white max-h-56 overflow-y-auto space-y-1 shadow-inner transition-all focus-within:ring-2 focus-within:ring-emerald-500/20 focus-within:border-emerald-500">
           {filteredOptions.length === 0 ? (
             <div className="py-4 text-center text-xs text-gray-400 italic">
               No sites matching "{siteSearchTerm}"
             </div>
           ) : (
             filteredOptions.map(opt => {
-              const isChecked = selectedSiteIds.includes(opt.id);
+              const isHeadOffice = (opt as any).isHeadOffice || opt.id.endsWith('_head_office') || opt.id === 'head_office';
+              // Head Office is mandatory for staff working from HQ
+              const isChecked = isHeadOffice || selectedSiteIds.includes(opt.id);
+              
               return (
                 <label 
                   key={opt.id} 
-                  className={`flex items-center gap-3 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-slate-50 transition-colors ${
-                    isChecked ? 'bg-emerald-50/45 border-l-2 border-emerald-500 font-medium' : ''
+                  className={`flex items-center justify-between gap-3 px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors ${
+                    isChecked 
+                      ? 'bg-emerald-50/70 border-l-2 border-emerald-500 font-medium text-emerald-950' 
+                      : 'hover:bg-slate-50 text-gray-700'
                   }`}
                 >
-                  <input
-                    type="checkbox"
-                    checked={isChecked}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedSiteIds(prev => [...prev, opt.id]);
-                      } else {
-                        setSelectedSiteIds(prev => prev.filter(id => id !== opt.id));
-                      }
-                    }}
-                    className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-                  />
-                  <span className="text-sm text-gray-700 select-none">{opt.name}</span>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      disabled={isHeadOffice}
+                      onChange={(e) => {
+                        if (isHeadOffice) return; // Mandatory check
+                        if (e.target.checked) {
+                          setSelectedSiteIds(prev => [...prev, opt.id]);
+                        } else {
+                          setSelectedSiteIds(prev => prev.filter(id => id !== opt.id));
+                        }
+                      }}
+                      className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer disabled:opacity-80"
+                    />
+                    <span className="text-sm select-none">{opt.name}</span>
+                  </div>
+
+                  {isHeadOffice && (
+                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-md uppercase tracking-wider">
+                      Mandatory (HQ)
+                    </span>
+                  )}
                 </label>
               );
             })
@@ -739,20 +943,30 @@ const AddUserPage: React.FC = () => {
           if (!processedData.childCareLeaveOpeningDate) processedData.childCareLeaveOpeningDate = targetJoiningDate;
         }
       }
+      // 1. Explicitly preserve the human-readable location region (e.g. 'Bangalore')
+      const targetLoc = selectedLocation || (data as any).location || (data as any).locationId || 'Bangalore';
+      processedData.location = targetLoc;
+
+      // 2. Map locationId to the valid Organization Group ID for PostgreSQL foreign key
+      let resolvedGroupId = '';
       if (processedData.societyId) {
         const matchingGroup = orgStructure.find(g => 
           g.companies.some(c => c.id === processedData.societyId)
         );
         if (matchingGroup) {
-          processedData.locationId = matchingGroup.id;
-        } else {
-          // If no matching group is found, it's safer to send null than a string that will break the foreign key
-          processedData.locationId = '';
+          resolvedGroupId = matchingGroup.id;
         }
-      } else if (processedData.locationId && !processedData.locationId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
-         // If they didn't select a society but selected a location string, nullify it to prevent FK constraint error
-         processedData.locationId = '';
       }
+      if (!resolvedGroupId) {
+        const matchingGroup = orgStructure.find(g => 
+          (Array.isArray(g.locations) && g.locations.includes(targetLoc)) ||
+          g.companies.some(c => c.location === targetLoc)
+        );
+        if (matchingGroup) {
+          resolvedGroupId = matchingGroup.id;
+        }
+      }
+      processedData.locationId = resolvedGroupId || '';
 
       // Intercept Head Office pseudo-entity IDs and convert them to null/filter them
       // so the database doesn't throw a foreign key error on organization_id
@@ -870,7 +1084,7 @@ const AddUserPage: React.FC = () => {
                   error={(errors as any).password?.message}
                 />
               )}
-              <Select label="Location (Region)" id="locationId" registration={register('locationId')} value={locationId || ''} onChange={handleLocationChange} error={(errors as any).locationId?.message}>
+              <Select label="Location (Region)" id="locationId" registration={register('locationId')} value={selectedLocation || locationId || ''} onChange={handleLocationChange} error={(errors as any).locationId?.message}>
                 <option value="">Select a Location</option>
                 {locations.map(loc => <option key={loc} value={loc}>{loc}</option>)}
               </Select>
@@ -1187,7 +1401,7 @@ const AddUserPage: React.FC = () => {
               error={(errors as any).password?.message}
             />
           )}
-          <Select label="Location (Region)" id="locationId" registration={register('locationId')} value={locationId || ''} onChange={handleLocationChange} error={(errors as any).locationId?.message}>
+          <Select label="Location (Region)" id="locationId" registration={register('locationId')} value={selectedLocation || locationId || ''} onChange={handleLocationChange} error={(errors as any).locationId?.message}>
             <option value="">Select a Location</option>
             {locations.map(loc => <option key={loc} value={loc}>{loc}</option>)}
           </Select>

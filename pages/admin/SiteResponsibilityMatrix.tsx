@@ -42,6 +42,7 @@ import Modal from '../../components/ui/Modal';
 import Pagination from '../../components/ui/Pagination';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 import { SiteEscalationDrawer } from '../../components/admin/SiteEscalationDrawer';
+import { COMPANY_FULL_NAMES, normalizeCompanyShortName, getCompanyFullName } from '../../services/siteRoutingScope';
 
 // Standard Company Entities & Billing Cycles
 const STANDARD_COMPANIES = [
@@ -63,7 +64,7 @@ const STANDARD_BILLING_CYCLES = [
 ];
 
 // Primary Canonical Site Lead Incharges
-const PRIMARY_HR_LEADS = ['Chennamma', 'Poojashree S', 'Kavya M', 'Chandana R'];
+const PRIMARY_HR_LEADS = ['Chennamma', 'Poojashree S', 'Kavya M', 'Chandana R', 'Baskar A'];
 const PRIMARY_ACCOUNTS_LEADS = ['Arpitha Nair', 'Sinchana KM', 'Arya Thomas', 'Chethan V', 'Sandeep Biswas', 'Vishwa'];
 const PRIMARY_OPS_LEADS = [
   'Sandeep B',
@@ -522,6 +523,17 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
   // Delete Confirmation
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
+  // Change History Modal
+  const [historySite, setHistorySite] = useState<SiteResponsibilityMatrix | null>(null);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+
+  // Today's date in IST (YYYY-MM-DD) — used as default effectiveFrom
+  const todayIST = (() => {
+    const now = new Date();
+    const ist = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
+    return ist.toISOString().slice(0, 10);
+  })();
+
   // Load All Associated Data on Mount
   const loadData = useCallback(async () => {
     try {
@@ -551,8 +563,38 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
     }
   }, []);
 
+  const [isSyncingAll, setIsSyncingAll] = useState(false);
+
+  const handleSyncAllAllocations = async () => {
+    try {
+      setIsSyncingAll(true);
+      const res = await api.syncMatrixWithSystemEntitiesAndUsers();
+      setToast({ 
+        message: `⚡ System Sync Complete! Updated ${res.updatedUsersCount} user profiles with site allocations & roles.`, 
+        type: 'success' 
+      });
+      await loadData();
+    } catch (err: any) {
+      console.error(err);
+      setToast({ message: 'Failed to complete system sync.', type: 'error' });
+    } finally {
+      setIsSyncingAll(false);
+    }
+  };
+
   useEffect(() => {
     loadData();
+
+    const handleSyncEvent = () => {
+      loadData();
+    };
+
+    window.addEventListener('site_matrix_synced', handleSyncEvent);
+    window.addEventListener('site_matrix_updated', handleSyncEvent);
+    return () => {
+      window.removeEventListener('site_matrix_synced', handleSyncEvent);
+      window.removeEventListener('site_matrix_updated', handleSyncEvent);
+    };
   }, [loadData]);
 
   // STRICT Operations Managers Dropdown List
@@ -1095,7 +1137,9 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
           return rootPart === rootFilter || part.trim().toLowerCase() === filterFieldOfficer.trim().toLowerCase();
         }));
 
-      const matchCompany = filterCompany === 'ALL' || item.billingCompany === filterCompany;
+      const matchCompany = filterCompany === 'ALL' || 
+        item.billingCompany === filterCompany ||
+        normalizeCompanyShortName(item.billingCompany) === normalizeCompanyShortName(filterCompany);
       const matchCycle = filterCycle === 'ALL' || item.billingCycle === filterCycle;
 
       return matchSearch && matchSite && matchOps && matchSiteManager && matchHr && matchAccounts && matchFieldOfficer && matchCompany && matchCycle;
@@ -1301,6 +1345,17 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="secondary"
+            onClick={handleSyncAllAllocations}
+            disabled={isSyncingAll}
+            className="!bg-indigo-50 hover:!bg-indigo-100 !text-indigo-700 !border-indigo-200 dark:!bg-indigo-950/60 dark:!text-indigo-300 dark:!border-indigo-800 flex items-center gap-1.5 font-bold shadow-xs"
+            title="Update and synchronize all employee site allocations and roles based on current matrix mappings"
+          >
+            <RefreshCw className={`w-4 h-4 ${isSyncingAll ? 'animate-spin' : ''}`} />
+            {isSyncingAll ? 'Syncing Everywhere...' : '⚡ Sync Site Allocations & Roles'}
+          </Button>
+
           {selectedSites.length > 0 && (
             <Button
               variant="primary"
@@ -1533,7 +1588,12 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
               className="w-full py-1.5 px-3 text-xs rounded-xl bg-gray-50 dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-semibold"
             >
               <option value="ALL">All Companies</option>
-              {companyOptions.map(c => <option key={c} value={c}>{c}</option>)}
+              {companyOptions.map(c => {
+                const norm = normalizeCompanyShortName(c);
+                const fullName = COMPANY_FULL_NAMES[norm];
+                const label = fullName ? `${norm} (${fullName})` : c;
+                return <option key={c} value={c}>{label}</option>;
+              })}
             </select>
           </div>
 
@@ -1767,8 +1827,35 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
 
                       {/* Company & Billing Cycle */}
                       <td className="py-4 px-4">
-                        <div className="text-xs font-bold text-gray-800 dark:text-gray-200">{row.billingCompany}</div>
-                        <div className="text-[11px] text-gray-400">{row.billingCycle || '3rd Billing Cycle'}</div>
+                        {(() => {
+                          const rawComp = row.billingCompany || 'PIFS';
+                          const norm = normalizeCompanyShortName(rawComp);
+                          const fullLegalName = COMPANY_FULL_NAMES[norm] || rawComp;
+
+                          return (
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className={`text-[11px] font-black px-2.5 py-0.5 rounded-md border shadow-2xs ${
+                                  norm === 'PIFS'
+                                    ? 'bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800'
+                                    : norm === 'SWLLP'
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800'
+                                    : norm === 'PPFMS'
+                                    ? 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800'
+                                    : 'bg-purple-50 text-purple-800 border-purple-200 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-800'
+                                }`}>
+                                  {norm}
+                                </span>
+                              </div>
+                              <div className="text-[10px] text-gray-500 dark:text-gray-400 font-medium truncate max-w-[190px]" title={fullLegalName}>
+                                {fullLegalName}
+                              </div>
+                              <div className="text-[10px] text-gray-400">
+                                {row.billingCycle || '3rd Billing Cycle'}
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </td>
 
                       {/* Actions & Escalation Trigger */}
@@ -1789,7 +1876,7 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
 
                           <button
                             onClick={() => {
-                              setEditingSite(row);
+                              setEditingSite({ ...row, effectiveFrom: row.effectiveFrom || '' });
                               setIsFormModalOpen(true);
                             }}
                             className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
@@ -1797,6 +1884,17 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
+
+                          {/* Change History button — only show if history exists */}
+                          {row.changeLog && row.changeLog.length > 0 && (
+                            <button
+                              onClick={() => { setHistorySite(row); setIsHistoryOpen(true); }}
+                              className="p-1.5 rounded-lg text-amber-500 hover:text-amber-700 dark:hover:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30 transition-colors"
+                              title={`Change History (${row.changeLog.length} entries)`}
+                            >
+                              <Calendar className="w-4 h-4" />
+                            </button>
+                          )}
 
                           <button
                             onClick={() => setDeleteId(row.id)}
@@ -2079,7 +2177,12 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
                   onChange={(e) => setEditingSite({ ...editingSite, billingCompany: e.target.value })}
                   className="w-full h-10 py-2 px-3 text-xs sm:text-sm rounded-xl bg-gray-50 dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 text-gray-900 dark:text-white font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                 >
-                  {companyOptions.map(c => <option key={c} value={c}>{c}</option>)}
+                  {companyOptions.map(c => {
+                    const norm = normalizeCompanyShortName(c);
+                    const fullName = COMPANY_FULL_NAMES[norm];
+                    const label = fullName ? `${norm} — ${fullName}` : c;
+                    return <option key={c} value={norm}>{label}</option>;
+                  })}
                 </select>
               </div>
 
@@ -2122,6 +2225,77 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
               </div>
             </div>
 
+            {/* ── Effective Date Section ─────────────────────────────────────── */}
+            <div className="mt-3 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-4 space-y-3">
+              <div className="flex items-center gap-2 mb-1">
+                <Calendar className="w-4 h-4 text-amber-600" />
+                <span className="text-xs font-black text-amber-800 dark:text-amber-300 uppercase tracking-wide">Change Effective Date</span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Updated On — read-only auto-stamp */}
+                <div>
+                  <label className="text-xs font-bold text-gray-600 dark:text-gray-400 block mb-1.5">
+                    Updated On
+                  </label>
+                  <input
+                    type="date"
+                    value={todayIST}
+                    readOnly
+                    className="w-full h-10 py-2 px-3 text-xs rounded-xl bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 text-gray-500 dark:text-gray-400 cursor-not-allowed font-medium"
+                  />
+                  <p className="text-[10px] text-gray-400 mt-1">Auto-stamped (today)</p>
+                </div>
+
+                {/* Effective From — user-specified */}
+                <div>
+                  <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1.5">
+                    Effective From <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={editingSite.effectiveFrom || todayIST}
+                    onChange={(e) => setEditingSite({ ...editingSite, effectiveFrom: e.target.value })}
+                    className="w-full h-10 py-2 px-3 text-xs rounded-xl bg-white dark:bg-zinc-900 border border-amber-300 dark:border-amber-700 text-gray-900 dark:text-white font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500"
+                  />
+                  {/* Past date warning */}
+                  {(editingSite.effectiveFrom || todayIST) < todayIST && (
+                    <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3" />
+                      Retroactive change — this will override access immediately for the past period.
+                    </p>
+                  )}
+                  {(editingSite.effectiveFrom || todayIST) > todayIST && (
+                    <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-1">
+                      ✓ Scheduled — old incharge retains access until this date.
+                    </p>
+                  )}
+                  {(editingSite.effectiveFrom || todayIST) === todayIST && (
+                    <p className="text-[10px] text-gray-400 mt-1">Takes effect immediately (today).</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Show existing change log count */}
+              {editingSite.changeLog && editingSite.changeLog.length > 0 && (
+                <div className="flex items-center justify-between pt-1 border-t border-amber-200 dark:border-amber-800">
+                  <span className="text-[10px] text-amber-700 dark:text-amber-400 font-semibold">
+                    {editingSite.changeLog.length} previous change{editingSite.changeLog.length > 1 ? 's' : ''} recorded
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const full = matrixData.find(m => m.siteName === editingSite.siteName);
+                      if (full) { setHistorySite(full); setIsHistoryOpen(true); }
+                    }}
+                    className="text-[10px] font-bold text-amber-700 dark:text-amber-300 underline hover:no-underline"
+                  >
+                    View History →
+                  </button>
+                </div>
+              )}
+            </div>
+
             {/* Legal Billing Name */}
             <div>
               <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1.5">
@@ -2153,6 +2327,86 @@ const SiteResponsibilityMatrixPage: React.FC = () => {
               >
                 Save Mapping
               </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Change History Modal ───────────────────────────────────────── */}
+      {isHistoryOpen && historySite && (
+        <Modal
+          isOpen={isHistoryOpen}
+          onClose={() => { setIsHistoryOpen(false); setHistorySite(null); }}
+          title={`Change History — ${historySite.siteName}`}
+          maxWidth="md:max-w-2xl"
+          hideFooter={true}
+        >
+          <div className="space-y-3 text-sm">
+            {(!historySite.changeLog || historySite.changeLog.length === 0) ? (
+              <p className="text-center text-gray-400 py-8">No change history recorded yet.</p>
+            ) : (
+              <>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Showing all <strong>{historySite.changeLog.length}</strong> recorded incharge change(s) for this site. Access transitions happen at <strong>00:00 IST</strong> on the Effective From date.
+                </p>
+                <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+                  {[...historySite.changeLog].reverse().map((entry, idx) => {
+                    const changedDate = new Date(entry.changedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+                    const effDate = new Date(entry.effectiveFrom).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+                    const isPast = new Date(entry.effectiveFrom) <= new Date();
+                    return (
+                      <div key={idx} className={`rounded-xl border p-3.5 space-y-2 ${
+                        isPast
+                          ? 'border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-900'
+                          : 'border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20'
+                      }`}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                            <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Changed on {changedDate}</span>
+                            {entry.changedBy && <span className="text-[10px] text-gray-400">by {entry.changedBy}</span>}
+                          </div>
+                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                            isPast
+                              ? 'bg-gray-200 dark:bg-zinc-700 text-gray-600 dark:text-gray-300'
+                              : 'bg-amber-200 dark:bg-amber-900 text-amber-800 dark:text-amber-300'
+                          }`}>
+                            {isPast ? '✓ Applied' : `⏳ Effective from ${effDate}`}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                          {[
+                            { label: 'Ops Manager', prev: entry.previousOpsManager, next: entry.newOpsManager },
+                            { label: 'HR Incharge', prev: entry.previousHrIncharge, next: entry.newHrIncharge },
+                            { label: 'Accounts', prev: entry.previousAccountsIncharge, next: entry.newAccountsIncharge },
+                            { label: 'Site Manager', prev: entry.previousSiteManager, next: entry.newSiteManager },
+                            { label: 'Field Officer', prev: entry.previousFieldOfficer, next: entry.newFieldOfficer },
+                          ].filter(f => f.prev !== f.next).map(f => (
+                            <div key={f.label} className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-semibold text-gray-500">{f.label}:</span>
+                              <span className="text-red-600 dark:text-red-400 line-through">{f.prev || '—'}</span>
+                              <ArrowRight className="w-3 h-3 text-gray-400" />
+                              <span className="text-emerald-700 dark:text-emerald-300 font-bold">{f.next || '—'}</span>
+                            </div>
+                          ))}
+                        </div>
+                        {isPast && (
+                          <p className="text-[10px] text-gray-400">Effective from {effDate}</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => { setIsHistoryOpen(false); setHistorySite(null); }}
+                className="px-4 py-2 text-xs font-bold rounded-xl bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-700 transition-colors"
+              >
+                Close
+              </button>
             </div>
           </div>
         </Modal>

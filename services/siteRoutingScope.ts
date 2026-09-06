@@ -4,10 +4,14 @@ import type { SiteResponsibilityMatrix } from '../types/siteRouting';
 // Normalization utilities matching SiteResponsibilityMatrix
 export const getCleanRoot = (name: string): string => {
   if (!name) return '';
-  const words = name.toLowerCase().replace(/[^a-z0-9]/g, ' ').trim().split(/\s+/).filter(w => w.length >= 3);
-  let root = words[0] || name.trim().toLowerCase();
+  const lower = name.toLowerCase().trim();
+  if (lower.includes('sandeep biswas') || lower === 'sandeep.accounts') return 'sandeepbiswas';
+  if (lower.includes('sandeep b') || lower === 'sandeep' || lower.includes('sandeep ops')) return 'sandeepb';
+  const words = lower.replace(/[^a-z0-9]/g, ' ').trim().split(/\s+/).filter(w => w.length >= 3);
+  let root = words[0] || lower;
   if (root === 'arpitha') root = 'arpita';
   if (root === 'poojashree' || root === 'poojashri') root = 'pooja';
+  if (root === 'baskar' || root === 'bhaskar') return 'baskar';
   return root;
 };
 
@@ -17,6 +21,7 @@ export const getCanonicalUserName = (user: Partial<User> | null | undefined): st
   const rawName = (user.name || '').trim();
 
   // Canonical name mappings
+  if (rawName.toLowerCase().includes('baskar') || rawName.toLowerCase().includes('bhaskar') || email.includes('baskar') || email.includes('bhaskar')) return 'Baskar A';
   if (rawName.toLowerCase().includes('chennamma') || email === 'chandana.hr@paradigmfms.com') return 'Chennamma';
   if (email === 'onboarding@paradigmfms.com') return 'Chandana R';
   if (email === 'pooja@paradigmfms.in') return 'Poojashree S';
@@ -26,27 +31,115 @@ export const getCanonicalUserName = (user: Partial<User> | null | undefined): st
   if (email === 'vishwa.finance@paradigmfms.com' || rawName.toLowerCase() === 'vishwa finance' || rawName.toLowerCase() === 'vishwa') return 'Vishwa';
   if (email === 'sinchana@paradigmfms.in' || rawName.toLowerCase() === 'sinchana') return 'Sinchana KM';
   if (email === 'aryasouthwall@paradigmfms.in' || rawName.toLowerCase() === 'arya' || rawName.toLowerCase().includes('arya')) return 'Arya Thomas';
-  if (email === 'sandeep.accounts@paradigmfms.com') return 'Sandeep Biswas';
+  if (email === 'sandeep.accounts@paradigmfms.com' || rawName.toLowerCase().includes('sandeep biswas')) return 'Sandeep Biswas';
+  if (email.includes('sandeep') || rawName.toLowerCase().includes('sandeep b') || rawName.toLowerCase() === 'sandeep') return 'Sandeep B';
   if (email === 'chethan@paradigmfms.com') return 'Chethan V';
   return rawName;
 };
 
+export const normalizeHrInchargeName = (rawName: string | null | undefined): string => {
+  if (!rawName) return '';
+  const trimmed = rawName.trim();
+  if (!trimmed) return '';
+
+  if (trimmed.includes('/') || trimmed.includes('&') || trimmed.includes(',')) {
+    const parts = trimmed.split(/[/&,]/).map(p => normalizeHrInchargeName(p)).filter(Boolean);
+    return parts.join(' / ');
+  }
+
+  const lower = trimmed.toLowerCase();
+  if (lower === 'baskar' || lower === 'baskar a' || lower === 'baskara' || lower === 'bhaskar' || lower === 'bhaskar a' || lower === 'bhaskara') return 'Baskar A';
+  if (lower === 'kavya' || lower === 'kavya m' || lower === 'kavyam') return 'Kavya M';
+  if (lower.startsWith('pooja') || lower.startsWith('poojashree') || lower.startsWith('poojashri') || lower.startsWith('pcoja')) return 'Poojashree S';
+  if (lower.includes('chennamma')) return 'Chennamma';
+  if (lower === 'chandana' || lower === 'chandana r' || lower === 'chandana.r') return 'Chandana R';
+  if (lower.includes('arpitha') || lower.includes('arpita')) return 'Arpitha Nair';
+  if (lower.includes('sinchana')) return 'Sinchana KM';
+
+  return trimmed;
+};
+
+export const normalizeOpsInchargeName = (rawName: string | null | undefined): string => {
+  if (!rawName) return '';
+  const trimmed = rawName.trim();
+  if (!trimmed) return '';
+
+  if (trimmed.includes('/') || trimmed.includes('&') || trimmed.includes(',')) {
+    const parts = trimmed.split(/[/&,]/).map(p => normalizeOpsInchargeName(p)).filter(Boolean);
+    return parts.join(' / ');
+  }
+
+  const lower = trimmed.toLowerCase();
+  if (lower === 'sandeep biswas') return 'Sandeep Biswas';
+  if (lower === 'sandeep' || lower === 'sandeep b') return 'Sandeep B';
+  if (lower === 'keshav' || lower === 'keshav murthy' || lower === 'keshav setlur' || lower === 'keshav s') return 'Keshav Setlur';
+  if (lower === 'isaac' || lower === 'isaac roy' || lower === 'issac') return 'Isaac Roy';
+  if (lower === 'venkat' || lower === 'venkatachalam' || lower === 'venkatesh') return 'Venkatachalam';
+  if (lower === 'shilpa' || lower === 'shilpa m') return 'Shilpa M';
+  if (lower === 'harish' || lower === 'harish h p') return 'Harish H P';
+  if (lower === 'stany' || lower === 'stany d souza') return 'Stany D Souza';
+  if (lower === 'nakul' || lower === 'nakul r alvar') return 'Nakul R Alvar';
+  if (lower === 'ankur') return 'Ankur';
+  if (lower === 'pradeepp' || lower === 'pradeep' || lower === 'pradeepp gangaiah') return 'Pradeepp Gangaiah';
+  if (lower === 'nithin' || lower === 'nithin gowda') return 'Nithin Gowda';
+  if (lower === 'ravi' || lower === 'ravi deva') return 'Ravi DEVA';
+  if (lower === 'tharun' || lower === 'tharun boyapally') return 'Tharun Boyapally';
+  if (lower === 'chethan' || lower === 'chethan v') return 'Chethan V';
+  if (lower === 'prashanth' || lower === 'prashanth m') return 'Prashanth M';
+  if (lower === 'arya' || lower === 'arya thomas') return 'Arya Thomas';
+
+  return trimmed;
+};
+
+export const normalizeAccountsInchargeName = (rawName: string | null | undefined): string => {
+  if (!rawName) return '';
+  const trimmed = rawName.trim();
+  if (!trimmed) return '';
+
+  if (trimmed.includes('/') || trimmed.includes('&') || trimmed.includes(',')) {
+    const parts = trimmed.split(/[/&,]/).map(p => normalizeAccountsInchargeName(p)).filter(Boolean);
+    return parts.join(' / ');
+  }
+
+  const lower = trimmed.toLowerCase();
+  if (lower.includes('arpitha') || lower.includes('arpita')) return 'Arpitha Nair';
+  if (lower.includes('sinchana')) return 'Sinchana KM';
+  if (lower.includes('arya')) return 'Arya Thomas';
+  if (lower === 'chethan' || lower === 'chethan v') return 'Chethan V';
+  if (lower === 'sandeep' || lower === 'sandeep biswas') return 'Sandeep Biswas';
+  if (lower === 'sandeep b') return 'Sandeep B';
+  if (lower.includes('vishwa')) return 'Vishwa';
+
+  return trimmed;
+};
+
 /**
- * Official Company Short Names & Full Legal Entity Names:
- * - PIFS: Paradigm Integrated Facility Management Services
+ * Official Company Short Names & Exact Legal Entity Names from Client Structure:
+ * - PIFS: PARADIGM INTEGRATED FACILITY SERVICES PVT LTD
  * - SWLLP: SOUTHWALL SECURITY LLP
- * - PIFS & SWLLP: Split (PIFS & SWLLP)
  * - PPFMS: PARADIGM PROPERTY & FACILITY MANAGEMENT SERVICES
- * - PIFS & PPFMS: Joint (PIFS & PPFMS)
- * - PPFMS & SWLLP: Split (PPFMS & SWLLP)
+ * - PIFS & SWLLP: Split (PARADIGM INTEGRATED & SOUTHWALL SECURITY LLP)
+ * - PIFS & PPFMS: Joint (PARADIGM INTEGRATED & PPFMS)
+ * - PPFMS & SWLLP: Split (PPFMS & SOUTHWALL SECURITY LLP)
  */
 export const COMPANY_FULL_NAMES: Record<string, string> = {
-  'PIFS': 'Paradigm Integrated Facility Management Services',
+  'PIFS': 'PARADIGM INTEGRATED FACILITY SERVICES PVT LTD',
   'SWLLP': 'SOUTHWALL SECURITY LLP',
-  'PIFS & SWLLP': 'Split: Paradigm Integrated Facility Management Services & SOUTHWALL SECURITY LLP',
   'PPFMS': 'PARADIGM PROPERTY & FACILITY MANAGEMENT SERVICES',
-  'PIFS & PPFMS': 'Joint: Paradigm Integrated Facility Management Services & PPFMS',
+  'PIFS & SWLLP': 'Split: PARADIGM INTEGRATED & SOUTHWALL SECURITY LLP',
+  'PIFS & PPFMS': 'Joint: PARADIGM INTEGRATED & PPFMS',
   'PPFMS & SWLLP': 'Split: PPFMS & SOUTHWALL SECURITY LLP'
+};
+
+export const getCompanyFullName = (shortName: string | null | undefined): string => {
+  if (!shortName) return 'PARADIGM INTEGRATED FACILITY SERVICES PVT LTD';
+  const norm = normalizeCompanyShortName(shortName);
+  return COMPANY_FULL_NAMES[norm] || shortName;
+};
+
+export const getCompanyShortName = (fullNameOrAny: string | null | undefined): string => {
+  if (!fullNameOrAny) return 'PIFS';
+  return normalizeCompanyShortName(fullNameOrAny);
 };
 
 export const normalizeCompanyShortName = (rawCompany: string | null | undefined): string => {
@@ -75,9 +168,12 @@ export const normalizeCompanyShortName = (rawCompany: string | null | undefined)
 
   // 3. Full name mapping
   if (cUpper.includes('SOUTHWALL') || cUpper.includes('SWIFT WING')) {
-    if (cUpper.includes('PIFS') || cUpper.includes('PARADIGM')) return 'PIFS & SWLLP';
-    if (cUpper.includes('PPFMS')) return 'PPFMS & SWLLP';
+    if (cUpper.includes('PIFS') || cUpper.includes('PARADIGM INTEGRATED') || cUpper.includes('PARADIGM')) return 'PIFS & SWLLP';
+    if (cUpper.includes('PPFMS') || cUpper.includes('PARADIGM PROPERTY')) return 'PPFMS & SWLLP';
     return 'SWLLP';
+  }
+  if ((cUpper.includes('PARADIGM INTEGRATED') || cUpper.includes('PIFS')) && (cUpper.includes('PPFMS') || cUpper.includes('PARADIGM PROPERTY'))) {
+    return 'PIFS & PPFMS';
   }
   if (cUpper.includes('PARADIGM PROPERTY') || cUpper.includes('PPFMS')) {
     return 'PPFMS';
@@ -106,6 +202,32 @@ export const COMPANY_GROUPS = {
   ]
 };
 
+export interface SiteTeamMember {
+  role: 'ops_manager' | 'site_manager' | 'field_officer' | 'hr_lead' | 'accounts_lead';
+  name: string;
+  id?: string;
+  siteName: string;
+}
+
+export interface SiteTeamInfo {
+  siteName: string;
+  societyName?: string;
+  billingCompany: string;
+  billingCompanyFullName: string;
+  billingCycle: string;
+  opsManagerName: string;
+  opsManagerId?: string;
+  siteManagerName: string;
+  siteManagerId?: string;
+  fieldOfficerName: string;
+  fieldOfficerId?: string;
+  hrInchargeName: string;
+  hrInchargeId?: string;
+  accountsInchargeName: string;
+  accountsInchargeId?: string;
+  teamMembers: { name: string; role: string; id?: string }[];
+}
+
 export interface UserRoutingScope {
   isGlobalAdmin: boolean;
   canonicalName: string;
@@ -114,6 +236,12 @@ export interface UserRoutingScope {
   permittedSiteNames: Set<string>;
   permittedSiteList: string[];
   isSitePermitted: (siteName: string, companyName?: string) => boolean;
+  // Cross-functional team mappings
+  siteTeams: Record<string, SiteTeamInfo>;
+  siteTeamMemberNames: Set<string>;
+  siteTeamMemberIds: Set<string>;
+  isTeamMemberPermitted: (memberNameOrId: string) => boolean;
+  isTaskPermitted: (task: { siteId?: string; siteName?: string; assignedTo?: string; assignedToName?: string; createdBy?: string }) => boolean;
 }
 
 /**
@@ -131,7 +259,12 @@ export function getUserRoutingScope(
       allowedCompanies: [],
       permittedSiteNames: new Set<string>(),
       permittedSiteList: [],
-      isSitePermitted: () => false
+      isSitePermitted: () => false,
+      siteTeams: {},
+      siteTeamMemberNames: new Set<string>(),
+      siteTeamMemberIds: new Set<string>(),
+      isTeamMemberPermitted: () => false,
+      isTaskPermitted: () => false
     };
   }
 
@@ -148,6 +281,54 @@ export function getUserRoutingScope(
   // If Global Admin, has access to all sites and companies
   if (isGlobalAdmin) {
     const allSiteNames = new Set(matrixList.map(m => m.siteName).filter(Boolean));
+    const siteTeams: Record<string, SiteTeamInfo> = {};
+    const siteTeamMemberNames = new Set<string>();
+    const siteTeamMemberIds = new Set<string>();
+
+    matrixList.forEach(m => {
+      if (!m.siteName) return;
+      const bComp = normalizeCompanyShortName(m.billingCompany);
+      const bCompFull = getCompanyFullName(bComp);
+      const teamList: { name: string; role: string; id?: string }[] = [];
+
+      const addMember = (rawName: string | null | undefined, mRole: string, id?: string | null) => {
+        if (!rawName || rawName.trim().toLowerCase() === 'unassigned') return;
+        const normName = mRole === 'ops_manager' ? normalizeOpsInchargeName(rawName) :
+                         mRole === 'hr_lead' ? normalizeHrInchargeName(rawName) :
+                         mRole === 'accounts_lead' ? normalizeAccountsInchargeName(rawName) : rawName.trim();
+        teamList.push({ name: normName, role: mRole, id: id || undefined });
+        siteTeamMemberNames.add(normName);
+        siteTeamMemberNames.add(rawName.trim());
+        const root = getCleanRoot(normName);
+        if (root) siteTeamMemberNames.add(root);
+        if (id) siteTeamMemberIds.add(id);
+      };
+
+      addMember(m.opsManagerName, 'ops_manager', m.opsManagerId);
+      addMember(m.siteManagerName || m.siteSupervisorName, 'site_manager', m.siteManagerId || m.siteSupervisorId);
+      addMember(m.fieldOfficerName, 'field_officer', m.fieldOfficerId);
+      addMember(m.hrInchargeName, 'hr_lead', m.hrInchargeId);
+      addMember(m.accountsInchargeName, 'accounts_lead', m.accountsInchargeId);
+
+      siteTeams[m.siteName] = {
+        siteName: m.siteName,
+        billingCompany: bComp,
+        billingCompanyFullName: bCompFull,
+        billingCycle: m.billingCycle || '',
+        opsManagerName: normalizeOpsInchargeName(m.opsManagerName),
+        opsManagerId: m.opsManagerId || undefined,
+        siteManagerName: m.siteManagerName || m.siteSupervisorName || '',
+        siteManagerId: m.siteManagerId || m.siteSupervisorId || undefined,
+        fieldOfficerName: m.fieldOfficerName || '',
+        fieldOfficerId: m.fieldOfficerId || undefined,
+        hrInchargeName: normalizeHrInchargeName(m.hrInchargeName),
+        hrInchargeId: m.hrInchargeId || undefined,
+        accountsInchargeName: normalizeAccountsInchargeName(m.accountsInchargeName),
+        accountsInchargeId: m.accountsInchargeId || undefined,
+        teamMembers: teamList
+      };
+    });
+
     return {
       isGlobalAdmin: true,
       canonicalName,
@@ -155,7 +336,12 @@ export function getUserRoutingScope(
       allowedCompanies: [], // means all
       permittedSiteNames: allSiteNames,
       permittedSiteList: Array.from(allSiteNames).sort(),
-      isSitePermitted: () => true
+      isSitePermitted: () => true,
+      siteTeams,
+      siteTeamMemberNames,
+      siteTeamMemberIds,
+      isTeamMemberPermitted: () => true,
+      isTaskPermitted: () => true
     };
   }
 
@@ -365,6 +551,86 @@ export function getUserRoutingScope(
     return false;
   };
 
+  // Build cross-functional site team map for permitted sites
+  const siteTeams: Record<string, SiteTeamInfo> = {};
+  const siteTeamMemberNames = new Set<string>();
+  const siteTeamMemberIds = new Set<string>();
+
+  // Include user's own identity in team members
+  if (canonicalName) siteTeamMemberNames.add(canonicalName);
+  if (user.name) siteTeamMemberNames.add(user.name.trim());
+  if (userCleanRoot) siteTeamMemberNames.add(userCleanRoot);
+  if (user.id) siteTeamMemberIds.add(user.id);
+
+  matrixList.forEach(m => {
+    if (!m.siteName) return;
+    if (!isSitePermitted(m.siteName, m.billingCompany)) return;
+
+    const bComp = normalizeCompanyShortName(m.billingCompany);
+    const bCompFull = getCompanyFullName(bComp);
+    const teamList: { name: string; role: string; id?: string }[] = [];
+
+    const addMember = (rawName: string | null | undefined, mRole: string, id?: string | null) => {
+      if (!rawName || rawName.trim().toLowerCase() === 'unassigned') return;
+      const normName = mRole === 'ops_manager' ? normalizeOpsInchargeName(rawName) :
+                       mRole === 'hr_lead' ? normalizeHrInchargeName(rawName) :
+                       mRole === 'accounts_lead' ? normalizeAccountsInchargeName(rawName) : rawName.trim();
+      teamList.push({ name: normName, role: mRole, id: id || undefined });
+      siteTeamMemberNames.add(normName);
+      siteTeamMemberNames.add(rawName.trim());
+      const root = getCleanRoot(normName);
+      if (root) siteTeamMemberNames.add(root);
+      if (id) siteTeamMemberIds.add(id);
+    };
+
+    addMember(m.opsManagerName, 'ops_manager', m.opsManagerId);
+    addMember(m.siteManagerName || m.siteSupervisorName, 'site_manager', m.siteManagerId || m.siteSupervisorId);
+    addMember(m.fieldOfficerName, 'field_officer', m.fieldOfficerId);
+    addMember(m.hrInchargeName, 'hr_lead', m.hrInchargeId);
+    addMember(m.accountsInchargeName, 'accounts_lead', m.accountsInchargeId);
+
+    siteTeams[m.siteName] = {
+      siteName: m.siteName,
+      billingCompany: bComp,
+      billingCompanyFullName: bCompFull,
+      billingCycle: m.billingCycle || '',
+      opsManagerName: normalizeOpsInchargeName(m.opsManagerName),
+      opsManagerId: m.opsManagerId || undefined,
+      siteManagerName: m.siteManagerName || m.siteSupervisorName || '',
+      siteManagerId: m.siteManagerId || m.siteSupervisorId || undefined,
+      fieldOfficerName: m.fieldOfficerName || '',
+      fieldOfficerId: m.fieldOfficerId || undefined,
+      hrInchargeName: normalizeHrInchargeName(m.hrInchargeName),
+      hrInchargeId: m.hrInchargeId || undefined,
+      accountsInchargeName: normalizeAccountsInchargeName(m.accountsInchargeName),
+      accountsInchargeId: m.accountsInchargeId || undefined,
+      teamMembers: teamList
+    };
+  });
+
+  const isTeamMemberPermitted = (memberNameOrId: string): boolean => {
+    if (!memberNameOrId) return false;
+    const cleanStr = memberNameOrId.trim();
+    if (siteTeamMemberIds.has(cleanStr)) return true;
+    if (siteTeamMemberNames.has(cleanStr)) return true;
+    const root = getCleanRoot(cleanStr);
+    if (root && siteTeamMemberNames.has(root)) return true;
+    for (const name of siteTeamMemberNames) {
+      if (name.toLowerCase() === cleanStr.toLowerCase()) return true;
+      if (cleanStr.length >= 4 && (name.toLowerCase().includes(cleanStr.toLowerCase()) || cleanStr.toLowerCase().includes(name.toLowerCase()))) return true;
+    }
+    return false;
+  };
+
+  const isTaskPermitted = (task: { siteId?: string; siteName?: string; assignedTo?: string; assignedToName?: string; createdBy?: string }): boolean => {
+    if (task.siteName && isSitePermitted(task.siteName)) return true;
+    if (task.siteId && isSitePermitted(task.siteId)) return true;
+    if (task.assignedTo && (task.assignedTo === user.id || siteTeamMemberIds.has(task.assignedTo))) return true;
+    if (task.assignedToName && isTeamMemberPermitted(task.assignedToName)) return true;
+    if (task.createdBy && (task.createdBy === user.id || siteTeamMemberIds.has(task.createdBy))) return true;
+    return false;
+  };
+
   return {
     isGlobalAdmin: false,
     canonicalName,
@@ -372,8 +638,43 @@ export function getUserRoutingScope(
     allowedCompanies,
     permittedSiteNames: permittedSites,
     permittedSiteList: canonicalSiteList,
-    isSitePermitted
+    isSitePermitted,
+    siteTeams,
+    siteTeamMemberNames,
+    siteTeamMemberIds,
+    isTeamMemberPermitted,
+    isTaskPermitted
   };
+}
+
+/**
+ * Extracts all unique cross-functional team members (Ops, HR, Finance, Site Mgr, Field Officer)
+ * who share allocated sites with the given user.
+ */
+export function getSiteTeamMembers(
+  user: Partial<User> | null | undefined,
+  matrixList: SiteResponsibilityMatrix[]
+): { id?: string; name: string; role: string; siteName: string }[] {
+  const scope = getUserRoutingScope(user, matrixList);
+  const result: { id?: string; name: string; role: string; siteName: string }[] = [];
+  const seen = new Set<string>();
+
+  Object.values(scope.siteTeams).forEach(st => {
+    st.teamMembers.forEach(tm => {
+      const key = `${tm.name}_${tm.role}_${st.siteName}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        result.push({
+          id: tm.id,
+          name: tm.name,
+          role: tm.role,
+          siteName: st.siteName
+        });
+      }
+    });
+  });
+
+  return result;
 }
 
 /**
@@ -385,11 +686,37 @@ export function getSiteMetadataFromMatrix(
 ): Partial<SiteResponsibilityMatrix> | null {
   if (!siteName || !matrixList.length) return null;
   const clean = siteName.toLowerCase().trim();
-  const match = matrixList.find(m => (m.siteName || '').toLowerCase().trim() === clean);
+  const cleanAlpha = clean.replace(/[^a-z0-9]/g, '');
+
+  // 1. Exact case-insensitive match or ID match
+  let match = matrixList.find(m => (m.siteName || '').toLowerCase().trim() === clean || (m.id || '').toLowerCase() === clean);
+
+  // 2. Alphanumeric stripped match
+  if (!match && cleanAlpha) {
+    match = matrixList.find(m => (m.siteName || '').toLowerCase().replace(/[^a-z0-9]/g, '') === cleanAlpha);
+  }
+
+  // 3. Substring / Includes match
+  if (!match && clean.length >= 3) {
+    match = matrixList.find(m => {
+      const mClean = (m.siteName || '').toLowerCase().trim();
+      return mClean && (mClean.includes(clean) || clean.includes(mClean));
+    });
+  }
+
   if (!match) return null;
+  const billingCompany = normalizeCompanyShortName(match.billingCompany);
+  let hrInchargeName = normalizeHrInchargeName(match.hrInchargeName);
+  if (billingCompany.toUpperCase().includes('SWLLP') && hrInchargeName === 'Chennamma') {
+    hrInchargeName = 'Baskar A';
+  }
+
   return {
     ...match,
-    billingCompany: normalizeCompanyShortName(match.billingCompany)
+    billingCompany,
+    opsManagerName: normalizeOpsInchargeName(match.opsManagerName),
+    hrInchargeName,
+    accountsInchargeName: normalizeAccountsInchargeName(match.accountsInchargeName)
   };
 }
 
@@ -551,3 +878,100 @@ export function getUserFormPermissions(user: Partial<User> | null | undefined): 
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Effective Date Utilities
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Convert a YYYY-MM-DD string to a Date at 00:00:00 IST (UTC+5:30).
+ * Access transitions happen at IST midnight.
+ */
+export const toISTMidnight = (dateStr: string): Date => {
+  // YYYY-MM-DD parsed as IST midnight = UTC offset -05:30 = subtract 19800 seconds
+  const [y, m, d] = dateStr.split('-').map(Number);
+  // Create the date at UTC 00:00 then subtract 5h30m to get IST midnight in UTC terms
+  const utc = Date.UTC(y, m - 1, d, 0, 0, 0) - (5.5 * 60 * 60 * 1000);
+  return new Date(utc);
+};
+
+/**
+ * Returns today's date string in YYYY-MM-DD IST format.
+ */
+export const todayIST = (): string => {
+  const now = new Date();
+  // Shift to IST (+5:30)
+  const ist = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
+  return ist.toISOString().slice(0, 10);
+};
+
+/**
+ * Determines whether a SiteResponsibilityMatrix record grants site access
+ * to a specific user (by ID or canonical name) at a given moment.
+ *
+ * Rules:
+ * - If `effectiveFrom` is not set → the site is always active (legacy data).
+ * - If `effectiveFrom` is today or in the past → new incharge assignments are live.
+ * - If `effectiveFrom` is in the future → old incharges still have access;
+ *   newly assigned incharges do NOT yet have access for this site.
+ *
+ * @param m             The matrix row to check
+ * @param userId        The user's ID to check access for
+ * @param userNameRoot  The user's clean root name (from getCleanRoot)
+ * @param asOf          The moment to evaluate against (defaults to now in IST)
+ * @returns             `true` if the user currently has access to this site
+ */
+export const isSiteActiveForUser = (
+  m: SiteResponsibilityMatrix,
+  userId: string,
+  userNameRoot: string,
+  asOf?: Date
+): boolean => {
+  const now = asOf ?? new Date();
+
+  // Resolve whether the user appears in ANY incharge field (by ID or name root)
+  const matchesById = (
+    m.opsManagerId === userId ||
+    m.hrInchargeId === userId ||
+    m.accountsInchargeId === userId ||
+    m.siteManagerId === userId ||
+    m.fieldOfficerId === userId
+  );
+  const matchesByName = userNameRoot && (
+    getCleanRoot(m.opsManagerName || '') === userNameRoot ||
+    getCleanRoot(m.hrInchargeName || '') === userNameRoot ||
+    getCleanRoot(m.accountsInchargeName || '') === userNameRoot ||
+    getCleanRoot(m.siteManagerName || m.siteSupervisorName || '') === userNameRoot ||
+    getCleanRoot(m.fieldOfficerName || '') === userNameRoot
+  );
+
+  const isCurrentlyAssigned = matchesById || matchesByName;
+
+  // No effectiveFrom set → honour assignment as-is
+  if (!m.effectiveFrom) return isCurrentlyAssigned;
+
+  const effectiveDate = toISTMidnight(m.effectiveFrom);
+  const effectiveAlreadyPassed = now >= effectiveDate;
+
+  if (effectiveAlreadyPassed) {
+    // The change has taken effect — use current assignments
+    return isCurrentlyAssigned;
+  }
+
+  // The change is PENDING (effectiveFrom is in the future).
+  // For this site we need to check the PREVIOUS assignment from the change log.
+  const log = m.changeLog;
+  if (!log || log.length === 0) {
+    // No history — treat current assignment as active
+    return isCurrentlyAssigned;
+  }
+
+  // Most recent log entry represents the snapshot taken just before the pending change
+  const latestEntry = log[log.length - 1];
+  const wasOpsManager   = getCleanRoot(latestEntry.previousOpsManager || '') === userNameRoot;
+  const wasHrIncharge   = getCleanRoot(latestEntry.previousHrIncharge || '') === userNameRoot;
+  const wasAccounts     = getCleanRoot(latestEntry.previousAccountsIncharge || '') === userNameRoot;
+  const wasSiteManager  = getCleanRoot(latestEntry.previousSiteManager || '') === userNameRoot;
+  const wasFieldOfficer = getCleanRoot(latestEntry.previousFieldOfficer || '') === userNameRoot;
+
+  return wasOpsManager || wasHrIncharge || wasAccounts || wasSiteManager || wasFieldOfficer;
+};

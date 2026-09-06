@@ -22,7 +22,7 @@ import Toast from '../../components/ui/Toast';
 import RevisionHistoryModal from '../../components/modals/RevisionHistoryModal';
 import SubmitSiteChangeRequestModal from '../../components/modals/SubmitSiteChangeRequestModal';
 import LoadingScreen from '../../components/ui/LoadingScreen';
-import { getUserRoutingScope, validateImportRows, normalizeCompanyShortName, isHistoricalLockedPeriod, type UserRoutingScope } from '../../services/siteRoutingScope';
+import { getUserRoutingScope, validateImportRows, normalizeCompanyShortName, getSiteMetadataFromMatrix, isHistoricalLockedPeriod, type UserRoutingScope } from '../../services/siteRoutingScope';
 import type { SiteResponsibilityMatrix } from '../../types/siteRouting';
 
 
@@ -892,11 +892,17 @@ const SiteFinanceTracker: React.FC = () => {
     const currentRecords = activeSubTab === 'active' ? scopedRecords : scopedDeletedRecords;
 
     const filteredRecords = currentRecords.filter(r => {
-        const matchesSearch = r.siteName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            (r.companyName || '').toLowerCase().includes(searchQuery.toLowerCase());
+        const meta = getSiteMetadataFromMatrix(r.siteName, matrixList);
+        const effectiveCompany = r.companyName || meta?.billingCompany || '';
 
+        const matchesSearch = r.siteName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (effectiveCompany || '').toLowerCase().includes(searchQuery.toLowerCase());
+
+        const recordCompNorm = normalizeCompanyShortName(effectiveCompany);
+        const filterCompNorm = normalizeCompanyShortName(filters.company);
         const matchesCompany = !filters.company || filters.company === 'all' || 
-            (r.companyName || '').toUpperCase().includes((filters.company || '').toUpperCase());
+            recordCompNorm === filterCompNorm ||
+            (effectiveCompany || '').toUpperCase().includes((filters.company || '').toUpperCase());
         
         const matchesSiteName = !filters.siteName || 
             r.siteName.toLowerCase().includes(filters.siteName.toLowerCase());
@@ -1440,8 +1446,16 @@ const SiteFinanceTracker: React.FC = () => {
                                                     />
                                                 </td>
                                                 <td className="px-5 py-3.5">
-                                                    <div className="font-bold text-white md:text-gray-900 text-sm">{record.siteName}</div>
-                                                    <div className="text-[10px] text-emerald-400/30 md:text-gray-500 mt-1 font-bold uppercase tracking-wider">{normalizeCompanyShortName(record.companyName) || '—'}</div>
+                                                    {(() => {
+                                                        const meta = getSiteMetadataFromMatrix(record.siteName, matrixList);
+                                                        const effectiveCompany = record.companyName || meta?.billingCompany || '';
+                                                        return (
+                                                            <>
+                                                                <div className="font-bold text-white md:text-gray-900 text-sm">{record.siteName}</div>
+                                                                <div className="text-[10px] text-emerald-400/30 md:text-gray-500 mt-1 font-bold uppercase tracking-wider">{normalizeCompanyShortName(effectiveCompany) || '—'}</div>
+                                                            </>
+                                                        );
+                                                    })()}
                                                     
                                                     <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                                                         {activeSubTab === 'log' && record.billingMonth && (
@@ -1634,7 +1648,13 @@ const SiteFinanceTracker: React.FC = () => {
                                                 />
                                                 <div>
                                                     <h4 className="font-bold text-white leading-tight">{record.siteName}</h4>
-                                                    <p className="text-[10px] text-emerald-400/50 font-bold uppercase mt-0.5">{normalizeCompanyShortName(record.companyName) || '—'}</p>
+                                                    {(() => {
+                                                        const meta = getSiteMetadataFromMatrix(record.siteName, matrixList);
+                                                        const effectiveCompany = record.companyName || meta?.billingCompany || '';
+                                                        return (
+                                                            <p className="text-[10px] text-emerald-400/50 font-bold uppercase mt-0.5">{normalizeCompanyShortName(effectiveCompany) || '—'}</p>
+                                                        );
+                                                    })()}
                                                     {activeSubTab === 'log' && record.billingMonth && (
                                                         <span className="inline-block mt-1 px-1.5 py-0.5 bg-emerald-500/10 text-[#00D27F] text-[9px] font-black rounded tracking-tighter uppercase">
                                                             {format(new Date(record.billingMonth), 'MMM yyyy')}

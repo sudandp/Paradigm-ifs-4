@@ -8,7 +8,7 @@ import { useAuthStore } from '../../store/authStore';
 import Toast from '../../components/ui/Toast';
 import RevisionHistoryModal from '../../components/modals/RevisionHistoryModal';
 import LoadingScreen from '../../components/ui/LoadingScreen';
-import { getUserRoutingScope, validateImportRows, getSiteMetadataFromMatrix, normalizeCompanyShortName, isHistoricalLockedPeriod, type UserRoutingScope } from '../../services/siteRoutingScope';
+import { getUserRoutingScope, validateImportRows, getSiteMetadataFromMatrix, normalizeCompanyShortName, isHistoricalLockedPeriod, getCanonicalUserName, getCleanRoot, normalizeHrInchargeName, normalizeOpsInchargeName, type UserRoutingScope } from '../../services/siteRoutingScope';
 import SubmitSiteChangeRequestModal from '../../components/modals/SubmitSiteChangeRequestModal';
 import type { SiteResponsibilityMatrix } from '../../types/siteRouting';
 
@@ -359,10 +359,14 @@ const SiteAttendanceTracker: React.FC = () => {
             ];
             ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
             ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF006B3F' } };
-            records.forEach(r => ws.addRow(r));
+            
+            // Export filteredRecords honoring user's active filter and authorized scope
+            filteredRecords.forEach(r => ws.addRow(r));
             const buffer = await workbook.xlsx.writeBuffer();
-            saveAs(new Blob([buffer]), `Attendance_Tracker_${format(new Date(), 'yyyyMMdd')}.xlsx`);
-            setToast({ message: 'Exported successfully!', type: 'success' });
+            const exportMonthLabel = filters.month !== 'all' ? `_M${filters.month}` : '';
+            const exportYearLabel = filters.year !== 'all' ? `_Y${filters.year}` : '';
+            saveAs(new Blob([buffer]), `Attendance_Tracker${exportYearLabel}${exportMonthLabel}_${format(new Date(), 'yyyyMMdd')}.xlsx`);
+            setToast({ message: `Exported ${filteredRecords.length} records successfully!`, type: 'success' });
         } catch (err) {
             setToast({ message: 'Failed to export', type: 'error' });
         } finally {
@@ -386,6 +390,7 @@ const SiteAttendanceTracker: React.FC = () => {
             const templateMonthDate = new Date(Number(uploadYearStr), Number(uploadMonthStr) - 1, 1);
             const templateMonthCode = format(templateMonthDate, 'yyyy-MM-dd');
             const templateMonthLabel = format(templateMonthDate, 'MMMM yyyy');
+            const targetYM = format(templateMonthDate, 'yyyy-MM');
 
             const workbook = new ExcelJS.Workbook();
             const ws = workbook.addWorksheet('Template');
@@ -445,28 +450,40 @@ const SiteAttendanceTracker: React.FC = () => {
             templateSites.forEach(sName => {
                 const meta = getSiteMetadataFromMatrix(sName, matrixList);
                 const defaultItem = siteDefaults.find(d => d.siteName === sName);
+
+                // Look up if a record ALREADY exists in `records` for this site and target month
+                const existingRec = records.find(r => 
+                    r.siteName?.toLowerCase().trim() === sName.toLowerCase().trim() &&
+                    (
+                        (r.billingMonth && r.billingMonth.substring(0, 7) === targetYM) ||
+                        (r.managerTentativeDate && r.managerTentativeDate.substring(0, 7) === targetYM) ||
+                        (r.invoiceSharingTentativeDate && r.invoiceSharingTentativeDate.substring(0, 7) === targetYM) ||
+                        (r.createdAt && r.createdAt.substring(0, 7) === targetYM)
+                    )
+                );
+
                 ws.addRow({
                     siteName: sName,
-                    companyName: meta?.billingCompany || defaultItem?.companyName || 'PIFS',
-                    billingCycle: meta?.billingCycle || '1st Billing Cycle',
-                    opsIncharge: meta?.opsManagerName || '',
-                    hrIncharge: meta?.hrInchargeName || '',
-                    invoiceIncharge: meta?.accountsInchargeName || '',
-                    opsRemarks: '',
-                    hrRemarks: '',
-                    financeRemarks: '',
-                    managerTentativeDate: '',
-                    managerReceivedDate: '',
-                    hrTentativeDate: '',
-                    hrReceivedDate: '',
-                    attendanceReceivedTime: '',
-                    invoiceSharingTentativeDate: '',
-                    invoicePreparedDate: '',
-                    invoiceSentDate: '',
-                    invoiceSentTime: '',
-                    invoiceSentMethodRemarks: '',
-                    receivedBalance: '',
-                    receivedBalanceReceipt: ''
+                    companyName: existingRec?.companyName || meta?.billingCompany || defaultItem?.companyName || 'PIFS',
+                    billingCycle: existingRec?.billingCycle || meta?.billingCycle || '1st Billing Cycle',
+                    opsIncharge: existingRec?.opsIncharge || meta?.opsManagerName || '',
+                    hrIncharge: existingRec?.hrIncharge || meta?.hrInchargeName || '',
+                    invoiceIncharge: existingRec?.invoiceIncharge || meta?.accountsInchargeName || '',
+                    opsRemarks: existingRec?.opsRemarks || '',
+                    hrRemarks: existingRec?.hrRemarks || '',
+                    financeRemarks: existingRec?.financeRemarks || '',
+                    managerTentativeDate: existingRec?.managerTentativeDate || '',
+                    managerReceivedDate: existingRec?.managerReceivedDate || '',
+                    hrTentativeDate: existingRec?.hrTentativeDate || '',
+                    hrReceivedDate: existingRec?.hrReceivedDate || '',
+                    attendanceReceivedTime: existingRec?.attendanceReceivedTime || '',
+                    invoiceSharingTentativeDate: existingRec?.invoiceSharingTentativeDate || '',
+                    invoicePreparedDate: existingRec?.invoicePreparedDate || '',
+                    invoiceSentDate: existingRec?.invoiceSentDate || '',
+                    invoiceSentTime: existingRec?.invoiceSentTime || '',
+                    invoiceSentMethodRemarks: existingRec?.invoiceSentMethodRemarks || '',
+                    receivedBalance: existingRec?.receivedBalance || '',
+                    receivedBalanceReceipt: existingRec?.receivedBalanceReceipt || ''
                 });
             });
 
@@ -475,7 +492,7 @@ const SiteAttendanceTracker: React.FC = () => {
             
             const templateMonth = format(templateMonthDate, 'yyyy-MM');
             saveAs(blob, `Attendance_Tracker_Template_${templateMonth}.xlsx`);
-            setToast({ message: `Template for ${templateMonthLabel} downloaded (${templateSites.length} authorized sites)`, type: 'success' });
+            setToast({ message: `Template for ${templateMonthLabel} downloaded (${templateSites.length} authorized sites with live data)`, type: 'success' });
         } catch (err) {
             console.error('Template error:', err);
             setToast({ message: 'Failed to download template', type: 'error' });
@@ -586,10 +603,13 @@ const SiteAttendanceTracker: React.FC = () => {
                 createdByName: user.name,
                 createdByRole: user.role
             }));
-            await api.bulkSaveSiteInvoiceRecords(recordsWithUser);
-            setToast({ message: 'Records imported successfully!', type: 'success' });
+            const result = await api.bulkSaveSiteInvoiceRecords(recordsWithUser);
+            setToast({ 
+                message: `Bulk sync complete! ${result?.updatedCount || 0} records updated, ${result?.createdCount || 0} created.`, 
+                type: 'success' 
+            });
             setPreviewData([]);
-            fetchInitialData();
+            await fetchInitialData();
         } catch (err: any) {
             console.error('Import failed:', err);
             const detailedError = err.message || err.details || 'Check console for details';
@@ -629,18 +649,78 @@ const SiteAttendanceTracker: React.FC = () => {
     }, [routingScope, scopedRecords, scopedSiteDefaults, matrixList]);
 
     const opsInchargeOptions = useMemo(() => {
-        const ops = new Set<string>();
-        scopedRecords.forEach(r => { if (r.opsIncharge?.trim()) ops.add(r.opsIncharge.trim()); });
-        matrixList.forEach(m => { if (m.opsManagerName?.trim()) ops.add(m.opsManagerName.trim()); });
-        return Array.from(ops).sort((a, b) => a.localeCompare(b));
-    }, [scopedRecords, matrixList]);
+        const canonicalCurrentUser = getCanonicalUserName(user);
+        const userRoot = getCleanRoot(canonicalCurrentUser);
+
+        const seenNames = new Set<string>();
+        const options: { value: string; label: string; isCurrentUser: boolean }[] = [];
+
+        const rawNames: string[] = [];
+        scopedRecords.forEach(r => { if (r.opsIncharge?.trim()) rawNames.push(r.opsIncharge.trim()); });
+        matrixList.forEach(m => { if (m.opsManagerName?.trim()) rawNames.push(m.opsManagerName.trim()); });
+
+        rawNames.forEach(raw => {
+            const normalized = normalizeOpsInchargeName(raw);
+            if (!normalized) return;
+
+            if (!seenNames.has(normalized)) {
+                seenNames.add(normalized);
+                const isUser = !!userRoot && (
+                    getCleanRoot(normalized) === userRoot || 
+                    normalized.toLowerCase() === canonicalCurrentUser.toLowerCase() ||
+                    (user?.name && normalized.toLowerCase() === user.name.toLowerCase().trim())
+                );
+                options.push({
+                    value: normalized,
+                    label: isUser ? `${normalized} (You)` : normalized,
+                    isCurrentUser: isUser
+                });
+            }
+        });
+
+        return options.sort((a, b) => {
+            if (a.isCurrentUser && !b.isCurrentUser) return -1;
+            if (!a.isCurrentUser && b.isCurrentUser) return 1;
+            return a.value.localeCompare(b.value);
+        });
+    }, [scopedRecords, matrixList, user]);
 
     const hrInchargeOptions = useMemo(() => {
-        const hrs = new Set<string>();
-        scopedRecords.forEach(r => { if (r.hrIncharge?.trim()) hrs.add(r.hrIncharge.trim()); });
-        matrixList.forEach(m => { if (m.hrInchargeName?.trim()) hrs.add(m.hrInchargeName.trim()); });
-        return Array.from(hrs).sort((a, b) => a.localeCompare(b));
-    }, [scopedRecords, matrixList]);
+        const canonicalCurrentUser = getCanonicalUserName(user);
+        const userRoot = getCleanRoot(canonicalCurrentUser);
+
+        const seenNames = new Set<string>();
+        const options: { value: string; label: string; isCurrentUser: boolean }[] = [];
+
+        const rawNames: string[] = [];
+        scopedRecords.forEach(r => { if (r.hrIncharge?.trim()) rawNames.push(r.hrIncharge.trim()); });
+        matrixList.forEach(m => { if (m.hrInchargeName?.trim()) rawNames.push(m.hrInchargeName.trim()); });
+
+        rawNames.forEach(raw => {
+            const normalized = normalizeHrInchargeName(raw);
+            if (!normalized) return;
+
+            if (!seenNames.has(normalized)) {
+                seenNames.add(normalized);
+                const isUser = !!userRoot && (
+                    getCleanRoot(normalized) === userRoot || 
+                    normalized.toLowerCase() === canonicalCurrentUser.toLowerCase() ||
+                    (user?.name && normalized.toLowerCase() === user.name.toLowerCase().trim())
+                );
+                options.push({
+                    value: normalized,
+                    label: isUser ? `${normalized} (You)` : normalized,
+                    isCurrentUser: isUser
+                });
+            }
+        });
+
+        return options.sort((a, b) => {
+            if (a.isCurrentUser && !b.isCurrentUser) return -1;
+            if (!a.isCurrentUser && b.isCurrentUser) return 1;
+            return a.value.localeCompare(b.value);
+        });
+    }, [scopedRecords, matrixList, user]);
 
     const billingCycleOptions = useMemo(() => {
         const cycles = new Set<string>();
@@ -651,16 +731,22 @@ const SiteAttendanceTracker: React.FC = () => {
 
     const filteredRecords = useMemo(() => {
         return currentRecords.filter(r => {
+            const meta = getSiteMetadataFromMatrix(r.siteName, matrixList);
+            const effectiveOps = r.opsIncharge || meta?.opsManagerName || '';
+            const effectiveHr = r.hrIncharge || meta?.hrInchargeName || '';
+            const effectiveCompany = r.companyName || meta?.billingCompany || '';
+            const effectiveCycle = r.billingCycle || meta?.billingCycle || '';
+
             const matchesSearch = r.siteName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                (r.companyName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-                (r.opsIncharge || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-                (r.hrIncharge || '').toLowerCase().includes(searchQuery.toLowerCase());
+                (effectiveCompany || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                (effectiveOps || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                (effectiveHr || '').toLowerCase().includes(searchQuery.toLowerCase());
             
-            const recordCompNorm = normalizeCompanyShortName(r.companyName);
+            const recordCompNorm = normalizeCompanyShortName(effectiveCompany);
             const filterCompNorm = normalizeCompanyShortName(filters.company);
             const matchesCompany = !filters.company || filters.company === 'all' || 
                 recordCompNorm === filterCompNorm ||
-                (r.companyName || '').toUpperCase().includes(filters.company.toUpperCase());
+                (effectiveCompany || '').toUpperCase().includes(filters.company.toUpperCase());
 
             const matchesSiteName = !filters.siteName || 
                 r.siteName.toLowerCase().trim() === filters.siteName.toLowerCase().trim() ||
@@ -671,19 +757,41 @@ const SiteAttendanceTracker: React.FC = () => {
                 return filters.status === 'sent' ? isSent : !isSent;
             })();
 
-            const matchesOps = !filters.opsIncharge || filters.opsIncharge === 'all' || 
-                (r.opsIncharge || '').toLowerCase().trim() === filters.opsIncharge.toLowerCase().trim() ||
-                (r.opsIncharge || '').toLowerCase().includes(filters.opsIncharge.toLowerCase().trim());
+            const matchesOps = !filters.opsIncharge || filters.opsIncharge === 'all' || (() => {
+                const filterNorm = normalizeOpsInchargeName(filters.opsIncharge);
+                const filterRoot = getCleanRoot(filterNorm);
+                const recordNorm = normalizeOpsInchargeName(effectiveOps);
+                const recordRoot = getCleanRoot(recordNorm);
+                const rawRecord = (effectiveOps || '').toLowerCase();
+                
+                return recordNorm.toLowerCase() === filterNorm.toLowerCase() ||
+                       (filterRoot && recordRoot === filterRoot) ||
+                       rawRecord.includes(filterNorm.toLowerCase()) ||
+                       rawRecord.includes(filters.opsIncharge.toLowerCase()) ||
+                       recordNorm.toLowerCase().includes(filterNorm.toLowerCase()) ||
+                       filterNorm.toLowerCase().includes(recordNorm.toLowerCase());
+            })();
 
-            const matchesHr = !filters.hrIncharge || filters.hrIncharge === 'all' || 
-                (r.hrIncharge || '').toLowerCase().trim() === filters.hrIncharge.toLowerCase().trim() ||
-                (r.hrIncharge || '').toLowerCase().includes(filters.hrIncharge.toLowerCase().trim());
+            const matchesHr = !filters.hrIncharge || filters.hrIncharge === 'all' || (() => {
+                const filterNorm = normalizeHrInchargeName(filters.hrIncharge);
+                const filterRoot = getCleanRoot(filterNorm);
+                const recordNorm = normalizeHrInchargeName(effectiveHr);
+                const recordRoot = getCleanRoot(recordNorm);
+                const rawRecord = (effectiveHr || '').toLowerCase();
+                
+                return recordNorm.toLowerCase() === filterNorm.toLowerCase() ||
+                       (filterRoot && recordRoot === filterRoot) ||
+                       rawRecord.includes(filterNorm.toLowerCase()) ||
+                       rawRecord.includes(filters.hrIncharge.toLowerCase()) ||
+                       recordNorm.toLowerCase().includes(filterNorm.toLowerCase()) ||
+                       filterNorm.toLowerCase().includes(recordNorm.toLowerCase());
+            })();
 
             const matchesBillingCycle = !filters.billingCycle || filters.billingCycle === 'all' || 
-                (r.billingCycle || '').toLowerCase().trim() === filters.billingCycle.toLowerCase().trim();
+                (effectiveCycle || '').toLowerCase().trim() === filters.billingCycle.toLowerCase().trim();
 
-            // Date filtering (based on managerTentativeDate or createdAt)
-            const targetDateStr = r.managerTentativeDate || r.createdAt;
+            // Date filtering (prioritizing billingMonth, then managerTentativeDate, invoiceSharingTentativeDate, or createdAt)
+            const targetDateStr = r.billingMonth || r.managerTentativeDate || r.invoiceSharingTentativeDate || r.createdAt;
             const recordDate = targetDateStr ? parseISO(targetDateStr) : null;
             const matchesYear = filters.year === 'all' || (recordDate && recordDate.getFullYear().toString() === filters.year);
             const matchesMonth = filters.month === 'all' || (recordDate && (recordDate.getMonth() + 1).toString() === filters.month);
@@ -831,7 +939,7 @@ const SiteAttendanceTracker: React.FC = () => {
                         >
                             <option value="all">All Ops Incharge</option>
                             {opsInchargeOptions.map(ops => (
-                                <option key={ops} value={ops}>{ops}</option>
+                                <option key={ops.value} value={ops.value}>{ops.label}</option>
                             ))}
                         </select>
 
@@ -843,7 +951,7 @@ const SiteAttendanceTracker: React.FC = () => {
                         >
                             <option value="all">All HR Incharge</option>
                             {hrInchargeOptions.map(hr => (
-                                <option key={hr} value={hr}>{hr}</option>
+                                <option key={hr.value} value={hr.value}>{hr.label}</option>
                             ))}
                         </select>
 
@@ -916,7 +1024,7 @@ const SiteAttendanceTracker: React.FC = () => {
                 <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-white/5 md:border-gray-100">
                     <div className="flex items-center gap-3">
                         <button
-                            onClick={() => navigate('/finance/attendance/add')}
+                            onClick={() => navigate(`/finance/attendance/add?month=${filters.month}&year=${filters.year}`)}
                             className="whitespace-nowrap h-11 inline-flex items-center justify-center gap-2 px-6 py-2 text-sm font-bold text-[#041b0f] md:text-white bg-[#00D27F] md:bg-emerald-600 rounded-xl hover:bg-[#00b86e] md:hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-500/10 active:scale-95"
                         >
                             <Plus className="h-4 w-4" />
@@ -1101,7 +1209,7 @@ const SiteAttendanceTracker: React.FC = () => {
                         {activeSubTab === 'active' && (
                             <div className="flex items-center gap-3 mt-5">
                                 <button
-                                    onClick={() => navigate('/finance/attendance/add')}
+                                    onClick={() => navigate(`/finance/attendance/add?month=${filters.month}&year=${filters.year}`)}
                                     className="inline-flex items-center gap-1.5 px-5 py-2.5 text-sm font-bold text-[#041b0f] bg-[#00D27F] rounded-lg hover:bg-[#00b86e] transition-all shadow-lg shadow-emerald-500/20 active:scale-95"
                                 >
                                     <Plus className="h-4 w-4" />
@@ -1170,27 +1278,45 @@ const SiteAttendanceTracker: React.FC = () => {
                                                     />
                                                 </td>
                                                 <td className="px-5 py-3.5">
-                                                    <div className="font-bold text-white md:text-gray-900 text-sm">{record.siteName}</div>
-                                                    <div className="text-[11px] text-emerald-400/50 md:text-gray-500 mt-0.5 font-bold uppercase tracking-wider">{normalizeCompanyShortName(record.companyName) || '—'}</div>
-                                                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                                                        {record.billingCycle && <span className="inline-block px-1.5 py-0.5 rounded bg-emerald-500/10 md:bg-gray-100 text-[#00D27F] md:text-gray-600 text-[10px] font-black uppercase tracking-tighter border border-emerald-500/20 md:border-gray-200">{record.billingCycle}</span>}
-                                                        {record.revisionCount && record.revisionCount > 0 ? (
-                                                            <button 
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    setRevisionModal({ isOpen: true, recordId: record.id, siteName: record.siteName });
-                                                                }}
-                                                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-500/10 md:bg-blue-50 text-blue-400 md:text-blue-600 border border-blue-500/20 md:border-blue-100 text-[10px] font-bold uppercase tracking-tighter hover:bg-blue-500/20 md:hover:bg-blue-100 transition-colors cursor-pointer"
-                                                            >
-                                                                <RotateCcw className="h-2.5 w-2.5" />
-                                                                Revised ({record.revisionCount})
-                                                            </button>
-                                                        ) : null}
-                                                    </div>
+                                                    {(() => {
+                                                        const meta = getSiteMetadataFromMatrix(record.siteName, matrixList);
+                                                        const effectiveCompany = record.companyName || meta?.billingCompany || '';
+                                                        const effectiveCycle = record.billingCycle || meta?.billingCycle || '';
+                                                        return (
+                                                            <>
+                                                                <div className="font-bold text-white md:text-gray-900 text-sm">{record.siteName}</div>
+                                                                <div className="text-[11px] text-emerald-400/50 md:text-gray-500 mt-0.5 font-bold uppercase tracking-wider">{normalizeCompanyShortName(effectiveCompany) || '—'}</div>
+                                                                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                                                    {effectiveCycle && <span className="inline-block px-1.5 py-0.5 rounded bg-emerald-500/10 md:bg-gray-100 text-[#00D27F] md:text-gray-600 text-[10px] font-black uppercase tracking-tighter border border-emerald-500/20 md:border-gray-200">{effectiveCycle}</span>}
+                                                                    {record.revisionCount && record.revisionCount > 0 ? (
+                                                                        <button 
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                setRevisionModal({ isOpen: true, recordId: record.id, siteName: record.siteName });
+                                                                            }}
+                                                                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-500/10 md:bg-blue-50 text-blue-400 md:text-blue-600 border border-blue-500/20 md:border-blue-100 text-[10px] font-bold uppercase tracking-tighter hover:bg-blue-500/20 md:hover:bg-blue-100 transition-colors cursor-pointer"
+                                                                        >
+                                                                            <RotateCcw className="h-2.5 w-2.5" />
+                                                                            Revised ({record.revisionCount})
+                                                                        </button>
+                                                                    ) : null}
+                                                                </div>
+                                                            </>
+                                                        );
+                                                    })()}
                                                 </td>
                                                 <td className="px-4 py-3.5 hidden md:table-cell">
-                                                    <div className="text-xs text-emerald-400 md:text-gray-600 font-medium">Ops: {record.opsIncharge || '—'}</div>
-                                                    <div className="text-[11px] text-emerald-400/40 md:text-gray-400 mt-0.5">HR: {record.hrIncharge || '—'}</div>
+                                                    {(() => {
+                                                        const meta = getSiteMetadataFromMatrix(record.siteName, matrixList);
+                                                        const effectiveOps = record.opsIncharge || meta?.opsManagerName || '';
+                                                        const effectiveHr = record.hrIncharge || meta?.hrInchargeName || '';
+                                                        return (
+                                                            <>
+                                                                <div className="text-xs text-emerald-400 md:text-gray-600 font-medium">Ops: {normalizeOpsInchargeName(effectiveOps) || effectiveOps || '—'}</div>
+                                                                <div className="text-[11px] text-emerald-400/40 md:text-gray-400 mt-0.5">HR: {normalizeHrInchargeName(effectiveHr) || effectiveHr || '—'}</div>
+                                                            </>
+                                                        );
+                                                    })()}
                                                 </td>
                                                 {activeSubTab === 'active' ? (
                                                     <>
@@ -1375,14 +1501,33 @@ const SiteAttendanceTracker: React.FC = () => {
                                                 />
                                                 <div>
                                                     <h4 className="font-bold text-white leading-tight">{record.siteName}</h4>
-                                                    <div className="flex items-center gap-2 mt-0.5">
-                                                        <span className="text-[10px] text-emerald-400/40 font-bold uppercase tracking-wider">{normalizeCompanyShortName(record.companyName) || '—'}</span>
-                                                        {record.billingCycle && (
-                                                            <span className="px-1.5 py-0.5 bg-emerald-500/10 text-[#00D27F] text-[9px] font-black rounded uppercase tracking-tighter border border-emerald-500/20">
-                                                                {record.billingCycle}
-                                                            </span>
-                                                        )}
-                                                    </div>
+                                                    {(() => {
+                                                        const meta = getSiteMetadataFromMatrix(record.siteName, matrixList);
+                                                        const effectiveCompany = record.companyName || meta?.billingCompany || '';
+                                                        const effectiveCycle = record.billingCycle || meta?.billingCycle || '';
+                                                        const effectiveHr = record.hrIncharge || meta?.hrInchargeName || '';
+                                                        const effectiveOps = record.opsIncharge || meta?.opsManagerName || '';
+                                                        return (
+                                                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                                                <span className="text-[10px] text-emerald-400/40 font-bold uppercase tracking-wider">{normalizeCompanyShortName(effectiveCompany) || '—'}</span>
+                                                                {effectiveCycle && (
+                                                                    <span className="px-1.5 py-0.5 bg-emerald-500/10 text-[#00D27F] text-[9px] font-black rounded uppercase tracking-tighter border border-emerald-500/20">
+                                                                        {effectiveCycle}
+                                                                    </span>
+                                                                )}
+                                                                {effectiveHr && (
+                                                                    <span className="text-[9px] text-emerald-400/60 font-medium">
+                                                                        HR: {normalizeHrInchargeName(effectiveHr)}
+                                                                    </span>
+                                                                )}
+                                                                {effectiveOps && (
+                                                                    <span className="text-[9px] text-emerald-400/60 font-medium">
+                                                                        Ops: {normalizeOpsInchargeName(effectiveOps)}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })()}
                                                 </div>
                                             </div>
                                             {activeSubTab === 'active' && (

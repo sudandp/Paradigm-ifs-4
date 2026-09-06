@@ -132,6 +132,7 @@ const BulkUserUpdateModal: React.FC<BulkUserUpdateModalProps> = ({
                 societyId: selectedSocietyId,
                 societyName: society?.name,
                 locationId: locationGroupId,
+                location: selectedLocation,
                 organizationId: finalOrgId,
                 organizationName: finalOrgName
             });

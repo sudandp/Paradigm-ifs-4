@@ -15,6 +15,28 @@ export interface RoutingRules {
   [key: string]: string[] | undefined;
 }
 
+/** One entry in the per-site incharge change audit trail */
+export interface SiteInchargeChangeEntry {
+  /** ISO timestamp when the admin pressed "Save Mapping" */
+  changedAt: string;
+  /** ISO date string (YYYY-MM-DD) from which the new assignments are effective */
+  effectiveFrom: string;
+  /** Name of the admin who made the change */
+  changedBy?: string;
+  // Previous values
+  previousOpsManager?: string;
+  previousHrIncharge?: string;
+  previousAccountsIncharge?: string;
+  previousSiteManager?: string;
+  previousFieldOfficer?: string;
+  // New values
+  newOpsManager?: string;
+  newHrIncharge?: string;
+  newAccountsIncharge?: string;
+  newSiteManager?: string;
+  newFieldOfficer?: string;
+}
+
 export interface SiteResponsibilityMatrix {
   id: string;
   siteId?: string | null;
@@ -53,6 +75,11 @@ export interface SiteResponsibilityMatrix {
   // Escalation & Automated Routing
   escalationTiers?: EscalationTier[];
   routingRules?: RoutingRules;
+
+  /** ISO date (YYYY-MM-DD): when the current incharge assignments became/become effective */
+  effectiveFrom?: string | null;
+  /** Full audit trail of incharge changes with their effective dates */
+  changeLog?: SiteInchargeChangeEntry[];
   
   isActive: boolean;
   createdAt?: string;

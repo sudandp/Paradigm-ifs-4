@@ -586,38 +586,50 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                     borderColor: 'transparent'
                                 };
                             } else if (isPermission) {
-                                 let permMins = 120;
-                                 if (relevantLeave?.correctionDetails?.permissionMinutes) {
-                                     permMins = Number(relevantLeave.correctionDetails.permissionMinutes);
-                                 } else if (relevantLeave?.correctionDetails?.punchIn && relevantLeave?.correctionDetails?.punchOut) {
-                                     const toMins = (t: string) => { if (!t) return 0; const [h, m] = t.split(':').map(Number); return h * 60 + m; };
-                                     let diff = toMins(relevantLeave.correctionDetails.punchOut) - toMins(relevantLeave.correctionDetails.punchIn);
-                                     if (diff < 0) diff += 24 * 60;
-                                     permMins = diff;
-                                 }
+                                if (workingHours > 0) {
+                                    let permMins = 0;
+                                    if (relevantLeave?.correctionDetails?.permissionMinutes) {
+                                        permMins = Number(relevantLeave.correctionDetails.permissionMinutes);
+                                    } else if (relevantLeave?.correctionDetails?.punchIn && relevantLeave?.correctionDetails?.punchOut) {
+                                        const toMins = (t: string) => { if (!t) return 0; const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+                                        let diff = toMins(relevantLeave.correctionDetails.punchOut) - toMins(relevantLeave.correctionDetails.punchIn);
+                                        if (diff < 0) diff += 24 * 60;
+                                        permMins = diff;
+                                    } else {
+                                        permMins = Math.max(0, Math.round((shiftThreshold - workingHours) * 60));
+                                    }
 
-                                 if (workingHours > 0 && workingHours < shiftThreshold) {
-                                     const workedFraction = Math.round((workingHours / shiftThreshold) * 100) / 100;
-                                     const permFraction = Math.round((permMins / (shiftThreshold * 60)) * 100) / 100;
-                                     overlayText = `${workedFraction.toFixed(2)}P + ${permFraction.toFixed(2)}RP`;
-                                     const greenPct = Math.min(100, Math.max(0, Math.round(workedFraction * 100)));
-                                     customStyle = {
-                                         background: `linear-gradient(135deg, #10b981 ${greenPct}%, #2563eb ${greenPct}%)`,
-                                         borderColor: 'transparent'
-                                     };
-                                 } else if (workingHours >= shiftThreshold) {
-                                     overlayText = 'P';
-                                     customStyle = {
-                                         background: '#10b981',
-                                         borderColor: 'transparent'
-                                     };
-                                 } else {
-                                     overlayText = 'RP';
-                                     customStyle = {
-                                         background: '#2563eb',
-                                         borderColor: 'transparent'
-                                     };
-                                 }
+                                    const rawWorkedFraction = workingHours / shiftThreshold;
+                                    let workedFraction = Math.round(rawWorkedFraction * 100) / 100;
+                                    let permFraction = permMins > 0 
+                                        ? Math.round((permMins / (shiftThreshold * 60)) * 100) / 100 
+                                        : Math.max(0, Math.round((1 - workedFraction) * 100) / 100);
+
+                                    // Round to standard intervals (0.75, 0.5, 0.25)
+                                    if (Math.abs(workedFraction - 0.75) <= 0.12) {
+                                        workedFraction = 0.75;
+                                        permFraction = 0.25;
+                                    } else if (Math.abs(workedFraction - 0.5) <= 0.12) {
+                                        workedFraction = 0.5;
+                                        permFraction = 0.5;
+                                    } else if (Math.abs(workedFraction - 0.25) <= 0.12) {
+                                        workedFraction = 0.25;
+                                        permFraction = 0.75;
+                                    }
+
+                                    const greenPct = Math.min(90, Math.max(10, Math.round(workedFraction * 100)));
+                                    overlayText = `${workedFraction}P+${permFraction}RP`;
+                                    customStyle = {
+                                        background: `linear-gradient(135deg, #10b981 ${greenPct}%, #2563eb ${greenPct}%)`,
+                                        borderColor: 'transparent'
+                                    };
+                                } else {
+                                    overlayText = 'RP';
+                                    customStyle = {
+                                        background: '#2563eb',
+                                        borderColor: 'transparent'
+                                    };
+                                }
                             } else if (isCorrection) {
                                 overlayText = 'P';
                                 customStyle = {

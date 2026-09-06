@@ -1,12 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../../services/api';
 import type { User, UserRole, Role } from '../../types';
 import { 
     Loader2, 
     Save, 
-    Table, 
-    Network, 
     Search, 
     FilterX, 
     Shield, 
@@ -16,13 +14,11 @@ import {
 import Select from '../../components/ui/Select';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
-import OrgWorkflowCard from '../../components/admin/OrgWorkflowCard';
 import Pagination from '../../components/ui/Pagination';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 
 type UserWithManager = User & { managerName?: string; manager2Name?: string; manager3Name?: string };
 
-type ViewTab = 'table' | '2d';
 type AssignmentFilterType = 'all' | 'unassigned' | 'assigned' | 'multi_level';
 
 // Color-coded role badge styling (respecting no-purple guideline)
@@ -51,6 +47,7 @@ const getRoleBadgeStyle = (role: string = '') => {
 
 const ApprovalWorkflow: React.FC = () => {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const [users, setUsers] = useState<UserWithManager[]>([]);
     const [allRoles, setAllRoles] = useState<Role[]>([]);
     const [approverRoles, setApproverRoles] = useState<Role[]>([]);
@@ -58,9 +55,15 @@ const ApprovalWorkflow: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-    const [activeTab, setActiveTab] = useState<ViewTab>('table');
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(10);
+
+    // Redirect to separate 2D chart page if ?tab=2d is passed
+    useEffect(() => {
+        if (searchParams.get('tab') === '2d') {
+            navigate('/admin/workflow-chart', { replace: true });
+        }
+    }, [searchParams, navigate]);
 
     // Filter States
     const [searchQuery, setSearchQuery] = useState('');
@@ -248,49 +251,18 @@ const ApprovalWorkflow: React.FC = () => {
     }
 
     return (
-        <div className={`border-0 shadow-none md:bg-card md:rounded-xl md:shadow-card flex flex-col flex-1 ${
-            activeTab === '2d' 
-                ? 'p-2 sm:p-2.5 h-[calc(100vh-110px)] min-h-[650px] overflow-hidden' 
-                : 'p-4 md:p-6 space-y-4'
-        }`}>
+        <div className="border-0 shadow-none md:bg-card md:rounded-xl md:shadow-card flex flex-col flex-1 p-4 md:p-6 space-y-4">
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
             {/* UNIFIED COMPACT EXECUTIVE HEADER (Saves 250px vertical space) */}
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 pb-2.5 border-b border-border flex-shrink-0">
-                {/* Left: Page Title + Tab Switcher + Quick Stats */}
+                {/* Left: Page Title + View Links + Quick Stats */}
                 <div className="flex items-center gap-3 flex-wrap">
                     <h2 className="text-lg font-bold text-primary-text flex items-center gap-1.5">
                         <Layers className="w-4 h-4 text-primary" />
                         Leave Approval Workflow
                     </h2>
 
-                    {/* View Tabs */}
-                    <div className="flex items-center gap-1 bg-page p-0.5 rounded-lg border border-border">
-                        <button
-                            type="button"
-                            onClick={() => setActiveTab('table')}
-                            className={`flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-md transition-all ${
-                                activeTab === 'table'
-                                    ? 'bg-card text-primary shadow-xs border border-border/60'
-                                    : 'text-muted hover:text-primary-text'
-                            }`}
-                        >
-                            <Table className="w-3.5 h-3.5" />
-                            Table View ({filteredUsers.length})
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setActiveTab('2d')}
-                            className={`flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-md transition-all ${
-                                activeTab === '2d'
-                                    ? 'bg-card text-emerald-700 shadow-xs border border-border/60'
-                                    : 'text-muted hover:text-primary-text'
-                            }`}
-                        >
-                            <Network className="w-3.5 h-3.5 text-emerald-600" />
-                            2D Workflow Chart
-                        </button>
-                    </div>
 
                     {/* Quick Stats Pills */}
                     <div className="hidden sm:flex items-center gap-1.5 text-xs">
@@ -328,11 +300,9 @@ const ApprovalWorkflow: React.FC = () => {
                 </div>
             </div>
 
-            {/* Tab Content */}
-            <div className={`flex-1 ${activeTab === '2d' ? 'h-full min-h-0 flex flex-col' : ''}`}>
-                {activeTab === 'table' && (
-                    <div className="space-y-4">
-                        {/* 🔍 COMPREHENSIVE FILTER & ROLE IDENTIFIER BAR */}
+            {/* Table Content */}
+            <div className="flex-1 space-y-4">
+                {/* 🔍 COMPREHENSIVE FILTER & ROLE IDENTIFIER BAR */}
                         <div className="p-4 bg-page/70 border border-border rounded-xl space-y-3">
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                                 {/* 1. Search Box */}
@@ -659,9 +629,7 @@ const ApprovalWorkflow: React.FC = () => {
                                     );
                                 })
                             )}
-                        </div>
-
-                        {/* Pagination */}
+                                             {/* Pagination */}
                         <div className="mt-4">
                             <Pagination
                                 currentPage={currentPage}
@@ -673,20 +641,8 @@ const ApprovalWorkflow: React.FC = () => {
                             />
                         </div>
                     </div>
-                )}
-
-                {/* 2D Workflow Chart */}
-                {activeTab === '2d' && (
-                    <OrgWorkflowCard 
-                        users={users}
-                        allRoles={allRoles}
-                        finalConfirmationRole={finalConfirmationRole}
-                        onManagerChange={handleManagerChange}
-                        onSave={handleSave}
-                    />
-                )}
+                </div>
             </div>
-        </div>
     );
 };
 

@@ -9,7 +9,10 @@ import { format } from 'date-fns';
 import Logo from '../../components/ui/Logo';
 import AdminPageHeader from '../../components/admin/AdminPageHeader';
 import Pagination from '../../components/ui/Pagination';
-import { Search, FilterX } from 'lucide-react';
+import { Search, FilterX, Users } from 'lucide-react';
+import { useAuthStore } from '../../store/authStore';
+import type { SiteResponsibilityMatrix } from '../../types/siteRouting';
+import { getUserRoutingScope, normalizeCompanyShortName } from '../../services/siteRoutingScope';
 
 
 // New component for status chip
@@ -174,14 +177,15 @@ const InvoiceContent: React.FC<{
 
 
 const InvoiceSummary: React.FC = () => {
-    const [sites, setSites] = useState<Organization[]>([]);
+    const { user } = useAuthStore();
+    const [allOrganizations, setAllOrganizations] = useState<Organization[]>([]);
+    const [matrixList, setMatrixList] = useState<SiteResponsibilityMatrix[]>([]);
     const [isLoadingSites, setIsLoadingSites] = useState(true);
     const [isLoadingStatuses, setIsLoadingStatuses] = useState(false);
 
     const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'));
     const [statuses, setStatuses] = useState<Record<string, InvoiceStatus>>({});
 
-    const [totalSites, setTotalSites] = useState(0);
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(20);
     const [searchTerm, setSearchTerm] = useState('');
@@ -201,19 +205,61 @@ const InvoiceSummary: React.FC = () => {
     const [isGenerating, setIsGenerating] = useState(false);
 
     useEffect(() => {
+        let cancelled = false;
         setIsLoadingSites(true);
-        api.getOrganizations({ page: currentPage, pageSize })
-            .then(res => {
-                setSites(res.data);
-                setTotalSites(res.total);
+        Promise.all([
+            api.getOrganizations().catch(() => [] as Organization[]),
+            api.getSiteResponsibilityMatrix().catch(() => [] as SiteResponsibilityMatrix[])
+        ])
+            .then(([orgsRes, matrixData]) => {
+                if (cancelled) return;
+                const orgsList: Organization[] = Array.isArray(orgsRes) ? orgsRes : ((orgsRes as any)?.data || []);
+                setAllOrganizations(orgsList);
+                setMatrixList(matrixData || []);
             })
             .catch(() => setToast({ message: "Failed to load sites.", type: 'error' }))
-            .finally(() => setIsLoadingSites(false));
-    }, [currentPage, pageSize]);
+            .finally(() => {
+                if (!cancelled) setIsLoadingSites(false);
+            });
+
+        return () => { cancelled = true; };
+    }, []);
+
+    // Scoped access using Site Responsibility Matrix
+    const routingScope = useMemo(() => getUserRoutingScope(user, matrixList), [user, matrixList]);
+
+    // Non-admins see ONLY their allocated sites (e.g., Sandeep B sees 42 Estate Queens Square, etc.)
+    const scopedSites = useMemo(() => {
+        return allOrganizations.filter(site => {
+            const sName = site.shortName || site.fullName || '';
+            return routingScope.isSitePermitted(sName, (site as any).companyName);
+        });
+    }, [allOrganizations, routingScope]);
+
+    const filteredSites = useMemo(() => {
+        if (!searchTerm.trim()) return scopedSites;
+        const term = searchTerm.toLowerCase().trim();
+        return scopedSites.filter(site => {
+            const sName = (site.shortName || site.fullName || '').toLowerCase();
+            const company = ((site as any).companyName || '').toLowerCase();
+            const team = routingScope.siteTeams[site.shortName || site.fullName];
+            const ops = (team?.opsManagerName || '').toLowerCase();
+            const hr = (team?.hrInchargeName || '').toLowerCase();
+            const accounts = (team?.accountsInchargeName || '').toLowerCase();
+            return sName.includes(term) || company.includes(term) || ops.includes(term) || hr.includes(term) || accounts.includes(term);
+        });
+    }, [scopedSites, searchTerm, routingScope]);
+
+    const totalSites = filteredSites.length;
+
+    const paginatedSites = useMemo(() => {
+        const start = (currentPage - 1) * pageSize;
+        return filteredSites.slice(start, start + pageSize);
+    }, [filteredSites, currentPage, pageSize]);
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [pageSize]);
+    }, [pageSize, searchTerm]);
 
     const fetchStatuses = useCallback(async (month: string) => {
         setIsLoadingStatuses(true);
@@ -340,32 +386,75 @@ const InvoiceSummary: React.FC = () => {
                         <table className="min-w-full text-sm responsive-table">
                             <thead className="bg-page">
                                 <tr>
-                                    <th className="px-4 py-3 text-left font-medium text-muted">Site Name</th>
+                                    <th className="px-4 py-3 text-left font-medium text-muted">Site / Client Name</th>
+                                    <th className="px-4 py-3 text-left font-medium text-muted">Company & Team</th>
                                     <th className="px-4 py-3 text-left font-medium text-muted">Invoice Status</th>
                                     <th className="px-4 py-3 text-left font-medium text-muted">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border md:bg-card md:divide-y-0">
-                                {sites
-                                .filter(site => site.shortName.toLowerCase().includes(searchTerm.toLowerCase()))
-                                .map(site => (
-                                    <tr key={site.id}>
-                                        <td data-label="Site Name" className="px-4 py-3 font-medium">{site.shortName}</td>
-                                        <td data-label="Status" className="px-4 py-3">
-                                            {isLoadingStatuses ? <Loader2 className="h-4 w-4 animate-spin" /> : <InvoiceStatusChip status={statuses[site.id]} />}
-                                        </td>
-                                        <td data-label="Actions" className="px-4 py-3">
-                                            <div className="flex items-center gap-2 justify-end md:justify-start">
-                                                <Button variant="icon" size="sm" onClick={() => handleViewInvoice(site)} disabled={statuses[site.id] === 'Not Generated' || isLoadingStatuses} title="View Invoice">
-                                                    <Eye className="h-4 w-4" />
-                                                </Button>
-                                                <Button variant="icon" size="sm" onClick={() => handleViewInvoice(site)} disabled={statuses[site.id] === 'Not Generated' || isLoadingStatuses} title="Download Invoice">
-                                                    <Download className="h-4 w-4" />
-                                                </Button>
-                                            </div>
+                                {paginatedSites.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={4} className="px-4 py-8 text-center text-muted">
+                                            No allocated sites found matching your criteria.
                                         </td>
                                     </tr>
-                                ))}
+                                ) : (
+                                    paginatedSites.map(site => {
+                                        const sName = site.shortName || site.fullName;
+                                        const team = routingScope.siteTeams[sName];
+                                        const companyCode = team?.billingCompany || normalizeCompanyShortName((site as any).companyName);
+
+                                        return (
+                                            <tr key={site.id} className="hover:bg-hover/50 transition-colors">
+                                                <td data-label="Site Name" className="px-4 py-3">
+                                                    <div className="font-semibold text-primary-text">{sName}</div>
+                                                    {site.fullName && site.fullName !== sName && (
+                                                        <div className="text-xs text-muted truncate max-w-xs">{site.fullName}</div>
+                                                    )}
+                                                </td>
+                                                <td data-label="Company & Team" className="px-4 py-3">
+                                                    <div className="flex flex-wrap items-center gap-1.5">
+                                                        <span className="px-2 py-0.5 text-xs font-semibold rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
+                                                            {companyCode}
+                                                        </span>
+                                                        {team?.billingCycle && (
+                                                            <span className="text-xs text-muted">
+                                                                ({team.billingCycle})
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    {team && (
+                                                        <div className="text-xs text-muted mt-1 flex flex-wrap gap-x-2">
+                                                            {team.opsManagerName && team.opsManagerName !== 'Unassigned' && (
+                                                                <span>Ops: <strong className="text-primary-text">{team.opsManagerName}</strong></span>
+                                                            )}
+                                                            {team.hrInchargeName && team.hrInchargeName !== 'Unassigned' && (
+                                                                <span>HR: <strong className="text-primary-text">{team.hrInchargeName}</strong></span>
+                                                            )}
+                                                            {team.accountsInchargeName && team.accountsInchargeName !== 'Unassigned' && (
+                                                                <span>Accts: <strong className="text-primary-text">{team.accountsInchargeName}</strong></span>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </td>
+                                                <td data-label="Status" className="px-4 py-3">
+                                                    {isLoadingStatuses ? <Loader2 className="h-4 w-4 animate-spin text-accent" /> : <InvoiceStatusChip status={statuses[site.id]} />}
+                                                </td>
+                                                <td data-label="Actions" className="px-4 py-3">
+                                                    <div className="flex items-center gap-2 justify-end md:justify-start">
+                                                        <Button variant="icon" size="sm" onClick={() => handleViewInvoice(site)} disabled={statuses[site.id] === 'Not Generated' || isLoadingStatuses} title="View Invoice">
+                                                            <Eye className="h-4 w-4" />
+                                                        </Button>
+                                                        <Button variant="icon" size="sm" onClick={() => handleViewInvoice(site)} disabled={statuses[site.id] === 'Not Generated' || isLoadingStatuses} title="Download Invoice">
+                                                            <Download className="h-4 w-4" />
+                                                        </Button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
+                                )}
                             </tbody>
                         </table>
                     </div>

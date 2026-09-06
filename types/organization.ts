@@ -187,7 +187,14 @@ export interface Entity {
   emails?: { id: string; email: string; isPrimary?: boolean; }[];
   siteManagement?: {
     keyAccountManager?: string;
-    kamEffectiveDate?: string;
+    kamEffectiveDate?: string | null;
+    opsManager?: string;
+    hrIncharge?: string;
+    accountsIncharge?: string;
+    siteManager?: string;
+    fieldOfficer?: string;
+    billingCycle?: string;
+    operatingCompany?: string;
     siteAreaSqFt?: number;
     projectType?: string;
     unitCount?: number;
@@ -255,8 +262,10 @@ export interface Entity {
     nextTaskDate?: string;
   }[];
   billingControls?: {
-    billingCycleStart?: string;
-    salaryDate?: string;
+    billingCycle?: string;
+    operatingCompany?: string;
+    billingCycleStart?: string | null;
+    salaryDate?: string | null;
     uniformDeductions: boolean;
     deductionCategory?: string;
   };
