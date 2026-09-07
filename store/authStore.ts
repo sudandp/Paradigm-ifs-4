@@ -882,12 +882,14 @@ export const useAuthStore = create<AuthState>()(
                 // Online but genuinely no events today – safe to reset
                 if (events.length === 0) {
                     const currentState = get();
-                    // If device is offline or user is already checked in today, do not wipe state on empty fallback
-                    if (currentState.isOffline || currentState.lastCheckInTime) {
+                    // If device is offline, already checked-in, or has any prior punch today —
+                    // do NOT wipe state on an empty fallback (protects against flaky WiFi returning 0 rows)
+                    if (currentState.isOffline || currentState.lastCheckInTime || currentState.isCheckedIn || currentState.isFieldCheckedIn || currentState.isSiteOtCheckedIn) {
                         console.warn('[authStore] Zero events returned during offline/reconnect fallback – keeping existing state.');
                         set({ isAttendanceLoading: false });
                         return;
                     }
+
                     set({
                         isCheckedIn: false,
                         lastCheckInTime: null,
@@ -1366,6 +1368,37 @@ export const useAuthStore = create<AuthState>()(
                         console.log('[authStore Debug] Submitting addAttendanceEvent payload:', eventPayload);
                         await api.addAttendanceEvent(eventPayload);
                         console.log('[authStore Debug] addAttendanceEvent SUCCESS!');
+
+                        // ── Optimistic state update ──
+                        // Immediately reflect the new event in the store so the UI updates
+                        // even if the follow-up checkAttendanceStatus refresh fails (e.g., flaky WiFi
+                        // causes the SELECT to time-out while the INSERT already succeeded).
+                        const isCheckOut = newType === 'punch-out' || newType === 'site-out' || newType === 'site-ot-out';
+                        const isCheckIn  = newType === 'punch-in'  || newType === 'site-in'  || newType === 'site-ot-in';
+                        const isBreakStart = newType === 'break-in';
+                        const isBreakEnd   = newType === 'break-out';
+                        const now = new Date().toISOString();
+                        if (isCheckOut) {
+                            if (workType === 'field') {
+                                set({ isFieldCheckedIn: false, isFieldCheckedOut: true, lastCheckOutTime: now });
+                            } else if (newType === 'site-ot-out') {
+                                set({ isSiteOtCheckedIn: false });
+                            } else {
+                                set({ isCheckedIn: false, lastCheckOutTime: now, hasPreviousDayOpenSession: false, hasActiveOpenSession: false, previousDaySessionInfo: null });
+                            }
+                        } else if (isCheckIn) {
+                            if (workType === 'field' || newType === 'site-in') {
+                                set({ isFieldCheckedIn: true, lastCheckInTime: now });
+                            } else if (newType === 'site-ot-in') {
+                                set({ isSiteOtCheckedIn: true, lastCheckInTime: now });
+                            } else {
+                                set({ isCheckedIn: true, lastCheckInTime: now });
+                            }
+                        } else if (isBreakStart) {
+                            set({ isOnBreak: true, lastBreakInTime: now });
+                        } else if (isBreakEnd) {
+                            set({ isOnBreak: false, lastBreakOutTime: now });
+                        }
                     } catch (err: any) {
                         console.error('[authStore Debug] addAttendanceEvent FAILED:', err);
                         return { success: false, message: err.message || 'Failed to record attendance' };
