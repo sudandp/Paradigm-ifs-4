@@ -107,10 +107,18 @@ export const htYardFieldSpecService = {
       console.debug('Failed to parse localSpecs', err);
     }
 
-    // Merge: DB items take precedence over local, and local over empty
+    // Merge: DB items take precedence over local, and local over empty, preserving parentFieldKey
     const map = new Map<string, CustomFieldSpec>();
-    localSpecs.forEach(s => map.set(`${s.sectionKey}_${s.fieldKey}`, s));
-    dbSpecs.forEach(s => map.set(`${s.sectionKey}_${s.fieldKey}`, s));
+    localSpecs.forEach(s => map.set(s.fieldKey, s));
+    dbSpecs.forEach(s => {
+      const existingLocal = map.get(s.fieldKey);
+      map.set(s.fieldKey, {
+        ...s,
+        parentFieldKey: s.parentFieldKey || existingLocal?.parentFieldKey,
+        placeholder: s.placeholder || existingLocal?.placeholder,
+        unit: s.unit || existingLocal?.unit
+      });
+    });
 
     return Array.from(map.values());
   },

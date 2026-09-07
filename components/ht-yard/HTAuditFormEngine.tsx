@@ -334,6 +334,7 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
   const [newFieldLabel, setNewFieldLabel] = useState('');
   const [newFieldType, setNewFieldType] = useState('select');
   const [newFieldUnit, setNewFieldUnit] = useState('');
+  const [newFieldPlaceholder, setNewFieldPlaceholder] = useState('');
   const [newFieldChoices, setNewFieldChoices] = useState('');
   const [isAddingField, setIsAddingField] = useState(false);
 
@@ -422,10 +423,55 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
     }
   };
 
+  // Capture current scroll positions across layout containers
+  const captureScrollPosition = () => {
+    const mainEl = (document.querySelector('main.overflow-y-auto') || document.querySelector('main')) as HTMLElement | null;
+    const mainScrollTop = mainEl ? mainEl.scrollTop : 0;
+    const windowScrollTop = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+    return { mainScrollTop, windowScrollTop };
+  };
+
+  // Restore scroll positions accurately and ensure target card stays in view
+  const restoreScrollPosition = (
+    pos: { mainScrollTop: number; windowScrollTop: number },
+    targetElementId?: string
+  ) => {
+    const apply = () => {
+      const mainEl = (document.querySelector('main.overflow-y-auto') || document.querySelector('main')) as HTMLElement | null;
+      if (mainEl && pos.mainScrollTop > 0) {
+        mainEl.scrollTop = pos.mainScrollTop;
+      }
+      if (pos.windowScrollTop > 0) {
+        window.scrollTo({ top: pos.windowScrollTop, behavior: 'instant' as ScrollBehavior });
+      }
+
+      if (targetElementId) {
+        const el = document.getElementById(targetElementId);
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          const isInView = rect.top >= 80 && rect.bottom <= (window.innerHeight || document.documentElement.clientHeight);
+          if (!isInView) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }
+        }
+      }
+    };
+
+    apply();
+    requestAnimationFrame(apply);
+    setTimeout(apply, 40);
+    setTimeout(apply, 120);
+    setTimeout(apply, 250);
+    setTimeout(apply, 450);
+  };
+
   // Save changes to field configuration
   const handleSaveFieldConfig = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingField || !editingField.fieldLabel.trim()) return;
+    const scrollPos = captureScrollPosition();
+    const targetKey = editingField.fieldKey;
+    const parentKey = editingField.parentFieldKey;
     setIsSavingField(true);
     try {
       const cat = (editingField.optionsCategory || resolveCategoryForModule(spec.moduleType) || MODULE_TO_CAT_MAP[spec.moduleType] || 'LTKMD') as any;
@@ -460,6 +506,9 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
       setEditingField(null);
       await loadMergedSpec();
       await loadCategoryOptions();
+
+      const targetId = parentKey ? `ht-audit-sub-field-${targetKey}` : `ht-audit-field-${targetKey}`;
+      restoreScrollPosition(scrollPos, targetId);
     } catch (err) {
       toast.error('Failed to update question');
     } finally {
@@ -490,6 +539,7 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
         optionsCategory: cat,
         optionsFieldKey: cleanKey,
         unit: newFieldUnit.trim() || undefined,
+        placeholder: newFieldPlaceholder.trim() || undefined,
         isCustom: true
       });
 
@@ -510,6 +560,7 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
       setShowAddFieldModal(false);
       setNewFieldLabel('');
       setNewFieldUnit('');
+      setNewFieldPlaceholder('');
       setNewFieldChoices('');
       setNewFieldType('select');
       await loadMergedSpec();
@@ -527,6 +578,7 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
   const [subQuestionLabel, setSubQuestionLabel] = useState('');
   const [subQuestionType, setSubQuestionType] = useState('select');
   const [subQuestionUnit, setSubQuestionUnit] = useState('');
+  const [subQuestionPlaceholder, setSubQuestionPlaceholder] = useState('');
   const [subQuestionChoices, setSubQuestionChoices] = useState('');
   const [isAddingSubQuestion, setIsAddingSubQuestion] = useState(false);
 
@@ -550,6 +602,7 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
   const handleAddNewSubQuestionToField = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!targetParentField || !subQuestionLabel.trim()) return;
+    const scrollPos = captureScrollPosition();
     setIsAddingSubQuestion(true);
     try {
       const cat = (MODULE_TO_CAT_MAP[spec.moduleType] || 'LTKMD') as any;
@@ -567,6 +620,7 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
         optionsCategory: cat,
         optionsFieldKey: cleanKey,
         unit: subQuestionUnit.trim() || undefined,
+        placeholder: subQuestionPlaceholder.trim() || undefined,
         parentFieldKey: targetParentField.key,
         isCustom: true
       });
@@ -609,11 +663,14 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
       setTargetParentField(null);
       setSubQuestionLabel('');
       setSubQuestionUnit('');
+      setSubQuestionPlaceholder('');
       setSubQuestionChoices('');
       setSubQuestionType('select');
 
       await loadMergedSpec();
       await loadCategoryOptions();
+
+      restoreScrollPosition(scrollPos, `ht-audit-sub-field-${cleanKey}`);
     } catch (err) {
       toast.error('Failed to add sub-question');
     } finally {
@@ -1502,7 +1559,7 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
                 );
 
                 return (
-                  <div key={field.key} className="flex flex-col p-4 rounded-xl border border-slate-100 dark:border-slate-800/60 bg-slate-50/30 dark:bg-slate-800/20 shadow-[0_2px_4px_rgba(0,0,0,0.01)] hover:shadow-md transition-shadow">
+                  <div key={field.key} id={`ht-audit-field-${field.key}`} className="flex flex-col p-4 rounded-xl border border-slate-100 dark:border-slate-800/60 bg-slate-50/30 dark:bg-slate-800/20 shadow-[0_2px_4px_rgba(0,0,0,0.01)] hover:shadow-md transition-shadow">
                     <div className="flex items-start justify-between gap-3 mb-4">
                       <div className="flex items-center gap-1.5 flex-1 min-w-0">
                         <label className="text-sm font-bold text-slate-800 dark:text-slate-200 leading-snug truncate">
@@ -2007,7 +2064,7 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
                                    const isSelectType = (subField.type === 'select' || subField.type === 'searchable_select' || (!subField.type && cleanSubOptions.length > 0 && !isDateQuestion)) && !isDateQuestion && !isTimeQuestion && !isDateTimeQuestion && !isNumberQuestion && !isBooleanQuestion;
 
                                    return (
-                                     <div key={subField.key} className="space-y-1">
+                                     <div key={subField.key} id={`ht-audit-sub-field-${subField.key}`} className="space-y-1">
                                        <div className="flex items-center justify-between">
                                          <span className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                                            {subField.label}
@@ -2416,7 +2473,7 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Answer Format / Type
@@ -2448,6 +2505,19 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
                     value={editingField.unit}
                     onChange={(e) => setEditingField({ ...editingField, unit: e.target.value })}
                     placeholder="e.g. A, V, kVA, Deg C, mm"
+                    className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Placeholder Hint (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={editingField.placeholder || ''}
+                    onChange={(e) => setEditingField({ ...editingField, placeholder: e.target.value })}
+                    placeholder="e.g. Select ratio..."
                     className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 outline-none"
                   />
                 </div>
@@ -2576,7 +2646,7 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Answer Format / Type
@@ -2607,6 +2677,19 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
                     value={newFieldUnit}
                     onChange={(e) => setNewFieldUnit(e.target.value)}
                     placeholder="e.g. A, V, kVA, mm"
+                    className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Placeholder Hint (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={newFieldPlaceholder}
+                    onChange={(e) => setNewFieldPlaceholder(e.target.value)}
+                    placeholder="e.g. Select ratio..."
                     className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 outline-none"
                   />
                 </div>
@@ -2687,7 +2770,7 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Input / Response Type
@@ -2716,6 +2799,19 @@ export const HTAuditFormEngine: React.FC<HTAuditFormEngineProps> = ({
                     value={subQuestionUnit}
                     onChange={(e) => setSubQuestionUnit(e.target.value)}
                     placeholder="e.g. Sec, A, V, VA, mm"
+                    className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Placeholder Hint (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={subQuestionPlaceholder}
+                    onChange={(e) => setSubQuestionPlaceholder(e.target.value)}
+                    placeholder="e.g. Select ratio..."
                     className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 outline-none"
                   />
                 </div>

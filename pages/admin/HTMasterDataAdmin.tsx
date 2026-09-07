@@ -851,8 +851,10 @@ export const HTMasterDataAdmin: React.FC = () => {
   const [newTargetType, setNewTargetType] = useState<HTFieldType>('select');
   const [newTargetChoices, setNewTargetChoices] = useState('');
   const [newTargetUnit, setNewTargetUnit] = useState('');
+  const [newTargetPlaceholder, setNewTargetPlaceholder] = useState('');
   const [newTargetParentKey, setNewTargetParentKey] = useState<string | undefined>(undefined);
   const [parentFieldLabel, setParentFieldLabel] = useState<string>('');
+  const [suggestedSerialNum, setSuggestedSerialNum] = useState<number>(1);
   const [newCategoryName, setNewCategoryName] = useState('');
 
   // Duplication State for Master Data Repeatability
@@ -888,6 +890,8 @@ export const HTMasterDataAdmin: React.FC = () => {
   const [viewingTargetKey, setViewingTargetKey] = useState<string | null>(null);
   const [quickAddValue, setQuickAddValue] = useState('');
   const [listModalSearch, setListModalSearch] = useState('');
+  const [isUploadingChoiceExcel, setIsUploadingChoiceExcel] = useState(false);
+  const choiceFileInputRef = useRef<HTMLInputElement>(null);
 
   // Inline Edit State inside Modal
   const [inlineEditingId, setInlineEditingId] = useState<string | null>(null);
@@ -1248,11 +1252,53 @@ export const HTMasterDataAdmin: React.FC = () => {
 
     const handleSpecUpdate = () => {
       loadCustomSpecs();
-      loadOptions();
+      loadOptions(true);
     };
     window.addEventListener('ht_field_specs_updated', handleSpecUpdate);
     return () => window.removeEventListener('ht_field_specs_updated', handleSpecUpdate);
   }, [activeTab]);
+
+  // Capture current scroll positions across layout containers
+  const captureScrollPosition = () => {
+    const mainEl = (document.querySelector('main.overflow-y-auto') || document.querySelector('main')) as HTMLElement | null;
+    const mainScrollTop = mainEl ? mainEl.scrollTop : 0;
+    const windowScrollTop = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+    return { mainScrollTop, windowScrollTop };
+  };
+
+  // Restore scroll positions accurately and ensure target card stays in view
+  const restoreScrollPosition = (
+    pos: { mainScrollTop: number; windowScrollTop: number },
+    targetElementId?: string
+  ) => {
+    const apply = () => {
+      const mainEl = (document.querySelector('main.overflow-y-auto') || document.querySelector('main')) as HTMLElement | null;
+      if (mainEl && pos.mainScrollTop > 0) {
+        mainEl.scrollTop = pos.mainScrollTop;
+      }
+      if (pos.windowScrollTop > 0) {
+        window.scrollTo({ top: pos.windowScrollTop, behavior: 'instant' as ScrollBehavior });
+      }
+
+      if (targetElementId) {
+        const el = document.getElementById(targetElementId);
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          const isInView = rect.top >= 80 && rect.bottom <= (window.innerHeight || document.documentElement.clientHeight);
+          if (!isInView) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }
+        }
+      }
+    };
+
+    apply();
+    requestAnimationFrame(apply);
+    setTimeout(apply, 40);
+    setTimeout(apply, 120);
+    setTimeout(apply, 250);
+    setTimeout(apply, 450);
+  };
 
   const loadCustomSpecs = async () => {
     try {
@@ -1263,8 +1309,10 @@ export const HTMasterDataAdmin: React.FC = () => {
     }
   };
 
-  const loadOptions = async () => {
-    setLoading(true);
+  const loadOptions = async (silent = false) => {
+    if (!silent && options.length === 0) {
+      setLoading(true);
+    }
     try {
       const data = await htYardMasterDataService.getMasterOptions(activeTab);
       setOptions(data);
@@ -1336,6 +1384,9 @@ export const HTMasterDataAdmin: React.FC = () => {
       return;
     }
 
+    const scrollPos = captureScrollPosition();
+    const fieldKey = editingOption.fieldKey;
+
     try {
       await htYardMasterDataService.saveMasterOption({
         ...editingOption,
@@ -1344,7 +1395,8 @@ export const HTMasterDataAdmin: React.FC = () => {
       logMasterDataActivity('CREATE', editingOption.optionValue.trim(), `Added choice "${editingOption.optionValue.trim()}" for field "${editingOption.fieldKey}" in category "${activeTab}"`);
       toast.success('Option saved successfully');
       setShowAddModal(false);
-      loadOptions();
+      await loadOptions(true);
+      restoreScrollPosition(scrollPos, fieldKey ? `field-card-${fieldKey}` : undefined);
     } catch (error) {
       toast.error('Failed to save option');
     }
@@ -1352,6 +1404,7 @@ export const HTMasterDataAdmin: React.FC = () => {
 
   const handleQuickAddChoice = async (fieldKey: string) => {
     if (!quickAddValue.trim()) return;
+    const scrollPos = captureScrollPosition();
     try {
       await htYardMasterDataService.saveMasterOption({
         category: activeTab,
@@ -1361,14 +1414,183 @@ export const HTMasterDataAdmin: React.FC = () => {
       logMasterDataActivity('CREATE', quickAddValue.trim(), `Added choice "${quickAddValue.trim()}" for field "${fieldKey}" in category "${activeTab}"`);
       toast.success(`Added "${quickAddValue.trim()}"`);
       setQuickAddValue('');
-      loadOptions();
+      await loadOptions(true);
+      restoreScrollPosition(scrollPos, `field-card-${fieldKey}`);
     } catch (error) {
       toast.error('Failed to add option choice');
     }
   };
 
+  const handleDownloadChoiceTemplate = async (group: { label: string; fieldKey: string; category: string }) => {
+    try {
+      const [ExcelJSModule, { saveAs }] = await Promise.all([
+        import('exceljs'),
+        import('file-saver')
+      ]);
+      const ExcelJS = ExcelJSModule.default || ExcelJSModule;
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'Paradigm Office Admin Studio';
+      workbook.created = new Date();
+
+      const sheet = workbook.addWorksheet('Choices', {
+        views: [{ showGridLines: true, state: 'frozen', ySplit: 1 }]
+      });
+
+      sheet.columns = [
+        { header: 'Choice Value (Required)', key: 'choice', width: 45 },
+        { header: 'Manufacturer / Scope (Optional)', key: 'manufacturer', width: 35 }
+      ];
+
+      const headerRow = sheet.getRow(1);
+      headerRow.font = { bold: true, color: { argb: 'FFFFFF' }, size: 11 };
+      headerRow.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: '0F5132' } // Emerald green
+      };
+      headerRow.alignment = { vertical: 'middle', horizontal: 'left' };
+      headerRow.height = 28;
+
+      sheet.addRow({
+        choice: 'Sample Choice 1 (e.g. 400 Sq.mm)',
+        manufacturer: 'Optional Brand'
+      });
+      sheet.addRow({
+        choice: 'Sample Choice 2 (e.g. 300 Sq.mm)',
+        manufacturer: ''
+      });
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const cleanFileName = group.label.replace(/[^a-zA-Z0-9_-]/g, '_');
+      saveAs(blob, `${cleanFileName}_Choices_Template.xlsx`);
+      toast.success('Template downloaded! Fill in your choices and click Upload Excel.');
+    } catch (err) {
+      console.error('Failed to download choice template:', err);
+      toast.error('Failed to generate template');
+    }
+  };
+
+  const handleUploadChoiceExcel = async (e: React.ChangeEvent<HTMLInputElement>, group: { label: string; fieldKey: string; category: string }) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingChoiceExcel(true);
+    const scrollPos = captureScrollPosition();
+    try {
+      const parsedChoices: Array<{ value: string; manufacturer?: string }> = [];
+
+      if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+        const buffer = await file.arrayBuffer();
+        const ExcelJSModule = await import('exceljs');
+        const ExcelJS = ExcelJSModule.default || ExcelJSModule;
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(buffer);
+        const sheet = workbook.worksheets[0];
+
+        sheet.eachRow((row, rowNumber) => {
+          if (rowNumber === 1) return; // Skip header row
+          // Cell 1: Choice Value, Cell 2: Manufacturer (optional)
+          const cell1 = row.getCell(1).value;
+          const cell2 = row.getCell(2).value;
+
+          const choiceVal = cell1 !== null && cell1 !== undefined ? String(cell1).trim() : '';
+          const mfrVal = cell2 !== null && cell2 !== undefined ? String(cell2).trim() : undefined;
+
+          // Skip sample guidance rows if present
+          if (choiceVal.toLowerCase().startsWith('sample choice')) return;
+
+          if (choiceVal) {
+            parsedChoices.push({ value: choiceVal, manufacturer: mfrVal });
+          }
+        });
+      } else {
+        // Fallback for .csv or .txt files
+        const text = await file.text();
+        const lines = text.split(/\r\n|\n/).map(l => l.trim()).filter(Boolean);
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          if (i === 0 && (line.toLowerCase().includes('choice') || line.toLowerCase().includes('value') || line.toLowerCase().includes('option'))) {
+            continue; // Skip header
+          }
+          const parts = line.split(',');
+          const choiceVal = parts[0]?.replace(/^["']|["']$/g, '').trim();
+          const mfrVal = parts[1]?.replace(/^["']|["']$/g, '').trim();
+          if (choiceVal && !choiceVal.toLowerCase().startsWith('sample choice')) {
+            parsedChoices.push({ value: choiceVal, manufacturer: mfrVal });
+          }
+        }
+      }
+
+      if (parsedChoices.length === 0) {
+        toast.error('No valid choice values found in the uploaded file');
+        return;
+      }
+
+      // Filter out duplicates that already exist in DB for this field
+      const existingValues = new Set(
+        options
+          .filter(o => o.category === group.category && o.fieldKey === group.fieldKey)
+          .map(o => o.optionValue.toLowerCase().trim())
+      );
+
+      // Also deduplicate within the uploaded file itself
+      const seenInFile = new Set<string>();
+      const toInsert: Array<{ value: string; manufacturer?: string }> = [];
+      let duplicateCount = 0;
+
+      for (const item of parsedChoices) {
+        const lower = item.value.toLowerCase();
+        if (existingValues.has(lower) || seenInFile.has(lower)) {
+          duplicateCount++;
+        } else {
+          seenInFile.add(lower);
+          toInsert.push(item);
+        }
+      }
+
+      if (toInsert.length === 0) {
+        toast.error(`All ${parsedChoices.length} choices from file already exist in the list!`);
+        return;
+      }
+
+      // Batch save into database / service
+      for (const item of toInsert) {
+        await htYardMasterDataService.saveMasterOption({
+          category: group.category as any,
+          fieldKey: group.fieldKey,
+          optionValue: item.value,
+          manufacturer: item.manufacturer,
+          isActive: true
+        });
+      }
+
+      logMasterDataActivity(
+        'CREATE',
+        group.label,
+        `Bulk uploaded ${toInsert.length} choices from Excel sheet into "${group.label}" (${group.fieldKey})`
+      );
+
+      toast.success(
+        `Successfully imported ${toInsert.length} choices!${duplicateCount > 0 ? ` (${duplicateCount} duplicate(s) skipped)` : ''}`
+      );
+
+      await loadOptions(true);
+      restoreScrollPosition(scrollPos, `field-card-${group.fieldKey}`);
+    } catch (err) {
+      console.error('Failed to import choices from Excel:', err);
+      toast.error('Failed to process Excel file. Please ensure it is a valid .xlsx or .csv');
+    } finally {
+      setIsUploadingChoiceExcel(false);
+      if (choiceFileInputRef.current) {
+        choiceFileInputRef.current.value = '';
+      }
+    }
+  };
+
   const handleInlineSave = async (item: HTMasterOption) => {
     if (!inlineEditingValue.trim()) return;
+    const scrollPos = captureScrollPosition();
     try {
       await htYardMasterDataService.saveMasterOption({
         ...item,
@@ -1377,7 +1599,8 @@ export const HTMasterDataAdmin: React.FC = () => {
       logMasterDataActivity('EDIT', inlineEditingValue.trim(), `Updated choice value from "${item.optionValue}" to "${inlineEditingValue.trim()}" in category "${activeTab}"`);
       toast.success('Choice updated');
       setInlineEditingId(null);
-      loadOptions();
+      await loadOptions(true);
+      restoreScrollPosition(scrollPos, `field-card-${item.fieldKey}`);
     } catch (error) {
       toast.error('Failed to update choice');
     }
@@ -1451,13 +1674,44 @@ export const HTMasterDataAdmin: React.FC = () => {
     });
   };
 
-  const handleOpenAddQuestionModal = (parentKey?: string, parentLabel?: string) => {
-    setNewTargetLabel('');
+  const handleOpenAddQuestionModal = (parentKey?: string, parentLabel?: string, parentSection?: string) => {
+    let nextNum = 1;
+    let targetSection = parentSection;
+
+    if (parentKey) {
+      // Follow-up sub-question under parent
+      const parentGroup = allGroupedFields.find(g => g.fieldKey === parentKey);
+      if (parentGroup) {
+        if (!targetSection) {
+          targetSection = parentGroup.section;
+        }
+        const existingSubs = parentGroup.subQuestions || [];
+        const existingNums = existingSubs.map(s => {
+          const m = (s.label || '').trim().match(/^(\d+)[.)\-\s]/);
+          return m ? parseInt(m[1], 10) : 0;
+        }).filter(n => n > 0);
+        nextNum = existingNums.length > 0 ? Math.max(...existingNums) + 1 : (existingSubs.length + 1);
+      }
+    } else {
+      // Main root question
+      const sec = targetSection || (selectedSection !== 'All' ? selectedSection : availableSections[0]) || 'Stage 1: Yard Infrastructure & Environment';
+      targetSection = sec;
+      const rootQuestions = allGroupedFields.filter(g => !g.parentFieldKey && (!sec || sec === 'All' || g.section === sec));
+      const existingNums = rootQuestions.map(g => {
+        const m = (g.label || '').trim().match(/^(\d+)[.)\-\s]/);
+        return m ? parseInt(m[1], 10) : 0;
+      }).filter(n => n > 0);
+      nextNum = existingNums.length > 0 ? Math.max(...existingNums) + 1 : (rootQuestions.length + 1);
+    }
+
+    setSuggestedSerialNum(nextNum);
+    setNewTargetLabel(`${nextNum}. `);
     setNewTargetKey('');
-    const defaultSec = (selectedSection !== 'All' ? selectedSection : availableSections[0]) || 'Stage 1: Yard Infrastructure & Environment';
+    const defaultSec = targetSection || (selectedSection !== 'All' ? selectedSection : availableSections[0]) || 'Stage 1: Yard Infrastructure & Environment';
     setNewTargetSection(defaultSec);
     setNewTargetChoices('');
     setNewTargetUnit('');
+    setNewTargetPlaceholder('');
     setNewTargetType('select');
     setNewTargetParentKey(parentKey);
     setParentFieldLabel(parentLabel || '');
@@ -1466,22 +1720,31 @@ export const HTMasterDataAdmin: React.FC = () => {
 
   const handleCreateNewTargetField = async (e: React.FormEvent) => {
     e.preventDefault();
-    const label = newTargetLabel.trim();
-    if (!label) {
+    let finalLabel = newTargetLabel.trim();
+    if (!finalLabel) {
       toast.error('Question name is required');
       return;
     }
 
+    // Auto-assign serial number if the user didn't type one or cleared it
+    if (!/^\s*\d+[.)\-\s]/.test(finalLabel)) {
+      finalLabel = `${suggestedSerialNum}. ${finalLabel}`;
+    }
+
+    const scrollPos = captureScrollPosition();
+    const parentKey = newTargetParentKey;
     const defaultSec = (selectedSection !== 'All' ? selectedSection : availableSections[0]) || 'Stage 1: Yard Infrastructure & Environment';
     const sectionTitle = newTargetSection.trim() || defaultSec;
     const sectionKey = sectionTitle.toLowerCase().replace(/[^a-z0-9]/g, '_');
     const moduleType = CATEGORY_TO_MODULE_MAP[activeTab] || 'HT_Yard_Common';
 
-    // Auto-generate unique key from question name
-    const baseCleanKey = label.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || 'question';
+    // Auto-generate clean, unique key from question name (strip leading numbers)
+    const cleanLabelForSlug = finalLabel.replace(/^\s*\d+[.)\-\s]+/, '').trim() || finalLabel;
+    const baseCleanKey = cleanLabelForSlug.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || 'question';
+    const uniqueSuffix = `${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 6)}`;
     const cleanKey = newTargetKey.trim()
       ? newTargetKey.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_')
-      : (newTargetParentKey ? `sub_${baseCleanKey}_${Date.now().toString().slice(-4)}` : `custom_${baseCleanKey}_${Date.now().toString().slice(-4)}`);
+      : (newTargetParentKey ? `sub_${baseCleanKey}_${uniqueSuffix}` : `custom_${baseCleanKey}_${uniqueSuffix}`);
 
     try {
       // 1. Save Field Spec to htYardFieldSpecService
@@ -1491,12 +1754,14 @@ export const HTMasterDataAdmin: React.FC = () => {
         sectionKey: sectionKey,
         sectionTitle: sectionTitle,
         fieldKey: cleanKey,
-        fieldLabel: label,
+        fieldLabel: finalLabel,
         fieldType: newTargetType,
         unit: newTargetUnit.trim() || undefined,
+        placeholder: newTargetPlaceholder.trim() || undefined,
         optionsCategory: activeTab,
         optionsFieldKey: cleanKey,
         parentFieldKey: newTargetParentKey,
+        displayOrder: suggestedSerialNum,
         isCustom: true,
         isActive: true
       };
@@ -1520,8 +1785,8 @@ export const HTMasterDataAdmin: React.FC = () => {
         const currentList = prev[activeTab] || [];
         const exists = currentList.some(t => t.key === cleanKey);
         const updatedList = exists
-          ? currentList.map(t => t.key === cleanKey ? { key: cleanKey, label, section: sectionTitle, parentFieldKey: newTargetParentKey } : t)
-          : [...currentList, { key: cleanKey, label, section: sectionTitle, parentFieldKey: newTargetParentKey }];
+          ? currentList.map(t => t.key === cleanKey ? { key: cleanKey, label: finalLabel, section: sectionTitle, parentFieldKey: newTargetParentKey } : t)
+          : [...currentList, { key: cleanKey, label: finalLabel, section: sectionTitle, parentFieldKey: newTargetParentKey }];
 
         const updated = {
           ...prev,
@@ -1535,8 +1800,8 @@ export const HTMasterDataAdmin: React.FC = () => {
         return updated;
       });
 
-      logMasterDataActivity('CREATE', label, `Created new target field "${label}" (${cleanKey}) [Type: ${newTargetType}] in section "${sectionTitle}" for category "${activeTab}"`);
-      toast.success(newTargetParentKey ? `Sub-question "${label}" added inside card!` : `Question "${label}" created!`);
+      logMasterDataActivity('CREATE', finalLabel, `Created new target field "${finalLabel}" (${cleanKey}) [Type: ${newTargetType}] in section "${sectionTitle}" for category "${activeTab}"`);
+      toast.success(newTargetParentKey ? `Follow-up question "${finalLabel}" added inside card!` : `Question "${finalLabel}" created!`);
       setShowAddTargetModal(false);
       setNewTargetParentKey(undefined);
       setParentFieldLabel('');
@@ -1545,14 +1810,25 @@ export const HTMasterDataAdmin: React.FC = () => {
       setNewTargetSection('');
       setNewTargetChoices('');
       setNewTargetUnit('');
+      setNewTargetPlaceholder('');
       setNewTargetType('select');
 
+      // Keep target card or parent expanded so it remains visible
+      if (parentKey) {
+        setExpandedKeys(prev => ({ ...prev, [parentKey]: true }));
+      } else {
+        setExpandedKeys(prev => ({ ...prev, [cleanKey]: true }));
+      }
+
       await loadCustomSpecs();
-      await loadOptions();
+      await loadOptions(true);
 
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('ht_field_specs_updated', { detail: { category: activeTab } }));
       }
+
+      const targetId = parentKey ? `sub-field-card-${cleanKey}` : `field-card-${cleanKey}`;
+      restoreScrollPosition(scrollPos, targetId);
     } catch (err) {
       toast.error('Failed to create field');
     }
@@ -1581,6 +1857,7 @@ export const HTMasterDataAdmin: React.FC = () => {
   const handleConfirmDuplicate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!duplicatingGroup || !duplicateLabel.trim()) return;
+    const scrollPos = captureScrollPosition();
     setIsDuplicating(true);
     try {
       const label = duplicateLabel.trim();
@@ -1667,12 +1944,16 @@ export const HTMasterDataAdmin: React.FC = () => {
       setShowDuplicateModal(false);
       setDuplicatingGroup(null);
 
+      setExpandedKeys(prev => ({ ...prev, [newFieldKey]: true }));
+
       await loadCustomSpecs();
-      await loadOptions();
+      await loadOptions(true);
 
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('ht_field_specs_updated', { detail: { category: activeTab } }));
       }
+
+      restoreScrollPosition(scrollPos, `field-card-${newFieldKey}`);
     } catch (err) {
       toast.error('Failed to duplicate question');
     } finally {
@@ -1683,6 +1964,10 @@ export const HTMasterDataAdmin: React.FC = () => {
   const handleSaveFieldConfiguration = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!configuringField) return;
+
+    const scrollPos = captureScrollPosition();
+    const targetKey = configuringField.fieldKey;
+    const parentKey = configuringField.parentFieldKey;
 
     try {
       const sectionTitle = configuringField.sectionTitle || 'Equipment Details';
@@ -1753,8 +2038,18 @@ export const HTMasterDataAdmin: React.FC = () => {
       setShowConfigureFieldModal(false);
       setConfiguringField(null);
 
+      // Keep parent accordion open if sub-question, or keep this question open if main
+      if (parentKey) {
+        setExpandedKeys(prev => ({ ...prev, [parentKey]: true }));
+      } else {
+        setExpandedKeys(prev => ({ ...prev, [targetKey]: true }));
+      }
+
       await loadCustomSpecs();
-      await loadOptions();
+      await loadOptions(true);
+
+      const targetId = parentKey ? `sub-field-card-${targetKey}` : `field-card-${targetKey}`;
+      restoreScrollPosition(scrollPos, targetId);
     } catch (err) {
       toast.error('Failed to save field configuration');
     }
@@ -2003,10 +2298,12 @@ export const HTMasterDataAdmin: React.FC = () => {
       placeholder?: string;
       isCustom?: boolean;
       parentFieldKey?: string;
+      entryOrder: number;
       items: HTMasterOption[];
       subQuestions: GroupItem[];
     };
     const map = new Map<string, GroupItem>();
+    let entrySeq = 0;
 
     const hiddenSections: string[] = (() => {
       try {
@@ -2039,9 +2336,10 @@ export const HTMasterDataAdmin: React.FC = () => {
         const renamedTitle = sectionRenames[sec.sectionKey] || sectionRenames[sec.title] || sec.title;
 
         sec.fields.forEach(f => {
+          entrySeq++;
           map.set(f.key, {
             fieldKey: f.key,
-            label: f.label.replace(/^\d+\.\s*/, ''), // clean leading number for admin title
+            label: f.label,
             section: renamedTitle,
             category: activeTab,
             fieldType: f.type || 'text',
@@ -2049,20 +2347,45 @@ export const HTMasterDataAdmin: React.FC = () => {
             placeholder: f.placeholder,
             parentFieldKey: f.parentFieldKey,
             isCustom: false,
+            entryOrder: (f as any).displayOrder || entrySeq,
             items: [],
             subQuestions: []
           });
+
+          // Also check baseline subFields
+          if ((f as any).subFields && Array.isArray((f as any).subFields)) {
+            (f as any).subFields.forEach((subF: any) => {
+              if (!map.has(subF.key)) {
+                entrySeq++;
+                map.set(subF.key, {
+                  fieldKey: subF.key,
+                  label: subF.label,
+                  section: renamedTitle,
+                  category: activeTab,
+                  fieldType: subF.type || 'select',
+                  unit: subF.unit,
+                  placeholder: subF.placeholder,
+                  parentFieldKey: subF.parentFieldKey || f.key,
+                  isCustom: false,
+                  entryOrder: (subF as any).displayOrder || entrySeq,
+                  items: [],
+                  subQuestions: []
+                });
+              }
+            });
+          }
         });
       });
     }
 
-    // 2. Pre-populate with all known field targets for activeTab
+    // 2. Pre-populate with all known field targets for activeTab in entry order
     availableFieldTargets.forEach(t => {
       const isHidden = hiddenSections.some(h => h.toLowerCase() === t.section?.toLowerCase());
       if (isHidden) return;
       const renamedSection = t.section ? (sectionRenames[t.section] || t.section) : undefined;
 
       if (!map.has(t.key)) {
+        entrySeq++;
         map.set(t.key, {
           fieldKey: t.key,
           label: t.label,
@@ -2071,6 +2394,7 @@ export const HTMasterDataAdmin: React.FC = () => {
           fieldType: 'select',
           parentFieldKey: t.parentFieldKey,
           isCustom: true,
+          entryOrder: entrySeq,
           items: [],
           subQuestions: []
         });
@@ -2096,6 +2420,8 @@ export const HTMasterDataAdmin: React.FC = () => {
         return;
       }
       const renamedSection = cs.sectionTitle ? (sectionRenames[cs.sectionKey] || sectionRenames[cs.sectionTitle] || cs.sectionTitle) : undefined;
+      const existing = map.get(cs.fieldKey);
+      const existingOrder = cs.displayOrder || existing?.entryOrder || (++entrySeq);
 
       map.set(cs.fieldKey, {
         fieldKey: cs.fieldKey,
@@ -2107,6 +2433,7 @@ export const HTMasterDataAdmin: React.FC = () => {
         placeholder: cs.placeholder,
         parentFieldKey: cs.parentFieldKey !== undefined ? cs.parentFieldKey : map.get(cs.fieldKey)?.parentFieldKey,
         isCustom: cs.isCustom ?? true,
+        entryOrder: existingOrder,
         items: map.get(cs.fieldKey)?.items || [],
         subQuestions: []
       });
@@ -2121,6 +2448,7 @@ export const HTMasterDataAdmin: React.FC = () => {
         const isHidden = sec ? hiddenSections.some(h => h.toLowerCase() === sec.toLowerCase()) : false;
         if (isHidden) return;
         const renamedSec = sec ? (sectionRenames[sec] || sec) : undefined;
+        entrySeq++;
 
         map.set(key, {
           fieldKey: key,
@@ -2130,6 +2458,7 @@ export const HTMasterDataAdmin: React.FC = () => {
           fieldType: 'select',
           parentFieldKey: opt.parentFieldKey,
           isCustom: true,
+          entryOrder: entrySeq,
           items: [],
           subQuestions: []
         });
@@ -2143,11 +2472,85 @@ export const HTMasterDataAdmin: React.FC = () => {
     allItems.forEach(item => { item.subQuestions = []; });
 
     allItems.forEach(item => {
-      if (item.parentFieldKey && map.has(item.parentFieldKey) && item.parentFieldKey !== item.fieldKey) {
-        map.get(item.parentFieldKey)!.subQuestions.push(item);
+      const pKey = item.parentFieldKey?.trim().toLowerCase();
+      const parent = pKey 
+        ? (map.get(item.parentFieldKey!) || Array.from(map.values()).find(m => m.fieldKey.toLowerCase() === pKey))
+        : null;
+
+      if (parent && parent.fieldKey !== item.fieldKey) {
+        parent.subQuestions.push(item);
       } else {
         rootList.push(item);
       }
+    });
+
+    const extractOrderNum = (label: string): number | null => {
+      const m = (label || '').trim().match(/^(\d+)[.)\-\s]/);
+      return m ? parseInt(m[1], 10) : null;
+    };
+
+    const sortQuestionsByOrder = (items: GroupItem[]): GroupItem[] => {
+      return [...items].sort((a, b) => {
+        const numA = extractOrderNum(a.label);
+        const numB = extractOrderNum(b.label);
+
+        // If both have explicit serial numbers in their names (e.g. 1. and 2.)
+        if (numA !== null && numB !== null) {
+          if (numA !== numB) return numA - numB;
+          return a.entryOrder - b.entryOrder;
+        }
+
+        // If one has an explicit serial number and the other does not
+        if (numA !== null && numB === null) {
+          return numA - (100000 + b.entryOrder);
+        }
+        if (numA === null && numB !== null) {
+          return (100000 + a.entryOrder) - numB;
+        }
+
+        // Neither has explicit number prefix -> strictly preserve order of entry!
+        return a.entryOrder - b.entryOrder;
+      });
+    };
+
+    // Sort subQuestions for all root items strictly as per entry order / serial number
+    rootList.forEach(parent => {
+      parent.subQuestions = sortQuestionsByOrder(parent.subQuestions);
+    });
+
+    // Map section baseline order
+    const sectionIndexMap = new Map<string, number>();
+    if (baseModule) {
+      baseModule.sections.forEach((s, idx) => {
+        const renamed = sectionRenames[s.sectionKey] || sectionRenames[s.title] || s.title;
+        sectionIndexMap.set(renamed.toLowerCase(), idx);
+      });
+    }
+
+    // Sort rootList by section order first, then strictly as per order of entry / serial number
+    rootList.sort((a, b) => {
+      const secA = (a.section || '').toLowerCase();
+      const secB = (b.section || '').toLowerCase();
+      if (secA !== secB) {
+        const idxA = sectionIndexMap.has(secA) ? sectionIndexMap.get(secA)! : 9999;
+        const idxB = sectionIndexMap.has(secB) ? sectionIndexMap.get(secB)! : 9999;
+        if (idxA !== idxB) return idxA - idxB;
+      }
+
+      const numA = extractOrderNum(a.label);
+      const numB = extractOrderNum(b.label);
+
+      if (numA !== null && numB !== null) {
+        if (numA !== numB) return numA - numB;
+        return a.entryOrder - b.entryOrder;
+      }
+      if (numA !== null && numB === null) {
+        return numA - (100000 + b.entryOrder);
+      }
+      if (numA === null && numB !== null) {
+        return (100000 + a.entryOrder) - numB;
+      }
+      return a.entryOrder - b.entryOrder;
     });
 
     return rootList.filter(g => {
@@ -2654,7 +3057,7 @@ export const HTMasterDataAdmin: React.FC = () => {
               <Trash2 className="w-3 h-3 text-rose-500" /> Delete Section
             </button>
             <button
-              onClick={() => handleOpenAddQuestionModal()}
+              onClick={() => handleOpenAddQuestionModal(undefined, undefined, selectedSection)}
               className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer"
             >
               <Plus className="w-3 h-3" /> + Add Question Here
@@ -2738,7 +3141,7 @@ export const HTMasterDataAdmin: React.FC = () => {
       {viewMode === 'grouped' ? (
         /* Accordion / Expandable Fields Layout */
         <div className="space-y-3.5">
-          {loading ? (
+          {loading && groupedFields.length === 0 ? (
             <div className="bg-white dark:bg-slate-900 rounded-3xl p-12 text-center text-sm text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800">
               <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-emerald-600" /> Loading dropdown options for {activeTab}...
             </div>
@@ -2756,6 +3159,8 @@ export const HTMasterDataAdmin: React.FC = () => {
               return (
                 <div
                   key={group.fieldKey}
+                  id={`field-card-${group.fieldKey}`}
+                  data-field-key={group.fieldKey}
                   className={`bg-white dark:bg-slate-900 border rounded-3xl transition-all shadow-2xs overflow-hidden ${
                     isExpanded
                       ? 'border-emerald-500/60 dark:border-emerald-500/50 ring-2 ring-emerald-500/10'
@@ -2880,7 +3285,7 @@ export const HTMasterDataAdmin: React.FC = () => {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleOpenAddQuestionModal(group.fieldKey, group.label);
+                          handleOpenAddQuestionModal(group.fieldKey, group.label, group.section);
                         }}
                         className="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-bold transition-all flex items-center gap-1 shadow-2xs cursor-pointer"
                         title={`Add a follow-up question directly under "${group.label}"`}
@@ -2907,6 +3312,7 @@ export const HTMasterDataAdmin: React.FC = () => {
                             unit: group.unit || '',
                             placeholder: group.placeholder || '',
                             isCustom: group.isCustom,
+                            parentFieldKey: group.parentFieldKey,
                             initialChoice: ''
                           });
                           setShowConfigureFieldModal(true);
@@ -3009,17 +3415,39 @@ export const HTMasterDataAdmin: React.FC = () => {
 
                           {/* Full List of Choices Grid */}
                           <div className="mt-4">
-                            <div className="text-xs font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2.5 flex items-center justify-between">
+                            <div className="text-xs font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2.5 flex items-center justify-between flex-wrap gap-2">
                               <span>Available Choices ({group.items.length}):</span>
-                              <button
-                                onClick={() => {
-                                  setViewingTargetKey(group.fieldKey);
-                                  setListModalSearch('');
-                                }}
-                                className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
-                              >
-                                <Eye className="w-3.5 h-3.5" /> View List Modal
-                              </button>
+                              <div className="flex items-center gap-2.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleDownloadChoiceTemplate(group)}
+                                  className="text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
+                                  title="Download Excel template for this field"
+                                >
+                                  <Download className="w-3.5 h-3.5 text-indigo-500" /> Excel Template
+                                </button>
+
+                                <label className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer">
+                                  <Upload className="w-3.5 h-3.5" /> Upload Excel
+                                  <input
+                                    type="file"
+                                    accept=".xlsx,.xls,.csv"
+                                    className="hidden"
+                                    onChange={(e) => handleUploadChoiceExcel(e, group)}
+                                  />
+                                </label>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setViewingTargetKey(group.fieldKey);
+                                    setListModalSearch('');
+                                  }}
+                                  className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Eye className="w-3.5 h-3.5" /> View All ({group.items.length})
+                                </button>
+                              </div>
                             </div>
 
                             {group.items.length === 0 ? (
@@ -3178,7 +3606,7 @@ export const HTMasterDataAdmin: React.FC = () => {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleOpenAddQuestionModal(group.fieldKey, group.label);
+                            handleOpenAddQuestionModal(group.fieldKey, group.label, group.section);
                           }}
                           className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 shrink-0 cursor-pointer"
                           title={`Add a follow-up question under ${group.label}`}
@@ -3196,6 +3624,8 @@ export const HTMasterDataAdmin: React.FC = () => {
                           {(group.subQuestions || []).map((sub) => (
                             <div
                               key={sub.fieldKey}
+                              id={`sub-field-card-${sub.fieldKey}`}
+                              data-sub-field-key={sub.fieldKey}
                               className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 shadow-xs space-y-3"
                             >
                               {/* Sub-Question Header */}
@@ -3528,27 +3958,73 @@ export const HTMasterDataAdmin: React.FC = () => {
               </button>
             </div>
 
-            {/* Quick Add Bar */}
-            <div className="flex gap-2 bg-slate-50 dark:bg-slate-800/60 p-3 rounded-2xl border border-slate-200 dark:border-slate-700">
-              <input
-                type="text"
-                placeholder={`Type new choice for ${activeViewingGroup.fieldKey}...`}
-                value={quickAddValue}
-                onChange={(e) => setQuickAddValue(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleQuickAddChoice(activeViewingGroup.fieldKey);
-                  }
-                }}
-                className="flex-1 px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-              />
-              <button
-                onClick={() => handleQuickAddChoice(activeViewingGroup.fieldKey)}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all flex items-center gap-1 shrink-0"
-              >
-                <Plus className="w-3.5 h-3.5" /> Add Choice
-              </button>
+            {/* Quick Add Bar & Excel Upload */}
+            <div className="space-y-2.5 bg-slate-50 dark:bg-slate-800/60 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder={`Type new choice for ${activeViewingGroup.fieldKey}...`}
+                  value={quickAddValue}
+                  onChange={(e) => setQuickAddValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleQuickAddChoice(activeViewingGroup.fieldKey);
+                    }
+                  }}
+                  className="flex-1 px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                />
+                <button
+                  onClick={() => handleQuickAddChoice(activeViewingGroup.fieldKey)}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all flex items-center gap-1 shrink-0 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add Choice
+                </button>
+              </div>
+
+              {/* Excel Bulk Upload & Download Template Option */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/80 dark:border-slate-700/80">
+                <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span>Have multiple choices? Upload via Excel:</span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    ref={choiceFileInputRef}
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    className="hidden"
+                    onChange={(e) => handleUploadChoiceExcel(e, activeViewingGroup)}
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadChoiceTemplate(activeViewingGroup)}
+                    className="px-2.5 py-1.5 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer shadow-2xs"
+                    title="Download pre-formatted Excel template for this field"
+                  >
+                    <Download className="w-3 h-3 text-indigo-600 dark:text-indigo-400" /> Download Excel Template
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isUploadingChoiceExcel}
+                    onClick={() => choiceFileInputRef.current?.click()}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  >
+                    {isUploadingChoiceExcel ? (
+                      <>
+                        <RefreshCw className="w-3 h-3 animate-spin" /> Importing...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-3 h-3" /> Upload Excel Sheet (.xlsx)
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
             </div>
 
             {/* Modal Search */}
@@ -3730,23 +4206,26 @@ export const HTMasterDataAdmin: React.FC = () => {
             <form onSubmit={handleCreateNewTargetField} className="space-y-4">
               {/* Question Name */}
               <div>
-                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
-                  Question / Checkpoint Name <span className="text-rose-500">*</span>
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
+                    Question / Checkpoint Name <span className="text-rose-500">*</span>
+                  </label>
+                  <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">
+                    Auto-assigned #{suggestedSerialNum}
+                  </span>
+                </div>
                 <input
                   type="text"
                   required
                   autoFocus
-                  placeholder="e.g. CT Ratio, BESCOM Seal Condition, Transformer Oil Level..."
+                  placeholder={`e.g. ${suggestedSerialNum}. CT Ratio, ${suggestedSerialNum}. BESCOM Seal Condition...`}
                   value={newTargetLabel}
-                  onChange={(e) => {
-                    setNewTargetLabel(e.target.value);
-                    if (!newTargetKey) {
-                      setNewTargetKey(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_'));
-                    }
-                  }}
+                  onChange={(e) => setNewTargetLabel(e.target.value)}
                   className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 font-medium"
                 />
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Serial number is auto-assigned (e.g. <strong className="text-slate-600 dark:text-slate-300">{suggestedSerialNum}.</strong>). You can edit or change the number anytime to reorder questions.
+                </p>
               </div>
 
               {/* Section / Group Selection */}
@@ -3816,8 +4295,8 @@ export const HTMasterDataAdmin: React.FC = () => {
                 </div>
               )}
 
-              {/* If Numeric chosen, engineering unit */}
-              {newTargetType === 'number' && (
+              {/* Unit & Placeholder Hint */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
                     Measurement Unit (Optional)
@@ -3830,7 +4309,19 @@ export const HTMasterDataAdmin: React.FC = () => {
                     className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
                   />
                 </div>
-              )}
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                    Placeholder Hint (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Select ratio..."
+                    value={newTargetPlaceholder}
+                    onChange={(e) => setNewTargetPlaceholder(e.target.value)}
+                    className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
+                  />
+                </div>
+              </div>
 
               {/* Collapsible Advanced Settings for Technical Keys */}
               <details className="group pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
