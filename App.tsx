@@ -579,7 +579,7 @@ const App: React.FC = () => {
     let lastStateChangeTime = 0;
     const STATE_CHANGE_COOLDOWN = 3000; // 3s minimum between transitions
     // Mutex: prevent concurrent network verification from racing
-    let isVerifying = false;
+    const isVerifying = false;
 
     const clearOfflineTimer = () => {
       if (offlineTimer) { clearTimeout(offlineTimer); offlineTimer = null; }
@@ -687,91 +687,47 @@ const App: React.FC = () => {
 
     if (Capacitor.isNativePlatform()) {
       // Native Android/iOS: use Capacitor Network plugin + active ping hysteresis
-      const PING_URL = 'https://app.paradigmfms.com/version.json';
-      let nativePingTimer: ReturnType<typeof setInterval> | null = null;
-      let consecutiveSuccesses = 0;
-      let consecutiveFailures = 0;
-
-      const verifyInternetAndSetState = async (connectedStatus: boolean) => {
-        // Mutex: skip if another verification is already in-flight
-        if (isVerifying) return;
-        isVerifying = true;
-
-        try {
-          if (!connectedStatus) {
-            consecutiveSuccesses = 0;
-            // Instantly block user with offline screen on disconnect
-            setStableOffline(true);
-            return;
-          }
-          // Device reports Wi-Fi/Cellular is connected — ping server to confirm real internet access
-          try {
-            await fetch(`${PING_URL}?_=${Date.now()}`, {
-              method: 'HEAD',
-              cache: 'no-cache',
-              signal: AbortSignal.timeout(4000),
-            });
-            consecutiveSuccesses += 1;
-            consecutiveFailures = 0;
-            // Confirmed internet access — dismiss offline screen and restore user panel
-            setStableOffline(false, () => {
-              syncData();
-            });
-          } catch (pingErr) {
-            console.warn('[Network] Wi-Fi connected but internet unreachable:', pingErr);
-            consecutiveSuccesses = 0;
-            // Internet ping failed — block user with offline screen
-            setStableOffline(true);
-          }
-        } finally {
-          isVerifying = false;
+      const verifyInternetAndSetState = (connectedStatus: boolean) => {
+        console.log(`[Network] Native network status verified: connected=${connectedStatus}`);
+        if (connectedStatus) {
+          // Hardware connected — we have network access (Wi-Fi or Cellular)
+          // Fail-open: trust Android's native connection and dismiss any offline overlay
+          setStableOffline(false, () => { syncData(); });
+        } else {
+          // Hardware disconnected (Airplane mode or no network link)
+          setStableOffline(true);
         }
       };
 
       const initNetwork = async () => {
-        const status = await Network.getStatus();
-        console.log(`[FLICKER_DEBUG] initNetwork status: ${status.connected}`);
-        // For initial check, set state directly without debounce
-        if (!status.connected) {
-          console.log('[FLICKER_DEBUG] Calling setIsOffline(true) from initNetwork');
-          setIsOffline(true);
-          lastStateChangeTime = Date.now();
-        } else {
-          try {
-            await fetch(`${PING_URL}?_=${Date.now()}`, {
-              method: 'HEAD',
-              cache: 'no-cache',
-              signal: AbortSignal.timeout(4000),
-            });
-            console.log('[FLICKER_DEBUG] Calling setIsOffline(false) from initNetwork fetch success');
-            setIsOffline(false);
-            lastStateChangeTime = Date.now();
-          } catch {
-            console.log('[FLICKER_DEBUG] Calling setIsOffline(true) from initNetwork fetch fail');
+        try {
+          const status = await Network.getStatus();
+          console.log(`[Network] initNetwork status: connected=${status.connected}, type=${status.connectionType}`);
+          if (!status.connected) {
             setIsOffline(true);
             lastStateChangeTime = Date.now();
+          } else {
+            // Connected on Wi-Fi or Cellular — immediately allow access without synthetic ping blocks
+            setIsOffline(false);
+            lastStateChangeTime = Date.now();
           }
+        } catch (err) {
+          console.warn('[Network] initNetwork error, failing open:', err);
+          setIsOffline(false);
         }
       };
       initNetwork();
 
-      // Debounce the networkStatusChange listener — Android fires this VERY frequently
+      // Listen to Android native connectivity changes (instant, zero polling, zero battery drain)
       let networkChangeDebounce: ReturnType<typeof setTimeout> | null = null;
       const networkListener = Network.addListener('networkStatusChange', status => {
-        console.log('[Network] Native status changed:', status.connected ? 'Connected' : 'Disconnected');
-        // Debounce rapid-fire events from Android: wait 1s of stability before acting
+        console.log(`[Network] Native status changed: connected=${status.connected}, type=${status.connectionType}`);
         if (networkChangeDebounce) clearTimeout(networkChangeDebounce);
         networkChangeDebounce = setTimeout(() => {
           networkChangeDebounce = null;
           verifyInternetAndSetState(status.connected);
-        }, 1000);
+        }, 500);
       });
-
-      // Periodic 8s background check on native (increased from 6s for stability)
-      nativePingTimer = setInterval(async () => {
-        const status = await Network.getStatus();
-        await verifyInternetAndSetState(status.connected);
-      }, 8000);
 
       // Handle app resume & background transitions
       const appStateListener = CapacitorApp.addListener('appStateChange', async ({ isActive }) => {
@@ -779,11 +735,6 @@ const App: React.FC = () => {
         if (!isActive) {
           // Record when we went to background
           backgroundedAtRef.current = Date.now();
-          if (nativePingTimer) {
-            console.log('[AppState] Pausing nativePingTimer in background');
-            clearInterval(nativePingTimer);
-            nativePingTimer = null;
-          }
         } else {
           const bgDurationMs = backgroundedAtRef.current ? Date.now() - backgroundedAtRef.current : 0;
           const bgMinutes = Math.round(bgDurationMs / 60000);
@@ -870,14 +821,8 @@ const App: React.FC = () => {
           // ── STEP 6: Dispatch global resume event so open views refresh immediately
           window.dispatchEvent(new CustomEvent('app-resumed-refresh', { detail: { timestamp: Date.now(), bgMinutes } }));
 
-          if (!nativePingTimer) {
-            console.log('[AppState] Resuming nativePingTimer');
-            Network.getStatus().then(status => verifyInternetAndSetState(status.connected));
-            nativePingTimer = setInterval(async () => {
-              const status = await Network.getStatus();
-              await verifyInternetAndSetState(status.connected);
-            }, 8000);
-          }
+          // Verify network status on resume
+          Network.getStatus().then(status => verifyInternetAndSetState(status.connected));
         }
       });
 
@@ -921,7 +866,6 @@ const App: React.FC = () => {
       return () => {
         console.log('[FLICKER_DEBUG] Network useEffect UNMOUNTING, clearing timers');
         clearTimers();
-        if (nativePingTimer) clearInterval(nativePingTimer);
         if (networkChangeDebounce) clearTimeout(networkChangeDebounce);
         networkListener.then(h => h.remove());
         appStateListener.then(h => h.remove());
@@ -2034,10 +1978,10 @@ const App: React.FC = () => {
       <ScrollToTop />
       <ThemeManager />
       {isAppOutdated && <UpdateRequiredBanner />}
-      {isUpdateRequired && !updateDismissed && (
+      {isUpdateRequired && !(updateDismissed && !updateInfo?.isMandatory) && (
         <UpdatePromptModal
           updateInfo={updateInfo}
-          onLater={() => setUpdateDismissed(true)}
+          onLater={() => { if (!updateInfo?.isMandatory) setUpdateDismissed(true); }}
         />
       )}
       <Suspense fallback={<LoadingScreen message="Loading..." fullScreen={true} />}>

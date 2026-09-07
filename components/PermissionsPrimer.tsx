@@ -3,8 +3,8 @@ import { Capacitor } from '@capacitor/core';
 import { SplashScreen } from '@capacitor/splash-screen';
 import Logo from './ui/Logo';
 import Button from './ui/Button';
-import { checkRequiredPermissions, requestAllPermissions } from '../utils/permissionUtils';
-import { ShieldCheck, AlertCircle, Settings, Camera, MapPin, Bell, CheckCircle2, Smartphone, Users, Activity } from 'lucide-react';
+import { checkRequiredPermissions, requestAllPermissions, requestPermissionById } from '../utils/permissionUtils';
+import { ShieldCheck, AlertCircle, Settings, Camera, MapPin, Bell, CheckCircle2, Smartphone, Users, Activity, ChevronRight } from 'lucide-react';
 import './PermissionsPrimer.css';
 
 interface PermissionsPrimerProps {
@@ -87,16 +87,8 @@ const PermissionsPrimer: React.FC<PermissionsPrimerProps> = ({ onComplete }) => 
     verifyPermissions();
   }, []);
 
-  // Auto-trigger setup after 3 seconds if permissions are still missing
-  useEffect(() => {
-    if (!isChecking && missingPermissions.length > 0 && !isRequesting) {
-        const timer = setTimeout(() => {
-             console.log('[PermissionsPrimer] Auto-triggering permission requests...');
-             handleStartSetup();
-        }, 3000);
-        return () => clearTimeout(timer);
-    }
-  }, [isChecking, missingPermissions.length, isRequesting]);
+  // No auto-trigger — the user must explicitly tap a row or the button.
+  // This ensures Android permission dialogs appear in the strict order shown on screen.
 
   const handleStartSetup = async () => {
     if (isRequesting) return;
@@ -111,6 +103,22 @@ const PermissionsPrimer: React.FC<PermissionsPrimerProps> = ({ onComplete }) => 
         }
     });
 
+    setCurrentRequesting('');
+    setIsRequesting(false);
+    await verifyPermissions();
+  };
+
+  // Tap a single pending row → request only that permission (ordered)
+  const handleRowTap = async (permId: string) => {
+    if (isRequesting || !missingPermissions.includes(permId)) return;
+    setIsRequesting(true);
+    setCurrentRequesting(permId);
+    setStatusMessage(`Requesting ${permId}...`);
+    try {
+      await requestPermissionById(permId);
+    } catch (e) {
+      console.error(`[PermissionsPrimer] Row tap failed for ${permId}`, e);
+    }
     setCurrentRequesting('');
     setIsRequesting(false);
     await verifyPermissions();
@@ -189,10 +197,15 @@ const PermissionsPrimer: React.FC<PermissionsPrimerProps> = ({ onComplete }) => 
                 const isMissing = missingPermissions.includes(p.id);
                 const isActive = currentRequesting === p.id;
                 
+                const isTappable = isMissing && !isActive && !isRequesting && Capacitor.isNativePlatform();
+
                 return (
                   <div 
                     key={p.id} 
-                    className={`permission-item-card ${isActive ? 'is-active-requesting' : ''}`}
+                    className={`permission-item-card ${isActive ? 'is-active-requesting' : ''} ${isTappable ? 'is-tappable' : ''}`}
+                    onClick={() => isTappable && handleRowTap(p.id)}
+                    role={isTappable ? 'button' : undefined}
+                    aria-label={isTappable ? `Grant ${p.label}` : undefined}
                   >
                     <div className="flex items-center gap-4">
                       <div className={`permission-item-icon-wrapper ${isActive ? 'is-active-requesting' : ''}`}>
@@ -207,6 +220,9 @@ const PermissionsPrimer: React.FC<PermissionsPrimerProps> = ({ onComplete }) => 
                         {isMissing && !Capacitor.isNativePlatform() && p.id === 'Notifications' && (
                           <span className="permission-item-subtitle">Non-blocking for Web Mode</span>
                         )}
+                        {isTappable && (
+                          <span className="permission-item-tap-hint">Tap to grant</span>
+                        )}
                       </div>
                     </div>
 
@@ -219,7 +235,10 @@ const PermissionsPrimer: React.FC<PermissionsPrimerProps> = ({ onComplete }) => 
                           <span>WEB</span>
                         </div>
                       ) : (
-                        <AlertCircle size={20} className="status-icon-missing" />
+                        <div className="flex items-center gap-2">
+                          <AlertCircle size={20} className="status-icon-missing" />
+                          {isTappable && <ChevronRight size={14} className="status-icon-missing opacity-60" />}
+                        </div>
                       )
                     ) : (
                       <CheckCircle2 size={22} className="status-icon-allowed" />
@@ -237,7 +256,11 @@ const PermissionsPrimer: React.FC<PermissionsPrimerProps> = ({ onComplete }) => 
                 isLoading={isRequesting}
                 className="w-full md:w-auto flex-1"
               >
-                {isRequesting ? 'Respond to system prompts...' : 'Grant All Permissions'}
+                {isRequesting
+                  ? 'Respond to system prompts...'
+                  : missingPermissions.length > 0
+                    ? `Grant All (${missingPermissions.length} remaining)`
+                    : 'Continue'}
               </Button>
 
               <button

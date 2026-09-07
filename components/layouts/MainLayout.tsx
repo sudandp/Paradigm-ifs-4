@@ -20,6 +20,7 @@ import { PingAlarmOverlay } from '../notifications/PingAlarmOverlay';
 import ReferralModal from '../modals/ReferralModal';
 import { useImpersonationStore } from '../../store/impersonationStore';
 import { isAttendanceExemptRole } from '../../utils/attendanceCalculations';
+import { APP_VERSION } from '../../src/config/appVersion';
 
 export interface NavLinkConfig {
     to: string;
@@ -560,7 +561,7 @@ const MainLayout: React.FC = () => {
     const location = useLocation();
     const { isMobile, isTablet, isDesktop } = useDevice();
     const settingsStore = useSettingsStore();
-    const appVersion = settingsStore.apiSettings.appVersion || '1.0.0';
+    const appVersion = APP_VERSION || settingsStore.apiSettings.appVersion || '20.3.0';
 
     const mainContentRef = useRef<HTMLDivElement>(null);
     const pageScrollIntervalRef = useRef<number | null>(null);

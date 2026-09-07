@@ -58,7 +58,7 @@ export const ApiSettings: React.FC = () => {
             await api.broadcastAppUpdateNotification({
                 version: targetVer,
                 buildNumber: targetBuild,
-                playStoreUrl: 'https://play.google.com/store/apps/details?id=com.paradigmfms.app'
+                playStoreUrl: 'https://play.google.com/store/apps/details?id=com.paradigm.ifs'
             });
             setToast({
                 message: `Update alert sent via FCM for v${targetVer} (Build ${targetBuild})!`,
@@ -378,7 +378,7 @@ export const ApiSettings: React.FC = () => {
                                         </p>
                                     </div>
                                     <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 whitespace-nowrap">
-                                        Play Store: com.paradigmfms.app
+                                        Play Store: com.paradigm.ifs
                                     </span>
                                 </div>
 

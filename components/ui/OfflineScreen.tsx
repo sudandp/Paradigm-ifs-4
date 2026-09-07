@@ -45,18 +45,8 @@ const OfflineScreen: React.FC = () => {
         return;
       }
 
-      // Active Ping check — Android status.connected can report true without real internet
-      try {
-        await fetch('https://app.paradigmfms.com/version.json?_=' + Date.now(), {
-          method: 'HEAD',
-          cache: 'no-cache',
-          signal: AbortSignal.timeout(4000)
-        });
-      } catch (pingErr) {
-        setRetryFailed(true);
-        setIsRetrying(false);
-        return;
-      }
+      // Fail-open: If hardware network is connected (Wi-Fi or Cellular), unlock the UI immediately
+      setIsOffline(false);
 
       // Reconnected — resync all app data
       try {

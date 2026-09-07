@@ -262,6 +262,8 @@ const ProfilePage: React.FC = () => {
     const [todayMetrics, setTodayMetrics] = useState({
         totalDistance: '0.00',
         travelTime: '0h 0m',
+        closedSessionSteps: 0,
+        activeSessionSteps: 0,
         totalSteps: 0
     });
     const [isMetricsLoading, setIsMetricsLoading] = useState(true);
@@ -288,6 +290,8 @@ const ProfilePage: React.FC = () => {
                 setTodayMetrics({
                     totalDistance: '0.00',
                     travelTime: '0h 0m',
+                    closedSessionSteps: 0,
+                    activeSessionSteps: 0,
                     totalSteps: 0
                 });
                 return;
@@ -306,11 +310,14 @@ const ProfilePage: React.FC = () => {
             const activeOpenPunchIn = events.find(e => (e.type === 'punch-in' || e.type === 'site-in' || e.type === 'site-ot-in') && e.steps != null && e.steps > 0);
             const hasMatchingPunchOut = activeOpenPunchIn ? events.some(e => (e.type === 'punch-out' || e.type === 'site-ot-out' || e.type === 'site-out') && new Date(e.timestamp) > new Date(activeOpenPunchIn.timestamp)) : false;
 
-            const totalSteps = closedSessionSteps + (!hasMatchingPunchOut && activeOpenPunchIn ? (activeOpenPunchIn.steps || 0) : 0);
+            const activeSessionSteps = (!hasMatchingPunchOut && activeOpenPunchIn) ? (activeOpenPunchIn.steps || 0) : 0;
+            const totalSteps = closedSessionSteps + activeSessionSteps;
 
             setTodayMetrics({
                 totalDistance: distance.toFixed(2),
                 travelTime: `${Math.floor(duration / 60)}h ${duration % 60}m`,
+                closedSessionSteps,
+                activeSessionSteps,
                 totalSteps
             });
         } catch (err) {
@@ -877,6 +884,12 @@ const ProfilePage: React.FC = () => {
     const isPunchBlocked = (hasPunchedToday || isThirdSaturdayToday) && !isCheckedIn && !isFieldCheckedIn && !isSiteOtCheckedIn && !hasActiveOpenSession && !isPunchUnlocked;
     // Combined check-in state: true if user is checked in via either office, field, site-ot, or has active open session
     const effectivelyCheckedIn = isCheckedIn || isFieldCheckedIn || isSiteOtCheckedIn || (hasActiveOpenSession && previousDaySessionInfo != null);
+
+    // Live daily steps calculation: avoid double-counting steps already synced to activeOpenPunchIn in Supabase
+    const currentActiveSessionSteps = effectivelyCheckedIn
+        ? Math.max(todayMetrics.activeSessionSteps, liveSteps)
+        : todayMetrics.activeSessionSteps;
+    const displayedTotalSteps = todayMetrics.closedSessionSteps + currentActiveSessionSteps;
 
     // Poll attendance status / live steps when checked in
     useEffect(() => {
@@ -1527,7 +1540,7 @@ const ProfilePage: React.FC = () => {
                                                         <span className="text-[9px] font-bold text-gray-400 uppercase">Daily Steps</span>
                                                     </div>
                                                     <p className="text-xl font-bold text-white tabular-nums flex items-baseline">
-                                                        {isMetricsLoading ? '—' : (todayMetrics.totalSteps + (effectivelyCheckedIn ? liveSteps : 0)).toLocaleString()}
+                                                        {isMetricsLoading ? '—' : displayedTotalSteps.toLocaleString()}
                                                         {effectivelyCheckedIn && liveSteps > 0 && (
                                                             <span className="text-sm font-black text-emerald-400 ml-2 animate-pulse">
                                                                 ({liveSteps} live)
@@ -1545,7 +1558,7 @@ const ProfilePage: React.FC = () => {
                                                         <span className="text-[9px] font-bold text-gray-400 uppercase">Daily Steps</span>
                                                     </div>
                                                     <p className="text-xl font-bold text-white tabular-nums flex items-baseline">
-                                                        {isMetricsLoading ? '—' : (todayMetrics.totalSteps + (effectivelyCheckedIn ? liveSteps : 0)).toLocaleString()}
+                                                        {isMetricsLoading ? '—' : displayedTotalSteps.toLocaleString()}
                                                         {effectivelyCheckedIn && liveSteps > 0 && (
                                                             <span className="text-sm font-black text-emerald-400 ml-2 animate-pulse">
                                                                 ({liveSteps} live)
@@ -3446,7 +3459,7 @@ const ProfilePage: React.FC = () => {
                                                     Daily Steps
                                                 </div>
                                                 <p className="text-lg font-bold text-gray-900 tabular-nums flex items-baseline">
-                                                    {isMetricsLoading ? '—' : (todayMetrics.totalSteps + (effectivelyCheckedIn ? liveSteps : 0)).toLocaleString()}
+                                                    {isMetricsLoading ? '—' : displayedTotalSteps.toLocaleString()}
                                                     {effectivelyCheckedIn && liveSteps > 0 && (
                                                         <span className="text-xs font-black text-emerald-600 ml-2 animate-pulse">
                                                             ({liveSteps} live)
@@ -3465,7 +3478,7 @@ const ProfilePage: React.FC = () => {
                                                     Daily Steps
                                                 </div>
                                                 <p className="text-lg font-bold text-gray-900 tabular-nums flex items-baseline">
-                                                    {isMetricsLoading ? '—' : (todayMetrics.totalSteps + (effectivelyCheckedIn ? liveSteps : 0)).toLocaleString()}
+                                                    {isMetricsLoading ? '—' : displayedTotalSteps.toLocaleString()}
                                                     {effectivelyCheckedIn && liveSteps > 0 && (
                                                         <span className="text-xs font-black text-emerald-600 ml-2 animate-pulse">
                                                             ({liveSteps} live)

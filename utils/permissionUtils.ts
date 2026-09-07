@@ -189,7 +189,18 @@ export const checkRequiredPermissions = async () => {
 };
 
 /**
- * Request ALL required device permissions using a unified sequence of modern Capacitor calls.
+ * Request ALL required device permissions — traditional one-at-a-time sequential chain.
+ *
+ * Pattern mirrors the classic Android:
+ *   requestPermissions(["CAMERA"])
+ *   → onRequestPermissionsResult → requestPermissions(["LOCATION"])
+ *   → onRequestPermissionsResult → requestPermissions(["POST_NOTIFICATIONS"])
+ *   → ... and so on
+ *
+ * Each platform has its own ordered list:
+ *   Android : Camera → Location → Notifications → Contacts → Physical Activity
+ *   iOS     : Camera → Location → Notifications → Contacts
+ *   Web     : Notifications → Camera → Location   (browser prompt order)
  */
 export const requestAllPermissions = async (onProgress?: (id: string, missing: string[]) => void) => {
     const reCheck = async (currentId: string) => {
@@ -198,196 +209,194 @@ export const requestAllPermissions = async (onProgress?: (id: string, missing: s
         return missing;
     };
 
-    if (!Capacitor.isNativePlatform()) {
-    
-    console.log('[PermissionUtils] Requesting permissions on Web (Optimized Flow)...');
-        
-        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-        const webReqDelay = isSafari ? 400 : 800;
-        // On iOS Web (Safari/PWA), we don't pre-request permissions.
-        // Permissions are requested just-in-time via actual feature use
-        // (e.g., geolocation on punch-in) to prevent iOS popup loops.
+    const platform = Capacitor.getPlatform(); // 'android' | 'ios' | 'web'
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // WEB  (browser, PWA — Chrome / Firefox / Edge / Android Chrome)
+    // Traditional: call browser API → await → move to next
+    // iOS Safari / PWA: skip entirely (prompts just-in-time on feature use)
+    // ─────────────────────────────────────────────────────────────────────────
+    if (platform === 'web') {
+        console.log('[PermissionUtils] Platform: WEB — starting sequential chain...');
+
+        // iOS Safari / PWA: unreliable Permissions API — skip completely
         if (isIosWeb()) {
-            console.log('[PermissionUtils] iOS Web — skipping web permission request sequence.');
+            console.log('[PermissionUtils] iOS Web — skipping (just-in-time mode).');
             if (onProgress) onProgress('', []);
             return;
         }
 
-        // 1. Notifications
+        const webDelay = /^((?!chrome|android).)*safari/i.test(navigator.userAgent) ? 400 : 800;
+
+        // Step 1 → Notifications
         try {
-            const notifPermission = typeof Notification !== 'undefined' ? Notification.permission : 'default';
-            if (notifPermission !== 'granted' && notifPermission !== 'denied') {
+            const notifState = typeof Notification !== 'undefined' ? Notification.permission : 'default';
+            if (notifState === 'default') {
                 if (onProgress) onProgress('Notifications', (await checkRequiredPermissions()).missing);
                 try {
                     await Promise.race([
                         pushNotificationService.init(),
-                        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000))
+                        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 10000))
                     ]);
-                } catch {
-                    console.warn('[PermissionUtils] Notification request suppressed or timed out');
-                }
+                } catch { console.warn('[Web] Notification request suppressed or timed out.'); }
                 await reCheck('Notifications');
-                await delay(webReqDelay);
+                await delay(webDelay);
             }
-        } catch (e) { console.error('Web notif req failed', e); }
-        
-        // 2. Camera
+        } catch (e) { console.error('[Web] Notifications failed:', e); }
+
+        // Step 2 → Camera
         try {
             const { missing } = await checkRequiredPermissions();
             if (missing.includes('Camera')) {
                 if (onProgress) onProgress('Camera', missing);
                 const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                stream.getTracks().forEach(track => track.stop());
+                stream.getTracks().forEach(t => t.stop()); // release camera immediately
                 await reCheck('Camera');
-                await delay(webReqDelay);
+                await delay(webDelay);
             }
-        } catch (e) { console.error('Web Camera req failed', e); }
+        } catch (e) { console.error('[Web] Camera failed:', e); }
 
-        // 3. Location — Only request if permission is NOT already granted or denied.
-        // On iOS Safari (in-browser), requesting this will show the native prompt.
-        // We NEVER call this in iOS standalone mode (handled by early return above).
+        // Step 3 → Location
         try {
             const { missing } = await checkRequiredPermissions();
             if (missing.includes('Location')) {
                 if (onProgress) onProgress('Location', missing);
-                await new Promise((resolve, reject) => {
-                    navigator.geolocation.getCurrentPosition(resolve, reject, { 
-                        enableHighAccuracy: false, 
-                        timeout: 10000
-                    });
-                });
+                await new Promise((res, rej) =>
+                    navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: false, timeout: 10000 })
+                );
                 await reCheck('Location');
-                await delay(webReqDelay);
+                await delay(webDelay);
             }
-        } catch (e) { console.error('Web Location req failed', e); }
+        } catch (e) { console.error('[Web] Location failed:', e); }
 
         if (onProgress) onProgress('', (await checkRequiredPermissions()).missing);
         return;
     }
 
-    console.log('[PermissionUtils] Starting Native sequential request sequence...');
-    const reqDelay = 1000;
+    // ─────────────────────────────────────────────────────────────────────────
+    // iOS NATIVE  (Capacitor on iPhone / iPad)
+    // Order: Camera → Location → Notifications → Contacts
+    // (No Physical Activity — step counter does not require it on iOS)
+    // ─────────────────────────────────────────────────────────────────────────
+    if (platform === 'ios') {
+        console.log('[PermissionUtils] Platform: iOS — starting sequential chain...');
+        const iosDelay = 800;
 
-    // 1. Camera
+        // Step 1 → Camera
+        try {
+            const { missing } = await checkRequiredPermissions();
+            if (missing.includes('Camera')) {
+                if (onProgress) onProgress('Camera', missing);
+                await Camera.requestPermissions({ permissions: ['camera'] });
+                await reCheck('Camera');
+                await delay(iosDelay);
+            }
+        } catch (e) { console.error('[iOS] Camera failed:', e); }
+
+        // Step 2 → Location
+        try {
+            const { missing } = await checkRequiredPermissions();
+            if (missing.includes('Location')) {
+                if (onProgress) onProgress('Location', missing);
+                await Geolocation.requestPermissions();
+                // Do NOT call getCurrentPosition here — iOS 14+ hangs the bridge
+                await reCheck('Location');
+                await delay(iosDelay);
+            }
+        } catch (e) { console.error('[iOS] Location failed:', e); }
+
+        // Step 3 → Notifications
+        try {
+            const { missing } = await checkRequiredPermissions();
+            if (missing.includes('Notifications')) {
+                if (onProgress) onProgress('Notifications', missing);
+                await LocalNotifications.requestPermissions();
+                await reCheck('Notifications');
+                await delay(iosDelay);
+            }
+        } catch (e) { console.error('[iOS] Notifications failed:', e); }
+
+        // Step 4 → Contacts
+        try {
+            const { missing } = await checkRequiredPermissions();
+            if (missing.includes('Contacts')) {
+                if (onProgress) onProgress('Contacts', missing);
+                await Contacts.requestPermissions();
+                await reCheck('Contacts');
+                await delay(iosDelay);
+            }
+        } catch (e) { console.error('[iOS] Contacts failed:', e); }
+
+        if (onProgress) onProgress('', (await checkRequiredPermissions()).missing);
+        return;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // ANDROID NATIVE  (Capacitor on Android phone / tablet)
+    // Order: Camera → Location → Notifications → Contacts → Physical Activity
+    // Mirrors ActivityCompat.requestPermissions → onRequestPermissionsResult chain
+    // ─────────────────────────────────────────────────────────────────────────
+    console.log('[PermissionUtils] Platform: ANDROID — starting sequential chain...');
+    const androidDelay = 1000;
+
+    // Step 1 → Camera  (Manifest: CAMERA)
     try {
         const { missing } = await checkRequiredPermissions();
         if (missing.includes('Camera')) {
             if (onProgress) onProgress('Camera', missing);
             await Camera.requestPermissions({ permissions: ['camera'] });
             await reCheck('Camera');
-            await delay(reqDelay);
+            await delay(androidDelay);
         }
-    } catch (e) { console.error('Camera req failed', e); }
+    } catch (e) { console.error('[Android] Camera failed:', e); }
 
-    // 2. Photos & Videos
-    try {
-        const { missing } = await checkRequiredPermissions();
-        if (missing.includes('Photos/Videos')) {
-            if (onProgress) onProgress('Photos/Videos', missing);
-            await Camera.requestPermissions({ permissions: ['photos'] });
-            await reCheck('Photos/Videos');
-            await delay(reqDelay);
-        }
-    } catch (e) { console.error('Photos req failed', e); }
-
-    // 3. Location
+    // Step 2 → Location  (Manifest: ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION)
     try {
         const { missing } = await checkRequiredPermissions();
         if (missing.includes('Location')) {
             if (onProgress) onProgress('Location', missing);
             await Geolocation.requestPermissions();
-            
-            // Note: iOS 14+ hangs natively if we call getCurrentPosition immediately after requestPermissions
-            // We removed the 'single shot' trigger here to prevent freezing the native Capacitor bridge.
-            
             await reCheck('Location');
-            await delay(reqDelay);
+            await delay(androidDelay);
         }
-    } catch (e) { console.error('Location req failed', e); }
+    } catch (e) { console.error('[Android] Location failed:', e); }
 
-    // 4. Notifications
+    // Step 3 → Notifications  (Manifest: POST_NOTIFICATIONS — Android 13+)
     try {
         const { missing } = await checkRequiredPermissions();
         if (missing.includes('Notifications')) {
             if (onProgress) onProgress('Notifications', missing);
             await LocalNotifications.requestPermissions();
             await reCheck('Notifications');
-            await delay(reqDelay);
+            await delay(androidDelay);
         }
-    } catch (e) { console.error('Notification req failed', e); }
+    } catch (e) { console.error('[Android] Notifications failed:', e); }
 
-    // 5. Contacts
+    // Step 4 → Contacts  (Manifest: READ_CONTACTS)
     try {
         const { missing } = await checkRequiredPermissions();
         if (missing.includes('Contacts')) {
             if (onProgress) onProgress('Contacts', missing);
             await Contacts.requestPermissions();
             await reCheck('Contacts');
-            await delay(reqDelay);
+            await delay(androidDelay);
         }
-    } catch (e) { console.error('Contacts req failed', e); }
+    } catch (e) { console.error('[Android] Contacts failed:', e); }
 
-    // 6. Bluetooth
+    // Step 5 → Physical Activity  (Manifest: ACTIVITY_RECOGNITION — Android 10+)
     try {
         const { missing } = await checkRequiredPermissions();
-        if (missing.includes('Bluetooth')) {
-            if (onProgress) onProgress('Bluetooth', missing);
-            const permissions = getCordovaPermissions();
-            if (permissions && permissions.BLUETOOTH_SCAN && permissions.BLUETOOTH_CONNECT && permissions.BLUETOOTH_ADVERTISE) {
-                await new Promise((resolve) => {
-                    permissions.requestPermissions([
-                        permissions.BLUETOOTH_SCAN!,
-                        permissions.BLUETOOTH_CONNECT!,
-                        permissions.BLUETOOTH_ADVERTISE!
-                    ], resolve, resolve);
-                });
-            }
-            await reCheck('Bluetooth');
-            await delay(reqDelay);
+        if (missing.includes('Physical Activity')) {
+            if (onProgress) onProgress('Physical Activity', missing);
+            await stepCounterService.ensurePermission();
+            await reCheck('Physical Activity');
+            await delay(androidDelay);
         }
-    } catch (e) { console.error('Bluetooth req failed', e); }
-
-    // 7. Music
-    try {
-        const { missing } = await checkRequiredPermissions();
-        if (missing.includes('Music')) {
-            if (onProgress) onProgress('Music', missing);
-            const permissions = getCordovaPermissions();
-            if (permissions && permissions.READ_MEDIA_AUDIO) {
-                await new Promise((resolve) => {
-                    permissions.requestPermission(permissions.READ_MEDIA_AUDIO!, resolve, resolve);
-                });
-            }
-            await reCheck('Music');
-            await delay(reqDelay);
-        }
-    } catch (e) { console.error('Music req failed', e); }
-
-    // 8. Physical Activity (Android 10+ — ACTIVITY_RECOGNITION)
-    if (Capacitor.getPlatform() === 'android') {
-        try {
-            const { missing } = await checkRequiredPermissions();
-            if (missing.includes('Physical Activity')) {
-                if (onProgress) onProgress('Physical Activity', missing);
-                console.log('[PermissionUtils] Requesting Physical Activity permission...');
-                await stepCounterService.ensurePermission();
-                await reCheck('Physical Activity');
-                await delay(reqDelay);
-            }
-        } catch (e) { console.error('Physical Activity req failed', e); }
-
-        // 9. Battery Optimization (for reliable background tracking)
-        try {
-            const isIgnored = await routeTrackingService.isBatteryOptimizationIgnored();
-            if (!isIgnored) {
-                console.log('[PermissionUtils] Requesting Battery Optimization exemption...');
-                await routeTrackingService.requestIgnoreBatteryOptimization();
-            }
-        } catch (e) { console.error('Battery optimization req failed', e); }
-    }
+    } catch (e) { console.error('[Android] Physical Activity failed:', e); }
 
     if (onProgress) onProgress('', (await checkRequiredPermissions()).missing);
 };
+
 
 /**
  * Request notification permissions specifically (legacy support or targeted).
@@ -477,6 +486,38 @@ export const updateBreakReminderChannelSound = async () => {
         console.log(`[PermissionUtils] break_reminders channel updated with sound: ${toneFilename}`);
     } catch (error) {
         console.error('[PermissionUtils] Failed to update break channel sound:', error);
+    }
+};
+
+/**
+ * Request a single permission by its display ID (as used in PermissionsPrimer).
+ * Maps the 5 UI-listed IDs to the correct underlying Capacitor / native call.
+ * This is called when the user taps an individual permission row.
+ */
+export const requestPermissionById = async (id: string): Promise<void> => {
+    if (!Capacitor.isNativePlatform()) return;
+    const isAndroid = Capacitor.getPlatform() === 'android';
+
+    switch (id) {
+        case 'Camera':
+            await Camera.requestPermissions({ permissions: ['camera'] }).catch(e => console.error('Camera perm failed', e));
+            break;
+        case 'Location':
+            await Geolocation.requestPermissions().catch(e => console.error('Location perm failed', e));
+            break;
+        case 'Notifications':
+            await LocalNotifications.requestPermissions().catch(e => console.error('Notification perm failed', e));
+            break;
+        case 'Contacts':
+            await Contacts.requestPermissions().catch(e => console.error('Contacts perm failed', e));
+            break;
+        case 'Physical Activity':
+            if (isAndroid) {
+                await stepCounterService.ensurePermission().catch(e => console.error('Activity perm failed', e));
+            }
+            break;
+        default:
+            console.warn(`[PermissionUtils] requestPermissionById: unknown id "${id}"`);
     }
 };
 

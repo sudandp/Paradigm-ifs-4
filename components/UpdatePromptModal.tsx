@@ -82,14 +82,16 @@ export const UpdatePromptModal: React.FC<UpdatePromptModalProps> = ({ updateInfo
           WhatsApp Support
         </button>
 
-        {/* Always visible — user can update from Play Store later */}
-        <button
-          onClick={onLater}
-          className="w-full flex items-center justify-center gap-2 mt-1 text-gray-500 hover:text-gray-700 font-medium py-2 rounded-xl transition-colors"
-        >
-          <Clock className="w-4 h-4" />
-          Update Later
-        </button>
+        {/* Only shown for optional (non-mandatory) updates */}
+        {!updateInfo.isMandatory && (
+          <button
+            onClick={onLater}
+            className="w-full flex items-center justify-center gap-2 mt-1 text-gray-500 hover:text-gray-700 font-medium py-2 rounded-xl transition-colors"
+          >
+            <Clock className="w-4 h-4" />
+            Update Later
+          </button>
+        )}
 
       </div>
     </div>

@@ -53,6 +53,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
     onSiteOtDaysChange
 }) => {
     const { user } = useAuthStore();
+    const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
     const isFemale = ['female', 'ladies'].includes((user?.gender || '').toLowerCase());
     const isMale = !isFemale;
 
@@ -539,9 +540,10 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                         
                         let overlayText: string | null = null;
                         let customStyle: React.CSSProperties = {};
+                        let cellTooltip: string | null = null;
+                        const isSelected = selectedDayKey === dateKey;
 
                         if (status === 'present' || status === 'holiday-present' || status === 'weekend-present') {
-                            const dateKey = format(date, 'yyyy-MM-dd');
                             const dayKeyMap = buildAttendanceDayKeyByEventId(events);
                             const dayEvents = events.filter(e => dayKeyMap[e.id] === dateKey);
                             const { workingHours } = calculateWorkingHours(dayEvents, date);
@@ -571,13 +573,15 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                     else if (reason.includes('lop') || reason.includes('loss')) leaveCode = 'LOP';
                                     else leaveCode = '';
                                     
-                                    overlayText = leaveCode ? `0.5P+0.5${leaveCode}` : '0.5P';
+                                    overlayText = leaveCode ? (isSelected ? `0.5P+0.5${leaveCode}` : `P+${leaveCode}`) : '0.5P';
+                                    cellTooltip = leaveCode ? `0.5 Present + 0.5 ${leaveCode}` : '0.5 Present';
                                 } else {
                                     overlayText = status === 'holiday-present' 
-                                        ? `H/0.5P+0.5 ${leaveCode}` 
+                                        ? (isSelected ? `H/0.5P+0.5 ${leaveCode}` : `H/P+${leaveCode}`)
                                         : status === 'weekend-present' 
-                                            ? `W/0.5P+0.5 ${leaveCode}` 
-                                            : `0.5P+0.5 ${leaveCode}`;
+                                            ? (isSelected ? `W/0.5P+0.5 ${leaveCode}` : `W/P+${leaveCode}`) 
+                                            : (isSelected ? `0.5P+0.5 ${leaveCode}` : `P+${leaveCode}`);
+                                    cellTooltip = `0.5 Present + 0.5 ${leaveCode}`;
                                 }
                                 const leftColor = status === 'holiday-present' ? '#38bdf8' : status === 'weekend-present' ? '#fda4af' : '#10b981';
                                 const rightColor = (leaveCode === 'PL' || leaveCode === 'Pink') ? '#ec4899' : '#2563eb';
@@ -618,13 +622,16 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                     }
 
                                     const greenPct = Math.min(90, Math.max(10, Math.round(workedFraction * 100)));
-                                    overlayText = `${workedFraction}P+${permFraction}RP`;
+                                    // By default show clean P+RP for perfect box alignment; show exact fraction on user tap
+                                    overlayText = isSelected ? `${workedFraction}P+${permFraction}RP` : 'P+RP';
+                                    cellTooltip = `${workedFraction}P (${workingHours.toFixed(1)}h worked) + ${permFraction}RP (${permMins}m permission)`;
                                     customStyle = {
                                         background: `linear-gradient(135deg, #10b981 ${greenPct}%, #2563eb ${greenPct}%)`,
                                         borderColor: 'transparent'
                                     };
                                 } else {
                                     overlayText = 'RP';
+                                    cellTooltip = 'Permission (RP)';
                                     customStyle = {
                                         background: '#2563eb',
                                         borderColor: 'transparent'
@@ -702,14 +709,16 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                         else if (reason.includes('lop') || reason.includes('loss')) leaveCode = 'LOP';
                                         else leaveCode = '';
                                         
-                                        overlayText = leaveCode ? `0.5P+0.5${leaveCode}` : '0.5P';
+                                        overlayText = leaveCode ? (isSelected ? `0.5P+0.5${leaveCode}` : `P+${leaveCode}`) : '0.5P';
+                                        cellTooltip = leaveCode ? `0.5 Present + 0.5 ${leaveCode}` : '0.5 Present';
                                         const rightColor = (leaveCode === 'PL' || leaveCode === 'Pink') ? '#ec4899' : '#2563eb';
                                         customStyle = {
                                             background: `linear-gradient(135deg, #10b981 50%, ${leaveCode ? rightColor : '#10b981'} 50%)`, // Half Green (Present) / Half Blue
                                             borderColor: 'transparent'
                                         };
                                     } else {
-                                        overlayText = `0.5 A + 0.5 ${leaveCode}`;
+                                        overlayText = isSelected ? `0.5A+0.5${leaveCode}` : `A+${leaveCode}`;
+                                        cellTooltip = `0.5 Absent + 0.5 ${leaveCode}`;
                                         const isPink = String(request.leaveType || '').toLowerCase().includes('pink');
                                         const rightColor = isPink ? '#ec4899' : '#2563eb';
                                         customStyle = {
@@ -719,12 +728,14 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                     }
                                 } else if (lType.includes('correction')) {
                                     overlayText = 'RC';
+                                    cellTooltip = 'Correction (RC)';
                                     customStyle = {
                                         background: '#10b981', // Solid green for correction
                                         borderColor: 'transparent'
                                     };
                                 } else if (lType.includes('permission')) {
                                     overlayText = 'RP';
+                                    cellTooltip = 'Permission (RP)';
                                     customStyle = {
                                         background: '#2563eb', // Solid blue for permission
                                         borderColor: 'transparent'
@@ -732,6 +743,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                 } else {
                                     const code = getLeaveAbbreviation(request.leaveType || (request as any).leave_type);
                                     overlayText = code;
+                                    cellTooltip = request.leaveType || code;
                                     if (code === 'PL') {
                                         customStyle = {
                                             background: 'linear-gradient(135deg, #ec4899 0%, #f43f5e 100%)', // Premium pink gradient
@@ -747,12 +759,18 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                         }
 
                         return (
-                            <div key={date.toISOString()} style={customStyle} className={`h-9 rounded flex flex-col items-center justify-center ${colorClass} transition-colors border border-transparent hover:border-border/50 group relative cursor-help`}>
-                                <span className={`font-bold leading-none ${overlayText ? 'text-[11px] mb-[2px]' : 'text-xs'}`}>
+                            <div 
+                                key={date.toISOString()} 
+                                style={customStyle} 
+                                onClick={() => setSelectedDayKey(prev => prev === dateKey ? null : dateKey)}
+                                title={cellTooltip || holidayName || undefined}
+                                className={`h-9 rounded flex flex-col items-center justify-center ${colorClass} transition-all border ${isSelected ? 'border-amber-400 ring-2 ring-amber-400/70 shadow-md z-30' : 'border-transparent hover:border-border/50'} group relative cursor-pointer select-none`}
+                            >
+                                <span className={`font-bold leading-none ${overlayText ? 'text-[11px] mb-[1px]' : 'text-xs'}`}>
                                     {format(date, 'd')}
                                 </span>
                                  {overlayText && (
-                                    <span className={`font-black leading-none text-white drop-shadow-md tracking-tighter whitespace-nowrap ${overlayText.length > 8 ? 'text-[6px]' : overlayText.length > 5 ? 'text-[7px]' : 'text-[9px]'}`}>
+                                    <span className={`font-black leading-none text-white drop-shadow-md tracking-tighter text-center whitespace-nowrap ${overlayText.length > 8 ? 'text-[6px] px-0.5' : overlayText.length > 5 ? 'text-[7px]' : 'text-[9px]'}`}>
                                         {overlayText}
                                     </span>
                                 )}
@@ -769,7 +787,14 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                         aria-label="Pending correction or permission"
                                     />
                                 )}
-                                {holidayName && (
+                                {/* Selected Floating breakdown popover on user tap */}
+                                {isSelected && cellTooltip && (
+                                    <div className="absolute bottom-[110%] left-1/2 -translate-x-1/2 bg-gray-950 text-white text-[9px] font-bold py-1 px-2.5 rounded shadow-xl border border-emerald-500/50 whitespace-nowrap z-50 pointer-events-none flex flex-col items-center animate-in fade-in zoom-in-95 duration-150">
+                                        <span>{cellTooltip}</span>
+                                        <div className="w-1.5 h-1.5 bg-gray-950 border-r border-b border-emerald-500/50 rotate-45 -mb-1.5 mt-0.5" />
+                                    </div>
+                                )}
+                                {holidayName && !isSelected && (
                                     <div className="absolute bottom-[-35px] left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[9px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none transition-opacity shadow-lg">
                                         {holidayName}
                                     </div>

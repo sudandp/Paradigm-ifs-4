@@ -187,6 +187,7 @@ const LeaveDashboard: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [isCompOffHistoryDisabled, setIsCompOffHistoryDisabled] = useState(false);
     const [filter, setFilter] = useState<LeaveRequestStatus | 'all'>('all');
+    const [dateScope, setDateScope] = useState<'month' | 'all'>('month');
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [actioningRequestId, setActioningRequestId] = useState<string | null>(null);
     const isMobile = useMediaQuery('(max-width: 767px)');
@@ -688,11 +689,14 @@ const LeaveDashboard: React.FC = () => {
     const userRulesForEarlyDep = attendanceSettings ? attendanceSettings[staffCategoryForEarlyDep] : null;
 
     const earlyDepartureDeductionsList = useMemo(() => {
-        if (!events || events.length === 0) return [];
+        const eventsToUse = (dateScope === 'all' && yearlyData?.events && yearlyData.events.length > 0)
+            ? yearlyData.events
+            : events;
+        if (!eventsToUse || eventsToUse.length === 0) return [];
         const targetShiftMins = (userRulesForEarlyDep?.minimumHoursFullDay || 8) * 60;
-        const monthStartStr = format(startOfMonth(viewingDate), 'yyyy-MM');
-        return getEarlyDepartureDeductions(events, targetShiftMins, requests, yearlyData?.leaves || [], monthStartStr);
-    }, [events, userRulesForEarlyDep, requests, yearlyData, viewingDate]);
+        const monthStartStr = dateScope === 'month' ? format(startOfMonth(viewingDate), 'yyyy-MM') : undefined;
+        return getEarlyDepartureDeductions(eventsToUse, targetShiftMins, requests, yearlyData?.leaves || [], monthStartStr);
+    }, [events, userRulesForEarlyDep, requests, yearlyData, viewingDate, dateScope]);
 
     const totalEarlyDepartureMins = useMemo(() => {
         return earlyDepartureDeductionsList.reduce((sum, ed) => sum + ed.earlyMins, 0);
@@ -795,8 +799,6 @@ const LeaveDashboard: React.FC = () => {
             } as unknown as LeaveRequest;
         }).filter(Boolean) as LeaveRequest[];
     }, [earlyDepartureDeductionsList, requests, user]);
-
-    const [dateScope, setDateScope] = useState<'month' | 'all'>('month');
 
     const allDisplayRequests = useMemo(() => {
         const combined = [...requests, ...autoEarlyDepartureRequests];
@@ -1302,7 +1304,7 @@ const LeaveDashboard: React.FC = () => {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-border/60">
                     <div className="flex items-center gap-2.5">
                         <h3 className="text-base md:text-lg font-bold text-primary-text">
-                            {dateScope === 'month' ? `Leave Requests for ${format(viewingDate, 'MMMM yyyy')}` : 'All Leave Requests (Full History)'}
+                            {dateScope === 'month' ? `Leave Requests for ${format(viewingDate, 'MMMM yyyy')}` : 'All Requests & Logs (Full History)'}
                         </h3>
                         <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-bold">
                             {allDisplayRequests.length}
@@ -1472,7 +1474,8 @@ const LeaveDashboard: React.FC = () => {
                                             <td data-label="Dates" className="px-6 py-4">
                                                 <div className="flex flex-col">
                                                     <span className="text-sm font-semibold text-primary-text">
-                                                        {format(new Date(req.startDate.replace(/-/g, '/')), 'dd MMM')} - {format(new Date(req.endDate.replace(/-/g, '/')), 'dd MMM')}
+                                                        {format(new Date(req.startDate.replace(/-/g, '/')), dateScope === 'all' ? 'dd MMM yyyy' : 'dd MMM')}
+                                                        {req.endDate && req.endDate !== req.startDate ? ` - ${format(new Date(req.endDate.replace(/-/g, '/')), dateScope === 'all' ? 'dd MMM yyyy' : 'dd MMM')}` : ''}
                                                     </span>
                                                     <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter">
                                                         {req.dayOption === 'half' ? '0.5' : differenceInCalendarDays(new Date(req.endDate.replace(/-/g, '/')), new Date(req.startDate.replace(/-/g, '/'))) + 1} Days

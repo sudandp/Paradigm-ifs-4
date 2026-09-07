@@ -8,6 +8,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import type { AddressSettings, AttendanceSettings, Holiday, GmcPolicySettings, PerfiosApiSettings, GeminiApiSettings, KycApiSettings, EsignApiSettings, OfflineOcrSettings, OtpSettings, ApiSettings, NotificationSettings, VerificationCosts, VerificationCostSetting, SiteManagementSettings, StaffAttendanceRules, RecurringHolidayRule, VoipSettings } from '../types';
 import { api } from '../services/api';
 import { HOLIDAY_SELECTION_POOL } from '../utils/constants';
+import { APP_VERSION } from '../src/config/appVersion';
 
 interface SettingsState {
   address: AddressSettings;
@@ -236,7 +237,7 @@ const initialApiSettings: ApiSettings = {
     dayOfMonth: 1,
     monthOfYear: 1,
   },
-  appVersion: '1.0.0',
+  appVersion: APP_VERSION,
   automatedTracking: {
     enabled: false,
     intervalMinutes: 15,

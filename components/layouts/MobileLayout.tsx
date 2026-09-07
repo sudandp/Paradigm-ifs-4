@@ -8,10 +8,11 @@ import { useAuthStore } from '../../store/authStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useLoadingScreenStore } from '../../store/loadingScreenStore';
 import ReferralModal from '../modals/ReferralModal';
+import { APP_VERSION } from '../../src/config/appVersion';
 
 const MobileLayout: React.FC = () => {
     const store = useSettingsStore();
-    const appVersion = store.apiSettings.appVersion || '1.0.0';
+    const appVersion = APP_VERSION || store.apiSettings.appVersion || '20.3.0';
     const location = useLocation();
     const { fetchNotifications, isPanelOpen, setIsPanelOpen } = useNotificationStore();
     const { user, isOffline } = useAuthStore();

@@ -4,6 +4,10 @@ import { Capacitor } from '@capacitor/core';
 import { AppUpdate, AppUpdateAvailability } from '@capawesome/capacitor-app-update';
 import { useAuthStore } from '../store/authStore';
 
+// Traditional remote version check endpoint — update this file's latestVersionCode
+// immediately after publishing to Play Store. No Play Store propagation delay.
+const REMOTE_VERSION_URL = 'https://app.paradigmfms.com/version.json';
+
 export interface AppVersionInfo {
   latestVersionCode: number;
   latestVersionName: string;
@@ -107,10 +111,13 @@ export const useAppUpdate = () => {
     }
 
     try {
-      console.log('[AppUpdate] Checking Play Store for update...');
+      // ── STEP 1: Google Play In-App Updates API (PRIMARY & MANDATORY) ──────────
+      // This is the authoritative ground truth for Android. It only triggers when
+      // Google Play has reviewed, approved, signed, and published the update for this device.
+      console.log('[AppUpdate] Checking Google Play Store API for updates (Primary & Mandatory)...');
       const info = await AppUpdate.getAppUpdateInfo();
 
-      console.log('[AppUpdate] Raw info from Play Store:', {
+      console.log('[AppUpdate] Play Store info:', {
         updateAvailability: info.updateAvailability,
         currentVersionCode: info.currentVersionCode,
         availableVersionCode: info.availableVersionCode,
@@ -127,22 +134,19 @@ export const useAppUpdate = () => {
         const remoteInfo: AppVersionInfo = {
           latestVersionCode: latestCode,
           latestVersionName: info.availableVersionName || `Build ${latestCode}`,
-          apkDownloadUrl: 'https://play.google.com/store/apps/details?id=com.paradigmfms.app',
-          releaseNotes: 'A new version of Paradigm Services is available on Google Play Store. Please update to get the latest features and security improvements.',
-          isMandatory: info.immediateUpdateAllowed || false,
+          apkDownloadUrl: 'https://play.google.com/store/apps/details?id=com.paradigm.ifs',
+          releaseNotes: 'A new version of Paradigm IFS is available on Google Play Store. Please update now to continue using the application.',
+          isMandatory: true, // MANDATORY: Enforced via Google Play API confirmation
         };
 
-        console.log('[AppUpdate] Update detected! Setting modal visible.', remoteInfo);
-        // Mark detected so resume listener doesn't re-trigger
+        console.log('[AppUpdate] Google Play update confirmed available! Enforcing mandatory update:', remoteInfo);
         updateDetectedRef.current = true;
         setUpdateInfo(remoteInfo);
         setIsUpdateRequired(true);
 
-        // Try native immediate update (Google's full-screen overlay).
-        // NOTE: Will fail silently if FLAG_SECURE is set on the window —
-        // the custom UpdatePromptModal (already rendered in App.tsx) handles the fallback.
-        if (info.immediateUpdateAllowed) {
-          console.log('[AppUpdate] Launching native immediate update overlay...');
+        // 1. Attempt native immediate update (Google's official full-screen overlay)
+        if (info.immediateUpdateAllowed !== false) {
+          console.log('[AppUpdate] Launching native Google Play immediate update overlay...');
           try {
             await AppUpdate.performImmediateUpdate();
           } catch (immErr) {
@@ -152,24 +156,36 @@ export const useAppUpdate = () => {
           console.log('[AppUpdate] Starting flexible background download...');
           try {
             await AppUpdate.startFlexibleUpdate();
-            console.log('[AppUpdate] Flexible update download started in background.');
           } catch (flexErr) {
             console.warn('[AppUpdate] startFlexibleUpdate failed:', flexErr);
           }
-        } else {
-          console.log('[AppUpdate] Neither immediate nor flexible allowed — custom modal is the only prompt.');
         }
 
-        // Send FCU broadcast notification (admin-only, fires once per version name)
         await sendFcuBroadcast(remoteInfo);
-
+        return;
       } else {
-        console.log('[AppUpdate] No update available. updateAvailability =', info.updateAvailability);
-        // Reset so future resume events re-check correctly
+        console.log('[AppUpdate] Google Play: No update available (or app is already up to date). updateAvailability =', info.updateAvailability);
         updateDetectedRef.current = false;
       }
-    } catch (nativeErr) {
-      console.warn('[AppUpdate] Native store check failed:', nativeErr);
+
+      // ── STEP 2: Vercel Remote version.json (ON HOLD) ─────────────────────────
+      // Kept on hold so deploying web updates to Vercel never falsely triggers update
+      // prompts or blocks users while Google Play review is still pending.
+      /*
+      // ON HOLD: Uncomment only if server-side remote fallback is required in the future.
+      const res = await fetch(`${REMOTE_VERSION_URL}?t=${Date.now()}`);
+      if (res.ok) {
+        const remoteData: AppVersionInfo = await res.json();
+        const appInfo = await App.getInfo();
+        const currentBuildCode = parseInt(appInfo.build, 10);
+        if (currentBuildCode < remoteData.latestVersionCode) {
+          setUpdateInfo({ ...remoteData, isMandatory: false });
+          setIsUpdateRequired(true);
+        }
+      }
+      */
+    } catch (err) {
+      console.warn('[AppUpdate] Version check error:', err);
     } finally {
       setIsChecking(false);
     }

@@ -7866,7 +7866,7 @@ export const api = {
     isMandatory?: boolean;
     playStoreUrl?: string;
   }): Promise<{ success: boolean; message: string; data?: any }> => {
-    const playStoreUrl = params.playStoreUrl || 'https://play.google.com/store/apps/details?id=com.paradigmfms.app';
+    const playStoreUrl = params.playStoreUrl || 'https://play.google.com/store/apps/details?id=com.paradigm.ifs';
     const title = `🚀 App Update v${params.version} Available`;
     const message = params.releaseNotes ||
       `A new version of Paradigm Services (v${params.version}${params.buildNumber ? `, Build ${params.buildNumber}` : ''}) is now available on Google Play Store. Please update your app now for uninterrupted access.`;
