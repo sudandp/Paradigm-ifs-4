@@ -979,7 +979,7 @@ const AddUserPage: React.FC = () => {
       }
 
       if (isEditing && id) {
-        const { password, noSiteAssignment, ...rest } = processedData;
+        const { password, noSiteAssignment, location: _loc, ...rest } = processedData;
         const payload = cleanPayload(rest);
         await api.updateUser(id, payload);
 
@@ -999,7 +999,7 @@ const AddUserPage: React.FC = () => {
 
         setToast({ message: 'User updated successfully! Alert notification sent.', type: 'success' });
       } else {
-        const { name, email, password, role, noSiteAssignment, ...rest } = processedData;
+        const { name, email, password, role, noSiteAssignment, location: _loc, ...rest } = processedData;
         if (!password) {
           throw new Error('Password is required when creating a new user');
         }

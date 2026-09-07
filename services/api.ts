@@ -3377,7 +3377,7 @@ export const api = {
     if (societyId !== undefined) dbUpdates.society_id = societyId;
     if (societyName !== undefined) dbUpdates.society_name = societyName;
     if (locationId !== undefined) dbUpdates.location_id = locationId;
-    if (location !== undefined) dbUpdates.location = location;
+    delete dbUpdates.location; // Guard: 'location' is a virtual frontend property; database column is 'location_id'
 
     if ('photo_url' in dbUpdates) {
       const { data: { session } } = await supabase.auth.getSession();
@@ -3437,7 +3437,26 @@ export const api = {
       }
     }
 
-    const { data, error } = await supabase.from('users').update(dbUpdates).eq('id', id).select().single();
+    let data: any = null;
+    let error: any = null;
+    const currentDbUpdates = { ...dbUpdates };
+    delete currentDbUpdates.location;
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const res = await supabase.from('users').update(currentDbUpdates).eq('id', id).select().single();
+      data = res.data;
+      error = res.error;
+      if (!error) break;
+
+      const missingColMatch = error.message?.match(/Could not find the '([^']+)' column/i);
+      if (missingColMatch && missingColMatch[1]) {
+        const missingCol = missingColMatch[1];
+        console.warn(`[updateUser] Removing missing column '${missingCol}' from schema and retrying:`, error.message);
+        delete currentDbUpdates[missingCol];
+        continue;
+      }
+      break;
+    }
     if (error) throw error;
 
     // If email or phone was updated by admin, sync to auth.users pre-confirmed
@@ -3483,12 +3502,32 @@ export const api = {
   },
 
   createUser: async (userData: Partial<User>): Promise<User> => {
-    const { role, ...rest } = userData;
+    const { role, location, ...rest } = userData as any;
     const dbData: any = toSnakeCase(rest);
     if (role) dbData.role_id = role;
+    delete dbData.location; // Guard: users table does not have 'location' column
     if (!dbData.passcode) dbData.passcode = String(Math.floor(1000 + Math.random() * 9000));
 
-    const { data, error } = await supabase.from('users').insert(dbData).select().single();
+    let data: any = null;
+    let error: any = null;
+    const currentDbData = { ...dbData };
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const res = await supabase.from('users').insert(currentDbData).select().single();
+      data = res.data;
+      error = res.error;
+      if (!error) break;
+
+      const missingColMatch = error.message?.match(/Could not find the '([^']+)' column/i);
+      if (missingColMatch && missingColMatch[1]) {
+        const missingCol = missingColMatch[1];
+        console.warn(`[createUser] Removing missing column '${missingCol}' from schema and retrying:`, error.message);
+        delete currentDbData[missingCol];
+        continue;
+      }
+      break;
+    }
+
     if (error) throw error;
     return toCamelCase({ ...data, role: data.role_id });
   },
@@ -3619,7 +3658,7 @@ export const api = {
     if (societyId !== undefined) dbUpdates.society_id = societyId;
     if (societyName !== undefined) dbUpdates.society_name = societyName;
     if (locationId !== undefined) dbUpdates.location_id = locationId;
-    if (location !== undefined) dbUpdates.location = location;
+    delete dbUpdates.location;
 
     // Final surgical cleanup: converting empty strings and undefined to null for database compatibility.
     // This prevents errors with non-text columns (like DATE or UUID) when optional fields are left empty.
@@ -3629,10 +3668,27 @@ export const api = {
       }
     });
 
-    const { error } = await supabase
-      .from('users')
-      .update(dbUpdates)
-      .in('id', userIds);
+    let error: any = null;
+    const currentDbUpdates = { ...dbUpdates };
+    delete currentDbUpdates.location;
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const res = await supabase
+        .from('users')
+        .update(currentDbUpdates)
+        .in('id', userIds);
+      error = res.error;
+      if (!error) break;
+
+      const missingColMatch = error.message?.match(/Could not find the '([^']+)' column/i);
+      if (missingColMatch && missingColMatch[1]) {
+        const missingCol = missingColMatch[1];
+        console.warn(`[bulkUpdateUsers] Removing missing column '${missingCol}' from schema and retrying:`, error.message);
+        delete currentDbUpdates[missingCol];
+        continue;
+      }
+      break;
+    }
 
     if (error) throw error;
   },
