@@ -203,7 +203,8 @@ export const htYardFieldSpecService = {
       const rawTargets = localStorage.getItem('ht_custom_field_targets');
       const targetsMap = rawTargets ? JSON.parse(rawTargets) : {};
       const catTargets: any[] = targetsMap[category] || [];
-      const targetIdx = catTargets.findIndex((t: any) => t.key === spec.fieldKey);
+      // Safety guard: ensure sub-questions never match or overwrite a parent card
+      const targetIdx = catTargets.findIndex((t: any) => t.key === spec.fieldKey && (!resolvedParentKey || t.key !== resolvedParentKey));
       if (targetIdx >= 0) {
         catTargets[targetIdx] = {
           ...catTargets[targetIdx],

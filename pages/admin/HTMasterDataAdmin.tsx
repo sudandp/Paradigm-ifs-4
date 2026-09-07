@@ -1638,7 +1638,7 @@ export const HTMasterDataAdmin: React.FC = () => {
     setNewCategoryName('');
 
     // Automatically prompt to add the first target field for this category
-    setShowAddTargetModal(true);
+    handleOpenAddQuestionModal();
   };
 
   const promptDeleteCategory = (catName: string, e?: React.MouseEvent) => {
@@ -1718,6 +1718,19 @@ export const HTMasterDataAdmin: React.FC = () => {
     setShowAddTargetModal(true);
   };
 
+  const handleCloseAddTargetModal = () => {
+    setShowAddTargetModal(false);
+    setNewTargetParentKey(undefined);
+    setParentFieldLabel('');
+    setNewTargetLabel('');
+    setNewTargetKey('');
+    setNewTargetSection('');
+    setNewTargetChoices('');
+    setNewTargetUnit('');
+    setNewTargetPlaceholder('');
+    setNewTargetType('select');
+  };
+
   const handleCreateNewTargetField = async (e: React.FormEvent) => {
     e.preventDefault();
     let finalLabel = newTargetLabel.trim();
@@ -1742,9 +1755,33 @@ export const HTMasterDataAdmin: React.FC = () => {
     const cleanLabelForSlug = finalLabel.replace(/^\s*\d+[.)\-\s]+/, '').trim() || finalLabel;
     const baseCleanKey = cleanLabelForSlug.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || 'question';
     const uniqueSuffix = `${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 6)}`;
-    const cleanKey = newTargetKey.trim()
-      ? newTargetKey.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_')
-      : (newTargetParentKey ? `sub_${baseCleanKey}_${uniqueSuffix}` : `custom_${baseCleanKey}_${uniqueSuffix}`);
+
+    // Gather all existing keys in the active category to guarantee 100% no-collision and unlimited addition
+    const existingKeys = new Set<string>();
+    (fieldTargetsMap[activeTab] || []).forEach(t => existingKeys.add(t.key.toLowerCase()));
+    customFieldSpecs.forEach(cs => existingKeys.add(cs.fieldKey.toLowerCase()));
+    allGroupedFields.forEach(g => {
+      existingKeys.add(g.fieldKey.toLowerCase());
+      (g.subQuestions || []).forEach(sub => existingKeys.add(sub.fieldKey.toLowerCase()));
+    });
+
+    let cleanKey = '';
+    if (newTargetParentKey) {
+      // It's a follow-up sub-question: ALWAYS prefix with sub_ and NEVER allow matching parentKey or existing question
+      cleanKey = `sub_${baseCleanKey}_${uniqueSuffix}`;
+    } else {
+      const requested = newTargetKey.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
+      if (requested && !existingKeys.has(requested)) {
+        cleanKey = requested;
+      } else {
+        cleanKey = `custom_${baseCleanKey}_${uniqueSuffix}`;
+      }
+    }
+
+    // Absolutely guarantee no collision with ANY existing key or parentKey
+    while (existingKeys.has(cleanKey.toLowerCase()) || (newTargetParentKey && cleanKey.toLowerCase() === newTargetParentKey.toLowerCase())) {
+      cleanKey = `${cleanKey}_${Math.random().toString(36).substring(2, 6)}`;
+    }
 
     try {
       // 1. Save Field Spec to htYardFieldSpecService
@@ -1783,10 +1820,11 @@ export const HTMasterDataAdmin: React.FC = () => {
 
       setFieldTargetsMap(prev => {
         const currentList = prev[activeTab] || [];
-        const exists = currentList.some(t => t.key === cleanKey);
-        const updatedList = exists
-          ? currentList.map(t => t.key === cleanKey ? { key: cleanKey, label: finalLabel, section: sectionTitle, parentFieldKey: newTargetParentKey } : t)
-          : [...currentList, { key: cleanKey, label: finalLabel, section: sectionTitle, parentFieldKey: newTargetParentKey }];
+        // When creating, ALWAYS append the new question/sub-question, NEVER overwrite an existing parent!
+        const updatedList = [
+          ...currentList.filter(t => t.key !== cleanKey),
+          { key: cleanKey, label: finalLabel, section: sectionTitle, parentFieldKey: newTargetParentKey }
+        ];
 
         const updated = {
           ...prev,
@@ -1802,16 +1840,7 @@ export const HTMasterDataAdmin: React.FC = () => {
 
       logMasterDataActivity('CREATE', finalLabel, `Created new target field "${finalLabel}" (${cleanKey}) [Type: ${newTargetType}] in section "${sectionTitle}" for category "${activeTab}"`);
       toast.success(newTargetParentKey ? `Follow-up question "${finalLabel}" added inside card!` : `Question "${finalLabel}" created!`);
-      setShowAddTargetModal(false);
-      setNewTargetParentKey(undefined);
-      setParentFieldLabel('');
-      setNewTargetLabel('');
-      setNewTargetKey('');
-      setNewTargetSection('');
-      setNewTargetChoices('');
-      setNewTargetUnit('');
-      setNewTargetPlaceholder('');
-      setNewTargetType('select');
+      handleCloseAddTargetModal();
 
       // Keep target card or parent expanded so it remains visible
       if (parentKey) {
@@ -4192,18 +4221,14 @@ export const HTMasterDataAdmin: React.FC = () => {
                 </div>
               </div>
               <button 
-                onClick={() => {
-                  setShowAddTargetModal(false);
-                  setNewTargetParentKey(undefined);
-                  setParentFieldLabel('');
-                }} 
+                onClick={handleCloseAddTargetModal} 
                 className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateNewTargetField} className="space-y-4">
+            <form onSubmit={handleCreateNewTargetField} autoComplete="off" className="space-y-4">
               {/* Question Name */}
               <div>
                 <div className="flex items-center justify-between mb-1">
@@ -4218,6 +4243,7 @@ export const HTMasterDataAdmin: React.FC = () => {
                   type="text"
                   required
                   autoFocus
+                  autoComplete="off"
                   placeholder={`e.g. ${suggestedSerialNum}. CT Ratio, ${suggestedSerialNum}. BESCOM Seal Condition...`}
                   value={newTargetLabel}
                   onChange={(e) => setNewTargetLabel(e.target.value)}
@@ -4233,20 +4259,32 @@ export const HTMasterDataAdmin: React.FC = () => {
                 <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
                   Section / Group
                 </label>
-                <input
-                  type="text"
-                  list="target-section-suggestions"
-                  placeholder="e.g. Equipment Accessories, Equipment Details..."
-                  value={newTargetSection}
-                  onChange={(e) => setNewTargetSection(e.target.value)}
-                  className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
-                />
-                <datalist id="target-section-suggestions">
-                  {availableSections.map(s => <option key={s} value={s} />)}
-                </datalist>
-                <p className="text-[11px] text-slate-400 mt-1">
-                  Which section on the audit form this question belongs to.
-                </p>
+                {newTargetParentKey ? (
+                  <div className="px-3.5 py-2.5 bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-medium flex items-center justify-between">
+                    <span>{newTargetSection}</span>
+                    <span className="text-[11px] text-emerald-700 dark:text-emerald-300 font-bold bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">
+                      Inherited from {parentFieldLabel || 'Parent'}
+                    </span>
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      type="text"
+                      autoComplete="off"
+                      list="target-section-suggestions"
+                      placeholder="e.g. Equipment Accessories, Equipment Details..."
+                      value={newTargetSection}
+                      onChange={(e) => setNewTargetSection(e.target.value)}
+                      className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
+                    />
+                    <datalist id="target-section-suggestions">
+                      {availableSections.map(s => <option key={s} value={s} />)}
+                    </datalist>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Which section on the audit form this question belongs to.
+                    </p>
+                  </>
+                )}
               </div>
 
               {/* How Auditors Will Answer (Input Type) */}
@@ -4303,6 +4341,7 @@ export const HTMasterDataAdmin: React.FC = () => {
                   </label>
                   <input
                     type="text"
+                    autoComplete="off"
                     placeholder="e.g. A, kVA, kV, mm, °C, bar"
                     value={newTargetUnit}
                     onChange={(e) => setNewTargetUnit(e.target.value)}
@@ -4315,6 +4354,7 @@ export const HTMasterDataAdmin: React.FC = () => {
                   </label>
                   <input
                     type="text"
+                    autoComplete="off"
                     placeholder="e.g. Select ratio..."
                     value={newTargetPlaceholder}
                     onChange={(e) => setNewTargetPlaceholder(e.target.value)}
@@ -4324,35 +4364,39 @@ export const HTMasterDataAdmin: React.FC = () => {
               </div>
 
               {/* Collapsible Advanced Settings for Technical Keys */}
-              <details className="group pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
-                <summary className="cursor-pointer font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 flex items-center gap-1.5 select-none py-1">
-                  <span>⚙️ Advanced Settings (System Key)</span>
-                </summary>
-                <div className="mt-2.5 p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/60 dark:border-slate-700/60 space-y-1">
-                  <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400">
-                    System Identifier (Auto-generated)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Auto-generated from question name"
-                    value={newTargetKey}
-                    onChange={(e) => setNewTargetKey(e.target.value)}
-                    className="w-full px-3 py-1.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-900 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-mono focus:outline-none"
-                  />
-                  <p className="text-[10px] text-slate-400">
-                    Used internally by the database and PDF generator.
-                  </p>
+              {newTargetParentKey ? (
+                <div className="p-3 bg-emerald-50/60 dark:bg-emerald-950/40 rounded-xl border border-emerald-200/60 dark:border-emerald-800/60 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Follow-up question identifier will be auto-generated with unique <code>sub_</code> prefix and safely linked under <strong>{parentFieldLabel}</strong>.</span>
                 </div>
-              </details>
+              ) : (
+                <details className="group pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
+                  <summary className="cursor-pointer font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 flex items-center gap-1.5 select-none py-1">
+                    <span>⚙️ Advanced Settings (System Key)</span>
+                  </summary>
+                  <div className="mt-2.5 p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/60 dark:border-slate-700/60 space-y-1">
+                    <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+                      System Identifier (Auto-generated)
+                    </label>
+                    <input
+                      type="text"
+                      autoComplete="off"
+                      placeholder="Auto-generated from question name"
+                      value={newTargetKey}
+                      onChange={(e) => setNewTargetKey(e.target.value)}
+                      className="w-full px-3 py-1.5 border border-slate-300 dark:border-slate-700 dark:bg-slate-900 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-mono focus:outline-none"
+                    />
+                    <p className="text-[10px] text-slate-400">
+                      Used internally by the database and PDF generator.
+                    </p>
+                  </div>
+                </details>
+              )}
 
               <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowAddTargetModal(false);
-                    setNewTargetParentKey(undefined);
-                    setParentFieldLabel('');
-                  }}
+                  onClick={handleCloseAddTargetModal}
                   className="px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
                 >
                   Cancel
