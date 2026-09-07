@@ -4731,7 +4731,7 @@ export const api = {
           .from('attendance_events')
           .select('id, timestamp, type')
           .eq('user_id', event.userId)
-          .in('type', ['punch-out', 'site-ot-out', 'site-out'])
+          .eq('type', event.type)
           .gte('timestamp', twoMinutesAgo)
           .limit(1);
 

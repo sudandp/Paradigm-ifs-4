@@ -750,7 +750,7 @@ const MainLayout: React.FC = () => {
                 <BreakTrackingMonitor />
 
                 <main ref={mainContentRef} className={`flex-1 overflow-y-auto ${isMobile ? 'bg-[#041b0f]' : 'bg-page desktop-scaled'} relative flex flex-col`}>
-                    <div className={`flex-1 flex flex-col min-h-0 ${isTablet ? 'p-1 pb-4' : 'p-3 pb-3'}`}>
+                    <div className={`flex-1 flex flex-col min-h-0 ${isTablet ? 'p-1 pb-16' : 'p-3 pb-16'}`}>
                         <Outlet />
                     </div>
                 </main>
@@ -777,7 +777,7 @@ const MainLayout: React.FC = () => {
             )}
             
             {showScrollButtons && !isMobile && (
-                <div className="fixed bottom-[10%] right-8 z-50 flex flex-col gap-2 no-print">
+                <div className="fixed bottom-6 right-3.5 z-40 flex flex-col gap-2 no-print opacity-75 hover:opacity-100 transition-opacity">
                     <Button
                         variant="secondary"
                         size="sm"

@@ -1906,6 +1906,9 @@ const AttendanceDashboard: React.FC = () => {
         setSelectedRecordType(pendingSelectedRecordType);
         setReportPageSize(pendingReportPageSize);
         
+        // Reset cached monthly data map so newly filtered data is loaded and rendered freshly
+        setMonthlyDataMap({});
+
         setIsFiltersDirty(false);
         setIsDatePickerOpen(false);
         setIsStaffCategoryOpen(false);
@@ -3629,6 +3632,50 @@ const AttendanceDashboard: React.FC = () => {
         overtimeDays: emp.overtimeDays || 0
     });
 
+    // Helper to filter monthly employee data based on active applied filters
+    const filterMonthlyEmployeeData = useCallback((empList: EmployeeMonthlyData[]) => {
+        if (!empList || empList.length === 0) return [];
+        let filtered = empList;
+        if (selectedUser !== 'all') {
+            const targetUserObj = users.find(u => u.id === selectedUser || String(u.id) === String(selectedUser));
+            const targetName = targetUserObj?.name;
+            filtered = filtered.filter(emp => 
+                emp.employeeId === selectedUser || 
+                String(emp.employeeId) === String(selectedUser) || 
+                (targetName && (emp.employeeName === targetName || (emp as any).userName === targetName))
+            );
+            return filtered;
+        }
+        if (selectedRole !== 'all') {
+            filtered = filtered.filter(emp => emp.role === selectedRole);
+        }
+        if (selectedCompany !== 'all') {
+            filtered = filtered.filter(emp => {
+                const u = users.find(user => String(user.id) === String(emp.employeeId));
+                return u ? u.societyId === selectedCompany : true;
+            });
+        }
+        if (selectedSite !== 'all') {
+            filtered = filtered.filter(emp => {
+                const u = users.find(user => String(user.id) === String(emp.employeeId));
+                return u ? (u.organizationId && u.organizationId.split(',').map(s => s.trim()).includes(selectedSite)) : true;
+            });
+        }
+        if (selectedLocation !== 'all') {
+            filtered = filtered.filter(emp => {
+                const u = users.find(user => String(user.id) === String(emp.employeeId));
+                return u ? resolveUserLocation(u, orgStructure).toLowerCase() === selectedLocation.toLowerCase() : true;
+            });
+        }
+        if (selectedStaffCategories && selectedStaffCategories.length > 0 && selectedStaffCategories.length < 3 && !selectedStaffCategories.includes('all')) {
+            filtered = filtered.filter(emp => {
+                const u = users.find(user => String(user.id) === String(emp.employeeId));
+                return u ? matchesSelectedStaffCategories(u.role, u.societyId, selectedStaffCategories, attendance) : true;
+            });
+        }
+        return filtered;
+    }, [selectedUser, selectedRole, selectedCompany, selectedSite, selectedLocation, selectedStaffCategories, users, orgStructure, attendance]);
+
     // Determine which PDF component to render
         const renderReportContent = useCallback((isPreview: boolean = false) => {
         const reportDateRange = `${format(dateRange.startDate!, 'yyyy-MM-dd')} to ${format(dateRange.endDate!, 'yyyy-MM-dd')}`;
@@ -3669,7 +3716,7 @@ const AttendanceDashboard: React.FC = () => {
                             <div className="hidden">
                                 {monthsInRange.map(m => (
                                     <MonthlyHoursReport 
-                                        key={`loader-${format(m, 'yyyy-MM')}`}
+                                        key={`loader-${format(m, 'yyyy-MM')}-${selectedUser}-${selectedCompany}-${selectedSite}-${selectedLocation}-${selectedRole}-${selectedStatus}-${selectedRecordType}-${Array.isArray(selectedStaffCategories) ? selectedStaffCategories.join('_') : selectedStaffCategories}`}
                                         month={m.getMonth() + 1} 
                                         year={m.getFullYear()} 
                                         userId={selectedUser === 'all' ? undefined : selectedUser} 
@@ -3698,7 +3745,8 @@ const AttendanceDashboard: React.FC = () => {
 
                         {!isWorkHours && monthsInRange.map(m => {
                             const monthKey = format(m, 'yyyy-MM');
-                            const monthData = monthlyDataMap[monthKey] || [];
+                            const rawMonthData = monthlyDataMap[monthKey] || [];
+                            const monthData = filterMonthlyEmployeeData(rawMonthData);
                             const monthStart = startOfMonth(m);
                             const monthEnd = endOfMonth(m);
                             const today = startOfDay(new Date());
@@ -3786,7 +3834,7 @@ const AttendanceDashboard: React.FC = () => {
         if (reportType === 'log') return <AttendanceLogDocument data={attendanceLogData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} generatedByRole={user?.role} targetUserName={targetUserName} targetUserRole={targetUserRole} filters={resolvedFilters} />;
         if (reportType === 'monthly') {
             const mappedMap = Object.fromEntries(
-                Object.entries(monthlyDataMap).map(([k, v]) => [k, v.map(mapToMonthlyReportRow)])
+                Object.entries(monthlyDataMap).map(([k, v]) => [k, filterMonthlyEmployeeData(v).map(mapToMonthlyReportRow)])
             );
             return <MonthlyMatrixReportDocument 
                 monthlyData={mappedMap} 
@@ -3813,7 +3861,7 @@ const AttendanceDashboard: React.FC = () => {
         if (reportType === 'leave_balance') return <LeaveBalanceTrackerDocument data={leaveBalances} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} generatedByRole={user?.role} targetUserName={targetUserName} targetUserRole={targetUserRole} filters={resolvedFilters} />;
         
         return null;
-    }, [reportType, basicReportData, attendanceLogData, site_otReportData, dateRange, auditLogs, user?.name, users, selectedCompany, selectedSite, selectedLocation, selectedStatus, selectedRole, selectedStaffCategories, scopedSettings, exportedMonthlyData, leaveBalances, userHolidaysPool]);
+    }, [reportType, basicReportData, attendanceLogData, site_otReportData, dateRange, auditLogs, user?.name, users, selectedCompany, selectedSite, selectedLocation, selectedStatus, selectedRole, selectedStaffCategories, selectedUser, selectedRecordType, scopedSettings, exportedMonthlyData, monthlyDataMap, leaveBalances, userHolidaysPool, filterMonthlyEmployeeData]);
 
     const pdfContent = useMemo(() => renderReportContent(false), [renderReportContent]);
     const previewContent = useMemo(() => renderReportContent(true), [renderReportContent]);
@@ -3848,7 +3896,7 @@ const AttendanceDashboard: React.FC = () => {
                     break;
                 case 'monthly': {
                     const mappedMap = Object.fromEntries(
-                        Object.entries(monthlyDataMap).map(([k, v]) => [k, v.map(mapToMonthlyReportRow)])
+                        Object.entries(monthlyDataMap).map(([k, v]) => [k, filterMonthlyEmployeeData(v).map(mapToMonthlyReportRow)])
                     );
                     blob = await pdf(<MonthlyMatrixReportDocument 
                         monthlyData={mappedMap} 
@@ -3968,7 +4016,7 @@ const AttendanceDashboard: React.FC = () => {
 
             if (reportType === 'monthly') {
                 const mappedMap = Object.fromEntries(
-                    Object.entries(monthlyDataMap).map(([k, v]) => [k, v.map(mapToMonthlyReportRow)])
+                    Object.entries(monthlyDataMap).map(([k, v]) => [k, filterMonthlyEmployeeData(v).map(mapToMonthlyReportRow)])
                 );
                 await exportMonthlyMatrixToExcel(
                     mappedMap,
@@ -4139,7 +4187,8 @@ const AttendanceDashboard: React.FC = () => {
                     
                     monthsInRange.forEach((m, idx) => {
                         const monthKey = format(m, 'yyyy-MM');
-                        const monthData = monthlyDataMap[monthKey] || [];
+                        const rawMonthData = monthlyDataMap[monthKey] || [];
+                        const monthData = filterMonthlyEmployeeData(rawMonthData);
                         const monthStart = startOfMonth(m);
                         const monthEnd = endOfMonth(m);
                         const displayStart = isAfter(monthStart, dateRange.startDate!) ? monthStart : dateRange.startDate!;
@@ -4510,16 +4559,32 @@ const AttendanceDashboard: React.FC = () => {
                             filters={resolvedFilters}
                         />).toBlob();
                         break;
-                    case 'monthly':
+                    case 'monthly': {
+                        const mappedMap = Object.fromEntries(
+                            Object.entries(monthlyDataMap).map(([k, v]) => [k, filterMonthlyEmployeeData(v).map(mapToMonthlyReportRow)])
+                        );
+                        pdfBlob = await pdf(<MonthlyMatrixReportDocument 
+                            monthlyData={mappedMap} 
+                            globalDateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
+                            generatedBy={generatedBy}
+                            generatedByRole={generatedByRole}
+                            targetUserName={targetUserName}
+                            targetUserRole={targetUserRole}
+                            logoUrl={logoBase64}
+                            filters={resolvedFilters}
+                            userHolidaysPool={userHolidaysPool}
+                        />).toBlob();
+                        break;
+                    }
                     case 'work_hours': {
                         const days = eachDayOfInterval({ start: dateRange.startDate!, end: dateRange.endDate! });
                         pdfBlob = await pdf(<MonthlyReportDocument 
                             data={exportedMonthlyData} 
                             dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
                             generatedBy={generatedBy}
-                        generatedByRole={generatedByRole}
-                        targetUserName={targetUserName}
-                        targetUserRole={targetUserRole}
+                            generatedByRole={generatedByRole}
+                            targetUserName={targetUserName}
+                            targetUserRole={targetUserRole}
                             logoUrl={logoBase64}
                             days={days}
                             filters={resolvedFilters}

@@ -1789,7 +1789,8 @@ const ProfilePage: React.FC = () => {
                                                     return;
                                                 }
                                                 const wt = isSiteOtCheckedIn ? 'site-ot' : isFieldCheckedIn ? 'field' : 'office';
-                                                navigate(`/attendance/check-out?workType=${wt}`);
+                                                const act = isSiteOtCheckedIn ? 'site-ot-out' : isFieldCheckedIn ? 'site-out' : 'punch-out';
+                                                navigate(`/attendance/check-out?workType=${wt}&action=${act}`);
                                                 return;
                                             }
                                             if (isPunchBlocked) {
@@ -1852,11 +1853,17 @@ const ProfilePage: React.FC = () => {
                                                             <AlertTriangle className="h-9 w-9 text-amber-400 mb-1 drop-shadow-[0_0_8px_rgba(245,158,11,0.5)] animate-pulse" />
                                                             <span className="text-[13px] font-black text-amber-300 tracking-tight leading-tight px-2 text-center font-mono">MISSED{`\n`}PUNCH</span>
                                                         </>
-                                                    ) : (isFieldCheckedIn || isSiteOtCheckedIn) ? (
-                                                        // Today's field/site session active — must site-out first
+                                                    ) : isSiteOtCheckedIn ? (
+                                                        // Today's site duty session active — must site duty out first
                                                         <>
                                                             <MapPin className="h-9 w-9 text-amber-400 mb-1 drop-shadow-[0_0_8px_rgba(245,158,11,0.5)] animate-pulse" />
-                                                            <span className="text-[13px] font-black text-amber-300 tracking-tight leading-tight px-2 text-center">SITE OUT{`\n`}FIRST</span>
+                                                            <span className="text-[12px] font-black text-amber-300 tracking-tight leading-tight px-1 text-center">SITE DUTY{`\n`}OUT FIRST</span>
+                                                        </>
+                                                    ) : isFieldCheckedIn ? (
+                                                        // Today's regular duty session active — must regular duty out first
+                                                        <>
+                                                            <MapPin className="h-9 w-9 text-amber-400 mb-1 drop-shadow-[0_0_8px_rgba(245,158,11,0.5)] animate-pulse" />
+                                                            <span className="text-[11px] font-black text-amber-300 tracking-tight leading-tight px-1 text-center">REGULAR DUTY{`\n`}OUT FIRST</span>
                                                         </>
                                                     ) : (
                                                         <>
@@ -1963,10 +1970,12 @@ const ProfilePage: React.FC = () => {
                                                     triggerHaptic();
                                                     if (isFieldCheckedIn || isSiteOtCheckedIn) {
                                                         const mode = isSiteOtCheckedIn ? 'site-ot' : 'field';
-                                                        navigate(`/attendance/check-out?workType=${mode}`);
+                                                        const act = isSiteOtCheckedIn ? 'site-ot-out' : 'site-out';
+                                                        navigate(`/attendance/check-out?workType=${mode}&action=${act}`);
                                                     } else {
                                                         const mode = siteWorkMode === 'ot' ? 'site-ot' : 'field';
-                                                        navigate(`/attendance/check-in?workType=${mode}`);
+                                                        const act = siteWorkMode === 'ot' ? 'site-ot-in' : 'site-in';
+                                                        navigate(`/attendance/check-in?workType=${mode}&action=${act}`);
                                                     }
                                                 }}
                                                 className={`
@@ -3134,8 +3143,13 @@ const ProfilePage: React.FC = () => {
                                                             } else {
                                                                 // Normal flow: navigate to confirmation page
                                                                 import('../../utils/locationUtils').then(m => m.getPrecisePosition(150, 15000).catch(() => {}));
-                                                                const targetWorkType = (isFieldCheckedIn || isSiteOtCheckedIn) ? 'field' : 'office';
-                                                                navigate(`/attendance/check-out?workType=${targetWorkType}`);
+                                                                if (isSiteOtCheckedIn) {
+                                                                    navigate('/attendance/check-out?workType=site-ot&action=site-ot-out');
+                                                                } else if (isFieldCheckedIn) {
+                                                                    navigate('/attendance/check-out?workType=field&action=site-out');
+                                                                } else {
+                                                                    navigate('/attendance/check-out?workType=office&action=punch-out');
+                                                                }
                                                             }
                                                         }}
 
@@ -3153,8 +3167,10 @@ const ProfilePage: React.FC = () => {
                                                     >
                                                         {(hasPreviousDayOpenSession && isCheckedIn) ? (
                                                             <><AlertTriangle className="mr-2 h-4 w-4" /> Active Session</>
-                                                        ) : (isFieldCheckedIn || isSiteOtCheckedIn) ? (
-                                                            <><MapPin className="mr-2 h-4 w-4" /> Site Out First</>
+                                                        ) : isSiteOtCheckedIn ? (
+                                                            <><MapPin className="mr-2 h-4 w-4" /> Site Duty Out First</>
+                                                        ) : isFieldCheckedIn ? (
+                                                            <><MapPin className="mr-2 h-4 w-4" /> Regular Duty Out First</>
                                                         ) : (
                                                             <><LogOut className="mr-2 h-4 w-4" /> Punch Out</>
                                                         )}

@@ -10,7 +10,7 @@ import { Capacitor } from '@capacitor/core';
  * is used directly instead.
  */
 
-const PROJECT_URL = import.meta.env.VITE_SUPABASE_URL || 'https://fmyafuhxlorbafbacywa.supabase.co';
+const PROJECT_URL = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_SUPABASE_URL) || (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_URL) || 'https://fmyafuhxlorbafbacywa.supabase.co';
 const STORAGE_ENDPOINT = '/storage/v1/object/public';
 // Prefix without trailing slash for more flexible matching
 const SUPABASE_STORAGE_PREFIX = `${PROJECT_URL.replace(/\/$/, '')}${STORAGE_ENDPOINT}`;

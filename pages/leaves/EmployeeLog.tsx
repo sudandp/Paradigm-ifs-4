@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuthStore } from '../../store/authStore';
+import { useImpersonationStore } from '../../store/impersonationStore';
 import { api } from '../../services/api';
 import type { AttendanceEvent } from '../../types';
 import { Loader2, MapPin, Clock, Calendar, ChevronLeft, ChevronRight, Trash2, AlertTriangle, Home } from 'lucide-react';
@@ -60,13 +61,30 @@ interface EmployeeLogProps {
 
 const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
     const { user, isCheckedIn, dailyPunchCount } = useAuthStore();
+    const { isImpersonating, impersonator } = useImpersonationStore();
     const [events, setEvents] = useState<AttendanceEvent[]>(initialEvents);
     const [isLoading, setIsLoading] = useState(initialEvents.length === 0);
     const [selectedRange, setSelectedRange] = useState<TimeRange>('day');
     const [selectedDate, setSelectedDate] = useState(new Date());
     const isMobile = useMediaQuery('(max-width: 767px)');
     const [deletingEventId, setDeletingEventId] = useState<string | null>(null);
-    const canDelete = user && isAdmin(user.role);
+
+    const canDelete = useMemo(() => {
+        if (user && isAdmin(user.role)) return true;
+        if (isImpersonating && impersonator && isAdmin(impersonator.role)) return true;
+        try {
+            const stored = localStorage.getItem('paradigm_impersonation_session');
+            if (stored) {
+                const parsed = JSON.parse(stored);
+                if (parsed?.isImpersonating && parsed?.impersonator && isAdmin(parsed.impersonator.role)) {
+                    return true;
+                }
+            }
+        } catch {
+            // Ignore error parsing stored session
+        }
+        return false;
+    }, [user, isImpersonating, impersonator]);
     const [userLocations, setUserLocations] = useState<any[]>([]);
 
     useEffect(() => {
@@ -277,6 +295,17 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
         try {
             await api.deleteAttendanceEvent(eventId);
             setEvents(prev => prev.filter(e => e.id !== eventId));
+            try {
+                if (user?.id) {
+                    Object.keys(localStorage).forEach(k => {
+                        if (k.startsWith(`attendance_${user.id}`)) {
+                            localStorage.removeItem(k);
+                        }
+                    });
+                }
+            } catch {
+                // Ignore localStorage clearance error
+            }
         } catch (err) {
             alert('Failed to delete record. Please try again.');
         } finally {
@@ -605,8 +634,8 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                                                         <button
                                                             onClick={() => handleDeleteEvent(event.id)}
                                                             disabled={deletingEventId === event.id}
-                                                            title="Delete this record"
-                                                            className="md:hidden flex-shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-50"
+                                                            title="Delete attendance record (Admin)"
+                                                            className="md:hidden flex items-center justify-center flex-shrink-0 p-2 rounded-xl text-rose-600 hover:text-white bg-rose-50 hover:bg-rose-600 dark:bg-rose-950/40 dark:hover:bg-rose-600 border border-rose-200/80 dark:border-rose-800/60 shadow-2xs transition-all duration-150 active:scale-95 disabled:opacity-50 cursor-pointer"
                                                         >
                                                             {deletingEventId === event.id
                                                                 ? <Loader2 className="h-4 w-4 animate-spin" />
@@ -644,8 +673,8 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                                                     )}
                                                 </div>
 
-                                                {/* Row 3 (Mobile) / Col 3 (Desktop): Full Address Tag */}
-                                                <div className="flex items-center gap-2 justify-start md:justify-end flex-shrink-0 md:w-[220px]">
+                                                {/* Row 3 (Mobile) / Col 3 (Desktop): Full Address Tag & Actions */}
+                                                <div className="flex items-center gap-2.5 justify-start md:justify-end flex-shrink-0 md:min-w-[260px]">
                                                     {(() => {
                                                         const hasCoords = event.latitude && event.longitude;
                                                         const hasLocationText = !!event.locationName;
@@ -687,8 +716,8 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                                                         <button
                                                             onClick={() => handleDeleteEvent(event.id)}
                                                             disabled={deletingEventId === event.id}
-                                                            title="Delete this record"
-                                                            className="hidden md:block flex-shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-50"
+                                                            title="Delete attendance record (Admin)"
+                                                            className="hidden md:inline-flex items-center justify-center flex-shrink-0 p-2 rounded-xl text-rose-600 hover:text-white bg-rose-50 hover:bg-rose-600 dark:bg-rose-950/40 dark:hover:bg-rose-600 border border-rose-200/80 dark:border-rose-800/60 shadow-2xs hover:shadow-md transition-all duration-150 active:scale-95 disabled:opacity-50 cursor-pointer"
                                                         >
                                                             {deletingEventId === event.id
                                                                 ? <Loader2 className="h-4 w-4 animate-spin" />

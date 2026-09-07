@@ -434,7 +434,16 @@ export function getStaffCategory(
 ): 'office' | 'field' | 'site' {
   // PRIMARY: Use saved roleMapping from Admin UI → Attendance Rules → Staff Selections
   // FALLBACK: Use hardcoded defaults only if settings haven't loaded yet
-  const rawMapping = settings?.missedCheckoutConfig?.roleMapping || settings?.missed_checkout_config?.role_mapping || settings?.missedCheckoutConfig?.role_mapping || settings?.missed_checkout_config?.roleMapping || settings?.roleMapping || settings?.role_mapping;
+  const rawMapping = settings?.missedCheckoutConfig?.roleMapping || 
+                     settings?.missed_checkout_config?.role_mapping || 
+                     settings?.missedCheckoutConfig?.role_mapping || 
+                     settings?.missed_checkout_config?.roleMapping || 
+                     settings?.attendance_settings?.missed_checkout_config?.role_mapping ||
+                     settings?.attendance?.missed_checkout_config?.role_mapping ||
+                     settings?.attendance?.missedCheckoutConfig?.roleMapping ||
+                     settings?.roleMapping || 
+                     settings?.role_mapping;
+
   const mapping = {
     office: rawMapping?.office || ['admin', 'hr', 'finance', 'developer', 'hr_ops', 'management', 'back_office_staff', 'accountant'],
     field: rawMapping?.field || ['field_staff', 'field_officer', 'technical_reliever', 'supervisor', 'site_supervisor', 'operation_manager', 'operations_manager', 'bd', 'business_developer'],
@@ -453,18 +462,41 @@ export function getStaffCategory(
   if (explicitSite) return 'site';
 
   // 2. Default/Fallback hardcoded rules
-  const isOfficeDefault = ['admin', 'hr', 'finance', 'developer', 'hr_ops', 'management', 'super_admin', 'iot_architect'].includes(roleLower) ||
-                          roleLower.includes('admin') || roleLower.includes('management');
-  if (isOfficeDefault) return 'office';
-
   const isFieldDefault = isTechnicalRole(roleId) ||
-                         ['field_staff', 'field_officer', 'technical_reliever', 'operations_manager'].includes(roleLower);
+                         ['field_staff', 'field_officer', 'technical_reliever', 'operations_manager', 'operation_manager', 'bd', 'business_developer'].includes(roleLower) ||
+                         roleLower.includes('field_') || roleLower.includes('reliever');
   if (isFieldDefault) return 'field';
 
-  const isSiteDefault = ['site_manager', 'security_guard', 'supervisor'].includes(roleLower);
+  const isSiteDefault = ['site_manager', 'security_guard', 'supervisor', 'lady_guard'].includes(roleLower) ||
+                        roleLower.startsWith('site_') || roleLower.includes('guard');
   if (isSiteDefault) return 'site';
-  
+
+  const isOfficeDefault = [
+    'admin', 'hr', 'finance', 'developer', 'hr_ops', 'management', 'super_admin', 'iot_architect',
+    'accountant', 'senior_accountant', 'accounts_executive', 'accounts_excitative', 'accounts_excitative_invoice',
+    'finance_manager', 'hr_onboaring', 'hr_recruitment', 'auditor', 'director', 'facility_executive', 'pantry_boy'
+  ].includes(roleLower) ||
+  roleLower.includes('account') ||
+  roleLower.includes('finance') ||
+  roleLower.includes('audit') ||
+  roleLower.includes('billing') ||
+  roleLower.includes('director') ||
+  roleLower.includes('office') ||
+  roleLower.includes('admin') ||
+  roleLower.includes('management') ||
+  roleLower.includes('reception') ||
+  roleLower.includes('developer') ||
+  roleLower.includes('pantry') ||
+  roleLower.includes('hr_') ||
+  roleLower === 'hr';
+
+  if (isOfficeDefault) return 'office';
+
   // 3. Fallback based on Site Assignment (societyId)
+  // Corporate companies (e.g. comp_1774006215885) and head office societyIds default to office
+  if (societyId && (societyId.startsWith('comp_') || societyId.includes('head_office') || societyId.includes('corporate'))) {
+    return 'office';
+  }
   if (societyId && !societyId.endsWith('_head_office')) {
     return 'site';
   }
@@ -528,7 +560,7 @@ export function evaluateAttendanceStatus(params: {
   // ── LOCATION-BASED RULE ENGINE ─────────────────────────────────────────────
   // BL (Blue Leave) and PL (Pink Leave) are Bangalore-specific recurring holidays
   // now applicable to all Bangalore staff, including technical relievers/site staff.
-  const isBangaloreStaff = isBangaloreLocation(userLocation);
+  const isBangaloreStaff = isBangaloreLocation(userLocation) || userCategory === 'office' || !userLocation;
   // ──────────────────────────────────────────────────────────────────────────
 
   const dateStr = format(day, 'yyyy-MM-dd');
@@ -700,8 +732,8 @@ export function evaluateAttendanceStatus(params: {
       const lStartDate = l.startDate || l.start_date || l.date || l.leave_date;
       const lEndDate = l.endDate || l.end_date || l.date || l.leave_date;
       if (!lStartDate || !lEndDate) return false;
-      const lUserId = l.userId || l.user_id;
-      if (lUserId && String(lUserId) !== String(userId)) return false;
+      const lUserId = l.userId || l.user_id || l.employee_id || (l as any).emp_id;
+      if (lUserId && String(lUserId) !== String(userId) && (!l.userName || l.userName.toLowerCase() !== String((params as any).userName || '').toLowerCase())) return false;
       const lStatus = String(l.status || l.leaveStatus || '').toLowerCase();
       if (!['approved', 'approved_by_reporting', 'approved_by_admin', 'correction_made'].includes(lStatus)) return false;
 
@@ -946,7 +978,7 @@ export function evaluateAttendanceStatus(params: {
       const baseHrs = userRules?.minimumHoursFullDay || userRules?.dailyWorkingHours?.min || 8;
       
       // If there is an approved main leave (e.g. 0.5EL, 0.5SL)
-      if (approvedMainLeave) {
+      if (approvedMainLeave && leaveCode) {
           if (workStatus && workStatus !== 'A' && workStatus !== 'P') {
               return `${workStatus}+${leaveCode}`;
           }
@@ -967,20 +999,28 @@ export function evaluateAttendanceStatus(params: {
 
       // If employee physically worked partial day (e.g. 0.75P, 0.5P, 0.25P)
       if (workedHrs > 0 && workedHrs < full) {
-          let workedFraction = Math.round((workedHrs / baseHrs) * 100) / 100;
-          let permFraction = Math.round((permHours / baseHrs) * 100) / 100;
+          const workedFraction = workedHrs / baseHrs;
+          const permFraction = permHours / baseHrs;
 
           // Normalize standard 0.75, 0.5, 0.25 fractions
-          if (workedFraction >= 0.68 && workedFraction <= 0.82) workedFraction = 0.75;
-          else if (workedFraction >= 0.42 && workedFraction <= 0.58) workedFraction = 0.5;
-          else if (workedFraction >= 0.18 && workedFraction <= 0.32) workedFraction = 0.25;
+          let normWorked = 0.75;
+          let normPerm = 0.25;
 
-          if (workedFraction + permFraction >= 1.0) {
-              permFraction = Math.round((1.0 - workedFraction) * 100) / 100;
+          if (workedFraction >= 0.65) {
+              normWorked = 0.75;
+              normPerm = 0.25;
+          } else if (workedFraction >= 0.40) {
+              normWorked = 0.5;
+              normPerm = (permFraction >= 0.45) ? 0.5 : 0.25;
+          } else if (workedFraction >= 0.15) {
+              normWorked = 0.25;
+              normPerm = (permFraction >= 0.65) ? 0.75 : (permFraction >= 0.40 ? 0.5 : 0.25);
+          } else {
+              return pCode;
           }
 
-          const workedStr = workedFraction === 0.75 ? '0.75P' : workedFraction === 0.5 ? '0.5P' : workedFraction === 0.25 ? '0.25P' : `${workedFraction}P`;
-          const permStr = permFraction === 0.25 ? '0.25RP' : permFraction === 0.5 ? '0.5RP' : permFraction === 0.75 ? '0.75RP' : `${permFraction}RP`;
+          const workedStr = `${normWorked}P`;
+          const permStr = `${normPerm}RP`;
 
           return `${workedStr}+${permStr}`;
       } else if (workedHrs >= full) {
@@ -1050,11 +1090,11 @@ export function evaluateAttendanceStatus(params: {
           const isHalfDayLeave = targetLeave && (targetLeave.dayOption === 'half' || (targetLeave as any).day_option === 'half');
           
           if (isPartialWork && isHalfDayLeave) {
-              const code = getLeaveCode(targetLeave).replace('1/2', '').replace('0.5', ''); 
+              const code = getLeaveCode(targetLeave).replace('1/2', '').replace('0.5', '').trim(); 
               if (workStatus === 'A') {
-                  status = `0.5 ${code}`;
+                  status = `0.5${code}`;
               } else {
-                  status = `0.5P+0.5 ${code}`;
+                  status = `0.5P+0.5${code}`;
               }
           } else {
               if (isWFH) status = 'WH';
@@ -1232,6 +1272,7 @@ export interface RangeStats {
   earnedLeaves: number;
   sickLeaves: number;
   casualLeaves: number;
+  pinkLeaves?: number;
   workFromHomeDays: number;
   absentDays: number;
   weekOffs: number;
@@ -1248,6 +1289,7 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
   let earnedLeaves = 0;
   let sickLeaves = 0;
   let casualLeaves = 0;
+  let pinkLeaves = 0;
   let workFromHomeDays = 0;
   let absentDays = 0;
   let weekOffs = 0;
@@ -1256,6 +1298,9 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
   let totalPayableDays = 0;
 
   const resolvePayableValue = (s: string): number => {
+    if ((s.includes('RP+') || s.includes('+RP')) && (s.includes('0.5EL') || s.includes('0.5SL') || s.includes('0.5CL') || s.includes('0.5CO') || s.includes('0.5WH') || s.includes('0.5 EL') || s.includes('0.5 CL') || s.includes('0.5 SL'))) {
+        return 1.0;
+    }
     if (s.includes('+')) return s.split('+').reduce((acc, part) => acc + resolvePayableValue(part.trim()), 0);
     if (['W/P', 'WP', 'H/P', 'HP', 'BL/P', 'BLP', 'PL/P', 'PLP'].includes(s)) return 1.5; 
     if (['P', 'W/O', 'WO', 'WOP', 'H', 'SL', 'S/L', 'EL', 'E/L', 'CL', 'C/L', 'C/O', 'CO', 'W/H', 'WH', 'BL', 'F/H', 'FH', 'PL', 'P/L', 'ML', 'M/L', 'CC', 'C/C', 'CCL'].includes(s)) return 1;
@@ -1282,6 +1327,13 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
   days.forEach((day) => {
     const s = statuses[day.getDate() - 1] || '-';
     
+    // Special handling for RP composite (e.g. 0.75P+0.25RP, 0.5P+0.5RP)
+    if (s.includes('+') && s.includes('RP') && (s.includes('0.75P') || s.includes('0.5P') || s.includes('0.25P') || s.includes('P'))) {
+      presentDays += 1;
+      totalPayableDays += 1;
+      return;
+    }
+
     // Split complex statuses to evaluate parts
     const parts = s.includes('+') ? s.split('+').map(p => p.trim()) : [s];
     
@@ -1296,6 +1348,7 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
               weekOffs++;
           } else {
               floatingHolidays += inc;
+              if (part === 'PL/P') pinkLeaves += inc;
           }
       }
       else if (part.endsWith('RP') && part !== 'RP') {
@@ -1323,8 +1376,8 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
       }
       else if (part === 'A') absentDays++;
       else if (part === 'W/O') weekOffs++;
-      else if (part === 'BL' || part === '0.5BL' || part === 'FH' || part === '0.5FH') { floatingHolidays += inc; }
-      else if (part === 'PL' || part === '0.5PL') { floatingHolidays += inc; }
+      else if (part === 'BL' || part === '0.5BL' || part === 'FH' || part === '0.5FH' || part.includes('BL') || part.includes('F/H') || part.includes('FH')) { floatingHolidays += inc; }
+      else if (part === 'PL' || part === '0.5PL' || part.includes('PL') || part.includes('P/L')) { pinkLeaves += inc; floatingHolidays += inc; }
       else if (part === 'WOP') { weekOffs++; }
       else if (part === 'H') holidays++;
       else if (part === 'H/P') { holidays++; presentDays++; }
@@ -1332,8 +1385,6 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
       else if (part.includes('EL') || part.includes('E/L')) { earnedLeaves += inc; }
       else if (part.includes('CL') || part.includes('C/L')) { casualLeaves += inc; }
       else if (part.includes('C/O') || part.includes('CO')) { compOffs += inc; }
-      else if (part.includes('BL') || part.includes('F/H') || part.includes('FH')) floatingHolidays += inc;
-      else if (part.includes('PL') || part.includes('P/L')) { floatingHolidays += inc; }
       else if (part.includes('LOP')) absentDays += inc;
       // WFH counts as a paid workday AND is tracked in its own bucket
       else if (part === 'W/H' || part === 'WH' || part.includes('WFH')) { workFromHomeDays += inc; presentDays += inc; }
@@ -1359,6 +1410,7 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
     earnedLeaves,
     sickLeaves,
     casualLeaves,
+    pinkLeaves,
     workFromHomeDays,
     absentDays,
     weekOffs,

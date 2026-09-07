@@ -140,12 +140,37 @@ export function resolveUserRules(
   user: User,
   resolvedRole: string | undefined,
   attendance: any,
-  scopedSettings: any[]
+  scopedSettings: any[],
+  liveAttendance?: any
 ) {
-  const userCategory = getStaffCategory(resolvedRole || user.role, user.societyId || user.organizationId, { 
-    attendance: attendance || {}, 
-    missedCheckoutConfig: attendance?.missedCheckoutConfig 
-  });
+  const combinedSettings = liveAttendance ? {
+    ...liveAttendance,
+    ...attendance,
+    missedCheckoutConfig: {
+      ...liveAttendance?.missedCheckoutConfig,
+      ...liveAttendance?.missed_checkout_config,
+      ...attendance?.missedCheckoutConfig,
+      roleMapping: {
+        office: [
+          ...(liveAttendance?.missedCheckoutConfig?.roleMapping?.office || []),
+          ...(liveAttendance?.missed_checkout_config?.role_mapping?.office || []),
+          ...(attendance?.missedCheckoutConfig?.roleMapping?.office || [])
+        ],
+        field: [
+          ...(liveAttendance?.missedCheckoutConfig?.roleMapping?.field || []),
+          ...(liveAttendance?.missed_checkout_config?.role_mapping?.field || []),
+          ...(attendance?.missedCheckoutConfig?.roleMapping?.field || [])
+        ],
+        site: [
+          ...(liveAttendance?.missedCheckoutConfig?.roleMapping?.site || []),
+          ...(liveAttendance?.missed_checkout_config?.role_mapping?.site || []),
+          ...(attendance?.missedCheckoutConfig?.roleMapping?.site || [])
+        ]
+      }
+    }
+  } : attendance;
+
+  const userCategory = getStaffCategory(resolvedRole || user.role, user.societyId || user.organizationId, combinedSettings);
   
   const entitySetting = (scopedSettings || []).find(s => s.scope_type === 'entity' && s.scope_id === user.organizationId);
   if (entitySetting) return entitySetting.settings[userCategory] || attendance?.[userCategory] || {};
@@ -186,8 +211,35 @@ export function processEmployeeMonth(
   let leavesCount = 0, floatingHolidays = 0, lossOfPay = 0, holidayPresents = 0, weekendPresents = 0;
   let sickLeaves = 0, earnedLeaves = 0, casualLeaves = 0, compOffs = 0, workFromHomeDays = 0, weekOffs = 0, totalPayableDays = 0, overtimeDays = 0;
   
-  const rules = resolveUserRules(user, resolvedRole, versionedUserRules || attendance, scopedSettings);
-  const category = getStaffCategory(resolvedRole || user.role, user.societyId || user.organizationId, versionedUserRules || attendance);
+  const combinedSettings = attendance ? {
+    ...attendance,
+    ...versionedUserRules,
+    missedCheckoutConfig: {
+      ...attendance?.missedCheckoutConfig,
+      ...attendance?.missed_checkout_config,
+      ...versionedUserRules?.missedCheckoutConfig,
+      roleMapping: {
+        office: [
+          ...(attendance?.missedCheckoutConfig?.roleMapping?.office || []),
+          ...(attendance?.missed_checkout_config?.role_mapping?.office || []),
+          ...(versionedUserRules?.missedCheckoutConfig?.roleMapping?.office || [])
+        ],
+        field: [
+          ...(attendance?.missedCheckoutConfig?.roleMapping?.field || []),
+          ...(attendance?.missed_checkout_config?.role_mapping?.field || []),
+          ...(versionedUserRules?.missedCheckoutConfig?.roleMapping?.field || [])
+        ],
+        site: [
+          ...(attendance?.missedCheckoutConfig?.roleMapping?.site || []),
+          ...(attendance?.missed_checkout_config?.role_mapping?.site || []),
+          ...(versionedUserRules?.missedCheckoutConfig?.roleMapping?.site || [])
+        ]
+      }
+    }
+  } : (versionedUserRules || attendance);
+
+  const rules = resolveUserRules(user, resolvedRole, versionedUserRules || attendance, scopedSettings, attendance);
+  const category = getStaffCategory(resolvedRole || user.role, user.societyId || user.organizationId, combinedSettings);
   const threshold = (rules as any)?.weekendPresentThreshold ?? 3;
 
   // Ensure we use the best available holiday lists
@@ -389,11 +441,30 @@ export function processEmployeeMonth(
   const hasLeavesInMonth = allLeaves.length > 0;
   const isZeroActivityMonth = !hasEventsInMonth && !hasLeavesInMonth;
 
-  // Synthesize auto-deducted early departures for this month
-  const targetShiftMins = (rules?.minimumHoursFullDay || rules?.dailyWorkingHours?.min || 8) * 60;
   const baseLeaves = (allLeaves && allLeaves.length > 0) ? allLeaves : (userLeaves || []);
+
+  // Calculate explicit approved permission minutes already taken in this month
+  let explicitPermissionMins = 0;
+  baseLeaves.forEach(l => {
+    const lStart = l.startDate || l.start_date || l.date || l.leave_date;
+    const lType = String(l.leaveType || l.leave_type || (l as any).type || '').toLowerCase();
+    const lStatus = String(l.status || l.leaveStatus || '').toLowerCase();
+    if (lStart && String(lStart).startsWith(monthStartStr) && lType.includes('permission') && ['approved', 'approved_by_reporting', 'approved_by_admin', 'correction_made'].includes(lStatus)) {
+      const pm = parsePermissionDurationFromReason(l.reason || '') || (l.correctionDetails?.permissionMinutes ? Number(l.correctionDetails.permissionMinutes) : 120);
+      explicitPermissionMins += pm;
+    }
+  });
+
+  // Calculate auto-deducted early departures for this month within the monthly permission pool (180 mins)
+  const targetShiftMins = (rules?.minimumHoursFullDay || rules?.dailyWorkingHours?.min || 8) * 60;
   const earlyDepartureList = getEarlyDepartureDeductions(events, targetShiftMins, baseLeaves, baseLeaves, monthStartStr);
-  const autoEarlyDepartureLeaves = earlyDepartureList.map(ed => ({
+  const monthlyLimitMins = 180; // 3 hours monthly pool
+  const remainingPoolMins = Math.max(0, monthlyLimitMins - explicitPermissionMins);
+
+  const autoEarlyDepartureLeaves: any[] = [];
+  for (const ed of earlyDepartureList) {
+    if (ed.earlyMins <= 0) continue;
+    autoEarlyDepartureLeaves.push({
       id: `early-dep-${ed.dateStr}-${user.id}`,
       userId: user.id,
       user_id: user.id,
@@ -401,15 +472,18 @@ export function processEmployeeMonth(
       leaveType: 'Request for Permission (RP)',
       startDate: ed.dateStr,
       endDate: ed.dateStr,
-      dayOption: 'full',
+      dayOption: 'part',
       status: 'approved',
+      isAutoDeducted: true,
       correctionDetails: {
-          punchIn: ed.punchOutTime,
-          punchOut: ed.permissionEndTime,
-          permissionMinutes: ed.earlyMins,
-          reason: `Leaving work early (${ed.permissionTimeRange}) automatically deducted from monthly permission pool.`
+        punchIn: ed.punchOutTime,
+        punchOut: ed.permissionEndTime,
+        permissionMinutes: ed.earlyMins,
+        reason: `Leaving work early (${ed.permissionTimeRange}) automatically deducted from monthly permission pool.`
       }
-  }));
+    });
+  }
+
   const leavesToSearch = [...baseLeaves, ...autoEarlyDepartureLeaves];
 
   for (let day = 1; day <= daysInPeriod; day++) {

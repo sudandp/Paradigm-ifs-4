@@ -242,7 +242,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
         const usersData = externalUsers || await api.getUsers();
         let targetUsers = usersData;
         if (userId && userId !== 'all') {
-          targetUsers = usersData.filter(u => u.id === userId);
+          targetUsers = usersData.filter(u => u.id === userId || String(u.id) === String(userId));
         } else {
           const activeCats = Array.isArray(rawStaffCats) ? rawStaffCats : (rawStaffCats && rawStaffCats !== 'all' ? [rawStaffCats] : []);
           if (activeCats.length > 0 && !activeCats.includes('all') && activeCats.length < 3) {
@@ -271,63 +271,11 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
           snapshots = snapshots.concat(chunkSnapshots);
         }
 
-        if (snapshots.length > 0) {
-          // Reconstruct EmployeeMonthlyData from snapshots
-          const restored: EmployeeMonthlyData[] = snapshots.map(snap => {
-            const summary = snap.summary || {};
-            const presentDays = summary.presentDays || 0;
-            const halfDays = summary.halfDays || 0;
-            const totalNetWorkDuration = summary.totalNetWorkDuration || 0;
-            const totalOT = summary.totalOT || 0;
-            const averageWorkingHrs = summary.averageWorkingHrs ?? (
-              (presentDays + halfDays) > 0 ? totalNetWorkDuration / (presentDays + halfDays) : 0
-            );
-
-            // Compute totalTravelDistance and totalTravelDuration from dailyData for backward compatibility
-            const dailyData = snap.dailyData || [];
-            const totalTravelDistance = summary.totalTravelDistance ?? dailyData.reduce((sum: number, d: any) => sum + (d.travelDistance || 0), 0);
-            const totalTravelDuration = summary.totalTravelDuration ?? dailyData.reduce((sum: number, d: any) => sum + (d.travelDuration || 0), 0);
-
-            return {
-              ...summary,
-              employeeId: snap.employeeId,
-              employeeName: targetUsers.find(u => u.id === snap.employeeId)?.name || snap.employeeId,
-              role: targetUsers.find(u => u.id === snap.employeeId)?.role,
-              email: targetUsers.find(u => u.id === snap.employeeId)?.email || snap.summary?.email || (snap as any)?.email,
-              phone: targetUsers.find(u => u.id === snap.employeeId)?.phone || snap.summary?.phone || (snap as any)?.phone,
-              statuses: dailyData.map((d: any) => d.status),
-              dailyData,
-              shiftCounts: summary.shiftCounts || {},
-              totalTravelDistance,
-              totalTravelDuration,
-              
-              // Map missing fields/backward compatibility
-              averageWorkingHrs,
-              totalDurationPlusOT: summary.totalDurationPlusOT ?? (totalNetWorkDuration + totalOT),
-              present: summary.present ?? summary.totalPayableDays ?? 0,
-              absent: summary.absent ?? summary.absentDays ?? 0,
-              weeklyOff: summary.weeklyOff ?? summary.weekOffs ?? 0,
-              leaves: summary.leaves ?? summary.leavesCount ?? 0,
-              lossOfPay: summary.lossOfPay ?? summary.lossOfPays ?? 0,
-              overtimeDays: summary.overtimeDays ?? 0,
-            };
-          });
-          const filteredRestored = applyFilters(restored);
-          
-          if (snapshots.length >= targetUsers.length) {
-            console.log('[MonthlyHoursReport] Serving from snapshots. Count:', snapshots.length);
-            setReportData(filteredRestored);
-            if (onDataLoaded) onDataLoaded(filteredRestored);
-            setLoading(false);
-            return; // skip recalculation entirely
-          }
-          // If partial lock, we will recalculate missing ones below.
-          // Note: Full merge logic would be needed here for true partial lock support.
-          // For now, if partial, we just ignore the partial lock and recalculate all to prevent hiding users.
-        }
+        // Ensure live recalculation is always performed with accurate permissions and rules
+        console.log('[MonthlyHoursReport DEBUG] Running authoritative live recalculation for month:', { year, month, userId });
       }
 
-      console.log('[MonthlyHoursReport] Phase 2 recalculation starting...');
+      console.log('[MonthlyHoursReport DEBUG] Phase 2 live calculation starting...');
       // ── PHASE 2: Fetch versioned rules for this month ────────────────────────
       // Looks up which rule version was active during (year, month).
       // Falls back to live settings if no version found (backward compat).
@@ -364,7 +312,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
 
       let targetUsers = usersData;
       if (userId && userId !== 'all') {
-        targetUsers = usersData.filter(u => u.id === userId);
+        targetUsers = usersData.filter(u => u.id === userId || String(u.id) === String(userId));
       } else {
         const activeCats = Array.isArray(rawStaffCats) ? rawStaffCats : (rawStaffCats && rawStaffCats !== 'all' ? [rawStaffCats] : []);
         if (activeCats.length > 0 && !activeCats.includes('all') && activeCats.length < 3) {

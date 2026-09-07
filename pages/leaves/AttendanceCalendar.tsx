@@ -540,6 +540,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                         
                         let overlayText: string | null = null;
                         let customStyle: React.CSSProperties = {};
+                        let splitOverlay: React.ReactNode = null;
                         let cellTooltip: string | null = null;
                         const isSelected = selectedDayKey === dateKey;
 
@@ -586,11 +587,23 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                 const leftColor = status === 'holiday-present' ? '#38bdf8' : status === 'weekend-present' ? '#fda4af' : '#10b981';
                                 const rightColor = (leaveCode === 'PL' || leaveCode === 'Pink') ? '#ec4899' : '#2563eb';
                                 customStyle = {
-                                    background: `linear-gradient(135deg, ${leftColor} 50%, ${leaveCode ? rightColor : leftColor} 50%)`, // Half Holiday/Sunday / Half Blue or Pink
+                                    background: leftColor,
                                     borderColor: 'transparent'
                                 };
+                                splitOverlay = (
+                                    <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
+                                        <polygon points="0,100 100,100 100,0" fill={leaveCode ? rightColor : leftColor} />
+                                    </svg>
+                                );
                             } else if (isPermission) {
-                                if (workingHours > 0) {
+                                if (workingHours >= shiftThreshold) {
+                                    overlayText = 'P';
+                                    cellTooltip = 'Present (P)';
+                                    customStyle = {
+                                        background: '#10b981',
+                                        borderColor: 'transparent'
+                                    };
+                                } else if (workingHours > 0) {
                                     let permMins = 0;
                                     if (relevantLeave?.correctionDetails?.permissionMinutes) {
                                         permMins = Number(relevantLeave.correctionDetails.permissionMinutes);
@@ -604,31 +617,47 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                     }
 
                                     const rawWorkedFraction = workingHours / shiftThreshold;
-                                    let workedFraction = Math.round(rawWorkedFraction * 100) / 100;
+                                    const workedFraction = Math.min(0.99, Math.max(0.01, Math.round(rawWorkedFraction * 100) / 100));
                                     let permFraction = permMins > 0 
                                         ? Math.round((permMins / (shiftThreshold * 60)) * 100) / 100 
                                         : Math.max(0, Math.round((1 - workedFraction) * 100) / 100);
 
-                                    // Round to standard intervals (0.75, 0.5, 0.25)
-                                    if (Math.abs(workedFraction - 0.75) <= 0.12) {
-                                        workedFraction = 0.75;
-                                        permFraction = 0.25;
-                                    } else if (Math.abs(workedFraction - 0.5) <= 0.12) {
-                                        workedFraction = 0.5;
-                                        permFraction = 0.5;
-                                    } else if (Math.abs(workedFraction - 0.25) <= 0.12) {
-                                        workedFraction = 0.25;
-                                        permFraction = 0.75;
+                                    if (workedFraction + permFraction > 1.0) {
+                                        permFraction = Math.max(0.01, Math.round((1 - workedFraction) * 100) / 100);
                                     }
 
-                                    const greenPct = Math.min(90, Math.max(10, Math.round(workedFraction * 100)));
+                                    const totalFraction = workedFraction + permFraction;
+                                    const blueRatio = totalFraction > 0 ? permFraction / totalFraction : 0.03;
+
                                     // By default show clean P+RP for perfect box alignment; show exact fraction on user tap
                                     overlayText = isSelected ? `${workedFraction}P+${permFraction}RP` : 'P+RP';
                                     cellTooltip = `${workedFraction}P (${workingHours.toFixed(1)}h worked) + ${permFraction}RP (${permMins}m permission)`;
-                                    customStyle = {
-                                        background: `linear-gradient(135deg, #10b981 ${greenPct}%, #2563eb ${greenPct}%)`,
-                                        borderColor: 'transparent'
-                                    };
+
+                                    // Use clean vector polygon to avoid CSS gradient wrap/bleeding artifacts on box edges
+                                    if (blueRatio <= 0.5) {
+                                        customStyle = {
+                                            background: '#10b981',
+                                            borderColor: 'transparent'
+                                        };
+                                        const side = Math.min(100, Math.max(5, Math.round(Math.sqrt(2 * blueRatio) * 1000) / 10));
+                                        splitOverlay = (
+                                            <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
+                                                <polygon points={`${100 - side},100 100,100 100,${100 - side}`} fill="#2563eb" />
+                                            </svg>
+                                        );
+                                    } else {
+                                        customStyle = {
+                                            background: '#2563eb',
+                                            borderColor: 'transparent'
+                                        };
+                                        const greenRatio = 1 - blueRatio;
+                                        const side = Math.min(100, Math.max(5, Math.round(Math.sqrt(2 * greenRatio) * 1000) / 10));
+                                        splitOverlay = (
+                                            <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
+                                                <polygon points={`0,0 ${side},0 0,${side}`} fill="#10b981" />
+                                            </svg>
+                                        );
+                                    }
                                 } else {
                                     overlayText = 'RP';
                                     cellTooltip = 'Permission (RP)';
@@ -659,9 +688,14 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                         leftColor = holidayName === 'Blue Leave' ? '#1d4ed8' : (holidayName === 'Pink Leave' ? '#ec4899' : '#fda4af');
                                     }
                                     customStyle = {
-                                        background: `linear-gradient(135deg, ${leftColor} 50%, #10b981 50%)`, // Split with green
+                                        background: leftColor,
                                         borderColor: 'transparent'
                                     };
+                                    splitOverlay = (
+                                        <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
+                                            <polygon points="0,100 100,100 100,0" fill="#10b981" />
+                                        </svg>
+                                    );
                                 }
                             } else {
                                 const fractionValue = workingHours / shiftThreshold;
@@ -682,10 +716,25 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                 } else if (status === 'weekend-present') {
                                     leftColor = holidayName === 'Blue Leave' ? '#1d4ed8' : (holidayName === 'Pink Leave' ? '#ec4899' : '#fda4af');
                                 }
-                                customStyle = {
-                                    background: `linear-gradient(135deg, ${leftColor} ${greenPercentage}%, #ef4444 ${greenPercentage}%)`,
-                                    borderColor: 'transparent'
-                                };
+                                
+                                const redPercentage = 100 - greenPercentage;
+                                if (redPercentage <= 50) {
+                                    customStyle = { background: leftColor, borderColor: 'transparent' };
+                                    const side = Math.min(100, Math.max(5, Math.round(Math.sqrt(2 * (redPercentage / 100)) * 1000) / 10));
+                                    splitOverlay = (
+                                        <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
+                                            <polygon points={`${100 - side},100 100,100 100,${100 - side}`} fill="#ef4444" />
+                                        </svg>
+                                    );
+                                } else {
+                                    customStyle = { background: '#ef4444', borderColor: 'transparent' };
+                                    const side = Math.min(100, Math.max(5, Math.round(Math.sqrt(2 * (greenPercentage / 100)) * 1000) / 10));
+                                    splitOverlay = (
+                                        <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
+                                            <polygon points={`0,0 ${side},0 0,${side}`} fill={leftColor} />
+                                        </svg>
+                                    );
+                                }
                             }
                         } else if (status === 'company-holiday' || status === 'floating-holiday' || status === 'sunday') {
                             overlayText = status === 'sunday' ? null : 'H';
@@ -713,18 +762,28 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                         cellTooltip = leaveCode ? `0.5 Present + 0.5 ${leaveCode}` : '0.5 Present';
                                         const rightColor = (leaveCode === 'PL' || leaveCode === 'Pink') ? '#ec4899' : '#2563eb';
                                         customStyle = {
-                                            background: `linear-gradient(135deg, #10b981 50%, ${leaveCode ? rightColor : '#10b981'} 50%)`, // Half Green (Present) / Half Blue
+                                            background: '#10b981',
                                             borderColor: 'transparent'
                                         };
+                                        splitOverlay = (
+                                            <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
+                                                <polygon points="0,100 100,100 100,0" fill={leaveCode ? rightColor : '#10b981'} />
+                                            </svg>
+                                        );
                                     } else {
                                         overlayText = isSelected ? `0.5A+0.5${leaveCode}` : `A+${leaveCode}`;
                                         cellTooltip = `0.5 Absent + 0.5 ${leaveCode}`;
                                         const isPink = String(request.leaveType || '').toLowerCase().includes('pink');
                                         const rightColor = isPink ? '#ec4899' : '#2563eb';
                                         customStyle = {
-                                            background: `linear-gradient(135deg, #ef4444 50%, ${rightColor} 50%)`, // Half Red (Absent) / Half Blue or Pink
+                                            background: '#ef4444',
                                             borderColor: 'transparent'
                                         };
+                                        splitOverlay = (
+                                            <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
+                                                <polygon points="0,100 100,100 100,0" fill={rightColor} />
+                                            </svg>
+                                        );
                                     }
                                 } else if (lType.includes('correction')) {
                                     overlayText = 'RC';
@@ -764,13 +823,14 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                 style={customStyle} 
                                 onClick={() => setSelectedDayKey(prev => prev === dateKey ? null : dateKey)}
                                 title={cellTooltip || holidayName || undefined}
-                                className={`h-9 rounded flex flex-col items-center justify-center ${colorClass} transition-all border ${isSelected ? 'border-amber-400 ring-2 ring-amber-400/70 shadow-md z-30' : 'border-transparent hover:border-border/50'} group relative cursor-pointer select-none`}
+                                className={`h-9 rounded flex flex-col items-center justify-center ${colorClass} transition-all border ${isSelected ? 'border-amber-400 ring-2 ring-amber-400/70 shadow-md z-30' : 'border-transparent hover:border-border/50'} group relative cursor-pointer select-none overflow-hidden`}
                             >
-                                <span className={`font-bold leading-none ${overlayText ? 'text-[11px] mb-[1px]' : 'text-xs'}`}>
+                                {splitOverlay}
+                                <span className={`font-bold leading-none ${overlayText ? 'text-[11px] mb-[1px]' : 'text-xs'} relative z-10`}>
                                     {format(date, 'd')}
                                 </span>
                                  {overlayText && (
-                                    <span className={`font-black leading-none text-white drop-shadow-md tracking-tighter text-center whitespace-nowrap ${overlayText.length > 8 ? 'text-[6px] px-0.5' : overlayText.length > 5 ? 'text-[7px]' : 'text-[9px]'}`}>
+                                    <span className={`font-black leading-none text-white drop-shadow-md tracking-tighter text-center whitespace-nowrap ${overlayText.length > 8 ? 'text-[6px] px-0.5' : overlayText.length > 5 ? 'text-[7px]' : 'text-[9px]'} relative z-10`}>
                                         {overlayText}
                                     </span>
                                 )}
