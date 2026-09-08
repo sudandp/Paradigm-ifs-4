@@ -1,11 +1,11 @@
 {
   "name": "paradigm-onboarding-frontend-prototype",
   "private": true,
-  "version": "20.5.0",
+  "version": "20.6.0",
   "type": "module",
   "description": "A frontend prototype for the Paradigm Employee Onboarding system, running entirely on mock data.",
   "scripts": {
-    "server": "tsx watch src/server.ts",
+    "server": "tsx src/server.ts",
     "predev": "node scripts/generate-firebase-sw.js",
     "dev": "concurrently -c \"green,blue\" \"npm run server\" \"vite\"",
     "prebuild": "node scripts/generate-firebase-sw.js",

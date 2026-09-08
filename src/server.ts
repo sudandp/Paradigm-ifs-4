@@ -29,6 +29,11 @@ import {
   COMPRESSION_PRESETS,
   type ImageCompressionOptions 
 } from './services/imageCompressionService.js';
+import { 
+  startUnifiedJobScheduler, 
+  executeJobNow, 
+  getUnifiedJobsOverview 
+} from './services/unifiedJobScheduler.js';
 
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
@@ -204,25 +209,29 @@ const EMAIL_RATE_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 app.post('/api/send-email', async (req: Request, res: Response) => {
     console.log('[Server] POST /api/send-email');
     
-    // [SECURITY FIX C2] Enforce authentication — reject if no valid token
+    // [SECURITY FIX C2] Enforce authentication — allow service key, internal key, or user bearer token
     const authHeader = req.headers['authorization'];
-    if (!authHeader) {
-        return res.status(401).json({ error: 'Authorization header required' });
-    }
-
-    const token = authHeader.replace('Bearer ', '');
+    const apiKey = req.headers['x-api-key'];
+    const internalKey = process.env.INTERNAL_API_KEY;
     let authenticatedUser: any = null;
 
-    if (SUPABASE_URL && SUPABASE_SERVICE_KEY) {
-        const authClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-        const { data } = await authClient.auth.getUser(token);
-        if (!data?.user) {
-            console.warn('[Server] Unauthorized request to /api/send-email — invalid token');
-            return res.status(401).json({ error: 'Invalid or expired token' });
+    if (apiKey && internalKey && apiKey === internalKey) {
+        authenticatedUser = { id: 'internal_service', email: 'internal@paradigmfms.com' };
+    } else if (authHeader) {
+        const token = authHeader.replace('Bearer ', '').trim();
+        if (token && token === SUPABASE_SERVICE_KEY) {
+            authenticatedUser = { id: 'service_role', email: 'service@paradigmfms.com' };
+        } else if (SUPABASE_URL && SUPABASE_SERVICE_KEY) {
+            const authClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+            const { data } = await authClient.auth.getUser(token);
+            if (!data?.user) {
+                console.warn('[Server] Unauthorized request to /api/send-email — invalid token');
+                return res.status(401).json({ error: 'Invalid or expired token' });
+            }
+            authenticatedUser = data.user;
         }
-        authenticatedUser = data.user;
     } else {
-        console.warn('[Server] Supabase not configured — skipping auth in dev mode');
+        return res.status(401).json({ error: 'Authorization header required' });
     }
 
     // [SECURITY FIX H7] Rate limit check per user/IP
@@ -794,11 +803,8 @@ app.post('/api/compress-image', async (req: Request, res: Response) => {
             });
         }
 
-        // Otherwise return compressed base64 / data URI
-        const result = await compressBase64Image(image, resolvedOptions);
-
-        return res.status(200).json({
-            success: true,
+           return res.status(200).json({
+            success: true, 
             dataUri: result.dataUri,
             base64: result.base64,
             mimeType: result.mimeType,
@@ -812,6 +818,62 @@ app.post('/api/compress-image', async (req: Request, res: Response) => {
             success: false, 
             error: error.message || 'Image compression failed' 
         });
+    }
+});
+
+/**
+ * GET /api/jobs/overview
+ * Returns consolidated statistics and queues for all scheduled triggers
+ */
+app.get('/api/jobs/overview', async (req: Request, res: Response) => {
+    try {
+        const overview = await getUnifiedJobsOverview(supabase);
+        res.setHeader('Cache-Control', 'no-store');
+        return res.status(200).json(overview);
+    } catch (err: any) {
+        console.error('[Jobs Route] Overview error:', err.message);
+        return res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * POST /api/jobs/run-now
+ * Manually executes any planned job (broadcast, automated rule, or email schedule) on demand
+ */
+app.post('/api/jobs/run-now', async (req: Request, res: Response) => {
+    const { jobType, jobId } = req.body || {};
+    if (!jobType || !jobId) {
+        return res.status(400).json({ error: 'jobType and jobId are required' });
+    }
+    try {
+        const result = await executeJobNow(supabase, jobType, jobId);
+        return res.status(200).json(result);
+    } catch (err: any) {
+        console.error('[Jobs Route] Run-now error:', err.message);
+        return res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * POST /api/jobs/toggle-active
+ * Enables or pauses a scheduled job
+ */
+app.post('/api/jobs/toggle-active', async (req: Request, res: Response) => {
+    const { jobType, jobId, isActive } = req.body || {};
+    if (!jobType || !jobId) {
+        return res.status(400).json({ error: 'jobType and jobId are required' });
+    }
+    try {
+        const table = jobType === 'email' ? 'email_schedule_rules' : 'automated_notification_rules';
+        const { error } = await supabase
+            .from(table)
+            .update({ is_active: !!isActive })
+            .eq('id', jobId);
+        if (error) throw error;
+        return res.status(200).json({ success: true, isActive: !!isActive });
+    } catch (err: any) {
+        console.error('[Jobs Route] Toggle active error:', err.message);
+        return res.status(500).json({ error: err.message });
     }
 });
 
@@ -829,6 +891,9 @@ app.listen(PORT, () => {
     setInterval(() => {
         runHrmAutomation().catch(err => console.error('[Server] Failed to run scheduled HRM automation:', err));
     }, 1000 * 60 * 60 * 6);
+
+    // Start unified job scheduler (60-second cron runner)
+    startUnifiedJobScheduler(supabase);
 });
 
 // Graceful shutdown — close MS SQL pool

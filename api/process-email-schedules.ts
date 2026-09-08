@@ -111,20 +111,102 @@ function evaluateConditionals(str: string, data: Record<string, string>) {
 
 // Full Report Generators Logic (Synced with send-email.ts)
 const reportGenerators = {
-  attendance_daily: async (supabase: SupabaseClient, nowIST: Date) => {
-    const startOfTodayUTC = startOfDay(new Date(nowIST.getTime() - IST_OFFSET));
-    const todayStr = getISTDateString(nowIST);
+  attendance_daily: async (supabase: SupabaseClient, nowIST: Date, filters?: any) => {
+    const todayStr = (filters?.dateRange?.start && filters?.dateRange?.end && filters?.dateRange?.start === filters?.dateRange?.end) 
+      ? filters.dateRange.start 
+      : getISTDateString(nowIST);
+    const startOfTodayUTC = new Date(`${todayStr}T00:00:00+05:30`);
+    const endOfTodayUTC = new Date(`${todayStr}T23:59:59.999+05:30`);
     const [settingsRes, usersRes, eventsRes, leavesRes] = await Promise.all([
       supabase.from('settings').select('attendance_settings').eq('id', 'singleton').single(),
-      supabase.from('users').select('id, name, role:roles(display_name)').neq('role_id', 'unverified'),
-      supabase.from('attendance_events').select('user_id, type, timestamp').gte('timestamp', startOfTodayUTC.toISOString()).order('timestamp', { ascending: true }),
+      supabase.from('users').select('id, name, biometric_id, location, location_name, society_name, department, is_blocked, status, role:roles(display_name)').neq('role_id', 'unverified'),
+      supabase.from('attendance_events')
+        .select('user_id, type, timestamp')
+        .gte('timestamp', startOfTodayUTC.toISOString())
+        .lte('timestamp', endOfTodayUTC.toISOString())
+        .order('timestamp', { ascending: true }),
       supabase.from('leave_requests').select('user_id').eq('status', 'approved').lte('start_date', todayStr).gte('end_date', todayStr)
     ]);
     const configStartTime = settingsRes.data?.attendance_settings?.office?.fixedOfficeHours?.checkInTime || '09:30';
-    const filteredUsers = (usersRes.data || []).filter((u: any) => {
+    let filteredUsers = (usersRes.data || []).filter((u: any) => {
       const roleName = (Array.isArray(u.role) ? u.role[0]?.display_name : u.role?.display_name) || '';
       return roleName.toLowerCase() !== 'management';
     });
+
+    // 1. Employee Status filter (all, active, inactive)
+    if (filters?.filterEmployeeStatus === 'active') {
+      filteredUsers = filteredUsers.filter((u: any) => !u.is_blocked && u.status !== 'left' && u.status !== 'blocked');
+    } else if (filters?.filterEmployeeStatus === 'inactive') {
+      filteredUsers = filteredUsers.filter((u: any) => u.is_blocked || u.status === 'left' || u.status === 'blocked');
+    } else if (!filters?.filterEmployeeStatus) {
+      filteredUsers = filteredUsers.filter((u: any) => !u.is_blocked && u.status !== 'left');
+    }
+
+    // 2. Employee Filter Options (eTimeTrackLite)
+    if (filters?.filterEmployeeEnabled) {
+      if (filters.filterEmployeeCode) {
+        const codeQ = String(filters.filterEmployeeCode).trim().toLowerCase();
+        filteredUsers = filteredUsers.filter((u: any) => {
+          const bio = String(u.biometric_id || u.id || '').trim().toLowerCase();
+          return filters.filterEmployeeExact ? bio === codeQ : bio.includes(codeQ);
+        });
+      }
+      if (filters.filterEmployeeName) {
+        const nameQ = String(filters.filterEmployeeName).trim().toLowerCase();
+        filteredUsers = filteredUsers.filter((u: any) => (u.name || '').toLowerCase().includes(nameQ));
+      }
+      if (filters.filterEmployeeCategory && filters.filterEmployeeCategory !== 'All') {
+        const catQ = String(filters.filterEmployeeCategory).toLowerCase();
+        filteredUsers = filteredUsers.filter((u: any) => {
+          const roleStr = ((Array.isArray(u.role) ? u.role[0]?.display_name : u.role?.display_name) || u.role || '').toLowerCase();
+          const staffCat = (u.staff_category || '').toLowerCase();
+          if (staffCat) return staffCat === catQ;
+          if (catQ === 'office') {
+            return roleStr.includes('admin') || roleStr.includes('hr') || roleStr.includes('manager') || roleStr.includes('office') || roleStr.includes('account') || roleStr.includes('billing');
+          }
+          if (catQ === 'field') {
+            return roleStr.includes('field') || roleStr.includes('area') || roleStr.includes('executive') || roleStr.includes('bdm');
+          }
+          if (catQ === 'site') {
+            return roleStr.includes('site') || roleStr.includes('guard') || roleStr.includes('technician') || roleStr.includes('plumber') || roleStr.includes('electrician') || roleStr.includes('housekeeping') || roleStr.includes('security');
+          }
+          return true;
+        });
+      }
+      if (filters.filterEmployeeDesignation && filters.filterEmployeeDesignation !== 'All') {
+        const desigQ = String(filters.filterEmployeeDesignation).trim().toLowerCase();
+        filteredUsers = filteredUsers.filter((u: any) => {
+          const roleName = ((Array.isArray(u.role) ? u.role[0]?.display_name : u.role?.display_name) || '').toLowerCase();
+          return roleName === desigQ;
+        });
+      }
+      if (filters.filterEmployeeLocation && filters.filterEmployeeLocation !== 'All') {
+        const locQ = String(filters.filterEmployeeLocation).trim().toLowerCase();
+        filteredUsers = filteredUsers.filter((u: any) => {
+          const loc = (u.location_name || u.location || '').toLowerCase();
+          return loc.includes(locQ);
+        });
+      }
+    }
+
+    // 3. Company Filter
+    if (filters?.filterCompanyEnabled && Array.isArray(filters.filterCompanies) && filters.filterCompanies.length > 0) {
+      const allowedComps = filters.filterCompanies.map((c: string) => c.trim().toLowerCase());
+      filteredUsers = filteredUsers.filter((u: any) => {
+        const comp = (u.society_name || u.organization_name || '').toLowerCase();
+        return allowedComps.some((ac: string) => comp.includes(ac) || ac.includes(comp));
+      });
+    }
+
+    // 4. Department / Site Filter
+    if (filters?.filterDepartmentEnabled && Array.isArray(filters.filterDepartments) && filters.filterDepartments.length > 0) {
+      const allowedDepts = filters.filterDepartments.map((d: string) => d.trim().toLowerCase());
+      filteredUsers = filteredUsers.filter((u: any) => {
+        const dept = (u.location_name || u.location || u.department || '').toLowerCase();
+        return allowedDepts.some((ad: string) => dept.includes(ad) || ad.includes(dept));
+      });
+    }
+
     const staffIds = new Set(filteredUsers.map((u: any) => u.id));
     const todayEvents = (eventsRes.data || []).filter((e: any) => staffIds.has(e.user_id));
     const onLeaveUserIds = new Set((leavesRes.data || []).map((l: any) => l.user_id));
@@ -162,10 +244,12 @@ const reportGenerators = {
     });
     const totalPresent = presentUserIds.size;
     const onLeaveCount = Array.from(onLeaveUserIds).filter(id => staffIds.has(id)).length;
+    const parsedTargetDate = new Date(`${todayStr}T12:00:00+05:30`);
     return {
-      date: format(nowIST, 'EEEE, MMMM do, yyyy'),
+      date: format(parsedTargetDate, 'EEEE, MMMM do, yyyy'),
+      reportDate: format(parsedTargetDate, 'dd MMM yyyy'),
       generatedTime: format(nowIST, 'hh:mm a'),
-      year: format(nowIST, 'yyyy'),
+      year: format(parsedTargetDate, 'yyyy'),
       totalEmployees: String(filteredUsers.length),
       totalPresent: String(totalPresent),
       totalAbsent: String(Math.max(0, filteredUsers.length - totalPresent - onLeaveCount)),
@@ -544,13 +628,64 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 }
 
-async function processSchedules(req: VercelRequest) {
+// ─── SMTP Pool Helpers ───────────────────────────────────────────────────────
+
+/** Resets sent_today counters for accounts whose last_reset_at is before today (IST). */
+async function resetStaleSmtpCounters(supabase: SupabaseClient) {
+  const todayIST = getISTDateString(new Date());
+  await supabase
+    .from('smtp_accounts')
+    .update({ sent_today: 0, last_reset_at: todayIST })
+    .lt('last_reset_at', todayIST);
+}
+
+/** Returns the best smtp_account for a given report type, or null if none available. */
+async function getSmtpForReportType(supabase: SupabaseClient, reportType: string): Promise<any | null> {
+  const { data } = await supabase
+    .from('smtp_accounts')
+    .select('*')
+    .eq('is_active', true)
+    .contains('report_types', [reportType])
+    .order('sent_today', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (!data) return null;
+  // Check if daily limit not exhausted
+  if (data.sent_today >= data.daily_limit) return null;
+  return data;
+}
+
+/** Increments sent_today counter for an smtp_account. */
+async function incrementSmtpCounter(supabase: SupabaseClient, accountId: string, count: number) {
+  try {
+    const { data: current } = await supabase
+      .from('smtp_accounts')
+      .select('sent_today')
+      .eq('id', accountId)
+      .single();
+    if (current) {
+      await supabase
+        .from('smtp_accounts')
+        .update({ sent_today: (current.sent_today || 0) + count })
+        .eq('id', accountId);
+    }
+  } catch (err) {
+    console.error('[SMTP Pool] Failed to increment sent_today:', err);
+  }
+}
+
+// ─── Main Schedule Processor ─────────────────────────────────────────────────
+
+export async function processSchedules(req: any) {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-  
-  // Get email config
+
+  // Reset stale daily counters before processing
+  await resetStaleSmtpCounters(supabase);
+
+  // Fallback: global email config (used when no pool account matches)
   const { data: settings } = await supabase.from('settings').select('email_config').eq('id', 'singleton').single();
-  const emailConfig = settings?.email_config;
-  if (!emailConfig?.user || !emailConfig?.pass || !emailConfig?.enabled) return { message: 'Email disabled', processed: 0 };
+  const fallbackConfig = settings?.email_config;
 
   // Get active rules
   const ruleId = req.query.ruleId as string;
@@ -562,14 +697,6 @@ async function processSchedules(req: VercelRequest) {
 
   const { data: templates } = await supabase.from('email_templates').select('*');
   const templateMap = new Map((templates || []).map(t => [t.id, t]));
-
-  const transporter = nodemailer.createTransport({
-    host: emailConfig.host || 'smtp.gmail.com',
-    port: emailConfig.port || 587,
-    secure: emailConfig.secure || false,
-    auth: { user: emailConfig.user, pass: emailConfig.pass },
-    tls: { rejectUnauthorized: false }
-  });
 
   const now = new Date();
   const nowIST = new Date(now.getTime() + IST_OFFSET);
@@ -584,41 +711,115 @@ async function processSchedules(req: VercelRequest) {
       if (rule.last_sent_at && isSameDay(new Date(new Date(rule.last_sent_at).getTime() + IST_OFFSET), nowIST)) continue;
     }
 
-    // Resolve Recipients
+    // ── Pick SMTP Account ─────────────────────────────────────────────────
+    const reportType = rule.report_type || 'attendance_daily';
+    const smtpAccount = await getSmtpForReportType(supabase, reportType);
+
+    // Build transporter from pool account, or fall back to global config
+    let emailSource: any;
+    let transporter: any;
+
+    if (smtpAccount) {
+      emailSource = smtpAccount;
+      transporter = nodemailer.createTransport({
+        host: smtpAccount.host || 'smtp.gmail.com',
+        port: smtpAccount.port || 465,
+        secure: smtpAccount.secure !== false,
+        auth: { user: smtpAccount.email.trim(), pass: (smtpAccount.app_password || '').replace(/\s+/g, '') },
+        tls: { rejectUnauthorized: false }
+      });
+      console.log(`[Schedule] Using pool account "${smtpAccount.name}" (${smtpAccount.email}) for report "${reportType}"`);
+    } else if (fallbackConfig?.user && fallbackConfig?.pass) {
+      emailSource = fallbackConfig;
+      transporter = nodemailer.createTransport({
+        host: fallbackConfig.host || 'smtp.gmail.com',
+        port: fallbackConfig.port || 587,
+        secure: fallbackConfig.secure || false,
+        auth: { user: (fallbackConfig.user || '').trim(), pass: (fallbackConfig.pass || '').replace(/\s+/g, '') },
+        tls: { rejectUnauthorized: false }
+      });
+      console.log(`[Schedule] No pool account for "${reportType}", using fallback SMTP.`);
+    } else {
+      console.warn(`[Schedule] Skipping rule "${rule.name}" — no SMTP available for "${reportType}"`);
+      continue;
+    }
+
+    // ── Resolve Recipients ────────────────────────────────────────────────
     let emails: string[] = [];
     if (rule.recipient_type === 'custom_emails') emails = rule.recipient_emails || [];
     else if (rule.recipient_type === 'role') {
       const { data: users } = await supabase.from('users').select('email').in('role_id', rule.recipient_roles || []).eq('is_blocked', false);
       emails = (users || []).map((u: any) => u.email).filter(Boolean);
+      if (emails.length === 0 && Array.isArray(rule.recipient_emails)) emails = rule.recipient_emails;
     } else if (rule.recipient_type === 'users') {
       const { data: users } = await supabase.from('users').select('email').in('id', rule.recipient_user_ids || []).eq('is_blocked', false);
       emails = (users || []).map((u: any) => u.email).filter(Boolean);
+      if (emails.length === 0 && Array.isArray(rule.recipient_emails)) emails = rule.recipient_emails;
     }
-    
+    if (emails.length === 0 && Array.isArray(rule.recipient_emails)) emails = rule.recipient_emails;
+
+
     if (emails.length === 0) {
       console.log(`[Schedule] Skipping "${rule.name}" - No recipients resolved.`);
       continue;
     }
 
-    // Generate Data
-    const generator = (reportGenerators as any)[rule.report_type] || reportGenerators.attendance_daily;
-    const reportData = await generator(supabase, nowIST);
+    // ── Guard: check capacity before sending ─────────────────────────────
+    if (smtpAccount) {
+      const remaining = smtpAccount.daily_limit - smtpAccount.sent_today;
+      if (emails.length > remaining) {
+        console.warn(`[Schedule] "${smtpAccount.name}" only has ${remaining} quota left, need ${emails.length}. Skipping rule "${rule.name}".`);
+        await supabase.from('email_logs').insert({
+          rule_id: rule.id,
+          recipient_email: 'system',
+          subject: `[QUOTA EXCEEDED] ${rule.name}`,
+          status: 'failed',
+          error_message: `Pool account ${smtpAccount.email} quota exhausted (${smtpAccount.sent_today}/${smtpAccount.daily_limit})`,
+          metadata: { trigger_type: 'automatic', quota_exceeded: true }
+        });
+        continue;
+      }
+    }
+
+    // ── Generate Report Data ──────────────────────────────────────────────
+    const config = rule.schedule_config || {};
+    const dateRangeMode = config.dateRangeMode || (rule.report_type === 'attendance_monthly' ? 'previous_month' : 'today');
+    let targetDateIST = new Date(nowIST.getTime());
+    if (dateRangeMode === 'yesterday') {
+      targetDateIST = new Date(targetDateIST.getTime() - 24 * 60 * 60 * 1000);
+    } else if (dateRangeMode === 'previous_month') {
+      targetDateIST = new Date(targetDateIST.getFullYear(), targetDateIST.getMonth() - 1, 1);
+    } else if (dateRangeMode === 'current_month') {
+      targetDateIST = new Date(targetDateIST.getFullYear(), targetDateIST.getMonth(), 1);
+    }
+
+    const targetDateStr = targetDateIST.toISOString().substring(0, 10);
+    const reportFilters = {
+      dateRange: { start: targetDateStr, end: targetDateStr },
+      dateRangeMode,
+      ...rule.schedule_config
+    };
+
+    const generator = (reportGenerators as any)[reportType] || reportGenerators.attendance_daily;
+    const reportData = await generator(supabase, targetDateIST, reportFilters);
 
     const template = templateMap.get(rule.template_id);
     const reportDataList = Array.isArray(reportData) ? reportData : [reportData];
 
     for (const dataItem of reportDataList) {
       let greetingMessage = `Here is your automated status update.`;
-      
-      if (rule.report_type === 'attendance_monthly') {
-          greetingMessage = `Dear Management,<br/><br/>This is the consolidated attendance summary for the period of <strong>{date}</strong>. It covers overall employee presence across all <strong>{totalEmployees}</strong> active members of the staff.<br/><br/>Please review the detailed monthly attendance grid below for any discrepancies.`;
+
+      if (reportType === 'attendance_monthly') {
+        greetingMessage = `Dear Management,<br/><br/>This is the consolidated attendance summary for the period of <strong>{date}</strong>. It covers overall employee presence across all <strong>{totalEmployees}</strong> active members of the staff.<br/><br/>Please review the detailed monthly attendance grid below for any discrepancies.`;
+      } else if (reportType === 'attendance_daily') {
+        const periodText = dateRangeMode === 'yesterday' ? "Yesterday's" : "Today's";
+        greetingMessage = `Dear Team,<br/><br/>${periodText} attendance for <strong>{date}</strong> stands at <strong>{attendancePercentage}%</strong>. A total of <strong>{totalAbsent}</strong> employees were absent, and <strong>{lateCount}</strong> reported late.<br/><br/>Attendance summary:`;
       }
 
       if (template?.variables) {
         const customVar = (template.variables as any[]).find(v => v.key === '_custom_message' || v.key === 'customMessage');
-        if (customVar && customVar.description && customVar.description.trim()) {
-          let evaluatedMsg = evaluateConditionals(customVar.description, dataItem || {});
-          greetingMessage = evaluatedMsg.replace(/\n/g, '<br/>');
+        if (customVar?.description?.trim()) {
+          greetingMessage = evaluateConditionals(customVar.description, dataItem || {}).replace(/\n/g, '<br/>');
         }
       }
 
@@ -635,7 +836,6 @@ async function processSchedules(req: VercelRequest) {
       };
 
       greetingMessage = render(greetingMessage, dataItem || {});
-
       dataItem.greetingMessage = greetingMessage;
       dataItem.customGreeting = greetingMessage;
       dataItem.greeting_message = greetingMessage;
@@ -644,30 +844,65 @@ async function processSchedules(req: VercelRequest) {
 
       let subject = template?.subject_template || rule.name;
       let html = template?.body_template || `<h2>Report</h2>{table}`;
+      subject = render(evaluateConditionals(subject, dataItem), dataItem);
+      html = render(evaluateConditionals(html, dataItem), dataItem);
 
-      subject = evaluateConditionals(subject, dataItem);
-      html = evaluateConditionals(html, dataItem);
+      // Determine from address
+      const fromEmail = smtpAccount
+        ? (smtpAccount.email || '')
+        : (fallbackConfig?.from_email || fallbackConfig?.user || '');
+      const fromName = smtpAccount
+        ? (smtpAccount.from_name || smtpAccount.name || 'Paradigm FMS')
+        : (fallbackConfig?.from_name || 'Paradigm FMS');
 
-      subject = render(subject, dataItem);
-      html = render(html, dataItem);
+      // ── Send individually (privacy) ───────────────────────────────────
+      let sentCount = 0;
+      for (const recipientEmail of emails) {
+        try {
+          await transporter.sendMail({
+            from: `"${fromName}" <${fromEmail}>`,
+            to: recipientEmail,
+            replyTo: smtpAccount ? fromEmail : (fallbackConfig?.reply_to || fromEmail),
+            subject, html
+          });
+          await supabase.from('email_logs').insert({
+            rule_id: rule.id,
+            template_id: rule.template_id,
+            recipient_email: recipientEmail,
+            subject,
+            status: 'sent',
+            metadata: {
+              trigger_type: 'automatic',
+              smtp_account_id: smtpAccount?.id || null,
+              smtp_account_name: smtpAccount?.name || 'fallback',
+            }
+          });
+          sentCount++;
+          totalSent++;
+        } catch (mailErr: any) {
+          console.error(`[Schedule] Failed to send to ${recipientEmail}:`, mailErr.message);
+          await supabase.from('email_logs').insert({
+            rule_id: rule.id,
+            recipient_email: recipientEmail,
+            subject,
+            status: 'failed',
+            error_message: mailErr.message,
+            metadata: {
+              trigger_type: 'automatic',
+              smtp_account_id: smtpAccount?.id || null,
+            }
+          });
+        }
+      }
 
-      try {
-        await transporter.sendMail({
-          from: `"${emailConfig.from_name || 'Paradigm FMS'}" <${emailConfig.from_email || emailConfig.user}>`,
-          to: emails.join(', '),
-          replyTo: emailConfig.reply_to || emailConfig.from_email,
-          subject, html
-        });
-        await Promise.all([
-          ...emails.map(email => supabase.from('email_logs').insert({ rule_id: rule.id, template_id: rule.template_id, recipient_email: email, subject, status: 'sent', metadata: { trigger_type: 'automatic' } }))
-        ]);
-        totalSent += emails.length;
-      } catch (mailErr: any) {
-        await Promise.all(emails.map(email => supabase.from('email_logs').insert({ rule_id: rule.id, recipient_email: email, subject, status: 'failed', error_message: mailErr.message, metadata: { trigger_type: 'automatic' } })));
+      // ── Update SMTP quota counter ─────────────────────────────────────
+      if (smtpAccount && sentCount > 0) {
+        await incrementSmtpCounter(supabase, smtpAccount.id, sentCount);
       }
     }
-    
+
     await supabase.from('email_schedule_rules').update({ last_sent_at: now.toISOString() }).eq('id', rule.id);
   }
+
   return { success: true, processed: totalSent };
 }

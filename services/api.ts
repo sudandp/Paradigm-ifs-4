@@ -5846,6 +5846,29 @@ export const api = {
     }
   },
 
+  // ═══ Unified Job Runner APIs ═══════════════════════════════════════════════
+  runJobNow: async (jobType: 'broadcast' | 'automated' | 'email', jobId: string | number): Promise<any> => {
+    const res = await fetch('/api/jobs/run-now', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jobType, jobId: String(jobId) })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to trigger job');
+    return data;
+  },
+
+  toggleJobActive: async (jobType: 'automated' | 'email', jobId: string | number, isActive: boolean): Promise<any> => {
+    const res = await fetch('/api/jobs/toggle-active', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jobType, jobId: String(jobId), isActive })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to toggle job state');
+    return data;
+  },
+
   // ═══ Email Logs APIs ═══════════════════════════════════════════════════
 
   getEmailLogs: async (filter?: { ruleId?: string; status?: string }): Promise<any[]> => {
@@ -5861,6 +5884,108 @@ export const api = {
     const { data, error } = await query;
     if (error) throw error;
     return (data || []).map(toCamelCase);
+  },
+
+  // ═══ SMTP Account Pool APIs ═════════════════════════════════════════════
+
+  getSmtpAccounts: async (): Promise<any[]> => {
+    const { data, error } = await supabase
+      .from('smtp_accounts_usage')
+      .select('*')
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    return (data || []).map(toCamelCase);
+  },
+
+  saveSmtpAccount: async (account: Partial<any>): Promise<any> => {
+    const rawPayload: any = {
+      name: account.name?.trim(),
+      email: (account.email || '').trim().toLowerCase(),
+      host: account.host || 'smtp.gmail.com',
+      port: account.port || 465,
+      secure: account.secure !== undefined ? account.secure : true,
+      fromName: account.fromName || 'Paradigm FMS',
+      reportTypes: account.reportTypes || [],
+      dailyLimit: account.dailyLimit || 2000,
+      isActive: account.isActive !== undefined ? account.isActive : true,
+    };
+    if (account.appPassword) {
+      rawPayload.appPassword = account.appPassword.replace(/\s+/g, '');
+    }
+    const payload = toSnakeCase(rawPayload);
+
+
+    if (account.id) {
+      const { data, error } = await supabase
+        .from('smtp_accounts')
+        .update(payload)
+        .eq('id', account.id)
+        .select()
+        .single();
+      if (error) throw error;
+      return toCamelCase(data);
+    } else {
+      const { data, error } = await supabase
+        .from('smtp_accounts')
+        .insert(payload)
+        .select()
+        .single();
+      if (error) throw error;
+      return toCamelCase(data);
+    }
+  },
+
+  deleteSmtpAccount: async (id: string): Promise<void> => {
+    const { error } = await supabase.from('smtp_accounts').delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  testSmtpAccount: async (accountId: string, testEmail: string): Promise<void> => {
+    const { data, error } = await supabase
+      .from('smtp_accounts')
+      .select('*')
+      .eq('id', accountId)
+      .single();
+    if (error || !data) throw new Error('SMTP account not found');
+
+    const { data: { session } } = await supabase.auth.getSession();
+    const response = await fetch('/api/send-email', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token || ''}`,
+      },
+      body: JSON.stringify({
+        to: [testEmail],
+        subject: `✅ SMTP Test — ${data.name}`,
+        html: `<div style="font-family:sans-serif;max-width:500px;margin:20px auto;padding:24px;border:1px solid #e2e8f0;border-radius:12px;"><h2 style="color:#065f46;margin:0 0 16px">SMTP Connection Verified ✅</h2><p style="color:#475569;margin:0 0 12px;">This is a test email from your <strong>${data.name}</strong> SMTP account.</p><table style="width:100%;font-size:13px;color:#64748b;"><tr><td style="padding:4px 0"><strong>Account:</strong></td><td>${data.name}</td></tr><tr><td style="padding:4px 0"><strong>From:</strong></td><td>${data.email}</td></tr><tr><td style="padding:4px 0"><strong>Host:</strong></td><td>${data.host}:${data.port}</td></tr><tr><td style="padding:4px 0"><strong>Daily Limit:</strong></td><td>${data.daily_limit}</td></tr><tr><td style="padding:4px 0"><strong>Report Types:</strong></td><td>${(data.report_types || []).join(', ') || 'None assigned'}</td></tr></table><p style="margin:16px 0 0;font-size:12px;color:#94a3b8;">Sent by Paradigm FMS SMTP Pool</p></div>`,
+        smtpConfig: {
+          host: data.host || 'smtp.gmail.com',
+          port: data.port || 465,
+          secure: data.secure !== false,
+          user: data.email,
+          pass: data.app_password,
+          fromEmail: data.email,
+          fromName: data.from_name || data.name || 'Paradigm FMS',
+        },
+        triggerType: 'manual',
+      })
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      let msg = 'SMTP test failed';
+      try { msg = JSON.parse(text).error || msg; } catch { msg = text.substring(0, 150) || msg; }
+      throw new Error(msg);
+    }
+  },
+
+  resetSmtpDailyCounters: async (): Promise<void> => {
+    const today = new Date().toISOString().substring(0, 10);
+    const { error } = await supabase
+      .from('smtp_accounts')
+      .update({ sent_today: 0, last_reset_at: today })
+      .lt('last_reset_at', today);
+    if (error) throw error;
   },
 
   sendEmail: async (params: { to: string | string[]; cc?: string[]; subject: string; html: string; attachments?: any[] }): Promise<void> => {

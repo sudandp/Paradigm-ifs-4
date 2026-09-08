@@ -23,8 +23,14 @@ import {
     ExternalLink,
     Server,
     Save,
-    TestTube,
-    History
+    History,
+    Building2,
+    MapPin,
+    SlidersHorizontal,
+    Search,
+    UserCheck,
+    Layers,
+    FileSpreadsheet
 } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
@@ -190,7 +196,7 @@ const DEFAULT_DAILY_HTML = `<!DOCTYPE html>
 </body>
 </html>`;
 
-type SubTab = 'config' | 'templates' | 'schedules' | 'logs';
+type SubTab = 'config' | 'smtp_pool' | 'templates' | 'schedules' | 'logs';
 
 const EmailTagInput: React.FC<{
     label: string;
@@ -386,6 +392,31 @@ const DEFAULT_BD_DAILY_REPORT_HTML = `<!DOCTYPE html>
 </body>
 </html>`;
 
+const GROUP_BY_OPTIONS = [
+    'Department / Location Wise',
+    'Site / Organization Wise',
+    'Company / Entity Wise',
+    'Role / Designation Wise',
+    'Staff Category Wise (Office / Field / Site)',
+];
+
+const REPORT_SUBTYPE_OPTIONS = [
+    'Basic Attendance Report',
+    'Detailed Work Duration & Punches',
+    'Summary Report (Present / Absent / Leave Counts)',
+    'Overtime (OT) Summary',
+    'Late Arrival & Early Departure',
+    'Excel / CSV Raw Export',
+];
+
+const PARADIGM_STAFF_CATEGORIES = [
+    { id: 'All', label: 'All Staff Categories' },
+    { id: 'office', label: 'Office Staff' },
+    { id: 'field', label: 'Field Staff' },
+    { id: 'site', label: 'Site Staff' },
+];
+
+
 const EmailConfigPanel: React.FC = () => {
     const { user } = useAuthStore();
     const [activeSubTab, setActiveSubTab] = useState<SubTab>('config');
@@ -411,6 +442,21 @@ const EmailConfigPanel: React.FC = () => {
     const [emailLogs, setEmailLogs] = useState<EmailLog[]>([]);
     const [roles, setRoles] = useState<Role[]>([]);
     const [users, setUsers] = useState<User[]>([]);
+    const [smtpAccounts, setSmtpAccounts] = useState<any[]>([]);
+    const [availableCompanies, setAvailableCompanies] = useState<string[]>([]);
+    const [availableDepartments, setAvailableDepartments] = useState<string[]>([]);
+    const [companySearch, setCompanySearch] = useState('');
+    const [departmentSearch, setDepartmentSearch] = useState('');
+    const [showSmtpForm, setShowSmtpForm] = useState(false);
+    const [editingSmtp, setEditingSmtp] = useState<any | null>(null);
+    const [smtpTestEmail, setSmtpTestEmail] = useState('');
+    const [testingSmtpId, setTestingSmtpId] = useState<string | null>(null);
+    const [savingSmtp, setSavingSmtp] = useState(false);
+    const [smtpForm, setSmtpForm] = useState({
+        name: '', email: '', appPassword: '', host: 'smtp.gmail.com',
+        port: 465, secure: true, fromName: 'Paradigm FMS',
+        reportTypes: [] as string[], dailyLimit: 2000, isActive: true,
+    });
 
     // Form states
     const [testEmail, setTestEmail] = useState('');
@@ -544,13 +590,17 @@ const EmailConfigPanel: React.FC = () => {
     const fetchAllData = async () => {
         setIsLoading(true);
         try {
-            const [config, tmpl, rules, logs, r, u] = await Promise.all([
+            const [config, tmpl, rules, logs, r, u, smtpPool, locs, entList, orgList] = await Promise.all([
                 api.getEmailConfig(),
                 api.getEmailTemplates(),
                 api.getEmailScheduleRules(),
                 api.getEmailLogs(),
                 api.getRoles(),
                 api.getUsers(),
+                api.getSmtpAccounts().catch(() => []),
+                api.getLocations().catch(() => []),
+                api.getEntities().catch(() => []),
+                api.getOrganizations().catch(() => []),
             ]);
             if (config) setEmailConfig(config);
             setTemplates(tmpl);
@@ -558,6 +608,21 @@ const EmailConfigPanel: React.FC = () => {
             setEmailLogs(logs);
             setRoles(r);
             setUsers(u.sort((a, b) => (a.name || '').localeCompare(b.name || '')));
+            setSmtpAccounts(smtpPool || []);
+
+            // Dynamic Company / Entity list from Paradigm database
+            const entityNames = (entList || []).map((e: any) => e.name).filter(Boolean);
+            const userSocieties = (u || []).map((usr: any) => usr.societyName || usr.organizationName).filter(Boolean);
+            const allComps = Array.from(new Set([...entityNames, ...userSocieties])).sort((a, b) => a.localeCompare(b));
+
+            // Dynamic Site / Department / Location list from Paradigm database
+            const orgNames = (orgList || []).map((o: any) => o.name || o.shortName).filter(Boolean);
+            const locNames = (locs || []).map((l: any) => l.name || l.locationName).filter(Boolean);
+            const userDepts = (u || []).map((usr: any) => usr.locationName || usr.location || usr.department).filter(Boolean);
+            const allDepts = Array.from(new Set([...orgNames, ...locNames, ...userDepts])).sort((a, b) => a.localeCompare(b));
+
+            setAvailableCompanies(allComps);
+            setAvailableDepartments(allDepts);
         } catch (err) {
             console.error('Failed to load email data:', err);
             setToast({ message: 'Failed to load email configuration.', type: 'error' });
@@ -631,6 +696,27 @@ const EmailConfigPanel: React.FC = () => {
     };
 
     // ── SCHEDULE TAB ──
+    const updateScheduleConfig = (updates: Partial<NonNullable<EmailScheduleRule['scheduleConfig']>>) => {
+        setEditingSchedule(prev => {
+            if (!prev) return prev;
+            return {
+                ...prev,
+                scheduleConfig: {
+                    ...(prev.scheduleConfig || { time: '21:00', frequency: 'daily' }),
+                    ...updates
+                }
+            };
+        });
+    };
+
+    const dynamicDesignations = Array.from(new Set([
+        ...roles.map(r => r.displayName || (r as any).name),
+        ...users.map(u => u.role).filter(Boolean)
+    ])).filter(Boolean).sort((a, b) => a.localeCompare(b));
+
+    const filteredCompanies = availableCompanies.filter(c => c.toLowerCase().includes(companySearch.toLowerCase()));
+    const filteredDepartments = availableDepartments.filter(d => d.toLowerCase().includes(departmentSearch.toLowerCase()));
+
     const handleSaveSchedule = async () => {
         if (!editingSchedule?.name) {
             setToast({ message: 'Rule name is required.', type: 'error' });
@@ -642,8 +728,22 @@ const EmailConfigPanel: React.FC = () => {
         }
         setIsSaving(true);
         try {
-            console.log('Saving schedule:', editingSchedule);
-            const saved = await api.saveEmailScheduleRule(editingSchedule);
+            const scheduleToSave = { ...editingSchedule };
+            if (scheduleToSave.recipientType === 'users') {
+                const selectedEmails = users
+                    .filter(u => (scheduleToSave.recipientUserIds || []).includes(u.id))
+                    .map(u => u.email)
+                    .filter(Boolean);
+                scheduleToSave.recipientEmails = selectedEmails;
+            } else if (scheduleToSave.recipientType === 'role') {
+                const selectedEmails = users
+                    .filter(u => (scheduleToSave.recipientRoles || []).includes(u.roleId || (u as any).role?.id))
+                    .map(u => u.email)
+                    .filter(Boolean);
+                scheduleToSave.recipientEmails = selectedEmails;
+            }
+            console.log('Saving schedule:', scheduleToSave);
+            const saved = await api.saveEmailScheduleRule(scheduleToSave);
             if (editingSchedule.id) {
                 setScheduleRules(prev => prev.map(r => r.id === saved.id ? saved : r));
                 setToast({ message: 'Schedule rule updated successfully!', type: 'success' });
@@ -785,6 +885,7 @@ const EmailConfigPanel: React.FC = () => {
             <div className="flex p-1 bg-slate-100/50 rounded-xl border border-slate-200/50">
                 {([
                     { id: 'config' as SubTab, label: 'Configuration', icon: Settings },
+                    { id: 'smtp_pool' as SubTab, label: 'SMTP Pool', icon: Server },
                     { id: 'templates' as SubTab, label: 'Templates', icon: FileText },
                     { id: 'schedules' as SubTab, label: 'Schedules', icon: Calendar },
                     { id: 'logs' as SubTab, label: 'Delivery Logs', icon: History },
@@ -795,6 +896,9 @@ const EmailConfigPanel: React.FC = () => {
                         className={`flex items-center px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${activeSubTab === tab.id ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                     >
                         <tab.icon className="mr-2 h-3.5 w-3.5" /> {tab.label}
+                        {tab.id === 'smtp_pool' && smtpAccounts.length > 0 && (
+                            <span className="ml-1.5 bg-emerald-500 text-white text-[9px] font-bold rounded-full px-1.5 py-0.5">{smtpAccounts.length}</span>
+                        )}
                     </button>
                 ))}
             </div>
@@ -1161,7 +1265,30 @@ const EmailConfigPanel: React.FC = () => {
                                 name: '',
                                 templateId: templates[0]?.id || '',
                                 triggerType: 'scheduled',
-                                scheduleConfig: { time: '21:00', frequency: 'daily' },
+                                scheduleConfig: {
+                                    time: '21:00',
+                                    frequency: 'daily',
+                                    dateRangeMode: 'today',
+                                    groupBy: 'Department / Location Wise',
+                                    reportSubType: 'Basic Attendance Report',
+                                    employeeCodeDigits: 0,
+                                    prefixZero: false,
+                                    filterEmployeeEnabled: false,
+                                    filterEmployeeCode: '',
+                                    filterEmployeeExact: false,
+                                    filterEmployeeName: '',
+                                    filterEmployeeCategory: 'All',
+                                    filterEmployeeDesignation: 'All',
+                                    filterEmployeeLocation: 'All',
+                                    filterEmployeeStatus: 'all',
+                                    filterCompanyEnabled: false,
+                                    filterCompanies: [],
+                                    filterDepartmentEnabled: false,
+                                    filterDepartments: [],
+                                    exportFileFormat: 'pdf',
+                                    recalculateAttendance: false,
+                                    showCompanyLogo: true,
+                                },
                                 reportType: 'attendance_daily',
                                 reportFormat: 'html',
                                 recipientType: 'role',
@@ -1237,28 +1364,56 @@ const EmailConfigPanel: React.FC = () => {
 
                             {/* Schedule Config */}
                             {editingSchedule.triggerType === 'scheduled' && (
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-page/50 rounded-xl border border-dashed border-border">
-                                    <Input
-                                        label="Send Time (24h)"
-                                        type="time"
-                                        value={editingSchedule.scheduleConfig?.time || '21:00'}
-                                        onChange={e => setEditingSchedule({
-                                            ...editingSchedule,
-                                            scheduleConfig: { ...editingSchedule.scheduleConfig!, time: e.target.value }
-                                        })}
-                                    />
-                                    <Select
-                                        label="Frequency"
-                                        value={editingSchedule.scheduleConfig?.frequency || 'daily'}
-                                        onChange={e => setEditingSchedule({
-                                            ...editingSchedule,
-                                            scheduleConfig: { ...editingSchedule.scheduleConfig!, frequency: e.target.value as any }
-                                        })}
-                                    >
-                                        <option value="daily">Daily</option>
-                                        <option value="weekly">Weekly</option>
-                                        <option value="monthly">Monthly</option>
-                                    </Select>
+                                <div className="space-y-4 p-4 bg-page/50 rounded-xl border border-dashed border-border">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <Input
+                                            label="Send Time (24h)"
+                                            type="time"
+                                            value={editingSchedule.scheduleConfig?.time || '21:00'}
+                                            onChange={e => setEditingSchedule({
+                                                ...editingSchedule,
+                                                scheduleConfig: { ...editingSchedule.scheduleConfig!, time: e.target.value }
+                                            })}
+                                        />
+                                        <Select
+                                            label="Frequency"
+                                            value={editingSchedule.scheduleConfig?.frequency || 'daily'}
+                                            onChange={e => setEditingSchedule({
+                                                ...editingSchedule,
+                                                scheduleConfig: { ...editingSchedule.scheduleConfig!, frequency: e.target.value as any }
+                                            })}
+                                        >
+                                            <option value="daily">Daily</option>
+                                            <option value="weekly">Weekly</option>
+                                            <option value="monthly">Monthly</option>
+                                        </Select>
+                                        <Select
+                                            label="Report Data Period (Duration)"
+                                            value={editingSchedule.scheduleConfig?.dateRangeMode || (editingSchedule.reportType === 'attendance_monthly' ? 'previous_month' : 'today')}
+                                            onChange={e => setEditingSchedule({
+                                                ...editingSchedule,
+                                                scheduleConfig: {
+                                                    ...editingSchedule.scheduleConfig!,
+                                                    dateRangeMode: e.target.value as any
+                                                }
+                                            })}
+                                        >
+                                            <option value="today">Today (Real-time / Current Day)</option>
+                                            <option value="yesterday">Yesterday (Previous Day — Recommended for 5 AM / Morning)</option>
+                                            <option value="previous_month">Previous Month (Complete Prior Month)</option>
+                                            <option value="current_month">Current Month (Month to Date)</option>
+                                        </Select>
+                                    </div>
+
+                                    {editingSchedule.scheduleConfig?.dateRangeMode === 'yesterday' && (
+                                        <div className="flex items-start gap-2.5 p-3 bg-amber-50/80 border border-amber-200 rounded-xl text-xs text-amber-900 leading-relaxed shadow-2xs">
+                                            <span className="text-base leading-none">📅</span>
+                                            <div>
+                                                <strong className="font-bold text-amber-950">Yesterday Selected:</strong> When this scheduled report triggers (e.g. at 5:00 AM on 8/9/26), it will compile and deliver <strong>yesterday's data (7/9/26)</strong> so morning reports contain complete punch records.
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {editingSchedule.scheduleConfig?.frequency === 'weekly' && (
                                         <Select
                                             label="Day of Week"
@@ -1347,6 +1502,437 @@ const EmailConfigPanel: React.FC = () => {
                                 </div>
                             )}
 
+                            {/* ═══════════════ Paradigm Attendance & Report Filters ═══════════════ */}
+                            {editingSchedule.reportType && (
+                                <div className="p-5 bg-slate-50/90 rounded-2xl border border-slate-200 shadow-2xs space-y-5">
+                                    <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-200">
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="p-2 bg-emerald-700 text-white rounded-xl shadow-xs">
+                                                <SlidersHorizontal className="h-4 w-4" />
+                                            </div>
+                                            <div>
+                                                <h5 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                                    Attendance Report Data & Target Filters
+                                                    <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                                                        Live System
+                                                    </span>
+                                                </h5>
+                                                <p className="text-[11px] text-slate-500">
+                                                    Filter attendance scope by registered entities, client sites, locations, designations, and employee status
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-600">
+                                            <span className="px-2 py-0.5 bg-white rounded-md border border-slate-200 shadow-2xs">
+                                                🏢 {(editingSchedule.scheduleConfig?.filterCompanies || []).length} / {availableCompanies.length} Entities
+                                            </span>
+                                            <span className="px-2 py-0.5 bg-white rounded-md border border-slate-200 shadow-2xs">
+                                                📍 {(editingSchedule.scheduleConfig?.filterDepartments || []).length} / {availableDepartments.length} Sites & Depts
+                                            </span>
+                                            <span className="px-2 py-0.5 bg-white rounded-md border border-slate-200 shadow-2xs capitalize">
+                                                👤 Status: {editingSchedule.scheduleConfig?.filterEmployeeStatus || 'all'}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Top Control Bar: Group By, Report Sub-Type, Employee Code Digits, Prefix Zero */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 items-end">
+                                        <Select
+                                            label="Group By"
+                                            value={editingSchedule.scheduleConfig?.groupBy || 'Department / Location Wise'}
+                                            onChange={e => updateScheduleConfig({ groupBy: e.target.value })}
+                                        >
+                                            {GROUP_BY_OPTIONS.map(opt => (
+                                                <option key={opt} value={opt}>{opt}</option>
+                                            ))}
+                                        </Select>
+
+                                        <Select
+                                            label="Report Sub-Type"
+                                            value={editingSchedule.scheduleConfig?.reportSubType || 'Basic Attendance Report'}
+                                            onChange={e => updateScheduleConfig({ reportSubType: e.target.value })}
+                                        >
+                                            {REPORT_SUBTYPE_OPTIONS.map(opt => (
+                                                <option key={opt} value={opt}>{opt}</option>
+                                            ))}
+                                        </Select>
+
+                                        <Select
+                                            label="No. of Digits in Employee Code"
+                                            value={editingSchedule.scheduleConfig?.employeeCodeDigits ?? 0}
+                                            onChange={e => updateScheduleConfig({ employeeCodeDigits: parseInt(e.target.value) || 0 })}
+                                        >
+                                            {[0, 1, 2, 3, 4, 5, 6, 7, 8].map(num => (
+                                                <option key={num} value={num}>{num} Digits</option>
+                                            ))}
+                                        </Select>
+
+                                        <div className="flex items-center h-10 px-3 bg-white rounded-xl border border-border shadow-2xs">
+                                            <Checkbox
+                                                id="sch-prefix-zero"
+                                                label="Prefix Zero"
+                                                checked={editingSchedule.scheduleConfig?.prefixZero ?? false}
+                                                onChange={e => updateScheduleConfig({ prefixZero: e.target.checked })}
+                                                labelClassName="text-xs font-semibold text-slate-700"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* 3 Columns Filter Grid */}
+                                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 pt-1">
+                                        {/* COLUMN 1: FILTER EMPLOYEE */}
+                                        <div className={`p-4 rounded-xl border flex flex-col justify-between transition-all h-full ${editingSchedule.scheduleConfig?.filterEmployeeEnabled ? 'bg-white border-emerald-500/40 shadow-xs' : 'bg-slate-50/60 border-slate-200/80'}`}>
+                                            <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-100 shrink-0">
+                                                <label className="flex items-center gap-2 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={editingSchedule.scheduleConfig?.filterEmployeeEnabled ?? false}
+                                                        onChange={e => updateScheduleConfig({ filterEmployeeEnabled: e.target.checked })}
+                                                        className="rounded text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+                                                    />
+                                                    <span className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                                                        <UserCheck className="h-3.5 w-3.5 text-emerald-600" /> Filter Employee Criteria
+                                                    </span>
+                                                </label>
+                                                {editingSchedule.scheduleConfig?.filterEmployeeEnabled && (
+                                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold border border-emerald-200">Active</span>
+                                                )}
+                                            </div>
+
+                                            <div className={`flex-1 space-y-2.5 ${!editingSchedule.scheduleConfig?.filterEmployeeEnabled ? 'opacity-60 pointer-events-none' : ''}`}>
+                                                {/* Employee Code & Exact Checkbox */}
+                                                <div className="grid grid-cols-3 gap-2">
+                                                    <div className="col-span-2">
+                                                        <Input
+                                                            label="Employee Code"
+                                                            placeholder="e.g. 1042"
+                                                            value={editingSchedule.scheduleConfig?.filterEmployeeCode || ''}
+                                                            onChange={e => updateScheduleConfig({ filterEmployeeCode: e.target.value })}
+                                                            className="text-xs"
+                                                        />
+                                                    </div>
+                                                    <div className="flex flex-col justify-end pb-2">
+                                                        <Checkbox
+                                                            id="sch-emp-exact"
+                                                            label="Exact"
+                                                            checked={editingSchedule.scheduleConfig?.filterEmployeeExact ?? false}
+                                                            onChange={e => updateScheduleConfig({ filterEmployeeExact: e.target.checked })}
+                                                            labelClassName="text-xs font-medium text-slate-600"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {/* Employee Name */}
+                                                <Input
+                                                    label="Employee Name"
+                                                    placeholder="Search employee name..."
+                                                    value={editingSchedule.scheduleConfig?.filterEmployeeName || ''}
+                                                    onChange={e => updateScheduleConfig({ filterEmployeeName: e.target.value })}
+                                                    className="text-xs"
+                                                />
+
+                                                {/* Employee Status (Active, Inactive, All) */}
+                                                <Select
+                                                    label="Employee Status"
+                                                    value={editingSchedule.scheduleConfig?.filterEmployeeStatus || 'all'}
+                                                    onChange={e => updateScheduleConfig({ filterEmployeeStatus: e.target.value as any })}
+                                                >
+                                                    <option value="all">All Statuses (Active + Inactive)</option>
+                                                    <option value="active">Active Staff Only</option>
+                                                    <option value="inactive">Inactive / Left Staff Only</option>
+                                                </Select>
+
+                                                {/* Staff Category */}
+                                                <Select
+                                                    label="Staff Category"
+                                                    value={editingSchedule.scheduleConfig?.filterEmployeeCategory || 'All'}
+                                                    onChange={e => updateScheduleConfig({ filterEmployeeCategory: e.target.value })}
+                                                >
+                                                    {PARADIGM_STAFF_CATEGORIES.map(cat => (
+                                                        <option key={cat.id} value={cat.id}>{cat.label}</option>
+                                                    ))}
+                                                </Select>
+
+                                                {/* Designation / Role */}
+                                                <Select
+                                                    label="Employee Designation / Role"
+                                                    value={editingSchedule.scheduleConfig?.filterEmployeeDesignation || 'All'}
+                                                    onChange={e => updateScheduleConfig({ filterEmployeeDesignation: e.target.value })}
+                                                >
+                                                    <option value="All">All Designations & Roles</option>
+                                                    {dynamicDesignations.map(des => (
+                                                        <option key={des} value={des}>{des}</option>
+                                                    ))}
+                                                </Select>
+
+                                                {/* Location / Site */}
+                                                <Select
+                                                    label="Employee Location / Site"
+                                                    value={editingSchedule.scheduleConfig?.filterEmployeeLocation || 'All'}
+                                                    onChange={e => updateScheduleConfig({ filterEmployeeLocation: e.target.value })}
+                                                >
+                                                    <option value="All">All Locations & Sites</option>
+                                                    {availableDepartments.map(loc => (
+                                                        <option key={loc} value={loc}>{loc}</option>
+                                                    ))}
+                                                </Select>
+                                            </div>
+
+                                            {/* Bottom Status Bar for Column 1 */}
+                                            <div className="shrink-0 pt-2.5 mt-2 flex items-center justify-between text-[11px] text-slate-500 border-t border-slate-100">
+                                                <span>Criteria Status</span>
+                                                <span className="font-semibold text-slate-700">
+                                                    {editingSchedule.scheduleConfig?.filterEmployeeEnabled ? 'Custom Criteria Active' : 'All Staff (No filter)'}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {/* COLUMN 2: FILTER COMPANY / ENTITY */}
+                                        <div className={`p-4 rounded-xl border flex flex-col transition-all h-full ${editingSchedule.scheduleConfig?.filterCompanyEnabled ? 'bg-white border-emerald-500/40 shadow-xs' : 'bg-slate-50/60 border-slate-200/80'}`}>
+                                            <div className="flex items-center justify-between pb-3 mb-2 border-b border-slate-100 shrink-0">
+                                                <label className="flex items-center gap-2 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={editingSchedule.scheduleConfig?.filterCompanyEnabled ?? false}
+                                                        onChange={e => updateScheduleConfig({ filterCompanyEnabled: e.target.checked })}
+                                                        className="rounded text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+                                                    />
+                                                    <span className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                                                        <Building2 className="h-3.5 w-3.5 text-emerald-600" /> Filter Company / Entity
+                                                    </span>
+                                                </label>
+                                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-semibold">
+                                                    {(editingSchedule.scheduleConfig?.filterCompanies || []).length} / {availableCompanies.length}
+                                                </span>
+                                            </div>
+
+                                            <div className={`flex-1 flex flex-col min-h-0 space-y-2 ${!editingSchedule.scheduleConfig?.filterCompanyEnabled ? 'opacity-60 pointer-events-none' : ''}`}>
+                                                {/* Search Input */}
+                                                <div className="relative shrink-0">
+                                                    <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Search entity or company..."
+                                                        value={companySearch}
+                                                        onChange={e => setCompanySearch(e.target.value)}
+                                                        className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-emerald-500"
+                                                    />
+                                                </div>
+
+                                                {/* Quick Selection Buttons */}
+                                                <div className="flex items-center justify-between text-xs shrink-0 py-0.5">
+                                                    <div className="flex items-center gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => updateScheduleConfig({ filterCompanies: [...availableCompanies] })}
+                                                            className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 hover:underline cursor-pointer"
+                                                        >
+                                                            Select All
+                                                        </button>
+                                                        <span className="text-slate-300">|</span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => updateScheduleConfig({ filterCompanies: [] })}
+                                                            className="text-[11px] font-semibold text-slate-500 hover:text-slate-700 hover:underline cursor-pointer"
+                                                        >
+                                                            Deselect All
+                                                        </button>
+                                                    </div>
+                                                    <span className="text-[11px] text-slate-400">
+                                                        {filteredCompanies.length} shown
+                                                    </span>
+                                                </div>
+
+                                                {/* Scrollable Company Listbox - fills 100% of remaining vertical height */}
+                                                <div className="flex-1 min-h-[220px] overflow-y-auto border border-slate-200/90 rounded-xl bg-slate-50/60 p-2 space-y-0.5 divide-y divide-slate-100/80 shadow-2xs">
+                                                    {filteredCompanies.length === 0 ? (
+                                                        <div className="p-4 text-center text-xs text-slate-400">No matching entities found</div>
+                                                    ) : (
+                                                        filteredCompanies.map(comp => {
+                                                            const selectedComps = editingSchedule.scheduleConfig?.filterCompanies || [];
+                                                            const isChecked = selectedComps.includes(comp);
+                                                            return (
+                                                                <label key={comp} className="flex items-center gap-2 p-1.5 hover:bg-white rounded-lg cursor-pointer text-xs transition-colors">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={isChecked}
+                                                                        onChange={e => {
+                                                                            const next = e.target.checked ? [...selectedComps, comp] : selectedComps.filter(c => c !== comp);
+                                                                            updateScheduleConfig({ filterCompanies: next });
+                                                                        }}
+                                                                        className="rounded text-emerald-600 focus:ring-emerald-500 h-3.5 w-3.5"
+                                                                    />
+                                                                    <span className={`truncate text-xs ${isChecked ? 'font-semibold text-emerald-950' : 'text-slate-700'}`} title={comp}>
+                                                                        {comp}
+                                                                    </span>
+                                                                </label>
+                                                            );
+                                                        })
+                                                    )}
+                                                </div>
+
+                                                {/* Bottom Status Bar for Column 2 */}
+                                                <div className="shrink-0 pt-2 flex items-center justify-between text-[11px] text-slate-500 border-t border-slate-100">
+                                                    <span>Total Entities: {availableCompanies.length}</span>
+                                                    <span className="font-semibold text-emerald-700">
+                                                        {(editingSchedule.scheduleConfig?.filterCompanies || []).length} Selected
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* COLUMN 3: FILTER DEPARTMENT / SITE */}
+                                        <div className={`p-4 rounded-xl border flex flex-col transition-all h-full ${editingSchedule.scheduleConfig?.filterDepartmentEnabled ? 'bg-white border-emerald-500/40 shadow-xs' : 'bg-slate-50/60 border-slate-200/80'}`}>
+                                            <div className="flex items-center justify-between pb-3 mb-2 border-b border-slate-100 shrink-0">
+                                                <label className="flex items-center gap-2 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={editingSchedule.scheduleConfig?.filterDepartmentEnabled ?? false}
+                                                        onChange={e => updateScheduleConfig({ filterDepartmentEnabled: e.target.checked })}
+                                                        className="rounded text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+                                                    />
+                                                    <span className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                                                        <MapPin className="h-3.5 w-3.5 text-emerald-600" /> Filter Department / Site
+                                                    </span>
+                                                </label>
+                                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-semibold">
+                                                    {(editingSchedule.scheduleConfig?.filterDepartments || []).length} / {availableDepartments.length}
+                                                </span>
+                                            </div>
+
+                                            <div className={`flex-1 flex flex-col min-h-0 space-y-2 ${!editingSchedule.scheduleConfig?.filterDepartmentEnabled ? 'opacity-60 pointer-events-none' : ''}`}>
+                                                {/* Search Input */}
+                                                <div className="relative shrink-0">
+                                                    <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Search department or site..."
+                                                        value={departmentSearch}
+                                                        onChange={e => setDepartmentSearch(e.target.value)}
+                                                        className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:border-emerald-500"
+                                                    />
+                                                </div>
+
+                                                {/* Quick Selection Buttons */}
+                                                <div className="flex items-center justify-between text-xs shrink-0 py-0.5">
+                                                    <div className="flex items-center gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => updateScheduleConfig({ filterDepartments: [...availableDepartments] })}
+                                                            className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 hover:underline cursor-pointer"
+                                                        >
+                                                            Select All
+                                                        </button>
+                                                        <span className="text-slate-300">|</span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => updateScheduleConfig({ filterDepartments: [] })}
+                                                            className="text-[11px] font-semibold text-slate-500 hover:text-slate-700 hover:underline cursor-pointer"
+                                                        >
+                                                            Deselect All
+                                                        </button>
+                                                    </div>
+                                                    <span className="text-[11px] text-slate-400">
+                                                        {filteredDepartments.length} shown
+                                                    </span>
+                                                </div>
+
+                                                {/* Scrollable Department / Site Listbox - fills 100% of remaining vertical height */}
+                                                <div className="flex-1 min-h-[220px] overflow-y-auto border border-slate-200/90 rounded-xl bg-slate-50/60 p-2 space-y-0.5 divide-y divide-slate-100/80 shadow-2xs">
+                                                    {filteredDepartments.length === 0 ? (
+                                                        <div className="p-4 text-center text-xs text-slate-400">No matching departments or sites found</div>
+                                                    ) : (
+                                                        filteredDepartments.map(dept => {
+                                                            const selectedDepts = editingSchedule.scheduleConfig?.filterDepartments || [];
+                                                            const isChecked = selectedDepts.includes(dept);
+                                                            return (
+                                                                <label key={dept} className="flex items-center gap-2 p-1.5 hover:bg-white rounded-lg cursor-pointer text-xs transition-colors">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={isChecked}
+                                                                        onChange={e => {
+                                                                            const next = e.target.checked ? [...selectedDepts, dept] : selectedDepts.filter(d => d !== dept);
+                                                                            updateScheduleConfig({ filterDepartments: next });
+                                                                        }}
+                                                                        className="rounded text-emerald-600 focus:ring-emerald-500 h-3.5 w-3.5"
+                                                                    />
+                                                                    <span className={`truncate text-xs ${isChecked ? 'font-semibold text-emerald-950' : 'text-slate-700'}`} title={dept}>
+                                                                        {dept}
+                                                                    </span>
+                                                                </label>
+                                                            );
+                                                        })
+                                                    )}
+                                                </div>
+
+                                                {/* Bottom Status Bar for Column 3 */}
+                                                <div className="shrink-0 pt-2 flex items-center justify-between text-[11px] text-slate-500 border-t border-slate-100">
+                                                    <span>Total Sites: {availableDepartments.length}</span>
+                                                    <span className="font-semibold text-emerald-700">
+                                                        {(editingSchedule.scheduleConfig?.filterDepartments || []).length} Selected
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Bottom Strip: Export File Format, Recalculate Attendance & Show Company Logo */}
+                                    <div className="pt-3 border-t border-slate-200 flex flex-wrap items-center justify-between gap-4">
+                                        <div className="flex items-center gap-3">
+                                            <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">Export File Format:</span>
+                                            <div className="flex items-center gap-2">
+                                                {[
+                                                    { id: 'excel', label: 'Excel (.xlsx)', icon: '📗' },
+                                                    { id: 'pdf', label: 'PDF Document', icon: '📕' },
+                                                    { id: 'html', label: 'HTML Email', icon: '🌐' },
+                                                    { id: 'csv', label: 'CSV Export', icon: '📄' },
+                                                ].map(fmt => {
+                                                    const activeFormat = editingSchedule.scheduleConfig?.exportFileFormat || (editingSchedule.reportFormat === 'csv' ? 'excel' : editingSchedule.reportFormat || 'pdf');
+                                                    return (
+                                                        <label
+                                                            key={fmt.id}
+                                                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold cursor-pointer transition-all ${activeFormat === fmt.id ? 'bg-emerald-50 border-emerald-500 text-emerald-800 shadow-2xs' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}
+                                                        >
+                                                            <input
+                                                                type="radio"
+                                                                name="sch-export-fmt"
+                                                                value={fmt.id}
+                                                                checked={activeFormat === fmt.id}
+                                                                onChange={() => {
+                                                                    updateScheduleConfig({ exportFileFormat: fmt.id as any });
+                                                                    setEditingSchedule(prev => prev ? { ...prev, reportFormat: (fmt.id === 'excel' ? 'csv' : fmt.id) as any } : prev);
+                                                                }}
+                                                                className="sr-only"
+                                                            />
+                                                            <span>{fmt.icon}</span>
+                                                            <span>{fmt.label}</span>
+                                                        </label>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-4">
+                                            <Checkbox
+                                                id="sch-recalc-att"
+                                                label="Recalculate Attendance"
+                                                checked={editingSchedule.scheduleConfig?.recalculateAttendance ?? false}
+                                                onChange={e => updateScheduleConfig({ recalculateAttendance: e.target.checked })}
+                                                labelClassName="text-xs font-medium text-slate-700"
+                                            />
+                                            <Checkbox
+                                                id="sch-show-logo"
+                                                label="Show Company Logo"
+                                                checked={editingSchedule.scheduleConfig?.showCompanyLogo ?? true}
+                                                onChange={e => updateScheduleConfig({ showCompanyLogo: e.target.checked })}
+                                                labelClassName="text-xs font-medium text-slate-700"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Recipients */}
                             <div className="space-y-4">
                                 <p className="text-sm font-bold text-primary-text">Recipients</p>
@@ -1361,45 +1947,84 @@ const EmailConfigPanel: React.FC = () => {
                                 </Select>
 
                                 {editingSchedule.recipientType === 'role' && (
-                                    <div className="flex flex-wrap gap-2 p-3 border border-border rounded-xl bg-page/50">
-                                        {roles.map(role => (
-                                            <label key={role.id} className="flex items-center gap-2 px-3 py-1.5 bg-white rounded-lg border border-border hover:border-accent/30 cursor-pointer text-xs font-medium">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={(editingSchedule.recipientRoles || []).includes(role.id)}
-                                                    onChange={e => {
-                                                        const current = editingSchedule.recipientRoles || [];
-                                                        setEditingSchedule({
-                                                            ...editingSchedule,
-                                                            recipientRoles: e.target.checked ? [...current, role.id] : current.filter(r => r !== role.id)
-                                                        });
-                                                    }}
-                                                    className="rounded"
-                                                />
-                                                {role.displayName}
-                                            </label>
-                                        ))}
+                                    <div className="space-y-2">
+                                        <div className="flex flex-wrap gap-2 p-3 border border-border rounded-xl bg-page/50">
+                                            {roles.map(role => (
+                                                <label key={role.id} className="flex items-center gap-2 px-3 py-1.5 bg-white rounded-lg border border-border hover:border-accent/30 cursor-pointer text-xs font-medium">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={(editingSchedule.recipientRoles || []).includes(role.id)}
+                                                        onChange={e => {
+                                                            const current = editingSchedule.recipientRoles || [];
+                                                            const nextRoles = e.target.checked ? [...current, role.id] : current.filter(r => r !== role.id);
+                                                            const autoEmails = users.filter(usr => nextRoles.includes(usr.roleId || (usr as any).role?.id)).map(usr => usr.email).filter(Boolean);
+                                                            setEditingSchedule({
+                                                                ...editingSchedule,
+                                                                recipientRoles: nextRoles,
+                                                                recipientEmails: autoEmails
+                                                            });
+                                                        }}
+                                                        className="rounded"
+                                                    />
+                                                    {role.displayName}
+                                                </label>
+                                            ))}
+                                        </div>
+                                        {(editingSchedule.recipientEmails || []).length > 0 && (
+                                            <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl">
+                                                <span className="text-[11px] font-bold text-emerald-800 block mb-1">
+                                                    Auto-resolved Email Addresses ({(editingSchedule.recipientEmails || []).length}):
+                                                </span>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {(editingSchedule.recipientEmails || []).map((email, idx) => (
+                                                        <span key={idx} className="inline-flex items-center px-2 py-0.5 bg-white text-emerald-700 text-[11px] font-medium rounded-md border border-emerald-200 shadow-2xs">
+                                                            ✉️ {email}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 
                                 {editingSchedule.recipientType === 'users' && (
-                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-40 overflow-y-auto p-3 border border-border rounded-xl bg-page/50">
-                                        {users.map(u => (
-                                            <Checkbox
-                                                key={u.id}
-                                                label={u.name}
-                                                labelClassName="text-xs truncate"
-                                                className="hover:bg-white rounded-lg transition-colors p-1"
-                                                checked={(editingSchedule.recipientUserIds || []).includes(u.id)}
-                                                onChange={e => {
-                                                    const current = editingSchedule.recipientUserIds || [];
-                                                    setEditingSchedule({
-                                                        ...editingSchedule,
-                                                        recipientUserIds: e.target.checked ? [...current, u.id] : current.filter(id => id !== u.id)
-                                                    });
-                                                }}
-                                            />
-                                        ))}
+                                    <div className="space-y-2">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-3 border border-border rounded-xl bg-page/50">
+                                            {users.map(u => (
+                                                <Checkbox
+                                                    key={u.id}
+                                                    label={u.email ? `${u.name} (${u.email})` : u.name}
+                                                    labelClassName="text-xs truncate"
+                                                    className="hover:bg-white rounded-lg transition-colors p-1.5"
+                                                    title={u.email ? `${u.name} — ${u.email}` : u.name}
+                                                    checked={(editingSchedule.recipientUserIds || []).includes(u.id)}
+                                                    onChange={e => {
+                                                        const current = editingSchedule.recipientUserIds || [];
+                                                        const nextIds = e.target.checked ? [...current, u.id] : current.filter(id => id !== u.id);
+                                                        const autoEmails = users.filter(usr => nextIds.includes(usr.id)).map(usr => usr.email).filter(Boolean);
+                                                        setEditingSchedule({
+                                                            ...editingSchedule,
+                                                            recipientUserIds: nextIds,
+                                                            recipientEmails: autoEmails
+                                                        });
+                                                    }}
+                                                />
+                                            ))}
+                                        </div>
+                                        {(editingSchedule.recipientEmails || []).length > 0 && (
+                                            <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl">
+                                                <span className="text-[11px] font-bold text-emerald-800 block mb-1">
+                                                    Auto-selected Email Recipients ({(editingSchedule.recipientEmails || []).length}):
+                                                </span>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {(editingSchedule.recipientEmails || []).map((email, idx) => (
+                                                        <span key={idx} className="inline-flex items-center px-2 py-0.5 bg-white text-emerald-700 text-[11px] font-medium rounded-md border border-emerald-200 shadow-2xs">
+                                                            ✉️ {email}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 
@@ -1445,12 +2070,56 @@ const EmailConfigPanel: React.FC = () => {
                                                         {rule.triggerType === 'scheduled' ? `${rule.scheduleConfig?.frequency || 'daily'} @ ${rule.scheduleConfig?.time}` :
                                                             rule.triggerType === 'event' ? `On: ${rule.eventType}` : 'Expiry Check'}
                                                     </span>
+                                                    {rule.triggerType === 'scheduled' && (
+                                                        rule.scheduleConfig?.dateRangeMode === 'yesterday' ? (
+                                                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-bold border border-amber-200">
+                                                                📅 Yesterday's Data
+                                                            </span>
+                                                        ) : rule.scheduleConfig?.dateRangeMode === 'previous_month' ? (
+                                                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-bold border border-indigo-200">
+                                                                📅 Previous Month
+                                                            </span>
+                                                        ) : rule.scheduleConfig?.dateRangeMode === 'current_month' ? (
+                                                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 font-bold border border-teal-200">
+                                                                📅 Current Month
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-bold">
+                                                                📅 Today's Data
+                                                            </span>
+                                                        )
+                                                    )}
                                                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-page text-muted font-bold">
                                                         📧 {templateName}
                                                     </span>
                                                     {rule.reportType && (
-                                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-50 text-violet-600 font-bold uppercase">
+                                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold uppercase border border-emerald-200">
                                                             📊 {rule.reportType?.replace('_', ' ')}
+                                                        </span>
+                                                    )}
+                                                    {rule.scheduleConfig?.filterCompanyEnabled && (rule.scheduleConfig?.filterCompanies?.length || 0) > 0 && (
+                                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold border border-emerald-200">
+                                                            🏢 {rule.scheduleConfig.filterCompanies!.length} Companies
+                                                        </span>
+                                                    )}
+                                                    {rule.scheduleConfig?.filterDepartmentEnabled && (rule.scheduleConfig?.filterDepartments?.length || 0) > 0 && (
+                                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold border border-blue-200">
+                                                            📍 {rule.scheduleConfig.filterDepartments!.length} Depts / Sites
+                                                        </span>
+                                                    )}
+                                                    {rule.scheduleConfig?.filterEmployeeStatus && rule.scheduleConfig.filterEmployeeStatus !== 'all' && (
+                                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold border border-slate-200">
+                                                            👤 {rule.scheduleConfig.filterEmployeeStatus === 'active' ? 'Active Staff' : 'Inactive Staff'}
+                                                        </span>
+                                                    )}
+                                                    {rule.scheduleConfig?.groupBy && (
+                                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-bold border border-amber-200">
+                                                            🗂️ {rule.scheduleConfig.groupBy}
+                                                        </span>
+                                                    )}
+                                                    {rule.scheduleConfig?.exportFileFormat && (
+                                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 font-bold border border-rose-200 uppercase">
+                                                            📁 {rule.scheduleConfig.exportFileFormat}
                                                         </span>
                                                     )}
                                                     {rule.lastSentAt && (
@@ -1604,6 +2273,241 @@ const EmailConfigPanel: React.FC = () => {
                     </div>
                 </div>
             )}
+
+            {/* ═══════════════ SMTP POOL TAB ═══════════════ */}
+            {activeSubTab === 'smtp_pool' && (() => {
+                const REPORT_TYPE_OPTIONS = [
+                    { value: 'attendance_daily', label: 'Daily Attendance' },
+                    { value: 'attendance_monthly', label: 'Monthly Attendance' },
+                    { value: 'crm_bd_daily', label: 'BD Daily CRM' },
+                    { value: 'document_expiry', label: 'Document Expiry' },
+                    { value: 'mmr_report', label: 'MMR Report' },
+                    { value: 'payroll_report', label: 'Payroll Report' },
+                    { value: 'leave_report', label: 'Leave Report' },
+                    { value: 'overtime_report', label: 'Overtime Report' },
+                    { value: 'compliance_report', label: 'Compliance Report' },
+                    { value: 'custom_report', label: 'Custom Report' },
+                ];
+
+                const openAddForm = () => {
+                    setSmtpForm({ name: '', email: '', appPassword: '', host: 'smtp.gmail.com', port: 465, secure: true, fromName: 'Paradigm FMS', reportTypes: [], dailyLimit: 2000, isActive: true });
+                    setEditingSmtp(null);
+                    setShowSmtpForm(true);
+                };
+
+                const openEditForm = (acct: any) => {
+                    setSmtpForm({ name: acct.name, email: acct.email, appPassword: '', host: acct.host || 'smtp.gmail.com', port: acct.port || 465, secure: acct.secure !== false, fromName: acct.fromName || 'Paradigm FMS', reportTypes: acct.reportTypes || [], dailyLimit: acct.dailyLimit || 2000, isActive: acct.isActive !== false });
+                    setEditingSmtp(acct);
+                    setShowSmtpForm(true);
+                };
+
+                const handleSaveSmtp = async () => {
+                    if (!smtpForm.name || !smtpForm.email || (!editingSmtp && !smtpForm.appPassword)) {
+                        setToast({ message: 'Name, email and app password are required.', type: 'error' }); return;
+                    }
+                    setSavingSmtp(true);
+                    try {
+                        const payload: any = { ...smtpForm };
+                        if (editingSmtp) { payload.id = editingSmtp.id; if (!smtpForm.appPassword) delete payload.appPassword; }
+                        await api.saveSmtpAccount(payload);
+                        const updated = await api.getSmtpAccounts().catch(() => []);
+                        setSmtpAccounts(updated);
+                        setShowSmtpForm(false);
+                        setToast({ message: editingSmtp ? 'Account updated!' : 'Account added!', type: 'success' });
+                    } catch (err: any) { setToast({ message: err.message, type: 'error' }); }
+                    finally { setSavingSmtp(false); }
+                };
+
+                const handleDeleteSmtp = async (id: string) => {
+                    if (!confirm('Delete this SMTP account?')) return;
+                    try {
+                        await api.deleteSmtpAccount(id);
+                        setSmtpAccounts(prev => prev.filter(a => a.id !== id));
+                        setToast({ message: 'Account deleted.', type: 'success' });
+                    } catch (err: any) { setToast({ message: err.message, type: 'error' }); }
+                };
+
+                const handleTestSmtp = async (acct: any) => {
+                    if (!smtpTestEmail) { setToast({ message: 'Enter a test email address first.', type: 'error' }); return; }
+                    setTestingSmtpId(acct.id);
+                    try {
+                        await api.testSmtpAccount(acct.id, smtpTestEmail);
+                        setToast({ message: `✅ Test email sent via ${acct.name}!`, type: 'success' });
+                    } catch (err: any) { setToast({ message: `❌ ${err.message}`, type: 'error' }); }
+                    finally { setTestingSmtpId(null); }
+                };
+
+                const totalCapacity = smtpAccounts.reduce((s, a) => s + (a.dailyLimit || 2000), 0);
+                const totalUsed = smtpAccounts.reduce((s, a) => s + (a.sentToday || 0), 0);
+
+                return (
+                    <div className="space-y-6">
+                        {/* Header */}
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2.5 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl text-white shadow">
+                                    <Server className="h-5 w-5" />
+                                </div>
+                                <div>
+                                    <h3 className="text-base font-bold">SMTP Account Pool</h3>
+                                    <p className="text-xs text-muted">Assign a dedicated Gmail account per report type. Each account sends up to 2,000 emails/day free.</p>
+                                </div>
+                            </div>
+                            <button onClick={openAddForm} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-colors">
+                                <Plus className="h-3.5 w-3.5" /> Add Account
+                            </button>
+                        </div>
+
+                        {/* Capacity Overview */}
+                        {smtpAccounts.length > 0 && (
+                            <div className="grid grid-cols-3 gap-4">
+                                {[
+                                    { label: 'Total Accounts', value: smtpAccounts.length, color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-100' },
+                                    { label: 'Daily Capacity', value: totalCapacity.toLocaleString(), color: 'text-blue-600', bg: 'bg-blue-50 border-blue-100' },
+                                    { label: 'Sent Today', value: totalUsed.toLocaleString(), color: 'text-amber-600', bg: 'bg-amber-50 border-amber-100' },
+                                ].map(stat => (
+                                    <div key={stat.label} className={`${stat.bg} border rounded-xl p-4 text-center`}>
+                                        <div className={`text-2xl font-bold ${stat.color}`}>{stat.value}</div>
+                                        <div className="text-xs text-muted font-medium mt-0.5">{stat.label}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Test email input */}
+                        <div className="flex gap-2 items-end">
+                            <div className="flex-1">
+                                <Input label="Test Email Address" type="email" value={smtpTestEmail} onChange={e => setSmtpTestEmail(e.target.value)} placeholder="recipient@example.com" />
+                            </div>
+                            <p className="text-[10px] text-muted pb-2">Used by the Test button on each account</p>
+                        </div>
+
+                        {/* Account Table */}
+                        {smtpAccounts.length === 0 ? (
+                            <div className="text-center py-16 border-2 border-dashed border-border rounded-2xl">
+                                <Server className="h-10 w-10 text-muted mx-auto mb-3 opacity-40" />
+                                <p className="text-muted font-medium">No SMTP accounts configured yet.</p>
+                                <p className="text-xs text-muted mt-1">Add your 10 Google Workspace accounts to enable the multi-sender pool.</p>
+                                <button onClick={openAddForm} className="mt-4 px-4 py-2 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-700 transition-colors">
+                                    + Add First Account
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="border border-border rounded-2xl overflow-hidden">
+                                <table className="w-full text-xs">
+                                    <thead>
+                                        <tr className="bg-slate-50 border-b border-border">
+                                            {['Account Name', 'Gmail Address', 'Report Types', 'Usage Today', 'Status', 'Actions'].map(h => (
+                                                <th key={h} className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-muted">{h}</th>
+                                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-border">
+                                        {smtpAccounts.map((acct, idx) => {
+                                            const pct = Math.min(100, Math.round(((acct.sentToday || 0) / (acct.dailyLimit || 2000)) * 100));
+                                            const barColor = pct >= 90 ? 'bg-red-400' : pct >= 70 ? 'bg-amber-400' : 'bg-emerald-400';
+                                            return (
+                                                <tr key={acct.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
+                                                    <td className="px-4 py-3 font-semibold text-primary-text">{acct.name}</td>
+                                                    <td className="px-4 py-3 text-muted font-mono">{acct.email}</td>
+                                                    <td className="px-4 py-3">
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {(acct.reportTypes || []).length === 0 ? (
+                                                                <span className="text-muted italic">None</span>
+                                                            ) : (acct.reportTypes || []).map((rt: string) => (
+                                                                <span key={rt} className="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded text-[9px] font-bold uppercase">
+                                                                    {REPORT_TYPE_OPTIONS.find(o => o.value === rt)?.label || rt}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-3 min-w-[120px]">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="flex-1 bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                                                                <div className={`h-full rounded-full ${barColor} transition-all`} style={{ width: `${pct}%` }} />
+                                                            </div>
+                                                            <span className="text-[10px] font-bold text-muted whitespace-nowrap">{acct.sentToday || 0}/{acct.dailyLimit || 2000}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        {acct.isActive ? (
+                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full text-[9px] font-bold">● Active</span>
+                                                        ) : (
+                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-500 border border-slate-200 rounded-full text-[9px] font-bold">○ Inactive</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <button onClick={() => handleTestSmtp(acct)} disabled={testingSmtpId === acct.id} className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 transition-colors" title="Send test email">
+                                                                {testingSmtpId === acct.id ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                                                            </button>
+                                                            <button onClick={() => openEditForm(acct)} className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 transition-colors" title="Edit">
+                                                                <Pencil className="h-3 w-3" />
+                                                            </button>
+                                                            <button onClick={() => handleDeleteSmtp(acct.id)} className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 transition-colors" title="Delete">
+                                                                <Trash2 className="h-3 w-3" />
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+
+                        {/* Add/Edit Form */}
+                        {showSmtpForm && (
+                            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+                                <div className="bg-card rounded-2xl border border-border shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+                                    <div className="flex items-center justify-between p-6 border-b border-border">
+                                        <h3 className="font-bold text-base">{editingSmtp ? 'Edit SMTP Account' : 'Add SMTP Account'}</h3>
+                                        <button onClick={() => setShowSmtpForm(false)} className="p-1.5 rounded-lg hover:bg-accent/10 transition-colors"><CloseIcon className="h-4 w-4" /></button>
+                                    </div>
+                                    <div className="p-6 space-y-4">
+                                        <Input label="Account Name" value={smtpForm.name} onChange={e => setSmtpForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Daily Report Sender" />
+                                        <Input label="Gmail Address" type="email" value={smtpForm.email} onChange={e => setSmtpForm(f => ({ ...f, email: e.target.value }))} placeholder="daily@paradigmfms.com" />
+                                        <Input label={editingSmtp ? 'App Password (leave blank to keep existing)' : 'Gmail App Password'} type="password" value={smtpForm.appPassword} onChange={e => setSmtpForm(f => ({ ...f, appPassword: e.target.value }))} placeholder="16-char Google App Password" description="Generate at myaccount.google.com/apppasswords" />
+                                        <Input label="Display Name" value={smtpForm.fromName} onChange={e => setSmtpForm(f => ({ ...f, fromName: e.target.value }))} placeholder="Paradigm FMS" />
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <Input label="Daily Limit" type="number" value={smtpForm.dailyLimit} onChange={e => setSmtpForm(f => ({ ...f, dailyLimit: parseInt(e.target.value) || 2000 }))} />
+                                            <div className="pt-6"><Checkbox id="smtp-active" label="Active" checked={smtpForm.isActive} onChange={e => setSmtpForm(f => ({ ...f, isActive: e.target.checked }))} /></div>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-2">Assign Report Types</label>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                {REPORT_TYPE_OPTIONS.map(opt => (
+                                                    <label key={opt.value} className={`flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer text-xs transition-colors ${
+                                                        smtpForm.reportTypes.includes(opt.value)
+                                                            ? 'bg-emerald-50 border-emerald-300 text-emerald-800 font-semibold'
+                                                            : 'border-border hover:bg-slate-50'
+                                                    }`}>
+                                                        <input
+                                                            type="checkbox"
+                                                            className="accent-emerald-600"
+                                                            checked={smtpForm.reportTypes.includes(opt.value)}
+                                                            onChange={e => setSmtpForm(f => ({ ...f, reportTypes: e.target.checked ? [...f.reportTypes, opt.value] : f.reportTypes.filter(x => x !== opt.value) }))}
+                                                        />
+                                                        {opt.label}
+                                                    </label>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-3 pt-2">
+                                            <button onClick={() => setShowSmtpForm(false)} className="flex-1 px-4 py-2 border border-border rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">Cancel</button>
+                                            <button onClick={handleSaveSmtp} disabled={savingSmtp} className="flex-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-lg transition-colors flex items-center justify-center gap-2">
+                                                {savingSmtp ? <><RefreshCw className="h-4 w-4 animate-spin" /> Saving...</> : <><Save className="h-4 w-4" /> {editingSmtp ? 'Update Account' : 'Add Account'}</>}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            })()}
+
                 </>
             )}
         </div>

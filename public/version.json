@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 115,
-  "latestVersionName": "20.5.0",
+  "latestVersionCode": 116,
+  "latestVersionName": "20.6.0",
   "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
   "apkDownloadUrl": "https://play.google.com/store/apps/details?id=com.paradigm.ifs",
-  "releaseNotes": "feat: implement custom yard field specification management service and admin interface with migration support\nfeat: add master data management pages, field specification service, and dynamic audit form engine for HT yard equipment\nchore: bump application version to 20.2.0 (build 112) and configure Android build settings\nfix(leaves): scope leave requests table to viewing month with history toggle\nchore: bump version to 20.1.0 (code 111), export APP_BUILD_NUMBER, and scope mobile CI pipeline",
+  "releaseNotes": "feat: implement comprehensive monthly attendance reporting system with calculation utilities and administrative tools\nfeat: implement authStore with persistence, security monitoring, and attendance management logic\nfeat: implement AddUserPage with Yup validation and API service for user management\nfeat: implement automatic in-app update checks using Google Play API and add version management support\nfeat: implement custom yard field specification management service and admin interface with migration support",
   "isMandatory": false
 }

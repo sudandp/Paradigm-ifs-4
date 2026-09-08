@@ -285,14 +285,25 @@ serve(async (req: Request) => {
       }
 
       // ── Generate report data ──
-      let reportData: Record<string, string> = { date: format(nowIST, 'EEEE, MMMM do, yyyy') };
+      const config = rule.schedule_config || {};
+      const dateRangeMode = config.dateRangeMode || (rule.report_type === 'attendance_monthly' ? 'previous_month' : 'today');
+      let targetDateIST = new Date(nowIST.getTime());
+      if (dateRangeMode === 'yesterday') {
+        targetDateIST = new Date(targetDateIST.getTime() - 24 * 60 * 60 * 1000);
+      } else if (dateRangeMode === 'previous_month') {
+        targetDateIST = new Date(targetDateIST.getFullYear(), targetDateIST.getMonth() - 1, 1);
+      } else if (dateRangeMode === 'current_month') {
+        targetDateIST = new Date(targetDateIST.getFullYear(), targetDateIST.getMonth(), 1);
+      }
+
+      let reportData: Record<string, string> = { date: format(targetDateIST, 'EEEE, MMMM do, yyyy') };
       if (rule.report_type === 'attendance_daily') {
-        console.log(`  Generating daily attendance report...`);
-        reportData = await generateDailyAttendanceReport(supabase, nowIST);
+        console.log(`  Generating daily attendance report (mode: ${dateRangeMode}, target: ${format(targetDateIST, 'yyyy-MM-dd')})...`);
+        reportData = await generateDailyAttendanceReport(supabase, targetDateIST);
         console.log(`  Report generated: ${reportData.totalEmployees} employees, ${reportData.totalPresent} present`);
       } else if (rule.report_type === 'attendance_monthly') {
         console.log(`  Generating monthly attendance report (Grid)...`);
-        reportData = await generateMonthlyAttendanceReport(supabase, nowIST);
+        reportData = await generateMonthlyAttendanceReport(supabase, targetDateIST);
       } else if (rule.report_type === 'attendance_work_hours') {
         console.log(`  Generating work hours report (Grid)...`);
         reportData = await generateWorkHoursReport(supabase, nowIST);
@@ -413,7 +424,8 @@ serve(async (req: Request) => {
         if (rule.report_type === 'attendance_monthly') {
             greetingMessage = `Dear Management,<br/><br/>This is the consolidated attendance summary for the period of <strong>{date}</strong>. It covers overall employee presence across all <strong>{totalEmployees}</strong> active members of the staff.<br/><br/>Overall attendance stands at <strong>{attendancePercentage}%</strong>. Please review the detailed monthly attendance grid below for any discrepancies.`;
         } else if (rule.report_type === 'attendance_daily') {
-            greetingMessage = `Dear Team,<br/><br/>Today's attendance stands at <strong>{attendancePercentage}%</strong>. A total of <strong>{totalAbsent}</strong> employees were absent, and <strong>{lateCount}</strong> reported late.<br/><br/>Attendance requires attention.`;
+            const periodText = dateRangeMode === 'yesterday' ? "Yesterday's" : "Today's";
+            greetingMessage = `Dear Team,<br/><br/>${periodText} attendance for <strong>{date}</strong> stands at <strong>{attendancePercentage}%</strong>. A total of <strong>{totalAbsent}</strong> employees were absent, and <strong>{lateCount}</strong> reported late.<br/><br/>Attendance summary:`;
         } else if (rule.report_type === 'crm_bd_daily' || rule.report_type === 'bd_daily') {
             greetingMessage = `Dear Management,<br/><br/>Daily Activity Report for <strong>{bd_name}</strong> for <strong>{report_date}</strong>.`;
         }
@@ -561,14 +573,19 @@ async function resolveRecipients(supabase: ReturnType<typeof createClient>, rule
 }
 
 // ─── Generate Daily Attendance Report ───────────────────────────────────────
-async function generateDailyAttendanceReport(supabase: ReturnType<typeof createClient>, nowIST: Date): Promise<Record<string, string>> {
-  const startOfTodayUTC = startOfDay(new Date(nowIST.getTime() - IST_OFFSET));
-  const todayStr = format(nowIST, 'yyyy-MM-dd');
+async function generateDailyAttendanceReport(supabase: ReturnType<typeof createClient>, targetDateIST: Date): Promise<Record<string, string>> {
+  const todayStr = format(targetDateIST, 'yyyy-MM-dd');
+  const startOfTodayUTC = new Date(`${todayStr}T00:00:00+05:30`);
+  const endOfTodayUTC = new Date(`${todayStr}T23:59:59.999+05:30`);
 
   const [settingsRes, usersRes, eventsRes, leavesRes] = await Promise.all([
     supabase.from('settings').select('attendance_settings').eq('id', 'singleton').single(),
-    supabase.from('users').select('id, name, role:roles(display_name)').neq('role_id', 'unverified').order('name'),
-    supabase.from('attendance_events').select('user_id, type, timestamp').gte('timestamp', startOfTodayUTC.toISOString()).order('timestamp', { ascending: true }),
+    supabase.from('users').select('id, name, role:roles(display_name)').neq('role_id', 'unverified').eq('is_blocked', false).order('name'),
+    supabase.from('attendance_events')
+      .select('user_id, type, timestamp')
+      .gte('timestamp', startOfTodayUTC.toISOString())
+      .lte('timestamp', endOfTodayUTC.toISOString())
+      .order('timestamp', { ascending: true }),
     supabase.from('leave_requests').select('user_id').eq('status', 'approved').lte('start_date', todayStr).gte('end_date', todayStr)
   ]);
 
@@ -672,11 +689,12 @@ async function generateDailyAttendanceReport(supabase: ReturnType<typeof createC
     </tr>`;
   });
 
+  const parsedTargetDate = new Date(`${todayStr}T12:00:00+05:30`);
   return {
-    date: format(nowIST, 'EEEE, MMMM do, yyyy'),
-    reportDate: format(nowIST, 'dd MMM yyyy'),
-    generatedTime: format(nowIST, 'hh:mm a'),
-    year: format(nowIST, 'yyyy'),
+    date: format(parsedTargetDate, 'EEEE, MMMM do, yyyy'),
+    reportDate: format(parsedTargetDate, 'dd MMM yyyy'),
+    generatedTime: format(new Date(new Date().getTime() + IST_OFFSET), 'hh:mm a'),
+    year: format(parsedTargetDate, 'yyyy'),
     totalEmployees: String(filteredUsers.length),
     totalPresent: String(totalPresent),
     totalAbsent: String(totalAbsent),

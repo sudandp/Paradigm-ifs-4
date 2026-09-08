@@ -16,6 +16,10 @@ import ApprovalModal from '../../components/admin/ApprovalModal';
 import LocationAssignmentModal from '../../components/admin/LocationAssignmentModal';
 import BulkUserUpdateModal from '../../components/admin/BulkUserUpdateModal';
 import BulkRoleUpdateModal from '../../components/admin/BulkRoleUpdateModal';
+import BulkLocationAssignmentModal from '../../components/admin/BulkLocationAssignmentModal';
+import BulkPasscodeResetModal from '../../components/admin/BulkPasscodeResetModal';
+import BulkMarkAsLeftModal from '../../components/admin/BulkMarkAsLeftModal';
+import BulkApprovalModal from '../../components/admin/BulkApprovalModal';
 import MarkAsLeftModal from '../../components/admin/MarkAsLeftModal';
 import Pagination from '../../components/ui/Pagination';
 import LoadingScreen from '../../components/ui/LoadingScreen';
@@ -407,6 +411,10 @@ const UserManagement: React.FC = () => {
     }, [pendingFilters, activeFilters]);
 
     const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+    const selectedUsers = useMemo(() => {
+        return users.filter(u => selectedUserIds.includes(u.id));
+    }, [users, selectedUserIds]);
+
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [isBlockModalOpen, setIsBlockModalOpen] = useState(false);
     const [isMarkAsLeftModalOpen, setIsMarkAsLeftModalOpen] = useState(false);
@@ -423,8 +431,18 @@ const UserManagement: React.FC = () => {
     const [currentUserForLocation, setCurrentUserForLocation] = useState<User | null>(null);
     const [orgStructure, setOrgStructure] = useState<OrganizationGroup[]>([]);
     const [allRoles, setAllRoles] = useState<Role[]>([]);
+
+    // Bulk action modal states
     const [isBulkUpdateOpen, setIsBulkUpdateOpen] = useState(false);
     const [isBulkRoleUpdateOpen, setIsBulkRoleUpdateOpen] = useState(false);
+    const [isBulkLocationModalOpen, setIsBulkLocationModalOpen] = useState(false);
+    const [isBulkResetModalOpen, setIsBulkResetModalOpen] = useState(false);
+    const [isBulkMarkAsLeftModalOpen, setIsBulkMarkAsLeftModalOpen] = useState(false);
+    const [isBulkApprovalModalOpen, setIsBulkApprovalModalOpen] = useState(false);
+    const [isBulkBlockModalOpen, setIsBulkBlockModalOpen] = useState(false);
+    const [bulkBlockTargetState, setBulkBlockTargetState] = useState<boolean>(true);
+    const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
     // Global click listener to close context menu
@@ -438,9 +456,11 @@ const UserManagement: React.FC = () => {
         if (selectedUserIds.length > 0) {
             e.preventDefault();
             // Ensure menu stays within viewport
-            const x = Math.min(e.clientX, window.innerWidth - 220);
-            const y = Math.min(e.clientY, window.innerHeight - 150);
-            setContextMenu({ x, y });
+            const menuWidth = 270;
+            const menuHeight = 440;
+            const x = Math.min(e.clientX, window.innerWidth - menuWidth - 20);
+            const y = Math.min(e.clientY, window.innerHeight - menuHeight - 20);
+            setContextMenu({ x: Math.max(10, x), y: Math.max(10, y) });
         }
     };
 
@@ -817,6 +837,51 @@ const UserManagement: React.FC = () => {
         }
     };
 
+    const handleBulkBlockConfirm = async () => {
+        setIsSaving(true);
+        try {
+            const results = await Promise.allSettled(
+                selectedUserIds.map(id => api.blockUser(id, bulkBlockTargetState))
+            );
+            const successCount = results.filter(r => r.status === 'fulfilled').length;
+            setToast({
+                message: `Successfully ${bulkBlockTargetState ? 'blocked' : 'unblocked'} ${successCount} users.`,
+                type: 'success'
+            });
+            setIsBulkBlockModalOpen(false);
+            setUsers(prev => prev.map(u => selectedUserIds.includes(u.id) ? { ...u, isBlocked: bulkBlockTargetState } : u));
+            fetchUsers();
+        } catch (err: any) {
+            console.error('Bulk block error:', err);
+            setToast({ message: 'Failed to update block status.', type: 'error' });
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleBulkDeleteConfirm = async () => {
+        setIsSaving(true);
+        try {
+            const results = await Promise.allSettled(
+                selectedUserIds.map(id => api.deleteUser(id))
+            );
+            const successCount = results.filter(r => r.status === 'fulfilled').length;
+            setToast({
+                message: `Permanently deleted ${successCount} users.`,
+                type: 'success'
+            });
+            setIsBulkDeleteModalOpen(false);
+            setUsers(prev => prev.filter(u => !selectedUserIds.includes(u.id)));
+            setSelectedUserIds([]);
+            fetchUsers();
+        } catch (err: any) {
+            console.error('Bulk delete error:', err);
+            setToast({ message: 'Failed to delete users: ' + (err.message || 'Unknown error'), type: 'error' });
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
     const handleApplyFilters = () => {
         setActiveFilters(pendingFilters);
     };
@@ -1188,10 +1253,17 @@ const UserManagement: React.FC = () => {
                             <span className="text-xs font-bold text-emerald-600 uppercase tracking-wider">{selectedUserIds.length} Selected</span>
                             <Button 
                                 size="sm"
-                                className="!bg-emerald-500 !text-white !py-1 !px-3 !text-[10px] !rounded-md"
-                                onClick={() => setIsBulkUpdateOpen(true)}
+                                className="!bg-emerald-600 !text-white !py-1 !px-3 !text-[11px] !rounded-md flex items-center gap-1 shadow-xs"
+                                onClick={(e) => {
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    const menuWidth = 270;
+                                    const menuHeight = 440;
+                                    const x = Math.min(rect.left, window.innerWidth - menuWidth - 20);
+                                    const y = Math.min(rect.bottom + 8, window.innerHeight - menuHeight - 20);
+                                    setContextMenu({ x: Math.max(10, x), y: Math.max(10, y) });
+                                }}
                             >
-                                Bulk Update
+                                Selection Options ▾
                             </Button>
                         </div>
                     )}
@@ -1504,10 +1576,11 @@ const UserManagement: React.FC = () => {
                     Showing {filteredUsers.length} of {users.length} total users
                 </div>
             )}
+            {/* Bulk Modals */}
             <BulkUserUpdateModal
                 isOpen={isBulkUpdateOpen}
                 onClose={() => setIsBulkUpdateOpen(false)}
-                selectedUsers={users.filter(u => selectedUserIds.includes(u.id))}
+                selectedUsers={selectedUsers}
                 onSuccess={() => {
                     fetchUsers();
                     setSelectedUserIds([]);
@@ -1517,49 +1590,235 @@ const UserManagement: React.FC = () => {
             <BulkRoleUpdateModal 
                 isOpen={isBulkRoleUpdateOpen}
                 onClose={() => setIsBulkRoleUpdateOpen(false)}
-                selectedUsers={users.filter(u => selectedUserIds.includes(u.id))}
+                selectedUsers={selectedUsers}
                 onSuccess={() => {
                     fetchUsers();
                     setSelectedUserIds([]);
                 }}
             />
 
+            <BulkLocationAssignmentModal
+                isOpen={isBulkLocationModalOpen}
+                onClose={() => setIsBulkLocationModalOpen(false)}
+                selectedUsers={selectedUsers}
+                onSuccess={() => {
+                    fetchUsers();
+                    setSelectedUserIds([]);
+                }}
+            />
+
+            <BulkPasscodeResetModal
+                isOpen={isBulkResetModalOpen}
+                onClose={() => setIsBulkResetModalOpen(false)}
+                selectedUsers={selectedUsers}
+                onSuccess={() => {
+                    fetchUsers();
+                }}
+            />
+
+            <BulkApprovalModal
+                isOpen={isBulkApprovalModalOpen}
+                onClose={() => setIsBulkApprovalModalOpen(false)}
+                selectedUsers={selectedUsers}
+                onSuccess={() => {
+                    fetchUsers();
+                    setSelectedUserIds([]);
+                }}
+            />
+
+            <BulkMarkAsLeftModal
+                isOpen={isBulkMarkAsLeftModalOpen}
+                onClose={() => setIsBulkMarkAsLeftModalOpen(false)}
+                selectedUsers={selectedUsers}
+                onSuccess={() => {
+                    fetchUsers();
+                    setSelectedUserIds([]);
+                }}
+            />
+
+            <Modal
+                isOpen={isBulkBlockModalOpen}
+                onClose={() => setIsBulkBlockModalOpen(false)}
+                onConfirm={handleBulkBlockConfirm}
+                title={bulkBlockTargetState ? `Confirm Bulk Block (${selectedUserIds.length} Users)` : `Confirm Bulk Unblock (${selectedUserIds.length} Users)`}
+                isConfirming={isSaving}
+                confirmButtonVariant={bulkBlockTargetState ? "danger" : "primary"}
+                confirmButtonText={bulkBlockTargetState ? `Block ${selectedUserIds.length} Users` : `Unblock ${selectedUserIds.length} Users`}
+            >
+                {bulkBlockTargetState ? (
+                    <p className="text-xs text-slate-600">
+                        Are you sure you want to block all <strong>{selectedUserIds.length}</strong> selected users? This will immediately prevent them from logging in, but all historical attendance and company records will be preserved.
+                    </p>
+                ) : (
+                    <p className="text-xs text-slate-600">
+                        Are you sure you want to unblock all <strong>{selectedUserIds.length}</strong> selected users? This will restore their system login access.
+                    </p>
+                )}
+            </Modal>
+
+            <Modal
+                isOpen={isBulkDeleteModalOpen}
+                onClose={() => setIsBulkDeleteModalOpen(false)}
+                onConfirm={handleBulkDeleteConfirm}
+                title={`Confirm Permanent Deletion (${selectedUserIds.length} Users)`}
+                isConfirming={isSaving}
+                confirmButtonVariant="danger"
+                confirmButtonText={`Permanently Delete ${selectedUserIds.length} Users`}
+            >
+                <div className="space-y-3 py-1">
+                    <p className="text-xs text-slate-600">
+                        ⚠️ Are you sure you want to permanently delete all <strong>{selectedUserIds.length}</strong> selected employees? This will remove their accounts, login credentials, and personal data.
+                    </p>
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-800">
+                        <strong>Warning:</strong> This action cannot be undone. Please ensure you have backed up any necessary reports before proceeding.
+                    </div>
+                </div>
+            </Modal>
+
+            {/* Selection Options (Small Red Box) Context Menu */}
             {contextMenu && (
                 <div 
-                    className="fixed z-[9999] bg-white border border-slate-200 shadow-2xl rounded-xl py-2 min-w-[200px] animate-in zoom-in-95 duration-100 ring-1 ring-black/5"
+                    className="fixed z-[9999] bg-white border border-slate-200 shadow-2xl rounded-2xl py-2 min-w-[260px] animate-in zoom-in-95 duration-100 ring-1 ring-black/10 backdrop-blur-md"
                     style={{ top: contextMenu.y, left: contextMenu.x }}
+                    onClick={(e) => e.stopPropagation()}
                 >
-                    <div className="px-4 py-2 border-b border-slate-50 mb-1">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Selection Options</span>
+                    <div className="px-4 py-2 border-b border-slate-100 flex items-center justify-between">
+                        <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
+                            Selection Options ({selectedUserIds.length})
+                        </span>
+                        <button
+                            onClick={() => setContextMenu(null)}
+                            className="text-slate-400 hover:text-slate-600 p-0.5 rounded transition-colors"
+                        >
+                            <X className="h-3.5 w-3.5" />
+                        </button>
                     </div>
+
+                    <div className="py-1">
+                        {/* 1. Bulk Update Organization */}
+                        <button 
+                            onClick={() => {
+                                setIsBulkUpdateOpen(true);
+                                setContextMenu(null);
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition-colors text-left"
+                        >
+                            <CheckSquare className="h-4 w-4 text-emerald-600 flex-shrink-0" />
+                            <span>Bulk Update (Organization)</span>
+                        </button>
+
+                        {/* 2. Update Role */}
+                        <button 
+                            onClick={() => {
+                                setIsBulkRoleUpdateOpen(true);
+                                setContextMenu(null);
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors text-left"
+                        >
+                            <ShieldCheck className="h-4 w-4 text-indigo-500 flex-shrink-0" />
+                            <span>Update Role</span>
+                        </button>
+
+                        <div className="my-1 border-t border-slate-100" />
+
+                        {/* 3. Assign Location / Site (MapPin - big red box item) */}
+                        <button 
+                            onClick={() => {
+                                setIsBulkLocationModalOpen(true);
+                                setContextMenu(null);
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition-colors text-left"
+                        >
+                            <MapPin className="h-4 w-4 text-emerald-500 flex-shrink-0" />
+                            <span>Assign Location / Site</span>
+                        </button>
+
+                        {/* 4. Reset Passcodes (RotateCw - big red box item) */}
+                        <button 
+                            onClick={() => {
+                                setIsBulkResetModalOpen(true);
+                                setContextMenu(null);
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-amber-50 hover:text-amber-700 transition-colors text-left"
+                        >
+                            <RotateCw className="h-4 w-4 text-amber-500 flex-shrink-0" />
+                            <span>Reset Passcodes</span>
+                        </button>
+
+                        {/* 5. Approve Selected (UserCheck - big red box item) */}
+                        <button 
+                            onClick={() => {
+                                setIsBulkApprovalModalOpen(true);
+                                setContextMenu(null);
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition-colors text-left"
+                        >
+                            <UserCheck className="h-4 w-4 text-emerald-600 flex-shrink-0" />
+                            <span>Approve Selected Users</span>
+                        </button>
+
+                        {/* 6. Mark as Left / Relieved (UserMinus - big red box item) */}
+                        <button 
+                            onClick={() => {
+                                setIsBulkMarkAsLeftModalOpen(true);
+                                setContextMenu(null);
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-amber-50 hover:text-amber-700 transition-colors text-left"
+                        >
+                            <UserMinus className="h-4 w-4 text-amber-600 flex-shrink-0" />
+                            <span>Mark as Left / Relieved</span>
+                        </button>
+
+                        <div className="my-1 border-t border-slate-100" />
+
+                        {/* 7. Block Selected (Ban - big red box item) */}
+                        <button 
+                            onClick={() => {
+                                setBulkBlockTargetState(true);
+                                setIsBulkBlockModalOpen(true);
+                                setContextMenu(null);
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-red-50 hover:text-red-700 transition-colors text-left"
+                        >
+                            <Ban className="h-4 w-4 text-red-500 flex-shrink-0" />
+                            <span>Block Selected</span>
+                        </button>
+
+                        {/* 8. Unblock Selected */}
+                        <button 
+                            onClick={() => {
+                                setBulkBlockTargetState(false);
+                                setIsBulkBlockModalOpen(true);
+                                setContextMenu(null);
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-colors text-left"
+                        >
+                            <Ban className="h-4 w-4 text-slate-400 flex-shrink-0" />
+                            <span>Unblock Selected</span>
+                        </button>
+
+                        {/* 9. Delete Selected (Trash2 - big red box item) */}
+                        <button 
+                            onClick={() => {
+                                setIsBulkDeleteModalOpen(true);
+                                setContextMenu(null);
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors text-left"
+                        >
+                            <Trash2 className="h-4 w-4 text-red-600 flex-shrink-0" />
+                            <span>Delete Selected</span>
+                        </button>
+                    </div>
+
+                    <div className="my-1 border-t border-slate-100" />
                     <button 
                         onClick={() => {
-                            setIsBulkUpdateOpen(true);
+                            setSelectedUserIds([]);
                             setContextMenu(null);
                         }}
-                        className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition-colors"
+                        className="w-full flex items-center gap-3 px-4 py-2 text-xs font-medium text-slate-500 hover:bg-slate-50 transition-colors text-left"
                     >
-                        <CheckSquare className="h-4 w-4" />
-                        Bulk Update (Organization)
-                    </button>
-                    <button 
-                        onClick={() => {
-                            setIsBulkRoleUpdateOpen(true);
-                            setContextMenu(null);
-                        }}
-                        className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
-                    >
-                        <ShieldCheck className="h-4 w-4 text-indigo-500" />
-                        Update Role
-                    </button>
-                    <hr className="my-1 border-slate-100" />
-                    <button 
-                        onClick={() => setSelectedUserIds([])}
-                        className="w-full text-left px-4 py-2 text-sm hover:bg-slate-50 text-slate-500 flex items-center gap-3 transition-colors border-t border-slate-50 mt-1"
-                    >
-                        <div className="p-1.5 ml-0.5">
-                            <X className="h-4 w-4" />
-                        </div>
+                        <X className="h-4 w-4 text-slate-400 flex-shrink-0" />
                         <span>Clear Selection</span>
                     </button>
                 </div>

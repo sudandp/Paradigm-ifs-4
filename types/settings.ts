@@ -74,6 +74,27 @@ export interface EmailConfig {
   enabled: boolean;
 }
 
+export interface SmtpAccount {
+  id: string;
+  name: string;
+  email: string;
+  appPassword: string;
+  host: string;
+  port: number;
+  secure: boolean;
+  fromName: string;
+  reportTypes: string[];   // e.g. ['attendance_daily', 'mmr_report']
+  dailyLimit: number;
+  sentToday: number;
+  lastResetAt: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  // From smtp_accounts_usage view
+  usagePercent?: number;
+  remainingToday?: number;
+}
+
 export interface EmailTemplate {
   id: string;
   name: string;
@@ -96,6 +117,32 @@ export interface EmailScheduleRule {
     frequency: 'daily' | 'weekly' | 'monthly';
     dayOfWeek?: number;
     dayOfMonth?: number;
+    dateRangeMode?: 'today' | 'yesterday' | 'previous_month' | 'current_month' | string;
+    groupBy?: string;
+    reportSubType?: string;
+    employeeCodeDigits?: number;
+    prefixZero?: boolean;
+    filterEmployeeEnabled?: boolean;
+    filterEmployeeCode?: string;
+    filterEmployeeExact?: boolean;
+    filterEmployeeName?: string;
+    filterEmployeeCategory?: string;
+    filterEmployeeDesignation?: string;
+    filterEmployeeLocation?: string;
+    filterEmployeeType?: string;
+    filterEmployeeSubDept?: string;
+    filterEmployeeDivision?: string;
+    filterCompanyEnabled?: boolean;
+    filterCompanies?: string[];
+    filterDepartmentEnabled?: boolean;
+    filterDepartments?: string[];
+    exportFileFormat?: 'html' | 'excel' | 'pdf' | 'csv';
+    recalculateAttendance?: boolean;
+    showCompanyLogo?: boolean;
+    filterEmployeeStatus?: 'all' | 'active' | 'inactive';
+    filterSiteEnabled?: boolean;
+    filterSites?: string[];
+    filterSite?: string;
   };
   eventType?: string;
   expiryConfig?: {

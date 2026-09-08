@@ -1199,7 +1199,10 @@ const AttendanceDashboard: React.FC = () => {
     const [reportType, setReportType] = useState<AttendanceReportType>('basic');
     const [logoForPdf, setLogoForPdf] = useState<string>('');
     const [accessRequests, setAccessRequests] = useState<any[]>([]);
-    const [isFetchingRequests, setIsFetchingRequests] = useState(false);
+    const [hasLoadedRequests, setHasLoadedRequests] = useState(false);
+    const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
+    const [isRefreshingStatus, setIsRefreshingStatus] = useState(false);
+    const hasLoadedRequestsRef = useRef(false);
     const [unlockedReports, setUnlockedReports] = useState<Record<string, number>>({});
     const [passcodeInput, setPasscodeInput] = useState('');
     const [requestReasonInput, setRequestReasonInput] = useState('');
@@ -1274,9 +1277,11 @@ const AttendanceDashboard: React.FC = () => {
         return match ? match[1] : '';
     };
 
-    const fetchAccessRequests = useCallback(async () => {
+    const fetchAccessRequests = useCallback(async (isSilent = false) => {
         if (!user || user.role !== 'hr_ops') return;
-        setIsFetchingRequests(true);
+        if (!isSilent && hasLoadedRequestsRef.current) {
+            setIsRefreshingStatus(true);
+        }
         try {
             const { data, error } = await supabase
                 .from('ops_approval_requests')
@@ -1340,7 +1345,9 @@ const AttendanceDashboard: React.FC = () => {
         } catch (err) {
             console.error('Failed to fetch access requests:', err);
         } finally {
-            setIsFetchingRequests(false);
+            hasLoadedRequestsRef.current = true;
+            setHasLoadedRequests(true);
+            setIsRefreshingStatus(false);
         }
     }, [user]);
 
@@ -1371,19 +1378,19 @@ const AttendanceDashboard: React.FC = () => {
 
     useEffect(() => {
         if (user && user.role === 'hr_ops') {
-            fetchAccessRequests();
+            fetchAccessRequests(false);
 
-            // Periodic auto-refresh poll every 3 seconds to immediately catch approvals
+            // Periodic auto-refresh poll (silent background sync every 10s to prevent interrupting user typing)
             const pollInterval = setInterval(() => {
-                fetchAccessRequests();
-            }, 3000);
+                fetchAccessRequests(true);
+            }, 10000);
 
             const channel = supabase.channel(`access-requests-dashboard-${user.id}`)
                 .on(
                     'postgres_changes',
                     { event: '*', schema: 'public', table: 'ops_approval_requests', filter: `requested_by=eq.${user.id}` },
                     () => {
-                        fetchAccessRequests();
+                        fetchAccessRequests(true);
                     }
                 )
                 .subscribe();
@@ -1472,8 +1479,10 @@ const AttendanceDashboard: React.FC = () => {
     };
 
     const handleRequestAccess = async (type: string) => {
-        if (!user?.id) return;
-        setIsFetchingRequests(true);
+        if (!user?.id || isSubmittingRequest) return;
+        const textToSubmit = requestReasonInput.trim();
+        if (!textToSubmit) return;
+        setIsSubmittingRequest(true);
         try {
             const reportUuids: Record<string, string> = {
                 basic: '00000000-0000-0000-0000-000000000000',
@@ -1504,7 +1513,7 @@ const AttendanceDashboard: React.FC = () => {
                     requested_by: user.id,
                     approval_stage: 1,
                     status: 'Pending',
-                    comments: requestReasonInput.trim() || 'Request passcode for report access'
+                    comments: textToSubmit || 'Request passcode for report access'
                 });
             if (error) throw error;
             
@@ -1514,12 +1523,12 @@ const AttendanceDashboard: React.FC = () => {
             await notifyAdminsOfRequest(reportNames[type]);
             
             setToast({ message: 'Passcode request submitted successfully to admin.', type: 'success' });
-            await fetchAccessRequests();
+            await fetchAccessRequests(true);
         } catch (err: any) {
             console.error('Request access failed:', err);
             setToast({ message: err.message || 'Failed to submit request.', type: 'error' });
         } finally {
-            setIsFetchingRequests(false);
+            setIsSubmittingRequest(false);
         }
     };
 
@@ -1648,7 +1657,7 @@ const AttendanceDashboard: React.FC = () => {
                     This report contains sensitive operational metrics. You must request a temporary passcode from the administrator to view this data.
                 </p>
 
-                {isFetchingRequests ? (
+                {!hasLoadedRequests ? (
                     <div className="flex items-center gap-2 text-emerald-600 font-semibold text-sm">
                         <Loader2 className="h-4 w-4 animate-spin" /> Checking request status...
                     </div>
@@ -1658,15 +1667,22 @@ const AttendanceDashboard: React.FC = () => {
                             placeholder="Reason for requesting access (e.g. client meeting, audit review)..."
                             value={requestReasonInput}
                             onChange={e => setRequestReasonInput(e.target.value)}
-                            className="w-full p-3 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:ring-2 focus:ring-[#22c55e] focus:border-[#22c55e] outline-none h-20 resize-none font-medium text-gray-700"
+                            disabled={isSubmittingRequest}
+                            className="w-full p-3 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:ring-2 focus:ring-[#22c55e] focus:border-[#22c55e] outline-none h-20 resize-none font-medium text-gray-700 disabled:opacity-60"
                         />
                         <button
                             type="button"
                             onClick={() => handleRequestAccess(reportType)}
-                            disabled={!requestReasonInput.trim()}
+                            disabled={!requestReasonInput.trim() || isSubmittingRequest}
                             className="w-full py-3 rounded-xl bg-[#22c55e] hover:bg-[#16a34a] text-white font-semibold flex items-center justify-center gap-2 shadow-sm hover:shadow-emerald-500/10 transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            Request Passcode
+                            {isSubmittingRequest ? (
+                                <>
+                                    <Loader2 className="h-4 w-4 animate-spin" /> Submitting Request...
+                                </>
+                            ) : (
+                                'Request Passcode'
+                            )}
                         </button>
                     </div>
                 ) : latestRequest.status === 'Pending' ? (
@@ -1679,10 +1695,11 @@ const AttendanceDashboard: React.FC = () => {
                         </p>
                         <button
                             type="button"
-                            onClick={fetchAccessRequests}
-                            className="text-xs text-emerald-600 font-semibold flex items-center gap-1 mx-auto hover:underline hover:text-[#16a34a]"
+                            onClick={() => fetchAccessRequests(false)}
+                            disabled={isRefreshingStatus}
+                            className="text-xs text-emerald-600 font-semibold flex items-center gap-1 mx-auto hover:underline hover:text-[#16a34a] disabled:opacity-60"
                         >
-                            <RefreshCw className="h-3 w-3" /> Refresh Status
+                            <RefreshCw className={`h-3 w-3 ${isRefreshingStatus ? 'animate-spin' : ''}`} /> {isRefreshingStatus ? 'Checking...' : 'Refresh Status'}
                         </button>
                     </div>
                 ) : latestRequest.status === 'Approved' ? (
@@ -1747,16 +1764,23 @@ const AttendanceDashboard: React.FC = () => {
                             placeholder="Reason for requesting access again..."
                             value={requestReasonInput}
                             onChange={e => setRequestReasonInput(e.target.value)}
-                            className="w-full p-3 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:ring-2 focus:ring-[#22c55e] focus:border-[#22c55e] outline-none h-20 resize-none font-medium text-gray-700"
+                            disabled={isSubmittingRequest}
+                            className="w-full p-3 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:ring-2 focus:ring-[#22c55e] focus:border-[#22c55e] outline-none h-20 resize-none font-medium text-gray-700 disabled:opacity-60"
                         />
                         <div className="pt-2">
                             <button
                                 type="button"
                                 onClick={() => handleRequestAccess(reportType)}
-                                disabled={!requestReasonInput.trim()}
+                                disabled={!requestReasonInput.trim() || isSubmittingRequest}
                                 className="w-full py-3 rounded-xl bg-[#22c55e] hover:bg-[#16a34a] text-white font-semibold shadow-sm transition-all active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                Submit New Request
+                                {isSubmittingRequest ? (
+                                    <>
+                                        <Loader2 className="h-4 w-4 animate-spin" /> Submitting...
+                                    </>
+                                ) : (
+                                    'Submit New Request'
+                                )}
                             </button>
                         </div>
                     </div>

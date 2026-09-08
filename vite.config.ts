@@ -118,7 +118,9 @@ export default defineConfig({
                 }
               }
             }
-          } catch {}
+          } catch {
+            // Ignore background endpoint lookup failure and fallback to candidateBases
+          }
 
           let subPath = '/attendance';
           if (path === '/api/mssql-devices') subPath = '/devices';
@@ -212,6 +214,13 @@ export default defineConfig({
         '**/Downloads/**',
         '**/.DS_Store/**',
       ],
+    },
+    proxy: {
+      // Forward all /api/* requests from Vite (5173) → Express server (3000)
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
     },
   },
   build: {

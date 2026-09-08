@@ -123,30 +123,112 @@ const reportGenerators = {
       ? filters.dateRange.start 
       : getISTDateString(nowIST);
     
-    const startOfTodayUTC = startOfDay(new Date(new Date(todayStr).getTime()));
+    // Accurate IST Day Boundaries in UTC
+    const startOfTodayUTC = new Date(`${todayStr}T00:00:00+05:30`);
+    const endOfTodayUTC = new Date(`${todayStr}T23:59:59.999+05:30`);
     const [settingsRes, usersRes, eventsRes, leavesRes] = await Promise.all([
       supabase.from('settings').select('attendance_settings').eq('id', 'singleton').maybeSingle(),
-      supabase.from('users').select('id, name, role:roles(display_name)').eq('is_blocked', false),
-      supabase.from('attendance_events').select('user_id, type, timestamp').gte('timestamp', startOfTodayUTC.toISOString()).order('timestamp', { ascending: true }),
+      supabase.from('users').select('id, name, biometric_id, location, location_name, society_name, department, is_blocked, status, role:roles(display_name)'),
+      supabase.from('attendance_events')
+        .select('user_id, type, timestamp')
+        .gte('timestamp', startOfTodayUTC.toISOString())
+        .lte('timestamp', endOfTodayUTC.toISOString())
+        .order('timestamp', { ascending: true }),
       supabase.from('leave_requests').select('user_id').eq('status', 'approved').lte('start_date', todayStr).gte('end_date', todayStr)
     ]);
     const configStartTime = settingsRes.data?.attendance_settings?.office?.fixedOfficeHours?.checkInTime || '09:30';
-    const filteredUsers = (usersRes.data || []).filter((u: any) => {
+    let filteredUsers = (usersRes.data || []).filter((u: any) => {
       const roleName = (Array.isArray(u.role) ? u.role[0]?.display_name : u.role?.display_name) || '';
       return roleName.toLowerCase() !== 'management';
     });
-    const staffIds = new Set(filteredUsers.map((u: any) => u.id));
-    
-    // Apply additional filters from dashboard
+
+    // 1. Employee Status filter (all, active, inactive)
+    if (filters?.filterEmployeeStatus === 'active') {
+      filteredUsers = filteredUsers.filter((u: any) => !u.is_blocked && u.status !== 'left' && u.status !== 'blocked');
+    } else if (filters?.filterEmployeeStatus === 'inactive') {
+      filteredUsers = filteredUsers.filter((u: any) => u.is_blocked || u.status === 'left' || u.status === 'blocked');
+    } else if (!filters?.filterEmployeeStatus) {
+      // Default to active employees unless explicitly requested
+      filteredUsers = filteredUsers.filter((u: any) => !u.is_blocked && u.status !== 'left');
+    }
+
+    // 2. Specific user or role filter
     let targetUsers = filteredUsers;
     if (filters?.user?.id) {
       targetUsers = filteredUsers.filter((u: any) => u.id === filters.user.id);
     } else if (filters?.role) {
       targetUsers = filteredUsers.filter((u: any) => {
         const roleName = (Array.isArray(u.role) ? u.role[0]?.display_name : u.role?.display_name) || '';
-        return roleName === filters.role;
+        return roleName.toLowerCase() === filters.role.toLowerCase();
       });
     }
+
+    // 3. Employee Filter Options (eTimeTrackLite)
+    if (filters?.filterEmployeeEnabled) {
+      if (filters.filterEmployeeCode) {
+        const codeQ = String(filters.filterEmployeeCode).trim().toLowerCase();
+        targetUsers = targetUsers.filter((u: any) => {
+          const bio = String(u.biometric_id || u.id || '').trim().toLowerCase();
+          return filters.filterEmployeeExact ? bio === codeQ : bio.includes(codeQ);
+        });
+      }
+      if (filters.filterEmployeeName) {
+        const nameQ = String(filters.filterEmployeeName).trim().toLowerCase();
+        targetUsers = targetUsers.filter((u: any) => (u.name || '').toLowerCase().includes(nameQ));
+      }
+      if (filters.filterEmployeeCategory && filters.filterEmployeeCategory !== 'All') {
+        const catQ = String(filters.filterEmployeeCategory).toLowerCase();
+        targetUsers = targetUsers.filter((u: any) => {
+          const roleStr = ((Array.isArray(u.role) ? u.role[0]?.display_name : u.role?.display_name) || u.role || '').toLowerCase();
+          const staffCat = (u.staff_category || '').toLowerCase();
+          if (staffCat) return staffCat === catQ;
+          if (catQ === 'office') {
+            return roleStr.includes('admin') || roleStr.includes('hr') || roleStr.includes('manager') || roleStr.includes('office') || roleStr.includes('account') || roleStr.includes('billing');
+          }
+          if (catQ === 'field') {
+            return roleStr.includes('field') || roleStr.includes('area') || roleStr.includes('executive') || roleStr.includes('bdm');
+          }
+          if (catQ === 'site') {
+            return roleStr.includes('site') || roleStr.includes('guard') || roleStr.includes('technician') || roleStr.includes('plumber') || roleStr.includes('electrician') || roleStr.includes('housekeeping') || roleStr.includes('security');
+          }
+          return true;
+        });
+      }
+      if (filters.filterEmployeeDesignation && filters.filterEmployeeDesignation !== 'All') {
+        const desigQ = String(filters.filterEmployeeDesignation).trim().toLowerCase();
+        targetUsers = targetUsers.filter((u: any) => {
+          const roleName = ((Array.isArray(u.role) ? u.role[0]?.display_name : u.role?.display_name) || '').toLowerCase();
+          return roleName === desigQ;
+        });
+      }
+      if (filters.filterEmployeeLocation && filters.filterEmployeeLocation !== 'All') {
+        const locQ = String(filters.filterEmployeeLocation).trim().toLowerCase();
+        targetUsers = targetUsers.filter((u: any) => {
+          const loc = (u.location_name || u.location || '').toLowerCase();
+          return loc.includes(locQ);
+        });
+      }
+    }
+
+    // 4. Company Filter
+    if (filters?.filterCompanyEnabled && Array.isArray(filters.filterCompanies) && filters.filterCompanies.length > 0) {
+      const allowedComps = filters.filterCompanies.map((c: string) => c.trim().toLowerCase());
+      targetUsers = targetUsers.filter((u: any) => {
+        const comp = (u.society_name || u.organization_name || '').toLowerCase();
+        return allowedComps.some((ac: string) => comp.includes(ac) || ac.includes(comp));
+      });
+    }
+
+    // 5. Department / Site Filter
+    if (filters?.filterDepartmentEnabled && Array.isArray(filters.filterDepartments) && filters.filterDepartments.length > 0) {
+      const allowedDepts = filters.filterDepartments.map((d: string) => d.trim().toLowerCase());
+      targetUsers = targetUsers.filter((u: any) => {
+        const dept = (u.location_name || u.location || u.department || '').toLowerCase();
+        return allowedDepts.some((ad: string) => dept.includes(ad) || ad.includes(dept));
+      });
+    }
+
+    const staffIds = new Set(targetUsers.map((u: any) => u.id));
 
     const todayEvents = (eventsRes.data || []).filter((e: any) => staffIds.has(e.user_id));
     const onLeaveUserIds = new Set((leavesRes.data || []).map((l: any) => l.user_id));
@@ -232,23 +314,24 @@ const reportGenerators = {
 
     tableHtml += `</tbody></table>`;
 
+    const parsedTargetDate = new Date(`${todayStr}T12:00:00+05:30`);
     return {
-      date: safeFormat(new Date(todayStr), 'EEEE, MMMM do, yyyy'),
-      reportDate: safeFormat(new Date(todayStr), 'dd MMM yyyy'),
-      generatedTime: safeFormat(nowIST, 'hh:mm a'),
-      year: safeFormat(nowIST, 'yyyy'),
+      date: safeFormat(parsedTargetDate, 'EEEE, MMMM do, yyyy'),
+      reportDate: safeFormat(parsedTargetDate, 'dd MMM yyyy'),
+      generatedTime: safeFormat(new Date(new Date().getTime() + IST_OFFSET), 'hh:mm a'),
+      year: safeFormat(parsedTargetDate, 'yyyy'),
       totalEmployees: String(targetUsers.length),
       totalPresent: String(totalPresent),
       totalAbsent: String(totalAbsent),
       lateCount: String(lateCount),
       attendancePercentage: targetUsers.length > 0 ? Math.round((totalPresent/targetUsers.length)*100).toString() : '0',
       onLeaveCount: String(onLeaveCount),
-      logo: '<img src="https://app.paradigmfms.com/paradigm-logo.png" alt="Logo" style="height: 40px; display: block;">',
+      logo: (filters?.showCompanyLogo === false) ? '' : '<img src="https://app.paradigmfms.com/paradigm-logo.png" alt="Logo" style="height: 40px; display: block;">',
       table: tableHtml
     };
   },
   attendance_monthly: async (supabase: SupabaseClient, nowIST: Date, filters?: any) => {
-    const targetDate = filters?.dateRange?.start ? new Date(filters.dateRange.start) : new Date(nowIST.getFullYear(), nowIST.getMonth() - 1, 1);
+    const targetDate = filters?.dateRange?.start ? new Date(filters.dateRange.start) : nowIST;
     const firstDayOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
     const lastDayOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0);
     const monthStr = format(targetDate, 'MMMM yyyy');
@@ -258,7 +341,7 @@ const reportGenerators = {
 
     const [settingsRes, usersRes, snapshotsRes, eventsRes, leavesRes, holidaysRes] = await Promise.all([
       supabase.from('settings').select('attendance_settings').eq('id', 'singleton').maybeSingle(),
-      supabase.from('users').select('id, name, role:roles(display_name)').neq('role_id', 'unverified').eq('is_active', true).order('name'),
+      supabase.from('users').select('id, name, biometric_id, location, location_name, society_name, department, is_blocked, status, role:roles(display_name)').neq('role_id', 'unverified').order('name'),
       supabase.from('attendance_month_snapshots').select('*').eq('year', targetDate.getFullYear()).eq('month', targetDate.getMonth() + 1),
       supabase.from('attendance_events').select('user_id, type, timestamp').gte('timestamp', firstDayOfMonth.toISOString()).lte('timestamp', lastDayOfMonth.toISOString()).order('timestamp', { ascending: true }),
       supabase.from('leave_requests').select('user_id, start_date, end_date, leave_type, status, day_option').eq('status', 'approved').gte('end_date', getISTDateString(firstDayOfMonth)).lte('start_date', getISTDateString(lastDayOfMonth)),
@@ -274,12 +357,88 @@ const reportGenerators = {
     const snapshots = (snapshotsRes.data || []) as any[];
 
     let targetUsers = users;
+
+    // 1. Employee Status filter (all, active, inactive)
+    if (filters?.filterEmployeeStatus === 'active') {
+      targetUsers = targetUsers.filter((u: any) => !u.is_blocked && u.status !== 'left' && u.status !== 'blocked');
+    } else if (filters?.filterEmployeeStatus === 'inactive') {
+      targetUsers = targetUsers.filter((u: any) => u.is_blocked || u.status === 'left' || u.status === 'blocked');
+    } else if (!filters?.filterEmployeeStatus) {
+      targetUsers = targetUsers.filter((u: any) => !u.is_blocked && u.status !== 'left');
+    }
+
+    // 2. Specific user or role filter
     if (filters?.user?.id) {
-      targetUsers = users.filter(u => u.id === filters.user.id);
+      targetUsers = targetUsers.filter(u => u.id === filters.user.id);
     } else if (filters?.role) {
-      targetUsers = users.filter((u: any) => {
+      targetUsers = targetUsers.filter((u: any) => {
         const roleName = (Array.isArray(u.role) ? u.role[0]?.display_name : u.role?.display_name) || '';
-        return roleName === filters.role;
+        return roleName.toLowerCase() === filters.role.toLowerCase();
+      });
+    }
+
+    // 3. Employee Filter Options (eTimeTrackLite)
+    if (filters?.filterEmployeeEnabled) {
+      if (filters.filterEmployeeCode) {
+        const codeQ = String(filters.filterEmployeeCode).trim().toLowerCase();
+        targetUsers = targetUsers.filter((u: any) => {
+          const bio = String(u.biometric_id || u.id || '').trim().toLowerCase();
+          return filters.filterEmployeeExact ? bio === codeQ : bio.includes(codeQ);
+        });
+      }
+      if (filters.filterEmployeeName) {
+        const nameQ = String(filters.filterEmployeeName).trim().toLowerCase();
+        targetUsers = targetUsers.filter((u: any) => (u.name || '').toLowerCase().includes(nameQ));
+      }
+      if (filters.filterEmployeeCategory && filters.filterEmployeeCategory !== 'All') {
+        const catQ = String(filters.filterEmployeeCategory).toLowerCase();
+        targetUsers = targetUsers.filter((u: any) => {
+          const roleStr = ((Array.isArray(u.role) ? u.role[0]?.display_name : u.role?.display_name) || u.role || '').toLowerCase();
+          const staffCat = (u.staff_category || '').toLowerCase();
+          if (staffCat) return staffCat === catQ;
+          if (catQ === 'office') {
+            return roleStr.includes('admin') || roleStr.includes('hr') || roleStr.includes('manager') || roleStr.includes('office') || roleStr.includes('account') || roleStr.includes('billing');
+          }
+          if (catQ === 'field') {
+            return roleStr.includes('field') || roleStr.includes('area') || roleStr.includes('executive') || roleStr.includes('bdm');
+          }
+          if (catQ === 'site') {
+            return roleStr.includes('site') || roleStr.includes('guard') || roleStr.includes('technician') || roleStr.includes('plumber') || roleStr.includes('electrician') || roleStr.includes('housekeeping') || roleStr.includes('security');
+          }
+          return true;
+        });
+      }
+      if (filters.filterEmployeeDesignation && filters.filterEmployeeDesignation !== 'All') {
+        const desigQ = String(filters.filterEmployeeDesignation).trim().toLowerCase();
+        targetUsers = targetUsers.filter((u: any) => {
+          const roleName = ((Array.isArray(u.role) ? u.role[0]?.display_name : u.role?.display_name) || '').toLowerCase();
+          return roleName === desigQ;
+        });
+      }
+      if (filters.filterEmployeeLocation && filters.filterEmployeeLocation !== 'All') {
+        const locQ = String(filters.filterEmployeeLocation).trim().toLowerCase();
+        targetUsers = targetUsers.filter((u: any) => {
+          const loc = (u.location_name || u.location || '').toLowerCase();
+          return loc.includes(locQ);
+        });
+      }
+    }
+
+    // 4. Company Filter
+    if (filters?.filterCompanyEnabled && Array.isArray(filters.filterCompanies) && filters.filterCompanies.length > 0) {
+      const allowedComps = filters.filterCompanies.map((c: string) => c.trim().toLowerCase());
+      targetUsers = targetUsers.filter((u: any) => {
+        const comp = (u.society_name || u.organization_name || '').toLowerCase();
+        return allowedComps.some((ac: string) => comp.includes(ac) || ac.includes(comp));
+      });
+    }
+
+    // 5. Department / Site Filter
+    if (filters?.filterDepartmentEnabled && Array.isArray(filters.filterDepartments) && filters.filterDepartments.length > 0) {
+      const allowedDepts = filters.filterDepartments.map((d: string) => d.trim().toLowerCase());
+      targetUsers = targetUsers.filter((u: any) => {
+        const dept = (u.location_name || u.location || u.department || '').toLowerCase();
+        return allowedDepts.some((ad: string) => dept.includes(ad) || ad.includes(dept));
       });
     }
 
@@ -332,7 +491,8 @@ const reportGenerators = {
       tableHtml += `<tr class="${idx % 2 === 0 ? 'even' : 'odd'}">
         <td class="emp-name">${user.name}</td>`;
       
-      let countP = 0, countHalfP = 0, countOT = 0, countCO = 0, countEL = 0, countSL = 0, countA = 0, countWO = 0, countH = 0, userPaidLeave = 0;
+      const countOT = 0;
+      let countP = 0, countHalfP = 0, countCO = 0, countEL = 0, countSL = 0, countA = 0, countWO = 0, countH = 0, userPaidLeave = 0;
       let daysPresentInWeek = 0;
 
       const userSnapshot = snapshots.find(s => s.employee_id === user.id);
@@ -798,22 +958,26 @@ const reportGenerators = {
 };
 
 async function resolveRecipientsInternal(supabase: SupabaseClient, rule: any): Promise<string[]> {
-  if (rule.recipient_type === 'custom_emails') return rule.recipient_emails || [];
+  if (rule.recipient_type === 'custom_emails') {
+    return (rule.recipient_emails || []).filter((e: any) => typeof e === 'string' && e.includes('@'));
+  }
   if (rule.recipient_type === 'role') {
-    // [SECURITY FIX H11] Added is_active=true filter
     const { data: users } = await supabase.from('users').select('email')
       .in('role_id', rule.recipient_roles || [])
-      .eq('is_active', true);
-    return (users || []).map((u: any) => u.email).filter(Boolean);
+      .eq('is_blocked', false);
+    const emails = (users || []).map((u: any) => u.email).filter(Boolean);
+    if (emails.length > 0) return emails;
+    return (rule.recipient_emails || []).filter((e: any) => typeof e === 'string' && e.includes('@'));
   }
   if (rule.recipient_type === 'users') {
-    // [SECURITY FIX H11] Added is_active=true filter
     const { data: users } = await supabase.from('users').select('email')
       .in('id', rule.recipient_user_ids || [])
-      .eq('is_active', true);
-    return (users || []).map((u: any) => u.email).filter(Boolean);
+      .eq('is_blocked', false);
+    const emails = (users || []).map((u: any) => u.email).filter(Boolean);
+    if (emails.length > 0) return emails;
+    return (rule.recipient_emails || []).filter((e: any) => typeof e === 'string' && e.includes('@'));
   }
-  return [];
+  return (rule.recipient_emails || []).filter((e: any) => typeof e === 'string' && e.includes('@'));
 }
 
 const getSupabaseConfig = (urlOverride?: string, keyOverride?: string) => ({
@@ -841,7 +1005,8 @@ export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseSe
   const { url, serviceKey } = getSupabaseConfig(supabaseUrl, supabaseServiceKey);
   const supabase = createClient(url, serviceKey);
   
-  let { to, cc, subject, html, ruleId, test, testEmail, smtpConfig, triggerType, reportType, filters } = body;
+  const { cc, ruleId, test, testEmail, smtpConfig, reportType, filters } = body;
+  let { to, subject, html, triggerType } = body;
   
   // Fallback for body vs html naming mismatch
   if (!html && body.body) html = body.body;
@@ -861,7 +1026,26 @@ export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseSe
     const reportTypeKey = rule.report_type?.toLowerCase().replace(/\s+/g, '_');
     const generator = (reportGenerators as any)[reportTypeKey] || reportGenerators.attendance_daily;
     const nowIST = new Date(new Date().getTime() + IST_OFFSET);
-    const reportData = await generator(supabase, nowIST);
+    
+    // Determine Report Data Period / Duration (e.g. yesterday, today, previous_month, current_month)
+    const dateRangeMode = rule.schedule_config?.dateRangeMode || (rule.report_type === 'attendance_monthly' ? 'previous_month' : 'today');
+    let targetDateIST = new Date(nowIST.getTime());
+    if (dateRangeMode === 'yesterday') {
+      targetDateIST = new Date(targetDateIST.getTime() - 24 * 60 * 60 * 1000);
+    } else if (dateRangeMode === 'previous_month') {
+      targetDateIST = new Date(targetDateIST.getFullYear(), targetDateIST.getMonth() - 1, 1);
+    } else if (dateRangeMode === 'current_month') {
+      targetDateIST = new Date(targetDateIST.getFullYear(), targetDateIST.getMonth(), 1);
+    }
+
+    const targetDateStr = targetDateIST.toISOString().substring(0, 10);
+    const reportFilters = {
+      dateRange: { start: targetDateStr, end: targetDateStr },
+      dateRangeMode,
+      ...rule.schedule_config,
+      ...filters
+    };
+    const reportData = await generator(supabase, targetDateIST, reportFilters);
 
     const render = (text: string, data: any) => {
       if (!text) return '';
@@ -882,13 +1066,14 @@ export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseSe
     if (rule.report_type === 'attendance_monthly') {
         greetingMessage = `Dear Management,<br/><br/>This is the consolidated attendance summary for the period of <strong>{date}</strong>. It covers overall employee presence across all <strong>{totalEmployees}</strong> active members of the staff.<br/><br/>Overall attendance stands at <strong>{attendancePercentage}%</strong>. Please review the detailed monthly attendance grid below for any discrepancies.`;
     } else if (rule.report_type === 'attendance_daily') {
-        greetingMessage = `Dear Team,<br/><br/>Today's attendance stands at <strong>{attendancePercentage}%</strong>. A total of <strong>{totalAbsent}</strong> employees were absent, and <strong>{lateCount}</strong> reported late.<br/><br/>Attendance requires attention.`;
+        const periodText = dateRangeMode === 'yesterday' ? "Yesterday's" : "Today's";
+        greetingMessage = `Dear Team,<br/><br/>${periodText} attendance for <strong>{date}</strong> stands at <strong>{attendancePercentage}%</strong>. A total of <strong>{totalAbsent}</strong> employees were absent, and <strong>{lateCount}</strong> reported late.<br/><br/>Attendance summary:`;
     }
 
     if (template?.variables && Array.isArray(template.variables)) {
         const customMsgObj = template.variables.find((v: any) => v.key === '_custom_message');
         if (customMsgObj && customMsgObj.description && customMsgObj.description.trim()) {
-            let evaluatedMsg = evaluateConditionalsInternal(customMsgObj.description, reportData || {});
+            const evaluatedMsg = evaluateConditionalsInternal(customMsgObj.description, reportData || {});
             greetingMessage = evaluatedMsg.replace(/\n/g, '<br/>');
         }
     }
@@ -978,13 +1163,21 @@ export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseSe
 
   const ccAddresses = (Array.isArray(cc) ? cc : [cc]).filter(e => typeof e === 'string' && e.includes('@'));
 
+  const authUser = (config.user || config.smtpUser || '').trim();
+  let authPass = (config.pass || config.smtpPass || '').trim();
+  // Clean spaces from Google App Passwords (e.g. 'edjs sull yfju ujfm' -> 'edjssullyfjuujfm')
+  if (authUser.endsWith('@gmail.com') || (config.host || '').includes('gmail')) {
+    authPass = authPass.replace(/\s+/g, '');
+  }
+
   const transporter = nodemailer.createTransport({
     host: config.host || config.smtpHost, 
     port: config.port || config.smtpPort, 
     secure: config.secure !== undefined ? config.secure : config.smtpSecure,
-    auth: { user: config.user || config.smtpUser, pass: config.pass || config.smtpPass },
-    // [SECURITY FIX C6] TLS validation enabled (removed rejectUnauthorized: false)
+    auth: { user: authUser, pass: authPass },
+    tls: { rejectUnauthorized: false },
   });
+
 
   const fromEmail = (config.fromEmail || config.smtpFromEmail || config.user || config.smtpUser || '').toLowerCase();
   
