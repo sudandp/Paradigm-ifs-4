@@ -1113,12 +1113,22 @@ const LeaveDashboard: React.FC = () => {
             isExpired: false
         }] : [])
     ].filter(card => !card.isExpired && !card.isHidden) : [
-        ...(!isProbation ? [{ title: 'Earned Leave', value: '0 / 0', icon: Briefcase, isLoading: true }] : []),
-        ...(!isFemale ? [{ title: 'Blue Leave', value: '0 / 0', icon: Plane, isLoading: true }] : []),
-        ...(isFemale ? [{ title: 'Pink Leave', value: '0 / 0', icon: Heart, isLoading: true }] : []),
-        ...(isTechnicalRole(user?.role) || isProbation ? [] : [{ title: 'Compensatory Off', value: '0 / 0', icon: CalendarClock, isLoading: true }]),
-        { title: 'Monthly Pay Days', value: '-', icon: Calculator, isLoading: true },
-        { title: 'Monthly Travel KM', value: '-', icon: MapPin, isLoading: true }
+        ...(!isProbation ? [{ title: 'Earned Leave', value: '0 / 0', icon: Briefcase, isLoading: isLoading }] : []),
+        ...(!isFemale ? [{ title: 'Blue Leave', value: '0 / 0', icon: Plane, isLoading: isLoading }] : []),
+        ...(isFemale ? [{ title: 'Pink Leave', value: '0 / 0', icon: Heart, isLoading: isLoading }] : []),
+        ...(isTechnicalRole(user?.role) || isProbation ? [] : [{ title: 'Compensatory Off', value: '0 / 0', icon: CalendarClock, isLoading: isLoading }]),
+        {
+            title: 'Monthly Pay Days',
+            value: monthlyPaydays !== null ? `${monthlyPaydays}` : '-',
+            icon: Calculator,
+            isLoading: isLoading
+        },
+        {
+            title: 'Monthly Travel KM',
+            value: !isLoading ? `${monthlyTravelKm.toFixed(2)} KM` : '-',
+            icon: MapPin,
+            isLoading: isLoading
+        }
     ];
 
     // Maternity card (hidden for all users as requested)

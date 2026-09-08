@@ -171,10 +171,14 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
     // PRE-CALCULATE STATUS MAP FOR THE MONTH (WITH BUFFER)
     const dayStatusMap = useMemo(() => {
         const statusMap = new Map<string, { status: string; holidayName: string; presenceVal: number; isSiteOtPresent: boolean; isPoolHoliday: boolean }>();
-        if (!settings || !user) return statusMap;
+        // If user is not available we cannot compute any meaningful status
+        if (!user) return statusMap;
 
-        const staffCategory = getStaffCategory(user.roleId || user.role || '', user.societyId, settings);
-        const threshold = (settings as any)?.[staffCategory]?.weekendPresentThreshold ?? 2;
+        // Use settings if available; fall back to safe defaults so the calendar
+        // renders Sundays/presence/holidays even while settings are still loading
+        const effectiveSettings = settings ?? {};
+        const staffCategory = getStaffCategory(user.roleId || user.role || '', user.societyId, effectiveSettings);
+        const threshold = (effectiveSettings as any)?.[staffCategory]?.weekendPresentThreshold ?? 2;
         
         // Start buffer to seed counters
         const bufferStart = startOfWeek(subDays(startOfMonth(currentDate), 15), { weekStartsOn: 1 });
