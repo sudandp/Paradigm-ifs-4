@@ -4,14 +4,17 @@ import { useOnboardingStore } from '../../store/onboardingStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import Button from '../../components/ui/Button';
 import FormHeader from '../../components/onboarding/FormHeader';
-import { Loader2, CheckCircle, XCircle, AlertTriangle, ShieldCheck, FileText, Save } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, AlertTriangle, ShieldCheck, FileText, Save, FileSignature, ExternalLink } from 'lucide-react';
 import { api } from '../../services/api';
 import type { VerificationResult, EducationRecord, UploadedFile } from '../../types';
 import { useAuthStore } from '../../store/authStore';
 import DraftSaveIndicator, { type DraftSaveStatus } from '../../components/onboarding/DraftSaveIndicator';
 import ESignFlow from '../../components/onboarding/ESignFlow';
 import OnboardingBookletModal from '../../components/onboarding/OnboardingBookletModal';
+import ApproveSubmissionModal from '../../components/onboarding/ApproveSubmissionModal';
+import hotToast from 'react-hot-toast';
 import { useEnrollmentRulesStore, getRulesForDesignation } from '../../store/enrollmentRulesStore';
+import { formatDisplayDate } from '../../utils/date';
 
 
 const DetailItem: React.FC<{ label: string; value?: string | number | null }> = ({ label, value }) => (
@@ -48,8 +51,13 @@ const Review = () => {
     const { perfiosApi } = useSettingsStore();
     const navigate = useNavigate();
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-    const [esignDocUrl, setEsignDocUrl] = useState<string | null>(null);
+    const [esignDocUrl, setEsignDocUrl] = useState<string | null>((data as any)?.esign_document_url || (data as any)?.esignDocUrl || null);
     const [isBookletModalOpen, setIsBookletModalOpen] = useState(false);
+
+    useEffect(() => {
+        const docUrl = (data as any)?.esign_document_url || (data as any)?.esignDocUrl;
+        if (docUrl) setEsignDocUrl(docUrl);
+    }, [(data as any)?.esign_document_url, (data as any)?.esignDocUrl]);
 
     useEffect(() => {
         const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -60,6 +68,30 @@ const Review = () => {
 
     const [verificationState, setVerificationState] = useState<'idle' | 'verifying' | 'success' | 'failed'>('idle');
     const [verificationMessage, setVerificationMessage] = useState('');
+
+    // HR Approval modal state for Review page
+    const [isApproveModalOpen, setIsApproveModalOpen] = useState(false);
+    const [isApproving, setIsApproving] = useState(false);
+    const isHRUser = user?.role === 'admin' || user?.role === 'hr' || user?.role === 'general_manager' || user?.role === 'operations_manager';
+    const isPendingApproval = data.status === 'pending';
+
+    const handleConfirmApproveFromReview = async (id: string, esignUrl?: string) => {
+        setIsApproving(true);
+        try {
+            await api.verifySubmission(id, 'manual');
+            if (esignUrl) {
+                setEsignDocUrl(esignUrl);
+            }
+            hotToast.success('Submission verified & approved with digital signature!');
+            setIsApproveModalOpen(false);
+            navigate('/onboarding');
+        } catch (e) {
+            console.error('Failed to approve', e);
+            hotToast.error('Failed to approve submission.');
+        } finally {
+            setIsApproving(false);
+        }
+    };
 
     // Draft save state for the Review page
     const [draftSaveStatus, setDraftSaveStatus] = useState<DraftSaveStatus>('idle');
@@ -192,7 +224,7 @@ const Review = () => {
         // 3. Bank Proof
         const hasBankProof = !!(data.bank.bankProof?.preview || data.bank.bankProof?.file);
         if (currentRules.documents.bankProof && !hasBankProof) {
-            missing.push({ key: 'bankProof', label: 'Bank Account Proof (Passbook / Cheque)' });
+            missing.push({ key: 'bankProof', label: 'Bank Account Proof (Cheque Book / Cancelled Cheque)' });
         }
 
         // 4. PAN Card
@@ -236,7 +268,7 @@ const Review = () => {
         return missing;
     }, [currentRules.documents, data.personal.photo, data.personal.idProofFront, data.personal.idProofBack, data.bank.bankProof, data.personal.panCard, data.uan.hasPreviousPf, data.uan.document, data.uan.salarySlip, data.education, data.family]);
 
-    const canSubmit = (verificationState === 'success' || !perfiosApi.enabled) && data.formsGenerated && !!esignDocUrl && missingMandatoryDocs.length === 0;
+    const canSubmit = (verificationState === 'success' || !perfiosApi.enabled) && data.formsGenerated && missingMandatoryDocs.length === 0;
     
     const resolvedAadhaar = data.personal.aadhaarNumber || (/^\d{12}$/.test(data.personal.idProofNumber || '') ? data.personal.idProofNumber : '');
     const resolvedPan = data.personal.panNumber || (/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/i.test(data.personal.idProofNumber || '') ? data.personal.idProofNumber : '');
@@ -287,7 +319,7 @@ const Review = () => {
                              <MobileDetailItem label="Full Name" value={`${data.personal.firstName} ${data.personal.lastName}`} />
                              <MobileDetailItem label="Email" value={data.personal.email} />
                              <MobileDetailItem label="Mobile" value={data.personal.mobile} />
-                             <MobileDetailItem label="Date of Birth" value={data.personal.dob} />
+                             <MobileDetailItem label="Date of Birth" value={formatDisplayDate(data.personal.dob)} />
                              {resolvedAadhaar && <MobileDetailItem label="Aadhaar Number" value={resolvedAadhaar} />}
                              {resolvedPan && <MobileDetailItem label="PAN Number" value={resolvedPan} />}
                         </div>
@@ -298,6 +330,7 @@ const Review = () => {
                              <MobileDetailItem label="Site" value={data.organization.organizationName} />
                              <MobileDetailItem label="Designation" value={data.organization.designation} />
                              <MobileDetailItem label="Department" value={data.organization.department} />
+                             {data.organization.joiningDate && <MobileDetailItem label="Joining Date" value={formatDisplayDate(data.organization.joiningDate)} />}
                         </div>
                     </section>
                     <section>
@@ -354,30 +387,38 @@ const Review = () => {
                             </Button>
                         )}
                     </div>
-                </div>
-
-                {data.formsGenerated && (
+                </div>                {data.formsGenerated && (
                     <div className="mt-6 pt-6 border-t border-slate-700">
-                        <h3 className="text-base font-semibold text-white mb-1">Digital Signature</h3>
-                        <p className="text-xs text-slate-400 mb-4">
-                            Worker must sign the employment agreement digitally before submission.
-                        </p>
-                        {esignDocUrl ? (
-                            <div className="flex items-center gap-2 text-emerald-400 font-semibold text-sm">
-                                <CheckCircle className="h-5 w-5" />
-                                Agreement signed — ready to submit
+                        <div className="p-4 rounded-xl bg-slate-800/80 border border-slate-700 space-y-2">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <FileSignature className="h-4 w-4 text-emerald-400" />
+                                    <h3 className="text-sm font-semibold text-white">Digital Signature & Agreement</h3>
+                                </div>
+                                <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                                    esignDocUrl 
+                                        ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' 
+                                        : 'bg-slate-700 text-slate-300 border border-slate-600'
+                                }`}>
+                                    {esignDocUrl ? 'Signed' : 'Scheduled at HR Approval'}
+                                </span>
                             </div>
-                        ) : (
-                            <ESignFlow
-                                employeeId={data.id}
-                                employeeName={`${data.personal.firstName} ${data.personal.lastName}`}
-                                mobile={data.personal.mobile}
-                                signerEmail={data.personal.email}
-                                baseContractUrl={import.meta.env.VITE_EMPLOYMENT_AGREEMENT_PDF_URL ?? ''}
-                                clientSiteId={data.organization.site ?? data.organization.organizationName}
-                                onSigned={(url) => setEsignDocUrl(url)}
-                            />
-                        )}
+                            <p className="text-xs text-slate-400">
+                                {esignDocUrl 
+                                    ? 'Employment Agreement & Client NDA has been digitally signed.' 
+                                    : 'Aadhaar-based digital signature will be initiated during HR verification and approval. You can proceed with submitting now.'}
+                            </p>
+                            {esignDocUrl && (
+                                <a 
+                                    href={esignDocUrl} 
+                                    target="_blank" 
+                                    rel="noreferrer" 
+                                    className="inline-flex items-center gap-1 text-xs text-emerald-400 hover:underline pt-1"
+                                >
+                                    <ExternalLink className="h-3 w-3" /> View Signed Agreement
+                                </a>
+                            )}
+                        </div>
                     </div>
                 )}
 
@@ -478,7 +519,7 @@ const Review = () => {
                         <DetailItemWithStatus label="Full Name" value={`${data.personal.firstName} ${data.personal.lastName}`} status={data.personal.verifiedStatus?.name} isVerifying={false} />
                         <DetailItem label="Email" value={data.personal.email} />
                         <DetailItem label="Mobile" value={data.personal.mobile} />
-                        <DetailItemWithStatus label="Date of Birth" value={data.personal.dob} status={data.personal.verifiedStatus?.dob} isVerifying={false} />
+                        <DetailItemWithStatus label="Date of Birth" value={formatDisplayDate(data.personal.dob)} status={data.personal.verifiedStatus?.dob} isVerifying={false} />
                         <DetailItem label="Gender" value={data.personal.gender} />
                         <DetailItemWithStatus 
                             label="Aadhaar Number" 
@@ -503,7 +544,7 @@ const Review = () => {
                         <DetailItem label="Site / Client" value={data.organization.organizationName} />
                         <DetailItem label="Designation" value={data.organization.designation} />
                         <DetailItem label="Department" value={data.organization.department} />
-                        <DetailItem label="Joining Date" value={data.organization.joiningDate} />
+                        <DetailItem label="Joining Date" value={formatDisplayDate(data.organization.joiningDate)} />
                     </dl>
                 </section>
 
@@ -597,30 +638,44 @@ const Review = () => {
                 </div>
             </div>
 
-            {/* ── e-Sign: Digital Employment Agreement ── */}
+            {/* ── e-Sign: Digital Employment Agreement Notice ── */}
             {data.formsGenerated && (
-                <div className="mt-8 pt-6 border-t">
-                    <h3 className="text-lg font-semibold text-primary-text mb-1">Digital Signature</h3>
-                    <p className="text-sm text-muted mb-4">
-                        Worker must sign the employment agreement digitally before submission.
-                        {(data as any).ismwFlags?.isMigrant && ' (Client NDA will be appended for migrant worker compliance.)'}
-                    </p>
-                    {esignDocUrl ? (
-                        <div className="flex items-center gap-2 text-green-600 font-semibold text-sm">
-                            <CheckCircle className="h-5 w-5" />
-                            Agreement signed — ready to submit
+                <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-800">
+                    <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 flex items-start justify-between gap-4">
+                        <div className="flex items-start gap-3.5">
+                            <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <FileSignature className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <h3 className="text-base font-semibold text-slate-900 dark:text-white">Digital Signature & Agreement</h3>
+                                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                                        esignDocUrl 
+                                            ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800' 
+                                            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+                                    }`}>
+                                        {esignDocUrl ? 'Signed' : 'Initiated upon HR Approval'}
+                                    </span>
+                                </div>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-2xl">
+                                    {esignDocUrl
+                                        ? 'The official employment agreement and client NDA have been digitally signed.'
+                                        : 'The official digital employment agreement and site NDA will be issued for Aadhaar e-Sign during HR verification and final approval. You can proceed with submitting your application now.'}
+                                    {(data as any).ismwFlags?.isMigrant && ' Client NDA will be automatically appended for migrant worker compliance.'}
+                                </p>
+                                {esignDocUrl && (
+                                    <a
+                                        href={esignDocUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="inline-flex items-center gap-1.5 mt-2 text-xs font-semibold text-emerald-600 hover:text-emerald-700 underline"
+                                    >
+                                        <ExternalLink className="w-3.5 h-3.5" /> View Signed Agreement
+                                    </a>
+                                )}
+                            </div>
                         </div>
-                    ) : (
-                        <ESignFlow
-                            employeeId={data.id}
-                            employeeName={`${data.personal.firstName} ${data.personal.lastName}`}
-                            mobile={data.personal.mobile}
-                            signerEmail={data.personal.email}
-                            baseContractUrl={import.meta.env.VITE_EMPLOYMENT_AGREEMENT_PDF_URL ?? ''}
-                            clientSiteId={data.organization.site ?? data.organization.organizationName}
-                            onSigned={(url) => setEsignDocUrl(url)}
-                        />
-                    )}
+                    </div>
                 </div>
             )}
 
@@ -632,8 +687,7 @@ const Review = () => {
                             To submit application: 
                             {missingMandatoryDocs.length > 0 && ` 1. Upload missing mandatory document(s) (${missingMandatoryDocs.map(d => d.label).join(', ')}).`}
                             {!data.formsGenerated && ` ${missingMandatoryDocs.length > 0 ? '2' : '1'}. Click "Generate & Review Forms" above.`}
-                            {data.formsGenerated && !esignDocUrl && ` ${missingMandatoryDocs.length > 0 ? '3' : '2'}. Complete the Digital Signature below.`}
-                            {perfiosApi.enabled && verificationState !== 'success' && ` ${missingMandatoryDocs.length > 0 ? '4' : '3'}. Complete Third-Party Verification.`}
+                            {perfiosApi.enabled && verificationState !== 'success' && ` ${missingMandatoryDocs.length > 0 ? '3' : '2'}. Complete Third-Party Verification.`}
                         </span>
                     </div>
                 )}
@@ -656,13 +710,23 @@ const Review = () => {
                             <Save className="mr-2 h-4 w-4" />
                             Save as Draft
                         </Button>
-                        <Button
-                            type="submit"
-                            isLoading={false}
-                            disabled={!canSubmit}
-                        >
-                            Submit Application
-                        </Button>
+                        {isPendingApproval && isHRUser ? (
+                            <Button
+                                type="button"
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                                onClick={() => setIsApproveModalOpen(true)}
+                            >
+                                <ShieldCheck className="mr-2 h-4 w-4" /> Verify & Approve
+                            </Button>
+                        ) : (
+                            <Button
+                                type="submit"
+                                isLoading={false}
+                                disabled={!canSubmit}
+                            >
+                                Submit Application
+                            </Button>
+                        )}
                     </div>
                 </div>
             </div>
@@ -673,6 +737,15 @@ const Review = () => {
                 onClose={() => setIsBookletModalOpen(false)}
                 onConfirm={handleConfirmBooklet}
                 employeeData={data}
+            />
+
+            {/* HR Approval & Digital Signature Modal */}
+            <ApproveSubmissionModal
+                isOpen={isApproveModalOpen}
+                submission={data}
+                onClose={() => setIsApproveModalOpen(false)}
+                onConfirmApprove={handleConfirmApproveFromReview}
+                isApproving={isApproving}
             />
         </form>
     );

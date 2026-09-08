@@ -41,7 +41,9 @@ const Documents: React.FC = () => {
             try {
                 const date = new Date(extractedData.dob);
                 if(!isNaN(date.getTime())) update.dob = format(date, 'yyyy-MM-dd');
-            } catch(e) {}
+            } catch {
+                /* ignore date parse error */
+            }
         }
         if (extractedData.aadhaarNumber) {
             update.idProofNumber = extractedData.aadhaarNumber.replace(/\s/g, '');
@@ -93,7 +95,9 @@ const Documents: React.FC = () => {
            try {
                 const date = new Date(extractedData.dob);
                 if(!isNaN(date.getTime())) update.dob = format(date, 'yyyy-MM-dd');
-            } catch(e) {}
+            } catch {
+                /* ignore date parse error */
+            }
         }
         updateFamilyMember(id, update);
     };
@@ -185,7 +189,7 @@ const Documents: React.FC = () => {
                             docType={data.personal.idProofType || 'Aadhaar'}
                         />
                         <UploadDocument
-                            label="Bank Proof (Passbook/Cancelled Cheque)"
+                            label="Bank Proof (Cheque Book / Cancelled Cheque)"
                             file={data.bank.bankProof}
                             onFileChange={(file) => updateBank({ bankProof: file })}
                             onOcrComplete={handleBankOcr}

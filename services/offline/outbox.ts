@@ -157,6 +157,41 @@ export async function discardFailedItem(id: string): Promise<void> {
   console.log(`[Outbox] Discarded item and cleaned cache: ${id}`);
 }
 
+/** Discards all currently failed items from the outbox. */
+export async function clearAllFailed(): Promise<number> {
+  const failed = await getFailed();
+  for (const item of failed) {
+    await discardFailedItem(item.id);
+  }
+  console.log(`[Outbox] Cleared ${failed.length} failed items`);
+  return failed.length;
+}
+
+/** Automatically prunes stale or fatal failed items (older than 24 hours or maxAttempts exceeded) */
+export async function pruneStaleFailedItems(maxAgeMs = 24 * 60 * 60 * 1000): Promise<number> {
+  try {
+    const failed = await getFailed();
+    const now = Date.now();
+    let pruned = 0;
+    for (const item of failed) {
+      const isStale = (now - item.createdAt) > maxAgeMs;
+      const reason = item.failureReason || '';
+      const isFatal = item.attempts >= 3 || /violates|column.*does not exist|foreign key|invalid input|relation.*does not exist|permission denied|row-level security|schema cache/i.test(reason);
+      if (isStale || isFatal) {
+        await discardFailedItem(item.id);
+        pruned++;
+      }
+    }
+    if (pruned > 0) {
+      console.log(`[Outbox] Auto-pruned ${pruned} stale or fatal failed outbox items`);
+    }
+    return pruned;
+  } catch (err) {
+    console.warn('[Outbox] Error pruning stale failed items:', err);
+    return 0;
+  }
+}
+
 /**
  * Cancels a local-only INSERT for the given ID without sending a DELETE to Supabase.
  *

@@ -212,27 +212,29 @@ const OrganizationDetails = () => {
             <FormHeader title="Organization Details" subtitle="Your employment details within the organization." />
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <Select label="Organization / Client" id="organizationId" error={errors.organizationId?.message} registration={register('organizationId')}>
+                <Select label="Organization / Client" requiredIndicator={true} id="organizationId" error={errors.organizationId?.message} registration={register('organizationId')}>
                     <option value="">Select Organization</option>
                     {dropdownOptions.map(org => <option key={org.id} value={org.id}>{org.name}</option>)}
                 </Select>
                 <Input
                     label="Designation"
+                    requiredIndicator={true}
                     id="designation"
                     error={errors.designation?.message}
                     registration={register('designation')}
                 />
                 <Input
                     label="Department"
+                    requiredIndicator={true}
                     id="department"
                     error={errors.department?.message}
                     registration={register('department')}
                 />
-                <Input label="Reporting Manager" id="reportingManager" error={errors.reportingManager?.message} registration={register('reportingManager')} />
+                <Input label="Reporting Manager (Optional)" id="reportingManager" error={errors.reportingManager?.message} registration={register('reportingManager')} />
                 <Controller name="joiningDate" control={control} render={({ field }) => (
-                    <DatePicker label="Joining Date" id="joiningDate" error={errors.joiningDate?.message} value={field.value} onChange={field.onChange} />
+                    <DatePicker label="Joining Date" requiredIndicator={true} id="joiningDate" error={errors.joiningDate?.message} value={field.value} onChange={field.onChange} />
                  )} />
-                <Select label="Work Type" id="workType" error={errors.workType?.message} registration={register('workType')}>
+                <Select label="Work Type" requiredIndicator={true} id="workType" error={errors.workType?.message} registration={register('workType')}>
                     <option value="">Select Work Type</option>
                     <option>Full-time</option>
                     <option>Part-time</option>

@@ -446,10 +446,11 @@ export interface LeaveBalance {
   earnedPreviousMonth?: number;
   otHoursThisMonth: number;
   expiryStates?: {
-    earned: boolean;
-    sick: boolean;
-    floating: boolean;
-    compOff: boolean;
+    earned?: boolean;
+    sick?: boolean;
+    floating?: boolean;
+    compOff?: boolean;
+    [key: string]: any;
   };
   debug?: {
     staffType?: string;

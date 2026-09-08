@@ -51,7 +51,7 @@ const PRESET_REASONS = [
     id: 'bank_unclear',
     label: 'Bank Proof Unclear',
     icon: Building,
-    description: 'Bank passbook / cancelled cheque is illegible, or IFSC / Account Number does not match.',
+    description: 'Bank cheque book / cancelled cheque is illegible, or IFSC / Account Number does not match.',
     color: 'border-indigo-300 bg-indigo-50 text-indigo-800 hover:bg-indigo-100',
     selectedColor: 'border-indigo-600 bg-indigo-100 text-indigo-900 ring-2 ring-indigo-500/20'
   },

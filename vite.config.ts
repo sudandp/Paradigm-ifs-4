@@ -221,6 +221,13 @@ export default defineConfig({
         target: 'http://localhost:3000',
         changeOrigin: true,
       },
+      // Digio e-Sign Proxy (Bypasses browser CORS during development)
+      '/api-digio': {
+        target: process.env.VITE_ESIGN_DIGIO_ENV === 'production' ? 'https://api.digio.in' : 'https://ext.digio.in',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api-digio/, ''),
+        secure: true,
+      },
     },
   },
   build: {

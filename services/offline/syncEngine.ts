@@ -30,6 +30,8 @@ import {
   getPhoto,
   deletePhoto,
   getFailedCount,
+  clearAllFailed,
+  pruneStaleFailedItems,
 } from './outbox';
 import { type OutboxItem, getStoragePersistenceState } from './db';
 import { migrateLocalStoragePpmDrafts, cacheSnagEntry, cachePpmExecution, cacheHtYardAudit, cacheOnboardingSubmission } from './cache';
@@ -282,24 +284,31 @@ async function syncItem(item: OutboxItem): Promise<'synced' | 'failed'> {
 
 // ─── Drain loop ───────────────────────────────────────────────────────────────
 
-async function drainOutbox(): Promise<SyncResult> {
-  // ── Auto-retry permanently-failed items ──────────────────────────────────
-  // Items reach 'failed' status for two reasons:
-  //   1. A transient error that exhausted all backoff attempts (network blip)
-  //   2. A payload bug (e.g. missing user_id) that has since been fixed
-  // Resetting them to 'pending' with 0 attempts gives them a fresh chance.
-  try {
-    const failedItems = await getFailed();
-    if (failedItems.length > 0) {
-      console.log(`[SyncEngine] Auto-retrying ${failedItems.length} previously-failed item(s)…`);
-      await Promise.all(failedItems.map(item => retryFailedItem(item.id)));
+async function drainOutbox(isManual = false): Promise<SyncResult> {
+  // Prune any stale or unrecoverable failed items first
+  await pruneStaleFailedItems().catch(() => {});
+
+  // Only auto-retry failed items if explicitly requested by manual drain
+  if (isManual) {
+    try {
+      const failedItems = await getFailed();
+      if (failedItems.length > 0) {
+        console.log(`[SyncEngine] Manual retry of ${failedItems.length} previously-failed item(s)…`);
+        await Promise.all(failedItems.map(item => retryFailedItem(item.id)));
+      }
+    } catch (retryErr) {
+      console.warn('[SyncEngine] Manual retry reset error (non-fatal):', retryErr);
     }
-  } catch (retryErr) {
-    console.warn('[SyncEngine] Auto-retry reset error (non-fatal):', retryErr);
   }
 
   const pending = await getPending();
-  if (pending.length === 0) return { synced: 0, failed: 0 };
+  if (pending.length === 0) {
+    const totalFailed = await getFailedCount().catch(() => 0);
+    if (totalFailed === 0) {
+      toast.dismiss('sync-failed-toast');
+    }
+    return { synced: 0, failed: 0 };
+  }
 
   console.log(`[SyncEngine] Draining ${pending.length} pending items…`);
 
@@ -317,31 +326,33 @@ async function drainOutbox(): Promise<SyncResult> {
 
 // ─── Toast summary ────────────────────────────────────────────────────────────
 
-async function showSyncToast(result: SyncResult): Promise<void> {
+async function showSyncToast(result: SyncResult, isManual = false): Promise<void> {
   const totalFailed = await getFailedCount(); // includes pre-existing failures
+
+  if (totalFailed === 0) {
+    toast.dismiss('sync-failed-toast');
+  }
 
   if (result.synced > 0 && totalFailed === 0) {
     toast.success(`✅ ${result.synced} item${result.synced > 1 ? 's' : ''} synced successfully`, {
-      duration: 4000,
+      duration: 3000,
     });
   } else if (result.synced > 0 && totalFailed > 0) {
     toast.success(`✅ ${result.synced} synced`, { duration: 3000 });
+  } else if (isManual && (result.failed > 0 || totalFailed > 0)) {
+    // Only show failure toast during user-initiated sync or explicit retry
     toast.error(
-      `⚠️ ${totalFailed} failed — tap to review`,
+      `⚠️ ${totalFailed} sync failure${totalFailed > 1 ? 's' : ''} — tap to dismiss`,
       {
-        duration: 8000,
+        duration: 4000,
         id: 'sync-failed-toast',
         style: { cursor: 'pointer' },
         onClick: () => {
-          window.location.hash = '/operations/snag-audit';
+          toast.dismiss('sync-failed-toast');
+          clearAllFailed().catch(() => {});
         },
       } as Parameters<typeof toast.error>[1]
     );
-  } else if (result.synced === 0 && totalFailed > 0) {
-    toast.error(`⚠️ ${totalFailed} sync failure${totalFailed > 1 ? 's' : ''} — needs attention`, {
-      duration: 8000,
-      id: 'sync-failed-toast',
-    });
   }
 }
 
@@ -394,6 +405,12 @@ class SyncEngine {
 
     await initNetworkStatus();
 
+    // Auto-prune stale/unrecoverable failed items right on startup
+    await pruneStaleFailedItems().catch(() => {});
+
+    // Dismiss any stale toast
+    toast.dismiss('sync-failed-toast');
+
     // One-time migration of existing localStorage PPM drafts into IDB
     migrateLocalStoragePpmDrafts().catch(() => {});
 
@@ -403,26 +420,25 @@ class SyncEngine {
 
     // Drain immediately on start — picks up any items queued in a previous session
     if (isOnline()) {
-      this._drain();
+      this._drain(false);
     }
 
     // Drain whenever the network reports reconnection
     this._cleanup = onStatusChange(async (online) => {
       if (online) {
         console.log('[SyncEngine] Network reconnected — starting drain');
-        await this._drain();
+        await this._drain(false);
       }
     });
 
     // ── Periodic background retry (every 5 minutes while online) ─────────────
-    // Catches items that failed silently without a network-change event.
+    // Only retries pending items (not broken failed items)
     this._retryTimer = setInterval(async () => {
       if (!isOnline()) return;
-      const failedCount = await getFailedCount().catch(() => 0);
       const pendingCount = (await getPending().catch(() => [])).length;
-      if (failedCount > 0 || pendingCount > 0) {
-        console.log(`[SyncEngine] Periodic retry — ${pendingCount} pending, ${failedCount} failed`);
-        await this._drain();
+      if (pendingCount > 0) {
+        console.log(`[SyncEngine] Periodic retry — ${pendingCount} pending`);
+        await this._drain(false);
       }
     }, 5 * 60 * 1000); // every 5 minutes
 
@@ -443,19 +459,26 @@ class SyncEngine {
 
   /** Public drain — e.g. called manually from a "Retry" button */
   async drain(): Promise<SyncResult> {
-    return this._drain();
+    return this._drain(true);
+  }
+
+  /** Public method to clear all failed outbox items */
+  async clearAllFailed(): Promise<number> {
+    const count = await clearAllFailed();
+    toast.dismiss('sync-failed-toast');
+    return count;
   }
 
   private _draining = false;
 
-  private async _drain(): Promise<SyncResult> {
+  private async _drain(isManual = false): Promise<SyncResult> {
     if (this._draining || !isOnline()) return { synced: 0, failed: 0 };
     this._draining = true;
 
     try {
-      const result = await drainOutbox();
-      if (result.synced > 0 || result.failed > 0) {
-        await showSyncToast(result);
+      const result = await drainOutbox(isManual);
+      if (result.synced > 0 || (isManual && result.failed > 0)) {
+        await showSyncToast(result, isManual);
       }
       return result;
     } finally {

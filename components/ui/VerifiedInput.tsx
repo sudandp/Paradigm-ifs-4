@@ -10,6 +10,7 @@ interface VerifiedInputProps extends React.InputHTMLAttributes<HTMLInputElement>
   isVerified: boolean;
   hasValue: boolean;
   error?: string;
+  requiredIndicator?: boolean;
   registration?: UseFormRegisterReturn;
   onManualInput?: () => void;
   autoCapitalizeCustom?: boolean;
@@ -20,7 +21,7 @@ interface VerifiedInputProps extends React.InputHTMLAttributes<HTMLInputElement>
   description?: string;
 }
 
-const VerifiedInput: React.FC<VerifiedInputProps> = ({ label, isVerified, hasValue, error, registration, onManualInput, ...props }) => {
+const VerifiedInput: React.FC<VerifiedInputProps> = ({ label, isVerified, hasValue, error, registration, onManualInput, requiredIndicator, ...props }) => {
   const { theme } = useThemeStore();
   const isDark = theme === 'dark';
 
@@ -40,6 +41,7 @@ const VerifiedInput: React.FC<VerifiedInputProps> = ({ label, isVerified, hasVal
         <div className="flex items-center mb-1">
              <label htmlFor={props.id} className="block text-sm font-medium text-muted">
                 {label}
+                {(requiredIndicator || props.required) && <span className="text-red-500 ml-1 font-bold">*</span>}
             </label>
             {hasValue && (
                 isVerified ? (

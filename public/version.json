@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 116,
-  "latestVersionName": "20.6.0",
+  "latestVersionCode": 117,
+  "latestVersionName": "20.7.0",
   "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
   "apkDownloadUrl": "https://play.google.com/store/apps/details?id=com.paradigm.ifs",
-  "releaseNotes": "feat: implement comprehensive monthly attendance reporting system with calculation utilities and administrative tools\nfeat: implement authStore with persistence, security monitoring, and attendance management logic\nfeat: implement AddUserPage with Yup validation and API service for user management\nfeat: implement automatic in-app update checks using Google Play API and add version management support\nfeat: implement custom yard field specification management service and admin interface with migration support",
+  "releaseNotes": "feat: implement AttendanceCalendar and LeaveDashboard components with updated user profile data fetching script\nfeat: implement onboarding flow for GMC and enrollment rules with state management and form validation\nfeat: implement automated notification rules engine and job scheduler service with support for missed punch-out tracking.\nfeat: implement automated email notification system with attendance reporting and bulk administrative tools\nfeat: implement comprehensive monthly attendance reporting system with calculation utilities and administrative tools",
   "isMandatory": false
 }

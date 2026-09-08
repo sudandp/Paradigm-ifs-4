@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { App as CapacitorApp } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
 import { supabase } from '../../services/supabase';
@@ -306,22 +308,15 @@ const LeaveDashboard: React.FC = () => {
         return officeHolidays;
     }, [user, fieldHolidays, officeHolidays]);
 
-    const fetchData = useCallback(async () => {
+    const fetchData = useCallback(async (isSilent = false) => {
         if (!user) return;
-        // ── Industry standard: set loading TRUE first, before clearing any state ──
-        // This prevents the flash of empty/zero values that appear while data is wiped
-        // but the loading spinner hasn't appeared yet.
-        setIsLoading(true);
+        // Only trigger full page loading state if we don't have any balance data yet
+        if (!isSilent && !balanceDataState) {
+            setIsLoading(true);
+        }
         setError(null);
-        setBalance(null);
-        setMonthlyPaydays(null);
-        setSnapshotData(null);
-        setEvents([]);
-        setDailyActivityRecords([]);
-        setSiteOtDays(0);
-        setMonthlyTravelKm(0);
-        setMonthlyTravelDuration(0);
-        setMonthlySteps(0);
+        // Stale-while-revalidate: Do NOT clear existing balance, events, or paydays to null/empty
+        // This ensures the user never sees empty skeleton flashes while data is refreshing.
         
         const dateStr = format(viewingDate, 'yyyy-MM-dd');
         const startOfMonthDate = startOfMonth(viewingDate);
@@ -365,18 +360,61 @@ const LeaveDashboard: React.FC = () => {
             ]);
             tFetchEnd = performance.now();
 
-            setBalance(balanceData);
-            setRequests(requestsData);
-            setCompOffLogs(compOffData);
-            setEvents(eventsData);
-            setAttendanceSettings(settings);
-            setRecurringHolidays(recurringData);
-            setUserHolidays(selections);
-            setUserChildren(userChildrenData as UserChild[]);
+            const fallbackSettings = useSettingsStore.getState().attendance || {};
+            const effectiveSettings = (settings && Object.keys(settings).length > 0) ? settings : fallbackSettings;
+
+            if (balanceData) {
+                setBalance(balanceData);
+            } else {
+                // Generate safe fallback balance from user profile so cards are never stuck loading
+                const fallbackBal: LeaveBalance = {
+                    userId: user.id,
+                    earnedTotal: Number(user.earnedLeaveOpeningBalance || 0),
+                    earnedUsed: 0,
+                    earnedPending: 0,
+                    sickTotal: Number(user.sickLeaveOpeningBalance || 0),
+                    sickUsed: 0,
+                    sickPending: 0,
+                    floatingTotal: Number(user.floatingLeaveOpeningBalance || 1),
+                    floatingUsed: 0,
+                    floatingPending: 0,
+                    compOffTotal: Number(user.compOffOpeningBalance || 0),
+                    compOffUsed: 0,
+                    compOffPending: 0,
+                    pinkTotal: 1,
+                    pinkUsed: 0,
+                    pinkPending: 0,
+                    childCareTotal: Number(user.childCareLeaveOpeningBalance || 0),
+                    childCareUsed: 0,
+                    childCarePending: 0,
+                    maternityTotal: 0,
+                    maternityUsed: 0,
+                    maternityPending: 0,
+                    paternityTotal: 0,
+                    paternityUsed: 0,
+                    paternityPending: 0,
+                    otHoursThisMonth: 0,
+                    expiryStates: {
+                        earned: false,
+                        sick: false,
+                        floating: false,
+                        compOff: false
+                    }
+                };
+                setBalance(prev => prev || fallbackBal);
+            }
+
+            setRequests(requestsData || []);
+            setCompOffLogs(compOffData || []);
+            setEvents(eventsData || []);
+            setAttendanceSettings(effectiveSettings);
+            setRecurringHolidays(recurringData || []);
+            setUserHolidays(selections || []);
+            setUserChildren((userChildrenData as UserChild[]) || []);
             setYearlyData({
-                events: yearlyEvents,
-                userHolidays: selections,
-                leaves: yearlyRequests
+                events: yearlyEvents || [],
+                userHolidays: selections || [],
+                leaves: yearlyRequests || []
             });
             
             if (snapshotDataRes) {
@@ -473,9 +511,9 @@ const LeaveDashboard: React.FC = () => {
             }
 
             // Map User Role to Staff Category (office, field, site)
-            const staffCategory = getStaffCategory(currentUserData.roleId || currentUserData.role || '', currentUserData.societyId, settings);
+            const staffCategory = getStaffCategory(currentUserData.roleId || currentUserData.role || '', currentUserData.societyId, effectiveSettings);
 
-            const userRules = settings[staffCategory];
+            const userRules = effectiveSettings[staffCategory] || {};
             const shiftThreshold = userRules?.dailyWorkingHours?.max || 8;
             setThreshold(shiftThreshold);
 
@@ -645,6 +683,28 @@ const LeaveDashboard: React.FC = () => {
         fetchData();
     }, [fetchData]);
 
+    // Refresh when app resumes from background on native Android/iOS
+    useEffect(() => {
+        if (!Capacitor.isNativePlatform()) return;
+        let listenerHandle: any = null;
+        CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+            if (isActive) {
+                console.log('[LeaveDashboard] App resumed from background - refreshing data silently');
+                fetchData(true);
+            }
+        }).then(h => {
+            listenerHandle = h;
+        }).catch(err => {
+            console.warn('Failed to register appStateChange listener:', err);
+        });
+
+        return () => {
+            if (listenerHandle?.remove) {
+                listenerHandle.remove();
+            }
+        };
+    }, [fetchData]);
+
 
     const handleNewRequest = () => {
         navigate('/leaves/apply');
@@ -688,15 +748,13 @@ const LeaveDashboard: React.FC = () => {
     const staffCategoryForEarlyDep = user ? getStaffCategory(user.roleId || user.role || '', user.societyId || user.organizationId, attendanceSettings) : 'office';
     const userRulesForEarlyDep = attendanceSettings ? attendanceSettings[staffCategoryForEarlyDep] : null;
 
+    const viewingMonthStr = format(startOfMonth(viewingDate), 'yyyy-MM');
+
     const earlyDepartureDeductionsList = useMemo(() => {
-        const eventsToUse = (dateScope === 'all' && yearlyData?.events && yearlyData.events.length > 0)
-            ? yearlyData.events
-            : events;
-        if (!eventsToUse || eventsToUse.length === 0) return [];
+        if (!events || events.length === 0) return [];
         const targetShiftMins = (userRulesForEarlyDep?.minimumHoursFullDay || 8) * 60;
-        const monthStartStr = dateScope === 'month' ? format(startOfMonth(viewingDate), 'yyyy-MM') : undefined;
-        return getEarlyDepartureDeductions(eventsToUse, targetShiftMins, requests, yearlyData?.leaves || [], monthStartStr);
-    }, [events, userRulesForEarlyDep, requests, yearlyData, viewingDate, dateScope]);
+        return getEarlyDepartureDeductions(events, targetShiftMins, requests, yearlyData?.leaves || [], viewingMonthStr);
+    }, [events, userRulesForEarlyDep, requests, yearlyData, viewingMonthStr]);
 
     const totalEarlyDepartureMins = useMemo(() => {
         return earlyDepartureDeductionsList.reduce((sum, ed) => sum + ed.earlyMins, 0);
@@ -1113,21 +1171,21 @@ const LeaveDashboard: React.FC = () => {
             isExpired: false
         }] : [])
     ].filter(card => !card.isExpired && !card.isHidden) : [
-        ...(!isProbation ? [{ title: 'Earned Leave', value: '0 / 0', icon: Briefcase, isLoading: isLoading }] : []),
-        ...(!isFemale ? [{ title: 'Blue Leave', value: '0 / 0', icon: Plane, isLoading: isLoading }] : []),
-        ...(isFemale ? [{ title: 'Pink Leave', value: '0 / 0', icon: Heart, isLoading: isLoading }] : []),
-        ...(isTechnicalRole(user?.role) || isProbation ? [] : [{ title: 'Compensatory Off', value: '0 / 0', icon: CalendarClock, isLoading: isLoading }]),
+        ...(!isProbation ? [{ title: 'Earned Leave', value: `${Number(user?.earnedLeaveOpeningBalance || 0)} / ${Number(user?.earnedLeaveOpeningBalance || 0)}`, icon: Briefcase, isLoading: false }] : []),
+        ...(!isFemale ? [{ title: 'Blue Leave', value: '1 / 1', icon: Plane, isLoading: false }] : []),
+        ...(isFemale ? [{ title: 'Pink Leave', value: '1 / 1', icon: Heart, isLoading: false }] : []),
+        ...(isTechnicalRole(user?.role) || isProbation ? [] : [{ title: 'Compensatory Off', value: `${Number(user?.compOffOpeningBalance || 0)} / 4`, icon: CalendarClock, isLoading: false }]),
         {
             title: 'Monthly Pay Days',
             value: monthlyPaydays !== null ? `${monthlyPaydays}` : '-',
             icon: Calculator,
-            isLoading: isLoading
+            isLoading: false
         },
         {
             title: 'Monthly Travel KM',
-            value: !isLoading ? `${monthlyTravelKm.toFixed(2)} KM` : '-',
+            value: `${monthlyTravelKm.toFixed(2)} KM`,
             icon: MapPin,
-            isLoading: isLoading
+            isLoading: false
         }
     ];
 
@@ -1144,6 +1202,21 @@ const LeaveDashboard: React.FC = () => {
             }}
         >
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
+
+            {error && (
+                <div className="bg-red-500/10 border border-red-500/30 text-red-700 dark:text-red-300 p-3 rounded-xl flex items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                        <span>{error}</span>
+                    </div>
+                    <button 
+                        onClick={() => fetchData()}
+                        className="px-3 py-1 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition-colors"
+                    >
+                        Retry
+                    </button>
+                </div>
+            )}
 
             {/* Early Departure Notification Banner */}
             {earlyDepartureDeductionsList.length > 0 && (
@@ -1259,7 +1332,7 @@ const LeaveDashboard: React.FC = () => {
                     currentDate={viewingDate}
                     setCurrentDate={setViewingDate}
                     events={events}
-                    settings={attendanceSettings}
+                    settings={attendanceSettings || useSettingsStore.getState().attendance}
                     recurringHolidays={recurringHolidays}
                     isLoading={isLoading}
                     onMonthPaydaysChange={setMonthlyPaydays}
@@ -1292,7 +1365,7 @@ const LeaveDashboard: React.FC = () => {
                         viewingDate={viewingDate}
                         onDateChange={setViewingDate}
                         events={events}
-                        settings={attendanceSettings}
+                        settings={attendanceSettings || useSettingsStore.getState().attendance}
                         isLoading={isLoading}
                     />
                 )}
@@ -1301,7 +1374,7 @@ const LeaveDashboard: React.FC = () => {
                         viewingDate={viewingDate}
                         onDateChange={setViewingDate}
                         events={events}
-                        settings={attendanceSettings}
+                        settings={attendanceSettings || useSettingsStore.getState().attendance}
                         isLoading={isLoading}
                     />
                 )}

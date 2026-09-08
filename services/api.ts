@@ -638,7 +638,7 @@ export const api = {
         if (holidaysRes.error) return api.handleError(holidaysRes.error);
 
         const result = {
-          settings: toCamelCase(settingsRes.data),
+          settings: settingsRes.data ? toCamelCase(settingsRes.data) : {},
           roles: (rolesRes.data || []).map(toCamelCase),
           holidays: (holidaysRes.data || []).map(toCamelCase),
         };
@@ -5484,6 +5484,17 @@ export const api = {
     const cached = await offlineDb.getCache('attendance_settings');
     if (cached) return cached;
     
+    // Fallback: in-memory store
+    try {
+      const { useSettingsStore } = await import('../store/settingsStore');
+      const storeSettings = useSettingsStore.getState().attendance;
+      if (storeSettings && Object.keys(storeSettings).length > 0) {
+        return storeSettings;
+      }
+    } catch {
+      // Ignore
+    }
+
     throw new Error('Attendance settings are not available offline. Please connect once to sync settings.');
   },
   saveAttendanceSettings: async (settings: AttendanceSettings): Promise<void> => {
@@ -6183,8 +6194,10 @@ export const api = {
           'Leave balance initial data fetch timed out'
         )) as any[];
 
-        if (!settingsRes.error && !userRes.error) {
+        if (!settingsRes.error && settingsRes.data) {
           settingsData = settingsRes.data;
+        }
+        if (!userRes.error && userRes.data) {
           userData = userRes.data;
           if (userData.companies) {
             const compLocation = Array.isArray(userData.companies) ? userData.companies[0]?.location : userData.companies?.location;
@@ -6203,19 +6216,70 @@ export const api = {
       userData = await offlineDb.getCache(`user_profile_leave_${userId}`);
     }
     
+    // Fallback: active user profile from authStore
+    if (!userData) {
+      try {
+        const { useAuthStore } = await import('../store/authStore');
+        const activeUser = useAuthStore.getState().user;
+        if (activeUser && activeUser.id === userId) {
+          userData = {
+            role_id: activeUser.roleId || activeUser.role,
+            role: { display_name: activeUser.role },
+            earned_leave_opening_balance: activeUser.earnedLeaveOpeningBalance,
+            earned_leave_opening_date: activeUser.earnedLeaveOpeningDate,
+            sick_leave_opening_balance: activeUser.sickLeaveOpeningBalance,
+            sick_leave_opening_date: activeUser.sickLeaveOpeningDate,
+            child_care_leave_opening_balance: activeUser.childCareLeaveOpeningBalance,
+            child_care_leave_opening_date: activeUser.childCareLeaveOpeningDate,
+            comp_off_opening_balance: activeUser.compOffOpeningBalance,
+            comp_off_opening_date: activeUser.compOffOpeningDate,
+            floating_leave_opening_balance: activeUser.floatingLeaveOpeningBalance,
+            floating_leave_opening_date: activeUser.floatingLeaveOpeningDate,
+            joining_date: activeUser.joiningDate,
+            gender: activeUser.gender,
+            created_at: activeUser.createdAt,
+            organization_name: activeUser.organizationName,
+            society_name: activeUser.societyName,
+            society_id: activeUser.societyId,
+            location_id: activeUser.locationId,
+            location: activeUser.location
+          };
+        }
+      } catch {
+        // Ignore
+      }
+    }
+
     // Always get settings from cache if cloud fails
     if (!settingsData) {
-      // Try 1: From initial_app_data bundle
+      // Try 1: From initial_app_data bundle — extract only attendanceSettings sub-object
       const initialData = await offlineDb.getCache('initial_app_data');
-      if (initialData?.settings) {
-        settingsData = { attendance_settings: toSnakeCase(initialData.settings) };
+      // initialData.settings is already toCamelCase'd: { attendanceSettings: {...}, enrollmentRules: ... }
+      // We need { attendance_settings: <raw snake_case rules object> }
+      const rawAttendance = initialData?.settings?.attendanceSettings || initialData?.settings?.attendance_settings;
+      if (rawAttendance && typeof rawAttendance === 'object' && Object.keys(rawAttendance).length > 0) {
+        settingsData = { attendance_settings: toSnakeCase(rawAttendance) };
       }
     }
     if (!settingsData) {
       // Try 2: From dedicated attendance_settings cache (populated by getAttendanceSettings)
+      // This cache stores already-camelCase attendance rules directly (office/field/site keys)
       const cachedSettings = await offlineDb.getCache('attendance_settings');
-      if (cachedSettings) {
+      if (cachedSettings && typeof cachedSettings === 'object' && Object.keys(cachedSettings).length > 0) {
+        // cachedSettings already has {office:{...}, field:{...}, site:{...}} in camelCase
         settingsData = { attendance_settings: toSnakeCase(cachedSettings) };
+      }
+    }
+    // Try 3: From settingsStore in memory
+    if (!settingsData) {
+      try {
+        const { useSettingsStore } = await import('../store/settingsStore');
+        const storeSettings = useSettingsStore.getState().attendance;
+        if (storeSettings && Object.keys(storeSettings).length > 0) {
+          settingsData = { attendance_settings: toSnakeCase(storeSettings) };
+        }
+      } catch {
+        // Ignore
       }
     }
 
@@ -6307,24 +6371,50 @@ export const api = {
         yearEvents = eventsRes.data || [];
         userHolidaysData = userHolidaysRes?.data || [];
         
-        // Cache these for offline balance simulation
+        // Cache these for offline balance simulation (never overwrite good cache with empty leaves)
+        const existingBundle = await offlineDb.getCache(`leave_data_bundle_${userId}_${currentYear}`);
+        const resolvedApprovedLeaves = approvedLeaves.length > 0 ? approvedLeaves : (existingBundle?.approvedLeaves || []);
+
         await offlineDb.setCache(`leave_data_bundle_${userId}_${currentYear}`, {
-          approvedLeaves, compOffData, otData, holidays, recurringHolidays, yearEvents, userHolidays: userHolidaysData
+          approvedLeaves: resolvedApprovedLeaves,
+          compOffData: compOffData.length > 0 ? compOffData : (existingBundle?.compOffData || []),
+          otData: otData.length > 0 ? otData : (existingBundle?.otData || []),
+          holidays: holidays.length > 0 ? holidays : (existingBundle?.holidays || []),
+          recurringHolidays: recurringHolidays.length > 0 ? recurringHolidays : (existingBundle?.recurringHolidays || []),
+          yearEvents: yearEvents.length > 0 ? yearEvents : (existingBundle?.yearEvents || []),
+          userHolidays: userHolidaysData.length > 0 ? userHolidaysData : (existingBundle?.userHolidays || [])
         });
+        approvedLeaves = resolvedApprovedLeaves;
       } catch (err) {
         console.warn('Failed to fetch detailed leave data from cloud, using cache if available');
       }
     }
-    if (!approvedLeaves.length && !yearEvents.length) {
+    if (!approvedLeaves.length) {
       const cached = await offlineDb.getCache(`leave_data_bundle_${userId}_${currentYear}`);
-      if (cached) {
-        approvedLeaves = cached.approvedLeaves || [];
-        compOffData = cached.compOffData || [];
-        otData = cached.otData || [];
-        holidays = cached.holidays || [];
-        recurringHolidays = cached.recurringHolidays || [];
-        yearEvents = cached.yearEvents || [];
-        userHolidaysData = cached.userHolidays || [];
+      if (cached?.approvedLeaves?.length) {
+        approvedLeaves = cached.approvedLeaves;
+        if (!compOffData.length) compOffData = cached.compOffData || [];
+        if (!otData.length) otData = cached.otData || [];
+        if (!holidays.length) holidays = cached.holidays || [];
+        if (!recurringHolidays.length) recurringHolidays = cached.recurringHolidays || [];
+        if (!yearEvents.length) yearEvents = cached.yearEvents || [];
+        if (!userHolidaysData.length) userHolidaysData = cached.userHolidays || [];
+      } else {
+        // Also check generic leave_requests offline cache
+        const allCachedLeaves = (await offlineDb.getCache('leave_requests')) || [];
+        const userApproved = allCachedLeaves.filter((r: any) => 
+          r.userId === userId && 
+          ['approved', 'pending_manager_approval', 'pending_hr_confirmation'].includes(String(r.status || '').toLowerCase())
+        ).map((r: any) => ({
+          leave_type: r.leaveType,
+          start_date: r.startDate,
+          end_date: r.endDate,
+          day_option: r.dayOption,
+          status: r.status
+        }));
+        if (userApproved.length > 0) {
+          approvedLeaves = userApproved;
+        }
       }
     }
 
@@ -7594,9 +7684,30 @@ export const api = {
     )) as any;
     if (error) return api.handleError(error);
     
-    // Cache for offline
-    if (!filter?.page) {
-        await offlineDb.setCache('leave_requests', (data || []).map(toCamelCase));
+    // If cloud query returned empty array (due to unauthenticated RLS or token issue),
+    // fall back to offline cache so user's approved leave history is never wiped
+    if ((!data || data.length === 0) && filter?.userId) {
+      const cached = (await offlineDb.getCache('leave_requests')) || [];
+      const userCached = cached.filter((r: any) => {
+        if (r.userId !== filter.userId) return false;
+        if (filter?.status) {
+          if (Array.isArray(filter.status)) {
+            if (!filter.status.includes(r.status)) return false;
+          } else if (r.status !== filter.status) return false;
+        }
+        if (filter?.leaveType && r.leaveType !== filter.leaveType) return false;
+        return true;
+      });
+      if (userCached.length > 0) {
+        return { data: userCached, total: userCached.length };
+      }
+    }
+
+    // Cache for offline (only when non-empty to protect cache integrity)
+    if (!filter?.page && data && data.length > 0) {
+        const existing = (await offlineDb.getCache('leave_requests')) || [];
+        const otherUsers = filter?.userId ? existing.filter((r: any) => r.userId !== filter.userId) : [];
+        await offlineDb.setCache('leave_requests', [...otherUsers, ...data.map(toCamelCase)]);
     }
     
     // Get unique approver IDs (current and historical)

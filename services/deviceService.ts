@@ -37,7 +37,7 @@ export async function getDeviceLimits(roleId: string): Promise<DeviceLimitsConfi
       .from('settings')
       .select('attendance_settings')
       .eq('id', 'singleton')
-      .single();
+      .maybeSingle();
     
     if (error) throw error;
     
@@ -261,7 +261,9 @@ export async function registerDevice(
             message: 'Device registration bypassed during impersonation mode.'
           };
         }
-      } catch (e) {}
+      } catch {
+        /* ignore JSON parse error */
+      }
     }
 
     const normalizedId = deviceIdentifier.toLowerCase();

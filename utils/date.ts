@@ -35,3 +35,42 @@ export function isThirdSaturday(date: Date = new Date()): boolean {
   const dayOfMonth = date.getDate();
   return dayOfMonth >= 15 && dayOfMonth <= 21;
 }
+
+/**
+ * Formats a date string, Date object, or timestamp into DD/MM/YYYY format without timezone shifts
+ * e.g. "1998-03-02" -> "02/03/1998"
+ * e.g. "2026-09-01" -> "01/09/2026"
+ */
+export function formatDisplayDate(dateStr?: string | Date | number | null): string {
+  if (!dateStr) return '-';
+  if (typeof dateStr === 'string') {
+    const trimmed = dateStr.trim();
+    if (!trimmed || trimmed === '-' || trimmed === '—') return '-';
+
+    // Already DD/MM/YYYY
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(trimmed)) return trimmed;
+
+    // YYYY-MM-DD or YYYY/MM/DD (handles timestamps with T or space as well)
+    const isoMatch = trimmed.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+    if (isoMatch) {
+      const [, y, m, d] = isoMatch;
+      return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+    }
+
+    // DD-MM-YYYY or DD.MM.YYYY
+    const dmyMatch = trimmed.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})/);
+    if (dmyMatch) {
+      const [, d, m, y] = dmyMatch;
+      return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+    }
+  }
+
+  if (dateStr instanceof Date && !isNaN(dateStr.getTime())) {
+    const d = String(dateStr.getDate()).padStart(2, '0');
+    const m = String(dateStr.getMonth() + 1).padStart(2, '0');
+    const y = dateStr.getFullYear();
+    return `${d}/${m}/${y}`;
+  }
+
+  return String(dateStr);
+}

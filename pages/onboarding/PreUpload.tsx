@@ -1096,7 +1096,7 @@ const PreUpload = () => {
                                         <span className="text-xs font-semibold text-white/90 md:text-primary-text">Bank Proof</span>
                                         <FieldRequirementBadge isMandatory={mandatoryFields.bankProof} />
                                     </div>
-                                    <Controller name="bankProof" control={control} render={({ field }) => <UploadDocument label={`Bank Proof (Passbook/Cancelled Cheque)${mandatoryFields.bankProof ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.bankProof?.message as string} allowCapture verificationStatus={store.data.bank.verifiedStatus?.accountNumber} ocrSchema={bankProofSchema} onOcrComplete={(data) => handleImmediateOcr('bank', data)} docType="Bank" setToast={setToast} />} />
+                                    <Controller name="bankProof" control={control} render={({ field }) => <UploadDocument label={`Bank Proof (Cheque Book / Cancelled Cheque)${mandatoryFields.bankProof ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.bankProof?.message as string} allowCapture verificationStatus={store.data.bank.verifiedStatus?.accountNumber} ocrSchema={bankProofSchema} onOcrComplete={(data) => handleImmediateOcr('bank', data)} docType="Bank" setToast={setToast} />} />
                                 </div>
                                 <div className="flex flex-col gap-1.5">
                                     <div className="flex items-center justify-between mb-0.5">

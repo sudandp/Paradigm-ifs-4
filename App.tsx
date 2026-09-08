@@ -653,7 +653,8 @@ const App: React.FC = () => {
     const syncData = async () => {
       try {
         await withTimeout((async () => {
-          const { settings, roles, holidays } = await apiService.getInitialAppData();
+          const { settings: rawSyncSettings, roles, holidays } = await apiService.getInitialAppData();
+          const settings = rawSyncSettings || {};
           const recurringHolidays = await apiService.getRecurringHolidays();
           if (settings.enrollmentRules) initEnrollmentRules(settings.enrollmentRules);
           if (roles) initRoles(roles);
@@ -1588,6 +1589,9 @@ const App: React.FC = () => {
 
     initializeApp();
 
+    let lastSilentRenewalAttempt = 0;
+    let silentRenewalFailureCount = 0;
+
     // Listen for subsequent auth changes (e.g., login, logout)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       console.log(`[AuthEvent] ${event}`);
@@ -1598,6 +1602,7 @@ const App: React.FC = () => {
       }
 
       if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') && session) {
+        silentRenewalFailureCount = 0;
         secureSet('supabase.auth.rememberMe', session.refresh_token).catch(err => console.error('Error synchronizing auth token:', err));
           
         if (session.user.email) {
@@ -1642,19 +1647,33 @@ const App: React.FC = () => {
           }
         } else if (isMobileDevice) {
           // On mobile, keep the user logged in and auto-renew the session in the background.
-          console.warn('[AuthEvent] SIGNED_OUT received on Mobile without explicit user logout. Attempting silent token renewal...');
-          secureGet('supabase.auth.rememberMe').then(async (storedToken) => {
-            const token = storedToken ?? (await Preferences.get({ key: 'supabase.auth.rememberMe' })).value;
-            if (token) {
-              supabase.auth.refreshSession({ refresh_token: token }).then(({ data }) => {
-                if (data?.session) {
-                  console.log('[AuthEvent] ✅ Session auto-renewed successfully on mobile.');
-                }
-              }).catch((rErr) => {
-                console.warn('[AuthEvent] Silent token renewal notice:', rErr?.message || rErr);
-              });
-            }
-          }).catch(() => {});
+          // Guard against rapid-fire infinite loops if the refresh token is expired/revoked.
+          const now = Date.now();
+          if (now - lastSilentRenewalAttempt > 30000 && silentRenewalFailureCount < 3) {
+            lastSilentRenewalAttempt = now;
+            console.warn('[AuthEvent] SIGNED_OUT received on Mobile without explicit user logout. Attempting silent token renewal...');
+            secureGet('supabase.auth.rememberMe').then(async (storedToken) => {
+              const token = storedToken ?? (await Preferences.get({ key: 'supabase.auth.rememberMe' })).value;
+              if (token) {
+                supabase.auth.refreshSession({ refresh_token: token }).then(({ data, error: rErr }) => {
+                  if (data?.session) {
+                    silentRenewalFailureCount = 0;
+                    console.log('[AuthEvent] ✅ Session auto-renewed successfully on mobile.');
+                  } else {
+                    silentRenewalFailureCount++;
+                    console.warn('[AuthEvent] Silent token renewal unsuccessful:', rErr?.message);
+                  }
+                }).catch((rErr) => {
+                  silentRenewalFailureCount++;
+                  console.warn('[AuthEvent] Silent token renewal notice:', rErr?.message || rErr);
+                });
+              } else {
+                silentRenewalFailureCount++;
+              }
+            }).catch(() => {});
+          } else {
+            console.warn('[AuthEvent] Suppressing rapid-fire silent token renewal on mobile to prevent infinite loop.');
+          }
         } else {
           // Desktop web non-explicit sign out
           if (isMounted) {
@@ -1816,7 +1835,8 @@ const App: React.FC = () => {
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
-        const { settings, roles, holidays } = await apiService.getInitialAppData();
+        const { settings: rawSettings, roles, holidays } = await apiService.getInitialAppData();
+        const settings = rawSettings || {};
         const recurringHolidays = await apiService.getRecurringHolidays();
 
         if (settings.enrollmentRules) {
@@ -2312,12 +2332,14 @@ const App: React.FC = () => {
           zIndex: 99999,
         }}
         toastOptions={{
+          duration: 3500,
           style: {
             maxWidth: '340px',
             fontSize: '13px',
             padding: '10px 14px',
             borderRadius: '10px',
             wordBreak: 'break-word',
+            cursor: 'pointer',
           },
         }}
       />

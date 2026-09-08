@@ -2,7 +2,7 @@ import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getProxyUrl, getCleanFilename } from '../utils/fileUrl';
 import type { UploadedFile } from '../types';
-import { UploadCloud, File as FileIcon, X, RefreshCw, Camera, Loader2, AlertTriangle, CheckCircle, Eye, Trash2, BadgeInfo, CreditCard, User as UserIcon, FileText, FileSignature, IndianRupee, GraduationCap, Fingerprint, XCircle, Maximize2, FileBarChart, FileSpreadsheet, FileArchive, HeartPulse } from 'lucide-react';
+import { UploadCloud, File as FileIcon, X, RefreshCw, Camera, Loader2, AlertTriangle, CheckCircle, Eye, Trash2, BadgeInfo, CreditCard, User as UserIcon, FileText, FileSignature, IndianRupee, GraduationCap, Fingerprint, XCircle, Maximize2, FileBarChart, FileSpreadsheet, FileArchive, HeartPulse, Crop } from 'lucide-react';
 import { api } from '../services/api';
 import Button from './ui/Button';
 import CameraCaptureModal from './CameraCaptureModal';
@@ -56,6 +56,10 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
     const [isPreviewOpen, setIsPreviewOpen] = useState(false);
     const [extractedInfo, setExtractedInfo] = useState<any>(null);
     const [showExtractedModal, setShowExtractedModal] = useState(false);
+    // Crop-on-upload state — holds pending image before user crops & confirms
+    const [showUploadCropModal, setShowUploadCropModal] = useState(false);
+    const [pendingUploadDataUrl, setPendingUploadDataUrl] = useState<string | null>(null);
+    const [pendingRawFile, setPendingRawFile] = useState<File | null>(null);
     const { logVerificationUsage } = useOnboardingStore.getState();
 
     const handleViewFullSize = () => {
@@ -90,6 +94,18 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
         }
         return 'none';
     }, [label]);
+
+    // Hint shown in crop preview for Aadhaar back side to guide address extraction
+    const cropHint = useMemo<string | undefined>(() => {
+        const lowerLabel = label.toLowerCase();
+        const isAadhaarBack =
+            (lowerLabel.includes('back') && (lowerLabel.includes('aadhaar') || docType === 'Aadhaar')) ||
+            (lowerLabel.includes('id proof') && lowerLabel.includes('back'));
+        if (isAadhaarBack) {
+            return 'The address is printed at the bottom of the Aadhaar back side. Tap “Crop” and select the address strip for more accurate extraction.';
+        }
+        return undefined;
+    }, [label, docType]);
     
     const handleFileSelect = useCallback(async (rawFile: File, base64FromCapture?: string) => {
         if (!allowedTypes.includes(rawFile.type)) {
@@ -226,6 +242,45 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
         }
     }, [handleFileSelect]);
 
+    const handleOpenCrop = useCallback(async () => {
+        if (!file || !file.type.startsWith('image/')) return;
+        const dataUrl = file.preview;
+        // If file object is a raw File in memory
+        if ((file as any).file instanceof File) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setPendingRawFile((file as any).file);
+                setPendingUploadDataUrl(reader.result as string);
+                setShowUploadCropModal(true);
+            };
+            reader.readAsDataURL((file as any).file);
+            return;
+        }
+        // If preview is a data URL
+        if (dataUrl && dataUrl.startsWith('data:')) {
+            setPendingUploadDataUrl(dataUrl);
+            setShowUploadCropModal(true);
+            return;
+        }
+        // If it's a remote URL or proxy URL
+        if (dataUrl) {
+            try {
+                const res = await fetch(getProxyUrl(dataUrl));
+                const blob = await res.blob();
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    setPendingUploadDataUrl(reader.result as string);
+                    setShowUploadCropModal(true);
+                };
+                reader.readAsDataURL(blob);
+            } catch (err) {
+                console.warn("Could not load image as dataURL for crop:", err);
+                setPendingUploadDataUrl(getProxyUrl(dataUrl));
+                setShowUploadCropModal(true);
+            }
+        }
+    }, [file]);
+
     const handleRemove = async () => {
         if (!file) return;
 
@@ -282,7 +337,6 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
     return (
         <div className="w-full">
             <ImagePreviewModal isOpen={isPreviewOpen} onClose={() => setIsPreviewOpen(false)} imageUrl={file?.preview ? getProxyUrl(file.preview) : ''} />
-            {isCameraOpen && <CameraCaptureModal isOpen={isCameraOpen} onClose={() => setIsCameraOpen(false)} onCapture={handleCapture} captureGuidance={captureGuidance} autoConfirm={true} />}
 
             <div className="flex items-center gap-2 mb-2">
                 <label className="block text-sm font-medium text-white/70 md:text-muted" htmlFor={inputId}>{label}</label>
@@ -330,6 +384,14 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                                                 title="View Full Size"
                                             >
                                                 <Eye className="h-5 w-5" />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={(e) => { e.stopPropagation(); handleOpenCrop(); }}
+                                                className="p-2.5 bg-amber-600/80 hover:bg-amber-600 backdrop-blur-md rounded-full text-white transition-all transform scale-90 group-hover:scale-100 shadow-lg cursor-pointer"
+                                                title="Crop Image"
+                                            >
+                                                <Crop className="h-5 w-5" />
                                             </button>
                                             <label
                                                 htmlFor={inputId}
@@ -419,6 +481,18 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                                     <Eye className="h-3.5 w-3.5 text-sky-600" /> View Document
                                 </button>
 
+                                {/* Crop Document Button - Available for images whenever user needs to crop */}
+                                {file.type.startsWith('image/') && (
+                                    <button 
+                                        type="button" 
+                                        onClick={handleOpenCrop}
+                                        className="text-xs font-bold text-amber-700 hover:text-amber-800 flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 hover:bg-amber-100 border border-amber-200 shadow-2xs transition-all"
+                                        title="Crop Document Area"
+                                    >
+                                        <Crop className="h-3.5 w-3.5 text-amber-600" /> Crop
+                                    </button>
+                                )}
+
                                 {/* Change File Button */}
                                 <label 
                                     htmlFor={inputId} 
@@ -486,7 +560,20 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                 )}
             </div>
 
-            <input id={inputId} type="file" className="sr-only" onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])} accept={allowedTypes.join(',')}/>
+            <input
+                id={inputId}
+                type="file"
+                className="sr-only"
+                onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    // Directly handle file selection without forcing a crop popup modal
+                    handleFileSelect(f);
+                    // Reset input value so same file can be re-selected
+                    e.target.value = '';
+                }}
+                accept={allowedTypes.join(',')}
+            />
 
             <div className="text-center mt-1 min-h-[16px]">
                 {displayError && <p className="text-xs text-red-500">{displayError}</p>}
@@ -536,6 +623,31 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                     onClose={() => setIsPreviewOpen(false)}
                     imageUrl={file.preview || (file as any).url || ''}
                     title={label || file.name}
+                />
+            )}
+
+            {/* Upload Crop Modal — shown when user picks an image from file input */}
+            {showUploadCropModal && pendingUploadDataUrl && (
+                <CameraCaptureModal
+                    isOpen={showUploadCropModal}
+                    onClose={() => {
+                        setShowUploadCropModal(false);
+                        setPendingUploadDataUrl(null);
+                        setPendingRawFile(null);
+                    }}
+                    onCapture={(b64, mimeType) => {
+                        const cleanB64 = b64.includes(',') ? b64.split(',')[1] : b64;
+                        const ext = mimeType.split('/')[1] || 'jpg';
+                        const fileName = pendingRawFile?.name || `cropped.${ext}`;
+                        const croppedFile = base64ToFile(cleanB64, mimeType, fileName);
+                        handleFileSelect(croppedFile, cleanB64);
+                        setShowUploadCropModal(false);
+                        setPendingUploadDataUrl(null);
+                        setPendingRawFile(null);
+                    }}
+                    captureGuidance={captureGuidance}
+                    initialImage={pendingUploadDataUrl}
+                    cropHint={cropHint}
                 />
             )}
 

@@ -314,17 +314,18 @@ const PersonalDetails = () => {
                     <div className="md:col-span-3">
                         <Input label="Employee ID" id="employeeId" registration={register('employeeId')} error={errors.employeeId?.message} readOnly className="bg-gray-100" />
                     </div>
-                    <VerifiedInput label="First Name" id="firstName" registration={register('firstName')} error={errors.firstName?.message} isVerified={data.personal.verifiedStatus?.name === true} hasValue={!!personalData.firstName} onManualInput={() => setPersonalVerifiedStatus({ name: false })} />
+                    <VerifiedInput label="First Name" requiredIndicator={true} id="firstName" registration={register('firstName')} error={errors.firstName?.message} isVerified={data.personal.verifiedStatus?.name === true} hasValue={!!personalData.firstName} onManualInput={() => setPersonalVerifiedStatus({ name: false })} />
                     <Input label="Middle Name (Optional)" id="middleName" registration={register('middleName')} />
-                    <VerifiedInput label="Last Name" id="lastName" registration={register('lastName')} error={errors.lastName?.message} isVerified={data.personal.verifiedStatus?.name === true} hasValue={!!personalData.lastName} onManualInput={() => setPersonalVerifiedStatus({ name: false })} />
+                    <VerifiedInput label="Last Name" requiredIndicator={true} id="lastName" registration={register('lastName')} error={errors.lastName?.message} isVerified={data.personal.verifiedStatus?.name === true} hasValue={!!personalData.lastName} onManualInput={() => setPersonalVerifiedStatus({ name: false })} />
                     <Input label="Preferred Name (Optional)" id="preferredName" registration={register('preferredName', { onChange: () => { preferredNameManuallyEdited.current = true; } })} />
-                    <Input label="Badge Name (ID Card)" id="badgeName" maxLength={18} registration={register('badgeName')} error={errors.badgeName?.message} description="Max 18 characters" />
+                    <Input label="Badge Name (ID Card) (Optional)" id="badgeName" maxLength={18} registration={register('badgeName')} error={errors.badgeName?.message} description="Max 18 characters" />
                     <div className="relative">
                         <Controller
                             name="dob"
                             control={control}
                             render={({ field }) => (                           
                                 <DatePicker
+                                    requiredIndicator={true}
                                     label={
                                         <span className="flex items-center gap-2">
                                             Date of Birth
@@ -353,13 +354,13 @@ const PersonalDetails = () => {
                             </p>
                         )}
                     </div>
-                    <Select label="Gender" id="gender" registration={register('gender')} error={errors.gender?.message}>
+                    <Select label="Gender" requiredIndicator={true} id="gender" registration={register('gender')} error={errors.gender?.message}>
                         <option value="">Select Gender</option><option>Male</option><option>Female</option><option>Other</option>
                     </Select>
-                    <Select label="Marital Status" id="maritalStatus" registration={register('maritalStatus')} error={errors.maritalStatus?.message}>
+                    <Select label="Marital Status" requiredIndicator={true} id="maritalStatus" registration={register('maritalStatus')} error={errors.maritalStatus?.message}>
                         <option value="">Select Status</option><option>Single</option><option>Married</option><option>Divorced</option><option>Widowed</option>
                     </Select>
-                    <Select label="Blood Group" id="bloodGroup" registration={register('bloodGroup')} error={errors.bloodGroup?.message}>
+                    <Select label="Blood Group" requiredIndicator={true} id="bloodGroup" registration={register('bloodGroup')} error={errors.bloodGroup?.message}>
                         <option value="">Select</option><option>A+</option><option>A-</option><option>B+</option><option>B-</option><option>AB+</option><option>AB-</option><option>O+</option><option>O-</option>
                     </Select>
                     
@@ -436,7 +437,7 @@ const PersonalDetails = () => {
                         placeholder="10-character PAN (e.g. ABCDE1234F)"
                     />
 
-                    <Input label="Mobile Number" id="mobile" type="tel" registration={register('mobile')} error={errors.mobile?.message} description="Onboarding updates and alerts will be sent to this number via WhatsApp." />
+                    <Input label="Mobile Number" requiredIndicator={true} id="mobile" type="tel" registration={register('mobile')} error={errors.mobile?.message} description="Onboarding updates and alerts will be sent to this number via WhatsApp." />
                     <Input label="Alternate Mobile (Optional)" id="alternateMobile" type="tel" registration={register('alternateMobile')} />
                     <Input label="Email Address (Optional)" id="email" type="email" registration={register('email')} error={errors.email?.message} />
                     <div>
@@ -480,9 +481,9 @@ const PersonalDetails = () => {
                          )}
                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                             <input type="hidden" {...register('emergencyContactId')} />
-                            <Input label="Contact Name" id="emergencyContactName" registration={register('emergencyContactName')} error={errors.emergencyContactName?.message} />
-                            <Input label="Contact Number" id="emergencyContactNumber" type="tel" registration={register('emergencyContactNumber')} error={errors.emergencyContactNumber?.message} />
-                            <Select label="Relationship" id="relationship" registration={register('relationship')} error={errors.relationship?.message}>
+                            <Input label="Contact Name" requiredIndicator={true} id="emergencyContactName" registration={register('emergencyContactName')} error={errors.emergencyContactName?.message} />
+                            <Input label="Contact Number" requiredIndicator={true} id="emergencyContactNumber" type="tel" registration={register('emergencyContactNumber')} error={errors.emergencyContactNumber?.message} />
+                            <Select label="Relationship" requiredIndicator={true} id="relationship" registration={register('relationship')} error={errors.relationship?.message}>
                                 <option value="">Select Relationship</option>
                                 <option>Spouse</option><option>Wife</option><option>Husband</option><option>Child</option><option>Father</option><option>Mother</option><option>Sibling</option><option>Other</option>
                             </Select>

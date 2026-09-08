@@ -64,7 +64,7 @@ const DEFAULT_CATEGORY_ROLES: Record<'office' | 'field' | 'site', string[]> = {
 const documentRuleConfig: { key: keyof DocumentRules; label: string; description: string; icon: any; category: string }[] = [
     { key: 'photo', label: 'Candidate Profile Photo', description: 'Live camera capture or uploaded passport photo of candidate', icon: Camera, category: 'Identity' },
     { key: 'aadhaar', label: 'Aadhaar Card (Front & Back)', description: 'Government Aadhaar identity document with address proof', icon: UserSquare2, category: 'Identity' },
-    { key: 'bankProof', label: 'Bank Proof (Passbook / Cheque)', description: 'Passbook front page or cancelled cheque for salary disbursement', icon: CreditCard, category: 'Financial' },
+    { key: 'bankProof', label: 'Bank Proof (Cheque Book / Cancelled Cheque)', description: 'Cheque book leaf or cancelled cheque for salary disbursement', icon: CreditCard, category: 'Financial' },
     { key: 'pan', label: 'PAN Card Copy', description: 'Mandatory Income Tax PAN card copy for statutory TDS / Form 16', icon: FileCheck2, category: 'Financial' },
     { key: 'uanProof', label: 'UAN Proof Document', description: 'EPFO Universal Account Number card or member passbook', icon: Briefcase, category: 'Statutory' },
     { key: 'salarySlip', label: 'Latest Salary Slip', description: 'Previous employment salary slip for CTC and experience verification', icon: IndianRupee, category: 'Statutory' },
@@ -75,7 +75,7 @@ const documentRuleConfig: { key: keyof DocumentRules; label: string; description
 const verificationRuleConfig: { key: keyof VerificationRules; label: string; description: string; tag: string }[] = [
     { key: 'requireBengaluruAddress', label: 'Require Bengaluru Address Verification', description: 'Verify candidate residential address falls within local operational bounds', tag: 'Geographic' },
     { key: 'requireDobVerification', label: 'Require Strict DOB & Age Validation (>18 Years)', description: 'Enforce statutory minimum working age verification against uploaded Aadhaar / ID proof', tag: 'Compliance' },
-    { key: 'requireBankNameMatch', label: 'Require Exact Bank Account Name Matching (Penny Drop)', description: 'Ensure name on bank passbook strictly matches candidate name on Aadhaar card', tag: 'Financial' },
+    { key: 'requireBankNameMatch', label: 'Require Exact Bank Account Name Matching (Penny Drop)', description: 'Ensure name on bank cheque strictly matches candidate name on Aadhaar card', tag: 'Financial' },
     { key: 'requireUanVerification', label: 'Require UAN Lookup & PF Dual-Enrollment Check', description: 'Perform automated EPFO verification before proceeding with fresh PF generation', tag: 'Statutory' },
 ];
 

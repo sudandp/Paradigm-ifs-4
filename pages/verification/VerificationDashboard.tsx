@@ -14,6 +14,7 @@ import * as outbox from '@/services/offline/outbox';
 import { getDb } from '@/services/offline/db';
 import hotToast from 'react-hot-toast';
 import { RejectReasonModal } from '@/components/onboarding/RejectReasonModal';
+import { ApproveSubmissionModal } from '@/components/onboarding/ApproveSubmissionModal';
 
 const SyncStatusBadge: React.FC<{ pending?: boolean; failed?: boolean }> = ({ pending, failed }) => {
   if (failed) {
@@ -652,6 +653,8 @@ const VerificationDashboard: React.FC = () => {
     const [showDebugModal, setShowDebugModal] = useState(false);
     const [rejectModalSubmission, setRejectModalSubmission] = useState<OnboardingData | null>(null);
     const [isRejecting, setIsRejecting] = useState(false);
+    const [approveModalSubmission, setApproveModalSubmission] = useState<OnboardingData | null>(null);
+    const [isApproving, setIsApproving] = useState(false);
 
     // Cache of users for resolving creator names & photos
     const [usersMap, setUsersMap] = useState<Record<string, { name: string; photo?: string | null; role?: string; email?: string }>>({});
@@ -889,10 +892,25 @@ const VerificationDashboard: React.FC = () => {
         });
     }, [companyScopedSubmissions, searchTerm]);
 
-    const handleApprove = async (id: string) => {
+    const handleApprove = (idOrSubmission: string | OnboardingData) => {
+        if (typeof idOrSubmission === 'string') {
+            const sub = submissions.find(s => s.id === idOrSubmission);
+            if (sub) {
+                setApproveModalSubmission(sub);
+            } else {
+                handleConfirmApprove(idOrSubmission);
+            }
+        } else {
+            setApproveModalSubmission(idOrSubmission);
+        }
+    };
+
+    const handleConfirmApprove = async (id: string, esignUrl?: string) => {
         const verifierName = (user as any)?.user_metadata?.full_name || (user as any)?.user_metadata?.name || user?.email?.split('@')[0] || 'HR Admin';
         const verifierPhoto = (user as any)?.user_metadata?.avatar_url || (user as any)?.user_metadata?.picture || null;
+        const verifiedAt = new Date().toISOString();
 
+        setIsApproving(true);
         // Optimistic update for UI responsiveness
         setSubmissions(prev => prev.map(s => s.id === id ? { 
             ...s, 
@@ -901,15 +919,22 @@ const VerificationDashboard: React.FC = () => {
             verificationMode: 'manual',
             verifiedBy: verifierName,
             verifiedByPhoto: verifierPhoto,
-            verifiedAt: new Date().toISOString()
+            verifiedAt: verifiedAt,
+            esignDocUrl: esignUrl || s.esignDocUrl,
+            esign_document_url: esignUrl || s.esign_document_url,
+            esignSignedAt: esignUrl ? verifiedAt : s.esignSignedAt,
+            esign_signed_at: esignUrl ? verifiedAt : s.esign_signed_at,
         } : s));
 
         try {
             await api.verifySubmission(id, 'manual');
             hotToast.success('Submission verified & approved successfully!');
+            setApproveModalSubmission(null);
         } catch (error) {
             console.error('Failed to approve submission', error);
             hotToast.error('Failed to approve submission.');
+        } finally {
+            setIsApproving(false);
         }
     };
 
@@ -2200,6 +2225,13 @@ const VerificationDashboard: React.FC = () => {
               onClose={() => setRejectModalSubmission(null)}
               onConfirm={handleConfirmReject}
               isSubmitting={isRejecting}
+            />
+            <ApproveSubmissionModal
+              isOpen={!!approveModalSubmission}
+              submission={approveModalSubmission}
+              onClose={() => setApproveModalSubmission(null)}
+              onConfirmApprove={handleConfirmApprove}
+              isApproving={isApproving}
             />
         </div>
     );

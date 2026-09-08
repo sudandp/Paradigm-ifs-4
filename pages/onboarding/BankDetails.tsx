@@ -258,7 +258,7 @@ const BankDetails = () => {
             <div className="space-y-6">
                 <Controller name="bankProof" control={control} render={({ field }) => (
                     <UploadDocument
-                        label="Upload Bank Proof (Cancelled Cheque/Passbook)"
+                        label="Upload Bank Proof (Cancelled Cheque / Cheque Book)"
                         file={field.value}
                         onFileChange={field.onChange}
                         onOcrComplete={handleOcrComplete}

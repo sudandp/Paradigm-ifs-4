@@ -22,14 +22,22 @@ const SelectOrganization = () => {
     const [organizations, setOrganizations] = useState<Organization[]>([]);
     const [siteStaffDesignations, setSiteStaffDesignations] = useState<SiteStaffDesignation[]>([]);
 
+    const initialOrg = useOnboardingStore.getState().data.organization;
+
     // Cascade state
-    const [selectedGroupId, setSelectedGroupId] = useState('');
-    const [selectedLocation, setSelectedLocation] = useState('');
-    const [selectedCompanyId, setSelectedCompanyId] = useState('');
-    const [selectedEntityId, setSelectedEntityId] = useState('');
-    const [isManualSite, setIsManualSite] = useState(false);
-    const [manualSiteName, setManualSiteName] = useState('');
-    const [selectedDesignation, setSelectedDesignation] = useState('');
+    const [selectedGroupId, setSelectedGroupId] = useState(initialOrg?.groupId || '');
+    const [selectedLocation, setSelectedLocation] = useState(initialOrg?.location || '');
+    const [selectedCompanyId, setSelectedCompanyId] = useState(initialOrg?.companyId || '');
+    const [selectedEntityId, setSelectedEntityId] = useState(
+        initialOrg?.organizationId && !initialOrg.organizationId.startsWith('manual_') ? initialOrg.organizationId : ''
+    );
+    const [isManualSite, setIsManualSite] = useState(
+        !!(initialOrg?.organizationId && initialOrg.organizationId.startsWith('manual_'))
+    );
+    const [manualSiteName, setManualSiteName] = useState(
+        initialOrg?.organizationId && initialOrg.organizationId.startsWith('manual_') ? (initialOrg.site || initialOrg.organizationName || '') : ''
+    );
+    const [selectedDesignation, setSelectedDesignation] = useState(initialOrg?.designation || '');
     const [isManualDesignation, setIsManualDesignation] = useState(false);
     const [manualDesignationName, setManualDesignationName] = useState('');
     const [designationsForSite, setDesignationsForSite] = useState<SiteStaffDesignation[]>([]);
@@ -112,6 +120,46 @@ const SelectOrganization = () => {
     // Sites / entities for the selected company
     const entities = useMemo(() => selectedCompany?.entities || [], [selectedCompany]);
 
+    const siteIsSelected = isManualSite ? !!manualSiteName.trim() : !!selectedEntityId;
+
+    // ── Auto-select when only 1 option exists ──────────────────────────────
+    // If only one option exists at any tier, auto-select it; if multiple, user selects.
+
+    // 1. Group: auto-select if only 1 group exists
+    useEffect(() => {
+        if (uniqueGroups.length === 1 && selectedGroupId !== uniqueGroups[0].id) {
+            setSelectedGroupId(uniqueGroups[0].id);
+        }
+    }, [uniqueGroups, selectedGroupId]);
+
+    // 2. Location: auto-select if only 1 location exists for the selected group
+    useEffect(() => {
+        if (selectedGroupId && availableLocations.length === 1 && selectedLocation !== availableLocations[0]) {
+            setSelectedLocation(availableLocations[0]);
+        }
+    }, [selectedGroupId, availableLocations, selectedLocation]);
+
+    // 3. Company: auto-select if only 1 company exists for the selected location
+    useEffect(() => {
+        if (selectedLocation && locationFilteredCompanies.length === 1 && selectedCompanyId !== locationFilteredCompanies[0].id) {
+            setSelectedCompanyId(locationFilteredCompanies[0].id);
+        }
+    }, [selectedLocation, locationFilteredCompanies, selectedCompanyId]);
+
+    // 4. Client / Site: auto-select if only 1 entity exists for the selected company
+    useEffect(() => {
+        if (selectedCompanyId && !isManualSite && entities.length === 1 && selectedEntityId !== entities[0].id) {
+            setSelectedEntityId(entities[0].id);
+        }
+    }, [selectedCompanyId, entities, selectedEntityId, isManualSite]);
+
+    // 5. Designation: auto-select if only 1 designation exists for the selected site
+    useEffect(() => {
+        if (siteIsSelected && !isManualDesignation && designationsForSite.length === 1 && selectedDesignation !== designationsForSite[0].designation) {
+            setSelectedDesignation(designationsForSite[0].designation);
+        }
+    }, [siteIsSelected, designationsForSite, selectedDesignation, isManualDesignation]);
+
     // Designations unlock once a site (or manual site) is chosen
     useEffect(() => {
         setSelectedDesignation('');
@@ -146,7 +194,11 @@ const SelectOrganization = () => {
                         }
                     });
                 });
-                setDesignationsForSite(Array.from(rolesMap.values()));
+                const list = Array.from(rolesMap.values());
+                setDesignationsForSite(list);
+                if (list.length === 1) {
+                    setSelectedDesignation(list[0].designation);
+                }
             } else {
                 // Default fallback: show all site staff designations and append common back-office designations
                 const rolesMap = new Map<string, SiteStaffDesignation>();
@@ -168,7 +220,11 @@ const SelectOrganization = () => {
                         });
                     }
                 });
-                setDesignationsForSite(Array.from(rolesMap.values()));
+                const list = Array.from(rolesMap.values());
+                setDesignationsForSite(list);
+                if (list.length === 1) {
+                    setSelectedDesignation(list[0].designation);
+                }
             }
         } else {
             setDesignationsForSite([]);
@@ -297,7 +353,6 @@ const SelectOrganization = () => {
         );
     }
 
-    const siteIsSelected = isManualSite ? !!manualSiteName.trim() : !!selectedEntityId;
     const canContinue = !siteIsSelected || !selectedDesignation ||
         (!isManualSite && manpowerStatus.isOverLimit && manpowerLimitRule === 'block');
 
@@ -329,7 +384,7 @@ const SelectOrganization = () => {
                                 onChange={e => { setSelectedGroupId(e.target.value); resetFromGroup(); }}
                                 className="form-input"
                             >
-                                <option value="">-- Select a Group --</option>
+                                {uniqueGroups.length !== 1 && <option value="">-- Select a Group --</option>}
                                 {uniqueGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                             </select>
 
@@ -344,7 +399,7 @@ const SelectOrganization = () => {
                                     disabled={!selectedGroupId}
                                     className="form-input"
                                 >
-                                    <option value="">-- Select a Location --</option>
+                                    {availableLocations.length !== 1 && <option value="">-- Select a Location --</option>}
                                     {availableLocations.map(loc => <option key={loc} value={loc}>{loc}</option>)}
                                 </select>
                             </div>
@@ -356,7 +411,7 @@ const SelectOrganization = () => {
                                 disabled={!selectedLocation}
                                 className="form-input"
                             >
-                                <option value="">-- Select a Company --</option>
+                                {locationFilteredCompanies.length !== 1 && <option value="">-- Select a Company --</option>}
                                 {locationFilteredCompanies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                             </select>
 
@@ -369,7 +424,7 @@ const SelectOrganization = () => {
                                         disabled={!selectedCompanyId}
                                         className="form-input"
                                     >
-                                        <option value="">-- Select a Client/Site --</option>
+                                        {entities.length !== 1 && <option value="">-- Select a Client/Site --</option>}
                                         {entities.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
                                     </select>
                                     {selectedCompanyId && (
@@ -406,7 +461,7 @@ const SelectOrganization = () => {
                                         disabled={!siteIsSelected}
                                         className="form-input"
                                     >
-                                        <option value="">-- Select a Designation --</option>
+                                        {designationsForSite.length !== 1 && <option value="">-- Select a Designation --</option>}
                                         {designationsForSite.map(d => <option key={d.id} value={d.designation}>{d.designation}</option>)}
                                     </select>
                                     {siteIsSelected && (
@@ -480,7 +535,7 @@ const SelectOrganization = () => {
                         value={selectedGroupId}
                         onChange={e => { setSelectedGroupId(e.target.value); resetFromGroup(); }}
                     >
-                        <option value="">-- Select a Group --</option>
+                        {uniqueGroups.length !== 1 && <option value="">-- Select a Group --</option>}
                         {uniqueGroups.map(g => (
                             <option key={g.id} value={g.id}>{g.name}</option>
                         ))}
@@ -494,7 +549,7 @@ const SelectOrganization = () => {
                         onChange={e => { setSelectedLocation(e.target.value); resetFromLocation(); }}
                         disabled={!selectedGroupId}
                     >
-                        <option value="">-- Select a Location --</option>
+                        {availableLocations.length !== 1 && <option value="">-- Select a Location --</option>}
                         {availableLocations.map(loc => (
                             <option key={loc} value={loc}>{loc}</option>
                         ))}
@@ -508,7 +563,7 @@ const SelectOrganization = () => {
                         onChange={e => { setSelectedCompanyId(e.target.value); resetFromCompany(); }}
                         disabled={!selectedLocation}
                     >
-                        <option value="">-- Select a Company --</option>
+                        {locationFilteredCompanies.length !== 1 && <option value="">-- Select a Company --</option>}
                         {locationFilteredCompanies.map(c => (
                             <option key={c.id} value={c.id}>{c.name}</option>
                         ))}
@@ -529,7 +584,7 @@ const SelectOrganization = () => {
                                     disabled={!selectedCompanyId}
                                     className="form-select w-full pl-3 pr-8 py-2 rounded-lg border border-border bg-input text-primary-text text-sm focus:outline-none focus:ring-2 focus:ring-accent/40 appearance-none disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
-                                    <option value="">-- Select a Client/Site --</option>
+                                    {entities.length !== 1 && <option value="">-- Select a Client/Site --</option>}
                                     {entities.map(entity => (
                                         <option key={entity.id} value={entity.id}>{entity.name}</option>
                                     ))}
@@ -591,7 +646,7 @@ const SelectOrganization = () => {
                                     disabled={!siteIsSelected}
                                     className="form-select w-full pl-3 pr-8 py-2 rounded-lg border border-border bg-input text-primary-text text-sm focus:outline-none focus:ring-2 focus:ring-accent/40 appearance-none disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
-                                    <option value="">-- Select a Designation --</option>
+                                    {designationsForSite.length !== 1 && <option value="">-- Select a Designation --</option>}
                                     {designationsForSite.map(d => (
                                         <option key={d.id} value={d.designation}>{d.designation}</option>
                                     ))}

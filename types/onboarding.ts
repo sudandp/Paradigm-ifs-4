@@ -71,6 +71,10 @@ export interface OnboardingData {
   fcuVerifiedBy?: string | null;
   fcuVerifiedAt?: string | null;
   fcuNotes?: string | null;
+  esignDocUrl?: string | null;
+  esign_document_url?: string | null;
+  esignSignedAt?: string | null;
+  esign_signed_at?: string | null;
 }
 
 export type OnboardingStep = 'personal' | 'address' | 'organization' | 'family' | 'education' | 'bank' | 'uan' | 'esi' | 'gmc' | 'uniform' | 'biometrics' | 'documents' | 'review';

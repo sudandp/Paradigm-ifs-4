@@ -41,6 +41,10 @@ interface ImportMetaEnv {
     /** Offline-first layer feature flag. Set to 'true' to enable. */
     readonly VITE_OFFLINE_ENABLED: string;
     readonly VITE_API_URL?: string;
+    readonly VITE_ESIGN_DIGIO_ENV?: string;
+    readonly DEV?: boolean;
+    readonly MODE?: string;
+    readonly [key: string]: any;
   }
 
   

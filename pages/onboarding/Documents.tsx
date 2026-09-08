@@ -50,12 +50,12 @@ const Documents = () => {
             const text = result.data.text;
             
             // Basic regex to find common expiry date formats (e.g., DD/MM/YYYY, DD-MM-YYYY, Exp: 12/2026)
-            const dateMatch = text.match(/(?:valid till|expiry|exp|validity|valid upto)[\s:]*([\d]{2}[\/\-][\d]{2}[\/\-][\d]{4})/i) ||
-                              text.match(/([\d]{2}[\/\-][\d]{2}[\/\-][\d]{4})/);
+            const dateMatch = text.match(/(?:valid till|expiry|exp|validity|valid upto)[\s:]*([\d]{2}[/-][\d]{2}[/-][\d]{4})/i) ||
+                              text.match(/([\d]{2}[/-][\d]{2}[/-][\d]{4})/);
                               
             if (dateMatch && dateMatch[1]) {
                 // Convert DD/MM/YYYY to YYYY-MM-DD for input type="date"
-                const parts = dateMatch[1].split(/[\/\-]/);
+                const parts = dateMatch[1].split(/[/-]/);
                 if (parts.length === 3) {
                     const isoDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
                     setTechLicenseExpiry(isoDate);
@@ -83,7 +83,9 @@ const Documents = () => {
             try {
                 const date = new Date(extractedData.dob);
                 if(!isNaN(date.getTime())) update.dob = format(date, 'yyyy-MM-dd');
-            } catch(e) {}
+            } catch {
+                /* ignore date parse error */
+            }
         }
         if (extractedData.aadhaarNumber) {
             const cleanAadhaar = extractedData.aadhaarNumber.replace(/\s/g, '');
@@ -140,7 +142,9 @@ const Documents = () => {
            try {
                 const date = new Date(extractedData.dob);
                 if(!isNaN(date.getTime())) update.dob = format(date, 'yyyy-MM-dd');
-            } catch(e) {}
+            } catch {
+                /* ignore date parse error */
+            }
         }
         updateFamilyMember(id, update);
     };
@@ -259,7 +263,7 @@ const Documents = () => {
                             docType={data.personal.idProofType || 'Aadhaar'}
                         />
                         <UploadDocument
-                            label="Bank Proof (Passbook/Cancelled Cheque)"
+                            label="Bank Proof (Cheque Book / Cancelled Cheque)"
                             file={data.bank.bankProof}
                             onFileChange={(file) => updateBank({ bankProof: file })}
                             onOcrComplete={handleBankOcr}

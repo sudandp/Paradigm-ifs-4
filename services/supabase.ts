@@ -152,8 +152,8 @@ export const supabase = createClient(resolvedUrl, resolvedAnonKey, {
         storage: HybridAuthStorage, 
         autoRefreshToken: true,
         detectSessionInUrl: true,
-        // Use 'implicit' flow on Web (avoids PKCE code verifier storage issues on web redirects)
-        flowType: isNativePlatform ? 'pkce' : 'implicit',
+        // Use 'implicit' flow on Web & Native (avoids PKCE code verifier storage issues on Capacitor WebView)
+        flowType: 'implicit',
         // Bypass navigator.locks to prevent orphaned lock warnings (5000ms timeouts)
         // during React re-renders, visibility changes, and concurrent getSession calls.
         lock: async (_name, _acquireTimeout, fn) => await fn(),
@@ -162,6 +162,10 @@ export const supabase = createClient(resolvedUrl, resolvedAnonKey, {
         fetch: customFetch,
     },
 });
+
+if (typeof window !== 'undefined') {
+    (window as any).supabase = supabase;
+}
 
 /**
  * Reconnects the Supabase Realtime client.

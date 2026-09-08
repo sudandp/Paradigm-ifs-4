@@ -10,6 +10,7 @@ import { getProxyUrl } from '../../utils/fileUrl';
 import { generatePifsCompliancePdf, savePifsCompliancePdfToServer } from '../../services/pifsCompliancePdfService';
 import { downloadOnboardingAckSlipPdf } from '../../services/pifsAckSlipPdfService';
 import { FileCheck } from 'lucide-react';
+import { formatDisplayDate } from '../../utils/date';
 
 interface OnboardingBookletModalProps {
     isOpen: boolean;
@@ -235,7 +236,7 @@ export const OnboardingBookletModal: React.FC<OnboardingBookletModalProps> = ({
                                 <div><span className="text-slate-400 text-xs block">Father's Name:</span> <span className="font-semibold">{fatherName}</span></div>
                                 <div><span className="text-slate-400 text-xs block">Mother's Name:</span> <span className="font-semibold">{motherName}</span></div>
                                 <div><span className="text-slate-400 text-xs block">Spouse's Name:</span> <span className="font-semibold">{spouseName}</span></div>
-                                <div><span className="text-slate-400 text-xs block">Date of Birth:</span> <span className="font-semibold">{d.personal.dob || '—'}</span></div>
+                                <div><span className="text-slate-400 text-xs block">Date of Birth:</span> <span className="font-semibold">{formatDisplayDate(d.personal.dob)}</span></div>
                                 <div><span className="text-slate-400 text-xs block">Gender:</span> <span className="font-semibold">{d.personal.gender || '—'}</span></div>
                                 <div><span className="text-slate-400 text-xs block">Blood Group:</span> <span className="font-semibold">{d.personal.bloodGroup || '—'}</span></div>
                                 <div><span className="text-slate-400 text-xs block">Marital Status:</span> <span className="font-semibold">{d.personal.maritalStatus || '—'}</span></div>

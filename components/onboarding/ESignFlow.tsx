@@ -18,7 +18,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { Browser } from '@capacitor/browser';
 import { App } from '@capacitor/app';
-import { Loader2, FileSignature, CheckCircle2, XCircle, ExternalLink, RefreshCw, ShieldCheck } from 'lucide-react';
+import { Loader2, FileSignature, CheckCircle2, XCircle, ExternalLink, RefreshCw, ShieldCheck, X } from 'lucide-react';
 import { esignGateway } from '../../services/esign/esignGateway';
 import type { ESignSession, ESignStatusResult } from '../../services/esign/esignGateway';
 
@@ -53,6 +53,8 @@ const ESignFlow: React.FC<ESignFlowProps> = ({
   const [session, setSession] = useState<ESignSession | null>(null);
   const [statusResult, setStatusResult] = useState<ESignStatusResult | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
+  const [showSimModal, setShowSimModal] = useState(false);
+  const [isSimSigning, setIsSimSigning] = useState(false);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Stop any ongoing polling
@@ -85,6 +87,12 @@ const ESignFlow: React.FC<ESignFlowProps> = ({
 
       setSession(newSession);
       setState('awaiting_sign');
+
+      // Check if running in Sandbox Simulation Mode
+      if (newSession.signingUrl.startsWith('#simulated-')) {
+        setShowSimModal(true);
+        return;
+      }
 
       // Open signing URL in Capacitor In-App Browser (on device)
       // On web, falls back to new tab
@@ -217,18 +225,32 @@ const ESignFlow: React.FC<ESignFlowProps> = ({
         <div className="flex flex-col gap-3">
           <div className="flex items-center gap-2 text-sm text-amber-500 font-medium">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Waiting for worker to sign in the browser window…
+            {session.signingUrl.startsWith('#simulated-')
+              ? 'Ready to sign via sandbox simulation…'
+              : 'Waiting for worker to sign in the browser window…'}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <button
-              id="esign-reopen-btn"
-              type="button"
-              onClick={() => window.open(session.signingUrl, '_blank', 'noopener')}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg border border-accent text-accent text-sm font-medium hover:bg-accent/10 transition-colors"
-            >
-              <ExternalLink className="h-4 w-4" />
-              Re-open signing link
-            </button>
+            {session.signingUrl.startsWith('#simulated-') ? (
+              <button
+                id="esign-sim-open-btn"
+                type="button"
+                onClick={() => setShowSimModal(true)}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-500 transition-colors shadow-sm"
+              >
+                <ShieldCheck className="h-4 w-4" />
+                Complete Sandbox Signature
+              </button>
+            ) : (
+              <button
+                id="esign-reopen-btn"
+                type="button"
+                onClick={() => window.open(session.signingUrl, '_blank', 'noopener')}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg border border-accent text-accent text-sm font-medium hover:bg-accent/10 transition-colors"
+              >
+                <ExternalLink className="h-4 w-4" />
+                Re-open signing link
+              </button>
+            )}
             <button
               id="esign-check-btn"
               type="button"
@@ -301,6 +323,91 @@ const ESignFlow: React.FC<ESignFlowProps> = ({
             <RefreshCw className="h-4 w-4" />
             Retry Signing
           </button>
+        </div>
+      )}
+
+      {/* Sandbox Simulation Modal */}
+      {showSimModal && session && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#041b0f] border border-emerald-500/30 rounded-2xl max-w-md w-full p-6 shadow-2xl text-white">
+            <div className="flex items-center justify-between pb-4 border-b border-emerald-950/60">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/20 flex items-center justify-center text-emerald-400">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white leading-tight">Digio Aadhaar e-Sign</h3>
+                  <p className="text-[10px] text-emerald-400 font-semibold tracking-wider uppercase">Sandbox Simulation Mode</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSimModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="py-5 space-y-4 text-sm">
+              <div className="bg-white/5 p-3.5 rounded-xl border border-white/10 space-y-2.5">
+                <div className="flex justify-between text-xs">
+                  <span className="text-slate-400">Signer Name</span>
+                  <span className="font-semibold text-white">{employeeName}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-slate-400">Registered Mobile</span>
+                  <span className="font-mono text-emerald-300">+91 {mobile}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-slate-400">Document</span>
+                  <span className="text-slate-200">Employment Contract & Client NDA</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-slate-400">Auth Method</span>
+                  <span className="text-emerald-400 font-medium">Aadhaar OTP (Simulated)</span>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-lg bg-emerald-950/40 border border-emerald-800/40 text-xs text-emerald-300 leading-relaxed">
+                ⚡ Digio API keys are currently pending. This instant simulation signs the agreement with simulated Aadhaar OTP verification so you can submit your onboarding application immediately.
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowSimModal(false)}
+                className="flex-1 py-2.5 px-4 rounded-xl border border-white/20 text-slate-300 text-xs font-semibold hover:bg-white/5 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isSimSigning}
+                onClick={async () => {
+                  setIsSimSigning(true);
+                  await new Promise((r) => setTimeout(r, 600));
+                  await handleConfirmStatus(session.requestId);
+                  setIsSimSigning(false);
+                  setShowSimModal(false);
+                }}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold transition-all shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2"
+              >
+                {isSimSigning ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Signing...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    Sign Agreement
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
