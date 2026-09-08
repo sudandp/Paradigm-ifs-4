@@ -36,6 +36,17 @@ interface OnboardingState {
   addOrUpdateEmergencyContactAsFamilyMember: () => void;
 }
 
+export const isSouthWallCompany = (companyOrSiteName?: string | null): boolean => {
+  if (!companyOrSiteName) return false;
+  const lower = companyOrSiteName.toLowerCase();
+  return lower.includes('south wall') || lower.includes('southwall') || lower.includes('south-wall') || lower.includes('swllp') || lower.startsWith('sw-') || lower === 'sw';
+};
+
+export const generateEmployeeId = (companyOrSiteName?: string | null): string => {
+  const prefix = isSouthWallCompany(companyOrSiteName) ? 'SW' : 'PARA';
+  return `${prefix}-${Math.floor(1000 + Math.random() * 9000)}`;
+};
+
 const getInitialState = (): OnboardingData => {
   let authUser: any = null;
   try {
@@ -49,6 +60,7 @@ const getInitialState = (): OnboardingData => {
   const userPhoto = authUser?.avatar_url || authUser?.photo_url || authUser?.profile_photo || null;
   const userRole = authUser?.role || '';
   const userId = authUser?.id || '';
+  const authCompany = authUser?.societyName || authUser?.organizationName || authUser?.companyName || '';
 
   return {
     id: `draft_${Date.now()}`,
@@ -63,7 +75,7 @@ const getInitialState = (): OnboardingData => {
     created_by_role: userRole || null,
     createdByRole: userRole || null,
     personal: {
-      employeeId: `PARA-${Math.floor(1000 + Math.random() * 9000)}`,
+      employeeId: generateEmployeeId(authCompany),
       firstName: '',
       lastName: '',
       dob: '',
@@ -237,7 +249,31 @@ export const useOnboardingStore = create<OnboardingState>()(
       updateEsi: (esi) => set((state) => ({ data: { ...state.data, esi: { ...state.data.esi, ...esi } } })),
       setEsiVerifiedStatus: (status) => set((state) => ({ data: { ...state.data, esi: { ...state.data.esi, verifiedStatus: { ...state.data.esi.verifiedStatus, ...status } } } })),
       updateGmc: (gmc) => set((state) => ({ data: { ...state.data, gmc: { ...state.data.gmc, ...gmc } } })),
-      updateOrganization: (org) => set((state) => ({ data: { ...state.data, organization: { ...state.data.organization, ...org } } })),
+      updateOrganization: (org) => set((state) => {
+        const nextOrg = { ...state.data.organization, ...org };
+        const companyToCheck = nextOrg.organizationName || nextOrg.site || nextOrg.companyId;
+        const currentEmpId = state.data.personal?.employeeId || '';
+        let nextEmpId = currentEmpId;
+
+        // If current employeeId is an auto-generated draft ID, keep prefix in sync with company
+        const isDraftId = !currentEmpId || currentEmpId.startsWith('PARA-') || currentEmpId.startsWith('SW-');
+        if (isDraftId) {
+          const expectedPrefix = isSouthWallCompany(companyToCheck) ? 'SW' : 'PARA';
+          const numericPart = currentEmpId.replace(/^[A-Za-z]+-/, '') || `${Math.floor(1000 + Math.random() * 9000)}`;
+          nextEmpId = `${expectedPrefix}-${numericPart}`;
+        }
+
+        return {
+          data: {
+            ...state.data,
+            organization: nextOrg,
+            personal: {
+              ...state.data.personal,
+              employeeId: nextEmpId,
+            },
+          },
+        };
+      }),
       updateUniforms: (uniforms) => set((state) => ({ data: { ...state.data, uniforms } })),
       updateBiometrics: (biometrics) => set((state) => ({ data: { ...state.data, biometrics: { ...state.data.biometrics, ...biometrics } } })),
       setSalaryChangeRequest: (salaryChangeRequest) => set((state) => ({ data: { ...state.data, salaryChangeRequest } })),

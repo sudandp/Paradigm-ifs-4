@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import { useOnboardingStore } from '../../store/onboardingStore';
-import { useEnrollmentRulesStore } from '../../store/enrollmentRulesStore';
+import { useEnrollmentRulesStore, getRulesForDesignation } from '../../store/enrollmentRulesStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import type { UploadedFile, PersonalDetails, BankDetails, UanDetails, EsiDetails, FamilyMember, DocumentRules, EducationRecord } from '../../types';
 import FormHeader from '../../components/onboarding/FormHeader';
@@ -52,7 +52,7 @@ const defaultDesignationRules = {
     documents: {
         photo: true,
         aadhaar: true,
-        pan: false,
+        pan: true,
         bankProof: true,
         educationCertificate: false,
         salarySlip: false,
@@ -95,31 +95,31 @@ const getValidationSchema = (
 
     return yup.object({
         photo: mandatory.photo
-            ? yup.mixed<UploadedFile | null>().nonNullable("Profile photo is required.")
+            ? yup.mixed<UploadedFile | null>().test('photo-required', 'Profile photo is required.', val => !!val)
             : yup.mixed<UploadedFile | null>().optional().nullable(),
         aadhaarLinkedMobile: yup.string().required('Aadhaar-linked mobile number is required.').matches(/^[6-9][0-9]{9}$/, 'Must be a valid 10-digit number'),
         alternateMobile: yup.string().optional().nullable().matches(/^[6-9][0-9]{9}$/, { message: 'Must be a valid 10-digit number', excludeEmptyString: true }),
         idProofType: yup.string().oneOf(['Aadhaar', 'PAN', 'Voter ID', '']).required(),
 
         idProofFront: mandatory.idProofFront
-            ? yup.mixed<UploadedFile | null>().nonNullable("Aadhaar (Front) is required.")
+            ? yup.mixed<UploadedFile | null>().test('front-required', 'Aadhaar (Front) is required.', val => !!val)
             : yup.mixed<UploadedFile | null>().optional().nullable(),
         idProofBack: mandatory.idProofBack
-            ? yup.mixed<UploadedFile | null>().nonNullable("Aadhaar (Back) is required.")
+            ? yup.mixed<UploadedFile | null>().test('back-required', 'Aadhaar (Back) is required.', val => !!val)
             : yup.mixed<UploadedFile | null>().optional().nullable(),
         bankProof: mandatory.bankProof
-            ? yup.mixed<UploadedFile | null>().nonNullable("Bank proof document is required.")
+            ? yup.mixed<UploadedFile | null>().test('bank-required', 'Bank proof document is required.', val => !!val)
             : yup.mixed<UploadedFile | null>().optional().nullable(),
         uanProof: mandatory.uanProof
-            ? yup.mixed<UploadedFile | null>().nonNullable("UAN proof document is required.")
+            ? yup.mixed<UploadedFile | null>().test('uan-required', 'UAN proof document is required.', val => !!val)
             : yup.mixed<UploadedFile | null>().optional().nullable(),
 
         panCard: mandatory.panCard
-            ? yup.mixed<UploadedFile | null>().nonNullable("PAN card is required.")
+            ? yup.mixed<UploadedFile | null>().test('pan-required', 'PAN card is required.', val => !!val)
             : yup.mixed<UploadedFile | null>().optional().nullable(),
 
         salarySlip: mandatory.salarySlip
-            ? yup.mixed<UploadedFile | null>().nonNullable("Salary slip is required.")
+            ? yup.mixed<UploadedFile | null>().test('salary-required', 'Salary slip is required.', val => !!val)
             : yup.mixed<UploadedFile | null>().optional().nullable(),
 
         family: yup.array().of(familyMemberUploadSchema).optional(),
@@ -158,7 +158,11 @@ const PreUpload = () => {
     const store = useOnboardingStore();
     const settingsStore = useSettingsStore();
     const { user } = useAuthStore();
-    const { rulesByDesignation } = useEnrollmentRulesStore();
+    const { rulesByDesignation, fetchRules } = useEnrollmentRulesStore();
+
+    useEffect(() => {
+        fetchRules().catch(() => {});
+    }, [fetchRules]);
 
     const [isProcessing, setIsProcessing] = useState(false);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'warning' | 'info' } | null>(null);
@@ -187,13 +191,7 @@ const PreUpload = () => {
 
     const designation = store.data.organization.designation;
     const currentRules = useMemo(() => {
-        if (designation && rulesByDesignation[designation]) {
-            return rulesByDesignation[designation];
-        }
-        if (rulesByDesignation['Default (All Roles)']) {
-            return rulesByDesignation['Default (All Roles)'];
-        }
-        return defaultDesignationRules;
+        return getRulesForDesignation(rulesByDesignation, designation);
     }, [designation, rulesByDesignation]);
 
     // Mandatory fields strictly defined by Admin Enrollment Rules (no user overrides)
@@ -203,7 +201,7 @@ const PreUpload = () => {
         idProofBack: currentRules.documents.aadhaar ?? true,
         bankProof: currentRules.documents.bankProof ?? true,
         uanProof: currentRules.documents.uanProof ?? false,
-        panCard: currentRules.documents.pan ?? false,
+        panCard: currentRules.documents.pan ?? true,
         salarySlip: currentRules.documents.salarySlip ?? false,
         familyAadhaar: currentRules.documents.familyAadhaar ?? false,
         educationCertificate: currentRules.documents.educationCertificate ?? false,
@@ -1048,7 +1046,7 @@ const PreUpload = () => {
                                         <span className="text-xs font-semibold text-white/90 md:text-primary-text">Profile Photo</span>
                                         <FieldRequirementBadge isMandatory={mandatoryFields.photo} />
                                     </div>
-                                    <Controller name="photo" control={control} render={({ field }) => <UploadDocument label={`Candidate Photo${mandatoryFields.photo ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} allowCapture allowedTypes={['image/jpeg', 'image/png', 'image/webp']} />} />
+                                    <Controller name="photo" control={control} render={({ field }) => <UploadDocument label={`Candidate Photo${mandatoryFields.photo ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.photo?.message as string} allowCapture allowedTypes={['image/jpeg', 'image/png', 'image/webp']} />} />
                                 </div>
                                 <div className="flex flex-col gap-5 md:pt-6">
                                     <Controller name="aadhaarLinkedMobile" control={control} render={({ field, fieldState }) => (<Input label="Aadhaar Linked Mobile Number *" type="tel" {...field} error={fieldState.error?.message} />)} />
@@ -1107,103 +1105,96 @@ const PreUpload = () => {
                                     </div>
                                     <Controller name="uanProof" control={control} render={({ field }) => <UploadDocument label={`UAN Proof Document${mandatoryFields.uanProof ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.uanProof?.message as string} allowCapture verificationStatus={store.data.uan.verifiedStatus?.uanNumber} ocrSchema={uanProofSchema} onOcrComplete={(data) => handleImmediateOcr('uan', data)} docType="UAN" setToast={setToast} />} />
                                 </div>
-                                {currentRules.documents.pan && (
-                                    <div className="flex flex-col gap-1.5">
-                                        <div className="flex items-center justify-between mb-0.5">
-                                            <span className="text-xs font-semibold text-white/90 md:text-primary-text">PAN Card</span>
-                                            <FieldRequirementBadge isMandatory={mandatoryFields.panCard} />
-                                        </div>
-                                        <Controller name="panCard" control={control} render={({ field }) => <UploadDocument label={`PAN Card${mandatoryFields.panCard ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.panCard?.message as string} allowCapture ocrSchema={panSchema} onOcrComplete={(data) => handleImmediateOcr('pan', data)} docType="PAN" setToast={setToast} />} />
+                                <div className="flex flex-col gap-1.5">
+                                    <div className="flex items-center justify-between mb-0.5">
+                                        <span className="text-xs font-semibold text-white/90 md:text-primary-text">PAN Card</span>
+                                        <FieldRequirementBadge isMandatory={mandatoryFields.panCard} />
                                     </div>
-                                )}
-                                {currentRules.documents.salarySlip && (
-                                    <div className="flex flex-col gap-1.5">
-                                        <div className="flex items-center justify-between mb-0.5">
-                                            <span className="text-xs font-semibold text-white/90 md:text-primary-text">Latest Salary Slip</span>
-                                            <FieldRequirementBadge isMandatory={mandatoryFields.salarySlip} />
-                                        </div>
-                                        <Controller name="salarySlip" control={control} render={({ field }) => <UploadDocument label={`Latest Salary Slip${mandatoryFields.salarySlip ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.salarySlip?.message as string} allowCapture ocrSchema={salarySlipSchema} onOcrComplete={(data) => handleImmediateOcr('salary', data)} docType="Salary" setToast={setToast} />} />
+                                    <Controller name="panCard" control={control} render={({ field }) => <UploadDocument label={`PAN Card${mandatoryFields.panCard ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.panCard?.message as string} allowCapture ocrSchema={panSchema} onOcrComplete={(data) => handleImmediateOcr('pan', data)} docType="PAN" setToast={setToast} />} />
+                                </div>
+
+                                <div className="flex flex-col gap-1.5">
+                                    <div className="flex items-center justify-between mb-0.5">
+                                        <span className="text-xs font-semibold text-white/90 md:text-primary-text">Latest Salary Slip</span>
+                                        <FieldRequirementBadge isMandatory={mandatoryFields.salarySlip} />
                                     </div>
-                                )}
+                                    <Controller name="salarySlip" control={control} render={({ field }) => <UploadDocument label={`Latest Salary Slip${mandatoryFields.salarySlip ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.salarySlip?.message as string} allowCapture ocrSchema={salarySlipSchema} onOcrComplete={(data) => handleImmediateOcr('salary', data)} docType="Salary" setToast={setToast} />} />
+                                </div>
                             </div>
                         </div>
 
                         {/* Section 4: Education Certificates */}
-                        {currentRules.documents.educationCertificate && (
-                            <div className="pb-6 mb-6 border-b border-white/10 md:border-border">
-                                <div className="flex items-center justify-between mb-4">
-                                    <p className="text-xs font-bold text-white/40 md:text-muted uppercase tracking-widest">Education Certificates</p>
-                                    <FieldRequirementBadge isMandatory={mandatoryFields.educationCertificate} />
-                                </div>
-                                <div className="space-y-4">
-                                    {educationFields.map((field, index) => (
-                                        <div key={field.id} className="border border-white/10 md:border-border rounded-2xl p-5 relative">
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-5 items-start">
-                                                <Controller name={`education.${index}.degree`} control={control} render={({ field: controllerField, fieldState }) => (
-                                                    <Select label="Degree / Qualification" error={fieldState.error?.message} {...controllerField}>
-                                                        <option value="">Select Degree</option>
-                                                        <option>SSLC / 10th</option>
-                                                        <option>PUC / 12th</option>
-                                                        <option>Graduation</option>
-                                                        <option>Post Graduation</option>
-                                                        <option>Diploma</option>
-                                                        <option>Other</option>
-                                                    </Select>
-                                                )} />
-                                                <Controller name={`education.${index}.institution`} control={control} render={({ field: controllerField, fieldState }) => (
-                                                    <Input label="School / College / Institution" {...controllerField} error={fieldState.error?.message} />
-                                                )} />
-                                                <Controller name={`education.${index}.endYear`} control={control} render={({ field: controllerField, fieldState }) => (
-                                                    <Input label="Passing Year" placeholder="e.g. 2024" {...controllerField} error={fieldState.error?.message} />
-                                                )} />
-                                                <div className="md:col-span-3">
-                                                    <Controller name={`education.${index}.document`} control={control} render={({ field: controllerField, fieldState }) => (
-                                                        <UploadDocument label={`Upload Certificate${mandatoryFields.educationCertificate ? ' *' : ' (Optional)'}`} file={controllerField.value} onFileChange={controllerField.onChange} error={fieldState.error?.message} allowCapture ocrSchema={educationSchema} onOcrComplete={(data) => handleImmediateOcr('education', data, index)} docType="Education" setToast={setToast} />
-                                                    )} />
-                                                </div>
-                                            </div>
-                                            <Button type="button" variant="icon" size="sm" onClick={() => removeEducation(index)} className="!absolute top-3 right-3">
-                                                <Trash2 className="h-4 w-4 text-red-500" />
-                                            </Button>
-                                        </div>
-                                    ))}
-                                    <Button type="button" variant="outline" onClick={() => appendEducation({ id: `edu_upload_${Date.now()}`, degree: '', institution: '', endYear: '', document: null })}>
-                                        <Plus className="mr-2 h-4 w-4" /> Add Education Certificate
-                                    </Button>
-                                </div>
+                        <div className="pb-6 mb-6 border-b border-white/10 md:border-border">
+                            <div className="flex items-center justify-between mb-4">
+                                <p className="text-xs font-bold text-white/40 md:text-muted uppercase tracking-widest">Education Certificates</p>
+                                <FieldRequirementBadge isMandatory={mandatoryFields.educationCertificate} />
                             </div>
-                        )}
+                            <div className="space-y-4">
+                                {educationFields.map((field, index) => (
+                                    <div key={field.id} className="border border-white/10 md:border-border rounded-2xl p-5 relative">
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 items-start">
+                                            <Controller name={`education.${index}.degree`} control={control} render={({ field: controllerField, fieldState }) => (
+                                                <Select label="Degree / Qualification" error={fieldState.error?.message} {...controllerField}>
+                                                    <option value="">Select Degree</option>
+                                                    <option>SSLC / 10th</option>
+                                                    <option>PUC / 12th</option>
+                                                    <option>Graduation</option>
+                                                    <option>Post Graduation</option>
+                                                    <option>Diploma</option>
+                                                    <option>Other</option>
+                                                </Select>
+                                            )} />
+                                            <Controller name={`education.${index}.institution`} control={control} render={({ field: controllerField, fieldState }) => (
+                                                <Input label="School / College / Institution" {...controllerField} error={fieldState.error?.message} />
+                                            )} />
+                                            <Controller name={`education.${index}.endYear`} control={control} render={({ field: controllerField, fieldState }) => (
+                                                <Input label="Passing Year" placeholder="e.g. 2024" {...controllerField} error={fieldState.error?.message} />
+                                            )} />
+                                            <div className="md:col-span-3">
+                                                <Controller name={`education.${index}.document`} control={control} render={({ field: controllerField, fieldState }) => (
+                                                    <UploadDocument label={`Upload Certificate${mandatoryFields.educationCertificate ? ' *' : ' (Optional)'}`} file={controllerField.value} onFileChange={controllerField.onChange} error={fieldState.error?.message} allowCapture ocrSchema={educationSchema} onOcrComplete={(data) => handleImmediateOcr('education', data, index)} docType="Education" setToast={setToast} />
+                                                )} />
+                                            </div>
+                                        </div>
+                                        <Button type="button" variant="icon" size="sm" onClick={() => removeEducation(index)} className="!absolute top-3 right-3">
+                                            <Trash2 className="h-4 w-4 text-red-500" />
+                                        </Button>
+                                    </div>
+                                ))}
+                                <Button type="button" variant="outline" onClick={() => appendEducation({ id: `edu_upload_${Date.now()}`, degree: '', institution: '', endYear: '', document: null })}>
+                                    <Plus className="mr-2 h-4 w-4" /> Add Education Certificate
+                                </Button>
+                            </div>
+                        </div>
 
                         {/* Section 5: Family Member Documents */}
-                        {currentRules.documents.familyAadhaar && (
-                            <div className="pb-6 mb-6 border-b border-white/10 md:border-border">
-                                <div className="flex items-center justify-between mb-4">
-                                    <p className="text-xs font-bold text-white/40 md:text-muted uppercase tracking-widest">Family Member Documents</p>
-                                    <FieldRequirementBadge isMandatory={mandatoryFields.familyAadhaar} />
-                                </div>
-                                <div className="space-y-4">
-                                    {familyFields.map((field, index) => {
-                                        const relation = familyValues?.[index]?.relation;
-                                        const isChild = relation === 'Child';
-                                        return (
-                                            <div key={field.id} className="border border-white/10 md:border-border rounded-2xl p-5 relative">
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
-                                                    <Controller name={`family.${index}.relation`} control={control} render={({ field, fieldState }) => (<Select label="Relation" error={fieldState.error?.message} {...field}> <option value="">Select</option><option>Spouse</option><option>Child</option><option>Father</option><option>Mother</option> </Select>)} />
-                                                    <Controller name={`family.${index}.phone`} control={control} render={({ field, fieldState }) => (<Input label={`Phone Number${isChild ? ' (Optional)' : ''}`} type="tel" {...field} error={fieldState.error?.message} />)} />
-                                                    <div className="md:col-span-2">
-                                                        <Controller name={`family.${index}.idProof`} control={control} render={({ field, fieldState }) => (<UploadDocument label={`Aadhaar Card${mandatoryFields.familyAadhaar ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={fieldState.error?.message} allowCapture ocrSchema={familyAadhaarSchema} onOcrComplete={(data) => handleImmediateOcr('familyAadhaar', data, index)} docType="Aadhaar" setToast={setToast} />)} />
-                                                    </div>
-                                                </div>
-                                                <Button type="button" variant="icon" size="sm" onClick={() => removeFamily(index)} className="!absolute top-3 right-3"><Trash2 className="h-4 w-4 text-red-500" /></Button>
-                                            </div>
-                                        )
-                                    })}
-                                    <Button type="button" variant="outline" onClick={() => appendFamily({ id: `fam_upload_${Date.now()}`, relation: '', idProof: null, phone: '' })}>
-                                        <Plus className="mr-2 h-4 w-4" /> Add Family Member
-                                    </Button>
-                                </div>
+                        <div className="pb-6 mb-6 border-b border-white/10 md:border-border">
+                            <div className="flex items-center justify-between mb-4">
+                                <p className="text-xs font-bold text-white/40 md:text-muted uppercase tracking-widest">Family Member Documents</p>
+                                <FieldRequirementBadge isMandatory={mandatoryFields.familyAadhaar} />
                             </div>
-                        )}
+                            <div className="space-y-4">
+                                {familyFields.map((field, index) => {
+                                    const relation = familyValues?.[index]?.relation;
+                                    const isChild = relation === 'Child';
+                                    return (
+                                        <div key={field.id} className="border border-white/10 md:border-border rounded-2xl p-5 relative">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
+                                                <Controller name={`family.${index}.relation`} control={control} render={({ field, fieldState }) => (<Select label="Relation" error={fieldState.error?.message} {...field}> <option value="">Select</option><option>Spouse</option><option>Child</option><option>Father</option><option>Mother</option> </Select>)} />
+                                                <Controller name={`family.${index}.phone`} control={control} render={({ field, fieldState }) => (<Input label={`Phone Number${isChild ? ' (Optional)' : ''}`} type="tel" {...field} error={fieldState.error?.message} />)} />
+                                                <div className="md:col-span-2">
+                                                    <Controller name={`family.${index}.idProof`} control={control} render={({ field, fieldState }) => (<UploadDocument label={`Aadhaar Card${mandatoryFields.familyAadhaar ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={fieldState.error?.message} allowCapture ocrSchema={familyAadhaarSchema} onOcrComplete={(data) => handleImmediateOcr('familyAadhaar', data, index)} docType="Aadhaar" setToast={setToast} />)} />
+                                                </div>
+                                            </div>
+                                            <Button type="button" variant="icon" size="sm" onClick={() => removeFamily(index)} className="!absolute top-3 right-3"><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                                        </div>
+                                    )
+                                })}
+                                <Button type="button" variant="outline" onClick={() => appendFamily({ id: `fam_upload_${Date.now()}`, relation: '', idProof: null, phone: '' })}>
+                                    <Plus className="mr-2 h-4 w-4" /> Add Family Member
+                                </Button>
+                            </div>
+                        </div>
                     </div>
 
                     {/* Footer Actions */}

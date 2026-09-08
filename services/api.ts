@@ -35,6 +35,7 @@ import {
 } from 'date-fns';
 import { useAuthStore } from '../store/authStore';
 import { compressImageFile, CLIENT_COMPRESSION_PRESETS } from '../utils/imageCompression';
+import { serializeEnrollmentRules, deserializeEnrollmentRules, emptyEnrollmentRules } from '../utils/enrollmentRulesSerializer';
 export const offlineDb = {
   getCache: async (key?: string) => {
     if (!key || typeof window === 'undefined') return null;
@@ -5613,6 +5614,64 @@ export const api = {
       .from('settings')
       .upsert({ id: 'singleton', email_config: toSnakeCase(config) }, { onConflict: 'id' });
     if (error) throw error;
+  },
+
+  // ═══ Enrollment & Onboarding Policy Rules APIs ═════════════════════════
+
+  getEnrollmentRules: async (): Promise<EnrollmentRules> => {
+    const status = await Network.getStatus();
+    if (status.connected) {
+      try {
+        const { data, error } = (await withTimeout(
+          supabase.from('settings').select('enrollment_rules').eq('id', 'singleton').maybeSingle() as any,
+          10000,
+          'Fetch enrollment rules timed out'
+        )) as any;
+        if (!error && data?.enrollment_rules) {
+          const formatted = deserializeEnrollmentRules(data.enrollment_rules);
+          await offlineDb.setCache('enrollment_rules', formatted);
+          return formatted;
+        }
+      } catch (err) {
+        console.warn('Failed to fetch enrollment rules from cloud, falling back to cache:', err);
+      }
+    }
+
+    const cached = await offlineDb.getCache('enrollment_rules');
+    if (cached) return cached;
+    return emptyEnrollmentRules;
+  },
+
+  saveEnrollmentRules: async (rules: EnrollmentRules): Promise<void> => {
+    const status = await Network.getStatus();
+    const serialized = serializeEnrollmentRules(rules);
+
+    // Update local cache immediately
+    await offlineDb.setCache('enrollment_rules', rules);
+
+    if (!status.connected) {
+      await offlineDb.addToOutbox({
+        table_name: 'settings',
+        action: 'SAVE_ENROLLMENT_RULES',
+        payload: { id: 'singleton', enrollment_rules: serialized }
+      });
+      return;
+    }
+
+    const { error } = await supabase
+      .from('settings')
+      .upsert(
+        {
+          id: 'singleton',
+          enrollment_rules: serialized
+        },
+        { onConflict: 'id' }
+      );
+
+    if (error) {
+      console.error('Error saving enrollment rules to Supabase:', error);
+      throw error;
+    }
   },
 
   sendTestEmail: async (testEmail: string): Promise<void> => {

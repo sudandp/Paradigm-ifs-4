@@ -23,6 +23,7 @@ import {
     PenTool, 
     Sparkles, 
     RotateCcw,
+    RefreshCw,
     Layers,
     UserSquare2,
     CreditCard,
@@ -78,6 +79,33 @@ const verificationRuleConfig: { key: keyof VerificationRules; label: string; des
     { key: 'requireUanVerification', label: 'Require UAN Lookup & PF Dual-Enrollment Check', description: 'Perform automated EPFO verification before proceeding with fresh PF generation', tag: 'Statutory' },
 ];
 
+const formatRoleName = (str: string): string => {
+    if (!str || !str.trim()) return '';
+    const clean = str.trim();
+    const acronyms = new Set(['HVAC', 'DG', 'AFM', 'HR', 'BD', 'CRM', 'IT', 'PF', 'ESI', 'GMC']);
+    return clean
+        .split(/[\s_-]+/)
+        .map(w => {
+            const up = w.toUpperCase();
+            if (acronyms.has(up)) return up;
+            return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+        })
+        .join(' ');
+};
+
+const deduplicateRoles = (roles: string[]): string[] => {
+    const map = new Map<string, string>();
+    roles.forEach(r => {
+        if (!r || !r.trim()) return;
+        const formatted = formatRoleName(r);
+        const key = formatted.toLowerCase();
+        if (!map.has(key)) {
+            map.set(key, formatted);
+        }
+    });
+    return Array.from(map.values());
+};
+
 const EnrollmentRules: React.FC = () => {
     const store = useEnrollmentRulesStore();
     const { attendance } = useSettingsStore();
@@ -85,7 +113,7 @@ const EnrollmentRules: React.FC = () => {
     const [allAppRoles, setAllAppRoles] = useState<{ id: string; displayName: string }[]>([]);
     const [designations, setDesignations] = useState<SiteStaffDesignation[]>([]);
     const [selectedCategory, setSelectedCategory] = useState<StaffCategory>('site');
-    const [selectedDesignations, setSelectedDesignations] = useState<string[]>(['SECURITY GUARD']);
+    const [selectedDesignations, setSelectedDesignations] = useState<string[]>(['Security Guard']);
     const [activeTab, setActiveTab] = useState<TabType>('documents');
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [dropdownSearch, setDropdownSearch] = useState('');
@@ -113,14 +141,18 @@ const EnrollmentRules: React.FC = () => {
             api.getSiteStaffDesignations().catch(() => [])
         ]).then(([roles, siteDesignations]) => {
             setAllAppRoles(roles);
-            const uniqueDesignations = [...new Set(siteDesignations.map(d => d.designation))].filter(Boolean);
-            if (!uniqueDesignations.includes('Administrator')) {
-                uniqueDesignations.unshift('Administrator');
+            const canonicalList = deduplicateRoles(siteDesignations.map(d => d.designation));
+            if (!canonicalList.some(d => d.toLowerCase() === 'administrator')) {
+                canonicalList.unshift('Administrator');
             }
-            if (!uniqueDesignations.includes('Default (All Roles)')) {
-                uniqueDesignations.unshift('Default (All Roles)');
+            if (!canonicalList.some(d => d.toLowerCase() === 'default (all roles)')) {
+                canonicalList.unshift('Default (All Roles)');
             }
-            setDesignations(uniqueDesignations.map((d, i) => ({ id: `${i}`, designation: d, department: '', permanentId: '', temporaryId: '' })));
+            setDesignations(canonicalList.map((d, i) => ({ id: `${i}`, designation: d, department: '', permanentId: '', temporaryId: '' })));
+        });
+        // Fetch fresh rules from Supabase
+        store.fetchRules(true).catch(err => {
+            console.warn('[EnrollmentRules] Error fetching latest rules from Supabase:', err);
         });
     }, []);
 
@@ -160,9 +192,9 @@ const EnrollmentRules: React.FC = () => {
     const categoryRoleNames = useMemo(() => {
         const mapping = attendance?.missedCheckoutConfig?.roleMapping;
         const result: Record<'office' | 'field' | 'site', string[]> = {
-            office: [...DEFAULT_CATEGORY_ROLES.office],
-            field: [...DEFAULT_CATEGORY_ROLES.field],
-            site: [...DEFAULT_CATEGORY_ROLES.site]
+            office: deduplicateRoles(DEFAULT_CATEGORY_ROLES.office),
+            field: deduplicateRoles(DEFAULT_CATEGORY_ROLES.field),
+            site: deduplicateRoles(DEFAULT_CATEGORY_ROLES.site)
         };
 
         if (mapping) {
@@ -174,7 +206,7 @@ const EnrollmentRules: React.FC = () => {
                         return roleId.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
                     });
                     if (resolved.length > 0) {
-                        result[cat] = [...new Set([...resolved, ...DEFAULT_CATEGORY_ROLES[cat]])];
+                        result[cat] = deduplicateRoles([...resolved, ...DEFAULT_CATEGORY_ROLES[cat]]);
                     }
                 }
             });
@@ -185,22 +217,29 @@ const EnrollmentRules: React.FC = () => {
 
     // Filter designations by selected category
     const filteredDesignations = useMemo(() => {
-        if (selectedCategory === 'all') return designations;
-        const validNames = categoryRoleNames[selectedCategory].map(n => n.toLowerCase());
-        const list = designations.filter(d => 
-            d.designation === 'Default (All Roles)' || 
-            validNames.some(v => d.designation.toLowerCase().includes(v) || v.includes(d.designation.toLowerCase()))
+        const canonicalList = deduplicateRoles(designations.map(d => d.designation));
+        if (selectedCategory === 'all') {
+            return canonicalList.map((name, i) => ({ id: `all-${i}`, designation: name, department: '', permanentId: '', temporaryId: '' }));
+        }
+        const validRoles = categoryRoleNames[selectedCategory];
+        const validLower = new Set(validRoles.map(r => r.toLowerCase()));
+        
+        const matched = canonicalList.filter(d => 
+            d === 'Default (All Roles)' || 
+            validLower.has(d.toLowerCase()) ||
+            validRoles.some(v => d.toLowerCase().includes(v.toLowerCase()) || v.toLowerCase().includes(d.toLowerCase()))
         );
-        // Include any roles from category that aren't in designations yet
-        const existingNames = new Set(list.map(d => d.designation.toLowerCase()));
-        categoryRoleNames[selectedCategory].forEach((roleName, idx) => {
-            if (!existingNames.has(roleName.toLowerCase())) {
-                list.push({ id: `cat-${idx}`, designation: roleName, department: '', permanentId: '', temporaryId: '' });
-                existingNames.add(roleName.toLowerCase());
+
+        const existingNames = new Set(matched.map(d => d.toLowerCase()));
+        validRoles.forEach(r => {
+            if (!existingNames.has(r.toLowerCase())) {
+                matched.push(r);
+                existingNames.add(r.toLowerCase());
             }
         });
 
-        return list;
+        const deduplicated = deduplicateRoles(matched);
+        return deduplicated.map((d, idx) => ({ id: `cat-${idx}`, designation: d, department: '', permanentId: '', temporaryId: '' }));
     }, [designations, selectedCategory, categoryRoleNames]);
 
     // Filtered by dropdown search
@@ -282,7 +321,7 @@ const EnrollmentRules: React.FC = () => {
                     photo: true,
                     aadhaar: true,
                     bankProof: true,
-                    pan: false,
+                    pan: true,
                     uanProof: false,
                     salarySlip: false,
                     educationCertificate: false,
@@ -360,10 +399,24 @@ const EnrollmentRules: React.FC = () => {
         setToast({ message: mandatory ? `All documents marked Mandatory for ${selectedDesignations.length} role(s).` : `All documents marked Optional for ${selectedDesignations.length} role(s).`, type: 'info' });
     };
 
-    const onSubmit: SubmitHandler<EnrollmentRules> = (data) => {
-        store.updateRules(data);
-        setToast({ message: 'Enrollment & Onboarding rules saved successfully! Settings are now active across all enrollment forms.', type: 'success' });
-        reset(data);
+    const onSubmit: SubmitHandler<EnrollmentRules> = async (data) => {
+        const normalizedRules = { ...data.rulesByDesignation };
+        Object.entries(data.rulesByDesignation || {}).forEach(([desig, rule]) => {
+            normalizedRules[desig] = rule;
+            normalizedRules[desig.toLowerCase()] = rule;
+            normalizedRules[desig.toUpperCase()] = rule;
+            normalizedRules[formatRoleName(desig)] = rule;
+        });
+        const finalData = { ...data, rulesByDesignation: normalizedRules };
+
+        try {
+            await store.saveRules(finalData);
+            setToast({ message: 'Enrollment & Onboarding rules saved to Supabase! Settings are now active across all enrollment forms.', type: 'success' });
+            reset(data);
+        } catch (err: any) {
+            console.error('[EnrollmentRules] Error saving to Supabase:', err);
+            setToast({ message: `Error saving to Supabase: ${err?.message || 'Please check your connection and retry.'}`, type: 'error' });
+        }
     };
 
     return (
@@ -394,12 +447,20 @@ const EnrollmentRules: React.FC = () => {
                     </Button>
                     <Button 
                         type="submit" 
-                        disabled={!isDirty} 
+                        disabled={!isDirty || store.isSaving} 
                         variant="primary"
                         className="relative !px-5"
                     >
-                        {isDirty && <span className="absolute -top-1 -right-1 w-3 h-3 bg-amber-400 rounded-full border-2 border-white animate-pulse" />}
-                        <Save className="mr-2 h-4 w-4" /> Save Rules
+                        {isDirty && !store.isSaving && <span className="absolute -top-1 -right-1 w-3 h-3 bg-amber-400 rounded-full border-2 border-white animate-pulse" />}
+                        {store.isSaving ? (
+                            <>
+                                <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Saving to Supabase...
+                            </>
+                        ) : (
+                            <>
+                                <Save className="mr-2 h-4 w-4" /> Save Rules
+                            </>
+                        )}
                     </Button>
                 </div>
             </AdminPageHeader>

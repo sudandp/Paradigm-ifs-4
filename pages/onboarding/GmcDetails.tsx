@@ -12,6 +12,7 @@ import UploadDocument from '../../components/UploadDocument';
 import Checkbox from '../../components/ui/Checkbox';
 import { useAuthStore } from '../../store/authStore';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
+import { ShieldCheck, Info } from 'lucide-react';
 
 // Fix: Removed generic type argument from yup.object and other yup calls
 const gmcDetailsSchema = yup.object({
@@ -72,6 +73,17 @@ const GmcDetails = () => {
         all.push(...children);
         return all;
     }, [spouse, children]);
+
+    const salary = onboardingData.personal.salary;
+    const isSalaryAboveThreshold = salary != null && (salary > 20000 || salary > 21000);
+
+    // Auto default to true if salary is above 20,000 threshold and not yet selected
+    useEffect(() => {
+        if (isSalaryAboveThreshold && onboardingData.gmc.isOptedIn === null) {
+            setValue('isOptedIn', true, { shouldDirty: true });
+            updateGmc({ isOptedIn: true });
+        }
+    }, [isSalaryAboveThreshold, onboardingData.gmc.isOptedIn, setValue, updateGmc]);
     
     // This effect pre-selects all dependents if GMC is opted in and no selections have been made.
     useEffect(() => {
@@ -137,6 +149,15 @@ const GmcDetails = () => {
              <form onSubmit={handleSubmit(onSubmit)} id="gmc-form">
                 <p className="text-sm text-gray-400 mb-6">Please choose whether to enroll in the company's insurance plan.</p>
                 <div className="space-y-4">
+                    {isSalaryAboveThreshold && (
+                        <div className="p-3 bg-emerald-900/40 border border-emerald-500/50 rounded-lg text-emerald-300 text-xs flex items-start gap-2">
+                            <ShieldCheck className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
+                            <div>
+                                <span className="font-bold block">GMC is Mandatory (Salary: ₹{salary?.toLocaleString()} &gt; ₹20,000)</span>
+                                <span>Statutory ESI does not apply. Group Medical Cover is mandatory for this salary tier. Opting out requires uploading active alternate policy.</span>
+                            </div>
+                        </div>
+                    )}
                     <p className="text-md font-semibold">Would you like to Avail Group Medical Cover?</p>
                     <Controller
                         name="isOptedIn"
@@ -206,6 +227,25 @@ const GmcDetails = () => {
             <FormHeader title="Group Medical Cover (GMC)" subtitle="Please choose whether to enroll in the company's insurance plan." />
 
             <div className="space-y-6">
+                {isSalaryAboveThreshold && (
+                    <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-800 dark:text-emerald-300 flex items-start gap-3">
+                        <ShieldCheck className="h-5 w-5 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm font-bold text-emerald-950 dark:text-emerald-200">
+                                    Group Medical Cover (GMC) is Mandatory
+                                </span>
+                                <span className="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-emerald-600 text-white tracking-wider">
+                                    Policy Mandatory
+                                </span>
+                            </div>
+                            <p className="text-xs text-muted mt-1">
+                                Because employee's salary (₹{salary?.toLocaleString()}) exceeds ₹20,000, statutory ESI does not apply and Group Medical Cover (GMC) is mandatory. If opting out, you must upload a valid copy of active alternate medical insurance policy.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
                 <div>
                     <label className="text-md font-semibold text-primary-text mb-2 block">Would you like to Avail Group Medical Cover?</label>
                     <Controller

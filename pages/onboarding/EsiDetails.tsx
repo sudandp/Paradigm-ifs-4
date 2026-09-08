@@ -26,20 +26,12 @@ export const esiDetailsSchema = yup.object({
         then: (schema) => schema.required('ESI Number is required').matches(/^(\d{10}|\d{17})$/, 'ESI number must be 10 or 17 digits'),
         otherwise: (schema) => schema.optional().nullable(),
     }),
-    esiRegistrationDate: yup.string().when('hasEsi', {
-        is: true,
-        then: (schema) => schema.required('Registration date is required')
-            .test('not-in-future', 'Registration date cannot be in the future', (value) => {
-                if(!value) return true;
-                return new Date(value.replace(/-/g, '/')) <= new Date();
-            }),
-        otherwise: (schema) => schema.optional().nullable(),
-    }),
-    esicBranch: yup.string().when('hasEsi', {
-        is: true,
-        then: (schema) => schema.required('ESIC Branch is required'),
-        otherwise: (schema) => schema.optional().nullable(),
-    }),
+    esiRegistrationDate: yup.string().optional().nullable()
+        .test('not-in-future', 'Registration date cannot be in the future', (value) => {
+            if(!value) return true;
+            return new Date(value.replace(/-/g, '/')) <= new Date();
+        }),
+    esicBranch: yup.string().optional().nullable(),
     document: yup.mixed().optional().nullable(),
     verifiedStatus: yup.object().optional(),
 });
@@ -55,34 +47,40 @@ const EsiDetails = () => {
     const { onValidated, setToast } = useOutletContext<OutletContext>();
     const { user } = useAuthStore();
     const { data, updateEsi, setEsiVerifiedStatus } = useOnboardingStore();
-    const { esiCtcThreshold, enableEsiRule } = useEnrollmentRulesStore();
+    const { esiCtcThreshold } = useEnrollmentRulesStore();
     const isMobile = useMediaQuery('(max-width: 767px)');
-    const autoCheckedRef = useRef(false);
     const [esicVerifyState, setEsicVerifyState] = useState<ESICVerifyState>('idle');
     const [esicMemberInfo, setEsicMemberInfo] = useState<{ memberName: string | null; dispensary: string | null } | null>(null);
     
     const { register, control, handleSubmit, formState: { errors }, reset, setValue, watch } = useForm<EsiDetails>({
         // FIX: Cast resolver to resolve type incompatibility between yup and react-hook-form.
         resolver: yupResolver(esiDetailsSchema) as unknown as Resolver<EsiDetails>,
-        defaultValues: data.esi
+        defaultValues: {
+            hasEsi: data.esi?.hasEsi ?? false,
+            esiNumber: data.esi?.esiNumber || '',
+            esiRegistrationDate: data.esi?.esiRegistrationDate || '',
+            esicBranch: data.esi?.esicBranch || '',
+            document: data.esi?.document || null,
+            verifiedStatus: data.esi?.verifiedStatus || {},
+        }
     });
     
     const hasEsi = watch('hasEsi');
     const esiData = watch();
 
-    const isEligibleForEsi = data.personal.salary != null && data.personal.salary <= esiCtcThreshold;
+    const isEligibleForEsi = data.personal.salary == null || data.personal.salary <= (esiCtcThreshold || 21000);
 
     useEffect(() => {
-        // Sync form with global store data, which might have been pre-filled
-        const esiData = { ...data.esi };
-        const isNewForm = !esiData.esiNumber && !esiData.esicBranch && !esiData.esiRegistrationDate;
-        if (isEligibleForEsi && !esiData.hasEsi && isNewForm && !autoCheckedRef.current) {
-            esiData.hasEsi = true;
-            autoCheckedRef.current = true;
-            updateEsi({ hasEsi: true });
-        }
-        reset(esiData);
-    }, [data.esi, reset, isEligibleForEsi, updateEsi]);
+        // Sync form with global store data
+        reset({
+            hasEsi: data.esi?.hasEsi ?? false,
+            esiNumber: data.esi?.esiNumber || '',
+            esiRegistrationDate: data.esi?.esiRegistrationDate || '',
+            esicBranch: data.esi?.esicBranch || '',
+            document: data.esi?.document || null,
+            verifiedStatus: data.esi?.verifiedStatus || {},
+        });
+    }, [data.esi, reset]);
 
     // This effect syncs the form state back to the Zustand store on change, with a debounce.
     useEffect(() => {
@@ -99,17 +97,12 @@ const EsiDetails = () => {
         };
     }, [watch, updateEsi]);
 
-
     useEffect(() => {
-        // Handle eligibility logic based on other parts of the store
-        if (!isEligibleForEsi) {
-            if (data.esi.hasEsi) {
-                // If not eligible, ensure hasEsi is false in the store. This will trigger the above effect.
-                updateEsi({ hasEsi: false, esiNumber: '', esiRegistrationDate: '', esicBranch: '' });
-            }
+        // If employee is not eligible for ESI (salary above threshold), clear ESI data
+        if (!isEligibleForEsi && data.esi.hasEsi) {
+            updateEsi({ hasEsi: false, esiNumber: '', esiRegistrationDate: '', esicBranch: '' });
         }
     }, [isEligibleForEsi, data.esi.hasEsi, updateEsi]);
-    
 
     const onSubmit: SubmitHandler<EsiDetails> = async (formData) => {
         updateEsi(formData);
@@ -177,35 +170,66 @@ const EsiDetails = () => {
         required: ["esiNumber"],
     };
 
-    if (isMobile) {
-        if (!enableEsiRule || !isEligibleForEsi) {
-             const message = !enableEsiRule
-                ? "ESI enrollment is currently disabled by company policy. This step is not applicable."
-                : `Employee is not eligible for ESI as their gross salary is above the ₹${esiCtcThreshold.toLocaleString()} threshold.`;
-            return (
-                <form onSubmit={async (e) => { e.preventDefault(); await onValidated(); }} id="esi-form">
-                     <div className="flex items-start gap-3 p-4 bg-blue-900/40 rounded-lg border border-blue-500/50">
-                        <Info className="h-5 w-5 text-blue-400 mt-0.5 flex-shrink-0" />
-                        <p className="text-sm text-blue-300">{message}</p>
+    if (!isEligibleForEsi) {
+        const message = `Employee is not eligible for statutory ESI as their salary (₹${data.personal.salary?.toLocaleString()}) is above the ₹20,000 / ₹${(esiCtcThreshold || 21000).toLocaleString()} threshold. Group Medical Cover (GMC) is mandatory and applies instead.`;
+        return (
+            <form onSubmit={async (e) => { e.preventDefault(); await onValidated(); }} id="esi-form">
+                <FormHeader title="ESI Details" subtitle="Employee's State Insurance eligibility." />
+                <div className="mt-4 flex items-start gap-3 bg-amber-500/10 border border-amber-500/30 p-4 rounded-xl text-amber-700 dark:text-amber-400">
+                    <Info className="h-5 w-5 flex-shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                    <div>
+                        <p className="text-sm font-semibold">Statutory ESI Not Applicable</p>
+                        <p className="text-xs text-muted mt-1">{message}</p>
                     </div>
-                </form>
-            );
-        }
+                </div>
+            </form>
+        );
+    }
+
+    if (isMobile) {
         return (
             <form onSubmit={handleSubmit(onSubmit)} id="esi-form">
                 <p className="text-sm text-gray-400 mb-6">Provide your Employee's State Insurance number if applicable.</p>
                 <div className="space-y-4">
-                     <label className="flex items-center gap-3 p-4 bg-[#243524] rounded-lg border border-[#374151]">
-                        <input type="checkbox" {...register('hasEsi')} className="h-5 w-5 rounded text-accent focus:ring-accent bg-transparent border-[#9ca89c]" />
-                        <span>Are you covered under ESI?</span>
-                    </label>
+                     <div className="grid grid-cols-2 gap-3">
+                        <label className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer ${hasEsi === true ? 'border-[#32cd32] bg-[#243524]' : 'border-[#374151]'}`}>
+                            <input 
+                                type="radio" 
+                                name="hasEsiMob" 
+                                checked={hasEsi === true} 
+                                onChange={() => { setValue('hasEsi', true, { shouldValidate: true }); updateEsi({ hasEsi: true }); }} 
+                                className="h-4 w-4 text-accent" 
+                            />
+                            <span className="text-xs font-medium text-white">Existing ESI</span>
+                        </label>
+                        <label className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer ${hasEsi === false ? 'border-[#32cd32] bg-[#243524]' : 'border-[#374151]'}`}>
+                            <input 
+                                type="radio" 
+                                name="hasEsiMob" 
+                                checked={hasEsi === false} 
+                                onChange={() => { setValue('hasEsi', false, { shouldValidate: true }); updateEsi({ hasEsi: false }); }} 
+                                className="h-4 w-4 text-accent" 
+                            />
+                            <span className="text-xs font-medium text-white">Fresh / New ESI</span>
+                        </label>
+                     </div>
+
+                    {!hasEsi && (
+                        <div className="p-3 bg-emerald-900/30 rounded-lg border border-emerald-500/40 text-emerald-300 text-xs">
+                            ✓ Fresh ESI will be registered and filled manually by HR after onboarding.
+                        </div>
+                    )}
+
                     {hasEsi && (
                          <div className="space-y-4 animate-fade-in-down">
-                            <input placeholder="ESI Number" {...register('esiNumber')} className="form-input"/>
+                            <div>
+                                <input placeholder="ESI Number (10 or 17 digits)" {...register('esiNumber')} className="form-input"/>
+                                {errors.esiNumber && <p className="text-xs text-red-500 mt-1">{errors.esiNumber.message}</p>}
+                            </div>
                             <input type="date" {...register('esiRegistrationDate')} className="form-input"/>
-                            <input placeholder="ESIC Branch" {...register('esicBranch')} className="form-input"/>
+                            <input placeholder="ESIC Branch (Optional)" {...register('esicBranch')} className="form-input"/>
                             <Controller name="document" control={control} render={({ field }) => (
-                                <UploadDocument label="Upload ESI Card" file={field.value} onFileChange={field.onChange} allowCapture costingItemName="ESI Card OCR" />
+                                <UploadDocument label="Upload ESI Card (Optional)" file={field.value} onFileChange={field.onChange} allowCapture costingItemName="ESI Card OCR" />
                             )}/>
                         </div>
                     )}
@@ -214,50 +238,61 @@ const EsiDetails = () => {
         );
     }
 
-    if (!enableEsiRule) {
-        return (
-            <form onSubmit={async (e) => { e.preventDefault(); await onValidated(); }} id="esi-form">
-                <FormHeader title="ESI Details" subtitle="Employee's State Insurance eligibility." />
-                <div className="mt-4 flex items-center bg-blue-50 p-4 rounded-lg">
-                    <Info className="h-5 w-5 text-blue-500 mr-3" />
-                    <p className="text-sm text-blue-700">
-                        ESI enrollment is currently disabled by company policy. This step is not applicable.
-                    </p>
-                </div>
-            </form>
-        );
-    }
-
-
-    if (!isEligibleForEsi) {
-        return (
-            <form onSubmit={async (e) => { e.preventDefault(); await onValidated(); }} id="esi-form">
-                <FormHeader title="ESI Details" subtitle="Employee's State Insurance eligibility." />
-                <div className="mt-4 flex items-center bg-blue-50 p-4 rounded-lg">
-                    <Info className="h-5 w-5 text-blue-500 mr-3" />
-                    <p className="text-sm text-blue-700">
-                        Employee is not eligible for ESI as their gross salary is above the ₹${esiCtcThreshold.toLocaleString()} threshold.
-                    </p>
-                </div>
-            </form>
-        );
-    }
-
-
     return (
         <form onSubmit={handleSubmit(onSubmit)} id="esi-form">
-             <FormHeader title="ESI Details" subtitle="Provide your Employee's State Insurance number if applicable." />
+             <FormHeader title="ESI Details" subtitle="Employee's State Insurance (Statutory Coverage)." />
 
             <div className="space-y-6">
-                <div className="flex items-center">
-                    <input id="hasEsi" type="checkbox" {...register('hasEsi')} className="h-4 w-4 text-accent" />
-                    <label htmlFor="hasEsi" className="ml-2 block text-sm text-muted">Are you covered under ESI?</label>
+                <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-800 dark:text-emerald-300 flex items-start gap-3">
+                    <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
+                    <div>
+                        <p className="text-sm font-semibold">
+                            Eligible for Statutory ESI (Salary: ₹{data.personal.salary ? data.personal.salary.toLocaleString() : 'Below 21,000'})
+                        </p>
+                        <p className="text-xs text-muted mt-0.5">
+                            Employees with salary up to ₹21,000 are eligible for ESIC. If candidate has an existing ESI number, feed it below. If fresh worker, select "No / Fresh ESI" and details can be filled manually by HR.
+                        </p>
+                    </div>
                 </div>
+
+                <div className="space-y-3">
+                    <label className="text-sm font-semibold text-primary-text block">Do you have an existing ESI Number?</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <label className={`flex items-start p-4 rounded-xl border-2 cursor-pointer transition-colors ${hasEsi === true ? 'border-accent bg-accent-light dark:bg-accent/10' : 'border-border hover:border-slate-300'}`}>
+                            <input 
+                                type="radio" 
+                                name="hasEsiRadio" 
+                                checked={hasEsi === true} 
+                                onChange={() => { setValue('hasEsi', true, { shouldValidate: true }); updateEsi({ hasEsi: true }); }} 
+                                className="h-4 w-4 text-accent mt-1" 
+                            />
+                            <div className="ml-3">
+                                <span className="text-sm font-semibold text-primary-text block">Yes, I have an existing ESI Number</span>
+                                <span className="text-xs text-muted">Feed 10 or 17-digit ESI number, dispensary, or upload ESI card</span>
+                            </div>
+                        </label>
+
+                        <label className={`flex items-start p-4 rounded-xl border-2 cursor-pointer transition-colors ${hasEsi === false ? 'border-accent bg-accent-light dark:bg-accent/10' : 'border-border hover:border-slate-300'}`}>
+                            <input 
+                                type="radio" 
+                                name="hasEsiRadio" 
+                                checked={hasEsi === false} 
+                                onChange={() => { setValue('hasEsi', false, { shouldValidate: true }); updateEsi({ hasEsi: false }); }} 
+                                className="h-4 w-4 text-accent mt-1" 
+                            />
+                            <div className="ml-3">
+                                <span className="text-sm font-semibold text-primary-text block">No / Fresh ESI Registration Required</span>
+                                <span className="text-xs text-muted">Employer will register fresh ESI; details can be filled manually by HR</span>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
                 {hasEsi && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 animate-fade-in-down">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 animate-fade-in-down pt-2">
                         <div className="space-y-6">
                             <VerifiedInput
-                                label="ESI Number"
+                                label="ESI Number (10 or 17 digits)"
                                 id="esiNumber"
                                 hasValue={!!esiData.esiNumber}
                                 isVerified={data.esi.verifiedStatus?.esiNumber === true}
@@ -266,9 +301,9 @@ const EsiDetails = () => {
                                 error={errors.esiNumber?.message}
                             />
                             <Controller name="esiRegistrationDate" control={control} render={({ field }) => (
-                               <DatePicker label="ESI Registration Date" id="esiRegistrationDate" error={errors.esiRegistrationDate?.message} value={field.value} onChange={field.onChange} maxDate={new Date()} />
+                               <DatePicker label="ESI Registration Date (Optional)" id="esiRegistrationDate" error={errors.esiRegistrationDate?.message} value={field.value} onChange={field.onChange} maxDate={new Date()} />
                             )} />
-                            <Input label="ESIC Branch" id="esicBranch" registration={register('esicBranch')} error={errors.esicBranch?.message}/>
+                            <Input label="ESIC Branch / Dispensary (Optional)" id="esicBranch" registration={register('esicBranch')} error={errors.esicBranch?.message}/>
 
                             {/* ── ESIC Registry Verify Button ── */}
                             <div className="flex flex-col gap-2 pt-2 border-t">
@@ -310,7 +345,7 @@ const EsiDetails = () => {
                         </div>
                         <Controller name="document" control={control} render={({ field }) => (
                              <UploadDocument
-                                label="Upload ESI Card"
+                                label="Upload ESI Card (Optional)"
                                 file={field.value}
                                 onFileChange={field.onChange}
                                 onOcrComplete={handleOcrComplete}

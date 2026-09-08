@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useOnboardingStore } from '../../store/onboardingStore';
+import { useOnboardingStore, isSouthWallCompany } from '../../store/onboardingStore';
 import { useEnrollmentRulesStore } from '../../store/enrollmentRulesStore';
 import { api } from '../../services/api';
 import type { OrganizationGroup, Organization, SiteStaffDesignation } from '../../types';
@@ -14,7 +14,7 @@ import LoadingScreen from '../../components/ui/LoadingScreen';
 const SelectOrganization = () => {
     const navigate = useNavigate();
     const { updateOrganization, updatePersonal } = useOnboardingStore();
-    const { enforceManpowerLimit, manpowerLimitRule } = useEnrollmentRulesStore();
+    const { enforceManpowerLimit, manpowerLimitRule, fetchRules } = useEnrollmentRulesStore();
     const { user } = useAuthStore();
 
     const [isLoading, setIsLoading] = useState(true);
@@ -53,6 +53,7 @@ const SelectOrganization = () => {
                     api.getOrganizationStructure(),
                     api.getOrganizations(),
                     api.getSiteStaffDesignations(),
+                    fetchRules().catch(() => null),
                 ]);
                 setGroups(structure);
                 setOrganizations(orgs);
@@ -220,8 +221,18 @@ const SelectOrganization = () => {
         const department = designationDetails?.department || '';
         const salary = designationDetails?.monthlySalary || null;
 
+        const groupName = selectedGroup?.name || '';
+        const companyObj = allGroupCompanies.find(c => c.id === selectedCompanyId);
+        const companyName = companyObj?.name || '';
+
         if (isManualSite) {
             if (!manualSiteName.trim() || !selectedDesignation.trim()) return;
+            const combinedName = `${groupName} ${companyName} ${manualSiteName}`.trim();
+            const isSW = isSouthWallCompany(combinedName);
+            const currentEmpId = useOnboardingStore.getState().data.personal?.employeeId || '';
+            const numPart = currentEmpId.replace(/^[A-Za-z]+-/, '') || `${Math.floor(1000 + Math.random() * 9000)}`;
+            const targetEmpId = `${isSW ? 'SW' : 'PARA'}-${numPart}`;
+
             updateOrganization({
                 organizationId: `manual_${Date.now()}`,
                 organizationName: manualSiteName.trim(),
@@ -235,7 +246,7 @@ const SelectOrganization = () => {
                 location: selectedLocation,
                 companyId: selectedCompanyId,
             });
-            updatePersonal({ salary });
+            updatePersonal({ salary, employeeId: targetEmpId });
             navigate('/onboarding/pre-upload');
             return;
         }
@@ -255,6 +266,12 @@ const SelectOrganization = () => {
         }
 
         if (organization) {
+            const combinedName = `${groupName} ${companyName} ${organization.shortName || ''} ${organization.fullName || ''}`.trim();
+            const isSW = isSouthWallCompany(combinedName);
+            const currentEmpId = useOnboardingStore.getState().data.personal?.employeeId || '';
+            const numPart = currentEmpId.replace(/^[A-Za-z]+-/, '') || `${Math.floor(1000 + Math.random() * 9000)}`;
+            const targetEmpId = `${isSW ? 'SW' : 'PARA'}-${numPart}`;
+
             updateOrganization({
                 organizationId: organization.id,
                 organizationName: organization.shortName,
@@ -267,7 +284,7 @@ const SelectOrganization = () => {
                 location: selectedLocation,
                 companyId: selectedCompanyId,
             });
-            updatePersonal({ salary });
+            updatePersonal({ salary, employeeId: targetEmpId });
             navigate('/onboarding/pre-upload');
         }
     };

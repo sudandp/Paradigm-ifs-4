@@ -11,6 +11,7 @@ import { useAuthStore } from '../../store/authStore';
 import DraftSaveIndicator, { type DraftSaveStatus } from '../../components/onboarding/DraftSaveIndicator';
 import ESignFlow from '../../components/onboarding/ESignFlow';
 import OnboardingBookletModal from '../../components/onboarding/OnboardingBookletModal';
+import { useEnrollmentRulesStore, getRulesForDesignation } from '../../store/enrollmentRulesStore';
 
 
 const DetailItem: React.FC<{ label: string; value?: string | number | null }> = ({ label, value }) => (
@@ -163,19 +164,126 @@ const Review = () => {
         setIsBookletModalOpen(false);
     };
 
-    const canSubmit = (verificationState === 'success' || !perfiosApi.enabled) && data.formsGenerated && !!esignDocUrl;
+    const { rulesByDesignation, fetchRules } = useEnrollmentRulesStore();
+    useEffect(() => {
+        fetchRules().catch(() => {});
+    }, [fetchRules]);
+
+    const designation = data.organization.designation;
+    const currentRules = useMemo(() => getRulesForDesignation(rulesByDesignation, designation), [rulesByDesignation, designation]);
+
+    const missingMandatoryDocs = useMemo(() => {
+        const missing: { key: string; label: string }[] = [];
+
+        // 1. Candidate Live Photo
+        const hasPhoto = !!(data.personal.photo?.preview || data.personal.photo?.file || (typeof data.personal.photo === 'string' && data.personal.photo));
+        if (currentRules.documents.photo && !hasPhoto) {
+            missing.push({ key: 'photo', label: 'Candidate Live Photo' });
+        }
+
+        // 2. Aadhaar Card (Front & Back)
+        const hasAadhaarFront = !!(data.personal.idProofFront?.preview || data.personal.idProofFront?.file);
+        const hasAadhaarBack = !!(data.personal.idProofBack?.preview || data.personal.idProofBack?.file);
+        if (currentRules.documents.aadhaar) {
+            if (!hasAadhaarFront) missing.push({ key: 'idProofFront', label: 'Aadhaar Card (Front)' });
+            if (!hasAadhaarBack) missing.push({ key: 'idProofBack', label: 'Aadhaar Card (Back)' });
+        }
+
+        // 3. Bank Proof
+        const hasBankProof = !!(data.bank.bankProof?.preview || data.bank.bankProof?.file);
+        if (currentRules.documents.bankProof && !hasBankProof) {
+            missing.push({ key: 'bankProof', label: 'Bank Account Proof (Passbook / Cheque)' });
+        }
+
+        // 4. PAN Card
+        const hasPanCard = !!(data.personal.panCard?.preview || data.personal.panCard?.file);
+        if (currentRules.documents.pan && !hasPanCard) {
+            missing.push({ key: 'panCard', label: 'PAN Card' });
+        }
+
+        // 5. UAN / PF Proof (if candidate has previous PF and UAN proof is marked mandatory)
+        if (currentRules.documents.uanProof && data.uan.hasPreviousPf) {
+            const hasUanDoc = !!(data.uan.document?.preview || data.uan.document?.file);
+            if (!hasUanDoc) {
+                missing.push({ key: 'uanProof', label: 'UAN / PF Document' });
+            }
+        }
+
+        // 6. Salary Slip (if candidate has previous PF and salary slip is marked mandatory)
+        if (currentRules.documents.salarySlip && data.uan.hasPreviousPf) {
+            const hasSalarySlip = !!(data.uan.salarySlip?.preview || data.uan.salarySlip?.file);
+            if (!hasSalarySlip) {
+                missing.push({ key: 'salarySlip', label: 'Previous Salary Slip' });
+            }
+        }
+
+        // 7. Education Certificate (if marked mandatory)
+        if (currentRules.documents.educationCertificate && data.education && data.education.length > 0) {
+            const hasMissingEdu = data.education.some(e => !e.document?.preview && !e.document?.file);
+            if (hasMissingEdu) {
+                missing.push({ key: 'educationCertificate', label: 'Education Certificate' });
+            }
+        }
+
+        // 8. Family Member Proofs (if marked mandatory)
+        if (currentRules.documents.familyAadhaar && data.family && data.family.length > 0) {
+            const hasMissingFam = data.family.some(f => !f.idProof?.preview && !f.idProof?.file);
+            if (hasMissingFam) {
+                missing.push({ key: 'familyAadhaar', label: 'Family Member Proofs' });
+            }
+        }
+
+        return missing;
+    }, [currentRules.documents, data.personal.photo, data.personal.idProofFront, data.personal.idProofBack, data.bank.bankProof, data.personal.panCard, data.uan.hasPreviousPf, data.uan.document, data.uan.salarySlip, data.education, data.family]);
+
+    const canSubmit = (verificationState === 'success' || !perfiosApi.enabled) && data.formsGenerated && !!esignDocUrl && missingMandatoryDocs.length === 0;
     
     const resolvedAadhaar = data.personal.aadhaarNumber || (/^\d{12}$/.test(data.personal.idProofNumber || '') ? data.personal.idProofNumber : '');
     const resolvedPan = data.personal.panNumber || (/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/i.test(data.personal.idProofNumber || '') ? data.personal.idProofNumber : '');
 
     if (isMobileView) {
         return (
-             <form onSubmit={async (e) => { e.preventDefault(); await onSubmit(); }} id="review-form">
-                <p className="text-sm text-gray-400 mb-6">Please review all your details carefully before submitting.</p>
+             <form onSubmit={async (e) => { 
+                 e.preventDefault(); 
+                 if (!canSubmit) {
+                     if (missingMandatoryDocs.length > 0) {
+                         alert(`Please upload all mandatory documents before submitting:\n• ${missingMandatoryDocs.map(d => d.label).join('\n• ')}`);
+                     }
+                     return;
+                 }
+                 await onSubmit(); 
+             }} id="review-form">
+                <p className="text-sm text-gray-400 mb-4">Please review all your details carefully before submitting.</p>
+
+                {missingMandatoryDocs.length > 0 && (
+                    <div className="mb-6 p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl space-y-2 text-rose-400">
+                        <div className="flex items-center gap-2 font-semibold text-sm">
+                            <XCircle className="h-5 w-5 flex-shrink-0 text-rose-400" />
+                            <span>Missing Mandatory Documents ({missingMandatoryDocs.length})</span>
+                        </div>
+                        <p className="text-xs text-rose-300/80">
+                            Submission is blocked until these mandatory documents are uploaded:
+                        </p>
+                        <ul className="text-xs list-disc list-inside space-y-1 text-rose-200">
+                            {missingMandatoryDocs.map(doc => (
+                                <li key={doc.key} className="font-medium">{doc.label}</li>
+                            ))}
+                        </ul>
+                        <button
+                            type="button"
+                            onClick={() => navigate('/onboarding/pre-upload')}
+                            className="mt-2 w-full py-2 px-3 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold transition-colors"
+                        >
+                            Upload Missing Documents
+                        </button>
+                    </div>
+                )}
+
                  <div className="space-y-6">
                     <section>
                         <h4 className="fo-section-title mb-2">Personal Details</h4>
                         <div className="divide-y divide-border">
+                             <MobileDetailItem label="Employee ID" value={data.personal.employeeId} />
                              <MobileDetailItem label="Full Name" value={`${data.personal.firstName} ${data.personal.lastName}`} />
                              <MobileDetailItem label="Email" value={data.personal.email} />
                              <MobileDetailItem label="Mobile" value={data.personal.mobile} />
@@ -284,13 +392,89 @@ const Review = () => {
     }
 
     return (
-        <form onSubmit={async (e) => { e.preventDefault(); await onSubmit(); }} id="review-form">
+        <form onSubmit={async (e) => { 
+            e.preventDefault(); 
+            if (!canSubmit) {
+                if (missingMandatoryDocs.length > 0) {
+                    alert(`Please upload all mandatory documents before submitting:\n• ${missingMandatoryDocs.map(d => d.label).join('\n• ')}`);
+                }
+                return;
+            }
+            await onSubmit(); 
+        }} id="review-form">
             <FormHeader title="Review & Submit" subtitle="Please review all your details carefully before submitting." />
             
             <div className="space-y-8">
+                {/* Mandatory Documents Status Section */}
+                <section>
+                    <div className="flex items-center justify-between border-b pb-2 mb-4">
+                        <h4 className="text-md font-semibold text-primary-text">Mandatory Documents Compliance</h4>
+                        {missingMandatoryDocs.length === 0 ? (
+                            <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full">
+                                <CheckCircle className="h-4 w-4" /> All Mandatory Documents Uploaded
+                            </span>
+                        ) : (
+                            <span className="flex items-center gap-1.5 text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-500/10 border border-rose-500/20 px-2.5 py-1 rounded-full">
+                                <XCircle className="h-4 w-4" /> {missingMandatoryDocs.length} Mandatory Document{missingMandatoryDocs.length > 1 ? 's' : ''} Missing
+                            </span>
+                        )}
+                    </div>
+                    
+                    {missingMandatoryDocs.length > 0 ? (
+                        <div className="p-4 bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/40 rounded-xl space-y-3">
+                            <div className="flex items-start gap-3">
+                                <AlertTriangle className="h-5 w-5 text-rose-600 dark:text-rose-400 flex-shrink-0 mt-0.5" />
+                                <div className="space-y-1">
+                                    <p className="text-sm font-semibold text-rose-900 dark:text-rose-200">
+                                        Application submission is blocked until mandatory documents are uploaded
+                                    </p>
+                                    <p className="text-xs text-rose-700 dark:text-rose-300">
+                                        Mandatory documents required for <span className="font-bold">{designation || 'this role'}</span>:
+                                    </p>
+                                    <ul className="text-xs list-disc list-inside space-y-1 pt-1 text-rose-800 dark:text-rose-200 font-medium">
+                                        {missingMandatoryDocs.map(doc => (
+                                            <li key={doc.key}>{doc.label}</li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            </div>
+                            <div className="pt-2 flex justify-end">
+                                <Button 
+                                    type="button" 
+                                    variant="secondary"
+                                    onClick={() => navigate('/onboarding/pre-upload')}
+                                    className="!border-rose-300 text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/40"
+                                >
+                                    Upload Missing Documents Now
+                                </Button>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <div className="p-3 bg-page rounded-lg border border-border flex items-center gap-2">
+                                <CheckCircle className="h-4 w-4 text-emerald-500 flex-shrink-0" />
+                                <span className="text-xs font-medium text-primary-text">Candidate Photo</span>
+                            </div>
+                            <div className="p-3 bg-page rounded-lg border border-border flex items-center gap-2">
+                                <CheckCircle className="h-4 w-4 text-emerald-500 flex-shrink-0" />
+                                <span className="text-xs font-medium text-primary-text">Aadhaar (Front & Back)</span>
+                            </div>
+                            <div className="p-3 bg-page rounded-lg border border-border flex items-center gap-2">
+                                <CheckCircle className="h-4 w-4 text-emerald-500 flex-shrink-0" />
+                                <span className="text-xs font-medium text-primary-text">Bank Proof</span>
+                            </div>
+                            <div className="p-3 bg-page rounded-lg border border-border flex items-center gap-2">
+                                <CheckCircle className="h-4 w-4 text-emerald-500 flex-shrink-0" />
+                                <span className="text-xs font-medium text-primary-text">PAN Card</span>
+                            </div>
+                        </div>
+                    )}
+                </section>
+
                 <section>
                     <h4 className="text-md font-semibold text-primary-text mb-4 border-b pb-2">Personal Details</h4>
                     <dl className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-6">
+                        <DetailItem label="Employee ID" value={data.personal.employeeId} />
                         <DetailItemWithStatus label="Full Name" value={`${data.personal.firstName} ${data.personal.lastName}`} status={data.personal.verifiedStatus?.name} isVerifying={false} />
                         <DetailItem label="Email" value={data.personal.email} />
                         <DetailItem label="Mobile" value={data.personal.mobile} />
@@ -446,9 +630,10 @@ const Review = () => {
                         <AlertTriangle className="h-4 w-4 flex-shrink-0" />
                         <span>
                             To submit application: 
-                            {!data.formsGenerated && ' 1. Click "Generate & Review Forms" above.'}
-                            {data.formsGenerated && !esignDocUrl && ' 2. Complete the Digital Signature below.'}
-                            {perfiosApi.enabled && verificationState !== 'success' && ' 3. Complete Third-Party Verification.'}
+                            {missingMandatoryDocs.length > 0 && ` 1. Upload missing mandatory document(s) (${missingMandatoryDocs.map(d => d.label).join(', ')}).`}
+                            {!data.formsGenerated && ` ${missingMandatoryDocs.length > 0 ? '2' : '1'}. Click "Generate & Review Forms" above.`}
+                            {data.formsGenerated && !esignDocUrl && ` ${missingMandatoryDocs.length > 0 ? '3' : '2'}. Complete the Digital Signature below.`}
+                            {perfiosApi.enabled && verificationState !== 'success' && ` ${missingMandatoryDocs.length > 0 ? '4' : '3'}. Complete Third-Party Verification.`}
                         </span>
                     </div>
                 )}
