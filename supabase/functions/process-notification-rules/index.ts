@@ -148,8 +148,20 @@ async function getTargetsForRule(supabase: any, rule: any, attendanceSettings: a
   const durationOffset = rule.config?.durationMinutes || 0;
 
   if (rule.trigger_type === 'missed_punch_out') {
+    // Safeguard: A punch out CANNOT be considered missed while the workday is still in progress!
+    const ruleTime = rule.config?.time || '18:00';
+    const [ruleHour, ruleMin] = ruleTime.split(':').map(Number);
+    const ruleTimeIST = new Date(nowIST);
+    ruleTimeIST.setUTCHours(ruleHour, ruleMin || 0, 0, 0);
+
+    // If current IST time is earlier than the rule cutoff time, skip!
+    if (nowIST.getTime() < ruleTimeIST.getTime()) {
+      console.log(`[DEBUG] missed_punch_out: Current IST time (${nowIST.getUTCHours()}:${String(nowIST.getUTCMinutes()).padStart(2, '0')}) is before configured cutoff ${ruleTime}. Workday still active, skipping.`);
+      return targets;
+    }
+
     // Has a user punched in but not punched out?
-    const { data: latestEvents } = await supabase.from('attendance_events').select('user_id, type, location_name').gt('timestamp', startOfTodayUTC.toISOString()).order('timestamp', { ascending: false });
+    const { data: latestEvents } = await supabase.from('attendance_events').select('user_id, type, location_name, timestamp').gt('timestamp', startOfTodayUTC.toISOString()).order('timestamp', { ascending: false });
     
     console.log(`[DEBUG] missed_punch_out: Found ${latestEvents?.length || 0} events today (since ${startOfTodayUTC.toISOString()})`);
     
@@ -169,6 +181,8 @@ async function getTargetsForRule(supabase: any, rule: any, attendanceSettings: a
       console.log(`[DEBUG]   User "${u.name}" role=${u.role_id} → category=${cat}`);
     });
 
+    const nowTime = _nowUTC.getTime();
+
     for (const [userId, event] of userLatest.entries()) {
       const userCat = userCategoryMap.get(userId);
       console.log(`[DEBUG]   Checking user ${userId}: lastEvent=${event.type}, category=${userCat}, targetCategory=${targetCategory}`);
@@ -177,6 +191,13 @@ async function getTargetsForRule(supabase: any, rule: any, attendanceSettings: a
         // Filter by category if not 'all'
         if (targetCategory !== 'all' && userCat !== targetCategory) {
           console.log(`[DEBUG]   SKIPPED: category mismatch (user=${userCat}, target=${targetCategory})`);
+          continue;
+        }
+
+        // Safeguard: User must have been punched in for at least 4 hours before being flagged as missed punch out
+        const punchInTime = new Date(event.timestamp).getTime();
+        if ((nowTime - punchInTime) < 4 * 60 * 60 * 1000) {
+          console.log(`[DEBUG]   SKIPPED: Punch-in was < 4 hours ago for user ${userId}. Session still fresh.`);
           continue;
         }
 

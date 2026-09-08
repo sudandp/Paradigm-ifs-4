@@ -46,12 +46,20 @@ interface NotificationState {
 // Helper to automatically start the punch-out timer if a reminder is received
 const checkAndStartAutoPunchOutTimer = (notif: Notification) => {
   const msgLower = notif.message.toLowerCase();
-  const isPunchOutReminder = msgLower.includes('punch out') || 
-                             msgLower.includes("haven't punched out") ||
+  const isPunchOutReminder = msgLower.includes("haven't punched out") ||
+                             msgLower.includes('reminder: punch out required') ||
                              msgLower.includes('punch out requested');
   
   if (isPunchOutReminder && !useAuthStore.getState().pendingAutoPunchOut) {
       const createdDate = new Date(notif.createdAt);
+      const ageMs = Date.now() - createdDate.getTime();
+
+      // Guard: Do not process reminders older than 15 minutes to avoid abrupt retroactive auto-punch out
+      if (ageMs > 15 * 60 * 1000) {
+          console.log('[NotificationStore] Missed punch-out reminder is older than 15 minutes. Ignoring auto-punch out to protect active session.');
+          return;
+      }
+
       const today = new Date();
       const isToday = createdDate.getDate() === today.getDate() &&
                       createdDate.getMonth() === today.getMonth() &&
@@ -68,7 +76,8 @@ const checkAndStartAutoPunchOutTimer = (notif: Notification) => {
 
       if (isToday && isUserCheckedInAtAll && user && (isOfficeSession || isOfficeRole)) {
           console.log('[NotificationStore] Auto-starting punch out timer for missed punch-out reminder', notif.id);
-          const executeAt = createdDate.getTime() + 5 * 60 * 1000;
+          // Give at least 5 minutes from now so the user actually has time to see and respond
+          const executeAt = Date.now() + 5 * 60 * 1000;
           useAuthStore.getState().setPendingAutoPunchOut({
               userId: user.id,
               executeAt,
@@ -208,11 +217,12 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
       // Auto-start punch out timer for the most recent unread punch out reminder
       const { pendingAutoPunchOut } = useAuthStore.getState();
       if (!pendingAutoPunchOut) {
+          const now = Date.now();
           const recentReminder = notifications.find(n => !n.isRead && (
-             n.message.toLowerCase().includes('punch out') ||
              n.message.toLowerCase().includes("haven't punched out") ||
+             n.message.toLowerCase().includes('reminder: punch out required') ||
              n.message.toLowerCase().includes('punch out requested')
-          ));
+          ) && (now - new Date(n.createdAt).getTime()) <= 15 * 60 * 1000);
           if (recentReminder) {
               checkAndStartAutoPunchOutTimer(recentReminder);
           }

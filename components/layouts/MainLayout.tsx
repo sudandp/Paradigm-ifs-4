@@ -650,31 +650,34 @@ const MainLayout: React.FC = () => {
 
     // Auto Punch-Out Timer Effect
     useEffect(() => {
-        const intervalId = setInterval(() => {
-            const { pendingAutoPunchOut, isCheckedIn, isFieldCheckedIn, isSiteOtCheckedIn, executeAutoPunchOut } = useAuthStore.getState();
-            if (pendingAutoPunchOut && Date.now() >= pendingAutoPunchOut.executeAt) {
+        const checkAutoPunchOut = (isImmediate = false) => {
+            const { pendingAutoPunchOut, isCheckedIn, isFieldCheckedIn, isSiteOtCheckedIn, executeAutoPunchOut, setPendingAutoPunchOut } = useAuthStore.getState();
+            if (!pendingAutoPunchOut) return;
+
+            const now = Date.now();
+            // Stale guard: If the timer expired more than 15 minutes ago,
+            // the user was offline/inactive during the countdown. Discard it rather than abruptly punching them out!
+            if (now - pendingAutoPunchOut.executeAt > 15 * 60 * 1000) {
+                console.warn('[AutoPunchOut] Stale auto punch-out timer detected (>15m past executeAt). Discarding to protect active session.');
+                setPendingAutoPunchOut(null);
+                return;
+            }
+
+            if (now >= pendingAutoPunchOut.executeAt) {
                 const isUserCheckedInAtAll = isCheckedIn || isFieldCheckedIn || isSiteOtCheckedIn;
                 if (isUserCheckedInAtAll) {
-                    console.log('[AutoPunchOut] Timer expired — executing auto punch-out');
+                    console.log(`[AutoPunchOut] ${isImmediate ? 'Immediate check: ' : ''}Timer expired — executing auto punch-out`);
                     executeAutoPunchOut();
                 } else {
-                    // User already punched out manually
-                    useAuthStore.getState().setPendingAutoPunchOut(null);
+                    setPendingAutoPunchOut(null);
                 }
             }
-        }, 30000); // Check every 30 seconds
+        };
+
+        const intervalId = setInterval(() => checkAutoPunchOut(false), 30000); // Check every 30 seconds
 
         // Also check immediately on mount (for page refresh recovery)
-        const { pendingAutoPunchOut, isCheckedIn, isFieldCheckedIn, isSiteOtCheckedIn, executeAutoPunchOut } = useAuthStore.getState();
-        if (pendingAutoPunchOut && Date.now() >= pendingAutoPunchOut.executeAt) {
-            const isUserCheckedInAtAll = isCheckedIn || isFieldCheckedIn || isSiteOtCheckedIn;
-            if (isUserCheckedInAtAll) {
-                console.log('[AutoPunchOut] Immediate check: Timer expired — executing auto punch-out');
-                executeAutoPunchOut();
-            } else {
-                useAuthStore.getState().setPendingAutoPunchOut(null);
-            }
-        }
+        checkAutoPunchOut(true);
 
         return () => clearInterval(intervalId);
     }, []);

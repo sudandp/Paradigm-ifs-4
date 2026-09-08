@@ -32,7 +32,8 @@ import {
 import { 
   startUnifiedJobScheduler, 
   executeJobNow, 
-  getUnifiedJobsOverview 
+  getUnifiedJobsOverview,
+  executeOfficeAutoPunchOut830
 } from './services/unifiedJobScheduler.js';
 
 
@@ -873,6 +874,22 @@ app.post('/api/jobs/toggle-active', async (req: Request, res: Response) => {
         return res.status(200).json({ success: true, isActive: !!isActive });
     } catch (err: any) {
         console.error('[Jobs Route] Toggle active error:', err.message);
+        return res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * POST /api/cron/office-auto-punchout
+ * Executes or tests sharp 8:30 PM Office Auto Punch-Out
+ */
+app.post('/api/cron/office-auto-punchout', async (req: Request, res: Response) => {
+    const force = !!req.body?.force;
+    try {
+        console.log(`[Server] Triggering Office Staff Auto Punch-Out (force: ${force})...`);
+        const result = await executeOfficeAutoPunchOut830(supabase, force);
+        return res.status(200).json(result);
+    } catch (err: any) {
+        console.error('[Server] Office Auto Punch-Out error:', err.message);
         return res.status(500).json({ error: err.message });
     }
 });

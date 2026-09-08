@@ -125,7 +125,50 @@ Deno.serve(async (req: Request) => {
 
       // Check Timing for this specific group
       const triggerTimes = config?.triggerTimes || {};
-      const checkoutTime = triggerTimes[group] || rules.fixedOfficeHours?.checkOutTime || '19:30';
+      const defaultTime = group === 'office' ? '20:30' : '19:30';
+      const checkoutTime = triggerTimes[group] || (group === 'office' ? '20:30' : (rules.fixedOfficeHours?.checkOutTime || defaultTime));
+      
+      // For office staff, ensure today is a working day (skip Sundays and Holidays)
+      if (group === 'office' && !isManualOverride) {
+        const dayOfWeek = istDate.getUTCDay(); // 0 = Sunday
+        if (dayOfWeek === 0) {
+          report.groups[group] = { status: 'skipped', reason: 'Sunday (Weekly Off)' };
+          console.log('[office] Skipped: Today is Sunday (Weekly Off)');
+          continue;
+        }
+
+        // Check 3rd Saturday recurring holiday
+        if (dayOfWeek === 6) {
+          const dayOfMonth = istDate.getUTCDate();
+          const occurrence = Math.ceil(dayOfMonth / 7);
+          const { data: recHolidays } = await supabaseClient
+            .from('recurring_holidays')
+            .select('*')
+            .eq('role_type', 'office')
+            .eq('day', 'Saturday');
+
+          if (recHolidays?.some((rh: any) => rh.occurrence === occurrence)) {
+            report.groups[group] = { status: 'skipped', reason: `Recurring Holiday (${occurrence}th Saturday)` };
+            console.log(`[office] Skipped: Today is recurring office holiday (${occurrence}th Saturday)`);
+            continue;
+          }
+        }
+
+        // Check Company Holiday Pool & Fixed Holidays
+        const mm = String(istDate.getUTCMonth() + 1).padStart(2, '0');
+        const dd = String(istDate.getUTCDate()).padStart(2, '0');
+        const curMD = `${mm}-${dd}`;
+        const curMinusMD = `-${curMD}`;
+        const holidayPool = attendanceSettings?.office?.holiday_pool || [];
+        const isHoliday = holidayPool.some((h: any) => h.date === curMinusMD || h.date === curMD) ||
+                          ['01-26', '05-01', '08-15', '10-02', '11-01'].includes(curMD);
+        if (isHoliday) {
+          report.groups[group] = { status: 'skipped', reason: 'Company/Fixed Holiday' };
+          console.log(`[office] Skipped: Today is an official holiday (${curMD})`);
+          continue;
+        }
+      }
+
       // Handle both ':' and '.' as separators
       const timeParts = checkoutTime.includes('.') ? checkoutTime.split('.') : checkoutTime.split(':');
       const [confHour, confMinute] = timeParts.map(Number);
@@ -315,6 +358,7 @@ Deno.serve(async (req: Request) => {
                         latitude: lastLat,
                         longitude: lastLng,
                         reason: isManualOverride ? 'Force Punch-out: Admin Trigger' : 'Auto-checkout: Shift End',
+                        checkout_note: 'User was working - Auto punched out by AI as per work hour policy',
                         is_manual: true,
                         device_info: { device: 'System', os: 'Cron', browser: 'EdgeFunction' },
                         work_type: lastEvent.work_type // Inherit work type
