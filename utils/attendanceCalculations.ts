@@ -796,11 +796,11 @@ export function evaluateAttendanceStatus(params: {
           return 'P';
       }
 
-      if (lType.includes('work from home') || lType === 'wfh' || lType === 'w/h') return 'WH';
+      if (lType.includes('work from home') || lType === 'wfh' || lType === 'w/h') return prefix + 'WH';
       if (lType.includes('sick') || lType === 's/l' || lType === 'sl') return prefix + 'SL';
       if (lType.includes('comp' ) || lType === 'c/o' || lType === 'co') return prefix + 'CO';
       if (lType.includes('casual') || lType === 'c/l' || lType === 'cl') return prefix + 'CL';
-      if (lType.includes('floating') || lType === 'f/h' || lType === 'fh') return prefix + 'FH';
+      if (lType.includes('floating') || lType.includes('blue leave') || lType === 'blue' || lType === 'bl' || lType === 'f/h' || lType === 'fh') return prefix + 'CO';
       if (lType.includes('maternity')) return prefix + 'ML';
       if (lType.includes('child care')) return prefix + 'CCL';
       if (lType.includes('pink')) return prefix + 'PL'; // Pink Leave
@@ -936,22 +936,23 @@ export function evaluateAttendanceStatus(params: {
   // A. Determine Base Work Status based on Hours/Field Logic
   // All thresholds are now configurable from Admin UI → Attendance Rules → Calculation Rules
   const graceHours = (userRules?.gracePeriodMinutes ?? 15) / 60;
-  let full = userRules?.minimumHoursFullDay || userRules?.dailyWorkingHours?.min || 8;
+  let full = userRules?.minimumHoursFullDay || userRules?.dailyWorkingHours?.min || (userCategory === 'field' ? 6 : 8);
+  if (userCategory === 'field' && (!userRules?.minimumHoursFullDay || userRules?.minimumHoursFullDay > 6)) {
+      full = 6;
+  }
+  let halfDayHrs = userRules?.minimumHoursHalfDay ?? (userCategory === 'field' ? 3 : 4);
+  if (userCategory === 'field' && (!userRules?.minimumHoursHalfDay || userRules?.minimumHoursHalfDay > 3)) {
+      halfDayHrs = 3;
+  }
   const threeQuarterHrs = userRules?.threeQuarterDayHours ?? (full * 0.75);
   full = Math.max(0, full - graceHours);
-  const halfDayHrs = userRules?.minimumHoursHalfDay ?? 4;
-  const quarterDayHrs = userRules?.quarterDayHours ?? 2;
+  const quarterDayHrs = userCategory === 'field' ? 1.5 : (userRules?.quarterDayHours ?? 2);
   const hoursBasedFallback = userRules?.enableHoursBasedFallback !== false; // default true
 
   const resolveHoursStatus = (hrs: number): string => {
       if (hrs >= full) return 'P';
-      if (hrs <= 0) return 'A';
-      const baseHrs = userRules?.minimumHoursFullDay || userRules?.dailyWorkingHours?.min || 8;
-      const computed = hrs / baseHrs;
-      let rounded = Math.round(computed * 100) / 100;
-      if (rounded >= 1.0) rounded = 0.99;
-      if (hrs > 0 && rounded === 0) rounded = 0.01;
-      return `${rounded}P`;
+      if (hrs >= halfDayHrs) return '0.5P';
+      return 'A';
   };
 
   let workStatus = '';
@@ -962,12 +963,16 @@ export function evaluateAttendanceStatus(params: {
           // Field/Site: trust real presence statuses from site tracking.
           // If site tracking returns 'A' but employee has real hours AND
           // hours-based fallback is enabled, evaluate on hours instead.
-          if (fieldStatus && fieldStatus !== 'A') {
-              workStatus = fieldStatus;
+          if (fieldStatus && fieldStatus !== 'A' && (!hoursBasedFallback || fieldStatus === 'P' || (workingHours || 0) < halfDayHrs)) {
+              workStatus = (workingHours || 0) < halfDayHrs ? 'A' : fieldStatus;
           } else if (hoursBasedFallback && workingHours !== undefined && workingHours > 0) {
-              workStatus = resolveHoursStatus(workingHours);
+              const hStatus = resolveHoursStatus(workingHours);
+              workStatus = hStatus !== 'A' ? hStatus : (fieldStatus || 'A');
+          } else if (fieldStatus && fieldStatus !== 'A') {
+              workStatus = (workingHours || 0) < halfDayHrs ? 'A' : fieldStatus;
           } else {
-              workStatus = hasPunchIn && (hasPunchOut || isToday || isWeekend || isHoliday) ? 'P' : 'A';
+              const hrs = workingHours || 0;
+              workStatus = hrs >= full ? 'P' : (hrs >= halfDayHrs ? '0.5P' : (hasPunchIn && (isToday || isWeekend || isHoliday) ? 'P' : 'A'));
           }
       }
   }
@@ -975,7 +980,7 @@ export function evaluateAttendanceStatus(params: {
   if (isApprovedPermission) {
       const pCode = approvedPermission ? getLeaveCode(approvedPermission) : 'RP';
       const leaveCode = approvedMainLeave ? getLeaveCode(approvedMainLeave) : '';
-      const baseHrs = userRules?.minimumHoursFullDay || userRules?.dailyWorkingHours?.min || 8;
+      const baseHrs = userRules?.minimumHoursFullDay || userRules?.dailyWorkingHours?.min || (userCategory === 'field' ? 6 : 8);
       
       // If there is an approved main leave (e.g. 0.5EL, 0.5SL)
       if (approvedMainLeave && leaveCode) {
@@ -986,41 +991,40 @@ export function evaluateAttendanceStatus(params: {
       }
 
       if (isConfiguredHoliday || isPoolHoliday || isFixedHoliday) {
-          return (workingHours || 0) > 0 ? 'H/P' : 'H';
+          const hrs = workingHours || 0;
+          if (hrs >= full) return 'H/P';
+          if (hrs >= halfDayHrs) return '0.5H/P';
+          return 'H';
       }
       if (isWeekend || isRecurringHoliday) {
+          const hrs = workingHours || 0;
           if (isRecurringHoliday) {
-              return recurringHolidayType === 'BL' ? 'BL/P' : (recurringHolidayType === 'PL' ? 'PL/P' : 'W/P');
+              const baseType = recurringHolidayType;
+              if (hrs >= full) return `${baseType}/P`;
+              if (hrs >= halfDayHrs) return `0.5${baseType}/P`;
+              return baseType;
           }
-          return (workingHours || 0) > 0 ? 'W/P' : (isEligible ? 'W/O' : 'A');
+          if (hrs >= full) return 'W/P';
+          if (hrs >= halfDayHrs) return '0.5W/P';
+          return isEligible ? 'W/O' : 'A';
       }
 
       const workedHrs = workingHours || 0;
 
-      // If employee physically worked partial day (e.g. 0.75P, 0.5P, 0.25P)
+      // If employee physically worked partial day (calculate exact fractions matching calendar view, e.g. 0.87P+0.13RP)
       if (workedHrs > 0 && workedHrs < full) {
-          const workedFraction = workedHrs / baseHrs;
-          const permFraction = permHours / baseHrs;
+          const rawWorkedFraction = workedHrs / baseHrs;
+          const workedFraction = Math.min(0.99, Math.max(0.01, Math.round(rawWorkedFraction * 100) / 100));
+          let permFraction = permHours > 0 
+              ? Math.round((permHours / baseHrs) * 100) / 100 
+              : Math.max(0, Math.round((1 - workedFraction) * 100) / 100);
 
-          // Normalize standard 0.75, 0.5, 0.25 fractions
-          let normWorked = 0.75;
-          let normPerm = 0.25;
-
-          if (workedFraction >= 0.65) {
-              normWorked = 0.75;
-              normPerm = 0.25;
-          } else if (workedFraction >= 0.40) {
-              normWorked = 0.5;
-              normPerm = (permFraction >= 0.45) ? 0.5 : 0.25;
-          } else if (workedFraction >= 0.15) {
-              normWorked = 0.25;
-              normPerm = (permFraction >= 0.65) ? 0.75 : (permFraction >= 0.40 ? 0.5 : 0.25);
-          } else {
-              return pCode;
+          if (workedFraction + permFraction > 1.0) {
+              permFraction = Math.max(0.01, Math.round((1 - workedFraction) * 100) / 100);
           }
 
-          const workedStr = `${normWorked}P`;
-          const permStr = `${normPerm}RP`;
+          const workedStr = `${workedFraction.toFixed(2)}P`;
+          const permStr = `${permFraction.toFixed(2)}RP`;
 
           return `${workedStr}+${permStr}`;
       } else if (workedHrs >= full) {
@@ -1045,6 +1049,15 @@ export function evaluateAttendanceStatus(params: {
               return 'W/P';
           }
           return 'P';
+      } else if (effectiveWorkingHours >= halfDayHrs) {
+          if (isConfiguredHoliday || isPoolHoliday || isFixedHoliday) return '0.5H/P';
+          if (isWeekend || isRecurringHoliday) {
+              if (isRecurringHoliday) {
+                  return recurringHolidayType === 'BL' ? '0.5BL/P' : (recurringHolidayType === 'PL' ? '0.5PL/P' : '0.5W/P');
+              }
+              return '0.5W/P';
+          }
+          return '0.5P';
       } else {
           return getLeaveCode(approvedCorrection);
       }
@@ -1076,11 +1089,18 @@ export function evaluateAttendanceStatus(params: {
           const code = getLeaveCode(targetLeave);
           if (code === 'P' || code === 'Present') {
               if (isWFH) status = 'WH';
-              else if (isConfiguredHoliday || isPoolHoliday || isFixedHoliday) status = 'H/P';
-              else if (isWeekend || isRecurringHoliday) {
-                  status = isRecurringHoliday ? (recurringHolidayType === 'BL' ? 'BL/P' : (recurringHolidayType === 'PL' ? 'PL/P' : 'W/P')) : 'W/P';
+              else if (isConfiguredHoliday || isPoolHoliday || isFixedHoliday) {
+                  status = effectiveWorkingHours >= full ? 'H/P' : (effectiveWorkingHours >= halfDayHrs ? '0.5H/P' : 'H');
               }
-              else status = 'P';
+              else if (isWeekend || isRecurringHoliday) {
+                  if (isRecurringHoliday) {
+                      const baseType = recurringHolidayType;
+                      status = effectiveWorkingHours >= full ? `${baseType}/P` : (effectiveWorkingHours >= halfDayHrs ? `0.5${baseType}/P` : baseType);
+                  } else {
+                      status = effectiveWorkingHours >= full ? 'W/P' : (effectiveWorkingHours >= halfDayHrs ? '0.5W/P' : (isEligible ? 'W/O' : 'A'));
+                  }
+              }
+              else status = effectiveWorkingHours >= full ? 'P' : (effectiveWorkingHours >= halfDayHrs ? '0.5P' : 'A');
           } else {
               status = code;
           }
@@ -1094,13 +1114,22 @@ export function evaluateAttendanceStatus(params: {
               if (workStatus === 'A') {
                   status = `0.5${code}`;
               } else {
-                  status = `0.5P+0.5${code}`;
+                  status = code === 'WH' ? '0.5P+0.5P WH' : (code === 'CO' || code === 'C/O' ? '0.5P+0.5 CO' : `0.5P+0.5${code}`);
               }
           } else {
-              if (isWFH) status = 'WH';
-              else if (isConfiguredHoliday || isPoolHoliday || isFixedHoliday) status = 'H/P';
+              if (isWFH) status = isHalfDayLeave ? '0.5P+0.5P WH' : 'WH';
+              else if (isConfiguredHoliday || isPoolHoliday || isFixedHoliday) {
+                  const hrs = workingHours || 0;
+                  status = hrs >= full ? 'H/P' : (hrs >= halfDayHrs ? '0.5H/P' : 'H');
+              }
               else if (isWeekend || isRecurringHoliday) {
-                  status = isRecurringHoliday ? (recurringHolidayType === 'BL' ? 'BL/P' : (recurringHolidayType === 'PL' ? 'PL/P' : 'W/P')) : 'W/P';
+                  const hrs = workingHours || 0;
+                  if (isRecurringHoliday) {
+                      const baseType = recurringHolidayType;
+                      status = hrs >= full ? `${baseType}/P` : (hrs >= halfDayHrs ? `0.5${baseType}/P` : baseType);
+                  } else {
+                      status = hrs >= full ? 'W/P' : (hrs >= halfDayHrs ? '0.5W/P' : (isEligible ? 'W/O' : 'A'));
+                  }
               }
               else status = workStatus;
           }
@@ -1301,6 +1330,8 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
     if ((s.includes('RP+') || s.includes('+RP')) && (s.includes('0.5EL') || s.includes('0.5SL') || s.includes('0.5CL') || s.includes('0.5CO') || s.includes('0.5WH') || s.includes('0.5 EL') || s.includes('0.5 CL') || s.includes('0.5 SL'))) {
         return 1.0;
     }
+    if (s.includes('LOP') || s === 'LOP') return 0;
+    if (s === '1.00+0.00' || s === '1.00' || s === '1.0' || s === '1') return 1.0;
     if (s.includes('+')) return s.split('+').reduce((acc, part) => acc + resolvePayableValue(part.trim()), 0);
     if (['W/P', 'WP', 'H/P', 'HP', 'BL/P', 'BLP', 'PL/P', 'PLP'].includes(s)) return 1.5; 
     if (['P', 'W/O', 'WO', 'WOP', 'H', 'SL', 'S/L', 'EL', 'E/L', 'CL', 'C/L', 'C/O', 'CO', 'W/H', 'WH', 'BL', 'F/H', 'FH', 'PL', 'P/L', 'ML', 'M/L', 'CC', 'C/C', 'CCL'].includes(s)) return 1;
@@ -1312,7 +1343,7 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
     if (['Half Day', '0.5P', '1/2P', '2/4P'].includes(s)) return 0.5;
     if (s === '3/4P' || s === '0.75P') return 0.75;
     if (s === '1/4P' || s === '0.25P') return 0.25;
-    if (s.endsWith('P') && s !== 'LOP') {
+    if (s.endsWith('P') && !s.includes('LOP')) {
       const numericVal = parseFloat(s.slice(0, -1));
       if (!isNaN(numericVal)) return numericVal;
     }
@@ -1327,8 +1358,14 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
   days.forEach((day) => {
     const s = statuses[day.getDate() - 1] || '-';
     
-    // Special handling for RP composite (e.g. 0.75P+0.25RP, 0.5P+0.5RP)
+    // Special handling for RP composite (e.g. 0.75P+0.25RP, 0.5P+0.5RP, 0.99P+0.01RP)
     if (s.includes('+') && s.includes('RP') && (s.includes('0.75P') || s.includes('0.5P') || s.includes('0.25P') || s.includes('P'))) {
+      presentDays += 1;
+      totalPayableDays += 1;
+      return;
+    }
+
+    if (s === '1.00+0.00' || s.startsWith('1.00+0.00') || s.startsWith('1.0+0.0')) {
       presentDays += 1;
       totalPayableDays += 1;
       return;
@@ -1364,7 +1401,7 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
           }
       }
       else if (part === '1/4P' || part === '0.25P') presentDays += 0.25;
-      else if (part.endsWith('P') && part !== 'LOP' && !part.includes('+') && !part.includes('/')) {
+      else if (part.endsWith('P') && !part.includes('LOP') && !part.includes('+') && !part.includes('/')) {
         const val = parseFloat(part.slice(0, -1));
         if (!isNaN(val)) {
           if (val === 0.5 && !parts.some(p => p.endsWith('RP'))) {
@@ -1376,7 +1413,7 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
       }
       else if (part === 'A') absentDays++;
       else if (part === 'W/O') weekOffs++;
-      else if (part === 'BL' || part === '0.5BL' || part === 'FH' || part === '0.5FH' || part.includes('BL') || part.includes('F/H') || part.includes('FH')) { floatingHolidays += inc; }
+      else if (part === 'BL' || part === '0.5BL' || part === 'FH' || part === '0.5FH' || part.includes('BL') || part.includes('F/H') || part.includes('FH')) { compOffs += inc; }
       else if (part === 'PL' || part === '0.5PL' || part.includes('PL') || part.includes('P/L')) { pinkLeaves += inc; floatingHolidays += inc; }
       else if (part === 'WOP') { weekOffs++; }
       else if (part === 'H') holidays++;
@@ -1386,8 +1423,8 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
       else if (part.includes('CL') || part.includes('C/L')) { casualLeaves += inc; }
       else if (part.includes('C/O') || part.includes('CO')) { compOffs += inc; }
       else if (part.includes('LOP')) absentDays += inc;
-      // WFH counts as a paid workday AND is tracked in its own bucket
-      else if (part === 'W/H' || part === 'WH' || part.includes('WFH')) { workFromHomeDays += inc; presentDays += inc; }
+      // WFH counts as a paid workday tracked in its own bucket
+      else if (part === 'W/H' || part === 'WH' || part.includes('WFH')) { workFromHomeDays += inc; }
     });
 
     // Payable Days
@@ -1683,5 +1720,240 @@ export function resolveMonthlyDayHeaders(
   });
 }
 
+/**
+ * Parse duration string (HH:mm or decimal hours) into total minutes
+ */
+export const parseDurationToMins = (dStr?: string): number => {
+  if (!dStr || dStr === '-' || dStr === '00:00') return 0;
+  const parts = dStr.split(':').map(Number);
+  if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+    return parts[0] * 60 + parts[1];
+  }
+  const num = parseFloat(dStr);
+  return isNaN(num) ? 0 : Math.round(num * 60);
+};
+
+/**
+ * Parse daily attendance status into clean primary code and sub-row detail lines.
+ * Replicated across HTML preview, Excel matrix export, and CSV download.
+ */
+export const parseStatusDetails = (rawStatus: string, dayData?: any): { primary: string; detailLines: string[] } => {
+  if (!rawStatus || rawStatus === '-') return { primary: '-', detailLines: [] };
+  const s = rawStatus.trim();
+  
+  // 0. Explicit Holiday Present (H/P) or Weekend Present (W/P) — Always show code in first row only, no sub-row text
+  if (s === 'H/P' || s === 'HP' || s === '0.5H/P' || s === '0.5HP' || s === '1/2H/P' || s === '0.5 H/P') {
+    return { primary: s.includes('0.5') || s.includes('1/2') ? '0.5H/P' : 'H/P', detailLines: [] };
+  }
+  if (s === 'W/P' || s === 'WP' || s === '0.5W/P' || s === '0.5WP' || s === '1/2W/P' || s === '0.5 W/P') {
+    return { primary: s.includes('0.5') || s.includes('1/2') ? '0.5W/P' : 'W/P', detailLines: [] };
+  }
+
+  // 1. Pure leave codes & full-day statuses (e.g. WH, C/O, E/L, S/L, C/L, LOP, BL, PL, FH)
+  // Must show code in FIRST ROW ONLY. Sub-row (detailLines) is strictly empty.
+  if (s === 'WH' || s === 'W/H' || s === '1.00+0.00 WH' || s === '1.00+0.00 W/H' || s === '1.00+0.00WH') {
+    return { primary: 'WH', detailLines: [] };
+  }
+  if (s === 'CO' || s === 'C/O' || s === '1.00+0.00 CO' || s === '1.00+0.00 C/O' || s === '1.00+0.00CO' || s === '1.00+0.00C/O') {
+    return { primary: 'C/O', detailLines: [] };
+  }
+  if (s === 'EL' || s === 'E/L' || s === '1.00+0.00 EL' || s === '1.00+0.00 E/L' || s === '1.00+0.00EL' || s === '1.00+0.00E/L') {
+    return { primary: 'E/L', detailLines: [] };
+  }
+  if (s === 'SL' || s === 'S/L' || s === '1.00+0.00 SL' || s === '1.00+0.00 S/L' || s === '1.00+0.00SL' || s === '1.00+0.00S/L') {
+    return { primary: 'S/L', detailLines: [] };
+  }
+  if (s === 'CL' || s === 'C/L' || s === '1.00+0.00 CL' || s === '1.00+0.00 C/L' || s === '1.00+0.00CL' || s === '1.00+0.00C/L') {
+    return { primary: 'C/L', detailLines: [] };
+  }
+  if (s === 'LOP' || s === '1.00+0.00 LOP' || s === '1.00+0.00LOP') {
+    return { primary: 'LOP', detailLines: [] };
+  }
+  if (s === 'BL' || s === 'B/L' || s === '1.00+0.00 BL' || s === '1.00+0.00 B/L' || s === '1.00+0.00BL') {
+    return { primary: 'BL', detailLines: [] };
+  }
+  if (s === 'PL' || s === 'P/L' || s === '1.00+0.00 PL' || s === '1.00+0.00 P/L' || s === '1.00+0.00PL') {
+    return { primary: 'PL', detailLines: [] };
+  }
+  if (s === 'FH' || s === 'F/H' || s === '1.00+0.00 FH' || s === '1.00+0.00 F/H' || s === '1.00+0.00FH') {
+    return { primary: 'C/O', detailLines: [] };
+  }
+
+  // 2. Check if dayData indicates an approved leave or WFH (takes priority over raw punch statuses)
+  if (dayData) {
+    const lType = String(dayData.leaveType || dayData.leave_type || dayData.type || '').toLowerCase();
+    const isHalf = dayData.dayOption === 'half' || dayData.day_option === 'half';
+    if (lType.includes('work from home') || lType === 'wfh' || lType === 'w/h') {
+      return isHalf ? { primary: '0.5P', detailLines: ['0.5P+0.5WH'] } : { primary: 'WH', detailLines: [] };
+    }
+    if (lType.includes('comp') || lType === 'c/o' || lType === 'co') {
+      return isHalf ? { primary: '0.5P', detailLines: ['0.5P+0.5CO'] } : { primary: 'C/O', detailLines: [] };
+    }
+    if (lType.includes('earned') || lType === 'e/l' || lType === 'el') {
+      return isHalf ? { primary: '0.5P', detailLines: ['0.5P+0.5EL'] } : { primary: 'E/L', detailLines: [] };
+    }
+    if (lType.includes('sick') || lType === 's/l' || lType === 'sl') {
+      return isHalf ? { primary: '0.5P', detailLines: ['0.5P+0.5SL'] } : { primary: 'S/L', detailLines: [] };
+    }
+    if (lType.includes('casual') || lType === 'c/l' || lType === 'cl') {
+      return isHalf ? { primary: '0.5P', detailLines: ['0.5P+0.5CL'] } : { primary: 'C/L', detailLines: [] };
+    }
+    if (lType.includes('loss of pay') || lType.includes('lop')) {
+      return isHalf ? { primary: '0.5P', detailLines: ['0.5P+0.5LOP'] } : { primary: 'LOP', detailLines: [] };
+    }
+    if (lType.includes('floating') || lType.includes('f/h') || lType === 'fh') {
+      return isHalf ? { primary: '0.5P', detailLines: ['0.5P+0.5FH'] } : { primary: 'C/O', detailLines: [] };
+    }
+    if (lType.includes('blue leave') || lType === 'blue' || lType === 'bl') {
+      return isHalf ? { primary: '0.5P', detailLines: ['0.5P+0.5BL'] } : { primary: 'BL', detailLines: [] };
+    }
+    if (lType.includes('pink leave') || lType === 'pink' || lType === 'pl') {
+      return isHalf ? { primary: '0.5P', detailLines: ['0.5P+0.5PL'] } : { primary: 'PL', detailLines: [] };
+    }
+  }
+
+  // 3. Combined status formats (e.g. 0.75P+0.25RP, 0.99P+0.01RP, 0.5P+0.5EL, 1.00+0.00)
+  if (s.includes('+')) {
+    const parts = s.split('+').map(p => p.trim());
+    const left = parts[0];
+    const right = parts[1] || '';
+    
+    // Full day 1.00+0.00 variants show notation in first row, blank below
+    if (left === '1.00' || left === '1.00P' || left === '1.0') {
+      if (right.includes('WH') || right.includes('W/H')) return { primary: 'WH', detailLines: [] };
+      if (right.includes('CO') || right.includes('C/O')) return { primary: 'C/O', detailLines: [] };
+      if (right.includes('EL') || right.includes('E/L')) return { primary: 'E/L', detailLines: [] };
+      if (right.includes('SL') || right.includes('S/L')) return { primary: 'S/L', detailLines: [] };
+      if (right.includes('CL') || right.includes('C/L')) return { primary: 'C/L', detailLines: [] };
+      if (right.includes('LOP')) return { primary: 'LOP', detailLines: [] };
+      if (right.includes('BL') || right.includes('B/L')) return { primary: 'BL', detailLines: [] };
+      if (right.includes('PL') || right.includes('P/L')) return { primary: 'PL', detailLines: [] };
+      if (right.includes('FH') || right.includes('F/H')) return { primary: 'C/O', detailLines: [] };
+      if (right === '0.00' || right === '0' || right === '') return { primary: 'P', detailLines: [] };
+    }
+
+    // Actual Break-up cases:
+    // (A) Auto-checkout / Permission: 0.99P+0.01RP, 0.75P+0.25RP
+    if (right.includes('RP')) {
+      return { primary: 'P', detailLines: [s] };
+    }
+    // (B) Correction: 0.85P+0.15RC
+    if (right.includes('RC')) {
+      return { primary: 'P', detailLines: [s] };
+    }
+    // (C) Half day work + half day leave: 0.5P+0.5EL, 0.5P+0.5WH, etc.
+    if (left.startsWith('0.5') || left.includes('0.5')) {
+      let cleanRight = right;
+      if (right.includes('EL') || right.includes('E/L')) cleanRight = '0.5EL';
+      else if (right.includes('SL') || right.includes('S/L')) cleanRight = '0.5SL';
+      else if (right.includes('CL') || right.includes('C/L')) cleanRight = '0.5CL';
+      else if (right.includes('CO') || right.includes('C/O')) cleanRight = '0.5CO';
+      else if (right.includes('WH') || right.includes('W/H')) cleanRight = '0.5WH';
+      else if (right.includes('LOP')) cleanRight = '0.5LOP';
+      return { primary: '0.5P', detailLines: [`0.5P+${cleanRight}`] };
+    }
+
+    return { primary: 'P', detailLines: [s] };
+  }
+
+  // 4. Half day leave shortcuts
+  if (s === '0.5EL' || s === '0.5E/L' || s === '0.5P+0.5EL' || s === '0.5P+0.5E/L' || s === '0.5P+0.5P EL' || s === '0.5P+0.5P E/L') {
+    return { primary: '0.5P', detailLines: ['0.5P+0.5EL'] };
+  }
+  if (s === '0.5SL' || s === '0.5S/L' || s === '0.5P+0.5SL' || s === '0.5P+0.5S/L' || s === '0.5P+0.5P SL' || s === '0.5P+0.5P S/L') {
+    return { primary: '0.5P', detailLines: ['0.5P+0.5SL'] };
+  }
+  if (s === '0.5CL' || s === '0.5C/L' || s === '0.5P+0.5CL' || s === '0.5P+0.5C/L' || s === '0.5P+0.5P CL' || s === '0.5P+0.5P C/L') {
+    return { primary: '0.5P', detailLines: ['0.5P+0.5CL'] };
+  }
+  if (s === '0.5CO' || s === '0.5C/O' || s === '0.5P+0.5CO' || s === '0.5P+0.5C/O' || s === '0.5P+0.5P CO' || s === '0.5P+0.5P C/O') {
+    return { primary: '0.5P', detailLines: ['0.5P+0.5CO'] };
+  }
+  if (s === '0.5WH' || s === '0.5W/H' || s === '0.5P+0.5WH' || s === '0.5P+0.5P WH' || s === '0.5P+0.5PWH') {
+    return { primary: '0.5P', detailLines: ['0.5P+0.5WH'] };
+  }
+  if (s === '0.5LOP' || s === '0.5 LOP' || s === '0.5P+0.5LOP' || s === '0.5P+0.5 LOP' || s === '0.5P+0.5P LOP') {
+    return { primary: '0.5P', detailLines: ['0.5P+0.5LOP'] };
+  }
+  if (s === '0.5FH' || s === '0.5F/H' || s === '0.5BL' || s === '0.5P+0.5FH' || s === '0.5P+0.5F/H' || s === '0.5P+0.5P FH' || s === '0.5P+0.5P F/H') {
+    return { primary: '0.5P', detailLines: ['0.5P+0.5FH'] };
+  }
+
+  // 5. Check if day had AI auto checkout — calculate exact physical duration fraction
+  if (dayData?.isAutoCheckout) {
+    const workedMins = parseDurationToMins(dayData.netWorkedHours || dayData.grossDuration);
+    const shiftMins = 480;
+    if (workedMins >= shiftMins) {
+      return {
+        primary: 'P',
+        detailLines: []
+      };
+    }
+    const pFrac = Math.max(0, Math.round((workedMins / shiftMins) * 100) / 100);
+    const rpFrac = Math.max(0.01, Math.round((1.0 - pFrac) * 100) / 100);
+    return {
+      primary: 'P',
+      detailLines: [`${pFrac.toFixed(2)}P+${rpFrac.toFixed(2)}RP`]
+    };
+  }
+
+  // 6. Check if day had punch correction (RC)
+  if (dayData?.isManual || dayData?.hasCorrection) {
+    const workedMins = parseDurationToMins(dayData.netWorkedHours || dayData.grossDuration);
+    const shiftMins = 480;
+    const pFrac = Math.min(0.99, Math.round((workedMins / shiftMins) * 100) / 100);
+    const corrFrac = Math.max(0.01, Math.round((1.0 - pFrac) * 100) / 100);
+    return {
+      primary: 'P',
+      detailLines: [`${pFrac.toFixed(2)}P+${corrFrac.toFixed(2)}RC`]
+    };
+  }
+
+  if (s === '0.5P' || s === '1/2P' || s === '0.5' || s === 'Half Day') {
+    return { primary: '0.5P', detailLines: [] };
+  }
+  if (s === '0.75P' || s === '3/4P') {
+    return { primary: '0.75P', detailLines: [] };
+  }
+  if (s === '0.25P' || s === '1/4P') {
+    return { primary: '0.25P', detailLines: [] };
+  }
+  if (s === 'RP') {
+    const workedMins = parseDurationToMins(dayData?.netWorkedHours || dayData?.grossDuration);
+    const shiftMins = 480;
+    if (workedMins > 0 && workedMins < shiftMins) {
+      const pFrac = Math.max(0.01, Math.round((workedMins / shiftMins) * 100) / 100);
+      const rpFrac = Math.max(0.01, Math.round((1.0 - pFrac) * 100) / 100);
+      return { primary: 'P', detailLines: [`${pFrac.toFixed(2)}P+${rpFrac.toFixed(2)}RP`] };
+    }
+    return { primary: 'P', detailLines: ['RP'] };
+  }
+  if (s === 'RC') {
+    const workedMins = parseDurationToMins(dayData?.netWorkedHours || dayData?.grossDuration);
+    const shiftMins = 480;
+    if (workedMins > 0 && workedMins < shiftMins) {
+      const pFrac = Math.max(0.01, Math.round((workedMins / shiftMins) * 100) / 100);
+      const rcFrac = Math.max(0.01, Math.round((1.0 - pFrac) * 100) / 100);
+      return { primary: 'P', detailLines: [`${pFrac.toFixed(2)}P+${rcFrac.toFixed(2)}RC`] };
+    }
+    return { primary: 'P', detailLines: ['RC'] };
+  }
+  
+  // Standard regular full day 'P', 'W/O', 'H', 'A', etc. remain clean without sub-row detail text
+  return { primary: s, detailLines: [] };
+};
 
 // Force Vite HMR
+
+/**
+ * Formats department/role string for display (e.g. 'field_officer' -> 'Field Officer', 'operation_manager' -> 'Operation Manager')
+ */
+export function formatDepartment(dept?: string): string {
+  if (!dept || dept === '-' || dept.trim() === '') return 'Staff';
+  return dept
+    .replace(/[_-]+/g, ' ')
+    .trim()
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+}

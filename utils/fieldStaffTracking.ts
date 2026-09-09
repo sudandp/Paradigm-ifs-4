@@ -190,14 +190,14 @@ export function validateFieldStaffAttendance(
   }
   
   // Determine graduated status based on tiers
-  // 1. Check total hours first (must meet at least half day requirement)
-  if (breakdown.totalHours < rules.minimumHoursHalfDay) {
+  // 1. Check total hours first (must meet at least half day requirement, default 3h)
+  const minHalfDay = (rules.minimumHoursHalfDay && rules.minimumHoursHalfDay <= 3) ? rules.minimumHoursHalfDay : 3;
+  if (breakdown.totalHours < minHalfDay) {
     return { isValid: false, violations, status: 'A' };
   }
 
   // 2. Determine tiered status based on absolute site hours vs target site hours
-  // This ensures that short days (e.g. 4 hours) are correctly capped at 0.5P even with 100% site usage.
-  const fullDayTargetHours = rules.minimumHoursFullDay || 8;
+  const fullDayTargetHours = (rules.minimumHoursFullDay && rules.minimumHoursFullDay <= 6) ? rules.minimumHoursFullDay : 6;
   const targetSiteMinutes = fullDayTargetHours * 60 * (target / 100);
   
   let status: 'P' | '0.75P' | '0.5P' | '0.25P' | 'A' = 'A';
@@ -207,27 +207,19 @@ export function validateFieldStaffAttendance(
     
     if (siteRatio >= 0.98) { // Small buffer for "P" (e.g. 5h 55m counts as 6h)
       status = 'P';
-    } else if (siteRatio >= 0.75) {
-      status = '0.75P';
-    } else if (siteRatio >= 0.50) {
+    } else {
       status = '0.5P';
-    } else if (siteRatio > 0) {
-      status = '0.25P';
     }
     
     // Cap the status based on actual total hours worked to ensure a short day doesn't get 'P'
-    const threeQuarterHrs = fullDayTargetHours * 0.75;
     if (status === 'P' && breakdown.totalHours < fullDayTargetHours - 0.25) {
-      status = breakdown.totalHours >= threeQuarterHrs ? '0.75P' : '0.5P';
-    } else if (status === '0.75P' && breakdown.totalHours < threeQuarterHrs) {
-      status = '0.5P';
+      status = breakdown.totalHours >= minHalfDay ? '0.5P' : 'A';
     }
   } else {
     // Fallback to total hours if no site target is configured
-    const threeQuarterHrs = fullDayTargetHours * 0.75;
     if (breakdown.totalHours >= fullDayTargetHours - 0.25) status = 'P';
-    else if (breakdown.totalHours >= threeQuarterHrs) status = '0.75P';
-    else if (breakdown.totalHours >= rules.minimumHoursHalfDay) status = '0.5P';
+    else if (breakdown.totalHours >= minHalfDay) status = '0.5P';
+    else status = 'A';
   }
 
   return {
@@ -284,21 +276,17 @@ export function getFieldStaffStatus(
   }
 
   // Check if hours-based fallback is enabled and we have active hours
-  if (!validation.isValid && rules.enableHoursBasedFallback === true && breakdown.totalHours > 0) {
-    const fullDayTargetHours = rules.minimumHoursFullDay || 8;
-    const threeQuarterHrs = rules.threeQuarterDayHours || (fullDayTargetHours * 0.75);
-    const halfDayHrs = rules.minimumHoursHalfDay || 4;
-    const quarterDayHrs = rules.quarterDayHours || 2;
+  if (!validation.isValid && rules.enableHoursBasedFallback !== false && breakdown.totalHours > 0) {
+    const fullDayTargetHours = (rules.minimumHoursFullDay && rules.minimumHoursFullDay <= 6) ? rules.minimumHoursFullDay : 6;
+    const halfDayHrs = (rules.minimumHoursHalfDay && rules.minimumHoursHalfDay <= 3) ? rules.minimumHoursHalfDay : 3;
 
     let fallbackStatus: 'P' | '0.75P' | '0.5P' | '0.25P' | 'A' = 'A';
     if (breakdown.totalHours >= fullDayTargetHours - 0.25) {
       fallbackStatus = 'P';
-    } else if (breakdown.totalHours >= threeQuarterHrs) {
-      fallbackStatus = '0.75P';
     } else if (breakdown.totalHours >= halfDayHrs) {
       fallbackStatus = '0.5P';
-    } else if (breakdown.totalHours >= quarterDayHrs) {
-      fallbackStatus = '0.25P';
+    } else {
+      fallbackStatus = 'A';
     }
 
     if (fallbackStatus !== 'A') {

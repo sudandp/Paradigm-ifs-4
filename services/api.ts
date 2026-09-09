@@ -160,11 +160,11 @@ const TASK_ATTACHMENTS_BUCKET = 'task-attachments';
 // Each key tracks daily usage and cools down when it hits its safe limit.
 // Keys: VITE_API_KEY_1 … VITE_API_KEY_5 (VITE_API_KEY = backward compat alias for _1)
 const rawKeys = [
-  import.meta.env.VITE_API_KEY_1 || import.meta.env.VITE_API_KEY,
-  import.meta.env.VITE_API_KEY_2,
-  import.meta.env.VITE_API_KEY_3,
-  import.meta.env.VITE_API_KEY_4,
-  import.meta.env.VITE_API_KEY_5,
+  import.meta.env?.VITE_API_KEY_1 || import.meta.env?.VITE_API_KEY,
+  import.meta.env?.VITE_API_KEY_2,
+  import.meta.env?.VITE_API_KEY_3,
+  import.meta.env?.VITE_API_KEY_4,
+  import.meta.env?.VITE_API_KEY_5,
 ].filter(Boolean) as string[];
 
 // Free-tier: 1,500 req/day per key. We switch at 1,400 to leave a 100-req buffer.
@@ -7045,10 +7045,16 @@ export const api = {
           if (isApproved) balance.sickUsed += leaveAmount;
           if (isPending) balance.sickPending += leaveAmount;
         }
-      } else if (adjustedType.includes('floating') || adjustedType === 'fh' || adjustedType === 'hp') {
+      } else if (adjustedType.includes('floating') || adjustedType === 'fh' || adjustedType.includes('blue leave') || adjustedType === 'hp') {
         if (!expiryStates.floating || isFloatingHolidayValid(leaveStart)) {
-          if (isApproved) balance.floatingUsed += leaveAmount;
-          if (isPending) balance.floatingPending += leaveAmount;
+          if (isApproved) {
+            balance.floatingUsed += leaveAmount;
+            balance.compOffUsed += leaveAmount;
+          }
+          if (isPending) {
+            balance.floatingPending += leaveAmount;
+            balance.compOffPending += leaveAmount;
+          }
         }
       } else if (type.includes('pink')) {
         // Pink Leave is monthly and non-carry forward. Only count if it's within the viewed month.
@@ -7155,7 +7161,7 @@ export const api = {
             // 4. Leave Requests (Approved + Pending)
             approvedLeaves.forEach(leave => {
                 const type = (leave.leave_type || '').toLowerCase();
-                if (type.includes('comp') || type === 'co') {
+                if (type.includes('comp') || type === 'co' || type.includes('floating') || type === 'fh' || type.includes('blue leave')) {
                     const leaveStart = new Date(leave.start_date.replace(/-/g, '/'));
                     if (leaveStart.getMonth() === m && leaveStart.getFullYear() === currentYear && leaveStart <= monthEnd) {
                         let amount = 0;

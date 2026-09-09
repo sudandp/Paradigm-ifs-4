@@ -1,7 +1,8 @@
 import { saveAs } from 'file-saver';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay } from 'date-fns';
 import { type EmployeeMonthlyData } from '../components/attendance/MonthlyHoursReport';
-import { calculateStatsForDateRange, resolveMonthlyDayHeaders } from './attendanceCalculations';
+import { calculateStatsForDateRange, resolveMonthlyDayHeaders, parseStatusDetails } from './attendanceCalculations';
+import { FIXED_HOLIDAYS } from './constants';
 
 export interface MonthlyReportRow {
     userName: string;
@@ -23,6 +24,7 @@ export interface MonthlyReportRow {
     lossOfPays: number;
     workFromHomeDays: number;
     overtimeDays: number;
+    dailyData?: any[];
 }
 
 export interface LeaveBalanceRow {
@@ -58,8 +60,9 @@ export const exportGenericReportToExcel = async (
     dateRange: { startDate: Date; endDate: Date },
     fileNamePrefix: string,
     logoBase64?: string,
-    generatedBy?: string
-) => {
+    generatedBy?: string,
+    options?: { returnBlobOnly?: boolean }
+): Promise<{ blob: Blob; fileName: string }> => {
     const ExcelJS = await import('exceljs');
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet(reportTitle);
@@ -156,7 +159,11 @@ export const exportGenericReportToExcel = async (
     const buffer = await workbook.xlsx.writeBuffer();
     const monthStr = (dateRange.startDate instanceof Date && !isNaN(dateRange.startDate.getTime())) ? format(dateRange.startDate, 'MMM_yyyy') : format(new Date(), 'MMM_yyyy');
     const fileName = `${fileNamePrefix}_${monthStr}.xlsx`;
-    saveAs(new Blob([buffer]), fileName);
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    if (!options?.returnBlobOnly) {
+        saveAs(blob, fileName);
+    }
+    return { blob, fileName };
 };
 
 
@@ -165,8 +172,9 @@ export const exportAttendanceToExcel = async (
     data: EmployeeMonthlyData[],
     dateRange: { startDate: Date; endDate: Date },
     logoBase64?: string,
-    generatedBy?: string
-) => {
+    generatedBy?: string,
+    options?: { returnBlobOnly?: boolean }
+): Promise<{ blob: Blob; fileName: string }> => {
     const ExcelJS = await import('exceljs');
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Monthly Attendance Report');
@@ -354,14 +362,19 @@ export const exportAttendanceToExcel = async (
     const buffer = await workbook.xlsx.writeBuffer();
     const monthStr = (dateRange.startDate instanceof Date && !isNaN(dateRange.startDate.getTime())) ? format(dateRange.startDate, 'MMM_yyyy') : format(new Date(), 'MMM_yyyy');
     const fileName = `Monthly_Attendance_Report_${monthStr}.xlsx`;
-    saveAs(new Blob([buffer]), fileName);
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    if (!options?.returnBlobOnly) {
+        saveAs(blob, fileName);
+    }
+    return { blob, fileName };
 };
 
 export const exportLeaveBalancesToExcel = async (
     data: LeaveBalanceRow[],
     logoBase64?: string,
-    generatedBy?: string
-) => {
+    generatedBy?: string,
+    options?: { returnBlobOnly?: boolean }
+): Promise<{ blob: Blob; fileName: string }> => {
     const ExcelJS = await import('exceljs');
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Leave Balance Report');
@@ -457,7 +470,11 @@ export const exportLeaveBalancesToExcel = async (
     // 5. Generate and Save
     const buffer = await workbook.xlsx.writeBuffer();
     const fileName = `Leave_Balances_${format(new Date(), 'yyyyMMdd')}.xlsx`;
-    saveAs(new Blob([buffer]), fileName);
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    if (!options?.returnBlobOnly) {
+        saveAs(blob, fileName);
+    }
+    return { blob, fileName };
 };
 
 
@@ -470,8 +487,9 @@ export const exportMonthlyMatrixToExcel = async (
     targetUserName?: string,
     targetUserRole?: string,
     filters?: any,
-    userHolidaysPool?: any[]
-) => {
+    userHolidaysPool?: any[],
+    options?: { returnBlobOnly?: boolean }
+): Promise<{ blob: Blob; fileName: string }> => {
     const ExcelJS = await import('exceljs');
     const workbook = new ExcelJS.Workbook();
 
@@ -526,7 +544,7 @@ export const exportMonthlyMatrixToExcel = async (
         const totalPunches = Number(recalculatedData.reduce((acc, curr) => acc + (curr.presentDays || 0), 0).toFixed(2));
         const activeStaff = recalculatedData.length;
 
-        const endColIndex = 1 + maxDays + 10; // 1 Employee + N Days + 10 Summary Stats (P, 0.5P, OT, C/O, E/L, S/L, A, W/O, H, Pay)
+        const endColIndex = 1 + maxDays + 11; // 1 Employee + N Days + 11 Summary Stats (P, 0.5P, WH, OT, C/O, E/L, S/L, A, W/O, H, Pay)
         const mergeEndCol = getColLetter(endColIndex);
 
         // --- 1. Header Block (Rows 1 to 4) ---
@@ -733,6 +751,7 @@ export const exportMonthlyMatrixToExcel = async (
         const summaryHeaders = [
             { label: 'P', bg: 'FFD1FAE5', text: 'FF065F46' },
             { label: '0.5P', bg: 'FFDBEAFE', text: 'FF1E40AF' },
+            { label: 'WH', bg: 'FFCCFBF1', text: 'FF0F766E' },
             { label: 'OT', bg: 'FFCCFBF1', text: 'FF0F766E' },
             { label: 'C/O', bg: 'FFCFFAFE', text: 'FF0E7490' },
             { label: 'E/L', bg: 'FFE0E7FF', text: 'FF3730A3' },
@@ -757,21 +776,69 @@ export const exportMonthlyMatrixToExcel = async (
 
         currentRow += 2;
 
-        // --- 5. Render Employee Data Rows ---
+        // --- 5. Render Employee Data Rows (Primary Row + Detail Status Sub-Row) ---
         recalculatedData.forEach((employee) => {
-            const row = worksheet.getRow(currentRow);
-            row.height = 20;
-
-            const rowData: (string | number)[] = [employee.userName || employee.employeeName || 'Unknown'];
             const statuses = employee.statuses || [];
+            const dayParsedStatuses = monthDays.map((d, sIdx) => {
+                const rawStatus = statuses[d.getDate() - 1] || '-';
+                const dayNumber = d.getDate();
+                const dayData = employee.dailyData?.[dayNumber - 1];
+                let parsed = parseStatusDetails(rawStatus, dayData);
+                const dh = dayHeaders[sIdx];
+                const curDateStr = format(d, 'yyyy-MM-dd');
+                const isFixedHoliday = Boolean(dh?.isFixed) || FIXED_HOLIDAYS.some(fh => curDateStr.endsWith('-' + fh.date));
 
-            monthDays.forEach((d) => {
-                rowData.push(statuses[d.getDate() - 1] || '-');
+                const empId = String((employee as any).employeeId || (employee as any).userId || (employee as any).id || '').trim().toLowerCase();
+                const empName = String(employee.userName || (employee as any).employeeName || '').trim().toLowerCase();
+
+                const userSelectedThisHoliday = (userHolidaysPool || []).some((uh: any) => {
+                    const uhUserId = String(uh.userId || uh.user_id || uh.employeeId || uh.employee_id || '').trim().toLowerCase();
+                    const uhName = String(uh.userName || uh.name || uh.employeeName || '').trim().toLowerCase();
+                    const matchesUser = (empId && uhUserId === empId) || (empName && uhName === empName);
+                    if (!matchesUser) return false;
+                    const uhDateRaw = String(uh.holidayDate || uh.holiday_date || uh.date || '').split('T')[0].split(' ')[0];
+                    return uhDateRaw === curDateStr || isSameDay(new Date(uhDateRaw), d);
+                });
+
+                const isApplicableHolidayForUser = isFixedHoliday || (dh?.isHoliday && userSelectedThisHoliday);
+
+                if (isApplicableHolidayForUser && (
+                    parsed.primary === 'P' || 
+                    parsed.primary === 'H/P' || 
+                    rawStatus === 'P' || 
+                    rawStatus === 'H/P' || 
+                    rawStatus === 'HP' || 
+                    rawStatus === 'Present' ||
+                    parsed.detailLines.includes('C/O') ||
+                    rawStatus.includes('C/O') ||
+                    rawStatus.includes('CO')
+                )) {
+                    parsed = {
+                        primary: (rawStatus.includes('0.5') || parsed.primary.includes('0.5')) ? '0.5H/P' : 'H/P',
+                        detailLines: []
+                    };
+                }
+                return {
+                    rawStatus,
+                    primary: parsed.primary,
+                    detailLines: parsed.detailLines,
+                    isHoliday: dh?.isHoliday,
+                    isSunday: dh?.isSunday,
+                };
             });
 
-            rowData.push(
+            // 1. Primary Row: Employee Name + Clean High-Level Status + 11 Summary Totals
+            const primaryRow = worksheet.getRow(currentRow);
+            primaryRow.height = 20;
+
+            const primaryRowData: (string | number)[] = [employee.userName || employee.employeeName || 'Unknown'];
+            dayParsedStatuses.forEach((ds) => {
+                primaryRowData.push(ds.primary);
+            });
+            primaryRowData.push(
                 employee.presentDays || 0,
                 employee.halfDays || 0,
+                employee.workFromHomeDays || 0,
                 employee.overtimeDays || 0,
                 employee.compOffs || 0,
                 employee.earnedLeaves || 0,
@@ -781,11 +848,11 @@ export const exportMonthlyMatrixToExcel = async (
                 employee.holidays || 0,
                 employee.totalPayableDays || 0
             );
+            primaryRow.values = primaryRowData;
 
-            row.values = rowData;
-
-            // Apply conditional styling matching HTML view
-            row.eachCell((cell, colNumber) => {
+            // Primary Row Styling
+            for (let colNumber = 1; colNumber <= endColIndex; colNumber++) {
+                const cell = primaryRow.getCell(colNumber);
                 cell.alignment = { horizontal: 'center', vertical: 'middle' };
                 cell.border = thinBorder;
 
@@ -793,12 +860,11 @@ export const exportMonthlyMatrixToExcel = async (
                     cell.font = { bold: true, size: 9.5, color: { argb: 'FF111827' } };
                     cell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
                 } else if (colNumber >= 2 && colNumber <= 1 + maxDays) {
-                    const dIdx = colNumber - 2;
-                    const dh = dayHeaders[dIdx];
-                    const s = String(cell.value || '-');
+                    const ds = dayParsedStatuses[colNumber - 2];
+                    const s = ds.primary;
                     cell.font = { bold: true, size: 8.5 };
 
-                    // Semantic font color
+                    // Semantic font color matching HTML getStatusColor
                     if (s === 'P' || s === 'Present' || s === 'H/P' || s === 'W/P' || s === 'WOP' || s === 'BL/P' || s === 'PL/P') {
                         cell.font.color = { argb: 'FF059669' }; // Present Green
                     } else if (s === 'A' || s === 'Absent') {
@@ -809,28 +875,26 @@ export const exportMonthlyMatrixToExcel = async (
                         cell.font.color = { argb: 'FFEA580C' }; // Holiday Orange
                     } else if (s.includes('0.5')) {
                         cell.font.color = { argb: 'FF2563EB' }; // Half Day Blue
-                    } else if (s.includes('OT')) {
-                        cell.font.color = { argb: 'FF0D9488' }; // OT Teal
-                    } else if (s.includes('C/O')) {
+                    } else if (s.includes('OT') || s === 'W/H' || s === 'WH') {
+                        cell.font.color = { argb: 'FF0D9488' }; // Teal
+                    } else if (s.includes('C/O') || s === 'CO') {
                         cell.font.color = { argb: 'FF0891B2' }; // Comp Cyan
                     } else if (s.includes('EL') || s.includes('E/L')) {
                         cell.font.color = { argb: 'FF4F46E5' }; // Earned Indigo
                     } else if (s.includes('SL') || s.includes('S/L')) {
                         cell.font.color = { argb: 'FF9333EA' }; // Sick Purple
-                    } else if (s.includes('BL') || s.includes('F/H')) {
+                    } else if (s.includes('BL') || s.includes('B/L') || s.includes('F/H')) {
                         cell.font.color = { argb: 'FF1D4ED8' }; // Blue Leave
-                    } else if (s.includes('PL')) {
+                    } else if (s.includes('PL') || s.includes('P/L')) {
                         cell.font.color = { argb: 'FFDB2777' }; // Pink Leave
-                    } else if (s === 'W/H' || s === 'WH') {
-                        cell.font.color = { argb: 'FF0D9488' }; // WFH Teal
-                    } else if (s.includes('+')) {
-                        cell.font.color = { argb: 'FF0D9488' }; // Combined Teal
+                    } else if (s === 'LOP') {
+                        cell.font.color = { argb: 'FFDC2626' }; // LOP Red
                     } else {
                         cell.font.color = { argb: 'FF374151' };
                     }
 
                     // Background highlight
-                    if (dh?.isHoliday) {
+                    if (ds.isHoliday) {
                         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF1F2' } };
                         cell.border = {
                             top: { style: 'thin', color: { argb: 'FFFECDD3' } },
@@ -838,13 +902,12 @@ export const exportMonthlyMatrixToExcel = async (
                             left: { style: 'thin', color: { argb: 'FFFECDD3' } },
                             right: { style: 'thin', color: { argb: 'FFFECDD3' } },
                         };
-                    } else if (dh?.isSunday) {
+                    } else if (ds.isSunday) {
                         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
                     } else if (s === 'A' || s === 'Absent') {
                         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF2F2' } };
                     }
                 } else if (colNumber > 1 + maxDays) {
-                    // Summary Stat Columns styling
                     const statOffset = colNumber - (2 + maxDays);
                     const sh = summaryHeaders[statOffset];
                     cell.font = { bold: true, size: 9 };
@@ -855,7 +918,7 @@ export const exportMonthlyMatrixToExcel = async (
                     } else if (sh?.label === '0.5P') {
                         cell.font.color = { argb: 'FF2563EB' };
                         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
-                    } else if (sh?.label === 'OT') {
+                    } else if (sh?.label === 'WH' || sh?.label === 'OT') {
                         cell.font.color = { argb: 'FF0D9488' };
                         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDFA' } };
                     } else if (sh?.label === 'C/O') {
@@ -887,7 +950,66 @@ export const exportMonthlyMatrixToExcel = async (
                         };
                     }
                 }
+            }
+
+            // 2. Sub Row: Detail status breakdown
+            currentRow++;
+            const detailRow = worksheet.getRow(currentRow);
+            const hasDetails = dayParsedStatuses.some(ds => ds.detailLines.length > 0);
+            detailRow.height = hasDetails ? 24 : 16;
+
+            const detailRowData: (string | number)[] = ['Detail status'];
+            dayParsedStatuses.forEach((ds) => {
+                detailRowData.push(ds.detailLines.length > 0 ? ds.detailLines.join('\n') : '');
             });
+            for (let i = 0; i < 11; i++) {
+                detailRowData.push('');
+            }
+            detailRow.values = detailRowData;
+
+            // Sub Row Styling
+            for (let colNumber = 1; colNumber <= endColIndex; colNumber++) {
+                const cell = detailRow.getCell(colNumber);
+                cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+                cell.border = thinBorder;
+
+                if (colNumber === 1) {
+                    cell.font = { bold: true, size: 8.5, color: { argb: 'FFDC2626' } }; // Bold red matching HTML text-red-600
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF9FAFB' } };
+                    cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                } else if (colNumber >= 2 && colNumber <= 1 + maxDays) {
+                    const ds = dayParsedStatuses[colNumber - 2];
+                    cell.font = { bold: true, size: 7.5, color: { argb: 'FF0284C7' } }; // Bold sky blue matching HTML text-[#0284C7]
+
+                    if (ds.isHoliday) {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF1F2' } };
+                        cell.border = {
+                            top: { style: 'thin', color: { argb: 'FFFECDD3' } },
+                            bottom: { style: 'thin', color: { argb: 'FFFECDD3' } },
+                            left: { style: 'thin', color: { argb: 'FFFECDD3' } },
+                            right: { style: 'thin', color: { argb: 'FFFECDD3' } },
+                        };
+                    } else if (ds.isSunday) {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+                    } else {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF9FAFB' } };
+                    }
+                } else if (colNumber > 1 + maxDays) {
+                    // Summary stats placeholders in sub-row
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF9FAFB' } };
+                    const statOffset = colNumber - (2 + maxDays);
+                    const sh = summaryHeaders[statOffset];
+                    if (sh?.label === 'Pay') {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE6FBF0' } };
+                        cell.border = {
+                            top: { style: 'thin', color: { argb: 'FF10B981' } },
+                            bottom: { style: 'thin', color: { argb: 'FF10B981' } },
+                            left: { style: 'medium', color: { argb: 'FF10B981' } },
+                            right: { style: 'thin', color: { argb: 'FF10B981' } },
+                        };
+                    }
+                }
+            }
 
             currentRow++;
         });
@@ -896,7 +1018,7 @@ export const exportMonthlyMatrixToExcel = async (
         currentRow++;
         worksheet.mergeCells(`A${currentRow}:${mergeEndCol}${currentRow}`);
         const legendCell = worksheet.getCell(`A${currentRow}`);
-        legendCell.value = 'NOTATION REFERENCE: P: Present | 0.5P: Half Day | OT: Overtime | C/O: Comp Off | E/L: Earned Leave | S/L: Sick Leave | A: Absent | W/O: Weekly Off | H: Holiday | RP: Permission (e.g. 0.75P+0.25RP) | Pay: Total Payable Days';
+        legendCell.value = 'NOTATION REFERENCE: P: Present | 0.5P: Half Day | WH: Work From Home | OT: Overtime | C/O: Comp Off | E/L: Earned Leave | S/L: Sick Leave | A: Absent | W/O: Weekly Off | H: Holiday | RP: Permission (e.g. 0.75P+0.25RP) | Pay: Total Payable Days';
         legendCell.font = { size: 8.5, color: { argb: 'FF4B5563' } };
         legendCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
         legendCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } };
@@ -921,7 +1043,7 @@ export const exportMonthlyMatrixToExcel = async (
         // --- 7. Column Widths ---
         worksheet.getColumn(1).width = 24; // Employee column
         for (let i = 2; i <= 1 + maxDays; i++) {
-            worksheet.getColumn(i).width = 5.2; // Day columns
+            worksheet.getColumn(i).width = 8.8; // Day columns (comfortably fits 0.99P+0.01RP on 1 line)
         }
         for (let i = 2 + maxDays; i <= endColIndex - 1; i++) {
             worksheet.getColumn(i).width = 6.2; // Stats columns
@@ -934,5 +1056,9 @@ export const exportMonthlyMatrixToExcel = async (
         ? format(dateRange.startDate, 'MMM_yyyy')
         : format(new Date(), 'MMM_yyyy');
     const fileName = `Monthly_Attendance_Report_${monthStr}.xlsx`;
-    saveAs(new Blob([buffer]), fileName);
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    if (!options?.returnBlobOnly) {
+        saveAs(blob, fileName);
+    }
+    return { blob, fileName };
 };

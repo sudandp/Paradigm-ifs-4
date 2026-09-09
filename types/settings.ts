@@ -188,11 +188,14 @@ export interface ReportEmailPayload {
     filename: string;
     content: string; // base64
     contentType: string;
+    encoding?: string;
   }[];
   triggerType: 'manual' | 'automatic';
   reportType?: AttendanceReportType;
   smtpConfig?: any; // Optional override
   filters?: Record<string, any>;
+  attachPdf?: boolean;
+  attachExcel?: boolean;
 }
 
 // Types for Entity Management

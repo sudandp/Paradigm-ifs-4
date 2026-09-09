@@ -1125,7 +1125,7 @@ export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseSe
 
     
     if (!triggerType) triggerType = 'automatic';
-  } else if (reportType && triggerType === 'manual') {
+  } else if (reportType && triggerType === 'manual' && !html) {
     // Handle manual triggers from dashboard without a ruleId
     const reportTypeKey = reportType.toLowerCase().replace(/\s+/g, '_');
     const generator = (reportGenerators as any)[reportTypeKey] || reportGenerators.attendance_daily;
@@ -1193,7 +1193,15 @@ export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseSe
     };
     if (ccAddresses.length > 0) mailOptions.cc = ccAddresses.join(', ');
     if (body.attachments && Array.isArray(body.attachments)) {
-      mailOptions.attachments = body.attachments;
+      mailOptions.attachments = body.attachments.map((att: any) => {
+        // Always decode base64 content to Buffer for proper binary transmission
+        const isBase64 = att.encoding === 'base64' || (typeof att.content === 'string' && !att.content.startsWith('%PDF'));
+        return {
+          filename: att.filename,
+          content: isBase64 ? Buffer.from(att.content, 'base64') : att.content,
+          contentType: att.contentType || 'application/pdf',
+        };
+      });
     }
 
     const info = await transporter.sendMail(mailOptions);

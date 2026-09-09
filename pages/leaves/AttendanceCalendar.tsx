@@ -32,7 +32,7 @@ const getLeaveAbbreviation = (leaveType?: string): string => {
     if (type.includes('earned') || type === 'el') return 'EL';
     if (type.includes('sick') || type === 'sl') return 'SL';
     if (type.includes('comp') || type === 'co') return 'CO';
-    if (type.includes('floating') || type === 'fh') return 'FH';
+    if (type.includes('floating') || type === 'fh' || type.includes('blue leave') || type === 'blue' || type === 'bl') return 'CO';
     if (type.includes('maternity') || type === 'ml') return 'ML';
     if (type.includes('child care') || type === 'ccl') return 'CCL';
     if (type.includes('loss') || type.includes('lop')) return 'LOP';
@@ -270,6 +270,8 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
             const meetsThreshold = daysPresentInWeek >= threshold;
             const isCompOff = !!(foundLeave && (
                 String(foundLeave.leaveType || '').toLowerCase().includes('comp') ||
+                String(foundLeave.leaveType || '').toLowerCase().includes('floating') ||
+                String(foundLeave.leaveType || '').toLowerCase().includes('blue leave') ||
                 String(foundLeave.leaveType || '').toLowerCase() === 'c/o' ||
                 String(foundLeave.leaveType || '').toLowerCase() === 'co'
             ));
@@ -727,18 +729,20 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                     );
                                 }
                             } else {
-                                const fractionValue = workingHours / shiftThreshold;
-                                const greenPercentage = Math.min(100, Math.max(0, Math.round(fractionValue * 100)));
-                                
-                                let fractionText = '0.00P';
-                                if (workingHours > 0) {
-                                    const computed = Math.round(fractionValue * 100) / 100;
-                                    const displayValue = computed === 0 ? 0.01 : computed;
-                                    fractionText = `${displayValue}P`;
-                                }
-
+                                const fullThreshold = staffCategory === 'field' ? 6 : shiftThreshold;
+                                const halfThreshold = staffCategory === 'field' ? 3 : (shiftThreshold * 0.5);
+                                const isHalf = workingHours >= halfThreshold;
                                 const prefix = holidayName === 'Blue Leave' ? 'BL' : (holidayName === 'Pink Leave' ? 'PL' : 'W');
-                                overlayText = status === 'holiday-present' ? `H/${fractionText}` : status === 'weekend-present' ? `${prefix}/${fractionText}` : fractionText;
+                                
+                                if (status === 'holiday-present') {
+                                    overlayText = isHalf ? '0.5H/P' : 'H';
+                                } else if (status === 'weekend-present') {
+                                    overlayText = isHalf ? `0.5${prefix}/P` : prefix;
+                                } else {
+                                    overlayText = isHalf ? '0.5P' : 'A';
+                                }
+                                const fractionValue = isHalf ? 0.5 : 0;
+                                const greenPercentage = isHalf ? 50 : 0;
                                 let leftColor = '#10b981';
                                 if (status === 'holiday-present') {
                                     leftColor = '#38bdf8';
@@ -944,14 +948,9 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                   }
                                   else usedCodes.add('P');
                             } else {
-                                 const threeQtr = (settings as any)?.[staffCategory]?.threeQuarterDayHours ?? shiftThreshold * 0.75;
-                                 const halfHrs  = (settings as any)?.[staffCategory]?.minimumHoursHalfDay  ?? shiftThreshold * 0.5;
-                                 const qtrHrs   = (settings as any)?.[staffCategory]?.quarterDayHours      ?? shiftThreshold * 0.25;
-                                 if (workingHours >= threeQtr) usedCodes.add('0.75P');
-                                 else if (workingHours >= halfHrs) usedCodes.add('0.5P');
-                                 else if (workingHours >= qtrHrs) usedCodes.add('0.25P');
-                                 else if (workingHours > 0) usedCodes.add('0.25P');
-                                 else usedCodes.add('A');
+                                  const halfHrs = staffCategory === 'field' ? 3 : ((settings as any)?.[staffCategory]?.minimumHoursHalfDay ?? shiftThreshold * 0.5);
+                                  if (workingHours >= halfHrs) usedCodes.add('0.5P');
+                                  else usedCodes.add('A');
                              }
                             return;
                         }

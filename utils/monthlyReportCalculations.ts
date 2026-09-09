@@ -90,6 +90,8 @@ export interface DailyData {
   travelDuration?: number;
   isAutoCheckout?: boolean;
   totalSteps?: number;
+  leaveType?: string;
+  dayOption?: string;
 }
 
 export interface EmployeeMonthlyData {
@@ -343,8 +345,11 @@ export function processEmployeeMonth(
         return 1.0;
     }
 
+    if (s.includes('LOP') || s === 'LOP') return 0;
+    if (s === '1.00+0.00' || s === '1.00' || s === '1.0' || s === '1') return 1.0;
     if (s.includes('+')) return s.split('+').reduce((acc, part) => acc + resolvePayableValue(part.trim()), 0);
     if (['W/P', 'H/P', 'BL/P', 'PL/P'].includes(s)) return 1.5; 
+    if (['0.5W/P', '0.5H/P', '0.5BL/P', '0.5PL/P'].includes(s)) return 1.25;
     if (['P', 'W/O', 'WOP', 'H', 'SL', 'S/L', 'EL', 'E/L', 'CL', 'C/L', 'C/O', 'CO', 'W/H', 'WH', 'BL', 'F/H', 'FH', 'PL', 'P/L', 'ML', 'M/L', 'CC', 'C/C', 'CCL'].includes(s)) return 1;
     // Handle half-day leave types (e.g. '0.5SL', '0.5WH', '0.5EL', '0.5CL')
     if (s.startsWith('0.5') && (s.includes('SL') || s.includes('S/L') || s.includes('EL') || s.includes('E/L') || s.includes('CL') || s.includes('C/L') || s.includes('WH') || s.includes('W/H') || s.includes('BL') || s.includes('PL') || s.includes('ML') || s.includes('CCL') || s.includes('CO') || s.includes('C/O'))) return 0.5;
@@ -354,7 +359,7 @@ export function processEmployeeMonth(
     if (['Half Day', '0.5P', '1/2P', '2/4P'].includes(s)) return 0.5;
     if (s === '3/4P' || s === '0.75P') return 0.75;
     if (s === '1/4P' || s === '0.25P') return 0.25;
-    if (s.endsWith('P') && s !== 'LOP') {
+    if (s.endsWith('P') && !s.includes('LOP')) {
       const numericVal = parseFloat(s.slice(0, -1));
       if (!isNaN(numericVal)) return numericVal;
     }
@@ -372,8 +377,11 @@ export function processEmployeeMonth(
         // we must manually increment halfDays to account for the physical work.
         if ((s.includes('RP+') || s.includes('+RP')) && (s.includes('0.5EL') || s.includes('0.5SL') || s.includes('0.5CL') || s.includes('0.5CO') || s.includes('0.5WH'))) {
             halfDays++;
-        } else if (s.includes('RP') && (s.includes('0.75P') || s.includes('0.5P') || s.includes('0.25P'))) {
-            // Count full present day for composite work + permission day (0.75P+0.25RP, 0.5P+0.5RP)
+        } else if (s.includes('RP') && (s.includes('0.75P') || s.includes('0.5P') || s.includes('0.25P') || s.includes('P'))) {
+            // Count full present day for composite work + permission day (0.75P+0.25RP, 0.5P+0.5RP, 0.99P+0.01RP)
+            presentDays++;
+            return;
+        } else if (s === '1.00+0.00' || s.startsWith('1.00+0.00') || s.startsWith('1.0+0.0')) {
             presentDays++;
             return;
         }
@@ -394,10 +402,19 @@ export function processEmployeeMonth(
             floatingHolidays += inc;
         }
     }
+    else if (s === '0.5W/P' || s === '0.5BL/P' || s === '0.5PL/P') {
+        halfDays += 0.5;
+        if (s === '0.5W/P') {
+            weekOffs++;
+            weekendPresents += 0.5;
+        } else {
+            floatingHolidays += 0.5;
+        }
+    }
     else if (s === '3/4P' || s === '0.75P') threeQuarterDays++;
     else if (s === 'Half Day' || s === '0.5P' || s === '1/2P' || s === '2/4P') halfDays++;
     else if (s === '1/4P' || s === '0.25P') quarterDays++;
-    else if (s.endsWith('P') && s !== 'LOP' && !s.includes('+') && !s.includes('/')) {
+    else if (s.endsWith('P') && !s.includes('LOP') && !s.includes('+') && !s.includes('/')) {
       const val = parseFloat(s.slice(0, -1));
       if (!isNaN(val)) {
         if (val >= 1.0) presentDays++;
@@ -410,15 +427,16 @@ export function processEmployeeMonth(
     }
     else if (s === 'A') absentDays++;
     else if (s === 'W/O') weekOffs++;
-    else if (s === 'BL' || s === '0.5BL' || s === 'FH' || s === '0.5FH') { floatingHolidays += inc; }
+    else if (s === 'BL' || s === '0.5BL' || s === 'FH' || s === '0.5FH') { compOffs += inc; leavesCount += inc; }
     else if (s === 'PL' || s === '0.5PL') { floatingHolidays += inc; }
     else if (s === 'WOP') { weekOffs++; if (statusToCounterActivity) weekendPresents++; }
     else if (s === 'H') holidaysCount++;
     else if (s === 'H/P') { holidaysCount++; presentDays++; holidayPresents++; }
+    else if (s === '0.5H/P') { holidaysCount++; halfDays += 0.5; holidayPresents += 0.5; }
     else if (s.includes('SL') || s.includes('S/L')) { sickLeaves += inc; leavesCount += inc; }
     else if (s.includes('EL') || s.includes('E/L')) { earnedLeaves += inc; leavesCount += inc; }
     else if (s.includes('CL') || s.includes('C/L')) { casualLeaves += inc; leavesCount += inc; }
-    else if (s.includes('BL') || s.includes('F/H') || s.includes('FH')) floatingHolidays += inc;
+    else if (s.includes('BL') || s.includes('F/H') || s.includes('FH')) { compOffs += inc; leavesCount += inc; }
     else if (s.includes('PL') || s.includes('P/L')) { floatingHolidays += inc; }
     else if (s.includes('C/O') || s.includes('CO')) { compOffs += inc; leavesCount += inc; }
     else if (s.includes('LOP')) lossOfPay += inc;
@@ -456,7 +474,8 @@ export function processEmployeeMonth(
   });
 
   // Calculate auto-deducted early departures for this month within the monthly permission pool (180 mins)
-  const targetShiftMins = (rules?.minimumHoursFullDay || rules?.dailyWorkingHours?.min || 8) * 60;
+  const isField = category === 'field';
+  const targetShiftMins = (isField ? (rules?.minimumHoursFullDay && rules.minimumHoursFullDay <= 6 ? rules.minimumHoursFullDay : 6) : (rules?.minimumHoursFullDay || rules?.dailyWorkingHours?.min || 8)) * 60;
   const earlyDepartureList = getEarlyDepartureDeductions(events, targetShiftMins, baseLeaves, baseLeaves, monthStartStr);
   const monthlyLimitMins = 180; // 3 hours monthly pool
   const remainingPoolMins = Math.max(0, monthlyLimitMins - explicitPermissionMins);
@@ -523,6 +542,28 @@ export function processEmployeeMonth(
       const endDateStr = normalize(lEndDate);
       const lType = String(l.leaveType || l.leave_type || (l as any).type || '').toLowerCase();
       return dateStr >= startDateStr && dateStr <= endDateStr && (lType.includes('permission') || lType === 'rp' || lType.includes('rp'));
+    });
+
+    // Find approved main leave for the current day (Earned, Sick, Casual, Comp Off, WFH)
+    const approvedMainLeaveOnDay = leavesToSearch.find(l => {
+      const lStartDate = l.startDate || l.start_date || l.date || l.leave_date;
+      const lEndDate = l.endDate || l.end_date || l.date || l.leave_date;
+      if (!lStartDate || !lEndDate) return false;
+      const lUserId = l.userId || l.user_id || l.employee_id || (l as any).emp_id;
+      if (lUserId && String(lUserId) !== String(user.id)) return false;
+      const lStatus = String(l.status || l.leaveStatus || '').toLowerCase();
+      if (!['approved', 'approved_by_reporting', 'approved_by_admin', 'correction_made'].includes(lStatus)) return false;
+
+      const normalize = (d: any) => {
+          if (!d) return '';
+          if (typeof d === 'string') return d.substring(0, 10);
+          return format(new Date(d), 'yyyy-MM-dd');
+      };
+
+      const startDateStr = normalize(lStartDate);
+      const endDateStr = normalize(lEndDate);
+      const lType = String(l.leaveType || l.leave_type || (l as any).type || '').toLowerCase();
+      return dateStr >= startDateStr && dateStr <= endDateStr && !lType.includes('permission') && !lType.includes('rp');
     });
 
     const getPermMinutesFromReq = (req: any): number => {
@@ -712,14 +753,42 @@ export function processEmployeeMonth(
     });
 
     const hasPunchInOnDay = dayEvents.some(e => e.type === 'punch-in' || e.type === 'site-ot-in');
-    if (status === 'W/O' && hasPunchInOnDay) status = 'WOP';
+    if (status === 'W/O' && hasPunchInOnDay) {
+      const fullThreshold = isField ? 6 : (rules?.minimumHoursFullDay || rules?.dailyWorkingHours?.min || 8);
+      const halfThreshold = isField ? 3 : (rules?.minimumHoursHalfDay || 4);
+      const hrs = hasActivity ? physicalWorkHours : netHours;
+      if (hrs >= fullThreshold) status = 'W/P';
+      else if (hrs >= halfThreshold) status = '0.5W/P';
+      else status = 'WOP';
+    }
+
+    const isFixedHoliday = FIXED_HOLIDAYS.some(h => isSameDay(new Date(h.date), currentDate)) ||
+                           activeOfficeHolidays.some(h => h.isFixed && isSameDay(new Date(h.date), currentDate)) ||
+                           activeFieldHolidays.some(h => h.isFixed && isSameDay(new Date(h.date), currentDate)) ||
+                           activeSiteHolidays.some(h => h.isFixed && isSameDay(new Date(h.date), currentDate));
+
+    const isUserSelectedOptionalHoliday = (userHolidays || []).some((uh: any) => {
+      const uhUserId = String(uh.userId || uh.user_id || uh.employeeId || uh.employee_id || '').trim().toLowerCase();
+      const targetUserId = String(user.id).trim().toLowerCase();
+      const uhName = String(uh.userName || uh.name || uh.employeeName || '').trim().toLowerCase();
+      const targetName = String(user.name || '').trim().toLowerCase();
+      const matchesUser = (uhUserId && targetUserId && uhUserId === targetUserId) || (uhName && targetName && uhName === targetName);
+      if (!matchesUser) return false;
+      const uhDate = uh.holidayDate || uh.holiday_date || uh.date;
+      return uhDate && isSameDay(new Date(uhDate), currentDate);
+    });
+
+    const isApplicableHolidayForUser = isFixedHoliday || isUserSelectedOptionalHoliday;
+    if (isApplicableHolidayForUser && (hasPunchInOnDay || status === 'P' || status === 'C/O' || status === 'CO' || status === 'H/P')) {
+      status = status.includes('0.5') ? '0.5H/P' : 'H/P';
+    }
 
     // ── Combined P+RP status for AI auto-checkout / auto-approved RP days ─────────
     // When the AI punched a user out early (auto_system) OR an early-departure RP was
     // auto-approved, the day should show as "{pFraction}P+{rpFraction}RP" so the
     // report clearly reflects physical work % + permission % (total still = 1 full day).
     if (
-      status === 'P' &&
+      (status === 'P' || status.includes('RP')) &&
       hasActivity &&
       !isFuture &&
       (isAutoCheckout || approvedPermissionOnDay)
@@ -729,21 +798,21 @@ export function processEmployeeMonth(
         ? getPermMinutesFromReq(approvedPermissionOnDay)
         : 0;
 
-      // Fall back: if AI punched out but no explicit RP record, derive from shortfall vs shift
-      const shiftMins = targetShiftMins || 480;
-      const effectiveRpMins = rpMins > 0
-        ? rpMins
-        : isAutoCheckout
-          ? Math.max(0, shiftMins - physicalWorkHours * 60)
-          : 0;
+      const shiftMins = targetShiftMins || (isField ? 360 : 480);
+      const workedMins = Math.round(physicalWorkHours * 60);
 
-      if (effectiveRpMins > 0 && effectiveRpMins < shiftMins) {
-        // Round to nearest 0.25 fraction of a full day
-        const rpFrac = Math.round((effectiveRpMins / shiftMins) * 4) / 4;
-        const pFrac  = Math.round((1 - rpFrac) * 4) / 4;
-        if (pFrac > 0 && rpFrac > 0) {
-          status = `${pFrac}P+${rpFrac}RP`;
-        }
+      if (rpMins > 0 || (isAutoCheckout && workedMins < shiftMins)) {
+        // If employee physically worked, the permission covers the actual shortfall up to rpMins
+        const shortfall = Math.max(0, shiftMins - workedMins);
+        const effectiveRpMins = (workedMins > 0 && shortfall > 0)
+          ? (rpMins > 0 ? Math.min(rpMins, shortfall) : shortfall)
+          : (rpMins > 0 ? rpMins : shortfall);
+
+        const rpFrac = Math.max(0.01, Math.round((effectiveRpMins / shiftMins) * 100) / 100);
+        const pFrac = Math.max(0, Math.round((1.0 - rpFrac) * 100) / 100);
+        status = `${pFrac.toFixed(2)}P+${rpFrac.toFixed(2)}RP`;
+      } else if (isAutoCheckout && workedMins >= shiftMins) {
+        status = 'P';
       }
     }
     // ─────────────────────────────────────────────────────────────────────────────
@@ -765,11 +834,7 @@ export function processEmployeeMonth(
 
     if (!isFuture) {
         statusToCounterActivity = hasActivity;
-        if (status.includes('+')) {
-            status.split('+').forEach(p => updateCounters(p.trim()));
-        } else {
-            updateCounters(status);
-        }
+        updateCounters(status);
         totalPayableDays += resolvePayableValue(status);
     }
 
@@ -781,7 +846,9 @@ export function processEmployeeMonth(
       travelDistance: currentDayTravelKm,
       travelDuration: currentDayTravelDuration,
       isAutoCheckout,
-      totalSteps: currentDaySteps
+      totalSteps: currentDaySteps,
+      leaveType: approvedMainLeaveOnDay?.leaveType || (approvedMainLeaveOnDay as any)?.type,
+      dayOption: approvedMainLeaveOnDay?.dayOption || (approvedMainLeaveOnDay as any)?.day_option
     });
   }
 

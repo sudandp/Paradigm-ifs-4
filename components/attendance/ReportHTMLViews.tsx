@@ -1,8 +1,8 @@
 import React from 'react';
-import { format, eachDayOfInterval } from 'date-fns';
+import { format, eachDayOfInterval, isSameDay } from 'date-fns';
 import { ClipboardList } from 'lucide-react';
 import type { BasicReportDataRow, AttendanceLogDataRow, SiteOtDataRow, MonthlyReportRow, WorkHoursReportDataRow } from '../../pages/attendance/PDFReports';
-import { calculateStatsForDateRange, resolveMonthlyDayHeaders } from '../../utils/attendanceCalculations';
+import { calculateStatsForDateRange, resolveMonthlyDayHeaders, parseStatusDetails, parseDurationToMins, formatDepartment } from '../../utils/attendanceCalculations';
 import { FIXED_HOLIDAYS } from '../../utils/constants';
 import { useSettingsStore } from '../../store/settingsStore';
 import { api } from '../../services/api';
@@ -118,49 +118,52 @@ export const BasicReportView: React.FC<{
         <div className="bg-white p-4 md:p-[24px] shadow-lg rounded-[16px] border border-gray-100 max-w-full mx-auto overflow-hidden space-y-6">
             <ReportHeader title="Basic Attendance Report" subtitle={subtitle} logoUrl={logoUrl} generatedBy={generatedBy} generatedByRole={generatedByRole} targetUserName={targetUserName} targetUserRole={targetUserRole} filters={filters} />
             <div className="overflow-x-auto">
-                <table className="w-full text-sm border-collapse border border-gray-300">
-                    <thead>
-                        <tr className="bg-gray-100">
-                            <th className="px-2 py-2 border border-gray-300 font-bold text-left text-[11px]">S.No</th>
-                            <th className="px-2 py-2 border border-gray-300 font-bold text-left text-[11px]">Employee Name</th>
-                            <th className="px-2 py-2 border border-gray-300 font-bold text-left text-[11px]">Dept</th>
-                            <th className="px-2 py-2 border border-gray-300 font-bold text-center text-[11px]">In</th>
-                            <th className="px-2 py-2 border border-gray-300 font-bold text-center text-[11px]">Out</th>
-                            <th className="px-2 py-2 border border-gray-300 font-bold text-center text-[11px]">B.In</th>
-                            <th className="px-2 py-2 border border-gray-300 font-bold text-center text-[11px]">B.Out</th>
-                            <th className="px-2 py-2 border border-gray-300 font-bold text-center text-[11px]">OT.In</th>
-                            <th className="px-2 py-2 border border-gray-300 font-bold text-center text-[11px]">OT.Out</th>
-                            <th className="px-2 py-2 border border-gray-300 font-bold text-center text-[11px]">Dur</th>
-                            <th className="px-2 py-2 border border-gray-300 font-bold text-center text-[11px]">Status</th>
+                <table className="w-full table-fixed text-sm border-collapse border border-gray-300">
+                    <thead className="table-header-group">
+                        <tr className="bg-gray-100" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+                            <th style={{ width: '23%' }} className="px-2 py-2 border border-gray-300 font-bold text-left text-[11px] align-middle">Employee Name</th>
+                            <th style={{ width: '6.5%' }} className="px-1 py-2 border border-gray-300 font-bold text-center text-[11px] align-middle">Status</th>
+                            <th style={{ width: '5.5%' }} className="px-1 py-2 border border-gray-300 font-bold text-center text-[11px] align-middle">In</th>
+                            <th style={{ width: '5.5%' }} className="px-1 py-2 border border-gray-300 font-bold text-center text-[11px] align-middle">Out</th>
+                            <th style={{ width: '5.5%' }} className="px-1 py-2 border border-gray-300 font-bold text-center text-[11px] align-middle">B.In</th>
+                            <th style={{ width: '5.5%' }} className="px-1 py-2 border border-gray-300 font-bold text-center text-[11px] align-middle">B.Out</th>
+                            <th style={{ width: '5.5%' }} className="px-1 py-2 border border-gray-300 font-bold text-center text-[11px] align-middle">OT.In</th>
+                            <th style={{ width: '5.5%' }} className="px-1 py-2 border border-gray-300 font-bold text-center text-[11px] align-middle">OT.Out</th>
+                            <th style={{ width: '12.5%' }} className="px-1 py-2 border border-gray-300 font-bold text-center text-[11px] align-middle">Hours</th>
+                            <th style={{ width: '25%' }} className="px-2 py-2 border border-gray-300 font-bold text-left text-[11px] align-middle">Dept</th>
                         </tr>
                     </thead>
                     <tbody>
                         {data.map((row, idx) => (
-                            <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-                                <td className="px-2 py-1.5 border border-gray-200 text-left text-[11px]">{idx + 1}</td>
-                                <td className="px-2 py-1.5 border border-gray-200 font-medium text-left text-[11px] capitalize">{row.userName}</td>
-                                <td className="px-2 py-1.5 border border-gray-200 text-left text-[11px] capitalize">{String(row.department || row.dept || 'Staff').replace(/_/g, ' ')}</td>
-                                <td className="px-2 py-1.5 border border-gray-200 text-center text-[11px]">{row.checkIn || row.pin || '—'}</td>
-                                <td className="px-2 py-1.5 border border-gray-200 text-center text-[11px]">{row.checkOut || row.pout || '—'}</td>
-                                <td className="px-2 py-1.5 border border-gray-200 text-center text-[11px] font-medium text-orange-600">{row.breakIn || '—'}</td>
-                                <td className="px-2 py-1.5 border border-gray-200 text-center text-[11px] font-medium text-orange-600">{row.breakOut || '—'}</td>
-                                <td className="px-2 py-1.5 border border-gray-200 text-center text-[11px] font-medium text-teal-600">{row.siteOtIn || '—'}</td>
-                                <td className="px-2 py-1.5 border border-gray-200 text-center text-[11px] font-medium text-teal-600">{row.siteOtOut || '—'}</td>
-                                <td className="px-2 py-1.5 border border-gray-200 text-center text-[11px]">{row.duration || row.wh || '—'}</td>
-                                <td className="px-2 py-1.5 border border-gray-200 text-center font-bold text-[11px]">
+                            <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+                                <td style={{ width: '23%' }} className="px-2 py-1.5 border border-gray-200 font-medium text-left text-[11px] align-middle break-words">{row.userName}</td>
+                                <td style={{ width: '6.5%' }} className="px-1 py-1.5 border border-gray-200 text-center font-bold text-[11px] align-middle">
                                     <span className={
-                                        row.status === 'P' || row.status === 'Present' ? 'text-green-600' :
-                                        row.status === 'A' || row.status === 'Absent' ? 'text-red-500' :
-                                        row.status.includes('P') ? 'text-green-600' :
-                                        'text-blue-500'
+                                        row.status === 'Present' || row.status === 'P' ? 'text-emerald-700' :
+                                        row.status === 'Absent' || row.status === 'A' ? 'text-rose-600' :
+                                        row.status === 'Open' || row.status === 'Incomplete' ? 'text-amber-600' :
+                                        row.status === 'Invalid' ? 'text-rose-700 font-black' :
+                                        row.status.includes('P') ? 'text-emerald-700' :
+                                        'text-blue-600'
                                     }>{row.status}</span>
                                 </td>
+                                <td style={{ width: '5.5%' }} className="px-1 py-1.5 border border-gray-200 text-center text-[11px] align-middle">{row.checkIn || row.pin || '-'}</td>
+                                <td style={{ width: '5.5%' }} className="px-1 py-1.5 border border-gray-200 text-center text-[11px] align-middle">{row.checkOut || row.pout || '-'}</td>
+                                <td style={{ width: '5.5%' }} className="px-1 py-1.5 border border-gray-200 text-center text-[11px] align-middle font-medium text-orange-600">{row.breakIn || '-'}</td>
+                                <td style={{ width: '5.5%' }} className="px-1 py-1.5 border border-gray-200 text-center text-[11px] align-middle font-medium text-orange-600">{row.breakOut || '-'}</td>
+                                <td style={{ width: '5.5%' }} className="px-1 py-1.5 border border-gray-200 text-center text-[11px] align-middle font-medium text-teal-600">{row.siteOtIn || '-'}</td>
+                                <td style={{ width: '5.5%' }} className="px-1 py-1.5 border border-gray-200 text-center text-[11px] align-middle font-medium text-teal-600">{row.siteOtOut || '-'}</td>
+                                <td style={{ width: '12.5%' }} className="px-1 py-1.5 border border-gray-200 text-center text-[11px] align-middle font-medium whitespace-nowrap">{row.duration || row.wh || '-'}</td>
+                                <td style={{ width: '25%' }} className="px-2 py-1.5 border border-gray-200 text-left text-[11px] align-middle break-words">{formatDepartment(row.department || row.dept)}</td>
                             </tr>
                         ))}
                     </tbody>
                 </table>
             </div>
-            <Footer />
+            <div className="pt-3 border-t border-gray-200 text-center space-y-0.5">
+                <div className="text-[10px] text-gray-600 font-bold uppercase tracking-wider">Paradigm Services - Confidential</div>
+                <div className="text-[9px] text-gray-400 font-medium">Page 1 of 1</div>
+            </div>
         </div>
     );
 };
@@ -382,11 +385,12 @@ export const MonthlyStatusView: React.FC<{
     const getStatusColor = (s: string) => {
         if (s.includes('+')) return 'text-[#0D9488] font-black'; // Combined Status Teal
         if (s === 'P') return 'text-[#059669]'; // Present Green
-        if (s === 'A') return 'text-[#DC2626]'; // Absent Red
+        if (s === 'A' || s === 'LOP') return 'text-[#DC2626]'; // Absent / LOP Red
         if (s === 'W/O' || s === 'WOP') return 'text-[#6B7280]'; // WO Grey
-        if (s === 'H' || s === 'H/P') return 'text-[#EA580C]'; // Holiday Orange
+        if (s === 'H' || s === 'H/P' || s === '0.5H/P') return 'text-[#EA580C]'; // Holiday Orange
         if (s.includes('F/H') || s.includes('BL')) return 'text-[#1D4ED8]'; // Blue Leave
         if (s.includes('PL') || s.includes('P/L')) return 'text-[#DB2777]'; // Pink Leave
+        if (s === 'W/P' || s === '0.5W/P') return 'text-[#2563EB]'; // WP Blue
         if (s.includes('0.5')) return 'text-[#2563EB]'; // Half Day Blue
         if (s.includes('SL') || s.includes('S/L')) return 'text-[#9333EA]'; // Sick Leave Purple
         if (s.includes('EL') || s.includes('E/L')) return 'text-[#4F46E5]'; // Earned Leave Indigo
@@ -490,6 +494,7 @@ export const MonthlyStatusView: React.FC<{
                             })}
                             <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-l border-gray-200 font-bold text-center text-[#059669] bg-green-50/30 align-middle ${layout.statColWidth || 'min-w-[15px]'}`}>P</th>
                             <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#2563EB] bg-blue-50/30 align-middle ${layout.statColWidth || 'min-w-[16px]'}`}>0.5P</th>
+                            <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#0D9488] bg-teal-50/30 align-middle ${layout.statColWidth || 'min-w-[16px]'}`}>WH</th>
                             <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#0D9488] bg-teal-50/30 align-middle ${layout.statColWidth || 'min-w-[18px]'}`}>OT</th>
                             <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#0891B2] bg-cyan-50/30 align-middle ${layout.statColWidth || 'min-w-[16px]'}`}>C/O</th>
                             <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#4F46E5] bg-indigo-50/30 align-middle ${layout.statColWidth || 'min-w-[16px]'}`}>E/L</th>
@@ -528,50 +533,149 @@ export const MonthlyStatusView: React.FC<{
                         </tr>
                     </thead>
                     <tbody>
-                        {recalculatedRows.map((row, idx) => (
-                            <tr key={idx} className="group hover:bg-gray-50/30 transition-colors">
-                                <td className={`px-1 ${layout.paddingY} font-medium text-gray-900 sticky left-0 bg-white group-hover:bg-gray-50/30 z-10 whitespace-nowrap border-b border-gray-100 ${layout.employeeWidth} overflow-hidden text-ellipsis capitalize`}>{row.userName}</td>
-                                {(resolvedDays.length > 0 ? resolvedDays : row.statuses).map((day, sIdx) => {
-                                    const status = resolvedDays.length > 0
-                                        ? (row.statuses[(day as Date).getDate() - 1] || '-')
-                                        : (day as string || '-');
-                                    const dh = dayHeaders[sIdx];
-                                    const isHolidayCol = dh?.isHoliday;
+                        {recalculatedRows.map((row, idx) => {
+                            const dayStatuses = (resolvedDays.length > 0 ? resolvedDays : row.statuses).map((day, sIdx) => {
+                                const rawStatus = resolvedDays.length > 0
+                                    ? (row.statuses[(day as Date).getDate() - 1] || '-')
+                                    : (day as string || '-');
+                                const dh = dayHeaders[sIdx];
+                                const isHolidayCol = dh?.isHoliday;
+                                const dayNumber = resolvedDays.length > 0 ? (day as Date).getDate() : (sIdx + 1);
+                                const dayData = (row as any).dailyData?.[dayNumber - 1];
+                                const parsed = parseStatusDetails(rawStatus, dayData);
 
-                                    const cellTitle = isHolidayCol
-                                        ? `${dh?.dayNumber} ${dh?.dateObj ? format(dh.dateObj, 'MMM') : ''} (${dh?.dayOfWeek}) — ${dh?.holidayName}: Status is ${status}`
-                                        : dh?.isSunday
-                                        ? `${dh?.dayNumber} ${dh?.dateObj ? format(dh.dateObj, 'MMM') : ''} (${dh?.dayOfWeek}) — Sunday: Status is ${status}`
-                                        : `${dh?.dayNumber} ${dh?.dateObj ? format(dh?.dateObj || new Date(), 'MMM') : ''}: ${status}`;
+                                let displayPrimary = parsed.primary;
+                                let displayDetailLines = parsed.detailLines;
 
-                                    return (
-                                        <td 
-                                            key={sIdx} 
-                                            title={cellTitle}
-                                            className={`px-0 ${layout.paddingY} border-b border-gray-50 text-center font-bold leading-tight ${
-                                                isHolidayCol 
-                                                    ? 'bg-rose-50/70 border-x border-rose-200/60' 
-                                                    : dh?.isSunday 
-                                                    ? 'bg-slate-50/30' 
-                                                    : ''
-                                            }`}
-                                        >
-                                            <span className={getStatusColor(status)}>{status}</span>
+                                // On a declared / company holiday column:
+                                // Fixed statutory public holidays or recurring offs apply to all employees.
+                                // Optional / floating holidays apply ONLY if this specific user selected it.
+                                // If the user did NOT select the optional holiday, it is a normal working day for them (remains 'P').
+                                const curDate = resolvedDays.length > 0 ? (day as Date) : dh?.dateObj;
+                                const curDateStr = curDate ? format(curDate, 'yyyy-MM-dd') : '';
+                                const isFixedHoliday = Boolean(dh?.isFixed) || FIXED_HOLIDAYS.some(fh => curDateStr.endsWith('-' + fh.date));
+
+                                const empId = String((row as any).employeeId || (row as any).userId || (row as any).id || '').trim().toLowerCase();
+                                const empName = String(row.userName || (row as any).employeeName || '').trim().toLowerCase();
+
+                                const userSelectedThisHoliday = (activeUserHolidays || []).some(uh => {
+                                    const uhUserId = String(uh.userId || uh.user_id || uh.employeeId || uh.employee_id || '').trim().toLowerCase();
+                                    const uhName = String(uh.userName || uh.name || uh.employeeName || '').trim().toLowerCase();
+                                    const matchesUser = (empId && uhUserId === empId) || (empName && uhName === empName);
+                                    if (!matchesUser) return false;
+                                    const uhDateRaw = String(uh.holidayDate || uh.holiday_date || uh.date || '').split('T')[0].split(' ')[0];
+                                    return uhDateRaw === curDateStr || (curDate && isSameDay(new Date(uhDateRaw), curDate));
+                                });
+
+                                const isApplicableHolidayForUser = isFixedHoliday || (isHolidayCol && userSelectedThisHoliday);
+
+                                if (isApplicableHolidayForUser && (
+                                    displayPrimary === 'P' || 
+                                    displayPrimary === 'H/P' || 
+                                    rawStatus === 'P' || 
+                                    rawStatus === 'H/P' || 
+                                    rawStatus === 'HP' || 
+                                    rawStatus === 'Present' ||
+                                    displayDetailLines.includes('C/O') ||
+                                    rawStatus.includes('C/O') ||
+                                    rawStatus.includes('CO')
+                                )) {
+                                    displayPrimary = (rawStatus.includes('0.5') || displayPrimary.includes('0.5')) ? '0.5H/P' : 'H/P';
+                                    displayDetailLines = [];
+                                }
+
+                                const cellTitle = isHolidayCol
+                                    ? `${dh?.dayNumber} ${dh?.dateObj ? format(dh.dateObj, 'MMM') : ''} (${dh?.dayOfWeek}) — ${dh?.holidayName}: Status is ${rawStatus}`
+                                    : dh?.isSunday
+                                    ? `${dh?.dayNumber} ${dh?.dateObj ? format(dh.dateObj, 'MMM') : ''} (${dh?.dayOfWeek}) — Sunday: Status is ${rawStatus}`
+                                    : `${dh?.dayNumber} ${dh?.dateObj ? format(dh?.dateObj || new Date(), 'MMM') : ''}: ${rawStatus}`;
+
+                                return {
+                                    rawStatus,
+                                    primary: displayPrimary,
+                                    detailLines: displayDetailLines,
+                                    isHolidayCol,
+                                    isSunday: dh?.isSunday,
+                                    cellTitle
+                                };
+                            });
+
+                            return (
+                                <React.Fragment key={idx}>
+                                    {/* Primary Row: Employee Name & Clean High-Level Codes */}
+                                    <tr className="group hover:bg-gray-50/30 transition-colors border-t border-gray-200">
+                                        <td className={`px-1 ${layout.paddingY} font-bold text-red-600 sticky left-0 bg-white group-hover:bg-gray-50/30 z-10 whitespace-nowrap border-b border-gray-100 ${layout.employeeWidth} overflow-hidden text-ellipsis capitalize text-center`}>
+                                            {row.userName}
                                         </td>
-                                    );
-                                })}
-                                <td className={`px-0 ${layout.paddingY} border-b border-l border-gray-100 text-center font-bold text-[#059669] bg-green-50/10`}>{row.presentDays}</td>
-                                <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#2563EB] bg-blue-50/10`}>{row.halfDays}</td>
-                                <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#0D9488] bg-teal-50/10`}>{row.overtimeDays || 0}</td>
-                                <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#0891B2] bg-cyan-50/10`}>{row.compOffs || 0}</td>
-                                <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#4F46E5] bg-indigo-50/10`}>{row.earnedLeaves || 0}</td>
-                                <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#9333EA] bg-purple-50/10`}>{row.sickLeaves || 0}</td>
-                                <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#DC2626] bg-red-50/10`}>{row.absentDays}</td>
-                                <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center text-[#6B7280] font-medium`}>{row.weekOffs}</td>
-                                <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center text-[#EA580C] font-medium`}>{row.holidays}</td>
-                                <td className={`px-0 ${layout.paddingY} border-b border-l border-gray-100 text-center font-bold text-[#059669] bg-emerald-100 sticky right-0 z-10 ${layout.payWidth} shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]`}>{row.totalPayableDays}</td>
-                            </tr>
-                        ))}
+                                        {dayStatuses.map((ds, sIdx) => (
+                                            <td 
+                                                key={`p-${sIdx}`} 
+                                                title={ds.cellTitle}
+                                                className={`px-0 ${layout.paddingY} border-b border-gray-50 text-center font-bold leading-tight ${
+                                                    ds.isHolidayCol 
+                                                        ? 'bg-rose-50/70 border-x border-rose-200/60' 
+                                                        : ds.isSunday 
+                                                        ? 'bg-slate-50/30' 
+                                                        : ''
+                                                }`}
+                                            >
+                                                <span className={getStatusColor(ds.primary)}>{ds.primary}</span>
+                                            </td>
+                                        ))}
+                                        <td className={`px-0 ${layout.paddingY} border-b border-l border-gray-100 text-center font-bold text-[#059669] bg-green-50/10`}>{row.presentDays}</td>
+                                        <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#2563EB] bg-blue-50/10`}>{row.halfDays}</td>
+                                        <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#0D9488] bg-teal-50/10`}>{row.workFromHomeDays || 0}</td>
+                                        <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#0D9488] bg-teal-50/10`}>{row.overtimeDays || 0}</td>
+                                        <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#0891B2] bg-cyan-50/10`}>{row.compOffs || 0}</td>
+                                        <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#4F46E5] bg-indigo-50/10`}>{row.earnedLeaves || 0}</td>
+                                        <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#9333EA] bg-purple-50/10`}>{row.sickLeaves || 0}</td>
+                                        <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#DC2626] bg-red-50/10`}>{row.absentDays}</td>
+                                        <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center text-[#6B7280] font-medium`}>{row.weekOffs}</td>
+                                        <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center text-[#EA580C] font-medium`}>{row.holidays}</td>
+                                        <td className={`px-0 ${layout.paddingY} border-b border-l border-gray-100 text-center font-bold text-[#059669] bg-emerald-100 sticky right-0 z-10 ${layout.payWidth} shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]`}>{row.totalPayableDays}</td>
+                                    </tr>
+
+                                    {/* Sub Row: Detail status breakdown */}
+                                    <tr className="bg-gray-50/20 border-b border-gray-200">
+                                        <td className={`px-1 py-1 font-bold text-red-600 sticky left-0 bg-gray-50/80 z-10 whitespace-nowrap border-b border-gray-200 ${layout.employeeWidth} overflow-hidden text-ellipsis text-center`}>
+                                            Detail status
+                                        </td>
+                                        {dayStatuses.map((ds, sIdx) => (
+                                            <td 
+                                                key={`d-${sIdx}`} 
+                                                title={ds.cellTitle}
+                                                className={`px-0 py-0.5 border-b border-gray-100 text-center font-bold leading-tight ${
+                                                    ds.isHolidayCol 
+                                                        ? 'bg-rose-50/50 border-x border-rose-200/40' 
+                                                        : ds.isSunday 
+                                                        ? 'bg-slate-50/20' 
+                                                        : ''
+                                                }`}
+                                            >
+                                                {ds.detailLines.length > 0 ? (
+                                                    <div className="flex flex-col items-center justify-center text-[5.5px] leading-[7px] font-bold text-[#0284C7]">
+                                                        {ds.detailLines.map((line, li) => (
+                                                            <span key={li} className="whitespace-nowrap">{line}</span>
+                                                        ))}
+                                                    </div>
+                                                ) : null}
+                                            </td>
+                                        ))}
+                                        <td className="border-b border-l border-gray-100 bg-green-50/5"></td>
+                                        <td className="border-b border-gray-100 bg-blue-50/5"></td>
+                                        <td className="border-b border-gray-100 bg-teal-50/5"></td>
+                                        <td className="border-b border-gray-100 bg-teal-50/5"></td>
+                                        <td className="border-b border-gray-100 bg-cyan-50/5"></td>
+                                        <td className="border-b border-gray-100 bg-indigo-50/5"></td>
+                                        <td className="border-b border-gray-100 bg-purple-50/5"></td>
+                                        <td className="border-b border-gray-100 bg-red-50/5"></td>
+                                        <td className="border-b border-gray-100 bg-gray-50/5"></td>
+                                        <td className="border-b border-gray-100 bg-orange-50/5"></td>
+                                        <td className={`border-b border-l border-gray-200 bg-emerald-50/50 sticky right-0 z-10 ${layout.payWidth}`}></td>
+                                    </tr>
+                                </React.Fragment>
+                            );
+                        })}
                     </tbody>
                 </table>
             </div>
@@ -631,7 +735,7 @@ export const MonthlyStatusView: React.FC<{
                             <span className="text-gray-600">WEEKEND PRESENT — Worked on week off</span>
                         </div>
                         <div className="flex items-center gap-1.5 text-[7.5px] font-bold">
-                            <span className="w-4 text-center text-[7px] font-black bg-[#CCFBF1] text-[#0D9488] rounded px-0.5">W/H</span>
+                            <span className="w-4 text-center text-[7px] font-black bg-[#CCFBF1] text-[#0D9488] rounded px-0.5">WH</span>
                             <span className="text-gray-600">WORK FROM HOME — Remote working day</span>
                         </div>
                     </div>

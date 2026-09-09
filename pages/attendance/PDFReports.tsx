@@ -1,7 +1,7 @@
 import React from 'react';
 import { Document, Page, View, Text, StyleSheet, Image, Font } from '@react-pdf/renderer';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
-import { calculateStatsForDateRange, resolveMonthlyDayHeaders } from '../../utils/attendanceCalculations';
+import { calculateStatsForDateRange, resolveMonthlyDayHeaders, formatDepartment } from '../../utils/attendanceCalculations';
 import { FIXED_HOLIDAYS } from '../../utils/constants';
 
 // Register a standard font if needed, or use defaults
@@ -257,6 +257,137 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 9,
     color: '#888',
+  },
+  portraitPage: {
+    paddingTop: 20,
+    paddingBottom: 32,
+    paddingLeft: 20,
+    paddingRight: 20,
+    fontFamily: 'Helvetica',
+    fontSize: 8,
+    color: '#111827',
+    backgroundColor: '#FFFFFF',
+    flexDirection: 'column',
+  },
+  portraitHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    borderBottomWidth: 1.5,
+    borderBottomColor: '#1F2937',
+    paddingBottom: 6,
+    marginBottom: 8,
+    height: 52,
+    maxHeight: 52,
+  },
+  portraitHeaderLeft: {
+    width: '28%',
+  },
+  portraitHeaderCenter: {
+    width: '36%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  portraitHeaderRight: {
+    width: '36%',
+    textAlign: 'right',
+  },
+  portraitTitle: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+    color: '#111827',
+    marginBottom: 2,
+  },
+  portraitSubtitle: {
+    fontSize: 7.5,
+    color: '#374151',
+    marginBottom: 1.5,
+  },
+  portraitMetaText: {
+    fontSize: 6.8,
+    color: '#6B7280',
+  },
+  portraitTable: {
+    width: '100%',
+    borderStyle: 'solid',
+    borderWidth: 0.5,
+    borderColor: '#D1D5DB',
+  },
+  portraitTableRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 18,
+    maxHeight: 22,
+  },
+  portraitTableColHeader: {
+    borderStyle: 'solid',
+    borderWidth: 0.5,
+    borderColor: '#9CA3AF',
+    backgroundColor: '#F3F4F6',
+    paddingTop: 3,
+    paddingBottom: 3,
+    paddingLeft: 2,
+    paddingRight: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+    height: 20,
+  },
+  portraitTableCol: {
+    borderStyle: 'solid',
+    borderWidth: 0.5,
+    borderColor: '#E5E7EB',
+    paddingTop: 2.5,
+    paddingBottom: 2.5,
+    paddingLeft: 2,
+    paddingRight: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: 18,
+  },
+  portraitTableCellHeader: {
+    fontSize: 7.2,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    color: '#111827',
+  },
+  portraitTableCell: {
+    fontSize: 6.8,
+    textAlign: 'center',
+    color: '#374151',
+  },
+  portraitTableCellLeft: {
+    fontSize: 6.8,
+    textAlign: 'left',
+    color: '#111827',
+  },
+  portraitTableCellHours: {
+    fontSize: 6.8,
+    textAlign: 'center',
+    color: '#111827',
+  },
+  portraitFooterContainer: {
+    position: 'absolute',
+    bottom: 10,
+    left: 20,
+    right: 20,
+    borderTopWidth: 0.5,
+    borderTopColor: '#D1D5DB',
+    paddingTop: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  portraitFooterText: {
+    fontSize: 7,
+    color: '#4B5563',
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 1,
+  },
+  portraitFooterPageText: {
+    fontSize: 6.5,
+    color: '#6B7280',
+    textAlign: 'center',
   },
   metricRow: {
     flexDirection: 'row',
@@ -1043,82 +1174,72 @@ export const BasicReportDocument: React.FC<{
   logoUrl?: string;
   filters?: AppliedFilters;
 }> = ({ data, dateRange, generatedBy, generatedByRole, targetUserName, targetUserRole, logoUrl, filters }) => {
-  const rowsPerPage = 18; 
-  const pages: BasicReportDataRow[][] = [];
-  for (let i = 0; i < data.length; i += rowsPerPage) {
-    pages.push(data.slice(i, i + rowsPerPage));
-  }
-
   return (
     <Document>
-      {pages.map((pageData, pageIndex) => (
-        <Page key={pageIndex} size="A4" orientation="landscape" style={styles.page}>
-          <View style={styles.header} fixed>
-            <View style={styles.headerLeft}>
-              {logoUrl && <Image src={logoUrl} style={styles.logo} />}
-              {targetUserName && (
-                <View style={{ marginTop: 8 }}>
-                  <Text style={{ fontSize: 10, fontWeight: 'bold', color: '#111827' }}>{targetUserName}</Text>
-                  {targetUserRole && (
-                    <Text style={{ fontSize: 8, color: '#6B7280', textTransform: 'uppercase', fontWeight: 'bold', marginTop: 2 }}>{targetUserRole.replace(/_/g, ' ')}</Text>
-                  )}
-                </View>
-              )}
-            </View>
-            {renderPDFHeaderCenter(filters)}
-            <View style={styles.headerRight}>
-              <Text style={styles.title}>Basic Attendance Report</Text>
-              <Text style={styles.subtitle}>
-                {(dateRange?.startDate && dateRange?.endDate) ? `Billing Cycle: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}` : 'Billing Cycle: Not Specified'}
-              </Text>
-              <Text style={styles.metaText}>
-                Generated: {format(new Date(), 'dd MMM yyyy HH:mm')}
-              </Text>
-              {generatedBy && (
-                <View style={{ marginTop: 4 }}>
-                  <Text style={styles.metaText}>Generated by: {generatedBy}</Text>
-                  {generatedByRole && (
-                    <Text style={[styles.metaText, { fontSize: 8, textTransform: 'uppercase' }]}>{generatedByRole}</Text>
-                  )}
-                </View>
-              )}
-            </View>
-          </View>
-
-          <View style={styles.table}>
-            <View style={[styles.tableRow, { backgroundColor: '#f2f2f2' }]}>
-              <View style={[styles.tableColHeader, { width: '18%' }]}><Text style={styles.tableCellHeader}>Employee Name</Text></View>
-              <View style={[styles.tableColHeader, { width: '10%' }]}><Text style={styles.tableCellHeader}>Status</Text></View>
-              <View style={[styles.tableColHeader, { width: '9%' }]}><Text style={styles.tableCellHeader}>In</Text></View>
-              <View style={[styles.tableColHeader, { width: '9%' }]}><Text style={styles.tableCellHeader}>Out</Text></View>
-              <View style={[styles.tableColHeader, { width: '9%' }]}><Text style={styles.tableCellHeader}>B.In</Text></View>
-              <View style={[styles.tableColHeader, { width: '9%' }]}><Text style={styles.tableCellHeader}>B.Out</Text></View>
-              <View style={[styles.tableColHeader, { width: '9%' }]}><Text style={styles.tableCellHeader}>OT.In</Text></View>
-              <View style={[styles.tableColHeader, { width: '9%' }]}><Text style={styles.tableCellHeader}>OT.Out</Text></View>
-              <View style={[styles.tableColHeader, { width: '9%' }]}><Text style={styles.tableCellHeader}>Hours</Text></View>
-              <View style={[styles.tableColHeader, { width: '10%' }]}><Text style={styles.tableCellHeader}>Dept</Text></View>
-            </View>
-            {pageData.map((row, idx) => (
-              <View key={idx} style={[styles.tableRow, { backgroundColor: idx % 2 === 0 ? '#fff' : '#fafafa' }]}>
-                <View style={[styles.tableCol, { width: '18%' }]}><Text style={styles.tableCellLeft}>{row.userName}</Text></View>
-                <View style={[styles.tableCol, { width: '10%' }]}><Text style={styles.tableCell}>{row.status}</Text></View>
-                <View style={[styles.tableCol, { width: '9%' }]}><Text style={styles.tableCell}>{row.checkIn || row.pin || '—'}</Text></View>
-                <View style={[styles.tableCol, { width: '9%' }]}><Text style={styles.tableCell}>{row.checkOut || row.pout || '—'}</Text></View>
-                <View style={[styles.tableCol, { width: '9%' }]}><Text style={styles.tableCell}>{row.breakIn || '—'}</Text></View>
-                <View style={[styles.tableCol, { width: '9%' }]}><Text style={styles.tableCell}>{row.breakOut || '—'}</Text></View>
-                <View style={[styles.tableCol, { width: '9%' }]}><Text style={styles.tableCell}>{row.siteOtIn || '—'}</Text></View>
-                <View style={[styles.tableCol, { width: '9%' }]}><Text style={styles.tableCell}>{row.siteOtOut || '—'}</Text></View>
-                <View style={[styles.tableCol, { width: '9%' }]}><Text style={styles.tableCell}>{row.duration || row.wh || '—'}</Text></View>
-                <View style={[styles.tableCol, { width: '10%' }]}><Text style={styles.tableCell}>{row.department || row.dept || 'Staff'}</Text></View>
+      <Page size="A4" orientation="portrait" style={styles.portraitPage}>
+        <View style={styles.portraitHeader} fixed>
+          <View style={styles.portraitHeaderLeft}>
+            {logoUrl && <Image src={logoUrl} style={styles.logo} />}
+            {targetUserName && (
+              <View style={{ marginTop: 4 }}>
+                <Text style={{ fontSize: 9, fontWeight: 'bold', color: '#111827' }}>{targetUserName}</Text>
+                {targetUserRole && (
+                  <Text style={{ fontSize: 7, color: '#6B7280', textTransform: 'uppercase', fontWeight: 'bold' }}>{targetUserRole.replace(/_/g, ' ')}</Text>
+                )}
               </View>
-            ))}
+            )}
           </View>
+          <View style={styles.portraitHeaderCenter}>
+            {renderPDFHeaderCenter(filters)}
+          </View>
+          <View style={styles.portraitHeaderRight}>
+            <Text style={styles.portraitTitle}>Basic Attendance Report</Text>
+            <Text style={styles.portraitSubtitle}>
+              {(dateRange?.startDate && dateRange?.endDate) ? `Billing Cycle: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}` : 'Billing Cycle: Not Specified'}
+            </Text>
+            <Text style={styles.portraitMetaText}>
+              Generated: {format(new Date(), 'dd MMM yyyy HH:mm')}
+            </Text>
+            {generatedBy && (
+              <Text style={styles.portraitMetaText}>Generated by: {generatedBy}{generatedByRole ? ` (${generatedByRole.toUpperCase()})` : ''}</Text>
+            )}
+          </View>
+        </View>
 
-          <Text style={styles.footer} render={({ pageNumber, totalPages }) => (
-            `Paradigm Services - Confidential Report - Page ${pageNumber} of ${totalPages}`
-          )} fixed />
-        </Page>
-      ))}
+        <View style={styles.portraitTable}>
+          <View fixed style={[styles.portraitTableRow, { backgroundColor: '#F3F4F6', height: 20 }]}>
+            <View style={[styles.portraitTableColHeader, { width: '23%', alignItems: 'flex-start', paddingLeft: 4 }]}><Text style={styles.portraitTableCellHeader}>Employee Name</Text></View>
+            <View style={[styles.portraitTableColHeader, { width: '6.5%' }]}><Text style={styles.portraitTableCellHeader}>Status</Text></View>
+            <View style={[styles.portraitTableColHeader, { width: '5.5%' }]}><Text style={styles.portraitTableCellHeader}>In</Text></View>
+            <View style={[styles.portraitTableColHeader, { width: '5.5%' }]}><Text style={styles.portraitTableCellHeader}>Out</Text></View>
+            <View style={[styles.portraitTableColHeader, { width: '5.5%' }]}><Text style={styles.portraitTableCellHeader}>B.In</Text></View>
+            <View style={[styles.portraitTableColHeader, { width: '5.5%' }]}><Text style={styles.portraitTableCellHeader}>B.Out</Text></View>
+            <View style={[styles.portraitTableColHeader, { width: '5.5%' }]}><Text style={styles.portraitTableCellHeader}>OT.In</Text></View>
+            <View style={[styles.portraitTableColHeader, { width: '5.5%' }]}><Text style={styles.portraitTableCellHeader}>OT.Out</Text></View>
+            <View style={[styles.portraitTableColHeader, { width: '12.5%' }]}><Text style={styles.portraitTableCellHeader}>Hours</Text></View>
+            <View style={[styles.portraitTableColHeader, { width: '25%', alignItems: 'flex-start', paddingLeft: 4 }]}><Text style={styles.portraitTableCellHeader}>Dept</Text></View>
+          </View>
+          {data.map((row, idx) => (
+            <View key={idx} wrap={false} style={[styles.portraitTableRow, { backgroundColor: idx % 2 === 0 ? '#FFFFFF' : '#F9FAFB' }]}>
+              <View style={[styles.portraitTableCol, { width: '23%', alignItems: 'flex-start', paddingLeft: 4 }]}><Text style={styles.portraitTableCellLeft}>{row.userName}</Text></View>
+              <View style={[styles.portraitTableCol, { width: '6.5%' }]}><Text style={[styles.portraitTableCell, { fontWeight: 'bold' }]}>{row.status}</Text></View>
+              <View style={[styles.portraitTableCol, { width: '5.5%' }]}><Text style={styles.portraitTableCell}>{row.checkIn || row.pin || '-'}</Text></View>
+              <View style={[styles.portraitTableCol, { width: '5.5%' }]}><Text style={styles.portraitTableCell}>{row.checkOut || row.pout || '-'}</Text></View>
+              <View style={[styles.portraitTableCol, { width: '5.5%' }]}><Text style={styles.portraitTableCell}>{row.breakIn || '-'}</Text></View>
+              <View style={[styles.portraitTableCol, { width: '5.5%' }]}><Text style={styles.portraitTableCell}>{row.breakOut || '-'}</Text></View>
+              <View style={[styles.portraitTableCol, { width: '5.5%' }]}><Text style={styles.portraitTableCell}>{row.siteOtIn || '-'}</Text></View>
+              <View style={[styles.portraitTableCol, { width: '5.5%' }]}><Text style={styles.portraitTableCell}>{row.siteOtOut || '-'}</Text></View>
+              <View style={[styles.portraitTableCol, { width: '12.5%' }]}><Text style={styles.portraitTableCellHours}>{row.duration || row.wh || '-'}</Text></View>
+              <View style={[styles.portraitTableCol, { width: '25%', alignItems: 'flex-start', paddingLeft: 4 }]}><Text style={styles.portraitTableCellLeft}>{formatDepartment(row.department || row.dept)}</Text></View>
+            </View>
+          ))}
+        </View>
+
+        <View style={styles.portraitFooterContainer} fixed>
+          <Text style={styles.portraitFooterText}>Paradigm Services - Confidential</Text>
+          <Text style={styles.portraitFooterPageText} render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`} />
+        </View>
+      </Page>
     </Document>
   );
 };
@@ -1141,6 +1262,7 @@ export interface MonthlyReportRow {
   lossOfPays: number;
   workFromHomeDays: number;
   overtimeDays: number;
+  dailyData?: any[];
 }
 
 export const MonthlyReportDocument: React.FC<{
@@ -1597,7 +1719,7 @@ export const SiteOtReportDocument: React.FC<{
   logoUrl?: string;
   filters?: AppliedFilters;
 }> = ({ data, dateRange, generatedBy, generatedByRole, targetUserName, targetUserRole, logoUrl, filters }) => {
-  const rowsPerPage = 18;
+  const rowsPerPage = 14;
   const pages: SiteOtDataRow[][] = [];
   for (let i = 0; i < data.length; i += rowsPerPage) {
     pages.push(data.slice(i, i + rowsPerPage));
@@ -1606,9 +1728,9 @@ export const SiteOtReportDocument: React.FC<{
   return (
     <Document>
       {pages.map((pageData, pageIndex) => (
-        <Page key={pageIndex} size="A4" orientation="landscape" style={styles.page}>
+        <Page key={pageIndex} size="A4" orientation="landscape" style={[styles.page, { padding: '28 32' }]}>
           {/* Header */}
-          <View style={styles.header} fixed>
+          <View style={[styles.header, { marginBottom: 12, paddingBottom: 8 }]} fixed>
             <View style={styles.headerLeft}>
               {logoUrl ? <Image src={logoUrl} style={styles.logo} /> : null}
               {targetUserName && (
@@ -1642,7 +1764,7 @@ export const SiteOtReportDocument: React.FC<{
 
           {/* Table */}
           <View style={styles.table}>
-            <View style={[styles.tableRow, { backgroundColor: '#f2f2f2' }]}>
+            <View fixed style={[styles.tableRow, { backgroundColor: '#f2f2f2' }]}>
               <View style={[styles.tableColHeader, { width: '25%' }]}><Text style={styles.tableCellHeader}>Employee Name</Text></View>
               <View style={[styles.tableColHeader, { width: '15%' }]}><Text style={styles.tableCellHeader}>Date</Text></View>
               <View style={[styles.tableColHeader, { width: '15%' }]}><Text style={styles.tableCellHeader}>Site OT In</Text></View>
@@ -1651,7 +1773,7 @@ export const SiteOtReportDocument: React.FC<{
               <View style={[styles.tableColHeader, { width: '15%' }]}><Text style={styles.tableCellHeader}>Location</Text></View>
             </View>
             {pageData.map((row, idx) => (
-              <View key={idx} style={[styles.tableRow, { backgroundColor: idx % 2 === 0 ? '#fff' : '#fafafa' }]}>
+              <View key={idx} wrap={false} style={[styles.tableRow, { backgroundColor: idx % 2 === 0 ? '#fff' : '#fafafa' }]}>
                 <View style={[styles.tableCol, { width: '25%' }]}><Text style={styles.tableCell}>{row.userName}</Text></View>
                 <View style={[styles.tableCol, { width: '15%' }]}><Text style={styles.tableCell}>{format(new Date(row.date.replace(/-/g, '/')), 'dd MMM yyyy')}</Text></View>
                 <View style={[styles.tableCol, { width: '15%' }]}><Text style={styles.tableCell}>{row.siteOtIn || '-'}</Text></View>
@@ -1695,7 +1817,7 @@ export const AttendanceLogDocument: React.FC<{
   logoUrl?: string;
   filters?: AppliedFilters;
 }> = ({ data, dateRange, generatedBy, generatedByRole, targetUserName, targetUserRole, logoUrl, filters }) => {
-  const rowsPerPage = 22;
+  const rowsPerPage = 14;
   const pages: AttendanceLogDataRow[][] = [];
   for (let i = 0; i < data.length; i += rowsPerPage) {
     pages.push(data.slice(i, i + rowsPerPage));
@@ -1704,8 +1826,8 @@ export const AttendanceLogDocument: React.FC<{
   return (
     <Document>
       {pages.map((pageData, pageIndex) => (
-        <Page key={pageIndex} size="A4" orientation="landscape" style={styles.page}>
-          <View style={styles.header} fixed>
+        <Page key={pageIndex} size="A4" orientation="landscape" style={[styles.page, { padding: '28 32' }]}>
+          <View style={[styles.header, { marginBottom: 12, paddingBottom: 8 }]} fixed>
             <View style={styles.headerLeft}>
               {logoUrl && <Image src={logoUrl} style={styles.logo} />}
               {targetUserName && (
@@ -1736,7 +1858,7 @@ export const AttendanceLogDocument: React.FC<{
           </View>
 
           <View style={styles.table}>
-            <View style={[styles.tableRow, { backgroundColor: '#f2f2f2' }]}>
+            <View fixed style={[styles.tableRow, { backgroundColor: '#f2f2f2' }]}>
               <View style={[styles.tableColHeader, { width: '20%' }]}><Text style={styles.tableCellHeader}>Employee</Text></View>
               <View style={[styles.tableColHeader, { width: '12%' }]}><Text style={styles.tableCellHeader}>Date</Text></View>
               <View style={[styles.tableColHeader, { width: '10%' }]}><Text style={styles.tableCellHeader}>Time</Text></View>
@@ -1745,7 +1867,7 @@ export const AttendanceLogDocument: React.FC<{
               <View style={[styles.tableColHeader, { width: '20%' }]}><Text style={styles.tableCellHeader}>Device Info</Text></View>
             </View>
             {pageData.map((row, idx) => (
-              <View key={idx} style={[styles.tableRow, { backgroundColor: idx % 2 === 0 ? '#fff' : '#fafafa' }]}>
+              <View key={idx} wrap={false} style={[styles.tableRow, { backgroundColor: idx % 2 === 0 ? '#fff' : '#fafafa' }]}>
                 <View style={[styles.tableCol, { width: '20%' }]}><Text style={styles.tableCellLeft}>{row.userName}</Text></View>
                 <View style={[styles.tableCol, { width: '12%' }]}><Text style={styles.tableCell}>{row.date}</Text></View>
                 <View style={[styles.tableCol, { width: '10%' }]}><Text style={styles.tableCell}>{row.time}</Text></View>
@@ -1873,7 +1995,7 @@ export const AuditLogDocument: React.FC<{
   logoUrl?: string;
   filters?: AppliedFilters;
 }> = ({ data, dateRange, generatedBy, generatedByRole, targetUserName, targetUserRole, logoUrl, filters }) => {
-  const rowsPerPage = 15;
+  const rowsPerPage = 12;
   const pages: AuditLogDataRow[][] = [];
   for (let i = 0; i < data.length; i += rowsPerPage) {
     pages.push(data.slice(i, i + rowsPerPage));
@@ -1882,8 +2004,8 @@ export const AuditLogDocument: React.FC<{
   return (
     <Document>
       {pages.map((pageData, pageIndex) => (
-        <Page key={pageIndex} size="A4" orientation="landscape" style={styles.page}>
-          <View style={styles.header} fixed>
+        <Page key={pageIndex} size="A4" orientation="landscape" style={[styles.page, { padding: '28 32' }]}>
+          <View style={[styles.header, { marginBottom: 12, paddingBottom: 8 }]} fixed>
             <View style={styles.headerLeft}>
               {logoUrl && <Image src={logoUrl} style={styles.logo} />}
               {targetUserName && (
@@ -1916,7 +2038,7 @@ export const AuditLogDocument: React.FC<{
           </View>
 
           <View style={styles.table}>
-            <View style={[styles.tableRow, { backgroundColor: '#f2f2f2' }]}>
+            <View fixed style={[styles.tableRow, { backgroundColor: '#f2f2f2' }]}>
               <View style={[styles.tableColHeader, { width: '15%' }]}><Text style={styles.tableCellHeader}>Date & Time</Text></View>
               <View style={[styles.tableColHeader, { width: '15%' }]}><Text style={styles.tableCellHeader}>Action</Text></View>
               <View style={[styles.tableColHeader, { width: '20%' }]}><Text style={styles.tableCellHeader}>Performed By</Text></View>
@@ -1924,7 +2046,7 @@ export const AuditLogDocument: React.FC<{
               <View style={[styles.tableColHeader, { width: '30%' }]}><Text style={styles.tableCellHeader}>Details</Text></View>
             </View>
             {pageData.map((row, idx) => (
-              <View key={idx} style={[styles.tableRow, { backgroundColor: idx % 2 === 0 ? '#fff' : '#fafafa' }]}>
+              <View key={idx} wrap={false} style={[styles.tableRow, { backgroundColor: idx % 2 === 0 ? '#fff' : '#fafafa' }]}>
                 <View style={[styles.tableCol, { width: '15%' }]}><Text style={styles.tableCell}>{row.dateTime}</Text></View>
                 <View style={[styles.tableCol, { width: '15%' }]}><Text style={styles.tableCell}>{row.action}</Text></View>
                 <View style={[styles.tableCol, { width: '20%' }]}><Text style={styles.tableCell}>{row.performer_name}</Text></View>
@@ -2108,16 +2230,17 @@ export const MonthlyMatrixReportDocument: React.FC<{
                     </View>
                   );
                 })}
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 3 }]}><Text style={{ fontWeight: 'bold', color: '#059669' }}>P</Text></View>
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 3 }]}><Text style={{ fontWeight: 'bold', color: '#2563EB' }}>0.5P</Text></View>
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 3 }]}><Text style={{ fontWeight: 'bold', color: '#0D9488' }}>OT</Text></View>
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 3 }]}><Text style={{ fontWeight: 'bold', color: '#0891B2' }}>C/O</Text></View>
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 3 }]}><Text style={{ fontWeight: 'bold', color: '#4F46E5' }}>E/L</Text></View>
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 3 }]}><Text style={{ fontWeight: 'bold', color: '#9333EA' }}>S/L</Text></View>
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 3, backgroundColor: '#FEF2F2' }]}><Text style={{ fontWeight: 'bold', color: '#DC2626' }}>A</Text></View>
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 3 }]}><Text style={{ fontWeight: 'bold', color: '#6B7280' }}>W/O</Text></View>
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 3 }]}><Text style={{ fontWeight: 'bold', color: '#EA580C' }}>H</Text></View>
-                <View style={[styles.matrixCell, { width: 28, paddingVertical: 3, backgroundColor: '#D1FAE5' }]}><Text style={{ fontWeight: 'bold', color: '#065F46' }}>Pay</Text></View>
+                <View style={[styles.matrixCell, { width: 23, paddingVertical: 3 }]}><Text style={{ fontWeight: 'bold', color: '#059669' }}>P</Text></View>
+                <View style={[styles.matrixCell, { width: 23, paddingVertical: 3 }]}><Text style={{ fontWeight: 'bold', color: '#2563EB' }}>0.5P</Text></View>
+                <View style={[styles.matrixCell, { width: 23, paddingVertical: 3 }]}><Text style={{ fontWeight: 'bold', color: '#0D9488' }}>WH</Text></View>
+                <View style={[styles.matrixCell, { width: 23, paddingVertical: 3 }]}><Text style={{ fontWeight: 'bold', color: '#0D9488' }}>OT</Text></View>
+                <View style={[styles.matrixCell, { width: 23, paddingVertical: 3 }]}><Text style={{ fontWeight: 'bold', color: '#0891B2' }}>C/O</Text></View>
+                <View style={[styles.matrixCell, { width: 23, paddingVertical: 3 }]}><Text style={{ fontWeight: 'bold', color: '#4F46E5' }}>E/L</Text></View>
+                <View style={[styles.matrixCell, { width: 23, paddingVertical: 3 }]}><Text style={{ fontWeight: 'bold', color: '#9333EA' }}>S/L</Text></View>
+                <View style={[styles.matrixCell, { width: 23, paddingVertical: 3, backgroundColor: '#FEF2F2' }]}><Text style={{ fontWeight: 'bold', color: '#DC2626' }}>A</Text></View>
+                <View style={[styles.matrixCell, { width: 23, paddingVertical: 3 }]}><Text style={{ fontWeight: 'bold', color: '#6B7280' }}>W/O</Text></View>
+                <View style={[styles.matrixCell, { width: 23, paddingVertical: 3 }]}><Text style={{ fontWeight: 'bold', color: '#EA580C' }}>H</Text></View>
+                <View style={[styles.matrixCell, { width: 26, paddingVertical: 3, backgroundColor: '#D1FAE5' }]}><Text style={{ fontWeight: 'bold', color: '#065F46' }}>Pay</Text></View>
               </View>
 
               {/* Row 2: Day of Week (Sun, Mon, Tue...) */}
@@ -2142,16 +2265,17 @@ export const MonthlyMatrixReportDocument: React.FC<{
                     </View>
                   );
                 })}
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 2 }]} />
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 2 }]} />
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 2 }]} />
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 2 }]} />
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 2 }]} />
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 2 }]} />
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 2, backgroundColor: '#FEF2F2' }]} />
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 2 }]} />
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 2 }]} />
-                <View style={[styles.matrixCell, { width: 28, paddingVertical: 2, backgroundColor: '#D1FAE5' }]} />
+                <View style={[styles.matrixCell, { width: 23, paddingVertical: 2 }]} />
+                <View style={[styles.matrixCell, { width: 23, paddingVertical: 2 }]} />
+                <View style={[styles.matrixCell, { width: 23, paddingVertical: 2 }]} />
+                <View style={[styles.matrixCell, { width: 23, paddingVertical: 2 }]} />
+                <View style={[styles.matrixCell, { width: 23, paddingVertical: 2 }]} />
+                <View style={[styles.matrixCell, { width: 23, paddingVertical: 2 }]} />
+                <View style={[styles.matrixCell, { width: 23, paddingVertical: 2 }]} />
+                <View style={[styles.matrixCell, { width: 23, paddingVertical: 2, backgroundColor: '#FEF2F2' }]} />
+                <View style={[styles.matrixCell, { width: 23, paddingVertical: 2 }]} />
+                <View style={[styles.matrixCell, { width: 23, paddingVertical: 2 }]} />
+                <View style={[styles.matrixCell, { width: 26, paddingVertical: 2, backgroundColor: '#D1FAE5' }]} />
               </View>
 
               {pageData.map((emp: any, empIdx: number) => {
@@ -2175,16 +2299,17 @@ export const MonthlyMatrixReportDocument: React.FC<{
                         </View>
                       );
                     })}
-                    <View style={[styles.matrixCell, { width: 25 }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#059669' }}>{emp.presentDays || 0}</Text></View>
-                    <View style={[styles.matrixCell, { width: 25 }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#2563EB' }}>{emp.halfDays || 0}</Text></View>
-                    <View style={[styles.matrixCell, { width: 25 }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#0D9488' }}>{emp.overtimeDays || 0}</Text></View>
-                    <View style={[styles.matrixCell, { width: 25 }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#0891B2' }}>{emp.compOffs || 0}</Text></View>
-                    <View style={[styles.matrixCell, { width: 25 }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#4F46E5' }}>{emp.earnedLeaves || 0}</Text></View>
-                    <View style={[styles.matrixCell, { width: 25 }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#9333EA' }}>{emp.sickLeaves || 0}</Text></View>
-                    <View style={[styles.matrixCell, { width: 25, backgroundColor: '#FEF2F2' }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#DC2626' }}>{emp.absentDays || 0}</Text></View>
-                    <View style={[styles.matrixCell, { width: 25 }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#6B7280' }}>{emp.weekOffs || 0}</Text></View>
-                    <View style={[styles.matrixCell, { width: 25 }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#EA580C' }}>{emp.holidays || 0}</Text></View>
-                    <View style={[styles.matrixCell, { width: 28, backgroundColor: '#ECFDF5' }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#065F46' }}>{emp.totalPayableDays || 0}</Text></View>
+                    <View style={[styles.matrixCell, { width: 23 }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#059669' }}>{emp.presentDays || 0}</Text></View>
+                    <View style={[styles.matrixCell, { width: 23 }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#2563EB' }}>{emp.halfDays || 0}</Text></View>
+                    <View style={[styles.matrixCell, { width: 23 }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#0D9488' }}>{emp.workFromHomeDays || 0}</Text></View>
+                    <View style={[styles.matrixCell, { width: 23 }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#0D9488' }}>{emp.overtimeDays || 0}</Text></View>
+                    <View style={[styles.matrixCell, { width: 23 }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#0891B2' }}>{emp.compOffs || 0}</Text></View>
+                    <View style={[styles.matrixCell, { width: 23 }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#4F46E5' }}>{emp.earnedLeaves || 0}</Text></View>
+                    <View style={[styles.matrixCell, { width: 23 }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#9333EA' }}>{emp.sickLeaves || 0}</Text></View>
+                    <View style={[styles.matrixCell, { width: 23, backgroundColor: '#FEF2F2' }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#DC2626' }}>{emp.absentDays || 0}</Text></View>
+                    <View style={[styles.matrixCell, { width: 23 }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#6B7280' }}>{emp.weekOffs || 0}</Text></View>
+                    <View style={[styles.matrixCell, { width: 23 }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#EA580C' }}>{emp.holidays || 0}</Text></View>
+                    <View style={[styles.matrixCell, { width: 26, backgroundColor: '#ECFDF5' }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#065F46' }}>{emp.totalPayableDays || 0}</Text></View>
                   </View>
                 );
               })}
@@ -2220,7 +2345,7 @@ export const LeaveBalanceTrackerDocument: React.FC<{
   logoUrl?: string;
   filters?: AppliedFilters;
 }> = ({ data, dateRange, generatedBy, generatedByRole, targetUserName, targetUserRole, logoUrl, filters }) => {
-  const rowsPerPage = 18; 
+  const rowsPerPage = 14; 
   const pages: any[][] = [];
   for (let i = 0; i < data.length; i += rowsPerPage) {
     pages.push(data.slice(i, i + rowsPerPage));
@@ -2229,8 +2354,8 @@ export const LeaveBalanceTrackerDocument: React.FC<{
   return (
     <Document>
       {pages.map((pageData, pageIndex) => (
-        <Page key={pageIndex} size="A4" orientation="landscape" style={styles.page}>
-          <View style={styles.header} fixed>
+        <Page key={pageIndex} size="A4" orientation="landscape" style={[styles.page, { padding: '28 32' }]}>
+          <View style={[styles.header, { marginBottom: 12, paddingBottom: 8 }]} fixed>
             <View style={styles.headerLeft}>
               {logoUrl && <Image src={logoUrl} style={styles.logo} />}
               {targetUserName && (
@@ -2263,7 +2388,7 @@ export const LeaveBalanceTrackerDocument: React.FC<{
           </View>
 
           <View style={styles.table}>
-            <View style={[styles.tableRow, { backgroundColor: '#f3f4f6' }]}>
+            <View fixed style={[styles.tableRow, { backgroundColor: '#f3f4f6' }]}>
               <View style={[styles.tableColHeader, { width: '16%' }]}><Text style={styles.tableCellHeader}>Employee</Text></View>
               <View style={[styles.tableColHeader, { width: '14%' }]}><Text style={styles.tableCellHeader}>Role / Dept</Text></View>
               <View style={[styles.tableColHeader, { width: '10%', backgroundColor: '#ecfdf5' }]}><Text style={[styles.tableCellHeader, { color: '#047857' }]}>EL (Earn/Bal)</Text></View>
@@ -2286,7 +2411,7 @@ export const LeaveBalanceTrackerDocument: React.FC<{
               const mlBal = (b.maternityTotal || 0) - (b.maternityUsed || 0) - (b.maternityPending || 0);
 
               return (
-                <View key={idx} style={[styles.tableRow, { backgroundColor: idx % 2 === 0 ? '#fff' : '#fafafa' }]}>
+                <View key={idx} wrap={false} style={[styles.tableRow, { backgroundColor: idx % 2 === 0 ? '#fff' : '#fafafa' }]}>
                   <View style={[styles.tableCol, { width: '16%' }]}><Text style={styles.tableCellLeft}>{row.userName}</Text></View>
                   <View style={[styles.tableCol, { width: '14%' }]}><Text style={styles.tableCellLeft}>{String(row.role || row.department || 'Staff').replace(/_/g, ' ')}</Text></View>
                   

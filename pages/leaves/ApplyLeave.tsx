@@ -1331,7 +1331,7 @@ const ApplyLeave: React.FC = () => {
             } = formData;
 
             const basePayload: any = {
-                leaveType,
+                leaveType: leaveType === 'Floating' ? 'Comp Off' : leaveType,
                 startDate,
                 endDate: ['Correction', 'Permission', 'Regularization'].includes(leaveType) ? startDate : endDate,
                 dayOption,

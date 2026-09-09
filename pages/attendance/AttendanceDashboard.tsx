@@ -51,7 +51,7 @@ import AssignLeaveModal from '../../components/attendance/AssignLeaveModal';
 import AttendanceAuditReport from '../../components/attendance/AttendanceAuditReport';
 import MonthlyHoursReport, { type EmployeeMonthlyData } from '../../components/attendance/MonthlyHoursReport';
 import { BasicReportView, AttendanceLogView, MonthlyStatusView, SiteOtReportView, WorkHoursReportView, LeaveBalanceTrackerView } from '../../components/attendance/ReportHTMLViews';
-import { calculateStatsForDateRange, resolveMonthlyDayHeaders } from '../../utils/attendanceCalculations';
+import { calculateStatsForDateRange, resolveMonthlyDayHeaders, parseStatusDetails, formatDepartment } from '../../utils/attendanceCalculations';
 import {
     format,
     getDaysInMonth,
@@ -794,6 +794,17 @@ interface DashboardData {
 
 // --- Sub-components ---
 
+interface MailReportFilterSummary {
+    dateRange: { startDate?: Date; endDate?: Date };
+    employeeName?: string; // resolved name or 'All Employees'
+    site?: string;
+    company?: string;
+    role?: string;
+    staffCategory?: string;
+    recordCount?: number;
+    generatedBy?: string;
+}
+
 interface MailReportModalProps {
     isOpen: boolean;
     onClose: () => void;
@@ -801,84 +812,421 @@ interface MailReportModalProps {
     isSending: boolean;
     reportType: AttendanceReportType;
     currentUserEmail: string;
+    filterSummary: MailReportFilterSummary;
+    availableUsers: { id: string; name: string; email: string; role?: string }[];
 }
 
-const MailReportModal: React.FC<MailReportModalProps> = ({ isOpen, onClose, onSend, isSending, reportType, currentUserEmail }) => {
-    const [email, setEmail] = useState(currentUserEmail);
-    const [subject, setSubject] = useState(`${reportType.replace(/_/g, ' ').toUpperCase()} Attendance Report`);
-    const [message, setMessage] = useState(
-        reportType === 'monthly' 
-        ? `Dear Management,\n\nThis is the consolidated attendance summary for the period of April 2026. It covers overall employee presence across all active members of the staff.\n\nPlease review the detailed monthly attendance grid below for any discrepancies.`
-        : `Please find attached the ${reportType.replace(/_/g, ' ')} attendance report.`
-    );
+// Builds a clean HTML email body for the attendance report
+function buildReportEmailHtml(opts: {
+    reportType: AttendanceReportType;
+    filterSummary: MailReportFilterSummary;
+    userMessage: string;
+    generatedBy: string;
+    attachPdf?: boolean;
+    attachExcel?: boolean;
+}): string {
+    const { reportType, filterSummary, userMessage, generatedBy, attachPdf = true, attachExcel = true } = opts;
+    const reportLabel = reportType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) + ' Report';
+    const startStr = filterSummary.dateRange.startDate ? format(filterSummary.dateRange.startDate, 'dd MMM yyyy') : '-';
+    const endStr = filterSummary.dateRange.endDate ? format(filterSummary.dateRange.endDate, 'dd MMM yyyy') : '-';
+    const dateRangeStr = startStr === endStr ? startStr : `${startStr} – ${endStr}`;
+    const now = format(new Date(), 'dd MMM yyyy, hh:mm a');
+
+    const filterRows: [string, string][] = [
+        ['Report Type', reportLabel],
+        ['Period', dateRangeStr],
+        ['Employee', filterSummary.employeeName || 'All Employees'],
+    ];
+    if (filterSummary.company) filterRows.push(['Company', filterSummary.company]);
+    if (filterSummary.site) filterRows.push(['Site / Society', filterSummary.site]);
+    if (filterSummary.role) filterRows.push(['Role', filterSummary.role]);
+    if (filterSummary.staffCategory) filterRows.push(['Staff Category', filterSummary.staffCategory]);
+    if (filterSummary.recordCount !== undefined) filterRows.push(['Records', String(filterSummary.recordCount)]);
+
+    const attachmentBadges: string[] = [];
+    if (attachPdf) attachmentBadges.push('Official PDF Document (.pdf)');
+    if (attachExcel) attachmentBadges.push('Formatted Excel Workbook (.xlsx)');
+    if (attachmentBadges.length > 0) {
+        filterRows.push(['Attached Formats', attachmentBadges.join(' + ')]);
+    }
+
+    const filterTableRows = filterRows.map(([k, v]) =>
+        `<tr><td style="padding:7px 14px;font-weight:600;color:#374151;background:#f9fafb;border-bottom:1px solid #e5e7eb;white-space:nowrap;">${k}</td><td style="padding:7px 14px;color:#111827;border-bottom:1px solid #e5e7eb;">${v}</td></tr>`
+    ).join('');
+
+    const msgHtml = userMessage
+        ? `<p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.6;">${userMessage.replace(/\n/g, '<br/>')}</p>`
+        : '';
+
+    const attachmentNote = (attachPdf && attachExcel)
+        ? 'The complete report is attached to this email in both printable PDF format and formatted Excel spreadsheet (.xlsx) workbook.'
+        : attachExcel
+            ? 'The complete report is attached to this email as a formatted Excel spreadsheet (.xlsx) workbook.'
+            : 'The complete report is attached to this email as an official printable PDF document.';
+
+    return `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"/></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:32px 0;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 16px rgba(0,0,0,0.08);">
+        <!-- Header -->
+        <tr><td style="background:linear-gradient(135deg,#1e40af 0%,#2563eb 100%);padding:28px 32px;">
+          <h1 style="margin:0;font-size:22px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;">📊 ${reportLabel}</h1>
+          <p style="margin:6px 0 0;font-size:13px;color:#bfdbfe;">Paradigm Facility Management Services</p>
+        </td></tr>
+        <!-- Body -->
+        <tr><td style="padding:28px 32px;">
+          ${msgHtml}
+          <p style="margin:0 0 16px;font-size:14px;color:#6b7280;">Please find the attendance report documents attached to this email. The report was generated based on the following parameters:</p>
+          <!-- Filter Summary Table -->
+          <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin-bottom:24px;">
+            <thead><tr><td colspan="2" style="padding:10px 14px;background:#1e40af;color:#fff;font-size:12px;font-weight:700;letter-spacing:0.5px;">REPORT DETAILS</td></tr></thead>
+            <tbody>${filterTableRows}</tbody>
+          </table>
+          <p style="margin:0 0 8px;font-size:13px;color:#6b7280;">${attachmentNote} If you have any questions or require modifications, please contact the HR team.</p>
+        </td></tr>
+        <!-- Footer -->
+        <tr><td style="padding:16px 32px;background:#f9fafb;border-top:1px solid #e5e7eb;">
+          <p style="margin:0;font-size:12px;color:#9ca3af;">Generated by <strong style="color:#374151;">${generatedBy}</strong> on ${now}.<br/>This is an automated report from <strong style="color:#374151;">Paradigm FMS Attendance System</strong>.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+}
+
+const MailReportModal: React.FC<MailReportModalProps> = ({ isOpen, onClose, onSend, isSending, reportType, currentUserEmail, filterSummary, availableUsers }) => {
+    const reportLabel = reportType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) + ' Report';
+    const startStr = filterSummary.dateRange.startDate ? format(filterSummary.dateRange.startDate, 'dd MMM yyyy') : '-';
+    const endStr = filterSummary.dateRange.endDate ? format(filterSummary.dateRange.endDate, 'dd MMM yyyy') : '-';
+    const dateRangeStr = startStr === endStr ? startStr : `${startStr} \u2013 ${endStr}`;
+
+    // Format selection state: both PDF and Excel enabled by default
+    const [attachPdf, setAttachPdf] = useState(true);
+    const [attachExcel, setAttachExcel] = useState(true);
+
+    // Multi-recipient state
+    const [selectedRecipients, setSelectedRecipients] = useState<{ name: string; email: string }[]>(() => {
+        // Pre-populate with current user if they have an email
+        if (currentUserEmail) return [{ name: 'Me', email: currentUserEmail }];
+        return [];
+    });
+    const [recipientSearch, setRecipientSearch] = useState('');
+    const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+    const [customEmailInput, setCustomEmailInput] = useState('');
+    const [subject, setSubject] = useState(`${reportLabel} \u2013 ${dateRangeStr}`);
+    const [message, setMessage] = useState('');
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    // Close dropdown on outside click
+    useEffect(() => {
+        if (!isDropdownOpen) return;
+        const handler = (e: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+                setIsDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [isDropdownOpen]);
 
     if (!isOpen) return null;
 
+    // Filter users: has email, not already selected
+    const selectedEmails = new Set(selectedRecipients.map(r => r.email.toLowerCase()));
+    const filteredUsers = availableUsers
+        .filter(u => u.email && !selectedEmails.has(u.email.toLowerCase()))
+        .filter(u => {
+            if (!recipientSearch) return true;
+            const q = recipientSearch.toLowerCase();
+            return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
+        })
+        .slice(0, 30);
+
+    const addRecipient = (name: string, email: string) => {
+        if (!email || selectedEmails.has(email.toLowerCase())) return;
+        setSelectedRecipients(prev => [...prev, { name, email }]);
+        setRecipientSearch('');
+        setIsDropdownOpen(false);
+    };
+
+    const removeRecipient = (email: string) => {
+        setSelectedRecipients(prev => prev.filter(r => r.email !== email));
+    };
+
+    const handleCustomEmailAdd = () => {
+        const email = customEmailInput.trim();
+        if (!email || !email.includes('@')) return;
+        addRecipient(email, email);
+        setCustomEmailInput('');
+    };
+
+    const handleSend = () => {
+        if (selectedRecipients.length === 0) return;
+        if (!attachPdf && !attachExcel) return;
+        const htmlBody = buildReportEmailHtml({
+            reportType,
+            filterSummary,
+            userMessage: message,
+            generatedBy: filterSummary.generatedBy || 'Paradigm System',
+            attachPdf,
+            attachExcel,
+        });
+        onSend({
+            to: selectedRecipients.map(r => r.email),
+            subject,
+            html: htmlBody,
+            triggerType: 'manual',
+            attachPdf,
+            attachExcel,
+        });
+    };
+
+    const filterChips: { label: string; value: string }[] = [
+        { label: 'Period', value: dateRangeStr },
+        { label: 'Employee', value: filterSummary.employeeName || 'All Employees' },
+        ...(filterSummary.company ? [{ label: 'Company', value: filterSummary.company }] : []),
+        ...(filterSummary.site ? [{ label: 'Site', value: filterSummary.site }] : []),
+        ...(filterSummary.role ? [{ label: 'Role', value: filterSummary.role }] : []),
+        ...(filterSummary.staffCategory ? [{ label: 'Category', value: filterSummary.staffCategory }] : []),
+    ];
+
+    const attachedLabels = [attachPdf && 'PDF', attachExcel && 'Excel'].filter(Boolean).join(' & ');
+
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <div className="bg-white dark:bg-[#0b291a] w-full max-w-md rounded-2xl shadow-2xl border border-gray-200 dark:border-[#1a3d2c] overflow-hidden animate-in fade-in zoom-in duration-200">
-                <div className="p-6 border-b border-gray-100 dark:border-[#1a3d2c]">
-                    <div className="flex items-center gap-3 text-primary-text mb-1">
+            <div className="bg-white dark:bg-[#0b291a] w-full max-w-lg rounded-2xl shadow-2xl border border-gray-200 dark:border-[#1a3d2c] overflow-hidden animate-in fade-in zoom-in duration-200">
+                {/* Header */}
+                <div className="p-5 border-b border-gray-100 dark:border-[#1a3d2c] flex items-center justify-between">
+                    <div className="flex items-center gap-3">
                         <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg text-blue-600 dark:text-blue-400">
                             <Mail className="w-5 h-5" />
                         </div>
-                        <h3 className="text-xl font-bold">Mail Report</h3>
+                        <div>
+                            <h3 className="text-lg font-bold text-gray-900 dark:text-white">Mail Report</h3>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                                {attachedLabels ? `${attachedLabels} attached` : 'Select attachment'} &middot; Select recipients below
+                            </p>
+                        </div>
                     </div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">The current report will be generated and sent as a PDF attachment.</p>
+                    <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-[#1a3d2c] transition-all">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
                 </div>
 
-                <div className="p-6 space-y-4">
-                    <div>
-                        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Recipient's Email</label>
-                        <input
-                            type="email"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            placeholder="Enter email address"
-                            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-[#1a3d2c] bg-gray-50 dark:bg-[#041b0f] text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                        />
+                <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+                    {/* Report Summary Card */}
+                    <div className="rounded-xl border border-blue-200 dark:border-blue-900/40 bg-blue-50 dark:bg-blue-950/20 p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                            <FileDown className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                            <span className="text-xs font-bold text-blue-700 dark:text-blue-300 uppercase tracking-wide">Report Being Sent</span>
+                        </div>
+                        <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-2.5">{reportLabel}</p>
+                        <div className="flex flex-wrap gap-1.5">
+                            {filterChips.map(chip => (
+                                <span key={chip.label} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white dark:bg-[#0b291a] border border-blue-200 dark:border-blue-800 text-xs font-medium text-gray-700 dark:text-gray-200">
+                                    <span className="text-blue-500 dark:text-blue-400 font-semibold">{chip.label}:</span>
+                                    {chip.value}
+                                </span>
+                            ))}
+                            {filterSummary.recordCount !== undefined && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-xs font-medium text-green-700 dark:text-green-300">
+                                    {filterSummary.recordCount} records
+                                </span>
+                            )}
+                        </div>
                     </div>
+
+                    {/* Format Selector: PDF & Excel */}
                     <div>
-                        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Subject</label>
+                        <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-1.5">
+                            Attached Document Formats <span className="normal-case font-normal text-gray-400">(select at least one)</span>
+                        </label>
+                        <div className="grid grid-cols-2 gap-3">
+                            <label
+                                className={`flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer select-none transition-all ${
+                                    attachPdf
+                                        ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-300 dark:border-blue-700 text-blue-900 dark:text-blue-100 shadow-sm'
+                                        : 'bg-gray-50 dark:bg-[#041b0f] border-gray-200 dark:border-[#1a3d2c] text-gray-400 opacity-60'
+                                }`}
+                            >
+                                <input
+                                    type="checkbox"
+                                    checked={attachPdf}
+                                    onChange={e => {
+                                        if (!e.target.checked && !attachExcel) return;
+                                        setAttachPdf(e.target.checked);
+                                    }}
+                                    className="mt-0.5 w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300 cursor-pointer"
+                                />
+                                <div className="min-w-0">
+                                    <p className="text-xs font-bold leading-tight">PDF Document</p>
+                                    <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">Printable styled .pdf</p>
+                                </div>
+                            </label>
+
+                            <label
+                                className={`flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer select-none transition-all ${
+                                    attachExcel
+                                        ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-700 text-emerald-900 dark:text-emerald-100 shadow-sm'
+                                        : 'bg-gray-50 dark:bg-[#041b0f] border-gray-200 dark:border-[#1a3d2c] text-gray-400 opacity-60'
+                                }`}
+                            >
+                                <input
+                                    type="checkbox"
+                                    checked={attachExcel}
+                                    onChange={e => {
+                                        if (!e.target.checked && !attachPdf) return;
+                                        setAttachExcel(e.target.checked);
+                                    }}
+                                    className="mt-0.5 w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-gray-300 cursor-pointer"
+                                />
+                                <div className="min-w-0">
+                                    <p className="text-xs font-bold leading-tight">Excel Spreadsheet</p>
+                                    <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">Formatted styled .xlsx</p>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    {/* Multi-Recipient Selector */}
+                    <div>
+                        <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-1.5">
+                            Recipients <span className="normal-case font-normal text-gray-400">({selectedRecipients.length} selected)</span>
+                        </label>
+
+                        {/* Selected Recipient Chips */}
+                        {selectedRecipients.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 mb-2 p-2.5 rounded-xl border border-gray-200 dark:border-[#1a3d2c] bg-gray-50 dark:bg-[#041b0f] min-h-[44px]">
+                                {selectedRecipients.map(r => (
+                                    <span key={r.email} className="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-full bg-blue-100 dark:bg-blue-900/40 border border-blue-300 dark:border-blue-700 text-xs font-medium text-blue-800 dark:text-blue-200">
+                                        <span className="max-w-[140px] truncate" title={r.email}>
+                                            {r.name !== r.email ? r.name : r.email}
+                                        </span>
+                                        <button
+                                            onClick={() => removeRecipient(r.email)}
+                                            className="flex-shrink-0 w-4 h-4 rounded-full bg-blue-200 dark:bg-blue-700 hover:bg-red-200 dark:hover:bg-red-700 text-blue-700 dark:text-blue-200 hover:text-red-700 dark:hover:text-red-200 flex items-center justify-center transition-colors"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg>
+                                        </button>
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Search Dropdown */}
+                        <div className="relative" ref={dropdownRef}>
+                            <div className="relative">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                                <input
+                                    type="text"
+                                    value={recipientSearch}
+                                    onChange={e => { setRecipientSearch(e.target.value); setIsDropdownOpen(true); }}
+                                    onFocus={() => setIsDropdownOpen(true)}
+                                    placeholder="Search by name or email..."
+                                    className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-gray-200 dark:border-[#1a3d2c] bg-gray-50 dark:bg-[#041b0f] text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm"
+                                />
+                            </div>
+
+                            {isDropdownOpen && (
+                                <div className="absolute z-10 w-full mt-1 bg-white dark:bg-[#0e2318] border border-gray-200 dark:border-[#1a3d2c] rounded-xl shadow-xl overflow-hidden">
+                                    <div className="max-h-48 overflow-y-auto">
+                                        {filteredUsers.length === 0 && (
+                                            <div className="px-4 py-3 text-sm text-gray-400 dark:text-gray-500 text-center">No users found</div>
+                                        )}
+                                        {filteredUsers.map(u => (
+                                            <button
+                                                key={u.id}
+                                                type="button"
+                                                onClick={() => addRecipient(u.name, u.email)}
+                                                className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors text-left"
+                                            >
+                                                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                                                    {u.name.charAt(0).toUpperCase()}
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{u.name}</p>
+                                                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{u.email}</p>
+                                                </div>
+                                                {u.role && (
+                                                    <span className="ml-auto flex-shrink-0 text-xs text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-[#1a3d2c] px-1.5 py-0.5 rounded-md">{u.role}</span>
+                                                )}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Custom Email Add */}
+                        <div className="flex gap-2 mt-2">
+                            <input
+                                type="email"
+                                value={customEmailInput}
+                                onChange={e => setCustomEmailInput(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleCustomEmailAdd(); } }}
+                                placeholder="Or type a custom email and press Enter"
+                                className="flex-1 px-3 py-2 rounded-xl border border-dashed border-gray-300 dark:border-[#2a4536] bg-transparent text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all text-xs placeholder:text-gray-400"
+                            />
+                            <button
+                                type="button"
+                                onClick={handleCustomEmailAdd}
+                                disabled={!customEmailInput.includes('@')}
+                                className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold disabled:opacity-40 transition-all"
+                            >
+                                Add
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Subject */}
+                    <div>
+                        <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-1.5">Subject</label>
                         <input
                             type="text"
                             value={subject}
                             onChange={(e) => setSubject(e.target.value)}
-                            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-[#1a3d2c] bg-gray-50 dark:bg-[#041b0f] text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-[#1a3d2c] bg-gray-50 dark:bg-[#041b0f] text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm"
                         />
                     </div>
+
+                    {/* Message */}
                     <div>
-                        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Additional Message (Optional)</label>
+                        <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-1.5">Additional Message <span className="normal-case font-normal text-gray-400">(Optional)</span></label>
                         <textarea
                             value={message}
                             onChange={(e) => setMessage(e.target.value)}
                             rows={3}
-                            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-[#1a3d2c] bg-gray-50 dark:bg-[#041b0f] text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all resize-none"
+                            placeholder="e.g. Dear Management, Please review the attached report for discrepancies."
+                            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-[#1a3d2c] bg-gray-50 dark:bg-[#041b0f] text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all resize-none text-sm"
                         />
+                        <p className="mt-1.5 text-xs text-gray-400">A professional HTML email with the filter summary will be auto-generated. Your message is prepended at the top.</p>
                     </div>
                 </div>
 
-                <div className="p-6 bg-gray-50 dark:bg-[#041b0f]/50 flex gap-3">
+                {/* Footer */}
+                <div className="p-5 bg-gray-50 dark:bg-[#041b0f]/50 border-t border-gray-100 dark:border-[#1a3d2c] flex gap-3">
                     <button
                         onClick={onClose}
-                        className="flex-1 px-4 py-2.5 rounded-xl font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#1a3d2c] transition-all"
+                        className="flex-1 px-4 py-2.5 rounded-xl font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#1a3d2c] transition-all text-sm"
                     >
                         Cancel
                     </button>
                     <button
-                        disabled={isSending || !email}
-                        onClick={() => onSend({ to: [email], subject, html: message, triggerType: 'manual' })}
-                        className="flex-[2] bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                        disabled={isSending || selectedRecipients.length === 0 || (!attachPdf && !attachExcel)}
+                        onClick={handleSend}
+                        className="flex-[2] bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 transition-all disabled:opacity-50 text-sm"
                     >
                         {isSending ? (
                             <>
                                 <Loader2 className="w-5 h-5 animate-spin" />
-                                <span>Sending...</span>
+                                <span>Sending to {selectedRecipients.length}...</span>
                             </>
                         ) : (
                             <>
                                 <Send className="w-5 h-5" />
-                                <span>Send Report</span>
+                                <span>Send to {selectedRecipients.length} Recipient{selectedRecipients.length !== 1 ? 's' : ''}</span>
                             </>
                         )}
                     </button>
@@ -1934,6 +2282,7 @@ const AttendanceDashboard: React.FC = () => {
         
         // Reset cached monthly data map so newly filtered data is loaded and rendered freshly
         setMonthlyDataMap({});
+        setExportedMonthlyData([]);
 
         setIsFiltersDirty(false);
         setIsDatePickerOpen(false);
@@ -3324,14 +3673,14 @@ const AttendanceDashboard: React.FC = () => {
                         punchOut.checkoutNote?.includes('Auto punch-out')
                     ));
 
-                    checkIn = format(new Date(punchIn?.timestamp || earliest.timestamp), 'HH:mm');
-                    // Only show checkout if it's a real checkout event OR if it's the last event of a completed session
-                    // For active night shifts, we might want to show '-' for checkout if not yet punched out
+                    if (punchIn) {
+                        checkIn = format(new Date(punchIn.timestamp), 'HH:mm');
+                    } else if (sortedEvents.some(e => e.type !== 'punch-out' && e.type !== 'site-out')) {
+                        checkIn = format(new Date(earliest.timestamp), 'HH:mm');
+                    }
+
                     if (punchOut) {
                         checkOut = format(new Date(punchOut.timestamp), 'HH:mm');
-                    } else if (!isSameDay(day, new Date())) {
-                        // If it's a past day and we have activity, show the last activity as checkout
-                        checkOut = format(new Date(latest.timestamp), 'HH:mm');
                     }
 
                     // Extra fields for Basic Report (Matches BasicReportDataRow type)
@@ -3345,10 +3694,68 @@ const AttendanceDashboard: React.FC = () => {
                     const siteOtInStr = otIn ? format(new Date(otIn.timestamp), 'HH:mm') : '-';
                     const siteOtOutStr = otOut ? format(new Date(otOut.timestamp), 'HH:mm') : '-';
 
-                    const { totalHours } = calculateWorkingHours(dayEvents, day);
-                    const hours = Math.floor(totalHours);
-                    const minutes = Math.round((totalHours - hours) * 60);
-                    duration = `${hours}h ${minutes}m`;
+                    // Hours Calculation (Instructions 9, 10, 11, 12):
+                    // Working Hours = Out Time - In Time - Break Duration + applicable OT
+                    const hasIn = checkIn !== '-';
+                    const hasOut = checkOut !== '-';
+
+                    if (hasIn && !hasOut) {
+                        if (isSameDay(day, new Date())) {
+                            const inDate = new Date(punchIn?.timestamp || earliest.timestamp);
+                            const elapsedMins = differenceInMinutes(new Date(), inDate);
+                            if (elapsedMins > 0) {
+                                const h = Math.floor(elapsedMins / 60);
+                                const m = elapsedMins % 60;
+                                duration = `${h}h ${m}m (Running)`;
+                            } else {
+                                duration = '0h 0m (Running)';
+                            }
+                        } else {
+                            // Missing out punch on past date
+                            duration = '-';
+                        }
+                    } else if (hasIn && hasOut) {
+                        const inDate = new Date(punchIn?.timestamp || earliest.timestamp);
+                        const outDate = new Date(punchOut?.timestamp || latest.timestamp);
+                        let grossMins = differenceInMinutes(outDate, inDate);
+                        if (grossMins < 0 && outDate < inDate) {
+                            grossMins += 24 * 60; // Over-midnight shift
+                        }
+
+                        if (grossMins >= 0) {
+                            // Break Duration = B.Out - B.In
+                            // Deduct break duration ONLY when both B.In and B.Out are valid
+                            let breakMins = 0;
+                            if (bIn && bOut) {
+                                const bInTime = new Date(bIn.timestamp);
+                                const bOutTime = new Date(bOut.timestamp);
+                                const bDiff = differenceInMinutes(bOutTime, bInTime);
+                                if (bDiff > 0) {
+                                    breakMins = bDiff;
+                                }
+                            }
+
+                            // Applicable OT duration
+                            let otMins = 0;
+                            if (otIn && otOut) {
+                                const otInTime = new Date(otIn.timestamp);
+                                const otOutTime = new Date(otOut.timestamp);
+                                const otDiff = differenceInMinutes(otOutTime, otInTime);
+                                if (otDiff > 0) {
+                                    otMins = otDiff;
+                                }
+                            }
+
+                            const netMins = Math.max(0, grossMins - breakMins + otMins);
+                            const h = Math.floor(netMins / 60);
+                            const m = Math.round(netMins % 60);
+                            duration = `${h}h ${m}m`;
+                        } else {
+                            duration = '-';
+                        }
+                    } else {
+                        duration = '-';
+                    }
 
                     // Assign to local variables for push
                     (rowExtra as any).breakIn = breakInStr;
@@ -3358,10 +3765,28 @@ const AttendanceDashboard: React.FC = () => {
                     (rowExtra as any).isAutoCheckout = isAutoCheckout;
                 }
 
+                // Handle status flags for missing/invalid punches (Instruction 8)
+                let rowStatus = status;
+                const hasIn = checkIn !== '-';
+                const hasOut = checkOut !== '-';
+                if (hasIn && !hasOut) {
+                    if (!isSameDay(day, new Date())) {
+                        if (rowStatus === 'P' || rowStatus === 'Present' || !rowStatus || rowStatus === 'A') {
+                            rowStatus = 'Incomplete';
+                        }
+                    } else {
+                        if (!rowStatus || rowStatus === 'A') {
+                            rowStatus = 'Open';
+                        }
+                    }
+                } else if (!hasIn && hasOut) {
+                    rowStatus = 'Invalid';
+                }
+
                 data.push({ 
                     userName: user.name, 
                     date: displayDate, 
-                    status, 
+                    status: rowStatus, 
                     checkIn, 
                     checkOut, 
                     duration, 
@@ -3371,7 +3796,7 @@ const AttendanceDashboard: React.FC = () => {
                     siteOtOut: rowExtra.siteOtOut || '-',
                     locationName: (dayEvents.find(e => e.type === 'punch-in')?.locationName || 'Office'),
                     isAutoCheckout: rowExtra.isAutoCheckout || false,
-                    department: (user as any).department || (user as any).role || 'Staff'
+                    department: formatDepartment((user as any).department || (user as any).role || 'Staff')
                 });
             });
         });
@@ -3655,7 +4080,8 @@ const AttendanceDashboard: React.FC = () => {
         compOffs: emp.compOffs || 0,
         lossOfPays: emp.lossOfPays || 0,
         workFromHomeDays: emp.workFromHomeDays || 0,
-        overtimeDays: emp.overtimeDays || 0
+        overtimeDays: emp.overtimeDays || 0,
+        dailyData: emp.dailyData || []
     });
 
     // Helper to filter monthly employee data based on active applied filters
@@ -3818,31 +4244,35 @@ const AttendanceDashboard: React.FC = () => {
 
                         {isWorkHours && (
                             <div className="space-y-8">
-                                {monthsInRange.map(m => (
-                                    <div key={`work-hours-${format(m, 'yyyy-MM')}`}>
-                                        <MonthlyHoursReport 
-                                            month={m.getMonth() + 1} 
-                                            year={m.getFullYear()} 
-                                            userId={selectedUser === 'all' ? undefined : selectedUser} 
-                                            scopedSettings={scopedSettings}
-                                            hideHeader={false}
-                                            selectedStatus={selectedStatus}
-                                            selectedRecordType={selectedRecordType}
-                                            selectedSite={selectedSite}
-                                            selectedLocation={selectedLocation}
-                                            selectedCompany={selectedCompany}
-                                            selectedRole={selectedRole}
-                                            selectedStaffCategory={selectedStaffCategories}
-                                            selectedStaffCategories={selectedStaffCategories}
-                                            users={users}
-                                            onDataLoaded={(data) => {
-                                                if (monthsInRange[0] && m.getTime() === monthsInRange[0].getTime()) {
-                                                    setExportedMonthlyData(data);
-                                                }
-                                            }}
-                                        />
-                                    </div>
-                                ))}
+                                {monthsInRange.map(m => {
+                                    const filterKey = `${format(m, 'yyyy-MM')}-${selectedUser}-${selectedCompany}-${selectedSite}-${selectedLocation}-${selectedRole}-${selectedStatus}-${selectedRecordType}-${Array.isArray(selectedStaffCategories) ? selectedStaffCategories.join('_') : selectedStaffCategories}`;
+                                    return (
+                                        <div key={`work-hours-${filterKey}`}>
+                                            <MonthlyHoursReport 
+                                                key={`work-hours-comp-${filterKey}`}
+                                                month={m.getMonth() + 1} 
+                                                year={m.getFullYear()} 
+                                                userId={selectedUser === 'all' ? undefined : selectedUser} 
+                                                scopedSettings={scopedSettings}
+                                                hideHeader={false}
+                                                selectedStatus={selectedStatus}
+                                                selectedRecordType={selectedRecordType}
+                                                selectedSite={selectedSite}
+                                                selectedLocation={selectedLocation}
+                                                selectedCompany={selectedCompany}
+                                                selectedRole={selectedRole}
+                                                selectedStaffCategory={selectedStaffCategories}
+                                                selectedStaffCategories={selectedStaffCategories}
+                                                users={users}
+                                                onDataLoaded={(data) => {
+                                                    if (monthsInRange[0] && m.getTime() === monthsInRange[0].getTime()) {
+                                                        setExportedMonthlyData(data);
+                                                    }
+                                                }}
+                                            />
+                                        </div>
+                                    );
+                                })}
                             </div>
                         )}
                     </div>
@@ -4032,158 +4462,165 @@ const AttendanceDashboard: React.FC = () => {
         }
     };
 
+    const generateExcelBlobForReport = async (options?: { returnBlobOnly?: boolean }): Promise<{ blob: Blob; fileName: string }> => {
+        const logoBase64 = logoForPdf;
+        const targetUserObj = selectedUser !== 'all' ? users.find(u => u.id === selectedUser) : undefined;
+        const targetUserName = targetUserObj ? targetUserObj.name : undefined;
+        const targetUserRole = targetUserObj ? targetUserObj.role : undefined;
+
+        if (reportType === 'monthly') {
+            const mappedMap = Object.fromEntries(
+                Object.entries(monthlyDataMap).map(([k, v]) => [k, filterMonthlyEmployeeData(v).map(mapToMonthlyReportRow)])
+            );
+            return await exportMonthlyMatrixToExcel(
+                mappedMap,
+                { startDate: dateRange.startDate!, endDate: dateRange.endDate! },
+                logoBase64,
+                user?.name || 'Unknown User',
+                user?.role,
+                targetUserName,
+                targetUserRole,
+                resolvedFilters,
+                userHolidaysPool,
+                options
+            );
+        } else if (reportType === 'work_hours') {
+            return await exportAttendanceToExcel(
+                exportedMonthlyData,
+                { startDate: dateRange.startDate!, endDate: dateRange.endDate! },
+                logoBase64,
+                user?.name || 'Unknown User',
+                options
+            );
+        } else {
+            let columns: GenericReportColumn[] = [];
+            let dataToExport: any[] = [];
+            let reportTitle = '';
+            let fileNamePrefix = '';
+
+            switch (reportType) {
+                case 'basic':
+                    reportTitle = 'Basic Attendance Report';
+                    fileNamePrefix = 'Attendance_Report';
+                    columns = [
+                        { header: 'Employee Name', key: 'userName', width: 25 },
+                        { header: 'Date', key: 'date', width: 15 },
+                        { header: 'Status', key: 'status', width: 15 },
+                        { header: 'Punch In', key: 'checkIn', width: 15 },
+                        { header: 'Punch Out', key: 'checkOut', width: 15 },
+                        { header: 'Location', key: 'locationName', width: 25 },
+                        { header: 'Hours', key: 'duration', width: 15 }
+                    ];
+                    dataToExport = basicReportData;
+                    break;
+                case 'log':
+                    reportTitle = 'Attendance Log';
+                    fileNamePrefix = 'Attendance_Log';
+                    columns = [
+                        { header: 'User', key: 'userName', width: 25 },
+                        { header: 'Date', key: 'date', width: 15 },
+                        { header: 'Time', key: 'time', width: 15 },
+                        { header: 'Event', key: 'type', width: 15 },
+                        { header: 'Location', key: 'locationName', width: 30 },
+                        { header: 'Device', key: 'device', width: 15 }
+                    ];
+                    dataToExport = attendanceLogData;
+                    break;
+                case 'audit':
+                    reportTitle = 'Audit Log Report';
+                    fileNamePrefix = 'Audit_Log';
+                    columns = [
+                        { header: 'Date & Time', key: 'dateTime', width: 20 },
+                        { header: 'Action', key: 'action', width: 20 },
+                        { header: 'Performed By', key: 'performer_name', width: 25 },
+                        { header: 'Target Employee', key: 'target_name', width: 25 },
+                        { header: 'Details', key: 'detailsStr', width: 50 },
+                    ];
+                    dataToExport = auditLogs.map(log => ({
+                        dateTime: format(new Date(log.created_at), 'dd MMM yyyy HH:mm'),
+                        action: log.action,
+                        performer_name: log.performer_name,
+                        target_name: log.target_name,
+                        detailsStr: JSON.stringify(log.details)
+                    }));
+                    break;
+                case 'site_ot':
+                    reportTitle = 'Site OT Report';
+                    fileNamePrefix = 'Site_OT_Report';
+                    columns = [
+                        { header: 'Employee Name', key: 'userName', width: 25 },
+                        { header: 'Date', key: 'date', width: 15 },
+                        { header: 'Site OT In', key: 'siteOtIn', width: 15 },
+                        { header: 'Site OT Out', key: 'siteOtOut', width: 15 },
+                        { header: 'Duration', key: 'duration', width: 15 },
+                        { header: 'Location', key: 'locationName', width: 30 }
+                    ];
+                    dataToExport = site_otReportData;
+                    break;
+                case 'leave_balance':
+                    reportTitle = 'Leave Balance Tracker';
+                    fileNamePrefix = 'Leave_Balance_Tracker';
+                    columns = [
+                        { header: 'Employee Name', key: 'userName', width: 25 },
+                        { header: 'Role/Dept', key: 'roleDept', width: 20 },
+                        { header: 'EL Earned', key: 'elEarned', width: 12 },
+                        { header: 'EL Balance', key: 'elBalance', width: 12 },
+                        { header: 'SL Earned', key: 'slEarned', width: 12 },
+                        { header: 'SL Balance', key: 'slBalance', width: 12 },
+                        { header: 'CO Earned', key: 'coEarned', width: 12 },
+                        { header: 'CO Balance', key: 'coBalance', width: 12 },
+                        { header: 'FH Earned', key: 'fhEarned', width: 12 },
+                        { header: 'FH Balance', key: 'fhBalance', width: 12 },
+                        { header: 'PL Earned', key: 'plEarned', width: 12 },
+                        { header: 'PL Balance', key: 'plBalance', width: 12 },
+                        { header: 'CC Earned', key: 'ccEarned', width: 12 },
+                        { header: 'CC Balance', key: 'ccBalance', width: 12 },
+                        { header: 'ML Earned', key: 'mlEarned', width: 12 },
+                        { header: 'ML Balance', key: 'mlBalance', width: 12 },
+                    ];
+                    dataToExport = leaveBalances.map(row => {
+                        const b = row.balances || {};
+                        return {
+                            userName: row.userName,
+                            roleDept: String(row.role || row.department || 'Staff').replace(/_/g, ' '),
+                            elEarned: (b.earnedTotal || 0).toFixed(1),
+                            elBalance: ((b.earnedTotal || 0) - (b.earnedUsed || 0) - (b.earnedPending || 0)).toFixed(1),
+                            slEarned: (b.sickTotal || 0).toFixed(1),
+                            slBalance: ((b.sickTotal || 0) - (b.sickUsed || 0) - (b.sickPending || 0)).toFixed(1),
+                            coEarned: (b.compOffTotal || 0).toFixed(1),
+                            coBalance: ((b.compOffTotal || 0) - (b.compOffUsed || 0) - (b.compOffPending || 0)).toFixed(1),
+                            fhEarned: (b.floatingTotal || 0).toFixed(1),
+                            fhBalance: ((b.floatingTotal || 0) - (b.floatingUsed || 0) - (b.floatingPending || 0)).toFixed(1),
+                            plEarned: (b.pinkTotal || 0).toFixed(1),
+                            plBalance: ((b.pinkTotal || 0) - (b.pinkUsed || 0) - (b.pinkPending || 0)).toFixed(1),
+                            ccEarned: (b.childCareTotal || 0).toFixed(1),
+                            ccBalance: ((b.childCareTotal || 0) - (b.childCareUsed || 0) - (b.childCarePending || 0)).toFixed(1),
+                            mlEarned: (b.maternityTotal || 0).toFixed(1),
+                            mlBalance: ((b.maternityTotal || 0) - (b.maternityUsed || 0) - (b.maternityPending || 0)).toFixed(1),
+                        };
+                    });
+                    break;
+                default:
+                    break;
+            }
+
+            return await exportGenericReportToExcel(
+                dataToExport,
+                columns,
+                reportTitle,
+                { startDate: dateRange.startDate!, endDate: dateRange.endDate! },
+                fileNamePrefix,
+                logoBase64,
+                user?.name || 'Unknown User',
+                options
+            );
+        }
+    };
+
     const handleDownloadExcel = async () => {
         setIsDownloading(true);
         try {
-            const logoBase64 = logoForPdf;
-            const targetUserObj = selectedUser !== 'all' ? users.find(u => u.id === selectedUser) : undefined;
-            const targetUserName = targetUserObj ? targetUserObj.name : undefined;
-            const targetUserRole = targetUserObj ? targetUserObj.role : undefined;
-
-            if (reportType === 'monthly') {
-                const mappedMap = Object.fromEntries(
-                    Object.entries(monthlyDataMap).map(([k, v]) => [k, filterMonthlyEmployeeData(v).map(mapToMonthlyReportRow)])
-                );
-                await exportMonthlyMatrixToExcel(
-                    mappedMap,
-                    { startDate: dateRange.startDate!, endDate: dateRange.endDate! },
-                    logoBase64,
-                    user?.name || 'Unknown User',
-                    user?.role,
-                    targetUserName,
-                    targetUserRole,
-                    resolvedFilters,
-                    userHolidaysPool
-                );
-            } else if (reportType === 'work_hours') {
-                await exportAttendanceToExcel(
-                    exportedMonthlyData,
-                    { startDate: dateRange.startDate!, endDate: dateRange.endDate! },
-                    logoBase64,
-                    user?.name || 'Unknown User'
-                );
-            } else {
-                let columns: GenericReportColumn[] = [];
-                let dataToExport: any[] = [];
-                let reportTitle = '';
-                let fileNamePrefix = '';
-
-                switch (reportType) {
-                    case 'basic':
-                        reportTitle = 'Basic Attendance Report';
-                        fileNamePrefix = 'Attendance_Report';
-                        columns = [
-                            { header: 'Employee Name', key: 'userName', width: 25 },
-                            { header: 'Date', key: 'date', width: 15 },
-                            { header: 'Status', key: 'status', width: 15 },
-                            { header: 'Punch In', key: 'checkIn', width: 15 },
-                            { header: 'Punch Out', key: 'checkOut', width: 15 },
-                            { header: 'Location', key: 'locationName', width: 25 },
-                            { header: 'Hours', key: 'duration', width: 15 }
-                        ];
-                        dataToExport = basicReportData;
-                        break;
-                    case 'log':
-                        reportTitle = 'Attendance Log';
-                        fileNamePrefix = 'Attendance_Log';
-                        columns = [
-                            { header: 'User', key: 'userName', width: 25 },
-                            { header: 'Date', key: 'date', width: 15 },
-                            { header: 'Time', key: 'time', width: 15 },
-                            { header: 'Event', key: 'type', width: 15 },
-                            { header: 'Location', key: 'locationName', width: 30 },
-                            { header: 'Device', key: 'device', width: 15 }
-                        ];
-                        dataToExport = attendanceLogData;
-                        break;
-                    case 'audit':
-                        reportTitle = 'Audit Log Report';
-                        fileNamePrefix = 'Audit_Log';
-                        columns = [
-                            { header: 'Date & Time', key: 'dateTime', width: 20 },
-                            { header: 'Action', key: 'action', width: 20 },
-                            { header: 'Performed By', key: 'performer_name', width: 25 },
-                            { header: 'Target Employee', key: 'target_name', width: 25 },
-                            { header: 'Details', key: 'detailsStr', width: 50 },
-                        ];
-                        dataToExport = auditLogs.map(log => ({
-                            dateTime: format(new Date(log.created_at), 'dd MMM yyyy HH:mm'),
-                            action: log.action,
-                            performer_name: log.performer_name,
-                            target_name: log.target_name,
-                            detailsStr: JSON.stringify(log.details)
-                        }));
-                        break;
-                    case 'site_ot':
-                        reportTitle = 'Site OT Report';
-                        fileNamePrefix = 'Site_OT_Report';
-                        columns = [
-                            { header: 'Employee Name', key: 'userName', width: 25 },
-                            { header: 'Date', key: 'date', width: 15 },
-                            { header: 'Site OT In', key: 'siteOtIn', width: 15 },
-                            { header: 'Site OT Out', key: 'siteOtOut', width: 15 },
-                            { header: 'Duration', key: 'duration', width: 15 },
-                            { header: 'Location', key: 'locationName', width: 30 }
-                        ];
-                        dataToExport = site_otReportData;
-                        break;
-                    case 'leave_balance':
-                        reportTitle = 'Leave Balance Tracker';
-                        fileNamePrefix = 'Leave_Balance_Tracker';
-                        columns = [
-                            { header: 'Employee Name', key: 'userName', width: 25 },
-                            { header: 'Role/Dept', key: 'roleDept', width: 20 },
-                            { header: 'EL Earned', key: 'elEarned', width: 12 },
-                            { header: 'EL Balance', key: 'elBalance', width: 12 },
-                            { header: 'SL Earned', key: 'slEarned', width: 12 },
-                            { header: 'SL Balance', key: 'slBalance', width: 12 },
-                            { header: 'CO Earned', key: 'coEarned', width: 12 },
-                            { header: 'CO Balance', key: 'coBalance', width: 12 },
-                            { header: 'FH Earned', key: 'fhEarned', width: 12 },
-                            { header: 'FH Balance', key: 'fhBalance', width: 12 },
-                            { header: 'PL Earned', key: 'plEarned', width: 12 },
-                            { header: 'PL Balance', key: 'plBalance', width: 12 },
-                            { header: 'CC Earned', key: 'ccEarned', width: 12 },
-                            { header: 'CC Balance', key: 'ccBalance', width: 12 },
-                            { header: 'ML Earned', key: 'mlEarned', width: 12 },
-                            { header: 'ML Balance', key: 'mlBalance', width: 12 },
-                        ];
-                        dataToExport = leaveBalances.map(row => {
-                            const b = row.balances || {};
-                            return {
-                                userName: row.userName,
-                                roleDept: String(row.role || row.department || 'Staff').replace(/_/g, ' '),
-                                elEarned: (b.earnedTotal || 0).toFixed(1),
-                                elBalance: ((b.earnedTotal || 0) - (b.earnedUsed || 0) - (b.earnedPending || 0)).toFixed(1),
-                                slEarned: (b.sickTotal || 0).toFixed(1),
-                                slBalance: ((b.sickTotal || 0) - (b.sickUsed || 0) - (b.sickPending || 0)).toFixed(1),
-                                coEarned: (b.compOffTotal || 0).toFixed(1),
-                                coBalance: ((b.compOffTotal || 0) - (b.compOffUsed || 0) - (b.compOffPending || 0)).toFixed(1),
-                                fhEarned: (b.floatingTotal || 0).toFixed(1),
-                                fhBalance: ((b.floatingTotal || 0) - (b.floatingUsed || 0) - (b.floatingPending || 0)).toFixed(1),
-                                plEarned: (b.pinkTotal || 0).toFixed(1),
-                                plBalance: ((b.pinkTotal || 0) - (b.pinkUsed || 0) - (b.pinkPending || 0)).toFixed(1),
-                                ccEarned: (b.childCareTotal || 0).toFixed(1),
-                                ccBalance: ((b.childCareTotal || 0) - (b.childCareUsed || 0) - (b.childCarePending || 0)).toFixed(1),
-                                mlEarned: (b.maternityTotal || 0).toFixed(1),
-                                mlBalance: ((b.maternityTotal || 0) - (b.maternityUsed || 0) - (b.maternityPending || 0)).toFixed(1),
-                            };
-                        });
-                        break;
-                    default:
-                        break;
-                }
-
-                await exportGenericReportToExcel(
-                    dataToExport,
-                    columns,
-                    reportTitle,
-                    { startDate: dateRange.startDate!, endDate: dateRange.endDate! },
-                    fileNamePrefix,
-                    logoBase64,
-                    user?.name || 'Unknown User'
-                );
-            }
+            await generateExcelBlobForReport({ returnBlobOnly: false });
             setToast({ message: 'Excel report downloaded successfully.', type: 'success' });
         } catch (error) {
             console.error("Excel Download failed:", error);
@@ -4271,27 +4708,71 @@ const AttendanceDashboard: React.FC = () => {
                         // Column Headers - Row 1: Date numbers & Summary Column Names
                         const headerRow1 = [`"Employee"`];
                         dayHeaders.forEach(dh => headerRow1.push(`"${dh.dayNumber}"`));
-                        headerRow1.push(`"P"`, `"0.5P"`, `"OT"`, `"C/O"`, `"E/L"`, `"S/L"`, `"A"`, `"W/O"`, `"H"`, `"Pay"`);
+                        headerRow1.push(`"P"`, `"0.5P"`, `"WH"`, `"OT"`, `"C/O"`, `"E/L"`, `"S/L"`, `"A"`, `"W/O"`, `"H"`, `"Pay"`);
                         csvContent += headerRow1.join(',') + '\n';
 
                         // Column Headers - Row 2: Day of Week Names (Sat, Sun, Mon...)
                         const headerRow2 = [`""`];
                         dayHeaders.forEach(dh => headerRow2.push(`"${dh.dayOfWeek}"`));
-                        for (let s = 0; s < 10; s++) {
+                        for (let s = 0; s < 11; s++) {
                             headerRow2.push(`""`);
                         }
                         csvContent += headerRow2.join(',') + '\n';
                         
-                        // Data Rows
+                        // Data Rows (Primary Row + Detail status Sub-Row)
                         recalculatedData.forEach(emp => {
-                            const rowData = [`"${String(emp.employeeName || emp.userName || 'Unknown').replace(/"/g, '""')}"`];
                             const statuses = emp.statuses || [];
-                            daysInMonth.forEach((d) => {
-                                rowData.push(`"${String(statuses[d.getDate() - 1] || '-').replace(/"/g, '""')}"`);
+                            const dayParsedStatuses = daysInMonth.map((d, sIdx) => {
+                                const rawStatus = statuses[d.getDate() - 1] || '-';
+                                const dayNumber = d.getDate();
+                                const dayData = emp.dailyData?.[dayNumber - 1];
+                                let parsed = parseStatusDetails(rawStatus, dayData);
+                                const dh = dayHeaders[sIdx];
+                                const curDateStr = format(d, 'yyyy-MM-dd');
+                                const isFixedHoliday = Boolean(dh?.isFixed) || FIXED_HOLIDAYS.some(fh => curDateStr.endsWith('-' + fh.date));
+
+                                const empId = String(emp.employeeId || (emp as any).userId || (emp as any).id || '').trim().toLowerCase();
+                                const empName = String(emp.employeeName || (emp as any).userName || '').trim().toLowerCase();
+
+                                const userSelectedThisHoliday = (userHolidaysPool || []).some((uh: any) => {
+                                    const uhUserId = String(uh.userId || uh.user_id || uh.employeeId || uh.employee_id || '').trim().toLowerCase();
+                                    const uhName = String(uh.userName || uh.name || uh.employeeName || '').trim().toLowerCase();
+                                    const matchesUser = (empId && uhUserId === empId) || (empName && uhName === empName);
+                                    if (!matchesUser) return false;
+                                    const uhDateRaw = String(uh.holidayDate || uh.holiday_date || uh.date || '').split('T')[0].split(' ')[0];
+                                    return uhDateRaw === curDateStr || isSameDay(new Date(uhDateRaw), d);
+                                });
+
+                                const isApplicableHolidayForUser = isFixedHoliday || (dh?.isHoliday && userSelectedThisHoliday);
+
+                                if (isApplicableHolidayForUser && (
+                                    parsed.primary === 'P' || 
+                                    parsed.primary === 'H/P' || 
+                                    rawStatus === 'P' || 
+                                    rawStatus === 'H/P' || 
+                                    rawStatus === 'HP' || 
+                                    rawStatus === 'Present' ||
+                                    parsed.detailLines.includes('C/O') ||
+                                    rawStatus.includes('C/O') ||
+                                    rawStatus.includes('CO')
+                                )) {
+                                    parsed = {
+                                        primary: (rawStatus.includes('0.5') || parsed.primary.includes('0.5')) ? '0.5H/P' : 'H/P',
+                                        detailLines: []
+                                    };
+                                }
+                                return parsed;
+                            });
+
+                            // Row 1: Primary Status
+                            const rowData = [`"${String(emp.employeeName || emp.userName || 'Unknown').replace(/"/g, '""')}"`];
+                            dayParsedStatuses.forEach((ds) => {
+                                rowData.push(`"${String(ds.primary || '-').replace(/"/g, '""')}"`);
                             });
                             rowData.push(
                                 `"${emp.presentDays || 0}"`,
                                 `"${emp.halfDays || 0}"`,
+                                `"${emp.workFromHomeDays || 0}"`,
                                 `"${emp.overtimeDays || 0}"`,
                                 `"${emp.compOffs || 0}"`,
                                 `"${emp.earnedLeaves || 0}"`,
@@ -4302,10 +4783,20 @@ const AttendanceDashboard: React.FC = () => {
                                 `"${emp.totalPayableDays || 0}"`
                             );
                             csvContent += rowData.join(',') + '\n';
+
+                            // Row 2: Detail status
+                            const detailRowData = [`"Detail status"`];
+                            dayParsedStatuses.forEach((ds) => {
+                                detailRowData.push(`"${String(ds.detailLines.join(' ') || '').replace(/"/g, '""')}"`);
+                            });
+                            for (let s = 0; s < 11; s++) {
+                                detailRowData.push(`""`);
+                            }
+                            csvContent += detailRowData.join(',') + '\n';
                         });
 
                         // Notation Reference Legend
-                        csvContent += `\n"NOTATION REFERENCE: P: Present | 0.5P: Half Day | OT: Overtime | C/O: Comp Off | E/L: Earned Leave | S/L: Sick Leave | A: Absent | W/O: Weekly Off | H: Holiday | Pay: Total Payable Days"\n`;
+                        csvContent += `\n"NOTATION REFERENCE: P: Present | 0.5P: Half Day | WH: Work From Home | OT: Overtime | C/O: Comp Off | E/L: Earned Leave | S/L: Sick Leave | A: Absent | W/O: Weekly Off | H: Holiday | Pay: Total Payable Days"\n`;
                         if (holidaysInPeriod.length > 0) {
                             csvContent += `"DECLARED HOLIDAYS: ${holidaysInPeriod.map(h => `${h.dayNumber} ${format(h.dateObj, 'MMM')} (${h.holidayName})`).join('; ')}"\n`;
                         }
@@ -4556,141 +5047,169 @@ const AttendanceDashboard: React.FC = () => {
     const handleSendEmailReport = async (payload: ReportEmailPayload) => {
         setIsSendingEmail(true);
         try {
-            // Log for debugging
             console.log('Sending report email with payload:', payload);
-            
-            // Format report name for subject if not provided
+
+            // Format report name for subject/filename
             const reportName = reportType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) + ' Report';
-            
-            // Generate PDF for attachment
-            let pdfBlob: Blob | undefined;
-            try {
-                const generatedBy = user?.name || 'Paradigm System';
-                const generatedByRole = user?.role || undefined;
-                const targetUserObj = selectedUser !== 'all' ? users.find(u => u.id === selectedUser) : undefined;
-                const targetUserName = targetUserObj ? targetUserObj.name : undefined;
-                const targetUserRole = targetUserObj ? targetUserObj.role : undefined;
-                const logoBase64 = ''; // You might want to pass the actual logo here if available
-                
-                switch (reportType) {
-                    case 'basic':
-                        pdfBlob = await pdf(<BasicReportDocument 
-                            data={basicReportData} 
-                            dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
-                            generatedBy={generatedBy}
-                        generatedByRole={generatedByRole}
-                        targetUserName={targetUserName}
-                        targetUserRole={targetUserRole}
-                            logoUrl={logoBase64}
-                            filters={resolvedFilters}
-                        />).toBlob();
-                        break;
-                    case 'monthly': {
-                        const mappedMap = Object.fromEntries(
-                            Object.entries(monthlyDataMap).map(([k, v]) => [k, filterMonthlyEmployeeData(v).map(mapToMonthlyReportRow)])
-                        );
-                        pdfBlob = await pdf(<MonthlyMatrixReportDocument 
-                            monthlyData={mappedMap} 
-                            globalDateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
-                            generatedBy={generatedBy}
-                            generatedByRole={generatedByRole}
-                            targetUserName={targetUserName}
-                            targetUserRole={targetUserRole}
-                            logoUrl={logoBase64}
-                            filters={resolvedFilters}
-                            userHolidaysPool={userHolidaysPool}
-                        />).toBlob();
-                        break;
+            const shouldAttachPdf = payload.attachPdf !== false;
+            const shouldAttachExcel = payload.attachExcel !== false;
+
+            const attachments: {
+                filename: string;
+                content: string;
+                encoding?: string;
+                contentType: string;
+            }[] = [];
+
+            // 1. Generate PDF attachment if requested
+            if (shouldAttachPdf) {
+                try {
+                    const generatedBy = user?.name || 'Paradigm System';
+                    const generatedByRole = user?.role || undefined;
+                    const targetUserObj = selectedUser !== 'all' ? users.find(u => u.id === selectedUser) : undefined;
+                    const targetUserName = targetUserObj ? targetUserObj.name : undefined;
+                    const targetUserRole = targetUserObj ? targetUserObj.role : undefined;
+                    const logoBase64 = logoForPdf; // Use actual company logo
+
+                    let pdfBlob: Blob | undefined;
+                    switch (reportType) {
+                        case 'basic':
+                            pdfBlob = await pdf(<BasicReportDocument 
+                                data={basicReportData} 
+                                dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
+                                generatedBy={generatedBy}
+                                generatedByRole={generatedByRole}
+                                targetUserName={targetUserName}
+                                targetUserRole={targetUserRole}
+                                logoUrl={logoBase64}
+                                filters={resolvedFilters}
+                            />).toBlob();
+                            break;
+                        case 'monthly': {
+                            const mappedMap = Object.fromEntries(
+                                Object.entries(monthlyDataMap).map(([k, v]) => [k, filterMonthlyEmployeeData(v).map(mapToMonthlyReportRow)])
+                            );
+                            pdfBlob = await pdf(<MonthlyMatrixReportDocument 
+                                monthlyData={mappedMap} 
+                                globalDateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
+                                generatedBy={generatedBy}
+                                generatedByRole={generatedByRole}
+                                targetUserName={targetUserName}
+                                targetUserRole={targetUserRole}
+                                logoUrl={logoBase64}
+                                filters={resolvedFilters}
+                                userHolidaysPool={userHolidaysPool}
+                            />).toBlob();
+                            break;
+                        }
+                        case 'work_hours': {
+                            const days = eachDayOfInterval({ start: dateRange.startDate!, end: dateRange.endDate! });
+                            pdfBlob = await pdf(<MonthlyReportDocument 
+                                data={exportedMonthlyData} 
+                                dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
+                                generatedBy={generatedBy}
+                                generatedByRole={generatedByRole}
+                                targetUserName={targetUserName}
+                                targetUserRole={targetUserRole}
+                                logoUrl={logoBase64}
+                                days={days}
+                                filters={resolvedFilters}
+                            />).toBlob();
+                            break;
+                        }
+                        case 'log':
+                            pdfBlob = await pdf(<AttendanceLogDocument 
+                                data={attendanceLogData} 
+                                dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
+                                generatedBy={generatedBy}
+                                generatedByRole={generatedByRole}
+                                targetUserName={targetUserName}
+                                targetUserRole={targetUserRole}
+                                logoUrl={logoBase64}
+                                filters={resolvedFilters}
+                            />).toBlob();
+                            break;
+                        case 'site_ot':
+                            pdfBlob = await pdf(<SiteOtReportDocument 
+                                data={site_otReportData} 
+                                dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
+                                generatedBy={generatedBy}
+                                generatedByRole={generatedByRole}
+                                targetUserName={targetUserName}
+                                targetUserRole={targetUserRole}
+                                logoUrl={logoBase64}
+                                filters={resolvedFilters}
+                            />).toBlob();
+                            break;
+                        case 'audit': {
+                            const auditData = auditLogs.map(log => ({
+                                dateTime: format(new Date(log.created_at), 'dd MMM yyyy HH:mm'),
+                                action: log.action,
+                                performer_name: log.performer_name,
+                                target_name: log.target_name,
+                                detailsStr: JSON.stringify(log.details).substring(0, 100) + (JSON.stringify(log.details).length > 100 ? '...' : '')
+                            }));
+                            pdfBlob = await pdf(<AuditLogDocument 
+                                data={auditData} 
+                                dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
+                                generatedBy={generatedBy}
+                                generatedByRole={generatedByRole}
+                                targetUserName={targetUserName}
+                                targetUserRole={targetUserRole}
+                                logoUrl={logoBase64}
+                                filters={resolvedFilters}
+                            />).toBlob();
+                            break;
+                        }
+                        case 'leave_balance':
+                            pdfBlob = await pdf(<LeaveBalanceTrackerDocument 
+                                data={leaveBalances} 
+                                dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
+                                generatedBy={generatedBy}
+                                generatedByRole={generatedByRole}
+                                targetUserName={targetUserName}
+                                targetUserRole={targetUserRole}
+                                logoUrl={logoBase64}
+                                filters={resolvedFilters}
+                            />).toBlob();
+                            break;
                     }
-                    case 'work_hours': {
-                        const days = eachDayOfInterval({ start: dateRange.startDate!, end: dateRange.endDate! });
-                        pdfBlob = await pdf(<MonthlyReportDocument 
-                            data={exportedMonthlyData} 
-                            dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
-                            generatedBy={generatedBy}
-                            generatedByRole={generatedByRole}
-                            targetUserName={targetUserName}
-                            targetUserRole={targetUserRole}
-                            logoUrl={logoBase64}
-                            days={days}
-                            filters={resolvedFilters}
-                        />).toBlob();
-                        break;
+
+                    if (pdfBlob) {
+                        const base64Content = await blobToBase64(pdfBlob);
+                        attachments.push({
+                            filename: `${reportName.replace(/\s+/g, '_')}_${format(new Date(), 'dd_MMM_yyyy')}.pdf`,
+                            content: base64Content,
+                            encoding: 'base64',
+                            contentType: 'application/pdf',
+                        });
                     }
-                    case 'log':
-                        pdfBlob = await pdf(<AttendanceLogDocument 
-                            data={attendanceLogData} 
-                            dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
-                            generatedBy={generatedBy}
-                        generatedByRole={generatedByRole}
-                        targetUserName={targetUserName}
-                        targetUserRole={targetUserRole}
-                            logoUrl={logoBase64}
-                            filters={resolvedFilters}
-                        />).toBlob();
-                        break;
-                    case 'site_ot':
-                        pdfBlob = await pdf(<SiteOtReportDocument 
-                            data={site_otReportData} 
-                            dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
-                            generatedBy={generatedBy}
-                        generatedByRole={generatedByRole}
-                        targetUserName={targetUserName}
-                        targetUserRole={targetUserRole}
-                            logoUrl={logoBase64}
-                            filters={resolvedFilters}
-                        />).toBlob();
-                        break;
-                    case 'audit': {
-                        const auditData = auditLogs.map(log => ({
-                            dateTime: format(new Date(log.created_at), 'dd MMM yyyy HH:mm'),
-                            action: log.action,
-                            performer_name: log.performer_name,
-                            target_name: log.target_name,
-                            detailsStr: JSON.stringify(log.details).substring(0, 100) + (JSON.stringify(log.details).length > 100 ? '...' : '')
-                        }));
-                        pdfBlob = await pdf(<AuditLogDocument 
-                            data={auditData} 
-                            dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
-                            generatedBy={generatedBy}
-                        generatedByRole={generatedByRole}
-                        targetUserName={targetUserName}
-                        targetUserRole={targetUserRole}
-                            logoUrl={logoBase64}
-                            filters={resolvedFilters}
-                        />).toBlob();
-                        break;
-                    }
-                    case 'leave_balance':
-                        pdfBlob = await pdf(<LeaveBalanceTrackerDocument 
-                            data={leaveBalances} 
-                            dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
-                            generatedBy={generatedBy}
-                            generatedByRole={generatedByRole}
-                            targetUserName={targetUserName}
-                            targetUserRole={targetUserRole}
-                            logoUrl={logoBase64}
-                            filters={resolvedFilters}
-                        />).toBlob();
-                        break;
+                } catch (pdfErr) {
+                    console.warn('PDF Attachment Generation failed:', pdfErr);
                 }
-            } catch (pdfErr) {
-                console.warn('PDF Attachment Generation failed, sending email without attachment:', pdfErr);
             }
 
-            const attachments = [];
-            if (pdfBlob) {
-                const base64Content = await blobToBase64(pdfBlob);
-                attachments.push({
-                    filename: `${reportName}_${format(new Date(), 'dd_MMM_yyyy')}.pdf`,
-                    content: base64Content,
-                    contentType: 'application/pdf'
-                });
+            // 2. Generate Excel attachment if requested
+            if (shouldAttachExcel) {
+                try {
+                    const excelResult = await generateExcelBlobForReport({ returnBlobOnly: true });
+                    if (excelResult && excelResult.blob) {
+                        const excelBase64 = await blobToBase64(excelResult.blob);
+                        attachments.push({
+                            filename: excelResult.fileName || `${reportName.replace(/\s+/g, '_')}_${format(new Date(), 'dd_MMM_yyyy')}.xlsx`,
+                            content: excelBase64,
+                            encoding: 'base64',
+                            contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                        });
+                    }
+                } catch (excelErr) {
+                    console.warn('Excel Attachment Generation failed:', excelErr);
+                }
             }
-            
+
             await api.sendReportEmail({
                 ...payload,
-                reportType,
+                // Do NOT forward reportType — prevents server from overriding our html body with a generated template
                 attachments,
                 filters: {
                     user: selectedUser,
@@ -4706,7 +5225,9 @@ const AttendanceDashboard: React.FC = () => {
             });
 
             const recipientText = Array.isArray(payload.to) ? payload.to.join(', ') : payload.to;
-            setToast({ message: `Report successfully sent to ${recipientText}`, type: 'success' });
+            const attachedDocNames = attachments.map(a => a.filename.endsWith('.pdf') ? 'PDF' : 'Excel').join(' & ');
+            const attachSuffix = attachedDocNames ? ` (${attachedDocNames} attached)` : '';
+            setToast({ message: `Report successfully sent to ${recipientText}${attachSuffix}`, type: 'success' });
             setIsMailModalOpen(false);
         } catch (error: any) {
             console.error('Mail Report Error:', error);
@@ -5773,6 +6294,27 @@ const AttendanceDashboard: React.FC = () => {
                     isSending={isSendingEmail}
                     reportType={reportType}
                     currentUserEmail={user?.email || ''}
+                    availableUsers={users.filter(u => u.email).map(u => ({ id: u.id, name: u.name, email: u.email, role: u.role }))}
+                    filterSummary={{
+                        dateRange,
+                        employeeName: selectedUser !== 'all'
+                            ? (users.find(u => u.id === selectedUser)?.name || selectedUser)
+                            : 'All Employees',
+                        company: resolvedFilters.company,
+                        site: resolvedFilters.site,
+                        role: resolvedFilters.role,
+                        staffCategory: resolvedFilters.staffCategory,
+                        recordCount: (
+                            reportType === 'basic' ? basicReportData.length
+                            : reportType === 'log' ? attendanceLogData.length
+                            : reportType === 'monthly' || reportType === 'work_hours' ? exportedMonthlyData.length
+                            : reportType === 'site_ot' ? site_otReportData.length
+                            : reportType === 'leave_balance' ? leaveBalances.length
+                            : reportType === 'audit' ? auditLogs.length
+                            : undefined
+                        ),
+                        generatedBy: user?.name || 'Paradigm System',
+                    }}
                 />
             )}
 

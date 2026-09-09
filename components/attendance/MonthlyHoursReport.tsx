@@ -60,7 +60,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
   const [loading, setLoading] = useState(!externalData);
   const [isLocking, setIsLocking] = useState(false);
   const [isMonthLocked, setIsMonthLocked] = useState(false);
-  const [, setUsers] = useState<User[]>([]); 
+  const [users, setUsers] = useState<User[]>([]); 
   const [, setLeaves] = useState<any[]>([]); 
   const { user: currentUser } = useAuthStore();
   const [userHolidaysPool, setUserHolidaysPool] = useState<UserHoliday[]>([]);
@@ -117,7 +117,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
     } else {
       loadReportData();
     }
-  }, [month, year, userId, externalData, selectedStatus, selectedRecordType, selectedSite, selectedCompany, selectedLocation, selectedRole, staffCategoryKey]);
+  }, [month, year, userId, externalData, selectedStatus, selectedRecordType, selectedSite, selectedCompany, selectedLocation, selectedRole, staffCategoryKey, externalUsers]);
   const resolveUserLocation = (u: User, orgStructure: any[]) => {
     if (u.location || u.locationName) return u.location || u.locationName;
     if (!u.societyId || orgStructure.length === 0) return '';
@@ -135,8 +135,28 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
   };
 
   const loadReportData = async () => {
-    const applyFilters = (data: EmployeeMonthlyData[]): EmployeeMonthlyData[] => {
+    const applyFilters = (data: EmployeeMonthlyData[], currentUsersData: User[] = []): EmployeeMonthlyData[] => {
       let filtered = data;
+
+      // ── Employee / User Filtering ─────────────────────
+      if (userId && userId !== 'all') {
+        const allKnownUsers = currentUsersData.length > 0 ? currentUsersData : (externalUsers || []);
+        const targetUserObj = allKnownUsers.find(u => 
+          u.id === userId || 
+          String(u.id) === String(userId) || 
+          (u as any).employeeId === userId || 
+          (u as any).employee_id === userId
+        );
+        const targetName = targetUserObj?.name?.trim().toLowerCase();
+        filtered = filtered.filter(emp => 
+          emp.employeeId === userId || 
+          String(emp.employeeId) === String(userId) || 
+          (targetName && (
+            (emp.employeeName && emp.employeeName.trim().toLowerCase() === targetName) || 
+            ((emp as any).userName && (emp as any).userName.trim().toLowerCase() === targetName)
+          ))
+        );
+      }
 
       // ── Status Filtering ─────────────────────────────
       if (selectedStatus && selectedStatus !== 'all') {
@@ -242,7 +262,20 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
         const usersData = externalUsers || await api.getUsers();
         let targetUsers = usersData;
         if (userId && userId !== 'all') {
-          targetUsers = usersData.filter(u => u.id === userId || String(u.id) === String(userId));
+          const targetUserObj = usersData.find(u => 
+            u.id === userId || 
+            String(u.id) === String(userId) || 
+            (u as any).employeeId === userId || 
+            (u as any).employee_id === userId
+          );
+          const targetName = targetUserObj?.name?.trim().toLowerCase();
+          targetUsers = usersData.filter(u => 
+            u.id === userId || 
+            String(u.id) === String(userId) || 
+            (u as any).employeeId === userId || 
+            (u as any).employee_id === userId ||
+            (targetName && u.name && u.name.trim().toLowerCase() === targetName)
+          );
         } else {
           const activeCats = Array.isArray(rawStaffCats) ? rawStaffCats : (rawStaffCats && rawStaffCats !== 'all' ? [rawStaffCats] : []);
           if (activeCats.length > 0 && !activeCats.includes('all') && activeCats.length < 3) {
@@ -312,7 +345,20 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
 
       let targetUsers = usersData;
       if (userId && userId !== 'all') {
-        targetUsers = usersData.filter(u => u.id === userId || String(u.id) === String(userId));
+        const targetUserObj = usersData.find(u => 
+          u.id === userId || 
+          String(u.id) === String(userId) || 
+          (u as any).employeeId === userId || 
+          (u as any).employee_id === userId
+        );
+        const targetName = targetUserObj?.name?.trim().toLowerCase();
+        targetUsers = usersData.filter(u => 
+          u.id === userId || 
+          String(u.id) === String(userId) || 
+          (u as any).employeeId === userId || 
+          (u as any).employee_id === userId ||
+          (targetName && u.name && u.name.trim().toLowerCase() === targetName)
+        );
       } else {
         const activeCats = Array.isArray(rawStaffCats) ? rawStaffCats : (rawStaffCats && rawStaffCats !== 'all' ? [rawStaffCats] : []);
         if (activeCats.length > 0 && !activeCats.includes('all') && activeCats.length < 3) {
@@ -448,7 +494,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
         );
       });
 
-      const filteredReports = applyFilters(employeeReports);
+      const filteredReports = applyFilters(employeeReports, usersData);
 
       setReportData(filteredReports);
       if (onDataLoaded) onDataLoaded(filteredReports);
@@ -462,9 +508,33 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
 
   const exportToExcel = () => {};
 
-  const isSingleUser = userId && userId !== 'all' && reportData.length > 0;
-  const targetEmployeeName = isSingleUser ? reportData[0].employeeName : (userId && userId !== 'all' ? 'Employee Report' : 'ALL EMPLOYEES');
-  const targetEmployeeRole = isSingleUser ? reportData[0].role : undefined;
+  const displayedReports = React.useMemo(() => {
+    if (!reportData || reportData.length === 0) return [];
+    let filtered = reportData;
+    if (userId && userId !== 'all') {
+      const allKnownUsers = externalUsers || users || [];
+      const targetUserObj = allKnownUsers.find(u => 
+        u.id === userId || 
+        String(u.id) === String(userId) || 
+        (u as any).employeeId === userId || 
+        (u as any).employee_id === userId
+      );
+      const targetName = targetUserObj?.name?.trim().toLowerCase();
+      filtered = filtered.filter(emp => 
+        emp.employeeId === userId || 
+        String(emp.employeeId) === String(userId) || 
+        (targetName && (
+          (emp.employeeName && emp.employeeName.trim().toLowerCase() === targetName) || 
+          ((emp as any).userName && (emp as any).userName.trim().toLowerCase() === targetName)
+        ))
+      );
+    }
+    return filtered;
+  }, [reportData, userId, externalUsers, users]);
+
+  const isSingleUser = userId && userId !== 'all' && displayedReports.length > 0;
+  const targetEmployeeName = isSingleUser ? displayedReports[0].employeeName : (userId && userId !== 'all' ? 'Employee Report' : 'ALL EMPLOYEES');
+  const targetEmployeeRole = isSingleUser ? displayedReports[0].role : undefined;
 
   const monthStart = new Date(year, month - 1, 1);
   const monthEnd = endOfMonth(monthStart);
@@ -647,7 +717,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
         </div>
       )}
 
-      {reportData.map((employee) => (
+      {displayedReports.map((employee) => (
         <div key={employee.employeeId} className="mb-10 border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm ring-1 ring-gray-900/5">
           <div className="bg-white p-8">
             {/* Header matching image exactly */}
@@ -827,8 +897,10 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
                           if (s === 'W/O') return 'Weekly Off';
                           if (s === 'WOP') return 'Weekend Present';
                           if (s === 'W/P') return 'Worked on Weekend';
+                          if (s === '0.5W/P') return 'Half Day Weekend Present';
                           if (s === 'H') return 'Public Holiday';
                           if (s === 'H/P') return 'Holiday Present';
+                          if (s === '0.5H/P') return 'Half Day Holiday Present';
                           if (s.includes('F/H') || s.includes('FH')) return 'Floating Holiday';
                           if (s.includes('S/L') || s.includes('SL')) return 'Sick Leave';
                           if (s.includes('E/L') || s.includes('EL')) return 'Earned Leave';
@@ -851,8 +923,8 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
                                 (d.status === '0.25P' || d.status === '1/4P') ? 'bg-gradient-to-r from-blue-100 to-slate-100 text-blue-600' :
                                 d.status === 'A' ? 'bg-rose-50 text-rose-600' :
                                 d.status === 'W/O' || d.status === 'WOP' ? 'bg-slate-50 text-slate-600' :
-                                d.status === 'W/P' ? 'bg-blue-50 text-blue-700' :
-                                d.status === 'H' || d.status === 'H/P' ? 'bg-indigo-50 text-indigo-700' :
+                                d.status === 'W/P' || d.status === '0.5W/P' ? 'bg-blue-50 text-blue-700' :
+                                d.status === 'H' || d.status === 'H/P' || d.status === '0.5H/P' ? 'bg-indigo-50 text-indigo-700' :
                                 d.status.includes('F/H') ? 'bg-yellow-50 text-yellow-700' :
                                 d.status.includes('S/L') ? 'bg-purple-50 text-purple-700' :
                                 d.status.includes('E/L') ? 'bg-blue-50 text-blue-700' :

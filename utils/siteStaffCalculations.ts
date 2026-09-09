@@ -380,8 +380,8 @@ export function evaluateSiteStaffStatus(params: any): string {
     if (lType.includes('comp') || lType === 'c/o' || lType === 'co') {
        return 'CO';
     }
-    if (lType.includes('floating') || lType === 'f/h' || lType === 'fh') {
-       return 'FH';
+    if (lType.includes('floating') || lType.includes('blue leave') || lType === 'blue' || lType === 'bl' || lType === 'f/h' || lType === 'fh') {
+       return 'CO';
     }
     if (lType.includes('pink')) {
        return 'PL';
@@ -436,8 +436,8 @@ export function evaluateSiteStaffStatus(params: any): string {
     if (lType.includes('comp') || lType === 'c/o' || lType === 'co') {
        return prefix + 'CO';
     }
-    if (lType.includes('floating') || lType === 'f/h' || lType === 'fh') {
-       return prefix + 'FH';
+    if (lType.includes('floating') || lType.includes('blue leave') || lType === 'blue' || lType === 'bl' || lType === 'f/h' || lType === 'fh') {
+       return prefix + 'CO';
     }
     if (lType.includes('pink')) {
        return prefix + 'PL';
