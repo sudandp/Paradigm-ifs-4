@@ -679,13 +679,21 @@ export const MonthlyStatusView: React.FC<{
                             <span className="text-gray-600">REQUEST PERMISSION — Early/late request</span>
                         </div>
                         <div className="flex items-center gap-1.5 text-[7.5px] font-bold">
+                            <span className="w-[34px] text-center text-[7px] font-black bg-[#E0F2FE] text-[#0284C7] rounded px-0.5">0.75P+RP</span>
+                            <span className="text-gray-600">AI AUTO PUNCH-OUT / AUTO RP — Physical work % + Permission %, Full day salary</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[7.5px] font-bold">
                             <span className="w-4 text-center text-[7px] font-black bg-[#DCFCE7] text-[#16A34A] rounded px-0.5">RC</span>
                             <span className="text-gray-600">REQUEST CORRECTION — Punch correction</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[7.5px] font-bold">
+                            <span className="w-4 text-center text-[7px] font-black bg-[#DCFCE7] text-[#16A34A] rounded px-0.5">AP</span>
+                            <span className="text-gray-600">AUTO PUNCH — System generated punch</span>
                         </div>
                     </div>
 
                 </div>
-                <p className="text-[6.5px] text-gray-400 mt-2">* Prefix 0.5 indicates half-day variant (e.g., 0.5EL = Half Earned Leave). Combinations like 0.75P+0.25RP and 0.5P+0.5RP reflect physical work + auto-approved/approved permission (counted as 1.0 Full Day). H/P and W/P attract 1.5x payable credit.</p>
+                <p className="text-[6.5px] text-gray-400 mt-2">* Prefix 0.5 indicates half-day variant (e.g., 0.5EL = Half Earned Leave). Combinations like 0.75P+0.25RP and 0.5P+0.5RP reflect physical work % + permission % (AI auto punch-out or approved RP) — always counted as 1.0 Full Day for salary. The RP fraction is auto-deducted from the monthly 3h permission pool. H/P and W/P attract 1.5x payable credit.</p>
             </div>
 
             <Footer label="PARADIGM SERVICES - MONTHLY STATUS REPORT" />

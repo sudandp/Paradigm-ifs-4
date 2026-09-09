@@ -714,6 +714,40 @@ export function processEmployeeMonth(
     const hasPunchInOnDay = dayEvents.some(e => e.type === 'punch-in' || e.type === 'site-ot-in');
     if (status === 'W/O' && hasPunchInOnDay) status = 'WOP';
 
+    // ── Combined P+RP status for AI auto-checkout / auto-approved RP days ─────────
+    // When the AI punched a user out early (auto_system) OR an early-departure RP was
+    // auto-approved, the day should show as "{pFraction}P+{rpFraction}RP" so the
+    // report clearly reflects physical work % + permission % (total still = 1 full day).
+    if (
+      status === 'P' &&
+      hasActivity &&
+      !isFuture &&
+      (isAutoCheckout || approvedPermissionOnDay)
+    ) {
+      // Determine RP minutes for this day
+      const rpMins = approvedPermissionOnDay
+        ? getPermMinutesFromReq(approvedPermissionOnDay)
+        : 0;
+
+      // Fall back: if AI punched out but no explicit RP record, derive from shortfall vs shift
+      const shiftMins = targetShiftMins || 480;
+      const effectiveRpMins = rpMins > 0
+        ? rpMins
+        : isAutoCheckout
+          ? Math.max(0, shiftMins - physicalWorkHours * 60)
+          : 0;
+
+      if (effectiveRpMins > 0 && effectiveRpMins < shiftMins) {
+        // Round to nearest 0.25 fraction of a full day
+        const rpFrac = Math.round((effectiveRpMins / shiftMins) * 4) / 4;
+        const pFrac  = Math.round((1 - rpFrac) * 4) / 4;
+        if (pFrac > 0 && rpFrac > 0) {
+          status = `${pFrac}P+${rpFrac}RP`;
+        }
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────────
+
     if (isZeroActivityMonth && (status === 'H' || status === 'W/O' || status === 'BL' || status === 'PL' || status === 'FH')) {
       status = 'A';
     }
