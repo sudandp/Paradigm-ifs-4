@@ -50,11 +50,11 @@ const LeaveBalanceCard: React.FC<{ title: string; value: string; icon: React.Ele
     const [showInfo, setShowInfo] = useState(false);
     
     return (
-    <div className={`relative p-3 md:p-4 rounded-xl flex flex-col lg:flex-row items-center lg:items-center gap-2 md:gap-4 border text-center lg:text-left w-full h-full justify-center lg:justify-start ${
+    <div className={`relative p-3.5 md:p-4 rounded-2xl flex flex-col lg:flex-row items-center lg:items-center gap-2 md:gap-4 border text-center lg:text-left w-full h-full justify-center lg:justify-start ${
         isExpired
             ? 'border-amber-500/50 bg-amber-500/5'
             : isMobileCard
-                ? 'bg-transparent border-transparent'
+                ? 'bg-[#092c19] border-[#134426] shadow-sm'
                 : 'bg-card border-border'
     }`}>
         {onViewDetails && !isLoading && (
@@ -66,7 +66,7 @@ const LeaveBalanceCard: React.FC<{ title: string; value: string; icon: React.Ele
                 <Eye className="w-4 h-4 md:w-5 md:h-5 text-red-500" />
             </button>
         )}
-        <div className={`${isExpired ? 'bg-amber-100' : isMobileCard ? 'bg-white/10' : 'bg-accent-light'} p-2 md:p-3 rounded-full flex-shrink-0`}>
+        <div className={`${isExpired ? 'bg-amber-100 dark:bg-amber-950/40' : isMobileCard ? 'bg-[#041b0f] text-[#44D62C] border border-[#134426]' : 'bg-accent-light'} p-2.5 rounded-xl flex-shrink-0`}>
             {isLoading ? (
                 <div className="h-5 w-5 md:h-6 md:w-6 animate-pulse bg-gray-200 rounded-full" />
             ) : (
@@ -1194,13 +1194,37 @@ const LeaveDashboard: React.FC = () => {
 
     return (
         <div
-            className="p-4 space-y-6"
+            className={`p-4 space-y-6 ${isMobile ? 'pb-36' : ''}`}
             style={{
                 opacity: isContentVisible ? 1 : 0,
                 transform: isContentVisible ? 'translateY(0)' : 'translateY(8px)',
                 transition: 'opacity 0.45s cubic-bezier(0.4, 0, 0.2, 1), transform 0.45s cubic-bezier(0.4, 0, 0.2, 1)',
             }}
         >
+            {/* Mobile Top Back Bar */}
+            {isMobile && (
+                <div className="flex items-center gap-3 mb-2">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            if (window.history.state?.idx > 0) {
+                                navigate(-1);
+                            } else {
+                                navigate('/mobile-home');
+                            }
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                    >
+                        <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+                        <span>Back</span>
+                    </button>
+                    <div className="h-[1px] flex-1 bg-[#134426]" />
+                    <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#44D62C] bg-[#092c19] px-2.5 py-1 rounded-lg border border-[#134426]">
+                        Leaves & Attendance
+                    </span>
+                </div>
+            )}
+
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
             {error && (
@@ -1255,10 +1279,10 @@ const LeaveDashboard: React.FC = () => {
                         isMobile ? (
                             <button 
                                 onClick={() => navigate('/leaves/holiday-selection')}
-                                className="relative overflow-hidden bg-gradient-to-b from-[#008f53] to-[#004d2e] border border-[#00a862]/30 text-white font-bold text-[11px] h-8 rounded-full flex items-center gap-1 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_3px_8px_rgba(0,77,46,0.4)] px-3.5 hover:brightness-110 hover:shadow-[inset_0_1px_1px_rgba(255,255,255,0.35),0_4px_12px_rgba(0,77,46,0.5)] active:translate-y-[2px] active:shadow-[inset_0_3px_6px_rgba(0,0,0,0.4),0_1px_2px_rgba(0,77,46,0.2)] transition-all before:absolute before:top-0 before:left-0 before:right-0 before:h-[45%] before:bg-gradient-to-b before:from-white/20 before:to-transparent"
+                                className="bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-bold text-[11px] h-8 rounded-full flex items-center gap-1.5 px-3.5 shadow-[0_2px_10px_rgba(68,214,44,0.35)] active:scale-95 transition-all"
                             >
-                                <Calendar className="w-3.5 h-3.5 text-[#00ff9d] relative z-10" />
-                                <span className="relative z-10">Holiday</span>
+                                <Calendar className="w-3.5 h-3.5 text-[#0A1809]" strokeWidth={2.5} />
+                                <span>Holiday</span>
                             </button>
                         ) : (
                             <Button onClick={() => navigate('/leaves/holiday-selection')} variant="secondary">
@@ -1269,10 +1293,10 @@ const LeaveDashboard: React.FC = () => {
                     {isMobile ? (
                         <button 
                             onClick={handleNewRequest}
-                            className="relative overflow-hidden bg-gradient-to-b from-[#008f53] to-[#004d2e] border border-[#00a862]/30 text-white font-bold text-[11px] h-8 rounded-full flex items-center gap-1 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_3px_8px_rgba(0,77,46,0.4)] px-3.5 hover:brightness-110 hover:shadow-[inset_0_1px_1px_rgba(255,255,255,0.35),0_4px_12px_rgba(0,77,46,0.5)] active:translate-y-[2px] active:shadow-[inset_0_3px_6px_rgba(0,0,0,0.4),0_1px_2px_rgba(0,77,46,0.2)] transition-all before:absolute before:top-0 before:left-0 before:right-0 before:h-[45%] before:bg-gradient-to-b before:from-white/20 before:to-transparent"
+                            className="bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-bold text-[11px] h-8 rounded-full flex items-center gap-1.5 px-3.5 shadow-[0_2px_10px_rgba(68,214,44,0.35)] active:scale-95 transition-all"
                         >
-                            <Plus className="w-3.5 h-3.5 text-[#00ff9d] stroke-[3] relative z-10" />
-                            <span className="relative z-10">Request</span>
+                            <Plus className="w-3.5 h-3.5 text-[#0A1809]" strokeWidth={2.5} />
+                            <span>Request</span>
                         </button>
                     ) : (
                         <Button onClick={handleNewRequest}>
@@ -1337,6 +1361,7 @@ const LeaveDashboard: React.FC = () => {
                     isLoading={isLoading}
                     onMonthPaydaysChange={setMonthlyPaydays}
                     onSiteOtDaysChange={setSiteOtDays}
+                    isMobile={isMobile}
                 />
                 {!isTechnicalRole(user?.role) && (
                     <CompOffCalendar 
@@ -1347,6 +1372,7 @@ const LeaveDashboard: React.FC = () => {
                         viewingDate={viewingDate}
                         onDateChange={setViewingDate}
                         events={events}
+                        isMobile={isMobile}
                     />
                 )}
                 <HolidayCalendar 
@@ -1355,10 +1381,12 @@ const LeaveDashboard: React.FC = () => {
                     isLoading={isLoading} 
                     viewingDate={viewingDate}
                     onDateChange={setViewingDate}
+                    isMobile={isMobile}
                 />
                 <YearlyAttendanceChart 
                     data={yearlyData}
                     isLoading={isLoading}
+                    isMobile={isMobile}
                 />
                 {(isOtConversionEnabled || isTechnicalRole(user?.role)) && (
                     <OTCalendar 
@@ -1693,7 +1721,7 @@ const LeaveDashboard: React.FC = () => {
             )}
 
             {/* Employee Attendance Log */}
-            <EmployeeLog initialEvents={events} />
+            <EmployeeLog initialEvents={events} isMobile={isMobile} />
 
             {/* Leave Details Modal */}
             <LeaveDetailsModal

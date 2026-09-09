@@ -70,18 +70,18 @@ const NotificationBell: React.FC<{ className?: string; theme?: 'light' | 'dark' 
             <button
                 onClick={togglePanel}
                 aria-label={`Notifications${totalUnreadCount > 0 ? `, ${totalUnreadCount} unread` : ''}`}
-                className={`group relative p-2 rounded-xl transition-all duration-300 flex items-center justify-center ${
+                className={`group relative w-10 h-10 rounded-full transition-all duration-300 flex items-center justify-center ${
                     isPanelOpen
                         ? isDark
-                            ? 'bg-emerald-500/10 text-emerald-400'
+                            ? 'bg-[#44D62C]/20 text-[#44D62C]'
                             : 'bg-gray-100 text-gray-700'
                         : isDark
-                            ? 'bg-transparent text-emerald-400/80 hover:bg-emerald-500/5 hover:text-emerald-400'
+                            ? 'bg-transparent text-[#44D62C] hover:bg-white/5 active:scale-95'
                             : 'bg-transparent text-gray-500 hover:bg-gray-100 hover:text-gray-700'
                 }`}
             >
                 <Bell 
-                    strokeWidth={2}
+                    strokeWidth={2.2}
                     className={`h-5 w-5 transition-transform duration-300 ${isPanelOpen ? 'scale-110' : 'group-hover:rotate-12'}`} 
                 />
                 <AnimatePresence>
@@ -94,7 +94,7 @@ const NotificationBell: React.FC<{ className?: string; theme?: 'light' | 'dark' 
                                 transition: { type: "spring", stiffness: 500, damping: 25 }
                             }}
                             exit={{ scale: 0, opacity: 0 }}
-                            className="absolute -top-0.5 right-0 flex z-20"
+                            className="absolute top-0.5 right-0.5 flex z-20 pointer-events-none"
                         >
                             <motion.span 
                                 animate={{ scale: [1, 1.2, 1], opacity: [0.6, 0.25, 0.6] }}

@@ -4,12 +4,13 @@ import type { OnboardingData } from '@/types';
 import StatusChip from '@/components/ui/StatusChip';
 import Button from '@/components/ui/Button';
 import { useNavigate } from 'react-router-dom';
-import { Search, Eye, FileText, Send, RefreshCw, AlertTriangle, Loader2, CheckSquare, XSquare, Square } from 'lucide-react';
+import { Search, Eye, FileText, Send, RefreshCw, AlertTriangle, Loader2, CheckSquare, XSquare, Square, ArrowLeft } from 'lucide-react';
 import Toast from '@/components/ui/Toast';
 import { useAuthStore } from '@/store/authStore';
 import { triggerEnterpriseHandshake } from '@/services/enterpriseHandshake';
 import { RejectReasonModal } from '@/components/onboarding/RejectReasonModal';
 import hotToast from 'react-hot-toast';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 
 const VerificationChecks: React.FC<{ submission: OnboardingData; isSyncing: boolean }> = ({ submission, isSyncing }) => {
@@ -69,6 +70,7 @@ const VerificationDashboard: React.FC = () => {
     const [isRejecting, setIsRejecting] = useState(false);
     const { user } = useAuthStore();
     const navigate = useNavigate();
+    const isMobile = useMediaQuery('(max-width: 767px)');
 
     const fetchSubmissions = useCallback(async () => {
         if (!user) return;
@@ -173,8 +175,27 @@ const VerificationDashboard: React.FC = () => {
     };
 
     return (
-        <div className="p-4 md:p-6 bg-page min-h-screen">
+        <div className="p-4 md:p-6 bg-page min-h-screen max-md:pb-36">
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
+
+            {/* Mobile Top Back Bar */}
+            {isMobile && (
+                <div className="flex items-center gap-3 mb-4">
+                    <button
+                        type="button"
+                        onClick={() => window.history.state?.idx > 0 ? navigate(-1) : navigate('/mobile-home')}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                    >
+                        <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+                        <span>Back</span>
+                    </button>
+                    <div className="h-[1px] flex-1 bg-[#134426]" />
+                    <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#44D62C] bg-[#092c19] px-2.5 py-1 rounded-lg border border-[#134426]">
+                        VERIFICATION
+                    </span>
+                </div>
+            )}
+
             <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6">
                 <div>
                     <h2 className="text-2xl font-bold text-primary-text">Verification Dashboard</h2>
@@ -190,7 +211,7 @@ const VerificationDashboard: React.FC = () => {
                                 key={tab}
                                 onClick={() => setStatusFilter(tab)}
                                 className={`${statusFilter === tab
-                                    ? 'border-emerald-500 text-emerald-700'
+                                    ? 'border-emerald-500 text-emerald-700 font-bold'
                                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                                     } whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm capitalize transition-colors duration-200`}
                             >
@@ -213,7 +234,77 @@ const VerificationDashboard: React.FC = () => {
                 </div>
             </div>
 
-            <div className="overflow-x-auto bg-card rounded-xl shadow-card border border-border">
+            {/* Mobile Card List */}
+            <div className="block md:hidden space-y-3">
+                {isLoading ? (
+                    <div className="text-center py-10 text-muted">Loading submissions...</div>
+                ) : filteredSubmissions.length === 0 ? (
+                    <div className="text-center py-10 text-muted">No submissions found.</div>
+                ) : (
+                    filteredSubmissions.map(s => (
+                        <div key={s.id} className="bg-[#092c19] border border-[#134426] rounded-2xl p-4 shadow-sm space-y-3">
+                            <div className="flex items-start justify-between gap-2">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        {s.requiresManualVerification && (
+                                            <AlertTriangle className="h-4 w-4 text-orange-400 shrink-0" />
+                                        )}
+                                        <h3 className="text-sm font-black text-white">{s.personal.firstName} {s.personal.lastName}</h3>
+                                    </div>
+                                    <p className="text-[11px] font-semibold text-[#7D967B] mt-0.5">{s.personal.employeeId} • {s.organizationName || s.organization?.organizationName || '-'}</p>
+                                </div>
+                                <StatusChip status={s.status} />
+                            </div>
+
+                            <div className="flex items-center justify-between text-xs pt-2 border-t border-[#134426]">
+                                <span className="text-gray-300 font-medium">{s.organization?.designation || '-'}</span>
+                                {s.status === 'verified' && (
+                                    <VerificationChecks submission={s} isSyncing={syncingId === s.id} />
+                                )}
+                            </div>
+
+                            <div className="flex items-center justify-between pt-1">
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)}
+                                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#041b0f] border border-[#134426] text-xs font-bold text-[#44D62C]"
+                                    >
+                                        <Eye className="h-3.5 w-3.5" /> View
+                                    </button>
+                                    <button
+                                        onClick={() => navigate(`/onboarding/pdf/${s.id}`)}
+                                        className="p-1.5 rounded-xl bg-[#041b0f] border border-[#134426] text-gray-300"
+                                        title="Download Forms"
+                                    >
+                                        <FileText className="h-4 w-4" />
+                                    </button>
+                                </div>
+
+                                {s.status === 'pending' && (
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => handleDeploy(s)}
+                                            disabled={deployingId === s.id}
+                                            className="px-3 py-1.5 rounded-xl bg-[#44D62C] text-[#0A1809] text-xs font-black shadow-sm active:scale-95"
+                                        >
+                                            Deploy
+                                        </button>
+                                        <button
+                                            onClick={() => setRejectModalSubmission(s)}
+                                            className="p-1.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400"
+                                        >
+                                            <XSquare className="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    ))
+                )}
+            </div>
+
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto bg-card rounded-xl shadow-card border border-border">
                 <table className="min-w-full responsive-table">
                     <thead className="bg-page">
                         <tr>

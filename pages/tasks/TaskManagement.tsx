@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useId } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTaskStore } from '../../store/taskStore';
 import { useAuthStore } from '../../store/authStore';
-import { Plus, Edit, Trash2, CheckCircle, X, Search } from 'lucide-react';
+import { Plus, Edit, Trash2, CheckCircle, X, Search, ArrowLeft } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import Modal from '../../components/ui/Modal';
@@ -274,14 +274,14 @@ const TaskManagement: React.FC = () => {
             'None': '',
             'Level 1': isDark ? 'bg-orange-500/20 text-orange-400' : 'bg-orange-100 text-orange-800',
             'Level 2': isDark ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-100 text-amber-800',
-            'Email Sent': isDark ? 'bg-purple-500/20 text-purple-400' : 'bg-purple-100 text-purple-800',
+            'Email Sent': isDark ? 'bg-sky-500/20 text-sky-400' : 'bg-sky-100 text-sky-800',
         };
         return <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${styles[status]}`}>{status}</span>;
     };
 
 
     return (
-        <div className={`min-h-screen ${isMobile ? 'bg-[#041b0f] text-white p-3 pb-20' : `p-4 ${isDark ? 'bg-[#041b0f] border border-white/10' : 'md:bg-card'} md:p-6 md:rounded-xl md:shadow-card`}`}>
+        <div className={`min-h-screen ${isMobile ? 'bg-[#041b0f] text-white p-3 pb-36' : `p-4 ${isDark ? 'bg-[#041b0f] border border-white/10' : 'md:bg-card'} md:p-6 md:rounded-xl md:shadow-card`}`}>
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
             {isCompleteFormOpen && currentTask && (
@@ -302,24 +302,54 @@ const TaskManagement: React.FC = () => {
                 Are you sure you want to delete the task "{currentTask?.name}"?
             </Modal>
 
+            {/* Mobile Top Back Bar */}
+            {isMobile && (
+                <div className="flex items-center gap-3 mb-4">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            if (window.history.state?.idx > 0) {
+                                navigate(-1);
+                            } else {
+                                navigate('/mobile-home');
+                            }
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                    >
+                        <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+                        <span>Back</span>
+                    </button>
+                    <div className="h-[1px] flex-1 bg-[#134426]" />
+                    <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#44D62C] bg-[#092c19] px-2.5 py-1 rounded-lg border border-[#134426]">
+                        Task Center
+                    </span>
+                </div>
+            )}
+
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
                 <div>
                     <h1 className={`text-xl font-bold ${isMobile || isDark ? 'text-white' : 'text-gray-900'}`}>Task Management</h1>
                     <p className="text-xs text-gray-400 mt-0.5">Drag & drop cards to transition task status</p>
                 </div>
-                <div className="flex items-center gap-2 bg-gray-100 dark:bg-white/10 p-1 rounded-xl">
+                <div className={`flex items-center gap-1.5 p-1 rounded-xl ${
+                    isMobile ? 'bg-[#092c19] border border-[#134426]' : 'bg-gray-100 dark:bg-white/10'
+                }`}>
                     <button
                         onClick={() => setViewMode('kanban')}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                            viewMode === 'kanban' ? 'bg-emerald-600 text-white shadow' : 'text-gray-600 dark:text-gray-300 hover:text-gray-900'
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                            viewMode === 'kanban' 
+                                ? (isMobile ? 'bg-[#44D62C] text-[#0A1809] shadow-[0_2px_10px_rgba(68,214,44,0.35)]' : 'bg-emerald-600 text-white shadow') 
+                                : (isMobile ? 'text-[#7D967B] hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:text-gray-900')
                         }`}
                     >
                         Kanban Board
                     </button>
                     <button
                         onClick={() => setViewMode('table')}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                            viewMode === 'table' ? 'bg-emerald-600 text-white shadow' : 'text-gray-600 dark:text-gray-300 hover:text-gray-900'
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                            viewMode === 'table' 
+                                ? (isMobile ? 'bg-[#44D62C] text-[#0A1809] shadow-[0_2px_10px_rgba(68,214,44,0.35)]' : 'bg-emerald-600 text-white shadow') 
+                                : (isMobile ? 'text-[#7D967B] hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:text-gray-900')
                         }`}
                     >
                         Table List
@@ -334,7 +364,7 @@ const TaskManagement: React.FC = () => {
                         <select
                             id={statusFilterId}
                             name="statusFilter"
-                            className={`w-full rounded-lg border px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-emerald-500 ${isMobile || isDark ? 'bg-[#152b1b] border-white/10 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                            className={`w-full rounded-lg border px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-emerald-500 ${isMobile ? 'bg-[#092c19] border-[#134426] text-white focus:border-[#44D62C] focus:ring-[#44D62C]/30' : (isDark ? 'bg-[#152b1b] border-white/10 text-white' : 'bg-white border-gray-300 text-gray-900')}`}
                             value={statusFilter}
                             onChange={e => setStatusFilter(e.target.value as any)}
                         >
@@ -349,7 +379,7 @@ const TaskManagement: React.FC = () => {
                         <select
                             id={priorityFilterId}
                             name="priorityFilter"
-                            className={`w-full rounded-lg border px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-emerald-500 ${isMobile || isDark ? 'bg-[#152b1b] border-white/10 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                            className={`w-full rounded-lg border px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-emerald-500 ${isMobile ? 'bg-[#092c19] border-[#134426] text-white focus:border-[#44D62C] focus:ring-[#44D62C]/30' : (isDark ? 'bg-[#152b1b] border-white/10 text-white' : 'bg-white border-gray-300 text-gray-900')}`}
                             value={priorityFilter}
                             onChange={e => setPriorityFilter(e.target.value as any)}
                         >
@@ -364,7 +394,7 @@ const TaskManagement: React.FC = () => {
                         <select
                             id={assignedToFilterId}
                             name="assignedToFilter"
-                            className={`w-full rounded-lg border px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-emerald-500 ${isMobile || isDark ? 'bg-[#152b1b] border-white/10 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                            className={`w-full rounded-lg border px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-emerald-500 ${isMobile ? 'bg-[#092c19] border-[#134426] text-white focus:border-[#44D62C] focus:ring-[#44D62C]/30' : (isDark ? 'bg-[#152b1b] border-white/10 text-white' : 'bg-white border-gray-300 text-gray-900')}`}
                             value={assignedToFilter}
                             onChange={e => setAssignedToFilter(e.target.value)}
                         >
@@ -382,7 +412,7 @@ const TaskManagement: React.FC = () => {
                     )}
                     <button
                         onClick={handleAdd}
-                        className={`flex items-center justify-center transition-colors ${isMobile ? 'bg-[#32CD32] hover:bg-[#28a428] text-[#0D1A0D] font-bold border-none shadow-none text-[13px] py-2 px-5 rounded-lg' : 'bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg px-6 py-2.5 font-medium'}`}
+                        className={`flex items-center justify-center transition-colors ${isMobile ? 'bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-bold border-none shadow-[0_2px_10px_rgba(68,214,44,0.35)] text-[13px] py-2 px-5 rounded-xl active:scale-95' : 'bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg px-6 py-2.5 font-medium'}`}
                     >
                         <Plus className="mr-2 h-4 w-4" /> Add Task
                     </button>
@@ -394,7 +424,8 @@ const TaskManagement: React.FC = () => {
                     placeholder="Search tasks by name..." 
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    icon={<Search className="h-4 w-4" />}
+                    icon={<Search className={`h-4 w-4 ${isMobile ? 'text-[#44D62C]' : ''}`} />}
+                    className={isMobile ? '!bg-[#092c19] !border-[#134426] !text-white placeholder:!text-[#7D967B] focus:!border-[#44D62C] focus:!ring-[#44D62C]/30 !rounded-xl' : ''}
                 />
             </div>
 
@@ -404,28 +435,32 @@ const TaskManagement: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-5 min-h-[500px]">
                     {(['To Do', 'In Progress', 'Done'] as TaskStatus[]).map((colStatus) => {
                         const colTasks = filteredTasks.filter(t => t.status === colStatus);
-                        const headerColor = colStatus === 'To Do' ? 'bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-200' :
-                                           colStatus === 'In Progress' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300' :
-                                           'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300';
+                        const headerColor = isMobile 
+                            ? 'bg-[#0d3b22] border border-[#134426] text-white' 
+                            : (colStatus === 'To Do' ? 'bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-200' :
+                               colStatus === 'In Progress' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300' :
+                               'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300');
                         return (
                             <div
                                 key={colStatus}
                                 onDragOver={(e) => e.preventDefault()}
                                 onDrop={() => handleTaskDrop(colStatus)}
                                 className={`rounded-2xl p-4 border flex flex-col transition ${
-                                    isDark ? 'bg-[#0b2416] border-white/10' : 'bg-gray-50/80 border-gray-200'
+                                    isMobile ? 'bg-[#092c19] border-[#134426]' : (isDark ? 'bg-[#0b2416] border-white/10' : 'bg-gray-50/80 border-gray-200')
                                 }`}
                             >
                                 <div className={`flex items-center justify-between px-3 py-2 rounded-xl mb-4 font-bold text-xs ${headerColor}`}>
                                     <span>{colStatus}</span>
-                                    <span className="px-2 py-0.5 rounded-full bg-white/60 dark:bg-black/40 text-[11px]">
+                                    <span className={isMobile ? "px-2.5 py-0.5 rounded-full bg-[#44D62C] text-[#0A1809] font-black text-xs shadow-[0_2px_6px_rgba(68,214,44,0.3)]" : "px-2 py-0.5 rounded-full bg-white/60 dark:bg-black/40 text-[11px]"}>
                                         {colTasks.length}
                                     </span>
                                 </div>
 
                                 <div className="space-y-3 flex-1 overflow-y-auto max-h-[600px] pr-1">
                                     {colTasks.length === 0 ? (
-                                        <div className="h-32 flex items-center justify-center border-2 border-dashed border-gray-200 dark:border-white/10 rounded-xl text-xs text-gray-400">
+                                        <div className={`h-32 flex items-center justify-center border-2 border-dashed rounded-xl text-xs ${
+                                            isMobile ? 'border-[#134426] text-[#7D967B] bg-[#041b0f]/50' : 'border-gray-200 dark:border-white/10 text-gray-400'
+                                        }`}>
                                             Drop task here
                                         </div>
                                     ) : (
@@ -437,7 +472,7 @@ const TaskManagement: React.FC = () => {
                                                     draggable
                                                     onDragStart={() => setDraggedTaskId(task.id)}
                                                     className={`p-4 rounded-xl border shadow-sm cursor-grab active:cursor-grabbing transition-all transform hover:-translate-y-0.5 ${
-                                                        isDark ? 'bg-[#152b1b] border-white/10 text-white' : 'bg-white border-gray-200 text-gray-900'
+                                                        isMobile ? 'bg-[#041b0f] border-[#134426] text-white' : (isDark ? 'bg-[#152b1b] border-white/10 text-white' : 'bg-white border-gray-200 text-gray-900')
                                                     }`}
                                                 >
                                                     <div className="flex justify-between items-start mb-2">
@@ -510,30 +545,30 @@ const TaskManagement: React.FC = () => {
 
                             if (isMobile) {
                                 return (
-                                    <div key={task.id} className="bg-[#152b1b] p-3 rounded-xl border border-white/5 mb-3">
+                                    <div key={task.id} className="bg-[#092c19] p-4 rounded-2xl border border-[#134426] mb-3 shadow-sm">
                                         <div className="flex justify-between items-start mb-2">
                                             <div>
-                                                <h3 className="font-semibold text-white text-base">{task.name}</h3>
-                                                <p className="text-[12px] text-gray-400 mt-0.5">Due: <span className={isOverdue ? 'text-red-400 font-bold' : ''}>{nextDueDate || '-'}</span></p>
+                                                <h3 className="font-bold text-white text-base">{task.name}</h3>
+                                                <p className="text-[12px] text-white/50 mt-0.5">Due: <span className={isOverdue ? 'text-rose-400 font-bold' : 'text-[#44D62C]'}>{nextDueDate || '-'}</span></p>
                                             </div>
                                             {getPriorityChip(task.priority)}
                                         </div>
-                                        <div className="grid grid-cols-2 gap-2 text-xs mb-3">
+                                        <div className="grid grid-cols-2 gap-2 text-xs mb-3 bg-[#041b0f] p-2.5 rounded-xl border border-[#134426]">
                                             <div>
-                                                <span className="text-gray-500 block text-[10px]">Assigned To</span>
-                                                <span className="text-gray-300">{task.assignedToName || '-'}</span>
+                                                <span className="text-white/40 block text-[10px] font-bold uppercase tracking-wider">Assigned To</span>
+                                                <span className="text-white font-medium">{task.assignedToName || '-'}</span>
                                             </div>
                                             <div>
-                                                <span className="text-gray-500 block text-[10px]">Status</span>
-                                                <span className="text-gray-300">{task.status}</span>
+                                                <span className="text-white/40 block text-[10px] font-bold uppercase tracking-wider">Status</span>
+                                                <span className="text-white font-medium">{task.status}</span>
                                             </div>
                                         </div>
-                                        <div className="flex justify-end gap-2 border-t border-white/10 pt-2.5">
-                                            <button onClick={() => handleEdit(task)} className="p-1.5 text-gray-400 hover:text-white bg-white/5 rounded-lg"><Edit className="h-3.5 w-3.5" /></button>
-                                            <button onClick={() => handleDelete(task)} className="p-1.5 text-red-400 hover:text-red-300 bg-red-500/10 rounded-lg"><Trash2 className="h-3.5 w-3.5" /></button>
+                                        <div className="flex justify-end gap-2 border-t border-[#134426] pt-2.5">
+                                            <button onClick={() => handleEdit(task)} className="p-2 text-white/60 hover:text-white bg-[#041b0f] border border-[#134426] rounded-xl"><Edit className="h-3.5 w-3.5" /></button>
+                                            <button onClick={() => handleDelete(task)} className="p-2 text-rose-400 hover:text-rose-300 bg-[#041b0f] border border-[#134426] rounded-xl"><Trash2 className="h-3.5 w-3.5" /></button>
                                             {task.assignedToId === user?.id && task.status !== 'Done' && (
-                                                <button onClick={() => handleComplete(task)} className="flex items-center px-2.5 py-1.5 bg-emerald-500/10 text-emerald-400 rounded-lg text-xs font-medium">
-                                                    <CheckCircle className="h-3.5 w-3.5 mr-1" /> Complete
+                                                <button onClick={() => handleComplete(task)} className="flex items-center gap-1.5 px-3 py-1.5 bg-[#44D62C] text-[#0A1809] rounded-xl text-xs font-black shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all">
+                                                    <CheckCircle className="h-3.5 w-3.5" /> Complete
                                                 </button>
                                             )}
                                         </div>

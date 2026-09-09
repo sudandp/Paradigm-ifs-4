@@ -78,7 +78,7 @@ const BottomNav: React.FC = () => {
         >
             {/* Pill container — responsive width with horizontal padding that scales on larger phones */}
             <div className="w-full px-3 sm:px-6 max-w-lg mx-auto">
-                <div className="w-full bg-[#041b0f]/95 backdrop-blur-xl rounded-[28px] h-[68px] flex items-center justify-around shadow-[0_10px_30px_rgba(0,0,0,0.5)] border border-white/5 relative px-1">
+                <div className="w-full bg-[#041b0f]/95 backdrop-blur-xl rounded-[28px] h-[68px] flex items-center justify-around shadow-[0_10px_30px_rgba(0,0,0,0.7)] border border-[#1d422f] relative px-1">
                     
                     {/* Render first two items */}
                     {navItems.slice(0, 2).map((item) => {
@@ -94,7 +94,7 @@ const BottomNav: React.FC = () => {
                                         {active && (
                                             <motion.div
                                                 layoutId="activePill"
-                                                className="absolute inset-0 bg-[#dcfce7] rounded-full z-0"
+                                                className="absolute inset-0 bg-[#44D62C] rounded-full z-0"
                                                 style={{ padding: '0 12px' }}
                                                 transition={{ type: "spring", stiffness: 350, damping: 30 }}
                                             />
@@ -104,7 +104,7 @@ const BottomNav: React.FC = () => {
                                     <div className="relative z-10 flex items-center gap-1.5 px-3 py-2">
                                         <item.icon
                                             className={`transition-colors duration-300 ${
-                                                active ? 'text-[#041b0f]' : 'text-[#22c55e]'
+                                                active ? 'text-[#0A1809]' : 'text-[#7D967B]'
                                             }`}
                                             style={{ width: 'clamp(20px, 5vw, 24px)', height: 'clamp(20px, 5vw, 24px)' }}
                                         />
@@ -113,7 +113,7 @@ const BottomNav: React.FC = () => {
                                                 initial={{ opacity: 0, width: 0 }}
                                                 animate={{ opacity: 1, width: 'auto' }}
                                                 exit={{ opacity: 0, width: 0 }}
-                                                className="text-[11px] font-bold text-[#041b0f] tracking-tight whitespace-nowrap overflow-hidden"
+                                                className="text-[11px] font-bold text-[#0A1809] tracking-tight whitespace-nowrap overflow-hidden"
                                             >
                                                 {item.label}
                                             </motion.span>
@@ -175,19 +175,19 @@ const BottomNav: React.FC = () => {
                             </AnimatePresence>
 
                             {/* Outer ring — same color as bar, acts as notch border */}
-                            <div className="w-[72px] h-[72px] rounded-full bg-[#041b0f] flex items-center justify-center shadow-[0_-4px_20px_rgba(0,0,0,0.4)] relative z-10">
+                            <div className="w-[72px] h-[72px] rounded-full bg-[#041b0f] border border-[#1d422f] flex items-center justify-center shadow-[0_-4px_20px_rgba(0,0,0,0.5)] relative z-10">
                                 {/* Inner green circle — 52px */}
                                 <motion.button
-                                    onClick={() => setReferralModalOpen(true)}
-                                    className="w-[52px] h-[52px] rounded-full flex items-center justify-center active:scale-90 transition-all duration-200 group relative overflow-hidden"
-                                    style={{
-                                        background: 'radial-gradient(circle at 40% 35%, #1a9a6a, #006b3f 60%, #004d2d)',
-                                        boxShadow: 'inset 0 2px 6px rgba(255,255,255,0.15), 0 4px 12px rgba(0,107,63,0.4)',
-                                    }}
-                                    aria-label="Referral Program"
-                                >
-                                    <Plus className="text-white w-7 h-7 group-hover:rotate-90 transition-transform duration-300" strokeWidth={2.5} />
-                                </motion.button>
+                                     onClick={() => setReferralModalOpen(true)}
+                                     className="w-[52px] h-[52px] rounded-full flex items-center justify-center active:scale-90 transition-all duration-200 group relative overflow-hidden"
+                                     style={{
+                                         background: 'radial-gradient(circle at 40% 35%, #5af140, #44d62c 60%, #2fb81b)',
+                                         boxShadow: 'inset 0 2px 6px rgba(255,255,255,0.25), 0 4px 14px rgba(68,214,44,0.4)',
+                                     }}
+                                     aria-label="Referral Program"
+                                 >
+                                     <Plus className="text-[#0A1809] w-7 h-7 group-hover:rotate-90 transition-transform duration-300" strokeWidth={2.5} />
+                                 </motion.button>
                             </div>
                         </div>
                     </div>
@@ -204,19 +204,19 @@ const BottomNav: React.FC = () => {
                                 <div className="relative flex items-center justify-center">
                                     <AnimatePresence>
                                         {active && (
-                                            <motion.div
-                                                layoutId="activePill"
-                                                className="absolute inset-0 bg-[#dcfce7] rounded-full z-0"
-                                                style={{ padding: '0 12px' }}
-                                                transition={{ type: "spring", stiffness: 350, damping: 30 }}
-                                            />
+                                             <motion.div
+                                                 layoutId="activePill"
+                                                 className="absolute inset-0 bg-[#44D62C] rounded-full z-0"
+                                                 style={{ padding: '0 12px' }}
+                                                 transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                                             />
                                         )}
                                     </AnimatePresence>
 
                                     <div className="relative z-10 flex items-center gap-1.5 px-3 py-2">
                                         <item.icon
                                             className={`transition-colors duration-300 ${
-                                                active ? 'text-[#041b0f]' : 'text-[#22c55e]'
+                                                active ? 'text-[#0A1809]' : 'text-[#7D967B]'
                                             }`}
                                             style={{ width: 'clamp(20px, 5vw, 24px)', height: 'clamp(20px, 5vw, 24px)' }}
                                         />
@@ -225,7 +225,7 @@ const BottomNav: React.FC = () => {
                                                 initial={{ opacity: 0, width: 0 }}
                                                 animate={{ opacity: 1, width: 'auto' }}
                                                 exit={{ opacity: 0, width: 0 }}
-                                                className="text-[11px] font-bold text-[#041b0f] tracking-tight whitespace-nowrap overflow-hidden"
+                                                className="text-[11px] font-bold text-[#0A1809] tracking-tight whitespace-nowrap overflow-hidden"
                                             >
                                                 {item.label}
                                             </motion.span>

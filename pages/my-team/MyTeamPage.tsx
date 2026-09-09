@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
-import { Search, MapPin, Clock, ChevronRight, User as UserIcon, Navigation, Users, CheckCircle, XCircle, Globe, Map as MapIcon, Home, ClipboardList, Plus, Calendar, Bell, Check, X } from 'lucide-react';
+import { Search, MapPin, Clock, ChevronRight, User as UserIcon, Navigation, Users, CheckCircle, XCircle, Globe, Map as MapIcon, Home, ClipboardList, Plus, Calendar, Bell, Check, X, ArrowLeft } from 'lucide-react';
 import { formatDistanceToNow, isToday } from 'date-fns';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import 'leaflet/dist/leaflet.css';
 import { api } from '../../services/api';
 import { supabase } from '../../services/supabase';
@@ -71,6 +71,7 @@ const markerStyles = `
 `;
 
 const MyTeamPage: React.FC = () => {
+  const navigate = useNavigate();
   const { user } = useAuthStore();
   const { theme } = useThemeStore();
   const { isMobile, isTablet } = useDevice();
@@ -508,10 +509,32 @@ const MyTeamPage: React.FC = () => {
 
   if (isMobile) {
     return (
-      <div className="flex flex-col min-h-screen bg-[#042516] p-4 pb-28 text-white space-y-6 overflow-y-auto">
+      <div className="flex flex-col min-h-screen bg-[#041b0f] p-4 pb-36 text-white space-y-6 overflow-y-auto">
+
+        {/* Mobile Top Back Bar */}
+        <div className="flex items-center gap-3 mb-1">
+            <button
+                type="button"
+                onClick={() => {
+                    if (window.history.state?.idx > 0) {
+                        navigate(-1);
+                    } else {
+                        navigate('/mobile-home');
+                    }
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+            >
+                <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+                <span>Back</span>
+            </button>
+            <div className="h-[1px] flex-1 bg-[#134426]" />
+            <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#44D62C] bg-[#092c19] px-2.5 py-1 rounded-lg border border-[#134426]">
+                My Team
+            </span>
+        </div>
 
         {/* Title and Subtitle */}
-        <div className="space-y-1 mt-2 text-center">
+        <div className="space-y-1 mt-1 text-center">
           <h1 className="text-2xl font-black tracking-tight text-white">My Team</h1>
           <p className="text-[11px] text-gray-400 font-medium">Real-time status and locations of your field personnel.</p>
         </div>
@@ -519,7 +542,7 @@ const MyTeamPage: React.FC = () => {
         {/* Structure Link */}
         {['admin', 'developer'].includes(user?.role || '') && (
           <div className="flex justify-center w-full">
-            <Link to="/my-team/reporting" className="inline-flex items-center gap-1.5 text-xs font-bold text-[#00a859] hover:text-emerald-400 bg-[#182a20] px-4.5 py-2.5 rounded-2xl border border-[#2a4536]/30 shadow-sm transition-all">
+            <Link to="/my-team/reporting" className="inline-flex items-center gap-1.5 text-xs font-bold text-[#44D62C] hover:text-emerald-400 bg-[#092c19] px-4.5 py-2.5 rounded-2xl border border-[#134426] shadow-sm transition-all">
               <Users className="w-3.5 h-3.5" />
               Manage Structure
             </Link>
@@ -534,11 +557,11 @@ const MyTeamPage: React.FC = () => {
               name="locationFilter"
               value={selectedLocation}
               onChange={(e) => setSelectedLocation(e.target.value)}
-              className="w-full px-4 py-3 bg-[#091c13] border border-[#2a4536]/30 rounded-2xl focus:ring-2 focus:ring-emerald-500/20 focus:border-transparent outline-none transition-all text-xs text-white appearance-none cursor-pointer font-semibold shadow-sm"
+              className="w-full px-4 py-3 bg-[#041b0f] border border-[#134426] rounded-2xl focus:ring-2 focus:ring-[#44D62C]/30 focus:border-[#44D62C] outline-none transition-all text-xs text-white appearance-none cursor-pointer font-semibold shadow-sm"
             >
               <option value="All">All Locations</option>
               {Object.entries(availableLocations).flatMap(([state, cities]) => [
-                <option key={`state-${state}`} value={`state:${state}`} className="font-bold text-[#00a859]">All {state}</option>,
+                <option key={`state-${state}`} value={`state:${state}`} className="font-bold text-[#44D62C]">All {state}</option>,
                 ...cities.map(city => (
                   <option key={`${state}-${city}`} value={`city:${state}:${city}`}>
                     {city} ({state})
@@ -557,16 +580,16 @@ const MyTeamPage: React.FC = () => {
               placeholder="Search team member..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-11 pr-4 py-3 bg-[#091c13] border border-[#2a4536]/30 rounded-2xl focus:ring-2 focus:ring-emerald-500/20 focus:border-transparent outline-none transition-all text-xs text-white placeholder-gray-400 font-semibold shadow-sm"
+              className="w-full pl-11 pr-4 py-3 bg-[#041b0f] border border-[#134426] rounded-2xl focus:ring-2 focus:ring-[#44D62C]/30 focus:border-[#44D62C] outline-none transition-all text-xs text-white placeholder-gray-400 font-semibold shadow-sm"
             />
           </div>
         </div>
 
         {/* Admin Tracking Interval Control */}
         {user?.role === 'admin' && (
-          <div className="bg-[#78817b]/80 backdrop-blur-md rounded-2xl border border-[#2a4536]/20 p-4.5 space-y-3.5 text-sm shadow-md">
-            <div className="flex items-center gap-2 text-rose-800 font-bold">
-              <Clock className="w-4.5 h-4.5 text-rose-800" />
+          <div className="bg-[#092c19] backdrop-blur-md rounded-2xl border border-[#134426] p-4.5 space-y-3.5 text-sm shadow-md">
+            <div className="flex items-center gap-2 text-rose-400 font-bold">
+              <Clock className="w-4.5 h-4.5 text-rose-400" />
               <span>Tracking Interval (mins):</span>
             </div>
             <div className="flex gap-3">
@@ -578,12 +601,12 @@ const MyTeamPage: React.FC = () => {
                 max="60" 
                 value={trackingInterval} 
                 onChange={(e) => setTrackingInterval(parseInt(e.target.value) || 15)}
-                className="w-20 h-10 px-3 bg-white border-0 text-black text-center text-sm rounded-xl font-bold focus:outline-none shrink-0"
+                className="w-20 h-10 px-3 bg-[#041b0f] border border-[#134426] text-white text-center text-sm rounded-xl font-bold focus:outline-none shrink-0"
               />
               <button 
                 onClick={handleUpdateInterval}
                 disabled={isUpdatingInterval}
-                className="flex-1 h-10 bg-[#00a859] hover:bg-[#008f4c] active:scale-95 text-white font-bold rounded-xl transition-all flex items-center justify-center border-none shadow-sm"
+                className="flex-1 h-10 bg-[#44D62C] hover:bg-[#39E722] active:scale-95 text-[#0A1809] font-black rounded-xl transition-all flex items-center justify-center border-none shadow-[0_2px_8px_rgba(68,214,44,0.3)]"
               >
                 {isUpdatingInterval ? 'Saving...' : 'Set'}
               </button>
@@ -625,10 +648,10 @@ const MyTeamPage: React.FC = () => {
                   </div>
                   <div className="flex justify-between items-center pt-2 border-t border-gray-100/80">
                     <button 
-                      className="flex items-center gap-1.5 text-xs font-black text-[#00a859] hover:text-emerald-700 py-1.5 px-3 rounded-lg hover:bg-emerald-50 transition-colors"
+                      className="flex items-center gap-1.5 text-xs font-black text-[#44D62C] hover:text-emerald-700 py-1.5 px-3 rounded-lg hover:bg-emerald-50 transition-colors"
                       onClick={() => handleRespondToUnlock(req.id, 'approved')}
                     >
-                      <CheckCircle className="w-4 h-4 text-[#00a859]" /> Approve
+                      <CheckCircle className="w-4 h-4 text-[#44D62C]" /> Approve
                     </button>
                     <button 
                       className="flex items-center gap-1.5 text-xs font-black text-rose-600 hover:text-rose-700 py-1.5 px-3 rounded-lg hover:bg-rose-50 transition-colors"
@@ -648,7 +671,7 @@ const MyTeamPage: React.FC = () => {
           <div className="flex justify-between items-center">
             <h2 className="text-sm font-bold text-white uppercase tracking-wide flex items-center gap-2">
               Team Members
-              <span className="bg-[#00a859]/20 text-[#00a859] text-xs px-2.5 py-0.5 rounded-full font-bold">
+              <span className="bg-[#44D62C]/20 text-[#44D62C] text-xs px-2.5 py-0.5 rounded-full font-bold">
                 {filteredMembers.length}
               </span>
             </h2>
@@ -657,11 +680,11 @@ const MyTeamPage: React.FC = () => {
           {loading ? (
             <div className="space-y-3">
               {[1, 2, 3].map(i => (
-                <div key={i} className="h-20 bg-[#182a20] animate-pulse rounded-2xl border border-[#2a4536]/30" />
+                <div key={i} className="h-20 bg-[#1A2819] animate-pulse rounded-2xl border border-[#2B3E2A]/30" />
               ))}
             </div>
           ) : filteredMembers.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-gray-400 bg-[#182a20] rounded-2xl border border-dashed border-[#2a4536]/30">
+            <div className="flex flex-col items-center justify-center py-12 text-gray-400 bg-[#1A2819] rounded-2xl border border-dashed border-[#2B3E2A]/30">
               <UserIcon className="w-10 h-10 mb-2 opacity-25" />
               <p className="text-xs">No team members found.</p>
             </div>
@@ -677,17 +700,17 @@ const MyTeamPage: React.FC = () => {
                     <Link
                       key={member.id}
                       to={`/my-team/${member.id}`}
-                      className="flex items-center gap-3.5 bg-[#182a20] border border-[#2a4536]/30 rounded-2xl p-4 hover:border-emerald-500/50 transition-all duration-300 shadow-sm"
+                      className="flex items-center gap-3.5 bg-[#1A2819] border border-[#2B3E2A]/30 rounded-2xl p-4 hover:border-emerald-500/50 transition-all duration-300 shadow-sm"
                     >
                       <div className="relative shrink-0">
-                        <div className="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center font-bold text-lg ring-2 ring-[#042516] overflow-hidden relative">
+                        <div className="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center font-bold text-lg ring-2 ring-[#041b0f] overflow-hidden relative">
                           <ProfilePlaceholder 
                             photoUrl={member.photoUrl} 
                             seed={member.name}
                             className="absolute inset-0 w-full h-full object-cover"
                           />
                         </div>
-                        <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-[#182a20] z-20 ${
+                        <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-[#1A2819] z-20 ${
                           loc && isToday(new Date(loc.timestamp))
                             ? 'bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.6)]' 
                             : 'bg-red-500 shadow-[0_0_6px_rgba(239,44,44,0.6)]'
@@ -725,11 +748,11 @@ const MyTeamPage: React.FC = () => {
 
               {/* Mobile Pagination */}
               {filteredMembers.length > pageSize && (
-                <div className="flex justify-between items-center bg-[#182a20] border border-[#2a4536]/30 p-3 rounded-2xl mt-4 text-xs font-bold">
+                <div className="flex justify-between items-center bg-[#1A2819] border border-[#2B3E2A]/30 p-3 rounded-2xl mt-4 text-xs font-bold">
                   <button
                     disabled={currentPage === 1}
                     onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                    className="px-3.5 py-2 bg-[#091c13] text-white rounded-xl border border-[#2a4536]/30 disabled:opacity-40"
+                    className="px-3.5 py-2 bg-[#263625] text-white rounded-xl border border-[#2B3E2A]/30 disabled:opacity-40"
                   >
                     Prev
                   </button>
@@ -739,7 +762,7 @@ const MyTeamPage: React.FC = () => {
                   <button
                     disabled={currentPage >= Math.ceil(filteredMembers.length / pageSize)}
                     onClick={() => setCurrentPage(prev => Math.min(Math.ceil(filteredMembers.length / pageSize), prev + 1))}
-                    className="px-3.5 py-2 bg-[#091c13] text-white rounded-xl border border-[#2a4536]/30 disabled:opacity-40"
+                    className="px-3.5 py-2 bg-[#263625] text-white rounded-xl border border-[#2B3E2A]/30 disabled:opacity-40"
                   >
                     Next
                   </button>
@@ -750,13 +773,13 @@ const MyTeamPage: React.FC = () => {
         </div>
 
         {/* Custom Mobile Bottom Navigation Dock & Floating Plus Button */}
-        <div className="fixed bottom-0 left-0 right-0 z-40 bg-[#042516]/90 backdrop-blur-md px-4 pb-4 pt-2 border-t border-[#2a4536]/10">
-          <div className="relative bg-[#091c13] border border-[#2a4536]/30 rounded-3xl h-16 flex items-center justify-around shadow-2xl">
-            <button className="flex flex-col items-center justify-center text-[#00a859] p-2 hover:opacity-85 transition-opacity">
+        <div className="fixed bottom-0 left-0 right-0 z-40 bg-[#041b0f]/90 backdrop-blur-md px-4 pb-4 pt-2 border-t border-[#2B3E2A]/10">
+          <div className="relative bg-[#263625] border border-[#2B3E2A]/30 rounded-3xl h-16 flex items-center justify-around shadow-2xl">
+            <button className="flex flex-col items-center justify-center text-[#44D62C] p-2 hover:opacity-85 transition-opacity">
               <Home className="w-5 h-5" />
             </button>
 
-            <button className="flex flex-col items-center justify-center text-gray-400 p-2 hover:text-[#00a859] hover:opacity-85 transition-colors">
+            <button className="flex flex-col items-center justify-center text-gray-400 p-2 hover:text-[#44D62C] hover:opacity-85 transition-colors">
               <ClipboardList className="w-5 h-5" />
             </button>
 
@@ -764,17 +787,17 @@ const MyTeamPage: React.FC = () => {
             <div className="relative -top-5 shrink-0">
               <Link 
                 to={['admin', 'hr', 'developer'].includes(user?.role || '') ? '/my-team/reporting' : '#'}
-                className="w-14 h-14 bg-[#00a859] text-white rounded-full flex items-center justify-center shadow-lg active:scale-95 hover:scale-105 transition-all duration-300"
+                className="w-14 h-14 bg-[#44D62C] text-white rounded-full flex items-center justify-center shadow-lg active:scale-95 hover:scale-105 transition-all duration-300"
               >
                 <Plus className="w-6 h-6 stroke-[3]" />
               </Link>
             </div>
 
-            <button className="flex flex-col items-center justify-center text-gray-400 p-2 hover:text-[#00a859] hover:opacity-85 transition-colors">
+            <button className="flex flex-col items-center justify-center text-gray-400 p-2 hover:text-[#44D62C] hover:opacity-85 transition-colors">
               <Calendar className="w-5 h-5" />
             </button>
 
-            <button className="flex flex-col items-center justify-center text-gray-400 p-2 hover:text-[#00a859] hover:opacity-85 transition-colors">
+            <button className="flex flex-col items-center justify-center text-gray-400 p-2 hover:text-[#44D62C] hover:opacity-85 transition-colors">
               <UserIcon className="w-5 h-5" />
             </button>
           </div>

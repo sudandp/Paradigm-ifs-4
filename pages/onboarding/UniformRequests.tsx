@@ -24,12 +24,12 @@ type UniformFormData = {
 
 const UniformStatusChip: React.FC<{ status: UniformRequest['status'] }> = ({ status }) => {
     const darkStyles: Record<UniformRequest['status'], string> = {
-      'Pending': 'bg-yellow-900/50 text-yellow-300 border border-yellow-500/50',
-      'Approved': 'bg-blue-900/50 text-blue-300 border border-blue-500/50',
-      'Issued': 'bg-green-900/50 text-green-300 border border-green-500/50',
-      'Rejected': 'bg-red-900/50 text-red-300 border border-red-500/50',
+      'Pending': 'bg-amber-500/10 text-amber-400 border border-amber-500/30',
+      'Approved': 'bg-sky-500/10 text-sky-400 border border-sky-500/30',
+      'Issued': 'bg-[#44D62C]/10 text-[#44D62C] border border-[#44D62C]/30',
+      'Rejected': 'bg-rose-500/10 text-rose-400 border border-rose-500/30',
     };
-    return <span className={`fo-status-badge ${darkStyles[status]}`}>{status}</span>;
+    return <span className={`px-2.5 py-0.5 text-[10px] font-black rounded-full ${darkStyles[status]}`}>{status}</span>;
 };
 
 const UniformSizeTable: React.FC<{
@@ -344,14 +344,24 @@ const UniformRequests: React.FC = () => {
         };
 
         return (
-            <div className="h-full flex flex-col">
-                 <header className="p-4 flex-shrink-0 flex items-center gap-4 fo-mobile-header">
-                    <button onClick={handleCancel} aria-label="Go back">
-                        <ArrowLeft className="h-6 w-6" />
+            <div className="h-full flex flex-col p-4 bg-[#041b0f] min-h-screen max-md:pb-36">
+                {/* Mobile Top Back Bar */}
+                <div className="flex items-center gap-3 mb-4">
+                    <button
+                        type="button"
+                        onClick={handleCancel}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                    >
+                        <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+                        <span>Back</span>
                     </button>
-                    <h1>{editingRequest ? 'Edit' : 'New'} Request</h1>
-                </header>
-                <main className="flex-1 overflow-y-auto p-4">
+                    <div className="h-[1px] flex-1 bg-[#134426]" />
+                    <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#44D62C] bg-[#092c19] px-2.5 py-1 rounded-lg border border-[#134426]">
+                        {editingRequest ? 'EDIT REQUEST' : 'NEW UNIFORM'}
+                    </span>
+                </div>
+
+                <main className="flex-1 overflow-y-auto">
                     <UniformRequestForm
                         onSave={handleSave}
                         onCancel={handleCancel}
@@ -361,43 +371,69 @@ const UniformRequests: React.FC = () => {
                     />
                 </main>
             </div>
-        )
+        );
     }
 
     return (
-        <div className="h-full flex flex-col">
+        <div className="h-full flex flex-col p-4 bg-[#041b0f] min-h-screen max-md:pb-36">
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
             <Modal isOpen={!!deletingRequest} onClose={() => setDeletingRequest(null)} onConfirm={handleConfirmDelete} title="Confirm Deletion">
                 Are you sure you want to delete this uniform request? This cannot be undone.
             </Modal>
 
-            <header className="p-4 flex-shrink-0 flex items-center justify-between fo-mobile-header">
-                <h1 className="text-lg font-semibold">Uniform Requests</h1>
-                <button onClick={handleNewRequest} aria-label="New Uniform Request">
-                    <UserPlus className="h-6 w-6" />
+            {/* Mobile Top Back Bar */}
+            <div className="flex items-center gap-3 mb-4">
+                <button
+                    type="button"
+                    onClick={() => window.history.state?.idx > 0 ? navigate(-1) : navigate('/mobile-home')}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                >
+                    <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+                    <span>Back</span>
                 </button>
-            </header>
+                <div className="h-[1px] flex-1 bg-[#134426]" />
+                <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#44D62C] bg-[#092c19] px-2.5 py-1 rounded-lg border border-[#134426]">
+                    UNIFORM REQUESTS
+                </span>
+                <button
+                    onClick={handleNewRequest}
+                    className="p-1.5 rounded-xl bg-[#44D62C]/10 border border-[#44D62C]/30 text-[#44D62C] hover:bg-[#44D62C]/20 active:scale-95 transition-all cursor-pointer"
+                    aria-label="New Uniform Request"
+                >
+                    <Plus className="h-4 w-4 stroke-[2.5]" />
+                </button>
+            </div>
 
-            <main className="flex-1 overflow-y-auto p-4 space-y-3">
+            <main className="flex-1 overflow-y-auto space-y-3">
                 {requests.length > 0 ? (
                     requests.map(req => (
-                        <div key={req.id} className="bg-[#243524] p-3 rounded-xl border border-[#374151]">
+                        <div key={req.id} className="bg-[#092c19] p-4 rounded-2xl border border-[#134426] shadow-sm">
                             <div className="flex justify-between items-start">
                                 <div>
-                                    <p className="font-semibold text-white">{req.siteName}</p>
-                                    <p className="text-xs text-gray-400">{format(new Date(req.requestedDate), 'dd MMM, yyyy')}</p>
+                                    <p className="font-bold text-white text-sm">{req.siteName}</p>
+                                    <p className="text-[11px] text-[#7D967B] font-medium">{format(new Date(req.requestedDate), 'dd MMM, yyyy')}</p>
                                 </div>
                                 <UniformStatusChip status={req.status} />
                             </div>
-                            <div className="mt-3 flex justify-between items-end">
-                                <div className="text-sm text-gray-300">
-                                    <p>{req.gender} Uniforms</p>
-                                    <p className="font-semibold">{totalItems(req.items)} Items</p>
+                            <div className="mt-3 flex justify-between items-end border-t border-[#134426] pt-3">
+                                <div className="text-xs text-[#a3b899]">
+                                    <p className="font-semibold">{req.gender} Uniforms</p>
+                                    <p className="font-black text-white text-sm">{totalItems(req.items)} Items</p>
                                 </div>
                                 {req.status === 'Pending' && (
                                     <div className="flex items-center gap-2">
-                                        <Button variant="icon" size="sm" onClick={() => handleEdit(req)}><Edit className="h-4 w-4 text-gray-400" /></Button>
-                                        <Button variant="icon" size="sm" onClick={() => setDeletingRequest(req)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                                        <button
+                                            onClick={() => handleEdit(req)}
+                                            className="p-2 rounded-xl bg-[#041b0f] border border-[#134426] text-gray-300 hover:text-white hover:border-[#44D62C]/40 transition-all cursor-pointer"
+                                        >
+                                            <Edit className="h-4 w-4" />
+                                        </button>
+                                        <button
+                                            onClick={() => setDeletingRequest(req)}
+                                            className="p-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500/20 transition-all cursor-pointer"
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </button>
                                     </div>
                                 )}
                             </div>
@@ -405,11 +441,14 @@ const UniformRequests: React.FC = () => {
                     ))
                 ) : (
                     <div className="text-center text-muted pt-16">
-                        <Shirt className="h-12 w-12 mx-auto mb-4" />
-                        <p>No uniform requests found.</p>
-                        <Button onClick={handleNewRequest} className="mt-4">
-                            <Plus className="mr-2 h-4 w-4" /> Create First Request
-                        </Button>
+                        <Shirt className="h-12 w-12 mx-auto mb-4 text-[#44D62C]/40" />
+                        <p className="text-sm font-bold text-white/60">No uniform requests found.</p>
+                        <button
+                            onClick={handleNewRequest}
+                            className="mt-4 inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-[#44D62C] text-[#0A1809] font-black text-xs shadow-md active:scale-95 transition-all cursor-pointer"
+                        >
+                            <Plus className="h-4 w-4 stroke-[2.5]" /> Create First Request
+                        </button>
                     </div>
                 )}
             </main>

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import type { SupportTicket, User } from '../../types';
 import { useAuthStore } from '../../store/authStore';
-import { Loader2, Plus, LifeBuoy, Users, Phone, MessageSquare, MessageCircle, Video, Search, Filter, UserCheck, AlertTriangle, Download, Trophy, Award, Info, Clock, Trash2 } from 'lucide-react';
+import { ArrowLeft, Loader2, Plus, LifeBuoy, Users, Phone, MessageSquare, MessageCircle, Video, Search, Filter, UserCheck, AlertTriangle, Download, Trophy, Award, Info, Clock, Trash2 } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import { formatDistanceToNow } from 'date-fns';
@@ -31,7 +31,7 @@ const StatusChip: React.FC<{ status: SupportTicket['status'] }> = ({ status }) =
         Open: 'bg-emerald-50 text-emerald-700 border-emerald-200',
         'In Progress': 'bg-blue-50 text-blue-700 border-blue-200',
         'Pending Requester': 'bg-amber-50 text-amber-700 border-amber-200',
-        'Need Approval': 'bg-purple-50 text-purple-700 border-purple-200',
+        'Need Approval': 'bg-sky-50 text-sky-700 border-sky-200',
         Resolved: 'bg-slate-100 text-slate-600 border-slate-200',
         Closed: 'bg-gray-50 text-gray-500 border-gray-200',
     };
@@ -52,17 +52,21 @@ const TicketRow: React.FC<{
 }> = ({ ticket, isMobile, isAdmin, onClick, onDelete }) => (
     <div
         onClick={onClick}
-        className="group flex items-center gap-4 p-3.5 rounded-xl border border-border bg-card transition-all duration-200 hover:border-emerald-300 hover:shadow-sm hover:bg-emerald-50/30 cursor-pointer"
+        className={`group flex items-center gap-4 p-3.5 rounded-2xl border transition-all duration-200 cursor-pointer ${
+            isMobile 
+                ? 'bg-[#041b0f] border-[#134426] hover:border-[#44D62C] text-white shadow-sm' 
+                : 'border-border bg-card hover:border-emerald-300 hover:shadow-sm hover:bg-emerald-50/30'
+        }`}
     >
         {/* Priority dot */}
         <div className="flex-shrink-0"><PriorityIndicator priority={ticket.priority} /></div>
 
         {/* Title + ticket number */}
         <div className="flex-1 min-w-0">
-            <p className="font-semibold text-sm text-primary-text group-hover:text-emerald-600 transition-colors truncate leading-tight">
+            <p className={`font-semibold text-sm group-hover:text-emerald-500 transition-colors truncate leading-tight ${isMobile ? 'text-white' : 'text-primary-text'}`}>
                 {ticket.title}
             </p>
-            <p className="text-[10px] font-mono text-muted/70 mt-0.5">#{ticket.ticketNumber}</p>
+            <p className={`text-[10px] font-mono mt-0.5 ${isMobile ? 'text-white/40' : 'text-muted/70'}`}>#{ticket.ticketNumber}</p>
         </div>
 
         {/* Raised by */}
@@ -100,7 +104,7 @@ const NearbyUserItem: React.FC<{
     onPing: (user: User) => void,
     isMobile?: boolean
 }> = ({ user, onAction, onPing, isMobile }) => (
-    <div className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-200 ${isMobile ? 'bg-[#0a1c13] border border-[#1d422f] p-4 rounded-2xl gap-4' : user.isNearby ? 'bg-emerald-50 border border-emerald-200 shadow-sm' : 'bg-slate-50 border border-slate-200/80 hover:bg-white hover:border-slate-300 hover:shadow-sm'}`}>
+    <div className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-200 ${isMobile ? 'bg-[#0a1c13] border border-[#334832] p-4 rounded-2xl gap-4' : user.isNearby ? 'bg-emerald-50 border border-emerald-200 shadow-sm' : 'bg-slate-50 border border-slate-200/80 hover:bg-white hover:border-slate-300 hover:shadow-sm'}`}>
         <div className="relative flex-shrink-0">
             <ProfilePlaceholder photoUrl={user.photoUrl} seed={user.id} className={`rounded-full shadow-sm ${isMobile ? 'w-12 h-12' : 'w-10 h-10'}`} />
             <span className={`absolute -bottom-0.5 -right-0.5 block rounded-full ${user.isAvailable ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.7)]' : 'bg-rose-500'} ring-2 ring-white ${isMobile ? 'h-4 w-4' : 'h-3 w-3'}`}></span>
@@ -397,8 +401,32 @@ const SupportDashboard: React.FC = () => {
 
     return (
         <>
-        <div className={`flex-1 flex flex-col w-full space-y-6 ${isMobile ? 'bg-[#041b0f] min-h-screen text-white p-4' : 'bg-slate-50 min-h-screen p-4 md:p-6'}`}>
+        <div className={`flex-1 flex flex-col w-full space-y-6 ${isMobile ? 'bg-[#041b0f] min-h-screen text-white p-4 pb-36' : 'bg-slate-50 min-h-screen p-4 md:p-6'}`}>
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
+
+            {/* Mobile Top Back Bar */}
+            {isMobile && (
+                <div className="flex items-center gap-3 mb-1">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            if (window.history.state?.idx > 0) {
+                                navigate(-1);
+                            } else {
+                                navigate('/mobile-home');
+                            }
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                    >
+                        <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+                        <span>Back</span>
+                    </button>
+                    <div className="h-[1px] flex-1 bg-[#134426]" />
+                    <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#44D62C] bg-[#092c19] px-2.5 py-1 rounded-lg border border-[#134426]">
+                        Help & Support
+                    </span>
+                </div>
+            )}
 
             {/* Modals */}
 
@@ -422,7 +450,7 @@ const SupportDashboard: React.FC = () => {
                             </div>
                             
                             <div className="flex justify-end gap-4 mt-6 pb-6">
-                                <button className="px-8 py-3 bg-[#3f4a59] text-white font-bold rounded-full text-sm" onClick={() => setIsNearbyModalOpen(false)}>Cancel</button>
+                                <button className="px-8 py-3 bg-[#134426] text-white font-bold rounded-full text-sm" onClick={() => setIsNearbyModalOpen(false)}>Cancel</button>
                                 <button className="px-8 py-3 bg-[#f34a4a] text-white font-bold rounded-full text-sm" onClick={() => setIsNearbyModalOpen(false)}>Close</button>
                             </div>
                         </div>
@@ -459,7 +487,7 @@ const SupportDashboard: React.FC = () => {
                         Track issues, request audits, and connect with support staff in real-time.
                     </p>
                 </div>
-                <div className={`flex w-full lg:w-auto ${isMobile ? 'bg-black/30 border border-[#1d422f] rounded-2xl py-4 px-6 justify-between items-center shadow-lg mb-2' : 'flex-wrap gap-2'}`}>
+                <div className={`flex w-full lg:w-auto ${isMobile ? 'bg-[#092c19] border border-[#134426] rounded-2xl py-4 px-6 justify-between items-center shadow-lg mb-2' : 'flex-wrap gap-2'}`}>
                     {isMobile ? (
                         <>
                             <button
@@ -515,7 +543,7 @@ const SupportDashboard: React.FC = () => {
             </div>
 
             {/* Global Filters Card */}
-            <div className={`${isMobile ? 'bg-black/30 border border-[#1d422f] shadow-lg p-6 rounded-2xl' : 'bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5'} flex flex-col gap-6`}>
+            <div className={`${isMobile ? 'bg-[#092c19] border border-[#134426] shadow-lg p-6 rounded-2xl' : 'bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5'} flex flex-col gap-6`}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div className="relative">
                         <label htmlFor="search-input" className={`block text-[10px] font-bold mb-1.5 uppercase tracking-widest ml-1 ${isMobile ? 'text-emerald-500' : 'text-slate-400'}`}>Search Tickets</label>
@@ -525,7 +553,7 @@ const SupportDashboard: React.FC = () => {
                                 id="search-input"
                                 name="search"
                                 placeholder="Ticket #, title..."
-                                className={`!pl-10 h-10 rounded-xl transition-all ${isMobile ? 'bg-[#041b0f] border-[#1d422f] text-white focus:bg-[#041b0f] placeholder:text-emerald-900/50' : 'bg-slate-50 border-slate-200 text-slate-800 placeholder:text-slate-400 focus:bg-white'}`}
+                                className={`!pl-10 h-10 rounded-xl transition-all ${isMobile ? 'bg-[#041b0f] border-[#134426] text-white focus:bg-[#041b0f] placeholder:text-emerald-900/50' : 'bg-slate-50 border-slate-200 text-slate-800 placeholder:text-slate-400 focus:bg-white'}`}
                                 value={filters.searchTerm}
                                 onChange={e => setFilters(f => ({ ...f, searchTerm: e.target.value }))}
                             />
@@ -538,7 +566,7 @@ const SupportDashboard: React.FC = () => {
                             name="role"
                             value={roleFilter}
                             onChange={e => setRoleFilter(e.target.value)}
-                            className={`h-10 rounded-xl ${isMobile ? 'bg-[#041b0f] border-[#1d422f] text-white' : 'bg-slate-50 border-slate-200 text-slate-800'}`}
+                            className={`h-10 rounded-xl ${isMobile ? 'bg-[#041b0f] border-[#134426] text-white' : 'bg-slate-50 border-slate-200 text-slate-800'}`}
                         >
                             <option value="all">All Roles</option>
                             {uniqueRoles.map(r => (
@@ -553,7 +581,7 @@ const SupportDashboard: React.FC = () => {
                             name="status"
                             value={filters.status}
                             onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}
-                            className={`h-10 rounded-xl ${isMobile ? 'bg-[#041b0f] border-[#1d422f] text-white' : 'bg-slate-50 border-slate-200 text-slate-800'}`}
+                            className={`h-10 rounded-xl ${isMobile ? 'bg-[#041b0f] border-[#134426] text-white' : 'bg-slate-50 border-slate-200 text-slate-800'}`}
                         >
                             <option value="all">All Status</option>
                             <option>Open</option>
@@ -570,7 +598,7 @@ const SupportDashboard: React.FC = () => {
                             name="priority"
                             value={filters.priority}
                             onChange={e => setFilters(f => ({ ...f, priority: e.target.value }))}
-                            className={`h-10 rounded-xl ${isMobile ? 'bg-[#041b0f] border-[#1d422f] text-white' : 'bg-slate-50 border-slate-200 text-slate-800'}`}
+                            className={`h-10 rounded-xl ${isMobile ? 'bg-[#041b0f] border-[#134426] text-white' : 'bg-slate-50 border-slate-200 text-slate-800'}`}
                         >
                             <option value="all">All Priority</option>
                             <option>Low</option>
@@ -591,9 +619,9 @@ const SupportDashboard: React.FC = () => {
                     { title: "Resolved Jobs", value: stats.resolved, color: '#006B3F', darkTextColor: "text-emerald-500" },
                     { title: "Pending For You", value: stats.pendingYourAction, color: '#f59e0b', darkTextColor: "text-amber-500" }
                 ].map((stat, i) => (
-                    <div key={i} className={`${isMobile ? 'bg-black/30 border-[#1d422f] p-4 rounded-2xl border' : 'bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4 hover:shadow-md transition-all'}`}>
+                    <div key={i} className={`${isMobile ? 'bg-[#092c19] border-[#134426] p-4 rounded-2xl border shadow-sm' : 'bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4 hover:shadow-md transition-all'}`}>
                         <div className="flex flex-col min-w-0">
-                            <p className={`text-[9px] font-bold mb-2 truncate uppercase tracking-widest ${isMobile ? 'text-gray-400' : 'text-slate-400'}`}>{stat.title}</p>
+                            <p className={`text-[9px] font-bold mb-2 truncate uppercase tracking-widest ${isMobile ? 'text-white/50' : 'text-slate-400'}`}>{stat.title}</p>
                             <p className={`text-2xl font-black leading-none tracking-tighter ${isMobile ? stat.darkTextColor : ''}`}
                                style={isMobile ? {} : { color: stat.color }}>
                                 {stat.value}
@@ -605,7 +633,7 @@ const SupportDashboard: React.FC = () => {
 
 
             {/* ─── Top Performers Section ─── */}
-            <div className={`${isMobile ? 'bg-black/30 border-[#1d422f] p-6 rounded-2xl border' : 'bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6'}`}>
+            <div className={`${isMobile ? 'bg-black/30 border-[#334832] p-6 rounded-2xl border' : 'bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6'}`}>
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
                     <div className="flex items-center gap-3">
                         <div className={`p-2.5 rounded-xl border ${isMobile ? 'bg-amber-500/10 border-amber-500/20' : 'bg-amber-50 border-amber-200'}`}>
@@ -736,12 +764,12 @@ const SupportDashboard: React.FC = () => {
             <div className="lg:grid lg:grid-cols-3 lg:gap-6">
                 {/* Main Content - Ticket List */}
                 <div className="lg:col-span-2 space-y-4">
-                    <div className={`${isMobile ? 'bg-[#041b0f] border-[#1d422f] rounded-2xl p-4' : 'bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5'}`}>
+                    <div className={`${isMobile ? 'bg-[#092c19] border border-[#134426] rounded-2xl p-4 shadow-sm' : 'bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5'}`}>
                         <div className="flex items-center justify-between mb-5">
                             <h3 className={`font-bold flex items-center gap-2 ${isMobile ? 'text-white uppercase tracking-tight' : 'text-slate-800 text-base'}`}>
-                                <MessageSquare className={`h-4 w-4 ${isMobile ? 'text-emerald-500' : 'text-[#006B3F]'}`} /> Active Tickets
+                                <MessageSquare className={`h-4 w-4 ${isMobile ? 'text-[#44D62C]' : 'text-[#006B3F]'}`} /> Active Tickets
                             </h3>
-                            <span className={`text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest ${isMobile ? 'bg-black/50 text-emerald-500 border border-[#1d422f]' : 'bg-slate-100 text-slate-500'}`}>
+                            <span className={`text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest ${isMobile ? 'bg-[#041b0f] text-[#44D62C] border border-[#134426]' : 'bg-slate-100 text-slate-500'}`}>
                                 {filteredTickets.length} Found
                             </span>
                         </div>

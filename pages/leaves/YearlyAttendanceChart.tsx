@@ -17,6 +17,7 @@ import {
 } from 'chart.js';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 import Button from '../../components/ui/Button';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 
 Chart.register(
     BarController,
@@ -35,9 +36,12 @@ interface YearlyAttendanceChartProps {
     } | null;
     isLoading?: boolean;
     onTotalPaydaysChange?: (total: number, year: number) => void;
+    isMobile?: boolean;
 }
 
-const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isLoading: isLoadingProp, onTotalPaydaysChange }) => {
+const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isLoading: isLoadingProp, onTotalPaydaysChange, isMobile: isMobileProp }) => {
+    const isMobileQuery = useMediaQuery('(max-width: 767px)');
+    const isMobileEffective = isMobileProp ?? isMobileQuery;
     const { user } = useAuthStore();
     const { recurringHolidays, attendance, fieldHolidays, officeHolidays } = useSettingsStore();
     const [events, setEvents] = useState<AttendanceEvent[]>([]);
@@ -274,6 +278,13 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isL
         if (chartInstance.current) {
             chartInstance.current.data.datasets.forEach((ds, i) => {
                 ds.data = newData[i];
+                if (isMobileEffective) {
+                    const mobileColors = ['#44D62C', '#38bdf8', '#10b981', '#f59e0b', '#f97316'];
+                    ds.backgroundColor = mobileColors[i];
+                } else {
+                    const webColors = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ea580c'];
+                    ds.backgroundColor = webColors[i];
+                }
             });
             chartInstance.current.update('none'); // 'none' = instant, no animation
             return;
@@ -289,14 +300,14 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isL
                     {
                         label: 'WORKED',
                         data: stats.monthlyWorked,
-                        backgroundColor: '#6366f1',
+                        backgroundColor: isMobileEffective ? '#44D62C' : '#6366f1',
                         stack: 'payable',
                         borderRadius: 4,
                     },
                     {
                         label: 'WH',
                         data: stats.monthlyLeaves,
-                        backgroundColor: '#8b5cf6',
+                        backgroundColor: isMobileEffective ? '#38bdf8' : '#8b5cf6',
                         stack: 'payable',
                         borderRadius: 4,
                     },
@@ -317,7 +328,7 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isL
                     {
                         label: 'SITE OT',
                         data: stats.monthlySiteOt,
-                        backgroundColor: '#ea580c',
+                        backgroundColor: isMobileEffective ? '#f97316' : '#ea580c',
                         stack: 'siteot',
                         borderRadius: 4,
                     }
@@ -335,11 +346,16 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isL
                         labels: {
                             boxWidth: 8,
                             padding: 10,
-                            font: { size: 10, weight: 700 }
+                            font: { size: 10, weight: 700 },
+                            color: isMobileEffective ? '#d1d5db' : '#334155',
                         }
                     },
                     tooltip: {
-                        backgroundColor: '#1e293b',
+                        backgroundColor: isMobileEffective ? '#101710' : '#1e293b',
+                        borderColor: isMobileEffective ? '#2B3E2A' : '#334155',
+                        borderWidth: isMobileEffective ? 1 : 0,
+                        titleColor: '#ffffff',
+                        bodyColor: '#e2e8f0',
                         padding: 10,
                         cornerRadius: 8,
                         callbacks: {
@@ -355,19 +371,28 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isL
                         stacked: true,
                         beginAtZero: true,
                         max: 31,
-                        ticks: { stepSize: 5, font: { size: 10 } },
-                        grid: { color: 'rgba(0,0,0,0.05)' }
+                        ticks: { 
+                            stepSize: 5, 
+                            font: { size: 10 },
+                            color: isMobileEffective ? '#7D967B' : '#64748b'
+                        },
+                        grid: { 
+                            color: isMobileEffective ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0,0,0,0.05)' 
+                        }
                     },
                     x: {
                         stacked: true,
                         grid: { display: false },
-                        ticks: { font: { size: 10, weight: 500 }, color: '#64748b' }
+                        ticks: { 
+                            font: { size: 10, weight: 500 }, 
+                            color: isMobileEffective ? '#7D967B' : '#64748b' 
+                        }
                     }
                 }
             }
         });
         // No cleanup returned here — cleanup is handled by the unmount-only effect below
-    }, [stats, isLoading]);
+    }, [stats, isLoading, isMobileEffective]);
 
     // Unmount-only cleanup — runs ONLY when component leaves the DOM, not on re-renders
     useEffect(() => {
@@ -397,20 +422,51 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isL
 
 
     return (
-        <div className="bg-card p-4 rounded-xl shadow-card border border-border w-full flex flex-col h-full">
-            <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                    <div className="p-1.5 bg-indigo-50 rounded-lg">
-                        <BarChart2 className="h-4 w-4 text-indigo-600" />
+        <div className={`w-full flex flex-col h-full ${
+            isMobileEffective 
+                ? 'bg-[#092c19] border border-[#134426] rounded-2xl p-4 shadow-none' 
+                : 'bg-card p-4 rounded-xl shadow-card border border-border'
+        }`}>
+            <div className="flex items-center justify-between mb-4 flex-shrink-0">
+                <div className="flex items-center gap-2.5">
+                    <div className={`p-1.5 rounded-xl flex items-center justify-center ${
+                        isMobileEffective ? 'bg-[#091c13] border border-[#2a4536]' : 'bg-indigo-50 rounded-lg'
+                    }`}>
+                        <BarChart2 className={`h-4 w-4 ${isMobileEffective ? 'text-[#22c55e]' : 'text-indigo-600'}`} />
                     </div>
-                    <h3 className="text-sm font-semibold text-primary-text">Yearly Attendance</h3>
+                    <h3 className={`text-sm font-bold ${isMobileEffective ? 'text-white' : 'text-primary-text'}`}>
+                        Yearly Attendance
+                    </h3>
                 </div>
                 <div className="flex items-center gap-1">
-                    <Button variant="secondary" size="sm" className="btn-icon !p-1 h-6 w-6" onClick={() => changeYear(-1)}>
+                    <Button 
+                        variant="secondary" 
+                        size="sm" 
+                        className={`btn-icon !p-1 h-6 w-6 ${
+                            isMobileEffective 
+                                ? '!bg-[#091c13] !border-[#2a4536] text-white hover:bg-[#1a3225]' 
+                                : ''
+                        }`} 
+                        onClick={() => changeYear(-1)}
+                    >
                         <ChevronLeft className="h-4 w-4" />
                     </Button>
-                    <span className="text-xs font-bold text-gray-700 min-w-[40px] text-center">{currentYear}</span>
-                    <Button variant="secondary" size="sm" className="btn-icon !p-1 h-6 w-6" onClick={() => changeYear(1)} disabled={currentYear >= new Date().getFullYear()}>
+                    <span className={`text-xs font-bold min-w-[40px] text-center ${
+                        isMobileEffective ? 'text-white' : 'text-gray-700'
+                    }`}>
+                        {currentYear}
+                    </span>
+                    <Button 
+                        variant="secondary" 
+                        size="sm" 
+                        className={`btn-icon !p-1 h-6 w-6 ${
+                            isMobileEffective 
+                                ? '!bg-[#091c13] !border-[#2a4536] text-white hover:bg-[#1a3225]' 
+                                : ''
+                        }`} 
+                        onClick={() => changeYear(1)} 
+                        disabled={currentYear >= new Date().getFullYear()}
+                    >
                         <ChevronRight className="h-4 w-4" />
                     </Button>
                 </div>
@@ -418,32 +474,72 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isL
 
             <div className="flex-1 relative min-h-[300px] md:min-h-[280px]">
                 {isLoading ? (
-                    <div className="absolute inset-0 flex items-center justify-center bg-white/50 z-10">
-                        <Loader2 className="h-5 w-5 animate-spin text-indigo-600" />
+                    <div className={`absolute inset-0 flex items-center justify-center z-10 ${
+                        isMobileEffective ? 'bg-[#092c19]/70 backdrop-blur-xs' : 'bg-white/50'
+                    }`}>
+                        <Loader2 className={`h-5 w-5 animate-spin ${isMobileEffective ? 'text-[#22c55e]' : 'text-indigo-600'}`} />
                     </div>
                 ) : null}
                 <canvas ref={chartRef}></canvas>
             </div>
             
-            <div className="mt-auto pt-3 border-t border-border/50 flex flex-col gap-1 text-[10px] text-muted">
-                <div className="flex justify-between items-center text-xs">
-                    <span className="font-medium text-gray-600">Total Paydays:</span>
-                    <span className="font-bold text-indigo-600 text-sm">{totalPayable} days</span>
+            {isMobileEffective ? (
+                <div className="mt-auto pt-2 flex flex-col text-xs">
+                    {/* Row 1: Total Paydays */}
+                    <div className="flex justify-between items-center py-2.5 border-t border-[#134426]">
+                        <span className="font-semibold text-white/90 text-xs">Total Paydays:</span>
+                        <div className="flex items-center gap-2">
+                            <span className="font-bold text-xs px-2.5 py-1 rounded-full bg-[#0d2c18] border border-[#1b5e32] text-[#22c55e]">
+                                {totalPayable} days
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Row 2: Breakdown */}
+                    <div className="flex justify-between items-center py-2 border-t border-[#134426]/70 text-[11px]">
+                        <span className="font-medium text-[#7D967B]">Breakdown:</span>
+                        <div className="text-right">
+                            <span className="font-medium text-white/70" title="Worked + Leaves + Holidays + Week Offs">
+                                (W: {stats.monthlyWorked.reduce((a, b) => a + b, 0)} + 
+                                 WH: {stats.monthlyLeaves.reduce((a, b) => a + b, 0)} + 
+                                 H: {stats.monthlyHolidays.reduce((a, b) => a + b, 0)} + 
+                                 WO: {stats.monthlySundays.reduce((a, b) => a + b, 0)})
+                            </span>
+                            <span className="text-[#7D967B] ml-1.5 font-medium">
+                                • Avg: {(totalPayable / (currentYear < new Date().getFullYear() ? 12 : new Date().getMonth() + 1)).toFixed(1)}/mo
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Row 3: Site OT Days */}
+                    <div className="flex justify-between items-center py-2.5 border-t border-[#134426]">
+                        <span className="font-semibold text-white/90 text-xs">Site OT Days:</span>
+                        <span className="font-bold text-xs px-2.5 py-1 rounded-full bg-orange-950/40 border border-orange-800/50 text-orange-400">
+                            {stats.monthlySiteOt.reduce((a, b) => a + b, 0)} days
+                        </span>
+                    </div>
                 </div>
-                <div className="flex justify-between items-center opacity-80 text-[10px]">
-                    <span title="Worked + Leaves + Holidays + Week Offs">
-                        (W: {stats.monthlyWorked.reduce((a, b) => a + b, 0)} + 
-                         WH: {stats.monthlyLeaves.reduce((a, b) => a + b, 0)} + 
-                         H: {stats.monthlyHolidays.reduce((a, b) => a + b, 0)} + 
-                         WO: {stats.monthlySundays.reduce((a, b) => a + b, 0)})
-                    </span>
-                    <span>Avg: {(totalPayable / (currentYear < new Date().getFullYear() ? 12 : new Date().getMonth() + 1)).toFixed(1)}/mo</span>
+            ) : (
+                <div className="mt-auto pt-3 border-t border-border/50 flex flex-col gap-1 text-[10px] text-muted">
+                    <div className="flex justify-between items-center text-xs">
+                        <span className="font-medium text-gray-600">Total Paydays:</span>
+                        <span className="font-bold text-indigo-600 text-sm">{totalPayable} days</span>
+                    </div>
+                    <div className="flex justify-between items-center opacity-80 text-[10px]">
+                        <span title="Worked + Leaves + Holidays + Week Offs">
+                            (W: {stats.monthlyWorked.reduce((a, b) => a + b, 0)} + 
+                             WH: {stats.monthlyLeaves.reduce((a, b) => a + b, 0)} + 
+                             H: {stats.monthlyHolidays.reduce((a, b) => a + b, 0)} + 
+                             WO: {stats.monthlySundays.reduce((a, b) => a + b, 0)})
+                        </span>
+                        <span>Avg: {(totalPayable / (currentYear < new Date().getFullYear() ? 12 : new Date().getMonth() + 1)).toFixed(1)}/mo</span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs mt-1 border-t border-border/30 pt-1">
+                        <span className="font-medium text-gray-600">Site OT Days:</span>
+                        <span className="font-bold text-orange-600 text-sm">{stats.monthlySiteOt.reduce((a, b) => a + b, 0)} days</span>
+                    </div>
                 </div>
-                <div className="flex justify-between items-center text-xs mt-1 border-t border-border/30 pt-1">
-                    <span className="font-medium text-gray-600">Site OT Days:</span>
-                    <span className="font-bold text-orange-600 text-sm">{stats.monthlySiteOt.reduce((a, b) => a + b, 0)} days</span>
-                </div>
-            </div>
+            )}
         </div>
     );
 };

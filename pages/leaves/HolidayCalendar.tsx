@@ -69,14 +69,33 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ adminHolidays, userSe
 
 
     return (
-        <div className={`p-4 rounded-xl shadow-card w-full flex flex-col h-full ${isMobile ? 'bg-[#182a20] border-[#2a4536]' : 'bg-card border-border border'}`}>
+        <div className={`p-4 rounded-xl shadow-card w-full flex flex-col h-full ${isMobile ? 'bg-[#092c19] border border-[#134426]' : 'bg-card border-border border'}`}>
             <div className="flex items-center justify-between mb-4 flex-shrink-0">
-                <h3 className={`text-sm font-semibold ${isMobile ? 'text-white' : 'text-primary-text'}`}>Holidays</h3>
-                <div className="flex items-center gap-1">
-                    <Button variant="secondary" size="sm" className={`btn-icon !p-1 h-6 w-6 ${isMobile ? '!bg-[#091c13] !border-[#2a4536] text-white hover:bg-[#1a3225]' : ''}`} onClick={() => onDateChange(subMonths(viewingDate, 1))}><ChevronLeft className="h-4 w-4" /></Button>
-                    <span className={`font-medium min-w-[80px] text-center text-xs ${isMobile ? 'text-white' : ''}`}>{format(viewingDate, 'MMMM yyyy')}</span>
-                    <Button variant="secondary" size="sm" className={`btn-icon !p-1 h-6 w-6 ${isMobile ? '!bg-[#091c13] !border-[#2a4536] text-white hover:bg-[#1a3225]' : ''}`} onClick={() => onDateChange(addMonths(viewingDate, 1))}><ChevronRight className="h-4 w-4" /></Button>
-                </div>
+                {isMobile ? (
+                    <div className="flex items-center gap-1.5">
+                        <button 
+                            onClick={() => onDateChange(subMonths(viewingDate, 1))}
+                            className="h-7 w-7 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] flex items-center justify-center shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                            aria-label="Previous month"
+                        >
+                            <ChevronLeft className="h-4 w-4 stroke-[2.5]" />
+                        </button>
+                        <span className="font-bold min-w-[80px] text-center text-xs text-white">{format(viewingDate, 'MMMM yyyy')}</span>
+                        <button 
+                            onClick={() => onDateChange(addMonths(viewingDate, 1))}
+                            className="h-7 w-7 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] flex items-center justify-center shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                            aria-label="Next month"
+                        >
+                            <ChevronRight className="h-4 w-4 stroke-[2.5]" />
+                        </button>
+                    </div>
+                ) : (
+                    <div className="flex items-center gap-1">
+                        <Button variant="secondary" size="sm" className="btn-icon !p-1 h-6 w-6" onClick={() => onDateChange(subMonths(viewingDate, 1))}><ChevronLeft className="h-4 w-4" /></Button>
+                        <span className="font-medium min-w-[80px] text-center text-xs">{format(viewingDate, 'MMMM yyyy')}</span>
+                        <Button variant="secondary" size="sm" className="btn-icon !p-1 h-6 w-6" onClick={() => onDateChange(addMonths(viewingDate, 1))}><ChevronRight className="h-4 w-4" /></Button>
+                    </div>
+                )}
             </div>
 
             {isLoading ? (

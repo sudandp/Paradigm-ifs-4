@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { hrmApi } from '../../services/hrm.api';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import {
   BarChart2, Users, Calendar, Award, Clock, Activity, RefreshCw, Flame,
-  Target, TrendingUp, ArrowDownRight, ChevronDown, Download
+  Target, TrendingUp, ArrowDownRight, ChevronDown, Download, ArrowLeft
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
@@ -34,6 +35,7 @@ const STAGE_COLORS: Record<string, string> = {
 };
 
 const ReportsDashboard: React.FC = () => {
+  const navigate = useNavigate();
   const isMobile = useMediaQuery('(max-width: 767px)');
   const [kpis, setKpis] = useState<Kpis | null>(null);
   const [funnel, setFunnel] = useState<Record<string, number>>({});
@@ -90,7 +92,7 @@ const ReportsDashboard: React.FC = () => {
     try {
       const canvas = await html2canvas(element, {
         scale: 2,
-        backgroundColor: isMobile ? '#091c13' : '#f8fafc',
+        backgroundColor: isMobile ? '#041b0f' : '#f8fafc',
         useCORS: true,
       });
 
@@ -133,7 +135,25 @@ const ReportsDashboard: React.FC = () => {
   const maxFunnelCount = Math.max(...Object.values(funnel), 1);
 
   return (
-    <div id="report-container" className={`animate-fade-in min-w-0 overflow-x-hidden min-h-screen ${isMobile ? 'bg-[#091c13] text-white p-4 pt-6 space-y-6 pb-24' : 'space-y-8 pb-32 md:pb-8'}`}>
+    <div id="report-container" className={`animate-fade-in min-w-0 overflow-x-hidden min-h-screen ${isMobile ? 'bg-[#041b0f] text-white p-4 pt-3 space-y-6 pb-36' : 'space-y-8 pb-32 md:pb-8'}`}>
+      {/* Standardized Mobile Top Navigation Bar */}
+      {isMobile && (
+        <div className="flex items-center gap-3 pt-1 pb-2 -mx-4 -mt-3 px-4 bg-[#041b0f] border-b border-[#134426]/60 sticky top-0 z-30 mb-2">
+          <button
+            type="button"
+            onClick={() => window.history.state?.idx > 0 ? navigate(-1) : navigate('/mobile-home')}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+          >
+            <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+            <span>Back</span>
+          </button>
+          <div className="h-[1px] flex-1 bg-[#134426]" />
+          <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#44D62C] bg-[#092c19] px-2.5 py-1 rounded-lg border border-[#134426]">
+            PIPELINE ANALYTICS
+          </span>
+        </div>
+      )}
+
       {/* Header */}
       <div className={`flex justify-between items-start sm:items-center ${isMobile ? 'flex-col gap-4' : 'flex-col sm:flex-row gap-6'}`}>
         <div className="w-full sm:w-auto">
@@ -143,19 +163,19 @@ const ReportsDashboard: React.FC = () => {
 
         <div className={`flex items-center gap-3 w-full sm:w-auto ${isMobile ? 'flex-col' : 'flex-row'}`}>
           {/* Date range picker */}
-          <div className={`flex items-center gap-2 p-1.5 rounded-2xl border ${isMobile ? 'bg-[#182a20] border-[#2a4536] w-full' : 'bg-page border-border md:bg-page md:border-border max-md:bg-white/[0.05] max-md:border-white/5'}`}>
+          <div className={`flex items-center gap-2 p-1.5 rounded-[24px] border ${isMobile ? 'bg-[#092c19] border-[#134426] shadow-[0_4px_16px_rgba(0,0,0,0.35)] w-full' : 'bg-page border-border md:bg-page md:border-border max-md:bg-white/[0.05] max-md:border-white/5'}`}>
             <input
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className={`px-3 py-2 text-xs rounded-xl outline-none transition-all ${isMobile ? 'bg-[#121f17] text-white border-none' : 'bg-white md:bg-white border border-border md:border-border text-primary-text md:text-primary-text max-md:bg-white/[0.05] max-md:border-transparent max-md:text-white'}`}
+              className={`px-3 py-2 text-xs rounded-xl outline-none transition-all ${isMobile ? 'bg-[#041b0f] text-white border border-[#134426]' : 'bg-white md:bg-white border border-border md:border-border text-primary-text md:text-primary-text max-md:bg-white/[0.05] max-md:border-transparent max-md:text-white'}`}
             />
-            <span className={`text-xs font-bold ${isMobile ? 'text-white/30' : 'text-muted max-md:text-emerald-400/60'}`}>–</span>
+            <span className={`text-xs font-bold ${isMobile ? 'text-[#7D967B]' : 'text-muted max-md:text-emerald-400/60'}`}>–</span>
             <input
               type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className={`px-3 py-2 text-xs rounded-xl outline-none transition-all ${isMobile ? 'bg-[#121f17] text-white border-none' : 'bg-white md:bg-white border border-border md:border-border text-primary-text md:text-primary-text max-md:bg-white/[0.05] max-md:border-transparent max-md:text-white'}`}
+              className={`px-3 py-2 text-xs rounded-xl outline-none transition-all ${isMobile ? 'bg-[#041b0f] text-white border border-[#134426]' : 'bg-white md:bg-white border border-border md:border-border text-primary-text md:text-primary-text max-md:bg-white/[0.05] max-md:border-transparent max-md:text-white'}`}
             />
           </div>
 
@@ -163,7 +183,7 @@ const ReportsDashboard: React.FC = () => {
             <button
               onClick={handleRefresh}
               disabled={refreshing}
-              className={`flex-1 sm:flex-none flex items-center justify-center gap-2 transition-all active:scale-95 ${isMobile ? 'bg-[#006b3f] text-white px-5 py-2.5 rounded-full font-bold shadow-lg shadow-[#006b3f]/20' : 'btn btn-primary btn-md shadow-xl shadow-accent/20 hover:shadow-accent/40'}`}
+              className={`flex-1 sm:flex-none flex items-center justify-center gap-2 transition-all active:scale-95 ${isMobile ? 'bg-[#44D62C] text-[#0A1809] px-5 py-2.5 rounded-full font-bold shadow-lg shadow-[#44D62C]/25 hover:bg-[#3bc125]' : 'btn btn-primary btn-md shadow-xl shadow-accent/20 hover:shadow-accent/40'}`}
             >
               <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
               <span className="hidden sm:inline">Refresh</span>
@@ -172,7 +192,7 @@ const ReportsDashboard: React.FC = () => {
             <button
               onClick={handleDownloadPdf}
               disabled={downloadingPdf || loading}
-              className={`flex-1 sm:flex-none flex items-center justify-center gap-2 transition-all active:scale-95 ${isMobile ? 'bg-[#182a20] border border-[#2a4536] text-emerald-400 px-5 py-2.5 rounded-full font-bold' : 'btn btn-outline btn-md border-border text-primary-text hover:bg-page'}`}
+              className={`flex-1 sm:flex-none flex items-center justify-center gap-2 transition-all active:scale-95 ${isMobile ? 'bg-[#092c19] border border-[#134426] text-[#44D62C] hover:bg-[#041b0f] px-5 py-2.5 rounded-full font-bold shadow-md' : 'btn btn-outline btn-md border-border text-primary-text hover:bg-page'}`}
             >
               {downloadingPdf ? <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <Download className="w-4 h-4" />}
               <span className="hidden sm:inline">Export PDF</span>
@@ -195,9 +215,10 @@ const ReportsDashboard: React.FC = () => {
       {/* Funnel & Leaderboard */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Funnel chart */}
-        <div className={`overflow-hidden transition-all ${isMobile ? 'bg-[#182a20] rounded-[24px] border border-[#2a4536] p-5' : 'bg-white rounded-3xl border border-border p-6 md:p-8 shadow-sm'}`}>
+        <div className={`overflow-hidden transition-all ${isMobile ? 'bg-[#092c19] rounded-[24px] border border-[#134426] p-5 shadow-[0_4px_16px_rgba(0,0,0,0.35)] relative' : 'bg-white rounded-3xl border border-border p-6 md:p-8 shadow-sm'}`}>
+          {isMobile && <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-[#44D62C]/25 to-transparent pointer-events-none" />}
           <div className="flex items-center gap-3 mb-8">
-            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${isMobile ? 'bg-blue-500/20' : 'bg-blue-500/10'}`}>
+            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${isMobile ? 'bg-[#041b0f] border border-[#134426]' : 'bg-blue-500/10'}`}>
               <BarChart2 className={`w-5 h-5 ${isMobile ? 'text-blue-400' : 'text-blue-600'}`} />
             </div>
             <h2 className={`text-lg font-black uppercase tracking-wider ${isMobile ? 'text-white' : 'text-primary-text'}`}>Recruitment Funnel</h2>
@@ -214,13 +235,13 @@ const ReportsDashboard: React.FC = () => {
                   <div className="flex justify-between items-center">
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full" style={{ backgroundColor: stageColor }} />
-                      <span className={`text-[10px] font-black uppercase tracking-widest ${isMobile ? 'text-white/60' : 'text-muted'}`}>
+                      <span className={`text-[10px] font-black uppercase tracking-widest ${isMobile ? 'text-white/80' : 'text-muted'}`}>
                         {stage.replace('_', ' ')}
                       </span>
                     </div>
                     <span className={`text-xs font-black ${isMobile ? 'text-white' : 'text-primary-text'}`}>{count}</span>
                   </div>
-                  <div className={`h-3 w-full rounded-full overflow-hidden ${isMobile ? 'bg-white/5' : 'bg-slate-100'}`}>
+                  <div className={`h-3 w-full rounded-full overflow-hidden ${isMobile ? 'bg-[#041b0f] border border-[#134426]' : 'bg-slate-100'}`}>
                     <div
                       className="h-full rounded-full transition-all duration-700 ease-out group-hover:opacity-90"
                       style={{ width: `${widthPct}%`, backgroundColor: stageColor }}
@@ -233,10 +254,11 @@ const ReportsDashboard: React.FC = () => {
         </div>
 
         {/* Leaderboard */}
-        <div className={`overflow-hidden transition-all flex flex-col ${isMobile ? 'bg-[#182a20] rounded-[24px] border border-[#2a4536] p-5' : 'bg-white rounded-3xl border border-border p-6 md:p-8 shadow-sm'}`}>
+        <div className={`overflow-hidden transition-all flex flex-col ${isMobile ? 'bg-[#092c19] rounded-[24px] border border-[#134426] p-5 shadow-[0_4px_16px_rgba(0,0,0,0.35)] relative' : 'bg-white rounded-3xl border border-border p-6 md:p-8 shadow-sm'}`}>
+          {isMobile && <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-[#44D62C]/25 to-transparent pointer-events-none" />}
           <div className="flex items-center justify-between mb-8 flex-shrink-0">
             <div className="flex items-center gap-3">
-              <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${isMobile ? 'bg-amber-500/20' : 'bg-amber-500/10'}`}>
+              <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${isMobile ? 'bg-[#041b0f] border border-[#134426]' : 'bg-amber-500/10'}`}>
                 <Flame className={`w-5 h-5 ${isMobile ? 'text-amber-400' : 'text-amber-600'}`} />
               </div>
               <h2 className={`text-lg font-black uppercase tracking-wider ${isMobile ? 'text-white' : 'text-primary-text'}`}>Leaderboard</h2>
@@ -246,12 +268,12 @@ const ReportsDashboard: React.FC = () => {
               <select
                 value={leaderboardMetric}
                 onChange={(e) => setLeaderboardMetric(e.target.value as any)}
-                className={`appearance-none h-10 pl-3 pr-9 rounded-2xl text-xs font-bold uppercase tracking-wider outline-none cursor-pointer ${isMobile ? 'bg-[#121f17] border border-[#2a4536] text-white' : 'bg-page border border-border text-primary-text'}`}
+                className={`appearance-none h-10 pl-3 pr-9 rounded-2xl text-xs font-bold uppercase tracking-wider outline-none cursor-pointer ${isMobile ? 'bg-[#041b0f] border border-[#134426] text-white' : 'bg-page border border-border text-primary-text'}`}
               >
                 <option value="count">By Total</option>
                 <option value="joined">By Hires</option>
               </select>
-              <ChevronDown className={`w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none ${isMobile ? 'text-white/30' : 'text-muted'}`} />
+              <ChevronDown className={`w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none ${isMobile ? 'text-[#7D967B]' : 'text-muted'}`} />
             </div>
           </div>
 
@@ -268,7 +290,7 @@ const ReportsDashboard: React.FC = () => {
                 {leaderboard.map((item, idx) => (
                   <div
                     key={item.name}
-                    className={`flex items-center justify-between p-4 rounded-2xl transition-all group ${isMobile ? 'bg-white/[0.02] hover:bg-white/[0.05] border border-transparent hover:border-[#2a4536]' : 'bg-page/40 hover:bg-white hover:shadow-md hover:border-border border border-transparent'}`}
+                    className={`flex items-center justify-between p-4 rounded-2xl transition-all group ${isMobile ? 'bg-white/[0.02] hover:bg-white/[0.05] border border-transparent hover:border-[#2B3E2A]' : 'bg-page/40 hover:bg-white hover:shadow-md hover:border-border border border-transparent'}`}
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <div className={`w-8 h-8 rounded-xl flex items-center justify-center border text-xs font-black shrink-0 ${
@@ -304,25 +326,26 @@ const ReportsDashboard: React.FC = () => {
   );
 };
 
-// KPI Stat Card
+// KPI Stat Card with rich emerald forest theme
 const KpiCard: React.FC<{ icon: React.ReactNode; label: string; value: string; color: string; trend?: string; isMobile?: boolean }> = ({ icon, label, value, color, trend, isMobile }) => (
-  <div className={`relative overflow-hidden group hover:shadow-lg transition-all duration-300 ${isMobile ? 'bg-[#182a20] rounded-[24px] border border-[#2a4536] p-4' : 'bg-white rounded-3xl border border-border p-4 md:p-5 shadow-sm'}`}>
+  <div className={`relative overflow-hidden group hover:shadow-lg transition-all duration-300 ${isMobile ? 'bg-[#092c19] rounded-[24px] border border-[#134426] shadow-[0_4px_16px_rgba(0,0,0,0.35)] p-4 relative' : 'bg-white rounded-3xl border border-border p-4 md:p-5 shadow-sm'}`}>
+    {isMobile && <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-[#44D62C]/25 to-transparent pointer-events-none" />}
     <div className={`absolute top-0 right-0 p-3 transition-opacity ${isMobile ? 'opacity-5 group-hover:opacity-10' : 'opacity-[0.05] group-hover:opacity-[0.08]'}`}>
       {React.cloneElement(icon as React.ReactElement, { className: 'w-16 h-16 md:w-20 md:h-20' } as any)}
     </div>
-    <div className="flex items-center gap-3 md:gap-4 mb-3 md:mb-4">
-      <div className="w-10 h-10 md:w-12 md:h-12 rounded-2xl flex items-center justify-center shadow-inner" style={{ backgroundColor: `${color}15` }}>
+    <div className="flex items-center gap-3 md:gap-4 mb-3 md:mb-4 relative z-10">
+      <div className="w-10 h-10 md:w-12 md:h-12 rounded-2xl flex items-center justify-center shadow-inner" style={{ backgroundColor: isMobile ? '#041b0f' : `${color}15`, border: isMobile ? '1px solid #134426' : 'none' }}>
         <div style={{ color }}>{icon}</div>
       </div>
       <div className="min-w-0">
-        <p className={`text-[9px] md:text-xs font-black uppercase tracking-widest truncate ${isMobile ? 'text-white/60' : 'text-muted'}`}>{label}</p>
+        <p className={`text-[9px] md:text-xs font-black uppercase tracking-widest truncate ${isMobile ? 'text-[#7D967B]' : 'text-muted'}`}>{label}</p>
         <p className={`text-lg md:text-2xl font-black mt-0.5 ${isMobile ? 'text-white' : 'text-primary-text'}`}>{value}</p>
       </div>
     </div>
     {trend && (
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1.5 relative z-10">
         <div className="w-1 h-1 rounded-full animate-pulse" style={{ backgroundColor: color }} />
-        <p className={`text-[8px] md:text-[10px] font-black uppercase tracking-tighter ${isMobile ? 'text-white/40' : 'text-muted'}`}>{trend}</p>
+        <p className={`text-[8px] md:text-[10px] font-black uppercase tracking-tighter ${isMobile ? 'text-[#7D967B]' : 'text-muted'}`}>{trend}</p>
       </div>
     )}
   </div>

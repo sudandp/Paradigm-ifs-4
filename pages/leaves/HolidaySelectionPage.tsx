@@ -8,7 +8,7 @@ import { useDevice } from '../../hooks/useDevice';
 import Button from '../../components/ui/Button';
 import {
     Calendar as CalendarIcon, Check, ChevronLeft, Info,
-    Loader2, Lock, Save, X, CalendarCheck2, Sparkles
+    Loader2, Lock, Save, X, CalendarCheck2, Sparkles, ArrowLeft
 } from 'lucide-react';
 import Toast from '../../components/ui/Toast';
 import HolidayCalendar from './HolidayCalendar';
@@ -169,24 +169,42 @@ const HolidaySelectionPage: React.FC = () => {
             <div className={`p-4 md:p-6 pb-64 md:pb-40 animate-fade-in ${isMobile ? 'bg-[#041b0f] text-white min-h-screen' : ''}`}>
                 {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
-                <div className="flex items-center gap-4 mb-8">
-                    <button
-                        onClick={() => setView('selection')}
-                        className={`p-2.5 rounded-xl transition-colors ${isMobile ? 'bg-[#182a20] border border-[#2a4536] text-white hover:bg-[#1a3225]' : 'bg-card border border-border hover:bg-accent-light'}`}
-                    >
-                        <ChevronLeft className={`h-5 w-5 ${isMobile ? 'text-white' : 'text-primary-text'}`} />
-                    </button>
-                    <div>
-                        <h1 className={`text-2xl font-bold ${isMobile ? 'text-white' : 'text-primary-text'}`}>Confirm Selection</h1>
-                        <p className={`text-sm ${isMobile ? 'text-white/60' : 'text-muted'}`}>Review your chosen holidays for {currentYear}</p>
+                {/* Standardized Mobile Top Navigation Bar */}
+                {isMobile ? (
+                    <div className="flex items-center gap-3 pt-2 pb-2 -mx-4 px-4 bg-[#041b0f] border-b border-[#134426]/60 sticky top-0 z-30 mb-6">
+                        <button
+                            type="button"
+                            onClick={() => setView('selection')}
+                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                        >
+                            <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+                            <span>Back</span>
+                        </button>
+                        <div className="h-[1px] flex-1 bg-[#134426]" />
+                        <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#44D62C] bg-[#092c19] px-2.5 py-1 rounded-lg border border-[#134426]">
+                            CONFIRM SELECTION
+                        </span>
                     </div>
-                </div>
+                ) : (
+                    <div className="flex items-center gap-4 mb-8">
+                        <button
+                            onClick={() => setView('selection')}
+                            className="p-2.5 rounded-xl transition-colors bg-card border border-border hover:bg-accent-light"
+                        >
+                            <ChevronLeft className="h-5 w-5 text-primary-text" />
+                        </button>
+                        <div>
+                            <h1 className="text-2xl font-bold text-primary-text">Confirm Selection</h1>
+                            <p className="text-sm text-muted">Review your chosen holidays for {currentYear}</p>
+                        </div>
+                    </div>
+                )}
 
                 <div className="max-w-2xl mx-auto space-y-4">
-                    <div className={`p-6 shadow-card ${isMobile ? 'bg-[#182a20] border border-[#2a4536] rounded-3xl' : 'bg-card rounded-2xl border border-border'}`}>
+                    <div className={`p-6 shadow-card ${isMobile ? 'bg-[#092c19] border border-[#134426] rounded-3xl' : 'bg-card rounded-2xl border border-border'}`}>
                         <p className={`text-base mb-6 ${isMobile ? 'text-white/80' : 'text-muted'}`}>
                             Confirm saving{' '}
-                            <span className={`font-bold ${isMobile ? 'text-emerald-400' : 'text-accent-dark'}`}>{selectedHolidays.length} holiday{selectedHolidays.length !== 1 ? 's' : ''}</span>{' '}
+                            <span className={`font-bold ${isMobile ? 'text-[#44D62C]' : 'text-accent-dark'}`}>{selectedHolidays.length} holiday{selectedHolidays.length !== 1 ? 's' : ''}</span>{' '}
                             for {currentYear}.
                         </p>
 
@@ -198,8 +216,8 @@ const HolidaySelectionPage: React.FC = () => {
                                     const dateStr = h.date.startsWith('-') ? `${currentYear}${h.date}` : h.date;
                                     const d = new Date(dateStr.replace(/-/g, '/'));
                                     return (
-                                        <div key={i} className={`flex items-center gap-4 p-4 rounded-xl border ${isMobile ? 'bg-[#091c13] border-[#2a4536]' : 'bg-accent-light border-border'}`}>
-                                            <div className={`h-12 w-12 rounded-xl flex flex-col items-center justify-center ring-1 flex-shrink-0 ${isMobile ? 'bg-[#2a4536]/20 ring-[#2a4536]/40 text-emerald-400' : 'bg-accent/20 text-accent-dark ring-accent/20'}`}>
+                                        <div key={i} className={`flex items-center gap-4 p-4 rounded-xl border ${isMobile ? 'bg-[#041b0f] border-[#134426]' : 'bg-accent-light border-border'}`}>
+                                            <div className={`h-12 w-12 rounded-xl flex flex-col items-center justify-center ring-1 flex-shrink-0 ${isMobile ? 'bg-[#134426]/30 ring-[#134426] text-[#44D62C]' : 'bg-accent/20 text-accent-dark ring-accent/20'}`}>
                                                 <span className="text-[9px] font-black uppercase leading-none">
                                                     {d.toLocaleDateString('en-IN', { month: 'short' })}
                                                 </span>
@@ -211,7 +229,7 @@ const HolidaySelectionPage: React.FC = () => {
                                                     {d.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
                                                 </p>
                                             </div>
-                                            <Check className={`h-4 w-4 flex-shrink-0 ${isMobile ? 'text-emerald-400' : 'text-accent'}`} />
+                                            <Check className={`h-4 w-4 flex-shrink-0 ${isMobile ? 'text-[#44D62C]' : 'text-accent'}`} />
                                         </div>
                                     );
                                 })}
@@ -251,7 +269,7 @@ const HolidaySelectionPage: React.FC = () => {
                         <Button
                             variant="secondary"
                             onClick={() => setView('selection')}
-                            className={!isMobile ? "px-8 py-3 rounded-xl border-2 font-black uppercase tracking-widest text-xs" : "flex-1 h-12 rounded-xl bg-white/5 border-white/10 text-white"}
+                            className={!isMobile ? "px-8 py-3 rounded-xl border-2 font-black uppercase tracking-widest text-xs" : "flex-1 h-12 rounded-full bg-[#092c19] border border-[#134426] text-white font-semibold"}
                         >
                             Back
                         </Button>
@@ -260,7 +278,7 @@ const HolidaySelectionPage: React.FC = () => {
                             isLoading={isSaving}
                             className={!isMobile 
                                 ? "px-10 py-3 rounded-xl shadow-xl shadow-accent/20 font-black uppercase tracking-widest text-xs" 
-                                : "flex-1 h-12 rounded-xl bg-[#006b3f] text-white font-bold"}
+                                : "flex-1 h-12 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-bold shadow-lg shadow-[#44D62C]/20"}
                         >
                             Confirm & Save
                         </Button>
@@ -276,21 +294,30 @@ const HolidaySelectionPage: React.FC = () => {
         <div className={`p-4 md:p-6 pb-64 md:pb-40 animate-fade-in ${isMobile ? 'bg-[#041b0f] text-white min-h-screen' : ''}`}>
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
-            {/* Header */}
-            <div className="flex items-center gap-4 mb-6">
-                {isMobile && (
+            {/* Standardized Mobile Top Navigation Bar */}
+            {isMobile ? (
+                <div className="flex items-center gap-3 pt-2 pb-2 -mx-4 px-4 bg-[#041b0f] border-b border-[#134426]/60 sticky top-0 z-30 mb-5">
                     <button
-                        onClick={() => navigate('/leaves/dashboard')}
-                        className={`p-2.5 rounded-xl border transition-colors ${isMobile ? 'bg-[#182a20] border-[#2a4536] text-white hover:bg-[#1a3225]' : 'bg-card border border-border hover:bg-accent-light'}`}
+                        type="button"
+                        onClick={() => window.history.state?.idx > 0 ? navigate(-1) : navigate('/leaves/dashboard')}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
                     >
-                        <ChevronLeft className={`h-5 w-5 ${isMobile ? 'text-white' : 'text-primary-text'}`} />
+                        <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+                        <span>Back</span>
                     </button>
-                )}
-                <div>
-                    <h1 className={`text-2xl font-bold ${isMobile ? 'text-white' : 'text-primary-text'}`}>Holiday Selection</h1>
-                    <p className={`text-sm ${isMobile ? 'text-white/60' : 'text-muted'}`}>Pick your optional holidays for {currentYear}</p>
+                    <div className="h-[1px] flex-1 bg-[#134426]" />
+                    <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#44D62C] bg-[#092c19] px-2.5 py-1 rounded-lg border border-[#134426]">
+                        HOLIDAY SELECTION
+                    </span>
                 </div>
-            </div>
+            ) : (
+                <div className="flex items-center gap-4 mb-6">
+                    <div>
+                        <h1 className="text-2xl font-bold text-primary-text">Holiday Selection</h1>
+                        <p className="text-sm text-muted">Pick your optional holidays for {currentYear}</p>
+                    </div>
+                </div>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
@@ -298,10 +325,10 @@ const HolidaySelectionPage: React.FC = () => {
                 <div className="lg:col-span-2 space-y-4">
 
                     {/* Progress Summary Card */}
-                    <div className={`p-5 ${isMobile ? 'bg-[#182a20] border border-[#2a4536] rounded-3xl' : 'bg-card rounded-2xl border border-border shadow-card'}`}>
+                    <div className={`p-5 ${isMobile ? 'bg-[#092c19] border border-[#134426] rounded-3xl' : 'bg-card rounded-2xl border border-border shadow-card'}`}>
                         <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center gap-3">
-                                <div className={`p-2.5 rounded-xl ${isMobile ? 'bg-[#091c13] border border-[#2a4536] text-emerald-400' : 'bg-accent-light text-accent-dark'}`}>
+                                <div className={`p-2.5 rounded-xl ${isMobile ? 'bg-[#041b0f] border border-[#134426] text-[#44D62C]' : 'bg-accent-light text-accent-dark'}`}>
                                     <CalendarCheck2 className="h-5 w-5" />
                                 </div>
                                 <div>
@@ -311,7 +338,7 @@ const HolidaySelectionPage: React.FC = () => {
                             </div>
                             <div className={`px-3 py-1 rounded-full text-sm font-bold border ${
                                 isComplete
-                                    ? (isMobile ? 'bg-[#2a4536] text-emerald-400 border-emerald-500/20' : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/30')
+                                    ? (isMobile ? 'bg-[#134426] text-[#44D62C] border-[#44D62C]/30' : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/30')
                                     : (isMobile ? 'bg-[#3a2c16] text-amber-400 border-amber-500/20' : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/30')
                             }`}>
                                 {selectedHolidays.length} / {maxEmployeeHolidays}
@@ -319,14 +346,14 @@ const HolidaySelectionPage: React.FC = () => {
                         </div>
 
                         {/* Progress Bar */}
-                        <div className={`w-full h-2 rounded-full overflow-hidden ${isMobile ? 'bg-[#091c13]' : 'bg-border'}`}>
+                        <div className={`w-full h-2 rounded-full overflow-hidden ${isMobile ? 'bg-[#041b0f]' : 'bg-border'}`}>
                             <div
-                                className={`h-full rounded-full transition-all duration-500 ${isComplete ? 'bg-emerald-500' : 'bg-amber-500'}`}
+                                className={`h-full rounded-full transition-all duration-500 ${isComplete ? 'bg-[#44D62C]' : 'bg-amber-500'}`}
                                 style={{ width: `${selectionProgress}%` }}
                             />
                         </div>
                         {isComplete && (
-                            <p className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold mt-2 flex items-center gap-1.5">
+                            <p className="text-xs text-[#44D62C] font-semibold mt-2 flex items-center gap-1.5">
                                 <Sparkles className="h-3.5 w-3.5" />
                                 All {maxEmployeeHolidays} holidays selected!
                             </p>
@@ -334,8 +361,8 @@ const HolidaySelectionPage: React.FC = () => {
                     </div>
 
                     {/* Holiday List */}
-                    <div className={`overflow-hidden ${isMobile ? 'bg-[#182a20] border border-[#2a4536] rounded-3xl shadow-2xl' : 'bg-card rounded-2xl border border-border shadow-card'}`}>
-                        <div className={`divide-y ${isMobile ? 'divide-[#2a4536]' : 'divide-border'}`}>
+                    <div className={`overflow-hidden ${isMobile ? 'bg-[#092c19] border border-[#134426] rounded-3xl shadow-2xl' : 'bg-card rounded-2xl border border-border shadow-card'}`}>
+                        <div className={`divide-y ${isMobile ? 'divide-[#134426]' : 'divide-border'}`}>
                             {uniquePool
                                 .sort((a, b) => a.date.localeCompare(b.date))
                                 .map((holiday, index) => {
@@ -351,8 +378,8 @@ const HolidaySelectionPage: React.FC = () => {
                                             key={index}
                                             onClick={() => toggleHoliday(holiday.name, holiday.date)}
                                             className={`w-full flex items-center gap-4 p-4 text-left transition-all duration-200 group
-                                                ${!isPastOrToday ? (isMobile ? 'hover:bg-[#1a3225] active:scale-[0.995]' : 'hover:bg-accent-light active:scale-[0.995]') : 'cursor-not-allowed'}
-                                                ${isSelected && !isPastOrToday ? (isMobile ? 'bg-[#006b3f]/10' : 'bg-accent-light/60') : ''}
+                                                ${!isPastOrToday ? (isMobile ? 'hover:bg-[#041b0f] active:scale-[0.995]' : 'hover:bg-accent-light active:scale-[0.995]') : 'cursor-not-allowed'}
+                                                ${isSelected && !isPastOrToday ? (isMobile ? 'bg-[#44D62C]/10' : 'bg-accent-light/60') : ''}
                                             `}
                                         >
                                             {/* Date Badge */}
@@ -361,7 +388,7 @@ const HolidaySelectionPage: React.FC = () => {
                                                     ? 'bg-accent text-white shadow-sm shadow-accent/30'
                                                     : (isPastOrToday || isLocked)
                                                     ? (isMobile ? 'bg-amber-950/20 text-amber-400 border border-amber-800/40' : 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 border border-amber-100 dark:border-amber-500/20')
-                                                    : (isMobile ? 'bg-[#091c13] text-emerald-400 border border-[#2a4536]' : 'bg-accent-light text-accent-dark')
+                                                    : (isMobile ? 'bg-[#041b0f] text-[#44D62C] border border-[#134426]' : 'bg-accent-light text-accent-dark')
                                             }`}>
                                                 <span className="text-[9px] font-black uppercase leading-none tracking-tight">
                                                     {dateObj.toLocaleDateString('en-IN', { month: 'short' })}
@@ -402,7 +429,7 @@ const HolidaySelectionPage: React.FC = () => {
                                                     ? 'bg-accent border-accent text-white scale-110'
                                                     : (isPastOrToday || isLocked)
                                                     ? (isMobile ? 'border-amber-800/40 bg-amber-950/20 text-amber-400' : 'border-amber-200 bg-amber-50 text-amber-600 dark:border-amber-500/30 dark:bg-amber-500/10')
-                                                    : (isMobile ? 'border-[#2a4536] bg-[#091c13] text-white/40' : 'border-border bg-transparent text-transparent group-hover:border-accent/40')
+                                                    : (isMobile ? 'border-[#134426] bg-[#041b0f] text-white/40' : 'border-border bg-transparent text-transparent group-hover:border-accent/40')
                                             }`}>
                                                 {isSelected ? (
                                                     <Check className="h-4 w-4 stroke-[3]" />
@@ -415,14 +442,14 @@ const HolidaySelectionPage: React.FC = () => {
                                 })}
                         </div>
 
-                        {/* Hint Footer (Mobile only, Desktop hint is moved to fixed bar) */}
+                        {/* Hint Footer */}
                         {isMobile && (
-                            <div className="px-5 py-4 bg-[#091c13] border-t border-[#2a4536]">
+                            <div className="px-5 py-4 bg-[#041b0f] border-t border-[#134426]">
                                 <div className="flex items-center gap-3">
-                                    <div className="p-1.5 bg-[#182a20] border border-[#2a4536] rounded-lg">
-                                        <CalendarIcon className="h-4 w-4 text-emerald-400" />
+                                    <div className="p-1.5 bg-[#092c19] border border-[#134426] rounded-lg">
+                                        <CalendarIcon className="h-4 w-4 text-[#44D62C]" />
                                     </div>
-                                    <p className="text-xs font-bold text-emerald-400 tracking-tight leading-none uppercase">
+                                    <p className="text-xs font-bold text-[#44D62C] tracking-tight leading-none uppercase">
                                         {selectedHolidays.length === 6 ? 'Selection complete. Ready to save.' : `Select up to 6 holidays. (${selectedHolidays.length}/6 selected)`}
                                     </p>
                                 </div>
@@ -444,12 +471,12 @@ const HolidaySelectionPage: React.FC = () => {
                         />
 
                         {/* Legend */}
-                        <div className={`mt-4 p-4 space-y-2.5 ${isMobile ? 'bg-[#182a20] border border-[#2a4536] rounded-3xl shadow-2xl' : 'bg-card rounded-xl border border-border'}`}>
+                        <div className={`mt-4 p-4 space-y-2.5 ${isMobile ? 'bg-[#092c19] border border-[#134426] rounded-3xl shadow-2xl' : 'bg-card rounded-xl border border-border'}`}>
                             <h4 className={`text-xs font-bold uppercase tracking-wider ${isMobile ? 'text-white/60' : 'text-muted'}`}>Legend</h4>
                             {[
                                 { color: 'bg-emerald-600', label: 'Gov Holiday' },
                                 { color: 'bg-amber-500', label: 'Admin Allocated' },
-                                { color: 'bg-violet-600', label: 'Your Selection' },
+                                { color: 'bg-[#44D62C]', label: 'Your Selection' },
                             ].map(({ color, label }) => (
                                 <div key={label} className="flex items-center gap-2.5 text-sm">
                                     <div className={`h-2.5 w-2.5 rounded-full ${color}`} />
@@ -460,7 +487,7 @@ const HolidaySelectionPage: React.FC = () => {
 
                         {/* Selected Holidays Mini-List */}
                         {selectedHolidays.length > 0 && (
-                            <div className={`mt-4 p-4 ${isMobile ? 'bg-[#182a20] border border-[#2a4536] rounded-3xl shadow-2xl' : 'bg-card rounded-xl border border-border'}`}>
+                            <div className={`mt-4 p-4 ${isMobile ? 'bg-[#092c19] border border-[#134426] rounded-3xl shadow-2xl' : 'bg-card rounded-xl border border-border'}`}>
                                 <h4 className={`text-xs font-bold uppercase tracking-wider mb-3 ${isMobile ? 'text-white/60' : 'text-muted'}`}>Your Picks</h4>
                                 <div className="space-y-2">
                                     {[...selectedHolidays]
@@ -472,11 +499,11 @@ const HolidaySelectionPage: React.FC = () => {
                                             const canRemove = !isPast && !isToday;
                                             return (
                                                 <div key={i} className="flex items-center gap-2.5 group">
-                                                    <div className={`h-8 w-8 rounded-lg flex flex-col items-center justify-center flex-shrink-0 ${isMobile ? 'bg-[#091c13] border border-[#2a4536] text-emerald-400' : 'bg-accent-light'}`}>
-                                                        <span className={`text-[7px] font-black uppercase leading-none ${isMobile ? 'text-emerald-400' : 'text-accent-dark'}`}>
+                                                    <div className={`h-8 w-8 rounded-lg flex flex-col items-center justify-center flex-shrink-0 ${isMobile ? 'bg-[#041b0f] border border-[#134426] text-[#44D62C]' : 'bg-accent-light'}`}>
+                                                        <span className={`text-[7px] font-black uppercase leading-none ${isMobile ? 'text-[#44D62C]' : 'text-accent-dark'}`}>
                                                             {d.toLocaleDateString('en-IN', { month: 'short' })}
                                                         </span>
-                                                        <span className={`text-xs font-black leading-none ${isMobile ? 'text-emerald-400' : 'text-accent-dark'}`}>{d.getDate()}</span>
+                                                        <span className={`text-xs font-black leading-none ${isMobile ? 'text-[#44D62C]' : 'text-accent-dark'}`}>{d.getDate()}</span>
                                                     </div>
                                                     <span className={`text-xs font-medium flex-1 leading-tight line-clamp-1 ${isMobile ? 'text-white/80' : 'text-primary-text'}`}>{h.name}</span>
                                                     {canRemove ? (
@@ -532,14 +559,14 @@ const HolidaySelectionPage: React.FC = () => {
                             <Button
                                 variant="secondary"
                                 onClick={() => navigate('/leaves/dashboard')}
-                                className="flex-1 h-14 text-base font-bold bg-white/5 border border-white/10 text-white rounded-2xl"
+                                className="flex-1 h-14 text-base font-semibold bg-[#092c19] border border-[#134426] text-white rounded-full"
                             >
                                 Cancel
                             </Button>
                             <Button
                                 onClick={handleSave}
                                 disabled={selectedHolidays.length === 0}
-                                className="flex-1 h-14 text-base font-bold bg-[#006b3f] hover:bg-[#005632] text-white shadow-2xl shadow-black/40 rounded-2xl transition-all active:scale-[0.98]"
+                                className="flex-1 h-14 text-base font-bold bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] shadow-lg shadow-[#44D62C]/25 rounded-full transition-all active:scale-[0.98]"
                             >
                                 Save Selection
                             </Button>

@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
+    ArrowLeft,
     Bell, 
     Send, 
     Settings, 
@@ -66,6 +68,7 @@ const NOTIFICATION_TYPES: { value: NotificationType; label: string }[] = [
 ];
 
 const NotificationsControl: React.FC = () => {
+    const navigate = useNavigate();
     const { user } = useAuthStore();
     const { isMobile } = useDevice();
     const [activeTab, setActiveTab] = useState<'rules' | 'broadcast' | 'automated' | 'planner' | 'activity' | 'email'>('rules');
@@ -243,13 +246,25 @@ const NotificationsControl: React.FC = () => {
 
     if (isMobile) {
         return (
-            <div className="flex flex-col h-full bg-[#020d06] overflow-y-auto pb-24 px-4 pt-6 space-y-6 min-h-screen">
-                <div className="flex items-center justify-between">
-                    <h1 className="text-2xl font-bold text-white">Notifications</h1>
+            <div className="flex flex-col h-full bg-[#041b0f] overflow-y-auto pb-36 px-4 pt-3 space-y-5 min-h-screen">
+                {/* Standardized Mobile Top Navigation Bar */}
+                <div className="flex items-center gap-3 pt-1 pb-2 -mx-4 px-4 bg-[#041b0f] border-b border-[#134426]/60 sticky top-0 z-30">
+                    <button
+                        type="button"
+                        onClick={() => window.history.state?.idx > 0 ? navigate(-1) : navigate('/mobile-home')}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                    >
+                        <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+                        <span>Back</span>
+                    </button>
+                    <div className="h-[1px] flex-1 bg-[#134426]" />
+                    <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#44D62C] bg-[#092c19] px-2.5 py-1 rounded-lg border border-[#134426]">
+                        NOTIFICATIONS
+                    </span>
                 </div>
 
                 {/* Mobile Tabs (Scrollable Pills) */}
-                <div className="flex overflow-x-auto hide-scrollbar gap-2 pb-2">
+                <div className="flex overflow-x-auto hide-scrollbar gap-2 pb-1">
                     {[
                         { id: 'rules', label: 'Rules', icon: Settings },
                         ...(isNotificationManager ? [
@@ -266,10 +281,10 @@ const NotificationsControl: React.FC = () => {
                             <button
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id as any)}
-                                className={`flex items-center whitespace-nowrap px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                                className={`flex items-center whitespace-nowrap px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
                                     isActive 
-                                        ? 'bg-emerald-500 text-[#020d06]' 
-                                        : 'bg-[#182a20] text-gray-400 border border-[#2a4536]/50'
+                                        ? 'bg-[#44D62C] text-[#0A1809] shadow-md shadow-[#44D62C]/20' 
+                                        : 'bg-[#092c19] text-gray-300 border border-[#134426]'
                                 }`}
                             >
                                 <Icon className="w-4 h-4 mr-2" />
@@ -282,9 +297,9 @@ const NotificationsControl: React.FC = () => {
                 {activeTab === 'rules' && (
                     <div className="space-y-4">
                         <div className="flex justify-between items-center">
-                            <h2 className="text-sm font-bold text-white uppercase tracking-wide flex items-center gap-2">
+                            <h2 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-2">
                                 Active Rules
-                                <span className="bg-[#00a859]/20 text-[#00a859] text-xs px-2.5 py-0.5 rounded-full font-bold">
+                                <span className="bg-[#44D62C]/20 text-[#44D62C] text-[11px] px-2.5 py-0.5 rounded-full font-black border border-[#134426]">
                                     {rules.length}
                                 </span>
                             </h2>
@@ -301,24 +316,24 @@ const NotificationsControl: React.FC = () => {
                                 const recipientRole = RECIPIENT_ROLES.find(r => r.value === rule.recipientRole);
 
                                 return (
-                                    <div key={rule.id} className={`bg-[#182a20] border ${rule.isEnabled ? 'border-[#2a4536]/50' : 'border-[#2a4536]/20 border-dashed opacity-75'} rounded-2xl p-4 shadow-sm`}>
+                                    <div key={rule.id} className={`bg-[#092c19] border ${rule.isEnabled ? 'border-[#134426]' : 'border-[#134426]/40 border-dashed opacity-75'} rounded-2xl p-4 shadow-sm`}>
                                         <div className="flex items-start gap-3">
-                                            <div className={`p-2.5 rounded-xl ${rule.isEnabled ? 'bg-emerald-500/10 text-emerald-400' : 'bg-[#091c13] text-gray-500'}`}>
+                                            <div className={`p-2.5 rounded-xl ${rule.isEnabled ? 'bg-[#44D62C]/15 text-[#44D62C]' : 'bg-[#041b0f] text-gray-500 border border-[#134426]/50'}`}>
                                                 <Icon className="h-5 w-5" />
                                             </div>
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex justify-between items-start">
                                                     <h3 className="font-bold text-white text-sm truncate">{eventType?.label || rule.eventType}</h3>
-                                                    <button onClick={() => handleDeleteRule(rule.id)} className="text-red-500/80 hover:text-red-500 p-1">
+                                                    <button onClick={() => handleDeleteRule(rule.id)} className="text-red-400 hover:text-red-300 p-1">
                                                         <Trash2 className="w-4 h-4" />
                                                     </button>
                                                 </div>
                                                 <p className="text-[11px] text-gray-400 mt-1 truncate">
-                                                    Notifies: <span className="text-emerald-500 font-medium">{rule.recipientUserId === 'all' ? 'All Users' : (recipientUser ? recipientUser.name : (recipientRole?.label || rule.recipientRole))}</span>
+                                                    Notifies: <span className="text-[#44D62C] font-semibold">{rule.recipientUserId === 'all' ? 'All Users' : (recipientUser ? recipientUser.name : (recipientRole?.label || rule.recipientRole))}</span>
                                                 </p>
                                                 
                                                 <div className="grid grid-cols-4 gap-2 mt-4">
-                                                    <div className="flex flex-col items-center justify-between gap-2 p-2 bg-[#091c13] rounded-xl border border-[#2a4536]/30">
+                                                    <div className="flex flex-col items-center justify-between gap-2 p-2 bg-[#041b0f] rounded-xl border border-[#134426]">
                                                         <span className="text-[9px] text-gray-400 uppercase font-bold tracking-wider">Alert</span>
                                                         <Checkbox id={`m-alert-${rule.id}`} label="" checked={rule.sendAlert} onChange={async () => {
                                                             try {
@@ -327,7 +342,7 @@ const NotificationsControl: React.FC = () => {
                                                             } catch (err) { console.error(err); }
                                                         }} />
                                                     </div>
-                                                    <div className="flex flex-col items-center justify-between gap-2 p-2 bg-[#091c13] rounded-xl border border-[#2a4536]/30">
+                                                    <div className="flex flex-col items-center justify-between gap-2 p-2 bg-[#041b0f] rounded-xl border border-[#134426]">
                                                         <span className="text-[9px] text-gray-400 uppercase font-bold tracking-wider">Push</span>
                                                         <Checkbox id={`m-push-${rule.id}`} label="" checked={rule.sendPush} onChange={async () => {
                                                             try {
@@ -336,7 +351,7 @@ const NotificationsControl: React.FC = () => {
                                                             } catch (err) { console.error(err); }
                                                         }} />
                                                     </div>
-                                                    <div className="flex flex-col items-center justify-between gap-2 p-2 bg-[#091c13] rounded-xl border border-[#2a4536]/30">
+                                                    <div className="flex flex-col items-center justify-between gap-2 p-2 bg-[#041b0f] rounded-xl border border-[#134426]">
                                                         <span className="text-[9px] text-gray-400 uppercase font-bold tracking-wider">Email</span>
                                                         <Checkbox id={`m-email-${rule.id}`} label="" checked={rule.sendEmail} onChange={async () => {
                                                             try {
@@ -345,7 +360,7 @@ const NotificationsControl: React.FC = () => {
                                                             } catch (err) { console.error(err); }
                                                         }} />
                                                     </div>
-                                                    <div className="flex flex-col items-center justify-between gap-2 p-2 bg-[#091c13] rounded-xl border border-[#2a4536]/30">
+                                                    <div className="flex flex-col items-center justify-between gap-2 p-2 bg-[#041b0f] rounded-xl border border-[#134426]">
                                                         <span className="text-[9px] text-gray-400 uppercase font-bold tracking-wider">On/Off</span>
                                                         <Checkbox id={`m-rule-${rule.id}`} label="" checked={rule.isEnabled} onChange={() => handleToggleRule(rule)} />
                                                     </div>
@@ -361,19 +376,19 @@ const NotificationsControl: React.FC = () => {
 
                 {activeTab === 'broadcast' && (
                     <div className="space-y-4">
-                        <div className="bg-[#182a20] p-5 rounded-3xl border border-[#2a4536]/50 shadow-lg space-y-5">
+                        <div className="bg-[#092c19] p-5 rounded-3xl border border-[#134426] shadow-lg space-y-5">
                             <div className="flex items-center gap-3">
-                                <div className="p-2.5 bg-emerald-500/10 rounded-xl text-emerald-400">
+                                <div className="p-2.5 bg-[#44D62C]/15 rounded-xl text-[#44D62C]">
                                     <Send className="w-5 h-5" />
                                 </div>
-                                <h3 className="text-white font-bold">New Broadcast</h3>
+                                <h3 className="text-white font-black text-base">New Broadcast</h3>
                             </div>
                             
                             <div className="space-y-4">
                                 <div>
-                                    <label className="text-xs text-gray-400 mb-1.5 block font-medium">Target Audience</label>
+                                    <label className="text-xs text-gray-300 mb-1.5 block font-bold">Target Audience</label>
                                     <select 
-                                        className="w-full bg-[#091c13] border border-[#2a4536]/50 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-emerald-500 appearance-none"
+                                        className="w-full bg-[#041b0f] border border-[#134426] rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-[#44D62C] appearance-none"
                                         value={broadcastData.role === 'all' ? 'all' : broadcastData.role} 
                                         onChange={(e) => setBroadcastData({ ...broadcastData, role: e.target.value, userIds: [] })}
                                     >
@@ -383,26 +398,26 @@ const NotificationsControl: React.FC = () => {
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="text-xs text-gray-400 mb-1.5 block font-medium">Subject</label>
+                                    <label className="text-xs text-gray-300 mb-1.5 block font-bold">Subject</label>
                                     <input 
                                         type="text"
                                         placeholder="e.g. Office Closure"
-                                        className="w-full bg-[#091c13] border border-[#2a4536]/50 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-emerald-500"
+                                        className="w-full bg-[#041b0f] border border-[#134426] rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-[#44D62C] placeholder:text-white/20"
                                         value={broadcastData.title}
                                         onChange={(e) => setBroadcastData({ ...broadcastData, title: e.target.value })}
                                     />
                                 </div>
                                 <div>
-                                    <label className="text-xs text-gray-400 mb-1.5 block font-medium">Message</label>
+                                    <label className="text-xs text-gray-300 mb-1.5 block font-bold">Message</label>
                                     <textarea 
                                         placeholder="Type message..."
-                                        className="w-full bg-[#091c13] border border-[#2a4536]/50 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-emerald-500 min-h-[120px]"
+                                        className="w-full bg-[#041b0f] border border-[#134426] rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-[#44D62C] placeholder:text-white/20 min-h-[120px]"
                                         value={broadcastData.message}
                                         onChange={(e) => setBroadcastData({ ...broadcastData, message: e.target.value })}
                                     />
                                 </div>
                                 <Button 
-                                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 rounded-xl border-none shadow-[0_0_15px_rgba(5,150,105,0.3)] mt-2"
+                                    className="w-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black py-3.5 rounded-xl border-none shadow-[0_0_15px_rgba(68,214,44,0.3)] mt-2 active:scale-98 transition-all"
                                     onClick={handleBroadcast}
                                     isLoading={isSaving}
                                     disabled={!broadcastData.message}
@@ -415,25 +430,25 @@ const NotificationsControl: React.FC = () => {
                 )}
 
                 {activeTab === 'automated' && (
-                    <div className="bg-[#182a20] rounded-3xl border border-[#2a4536]/50 p-4 overflow-hidden">
+                    <div className="bg-[#092c19] rounded-3xl border border-[#134426] p-4 overflow-hidden">
                         <AdvancedNotificationSettings hideHeader={true} />
                     </div>
                 )}
 
                 {activeTab === 'planner' && (
-                    <div className="bg-[#182a20] rounded-3xl border border-[#2a4536]/50 p-4 overflow-hidden">
+                    <div className="bg-[#092c19] rounded-3xl border border-[#134426] p-4 overflow-hidden">
                         <NotificationPlanner />
                     </div>
                 )}
 
                 {activeTab === 'activity' && (
-                    <div className="bg-[#182a20] rounded-3xl border border-[#2a4536]/50 p-4 overflow-hidden">
+                    <div className="bg-[#092c19] rounded-3xl border border-[#134426] p-4 overflow-hidden">
                         <ActivityGreetingConfig rules={rules} setRules={setRules} toast={toast} setToast={setToast} />
                     </div>
                 )}
 
                 {activeTab === 'email' && (
-                    <div className="bg-[#182a20] rounded-3xl border border-[#2a4536]/50 p-4 overflow-hidden">
+                    <div className="bg-[#092c19] rounded-3xl border border-[#134426] p-4 overflow-hidden">
                         <EmailConfigPanel />
                     </div>
                 )}
@@ -791,7 +806,7 @@ const NotificationsControl: React.FC = () => {
                             <div className="space-y-2">
                                 <p className="text-sm font-medium text-primary-text">Message Content</p>
                                 <textarea 
-                                    className="w-full h-32 p-4 rounded-xl border border-border focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white"
+                                    className="w-full h-32 p-4 rounded-xl border border-border focus:ring-2 focus:ring-emerald-500 focus:border-[#44D62C] bg-white"
                                     placeholder="Type your message here..."
                                     value={broadcastData.message}
                                     onChange={(e) => setBroadcastData({ ...broadcastData, message: e.target.value })}

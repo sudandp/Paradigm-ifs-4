@@ -5,7 +5,7 @@ import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import { api } from '../../services/api';
 import type { OrganizationGroup, Entity, Company, RegistrationType, Organization, SiteConfiguration, UploadedFile } from '../../types';
-import { Plus, Save, Edit, Trash2, Building, ChevronRight, Eye, CheckCircle, AlertCircle, Search, ClipboardList, Settings, Calculator, Users, Badge, HeartPulse, Archive, Wrench, Shirt, FileText, CalendarDays, BarChart, Mail, Sun, UserX, IndianRupee, ChevronLeft, HelpCircle, Loader2, Clock, Zap, SlidersHorizontal, LayoutGrid, List, MapPin, Building2, Layers, ChevronDown, ChevronUp, Sparkles, Filter } from 'lucide-react';
+import { Plus, Save, Edit, Trash2, Building, ChevronRight, Eye, CheckCircle, AlertCircle, Search, ClipboardList, Settings, Calculator, Users, Badge, HeartPulse, Archive, Wrench, Shirt, FileText, CalendarDays, BarChart, Mail, Sun, UserX, IndianRupee, ChevronLeft, HelpCircle, Loader2, Clock, Zap, SlidersHorizontal, LayoutGrid, List, MapPin, Building2, Layers, ChevronDown, ChevronUp, Sparkles, Filter, ArrowLeft } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import EntityForm from '../../components/hr/EntityForm';
@@ -1513,30 +1513,62 @@ const EntityManagement: React.FC = () => {
             )}
 
 
-            <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-6">
-                <h2 className={`text-2xl font-bold ${isMobile ? 'text-white' : 'text-primary-text'}`}>Client Management</h2>
-                {!isMobile && (
+            {/* Mobile Back Bar */}
+            {isMobile && (
+                <div className="flex items-center gap-3 mb-4">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            if (window.history.state && window.history.state.idx > 0) {
+                                navigate(-1);
+                            } else {
+                                navigate('/mobile-home');
+                            }
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                    >
+                        <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+                        <span>Back</span>
+                    </button>
+                    <div className="h-[1px] flex-1 bg-[#134426]" />
+                    <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#44D62C] bg-[#092c19] px-2.5 py-1 rounded-lg border border-[#134426]">
+                        Client Management
+                    </span>
+                </div>
+            )}
+
+            {isMobile ? (
+                <div className="flex items-center justify-between gap-3 mb-5">
+                    <button
+                        type="button"
+                        onClick={handleSaveAll}
+                        className="flex-1 inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs uppercase tracking-wider shadow-[0_2px_10px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                    >
+                        <Save className="h-4 w-4 stroke-[2.5]" />
+                        <span>Save All Changes</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setIsInstructionsOpen(true)}
+                        className="inline-flex items-center gap-1.5 py-2.5 px-3.5 rounded-xl bg-[#092c19] border border-[#134426] text-[#44D62C] hover:bg-[#134426] text-xs font-bold active:scale-95 transition-all cursor-pointer"
+                    >
+                        <HelpCircle className="h-4 w-4" />
+                        <span>Help</span>
+                    </button>
+                </div>
+            ) : (
+                <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-6">
+                    <h2 className="text-2xl font-bold text-primary-text">Client Management</h2>
                     <div className="flex items-center gap-2 flex-wrap">
                         <Button variant="outline" onClick={() => setIsInstructionsOpen(true)} className="hover:bg-gray-100"><HelpCircle className="mr-2 h-4 w-4" /> Help</Button>
                         <Button onClick={handleSaveAll} style={{ backgroundColor: '#006B3F', color: '#FFFFFF', borderColor: '#005632' }} className="border hover:opacity-90 text-white shadow-lg hover:shadow-xl transition-all duration-300"><Save className="mr-2 h-4 w-4" /> Save All Changes</Button>
                     </div>
-                )}
-            </div>
-
-            {isMobile && (
-                <div className="flex flex-col gap-4 mb-8 items-center">
-                    <button onClick={handleSaveAll} className="flex items-center gap-2 text-sm font-bold text-white tracking-wide">
-                        <Save className="h-4 w-4" /> Save All Changes
-                    </button>
-                    <button onClick={() => setIsInstructionsOpen(true)} className="flex items-center gap-2 text-xs font-semibold text-[#22c55e]">
-                        <HelpCircle className="h-3.5 w-3.5" /> Help
-                    </button>
                 </div>
             )}
 
-            <div className="flex flex-col sm:flex-row gap-4 mb-6">
+            <div className="flex flex-col sm:flex-row gap-3 mb-6">
                 <div className="relative flex-grow">
-                    <Search className={`absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 ${isMobile ? 'text-gray-500' : 'text-muted'}`} />
+                    <Search className={`absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 ${isMobile ? 'text-[#44D62C]/70' : 'text-muted'}`} />
                     <input
                         id="client-search"
                         name="clientSearch"
@@ -1544,21 +1576,26 @@ const EntityManagement: React.FC = () => {
                         placeholder="Search across all clients and sites..."
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
-                        className={isMobile ? "w-full bg-[#041b0f] border border-[#1d422f] rounded-[16px] py-2.5 pl-10 pr-4 text-[13px] text-white focus:outline-none focus:border-[#22c55e] transition-colors" : "form-input !pl-10 w-full"}
+                        className={isMobile ? "w-full bg-[#041b0f] border border-[#134426] rounded-xl py-2.5 pl-10 pr-4 text-xs font-medium text-white placeholder-white/40 focus:outline-none focus:border-[#44D62C] transition-all shadow-sm" : "form-input !pl-10 w-full"}
                     />
                 </div>
-                <div className="w-full sm:w-64">
+                <div className="w-full sm:w-64 relative">
                     <select
                         id="location-filter"
                         value={selectedLocation}
                         onChange={e => setSelectedLocation(e.target.value)}
-                        className={isMobile ? "w-full bg-[#041b0f] border border-[#1d422f] rounded-[16px] py-2.5 px-4 text-[13px] text-white focus:outline-none focus:border-[#22c55e] appearance-none" : "w-full form-select"}
+                        className={isMobile ? "w-full bg-[#041b0f] border border-[#134426] rounded-xl py-2.5 pl-3.5 pr-9 text-xs font-semibold text-white focus:outline-none focus:border-[#44D62C] transition-all appearance-none shadow-sm" : "w-full form-select"}
                     >
-                        <option value="">All Locations</option>
+                        <option value="" className="bg-[#041b0f] text-white">All Locations</option>
                         {existingLocations.map(loc => (
-                            <option key={loc} value={loc}>{loc}</option>
+                            <option key={loc} value={loc} className="bg-[#041b0f] text-white">{loc}</option>
                         ))}
                     </select>
+                    {isMobile && (
+                        <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-[#44D62C]/70">
+                            <ChevronDown className="h-4 w-4" />
+                        </div>
+                    )}
                 </div>
             </div>
 

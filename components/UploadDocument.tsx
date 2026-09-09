@@ -524,7 +524,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                         )}
                     </div>
                 ) : (
-                    <label htmlFor={inputId} className={`
+                    <label htmlFor={inputId} className={`upload-document-dropzone
                         cursor-pointer flex flex-col items-center justify-center
                         p-6 rounded-2xl transition-all duration-300
                         ${transparent 

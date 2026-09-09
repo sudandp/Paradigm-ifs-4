@@ -248,17 +248,17 @@ html {
     color: #ffffff !important;
 }
 .dark-calendar .rdrDayPassive .rdrDayNumber span {
-    color: #4b5563 !important;
+    color: #7D967B !important;
 }
 .dark-calendar .rdrMonthAndYearPickers select {
-    background-color: #041b0f !important;
+    background-color: #263625 !important;
     color: #ffffff !important;
 }
 .dark-calendar .rdrNextPrevButton {
-    background-color: #064e3b !important;
+    background-color: #263625 !important;
 }
 .dark-calendar .rdrNextPrevButton:hover {
-    background-color: #065f46 !important;
+    background-color: #334832 !important;
 }
 .dark-calendar .rdrPprevButton i {
     border-color: transparent #ffffff transparent transparent !important;
@@ -1304,7 +1304,7 @@ body {
     height: 1.25rem;
     margin-right: 0.75rem;
 }
-/* Dark Bottle Green Theme for Android / Mobile devices */
+/* Recreated Hybrid Mobile Dark Theme (Adapted from Reference Images 2, 3, 4, 5) */
 .pro-dark-theme, html.dark {
     --color-page: #041b0f;
     --color-card: #092c19;
@@ -1343,7 +1343,9 @@ html.dark .bg-card {
 html.dark .border-slate-800, 
 html.dark .border-slate-700, 
 html.dark .border-slate-200,
-html.dark .border-slate-200\/80 {
+html.dark .border-slate-200\/80,
+.pro-dark-theme .border-border,
+html.dark .border-border {
     border-color: #134426 !important;
 }
 
@@ -1364,138 +1366,171 @@ html.dark .text-slate-500, html.dark .text-slate-400,
 .pro-dark-theme .text-slate-500, .pro-dark-theme .text-slate-400,
 html.dark .text-gray-500, html.dark .text-gray-400, html.dark .text-gray-300,
 .pro-dark-theme .text-gray-500, .pro-dark-theme .text-gray-400, .pro-dark-theme .text-gray-300 {
-    color: #a3c4b1 !important;
+    color: #7D967B !important;
 }
 
-/* Inputs & Form Controls on Mobile Dark Theme */
+/* Inputs & Form Controls on Mobile Dark Theme - Clean Deep Forest Theme */
 html.dark input, html.dark select, html.dark textarea,
 .pro-dark-theme input, .pro-dark-theme select, .pro-dark-theme textarea {
-    background-color: #051f11 !important;
+    background-color: #041b0f !important;
     border-color: #134426 !important;
     color: #ffffff !important;
 }
+html.dark input::placeholder, html.dark textarea::placeholder,
+.pro-dark-theme input::placeholder, .pro-dark-theme textarea::placeholder {
+    color: rgba(255, 255, 255, 0.4) !important;
+    opacity: 1 !important;
+}
 .pro-dark-theme .form-header-title::after {
-    background-color: #006b3f;
+    background-color: #44D62C;
 }
 .pro-dark-theme .form-input {
     background-color: #041b0f;
-    border-color: rgba(16, 185, 129, 0.1);
+    border-color: #134426;
     color: #ffffff;
-    border-radius: 1rem;
+    border-radius: 0.875rem;
+    min-height: 44px;
+    font-size: 0.875rem;
 }
 .pro-dark-theme .form-input::placeholder {
-    color: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.4);
+    opacity: 1;
 }
 .pro-dark-theme .form-input:focus {
-    border-color: #10b981;
-    box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.2);
+    border-color: #44D62C !important;
+    box-shadow: 0 0 0 2px rgba(68, 214, 44, 0.25) !important;
+    background-color: #041b0f !important;
 }
 .pro-dark-theme .form-input--error {
     border-color: #ef4444 !important;
 }
 .pro-dark-theme .form-input--error:focus {
-    box-shadow: 0 0 0 1px #ef4444 !important;
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.25) !important;
 }
+
+/* Primary Action CTA (Next / Save / Submit) - High-contrast Lime Pill */
 .pro-dark-theme .btn-primary {
-    background-color: #006b3f !important;
-    color: #ffffff !important;
-    font-weight: 600;
-    font-size: 14px;
-    padding: 12px 24px;
+    background-color: #44D62C !important;
+    color: #0A1809 !important;
+    font-weight: 700 !important;
+    font-size: 15px;
+    padding: 14px 28px;
     text-transform: capitalize;
-    border: 1px solid #005632 !important;
+    border-radius: 9999px !important;
+    border: none !important;
+    box-shadow: 0 4px 18px rgba(68, 214, 44, 0.28) !important;
+    letter-spacing: -0.01em;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .pro-dark-theme .btn-primary:hover {
-    background-color: #005632 !important;
+    background-color: #3bc125 !important;
+    box-shadow: 0 6px 22px rgba(68, 214, 44, 0.38) !important;
 }
+.pro-dark-theme .btn-primary:active {
+    transform: scale(0.98);
+}
+
+/* Secondary Button (Back / Upload) - Deep Emerald Pill */
 .pro-dark-theme .btn-secondary {
-    background-color: #374151;
-    color: #e5e7eb;
-    border: 1px solid transparent;
+    background-color: #092c19 !important;
+    color: #ffffff !important;
+    border: 1px solid #134426 !important;
     font-weight: 600;
     font-size: 14px;
     padding: 12px 24px;
+    border-radius: 9999px !important;
+    transition: all 0.2s ease;
 }
 .pro-dark-theme .btn-secondary:hover {
-    background-color: #4b5563;
+    background-color: #2F442E !important;
+    border-color: #3e583d !important;
 }
+.pro-dark-theme .btn-secondary:active {
+    transform: scale(0.98);
+}
+
 .pro-dark-theme .btn-outline {
-    border-color: #22c55e;
-    color: #22c55e;
+    border-color: #44D62C;
+    color: #44D62C;
+    border-radius: 9999px;
 }
 .pro-dark-theme .btn-outline:hover {
-    background-color: rgba(34, 197, 94, 0.1);
+    background-color: rgba(68, 214, 44, 0.12);
 }
 .pro-dark-theme .btn-danger {
     background-color: #ef4444;
     color: white;
     padding: 12px 24px;
+    border-radius: 9999px;
 }
 .pro-dark-theme .btn-danger:hover {
     background-color: #dc2626;
 }
 .pro-dark-theme .btn-icon {
-    color: #4ade80;
+    color: #44D62C;
 }
 .pro-dark-theme .btn-icon:hover {
-    background-color: #374151;
-    color: #86efac;
+    background-color: #263625;
+    color: #58e242;
 }
+
+/* Status Badges */
 .pro-dark-theme .status-chip,
 .pro-dark-theme .sync-chip,
 .pro-dark-theme .leave-status-chip {
     font-size: 0.75rem;
     border-color: transparent;
+    border-radius: 9999px;
 }
 .pro-dark-theme .status-chip--pending {
-    background-color: rgba(234, 179, 8, 0.2);
+    background-color: rgba(250, 204, 21, 0.15);
     color: #facc15;
 }
 .pro-dark-theme .status-chip--verified {
-    background-color: rgba(34, 197, 94, 0.2);
-    color: #4ade80;
+    background-color: rgba(68, 214, 44, 0.15);
+    color: #44D62C;
 }
 .pro-dark-theme .status-chip--rejected {
-    background-color: rgba(239, 68, 68, 0.2);
+    background-color: rgba(239, 68, 68, 0.15);
     color: #f87171;
 }
 .pro-dark-theme .status-chip--draft {
-    background-color: rgba(156, 163, 175, 0.2);
+    background-color: rgba(156, 163, 175, 0.15);
     color: #9ca3af;
 }
 .pro-dark-theme .sync-chip--pending_sync {
-    background-color: rgba(59, 130, 246, 0.2);
+    background-color: rgba(59, 130, 246, 0.15);
     color: #60a5fa;
 }
 .pro-dark-theme .sync-chip--synced {
-    background-color: rgba(34, 197, 94, 0.2);
-    color: #4ade80;
+    background-color: rgba(68, 214, 44, 0.15);
+    color: #44D62C;
 }
 .pro-dark-theme .sync-chip--failed {
-    background-color: rgba(239, 68, 68, 0.2);
+    background-color: rgba(239, 68, 68, 0.15);
     color: #f87171;
 }
 .pro-dark-theme .leave-status-chip--pending_manager_approval {
-    background-color: rgba(234, 179, 8, 0.2);
+    background-color: rgba(250, 204, 21, 0.15);
     color: #facc15;
 }
 .pro-dark-theme .leave-status-chip--pending_hr_confirmation {
-    background-color: rgba(59, 130, 246, 0.2);
+    background-color: rgba(59, 130, 246, 0.15);
     color: #60a5fa;
 }
 .pro-dark-theme .leave-status-chip--approved {
-    background-color: rgba(34, 197, 94, 0.2);
-    color: #4ade80;
+    background-color: rgba(68, 214, 44, 0.15);
+    color: #44D62C;
 }
 .pro-dark-theme .leave-status-chip--rejected {
-    background-color: rgba(239, 68, 68, 0.2);
+    background-color: rgba(239, 68, 68, 0.15);
     color: #f87171;
 }
 .pro-dark-theme .bg-accent-light {
-    background-color: rgba(50, 205, 50, 0.1);
+    background-color: rgba(68, 214, 44, 0.1);
 }
 .pro-dark-theme .text-accent-dark {
-    color: #32cd32;
+    color: #44D62C;
 }
 .pro-dark-theme .api-setting-item-bg {
     background-color: #0d2c18;
@@ -1523,11 +1558,13 @@ html.dark input, html.dark select, html.dark textarea,
         border: none !important;
     }
 }
+
+/* Custom Select Dropdowns - Adapted from Images 2-5 */
 .pro-dark-theme .pro-select, .pro-dark-theme .pro-select-arrow {
-    background-color: #041b0f;
-    border: 1px solid rgba(16, 185, 129, 0.1);
+    background-color: #263625;
+    border: 1px solid #334832;
     color: #ffffff;
-    border-radius: 1.25rem;
+    border-radius: 1rem;
     padding: 14px 16px;
     width: 100%;
     font-size: 15px;
@@ -1538,11 +1575,12 @@ html.dark input, html.dark select, html.dark textarea,
 }
 .pro-dark-theme .pro-select:focus, .pro-dark-theme .pro-select-arrow:focus {
     outline: none;
-    border-color: #10b981;
-    box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.1);
+    border-color: #44D62C;
+    box-shadow: 0 0 0 2px rgba(68, 214, 44, 0.25);
+    background-color: #2a3c29;
 }
 .pro-dark-theme .pro-select-arrow {
-    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%239ca89c' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%237D967B' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
     background-position: right 0.75rem center;
     background-repeat: no-repeat;
     background-size: 1.5em 1.5em;
@@ -1592,7 +1630,7 @@ html.dark input, html.dark select, html.dark textarea,
     color: #9ca89c;
 }
 .pro-dark-theme .fo-attendance-time strong {
-    color: #e5e7eb;
+    color: #ffffff;
     font-weight: 600;
 }
 .pro-dark-theme .fo-slider {
@@ -1633,22 +1671,22 @@ html.dark input, html.dark select, html.dark textarea,
 }
 .pro-dark-theme .fo-slider--checkin {
     background-color: #0d2c18;
-    border: 1px solid #006b3f;
+    border: 1px solid #44D62C;
 }
 .pro-dark-theme .fo-slider--checkin .fo-slider-text {
-    color: #006b3f;
+    color: #44D62C;
 }
 .pro-dark-theme .fo-slider--checkin .fo-slider-thumb {
     left: 4px;
 }
 .pro-dark-theme .fo-slider--checkin .fo-slider-thumb svg {
-    color: #006b3f;
+    color: #0A1809;
 }
 .pro-dark-theme .fo-slider--checkin.success {
-    background-color: #006b3f;
+    background-color: #44D62C;
 }
 .pro-dark-theme .fo-slider--checkin.success .fo-slider-text {
-    color: #0d1a0d;
+    color: #0A1809;
 }
 .pro-dark-theme .fo-slider--checkout {
     background-color: #243524;
@@ -1709,8 +1747,8 @@ html.dark input, html.dark select, html.dark textarea,
     }
 }
 .pro-dark-theme .responsive-table tr {
-    background-color: #0d2c18;
-    border: 1px solid #123820;
+    background-color: #092c19;
+    border: 1px solid #134426;
     box-shadow: none;
     border-radius: 1.5rem;
     padding: 0;
@@ -1736,15 +1774,15 @@ html.dark input, html.dark select, html.dark textarea,
 /* ─── Role Management Dark Mode Fixes ─────────────────────────────────── */
 /* Dropdown menu (Rename / Clone / Delete) */
 .pro-dark-theme .shadow-lg.z-50 {
-    background-color: #0d2c18 !important;
-    border-color: #1a4a2e !important;
+    background-color: #092c19 !important;
+    border-color: #134426 !important;
     box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5) !important;
 }
 .pro-dark-theme .shadow-lg.z-50 button {
     color: #e5e7eb !important;
 }
 .pro-dark-theme .shadow-lg.z-50 button:hover {
-    background-color: #123820 !important;
+    background-color: #263625 !important;
 }
 /* Delete button in dropdown — force visible red */
 .pro-dark-theme .shadow-lg.z-50 .text-red-600,
@@ -1752,19 +1790,19 @@ html.dark input, html.dark select, html.dark textarea,
     color: #f87171 !important;
 }
 .pro-dark-theme .shadow-lg.z-50 .bg-border {
-    background-color: #1a4a2e !important;
+    background-color: #134426 !important;
 }
 
 /* Toggle switch — unchecked track */
 .pro-dark-theme .bg-gray-200 {
-    background-color: #374151;
+    background-color: #263625;
 }
 /* Checkbox — unchecked bg (only checkboxes with borders, not toggle thumbs) */
 .pro-dark-theme .bg-white.border {
-    background-color: #1a2e23;
+    background-color: #263625;
 }
 .pro-dark-theme .border-gray-300 {
-    border-color: #374151;
+    border-color: #334832;
 }
 
 /* Hover states on permission rows */
@@ -1774,26 +1812,26 @@ html.dark input, html.dark select, html.dark textarea,
 
 /* Hover on role list items and dropdown triggers */
 .pro-dark-theme .hover\:bg-page:hover {
-    background-color: #123820 !important;
+    background-color: #263625 !important;
 }
 .pro-dark-theme .hover\:bg-card:hover {
-    background-color: #1a4a2e !important;
+    background-color: #092c19 !important;
 }
 
 /* Permission group expanded area */
 .pro-dark-theme .bg-page\/30 {
-    background-color: rgba(4, 27, 15, 0.5);
+    background-color: rgba(16, 23, 16, 0.5);
 }
 
 /* Auto-saved chip */
 .pro-dark-theme .bg-emerald-50 {
-    background-color: rgba(16, 185, 129, 0.1);
+    background-color: rgba(68, 214, 44, 0.1);
 }
 .pro-dark-theme .text-emerald-600 {
-    color: #34d399;
+    color: #44D62C;
 }
 .pro-dark-theme .border-emerald-100 {
-    border-color: rgba(16, 185, 129, 0.2);
+    border-color: rgba(68, 214, 44, 0.2);
 }
 
 /* Input within dark panels */
@@ -2010,11 +2048,11 @@ html.dark input, html.dark select, html.dark textarea,
 
 /* Panel — mobile: bottom sheet */
 .referral-panel--mobile {
-    background: #051f10;
+    background: #041b0f;
     border-radius: 1.5rem 1.5rem 0 0;
-    border: 1px solid rgba(34, 197, 94, 0.12);
+    border: 1px solid #134426;
     border-bottom: none;
-    box-shadow: 0 -8px 40px rgba(4, 27, 15, 0.5);
+    box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.6);
     padding-bottom: env(safe-area-inset-bottom, 1.5rem);
     overflow: hidden;
 }
@@ -2188,9 +2226,9 @@ html.dark input, html.dark select, html.dark textarea,
     border-color: rgba(255, 255, 255, 0.07);
 }
 .referral-panel--mobile .referral-card:hover {
-    background: rgba(34, 197, 94, 0.06);
-    border-color: rgba(34, 197, 94, 0.22);
-    box-shadow: 0 4px 20px rgba(34, 197, 94, 0.08);
+    background: rgba(68, 214, 44, 0.08);
+    border-color: rgba(68, 214, 44, 0.25);
+    box-shadow: 0 4px 20px rgba(68, 214, 44, 0.1);
 }
 
 /* Card icon slab */
@@ -2238,9 +2276,9 @@ html.dark input, html.dark select, html.dark textarea,
     flex-shrink: 0;
 }
 .referral-panel--mobile .referral-card-badge {
-    background: rgba(34, 197, 94, 0.1);
-    color: #22c55e;
-    border-color: rgba(34, 197, 94, 0.2);
+    background: rgba(68, 214, 44, 0.1);
+    color: #44D62C;
+    border-color: rgba(68, 214, 44, 0.2);
 }
 
 .referral-card-desc {
@@ -2248,7 +2286,7 @@ html.dark input, html.dark select, html.dark textarea,
     line-height: 1.45;
     color: #64748b;
 }
-.referral-panel--mobile .referral-card-desc { color: rgba(255, 255, 255, 0.38); }
+.referral-panel--mobile .referral-card-desc { color: rgba(255, 255, 255, 0.45); }
 
 /* Arrow CTA */
 .referral-card-arrow {
@@ -2277,10 +2315,10 @@ html.dark input, html.dark select, html.dark textarea,
     color: rgba(255, 255, 255, 0.35);
 }
 .referral-panel--mobile .referral-card:hover .referral-card-arrow {
-    background: #22c55e;
-    color: #041b0f;
-    border-color: #22c55e;
-    box-shadow: 0 4px 10px rgba(34, 197, 94, 0.3);
+    background: #44D62C;
+    color: #0A1809;
+    border-color: #44D62C;
+    box-shadow: 0 4px 10px rgba(68, 214, 44, 0.3);
 }
 
 /* Footer */

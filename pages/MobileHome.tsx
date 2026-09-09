@@ -59,10 +59,10 @@ const SUPER_CATEGORY_ORDER = [
 
 // ─── Section color themes ────────────────────────────────────────────────────
 const SECTION_THEMES: Record<string, { tileBg: string; icon: string; headerColor: string }> = {
-    'WORKFORCE':         { tileBg: '#0e2318', icon: '#4df8b0', headerColor: 'text-[#3de8a0]/60' },
-    'OPERATIONS':        { tileBg: '#0e2318', icon: '#4df8b0', headerColor: 'text-[#3de8a0]/60' },
-    'FINANCE & SALES':   { tileBg: '#0e2318', icon: '#4df8b0', headerColor: 'text-[#3de8a0]/60' },
-    'ADMIN & COMPLIANCE':{ tileBg: '#0e2318', icon: '#4df8b0', headerColor: 'text-[#3de8a0]/60' },
+    'WORKFORCE':         { tileBg: '#092c19', icon: '#44D62C', headerColor: 'text-[#44D62C]' },
+    'OPERATIONS':        { tileBg: '#092c19', icon: '#44D62C', headerColor: 'text-[#44D62C]' },
+    'FINANCE & SALES':   { tileBg: '#092c19', icon: '#44D62C', headerColor: 'text-[#44D62C]' },
+    'ADMIN & COMPLIANCE':{ tileBg: '#092c19', icon: '#44D62C', headerColor: 'text-[#44D62C]' },
 };
 
 // ─── Category Icons ──────────────────────────────────────────────────────────
@@ -274,8 +274,6 @@ const MobileHome: React.FC = () => {
         label,
         count,
         onClick,
-        tileBg,
-        iconColor,
         isExit = false,
     }: {
         icon: React.ElementType;
@@ -288,36 +286,43 @@ const MobileHome: React.FC = () => {
     }) => (
         <motion.button
             variants={itemVariants}
-            whileTap={{ scale: 0.84 }}
+            whileTap={{ scale: 0.88 }}
             onClick={onClick}
-            className="group flex flex-col items-center gap-2 focus:outline-none"
+            className="group flex flex-col items-center gap-1.5 focus:outline-none cursor-pointer w-full max-w-[76px]"
         >
-            {/* Fixed-size tile */}
+            {/* Native Android Squircle Container */}
             <div className="relative">
-                {count !== undefined && (
+                {count !== undefined && count > 0 && (
                     <span className="
-                        absolute -top-2 -right-1 z-20
-                        min-w-[18px] h-[18px] px-1
+                        absolute -top-1 -right-1 z-20
+                        min-w-[19px] h-[19px] px-1
                         flex items-center justify-center
                         rounded-full text-[10px] font-black
-                        bg-[#f97316] text-white shadow-md
+                        bg-gradient-to-br from-[#ff7a00] to-[#ea580c] text-white shadow-[0_2px_8px_rgba(234,88,12,0.5)]
+                        border-2 border-[#092c19]
                     ">
                         {count}
                     </span>
                 )}
                 <div
-                    className="w-[56px] h-[56px] flex items-center justify-center rounded-[16px] transition-all duration-150 group-active:scale-90"
-                    style={{ backgroundColor: isExit ? '#0e2318' : (tileBg || '#0e2318') }}
+                    className={`w-[54px] h-[54px] flex items-center justify-center rounded-[18px] transition-all duration-150 group-active:scale-90 border shadow-sm ${
+                        isExit 
+                            ? 'bg-[#220a0f] border-rose-900/40 text-rose-400 group-hover:border-rose-500/50' 
+                            : 'bg-[#041b0f] border-[#134426] group-hover:border-[#44D62C]/50 group-active:bg-[#072414] text-[#44D62C]'
+                    }`}
                 >
                     <Icon
-                        className="w-[20px] h-[20px]"
-                        style={{ color: isExit ? '#f43f5e' : (iconColor || '#4df8b0') }}
-                        strokeWidth={1.6}
+                        className="w-[23px] h-[23px] drop-shadow-[0_2px_6px_rgba(68,214,44,0.25)]"
+                        style={{ color: isExit ? '#f43f5e' : '#44D62C' }}
+                        strokeWidth={2.2}
                     />
                 </div>
             </div>
-            <span className="text-[10px] text-center font-semibold leading-snug w-[60px]"
-                  style={{ color: isExit ? '#f43f5e' : 'rgba(255,255,255,0.82)' }}>
+            <span 
+                className="text-[10.5px] text-center font-bold leading-tight w-full line-clamp-2 px-0.5"
+                style={{ color: isExit ? '#f43f5e' : 'rgba(255,255,255,0.88)' }}
+                title={label}
+            >
                 {label}
             </span>
         </motion.button>
@@ -362,31 +367,46 @@ const MobileHome: React.FC = () => {
                 <AnimatePresence mode="wait">
 
                     {activeCategory === null ? (
-                        /* ── SUPER-CATEGORY GROUPED GRID ────────────────── */
+                        /* ── MATERIAL 3 SECTION CARDS ────────────────── */
                         <motion.div
                             key="home"
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0, x: 20 }}
                             transition={{ duration: 0.16 }}
+                            className="space-y-4"
                         >
-                            {[...orderedSections, ...otherSections].map((section, sIdx) => {
-                                const theme = SECTION_THEMES[section] || SECTION_THEMES['WORKFORCE'];
+                            {[...orderedSections, ...otherSections].map((section) => {
                                 const cats = superGroups[section] || [];
+                                if (cats.length === 0) return null;
 
                                 return (
-                                    <div key={section} className={sIdx > 0 ? 'mt-6' : ''}>
-                                        {/* Section header */}
-                                        <p className={`text-[10.5px] font-black uppercase tracking-[0.22em] mb-3 px-1 ${theme.headerColor}`}>
-                                            {section}
-                                        </p>
+                                    <div 
+                                        key={section} 
+                                        className="bg-[#092c19] border border-[#134426] rounded-[24px] p-4 shadow-[0_4px_16px_rgba(0,0,0,0.35)] relative overflow-hidden"
+                                    >
+                                        {/* Subtle top surface highlight sheen */}
+                                        <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-[#44D62C]/25 to-transparent pointer-events-none" />
+
+                                        {/* Section Card Header */}
+                                        <div className="flex items-center justify-between mb-3.5 pb-2.5 border-b border-[#134426]">
+                                            <div className="flex items-center gap-2">
+                                                <span className="w-2 h-2 rounded-full bg-[#44D62C] shadow-[0_0_8px_rgba(68,214,44,0.6)]" />
+                                                <h3 className="text-xs font-black uppercase tracking-[0.16em] text-white">
+                                                    {section}
+                                                </h3>
+                                            </div>
+                                            <span className="text-[10px] font-extrabold text-[#7D967B] bg-[#041b0f] px-2.5 py-0.5 rounded-full border border-[#134426]">
+                                                {cats.length} {cats.length === 1 ? 'Module' : 'Modules'}
+                                            </span>
+                                        </div>
 
                                         {/* Category tiles */}
                                         <motion.div
                                             variants={containerVariants}
                                             initial="hidden"
                                             animate="show"
-                                            className="grid grid-cols-4 gap-x-2 gap-y-4 justify-items-center"
+                                            className="grid grid-cols-4 gap-x-2 gap-y-3.5 justify-items-center"
                                         >
                                             {cats.map(cat => {
                                                 const Icon = CATEGORY_ICONS[cat] || Folder;
@@ -398,8 +418,6 @@ const MobileHome: React.FC = () => {
                                                         label={cat}
                                                         count={count}
                                                         onClick={() => setActiveCategory(cat)}
-                                                        tileBg={theme.tileBg}
-                                                        iconColor={theme.icon}
                                                     />
                                                 );
                                             })}
@@ -408,26 +426,30 @@ const MobileHome: React.FC = () => {
                                 );
                             })}
 
-                            {/* Exit row */}
-                            <div className="mt-6">
-                                <motion.div
-                                    variants={containerVariants}
-                                    initial="hidden"
-                                    animate="show"
-                                    className="grid grid-cols-4 gap-x-2 justify-items-center"
+                            {/* Exit Card */}
+                            <div className="bg-[#1f0a0e]/80 border border-rose-950/60 rounded-[20px] p-3 shadow-md">
+                                <button
+                                    onClick={handleLogout}
+                                    className="w-full flex items-center justify-between px-2 py-1 cursor-pointer active:scale-[0.98] transition-transform"
                                 >
-                                    <Tile
-                                        icon={LogOut}
-                                        label="Exit"
-                                        onClick={handleLogout}
-                                        isExit
-                                    />
-                                </motion.div>
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400 shadow-sm">
+                                            <LogOut className="w-5 h-5" strokeWidth={2.2} />
+                                        </div>
+                                        <div className="text-left">
+                                            <p className="text-xs font-black text-rose-300">Sign Out</p>
+                                            <p className="text-[10px] font-semibold text-rose-400/60">End current session securely</p>
+                                        </div>
+                                    </div>
+                                    <span className="text-[10px] font-bold text-rose-400 bg-rose-500/10 px-2.5 py-1 rounded-full border border-rose-500/20">
+                                        Exit
+                                    </span>
+                                </button>
                             </div>
                         </motion.div>
 
                     ) : (
-                        /* ── SUB-ITEM GRID ───────────────────────────────── */
+                        /* ── SUB-ITEM SECTION CARD ───────────────────────────────── */
                         <motion.div
                             key={`sub-${activeCategory}`}
                             initial={{ opacity: 0, x: 20 }}
@@ -435,42 +457,56 @@ const MobileHome: React.FC = () => {
                             exit={{ opacity: 0, x: -20 }}
                             transition={{ duration: 0.16 }}
                         >
-                            {/* Back row */}
-                            <div className="flex items-center gap-3 mb-5">
+                            {/* Back Navigation Bar */}
+                            <div className="flex items-center gap-3 mb-4">
                                 <button
                                     onClick={() => setActiveCategory(null)}
-                                    className="flex items-center gap-1 font-bold text-[13px] active:scale-95 transition-transform"
-                                    style={{ color: activeTheme.icon }}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
                                 >
-                                    <ArrowLeft className="w-4 h-4" />
-                                    Back
+                                    <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+                                    <span>Back</span>
                                 </button>
-                                <div className="h-[1px] flex-1 bg-white/[0.06]" />
-                                <span className="text-[10px] font-black uppercase tracking-[0.15em] text-white/25">
+                                <div className="h-[1px] flex-1 bg-[#134426]" />
+                                <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#44D62C] bg-[#092c19] px-2.5 py-1 rounded-lg border border-[#134426]">
                                     {activeCategory}
                                 </span>
                             </div>
 
-                            <motion.div
-                                variants={containerVariants}
-                                initial="hidden"
-                                animate="show"
-                                className="grid grid-cols-4 gap-x-2 gap-y-4 justify-items-center"
-                            >
-                                {(groupedLinks[activeCategory] || []).map(link => {
-                                    const Icon = getSubItemIcon(link.to, link.label, link.icon);
-                                    return (
-                                        <Tile
-                                            key={link.to}
-                                            icon={Icon}
-                                            label={toDisplayLabel(link.label)}
-                                            onClick={() => navigate(link.to)}
-                                            tileBg={activeTheme.tileBg}
-                                            iconColor={activeTheme.icon}
-                                        />
-                                    );
-                                })}
-                            </motion.div>
+                            {/* Sub-item Section Card */}
+                            <div className="bg-[#092c19] border border-[#134426] rounded-[24px] p-4 shadow-[0_4px_16px_rgba(0,0,0,0.35)] relative overflow-hidden">
+                                <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-[#44D62C]/25 to-transparent pointer-events-none" />
+
+                                <div className="flex items-center justify-between mb-3.5 pb-2.5 border-b border-[#134426]">
+                                    <div className="flex items-center gap-2">
+                                        <span className="w-2 h-2 rounded-full bg-[#44D62C] shadow-[0_0_8px_rgba(68,214,44,0.6)]" />
+                                        <h3 className="text-xs font-black uppercase tracking-[0.16em] text-white">
+                                            {activeCategory} Features
+                                        </h3>
+                                    </div>
+                                    <span className="text-[10px] font-extrabold text-[#7D967B] bg-[#041b0f] px-2.5 py-0.5 rounded-full border border-[#134426]">
+                                        {(groupedLinks[activeCategory] || []).length} Actions
+                                    </span>
+                                </div>
+
+                                <motion.div
+                                    variants={containerVariants}
+                                    initial="hidden"
+                                    animate="show"
+                                    className="grid grid-cols-4 gap-x-2 gap-y-3.5 justify-items-center"
+                                >
+                                    {(groupedLinks[activeCategory] || []).map(link => {
+                                        const Icon = getSubItemIcon(link.to, link.label, link.icon);
+                                        return (
+                                            <Tile
+                                                key={link.to}
+                                                icon={Icon}
+                                                label={toDisplayLabel(link.label)}
+                                                onClick={() => navigate(link.to)}
+                                            />
+                                        );
+                                    })}
+                                </motion.div>
+                            </div>
                         </motion.div>
                     )}
 

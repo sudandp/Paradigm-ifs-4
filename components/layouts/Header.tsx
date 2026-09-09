@@ -71,17 +71,24 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
             <div className={isMobile ? "w-full" : "px-4 w-full"}>
                 <div className={`flex items-center w-full ${isMobile ? 'relative' : 'h-14 justify-between'}`}>
                     {isMobile ? (
-                        <div className="w-full flex items-center justify-center relative py-1 px-4">
-                            {/* Mobile header logo — increased by 40% */}
-                            <div className="flex items-center justify-center w-full">
-                                <Logo className="border-0 !w-[56%] max-w-[280px] !h-auto object-contain drop-shadow-sm transition-all duration-300" variant="original" />
+                        <div className="w-full h-12 flex items-center justify-between px-1 relative pointer-events-none">
+                            {/* Left spacer to keep logo mathematically centered */}
+                            <div className="w-10 h-10 flex-shrink-0" />
+
+                            {/* Centered logo — floating, natural intrinsic aspect ratio, no stretching */}
+                            <div className="flex-1 flex items-center justify-center pointer-events-none">
+                                <Logo 
+                                    className="border-0 h-8 max-h-8 w-auto max-w-[210px] object-contain drop-shadow-sm transition-all duration-300 select-none pointer-events-none" 
+                                    variant="original" 
+                                />
                             </div>
-                            {/* Notification bell — absolute right */}
-                            {user && (
-                                <div className="absolute right-2 top-1/2 -translate-y-1/2 p-1">
+
+                            {/* Notification bell — vertically centered floating on right */}
+                            <div className="w-10 h-10 flex-shrink-0 flex items-center justify-center pointer-events-auto">
+                                {user && (
                                     <NotificationBell theme="dark" />
-                                </div>
-                            )}
+                                )}
+                            </div>
                         </div>
                     ) : (
                         <div className="flex-1 flex justify-start" />

@@ -10,6 +10,7 @@ import { buildAttendanceDayKeyByEventId } from '../../utils/attendanceDayGroupin
 import { api } from '../../services/api';
 import Button from '../../components/ui/Button';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 
 
 interface CompOffCalendarProps {
@@ -20,6 +21,7 @@ interface CompOffCalendarProps {
     viewingDate: Date;
     onDateChange: (date: Date) => void;
     events: AttendanceEvent[];
+    isMobile?: boolean;
 }
 
 const CompOffCalendar: React.FC<CompOffCalendarProps> = ({ 
@@ -29,8 +31,11 @@ const CompOffCalendar: React.FC<CompOffCalendarProps> = ({
     isLoading = false, 
     viewingDate, 
     onDateChange,
-    events
+    events,
+    isMobile: isMobileProp
 }) => {
+    const isMobileQuery = useMediaQuery('(max-width: 767px)');
+    const isMobile = isMobileProp ?? isMobileQuery;
     const { user } = useAuthStore();
     const { officeHolidays, fieldHolidays, recurringHolidays, attendance } = useSettingsStore();
 
@@ -205,11 +210,31 @@ const CompOffCalendar: React.FC<CompOffCalendarProps> = ({
         <div className="bg-card p-4 rounded-xl shadow-card border border-border w-full flex flex-col h-full">
             <div className="flex items-center justify-between mb-4 flex-shrink-0">
                 <h3 className="text-sm font-semibold text-primary-text">Comp Off</h3>
-                <div className="flex items-center gap-1">
-                    <Button variant="secondary" size="sm" className="btn-icon !p-1 h-6 w-6" onClick={() => onDateChange(subMonths(viewingDate, 1))}><ChevronLeft className="h-4 w-4" /></Button>
-                    <span className="font-medium min-w-[80px] text-center text-xs">{format(viewingDate, 'MMMM yyyy')}</span>
-                    <Button variant="secondary" size="sm" className="btn-icon !p-1 h-6 w-6" onClick={() => onDateChange(addMonths(viewingDate, 1))}><ChevronRight className="h-4 w-4" /></Button>
-                </div>
+                {isMobile ? (
+                    <div className="flex items-center gap-1.5">
+                        <button 
+                            onClick={() => onDateChange(subMonths(viewingDate, 1))}
+                            className="h-7 w-7 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] flex items-center justify-center shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                            aria-label="Previous month"
+                        >
+                            <ChevronLeft className="h-4 w-4 stroke-[2.5]" />
+                        </button>
+                        <span className="font-bold min-w-[80px] text-center text-xs text-white">{format(viewingDate, 'MMMM yyyy')}</span>
+                        <button 
+                            onClick={() => onDateChange(addMonths(viewingDate, 1))}
+                            className="h-7 w-7 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] flex items-center justify-center shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                            aria-label="Next month"
+                        >
+                            <ChevronRight className="h-4 w-4 stroke-[2.5]" />
+                        </button>
+                    </div>
+                ) : (
+                    <div className="flex items-center gap-1">
+                        <Button variant="secondary" size="sm" className="btn-icon !p-1 h-6 w-6" onClick={() => onDateChange(subMonths(viewingDate, 1))}><ChevronLeft className="h-4 w-4" /></Button>
+                        <span className="font-medium min-w-[80px] text-center text-xs">{format(viewingDate, 'MMMM yyyy')}</span>
+                        <Button variant="secondary" size="sm" className="btn-icon !p-1 h-6 w-6" onClick={() => onDateChange(addMonths(viewingDate, 1))}><ChevronRight className="h-4 w-4" /></Button>
+                    </div>
+                )}
             </div>
 
             {loading ? (

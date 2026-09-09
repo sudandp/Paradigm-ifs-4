@@ -39,7 +39,7 @@ const Logo: React.FC<LogoProps> = ({ className = '', localPath, variant = 'white
 
     const defaultCompanyLogo = getCompanyLogo(effectiveCompany);
 
-    let baseSrc = localPath || defaultCompanyLogo;
+    const baseSrc = localPath || defaultCompanyLogo;
     
     // Add cache buster to handle updates to the same filename
     const src = `${baseSrc}?v=1.0.3`;
@@ -61,7 +61,10 @@ const Logo: React.FC<LogoProps> = ({ className = '', localPath, variant = 'white
         <img
             src={src}
             alt={isSouthWall ? "South Wall Logo" : "Paradigm Logo"}
-            style={getFilterStyle()}
+            style={{
+                ...getFilterStyle(),
+                ...(isSouthWall ? {} : { aspectRatio: '1024 / 157' })
+            }}
             className={`object-contain transition-all duration-500 ${!className.includes('h-') ? 'h-10' : ''} ${!className.includes('w-') ? 'w-auto' : ''} ${className}`}
             onError={(e) => {
                 const target = e.target as HTMLImageElement;

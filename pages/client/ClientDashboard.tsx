@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { usePermissionsStore } from '../../store/permissionsStore';
 import { api } from '../../services/api';
@@ -8,7 +9,7 @@ import { format, subDays, startOfToday, endOfToday, eachDayOfInterval, isSameDay
 import { 
     Users, UserCheck, UserX, Clock, Calendar, BarChart3, 
     TrendingUp, TrendingDown, IndianRupee, AlertTriangle, ShieldAlert,
-    ChevronRight, Eye, RefreshCw, FileText, CheckCircle2, Ban
+    ChevronRight, Eye, RefreshCw, FileText, CheckCircle2, Ban, ArrowLeft
 } from 'lucide-react';
 import { isAdmin } from '../../utils/auth';
 import Button from '../../components/ui/Button';
@@ -193,7 +194,7 @@ const DesignationBreakdownChart: React.FC<{ data: { labels: string[], values: nu
             // Empty state: single grey ring
             chartInstance.current = new Chart(ctx, {
                 type: 'doughnut',
-                data: { labels: ['No Data'], datasets: [{ data: [1], backgroundColor: [isMobile ? '#2a4536' : '#e2e8f0'], borderWidth: 0 }] },
+                data: { labels: ['No Data'], datasets: [{ data: [1], backgroundColor: [isMobile ? '#134426' : '#e2e8f0'], borderWidth: 0 }] },
                 options: { responsive: true, maintainAspectRatio: true, cutout: '60%', plugins: { legend: { display: false }, tooltip: { enabled: false } } }
             });
             return () => { chartInstance.current?.destroy(); };
@@ -204,7 +205,7 @@ const DesignationBreakdownChart: React.FC<{ data: { labels: string[], values: nu
             label: entry.label,
             data: [entry.value, total - entry.value],
             backgroundColor: [entry.color, isMobile ? 'rgba(255,255,255,0.05)' : '#f1f5f9'],
-            borderColor: isMobile ? '#182a20' : '#ffffff',
+            borderColor: isMobile ? '#092c19' : '#ffffff',
             borderWidth: 3,
             borderRadius: 2,
             hoverOffset: 0,
@@ -281,6 +282,7 @@ const ClientDashboard: React.FC = () => {
     const { user } = useAuthStore();
     const { permissions } = usePermissionsStore();
     const isMobile = useMediaQuery('(max-width: 767px)');
+    const navigate = useNavigate();
 
     const canSelectOrg = user && (isAdmin(user.role) || ['management', 'hr', 'operation_manager'].includes(user.role));
     // Site selection configuration
@@ -635,7 +637,7 @@ const ClientDashboard: React.FC = () => {
     }, [siteUsers, siteStaffConfigs, attendanceEvents, siteHolidays, startDate, endDate]);
 
     return (
-        <div className={`p-4 md:p-6 min-h-screen ${isMobile ? 'bg-[#041b0f] text-white pb-24' : 'bg-slate-50 text-slate-800'}`}>
+        <div className={`p-4 md:p-6 min-h-screen ${isMobile ? 'bg-[#041b0f] text-white pb-36' : 'bg-slate-50 text-slate-800'}`}>
             {toast && (
                 <Toast 
                     message={toast.message} 
@@ -644,14 +646,32 @@ const ClientDashboard: React.FC = () => {
                 />
             )}
 
+            {/* Mobile Top Back Bar */}
+            {isMobile && (
+                <div className="flex items-center gap-3 mb-4">
+                    <button
+                        type="button"
+                        onClick={() => window.history.state?.idx > 0 ? navigate(-1) : navigate('/mobile-home')}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                    >
+                        <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+                        <span>Back</span>
+                    </button>
+                    <div className="h-[1px] flex-1 bg-[#134426]" />
+                    <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#44D62C] bg-[#092c19] px-2.5 py-1 rounded-lg border border-[#134426]">
+                        CLIENT PORTAL
+                    </span>
+                </div>
+            )}
+
             {/* Dashboard Header Bar */}
-            <div className={`flex flex-col lg:flex-row justify-between lg:items-center gap-4 mb-6 shadow-sm ${isMobile ? 'bg-[#182a20] border border-[#2a4536] p-5 rounded-3xl mt-4' : 'bg-white p-5 border-l-4 border-l-[#006B3F] border-y border-r border-slate-100 rounded-2xl'}`}>
+            <div className={`flex flex-col lg:flex-row justify-between lg:items-center gap-4 mb-6 shadow-sm ${isMobile ? 'bg-[#092c19] border border-[#134426] p-5 rounded-3xl' : 'bg-white p-5 border-l-4 border-l-[#006B3F] border-y border-r border-slate-100 rounded-2xl'}`}>
                 <div>
                     <h2 className={`text-xl font-extrabold tracking-tight uppercase ${isMobile ? 'text-white' : 'text-slate-900'}`}>
                         Client Control Center
                     </h2>
                     <p className={`text-sm mt-1 ${isMobile ? 'text-white/60' : 'text-slate-500'}`}>
-                        Site: <span className={`font-bold ${isMobile ? 'text-[#69ab82]' : 'text-[#006B3F]'}`}>{activeSiteName}</span>
+                        Site: <span className={`font-bold ${isMobile ? 'text-[#44D62C]' : 'text-[#006B3F]'}`}>{activeSiteName}</span>
                     </p>
                 </div>
 
@@ -664,18 +684,18 @@ const ClientDashboard: React.FC = () => {
                                 id="client-site-selector" 
                                 value={selectedSiteId} 
                                 onChange={e => setSelectedSiteId(e.target.value)}
-                                className={`!rounded-xl ${isMobile ? '!bg-[#091c13] !border-[#2a4536] !text-white focus:!border-[#00a859]' : '!border-slate-200 focus:!border-[#006B3F]'}`}
+                                className={`!rounded-xl ${isMobile ? '!bg-[#041b0f] !border-[#134426] !text-white focus:!border-[#44D62C]' : '!border-slate-200 focus:!border-[#006B3F]'}`}
                             >
                                 <option value="all">All Sites</option>
                                 {sites.map(site => (
-                                    <option key={site.id} value={site.id} className={isMobile ? 'bg-[#091c13] text-white' : ''}>{site.name}</option>
+                                    <option key={site.id} value={site.id} className={isMobile ? 'bg-[#041b0f] text-white' : ''}>{site.name}</option>
                                 ))}
                             </Select>
                         </div>
                     )}
 
                     {/* Date Pickers (Clamped to 30 days max) */}
-                    <div className={`flex items-center gap-2 p-2 rounded-xl transition-all ${isMobile ? 'bg-[#091c13] text-white border border-[#2a4536]' : 'border border-slate-200 bg-slate-50 hover:bg-white focus-within:bg-white focus-within:border-[#006B3F] focus-within:ring-2 focus-within:ring-[#006B3F]/10'}`}>
+                    <div className={`flex items-center gap-2 p-2 rounded-xl transition-all ${isMobile ? 'bg-[#041b0f] text-white border border-[#134426]' : 'border border-slate-200 bg-slate-50 hover:bg-white focus-within:bg-white focus-within:border-[#006B3F] focus-within:ring-2 focus-within:ring-[#006B3F]/10'}`}>
                         <Calendar className={`h-4 w-4 ${isMobile ? 'text-emerald-400' : 'text-slate-400'}`} />
                         <input 
                             type="date" 
@@ -694,7 +714,7 @@ const ClientDashboard: React.FC = () => {
 
                     <button 
                         onClick={fetchDashboardData}
-                        className={isMobile ? 'w-full py-2.5 bg-[#091c13] border border-[#2a4536] text-[#00a859] rounded-xl flex justify-center items-center active:scale-95 transition-transform' : 'p-2.5 border border-slate-200 rounded-xl bg-white hover:bg-slate-50 hover:border-slate-300 text-slate-600 active:scale-95 transition-all shadow-sm'}
+                        className={isMobile ? 'w-full py-2.5 bg-[#041b0f] border border-[#134426] text-[#44D62C] rounded-xl flex justify-center items-center active:scale-95 transition-transform' : 'p-2.5 border border-slate-200 rounded-xl bg-white hover:bg-slate-50 hover:border-slate-300 text-slate-600 active:scale-95 transition-all shadow-sm'}
                         title="Reload Dashboard"
                     >
                         <RefreshCw className="h-5 w-5" />
@@ -705,28 +725,28 @@ const ClientDashboard: React.FC = () => {
             {/* KPI Cards Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                 {/* Card 1: Total Present */}
-                <div className={`${isMobile ? 'bg-[#182a20] border border-[#2a4536] rounded-3xl p-5' : 'bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between h-[120px] hover:shadow-md hover:-translate-y-1 transition-all duration-300'}`}>
+                <div className={`${isMobile ? 'bg-[#092c19] border border-[#134426] rounded-3xl p-5' : 'bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between h-[120px] hover:shadow-md hover:-translate-y-1 transition-all duration-300'}`}>
                     <div className="flex items-center gap-3">
-                        <div className={isMobile ? 'p-2 bg-[#091c13] border border-[#2a4536] rounded-2xl text-emerald-400' : 'p-2 bg-emerald-100/50 rounded-lg text-emerald-500'}>
+                        <div className={isMobile ? 'p-2 bg-[#041b0f] border border-[#134426] rounded-2xl text-emerald-400' : 'p-2 bg-emerald-100/50 rounded-lg text-emerald-500'}>
                             <CheckCircle2 className={`${isMobile ? 'h-5 w-5' : 'h-5 w-5 stroke-[2.5]'}`} />
                         </div>
-                        <h3 className={`font-bold ${isMobile ? 'text-[15px] text-[#69ab82]' : 'text-[15px] text-slate-800'}`}>Total Present</h3>
+                        <h3 className={`font-bold ${isMobile ? 'text-[15px] text-[#44D62C]' : 'text-[15px] text-slate-800'}`}>Total Present</h3>
                     </div>
                     <div className={`flex items-end justify-between ${isMobile ? 'mt-4' : 'mt-auto'}`}>
                         <div className="flex items-baseline gap-1.5">
                             <span className={`font-extrabold leading-none ${isMobile ? 'text-2xl text-white' : 'text-3xl text-slate-900'}`}>{todayMetrics.present}</span>
                             <span className={`font-semibold ${isMobile ? 'text-[13px] text-white/40' : 'text-[13px] text-slate-500'}`}>Employees</span>
                         </div>
-                        <div className={isMobile ? 'px-2 py-1 bg-[#2a4536] text-[#69ab82] text-[11px] font-bold rounded-md' : 'px-2 py-1 bg-emerald-100/50 text-emerald-600 text-[11px] font-bold rounded-md'}>
+                        <div className={isMobile ? 'px-2 py-1 bg-[#041b0f] text-[#44D62C] border border-[#134426] text-[11px] font-bold rounded-md' : 'px-2 py-1 bg-emerald-100/50 text-emerald-600 text-[11px] font-bold rounded-md'}>
                             +{todayMetrics.total > 0 ? Math.round((todayMetrics.present / todayMetrics.total) * 100) : 0}%
                         </div>
                     </div>
                 </div>
 
                 {/* Card 2: Total Absent */}
-                <div className={`${isMobile ? 'bg-[#182a20] border border-[#2a4536] rounded-3xl p-5' : 'bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between h-[120px] hover:shadow-md hover:-translate-y-1 transition-all duration-300'}`}>
+                <div className={`${isMobile ? 'bg-[#092c19] border border-[#134426] rounded-3xl p-5' : 'bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between h-[120px] hover:shadow-md hover:-translate-y-1 transition-all duration-300'}`}>
                     <div className="flex items-center gap-3">
-                        <div className={isMobile ? 'p-2 bg-[#091c13] border border-[#2a4536] rounded-2xl text-rose-400' : 'p-2 bg-rose-100/50 rounded-lg text-rose-500'}>
+                        <div className={isMobile ? 'p-2 bg-[#041b0f] border border-[#134426] rounded-2xl text-rose-400' : 'p-2 bg-rose-100/50 rounded-lg text-rose-500'}>
                             <Ban className={`${isMobile ? 'h-5 w-5' : 'h-5 w-5 stroke-[2.5]'}`} />
                         </div>
                         <h3 className={`font-bold ${isMobile ? 'text-[15px] text-[#e07575]' : 'text-[15px] text-slate-800'}`}>Total Absent</h3>
@@ -743,38 +763,38 @@ const ClientDashboard: React.FC = () => {
                 </div>
 
                 {/* Card 3: Late Arrivals */}
-                <div className={`${isMobile ? 'bg-[#182a20] border border-[#2a4536] rounded-3xl p-5' : 'bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between h-[120px] hover:shadow-md hover:-translate-y-1 transition-all duration-300'}`}>
+                <div className={`${isMobile ? 'bg-[#092c19] border border-[#134426] rounded-3xl p-5' : 'bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between h-[120px] hover:shadow-md hover:-translate-y-1 transition-all duration-300'}`}>
                     <div className="flex items-center gap-3">
-                        <div className={isMobile ? 'p-2 bg-[#091c13] border border-[#2a4536] rounded-2xl text-amber-400' : 'p-2 bg-amber-100/50 rounded-lg text-amber-500'}>
+                        <div className={isMobile ? 'p-2 bg-[#041b0f] border border-[#134426] rounded-2xl text-amber-400' : 'p-2 bg-amber-100/50 rounded-lg text-amber-500'}>
                             <Clock className={`${isMobile ? 'h-5 w-5' : 'h-5 w-5 stroke-[2.5]'}`} />
                         </div>
-                        <h3 className={`font-bold ${isMobile ? 'text-[15px] text-[#c59c5d]' : 'text-[15px] text-slate-800'}`}>Late Arrivals</h3>
+                        <h3 className={`font-bold ${isMobile ? 'text-[15px] text-amber-400' : 'text-[15px] text-slate-800'}`}>Late Arrivals</h3>
                     </div>
                     <div className={`flex items-end justify-between ${isMobile ? 'mt-4' : 'mt-auto'}`}>
                         <div className="flex items-baseline gap-1.5">
                             <span className={`font-extrabold leading-none ${isMobile ? 'text-2xl text-white' : 'text-3xl text-slate-900'}`}>{todayMetrics.late}</span>
                             <span className={`font-semibold ${isMobile ? 'text-[13px] text-white/40' : 'text-[13px] text-slate-500'}`}>Employees</span>
                         </div>
-                        <div className={isMobile ? 'px-2 py-1 bg-[#3a2c16] text-[#c59c5d] text-[11px] font-bold rounded-md' : 'px-2 py-1 bg-amber-100/50 text-amber-600 text-[11px] font-bold rounded-md'}>
+                        <div className={isMobile ? 'px-2 py-1 bg-[#041b0f] text-amber-400 border border-[#134426] text-[11px] font-bold rounded-md' : 'px-2 py-1 bg-amber-100/50 text-amber-600 text-[11px] font-bold rounded-md'}>
                             +{todayMetrics.total > 0 ? Math.round((todayMetrics.late / todayMetrics.total) * 100) : 0}%
                         </div>
                     </div>
                 </div>
 
                 {/* Card 4: Leave Requests */}
-                <div className={`${isMobile ? 'bg-[#182a20] border border-[#2a4536] rounded-3xl p-5' : 'bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between h-[120px] hover:shadow-md hover:-translate-y-1 transition-all duration-300'}`}>
+                <div className={`${isMobile ? 'bg-[#092c19] border border-[#134426] rounded-3xl p-5' : 'bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between h-[120px] hover:shadow-md hover:-translate-y-1 transition-all duration-300'}`}>
                     <div className="flex items-center gap-3">
-                        <div className={isMobile ? 'p-2 bg-[#091c13] border border-[#2a4536] rounded-2xl text-blue-400' : 'p-2 bg-blue-100/50 rounded-lg text-blue-500'}>
+                        <div className={isMobile ? 'p-2 bg-[#041b0f] border border-[#134426] rounded-2xl text-blue-400' : 'p-2 bg-blue-100/50 rounded-lg text-blue-500'}>
                             <Users className={`${isMobile ? 'h-5 w-5' : 'h-5 w-5 stroke-[2.5]'}`} />
                         </div>
-                        <h3 className={`font-bold ${isMobile ? 'text-[15px] text-[#6b8cba]' : 'text-[15px] text-slate-800'}`}>Leave Requests</h3>
+                        <h3 className={`font-bold ${isMobile ? 'text-[15px] text-sky-400' : 'text-[15px] text-slate-800'}`}>Leave Requests</h3>
                     </div>
                     <div className={`flex items-end justify-between ${isMobile ? 'mt-4' : 'mt-auto'}`}>
                         <div className="flex items-baseline gap-1.5">
                             <span className={`font-extrabold leading-none ${isMobile ? 'text-2xl text-white' : 'text-3xl text-slate-900'}`}>{leaveRequests.length}</span>
                             <span className={`font-semibold ${isMobile ? 'text-[13px] text-white/40' : 'text-[13px] text-slate-500'}`}>Pending</span>
                         </div>
-                        <div className={isMobile ? 'w-[1px] h-6 bg-[#2a4536] mx-2' : 'w-[1px] h-6 bg-slate-200 mx-2'}></div>
+                        <div className={isMobile ? 'w-[1px] h-6 bg-[#134426] mx-2' : 'w-[1px] h-6 bg-slate-200 mx-2'}></div>
                         <div className="flex items-baseline gap-1.5">
                             <span className={`font-extrabold leading-none ${isMobile ? 'text-xl text-white' : 'text-xl text-slate-900'}`}>{approvedLeavesCount}</span>
                             <span className={`font-semibold ${isMobile ? 'text-[13px] text-white/40' : 'text-[13px] text-slate-500'}`}>Approved</span>
@@ -788,9 +808,9 @@ const ClientDashboard: React.FC = () => {
                 {/* Left Column - Trend Charts & Financials (3/5 Width) */}
                 <div className="lg:col-span-3 space-y-6">
                     {/* Weekly Trend Chart */}
-                    <div className={`${isMobile ? 'bg-[#182a20] border border-[#2a4536] p-5 rounded-3xl' : 'bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all duration-300'}`}>
-                        <div className={`flex items-center gap-2 border-b pb-3 mb-4 ${isMobile ? 'border-[#2a4536]' : 'border-slate-100'}`}>
-                            <BarChart3 className={`h-5 w-5 ${isMobile ? 'text-emerald-400' : 'text-[#006B3F]'}`} />
+                    <div className={`${isMobile ? 'bg-[#092c19] border border-[#134426] p-5 rounded-3xl' : 'bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all duration-300'}`}>
+                        <div className={`flex items-center gap-2 border-b pb-3 mb-4 ${isMobile ? 'border-[#134426]' : 'border-slate-100'}`}>
+                            <BarChart3 className={`h-5 w-5 ${isMobile ? 'text-[#44D62C]' : 'text-[#006B3F]'}`} />
                             <h3 className={`text-sm font-bold uppercase tracking-wider ${isMobile ? 'text-white' : 'text-slate-900'}`}>
                                 Attendance Trend
                             </h3>
@@ -799,15 +819,15 @@ const ClientDashboard: React.FC = () => {
                     </div>
 
                     {/* Costing & Billing Summary */}
-                    <div className={`${isMobile ? 'bg-[#182a20] border border-[#2a4536] p-5 rounded-3xl' : 'bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all duration-300'}`}>
-                        <div className={`flex items-center justify-between border-b pb-3 mb-4 ${isMobile ? 'border-[#2a4536]' : 'border-slate-100'}`}>
+                    <div className={`${isMobile ? 'bg-[#092c19] border border-[#134426] p-5 rounded-3xl' : 'bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all duration-300'}`}>
+                        <div className={`flex items-center justify-between border-b pb-3 mb-4 ${isMobile ? 'border-[#134426]' : 'border-slate-100'}`}>
                             <div className="flex items-center gap-2">
-                                <IndianRupee className={`h-5 w-5 ${isMobile ? 'text-emerald-400' : 'text-[#006B3F]'}`} />
+                                <IndianRupee className={`h-5 w-5 ${isMobile ? 'text-[#44D62C]' : 'text-[#006B3F]'}`} />
                                 <h3 className={`text-sm font-bold uppercase tracking-wider ${isMobile ? 'text-white' : 'text-slate-900'}`}>
                                     Billing & Financial Summary
                                 </h3>
                             </div>
-                            <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${isMobile ? 'bg-[#2a4536] text-emerald-400 border border-[#2a4536]' : 'bg-emerald-50 text-[#006B3F] border border-emerald-100'}`}>
+                            <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${isMobile ? 'bg-[#041b0f] text-[#44D62C] border border-[#134426]' : 'bg-emerald-50 text-[#006B3F] border border-emerald-100'}`}>
                                 Active Period
                             </span>
                         </div>
@@ -824,19 +844,19 @@ const ClientDashboard: React.FC = () => {
                         ) : (
                             <div className="space-y-6">
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                    <div className={`p-4 border rounded-xl transition-colors ${isMobile ? 'bg-[#091c13] border-[#2a4536]' : 'bg-slate-50/50 border-slate-100 hover:bg-slate-50'}`}>
+                                    <div className={`p-4 border rounded-xl transition-colors ${isMobile ? 'bg-[#041b0f] border-[#134426]' : 'bg-slate-50/50 border-slate-100 hover:bg-slate-50'}`}>
                                         <p className={`text-[10px] font-bold uppercase tracking-wider ${isMobile ? 'text-white/60' : 'text-slate-500'}`}>Estimated Subtotal</p>
                                         <p className={`text-2xl font-extrabold mt-1 ${isMobile ? 'text-white' : 'text-slate-900'}`}>
                                             ₹{billingSummary.totalCost.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                                         </p>
                                     </div>
-                                    <div className={`p-4 border rounded-xl transition-colors ${isMobile ? 'bg-[#091c13] border-[#2a4536]' : 'bg-slate-50/50 border-slate-100 hover:bg-slate-50'}`}>
+                                    <div className={`p-4 border rounded-xl transition-colors ${isMobile ? 'bg-[#041b0f] border-[#134426]' : 'bg-slate-50/50 border-slate-100 hover:bg-slate-50'}`}>
                                         <p className={`text-[10px] font-bold uppercase tracking-wider ${isMobile ? 'text-white/60' : 'text-slate-500'}`}>Billable Duties</p>
                                         <p className={`text-2xl font-extrabold mt-1 ${isMobile ? 'text-white' : 'text-slate-900'}`}>
                                             {billingSummary.totalDuties.toFixed(1)}
                                         </p>
                                     </div>
-                                    <div className={`p-4 border rounded-xl transition-colors ${isMobile ? 'bg-[#091c13] border-[#2a4536]' : 'bg-slate-50/50 border-slate-100 hover:bg-slate-50'}`}>
+                                    <div className={`p-4 border rounded-xl transition-colors ${isMobile ? 'bg-[#041b0f] border-[#134426]' : 'bg-slate-50/50 border-slate-100 hover:bg-slate-50'}`}>
                                         <p className={`text-[10px] font-bold uppercase tracking-wider ${isMobile ? 'text-white/60' : 'text-slate-500'}`}>Configured Staff</p>
                                         <p className={`text-2xl font-extrabold mt-1 ${isMobile ? 'text-white' : 'text-slate-900'}`}>
                                             {billingSummary.configuredUsersCount} / {siteUsers.length}
@@ -844,48 +864,36 @@ const ClientDashboard: React.FC = () => {
                                     </div>
                                 </div>
 
-                                <div className={`border rounded-xl overflow-hidden shadow-sm ${isMobile ? 'border-[#2a4536]' : 'border-slate-100'}`}>
-                                    <div className={`p-3.5 text-xs font-extrabold uppercase tracking-wider border-b ${isMobile ? 'bg-[#091c13] border-[#2a4536] text-white' : 'bg-slate-50 border-slate-100 text-slate-700'}`}>
+                                <div className={`border rounded-xl overflow-hidden shadow-sm ${isMobile ? 'border-[#134426]' : 'border-slate-100'}`}>
+                                    <div className={`p-3.5 text-xs font-extrabold uppercase tracking-wider border-b ${isMobile ? 'bg-[#041b0f] border-[#134426] text-white' : 'bg-slate-50 border-slate-100 text-slate-700'}`}>
                                         Staff Cost Breakdown
                                     </div>
                                     <div className="divide-y divide-slate-100 overflow-x-auto">
                                         <table className="min-w-full text-left text-xs">
                                             <thead>
-                                                <tr className={`border-b ${isMobile ? 'bg-[#091c13]/50 border-[#2a4536]' : 'bg-slate-50/70 border-slate-100'}`}>
+                                                <tr className={`border-b ${isMobile ? 'bg-[#041b0f]/80 border-[#134426]' : 'bg-slate-50/70 border-slate-100'}`}>
                                                     <th className={`p-3 font-semibold ${isMobile ? 'text-white/60' : 'text-slate-600'}`}>Employee</th>
                                                     <th className={`p-3 font-semibold text-right ${isMobile ? 'text-white/60' : 'text-slate-600'}`}>Daily Rate</th>
                                                     <th className={`p-3 font-semibold text-right ${isMobile ? 'text-white/60' : 'text-slate-600'}`}>Duties</th>
                                                     <th className={`p-3 font-semibold text-right ${isMobile ? 'text-white/60' : 'text-slate-600'}`}>Subtotal</th>
                                                 </tr>
                                             </thead>
-                                            <tbody className={`divide-y ${isMobile ? 'divide-[#2a4536]' : 'divide-slate-100'}`}>
+                                            <tbody className={`divide-y ${isMobile ? 'divide-[#134426]' : 'divide-slate-100'}`}>
                                                 {siteUsers.map(u => {
                                                     const config = siteStaffConfigs.find(c => c.userId === u.id);
-                                                    if (!config) {
-                                                        return (
-                                                            <tr key={u.id} className={isMobile ? 'hover:bg-[#1a3225]/20 bg-amber-950/5' : 'hover:bg-slate-50/50 bg-amber-50/5'}>
-                                                                <td className="p-3">
-                                                                    <p className={`font-bold ${isMobile ? 'text-white' : 'text-slate-950'}`}>{u.name}</p>
-                                                                    <p className={`text-[10px] ${isMobile ? 'text-white/40' : 'text-slate-500'}`}>{u.designation || 'Staff'}</p>
-                                                                </td>
-                                                                <td colSpan={3} className={`p-3 text-right font-medium italic ${isMobile ? 'text-amber-400' : 'text-amber-600'}`}>
-                                                                    Rates Not Configured
-                                                                </td>
-                                                            </tr>
-                                                        );
-                                                    }
-
+                                                    if (!config) return null;
                                                     const perDayRate = config.perDayBillingRate || calculatePerDayRate(config).perDayBillingRate || 0;
-                                                    let userDuties = 0;
                                                     
-                                                    eachDayOfInterval({ start: startDate, end: endDate }).forEach(day => {
+                                                    // Count user duties in date range
+                                                    const days = eachDayOfInterval({ start: startDate, end: endDate });
+                                                    let userDuties = 0;
+                                                    days.forEach(day => {
                                                         const dateStr = format(day, 'yyyy-MM-dd');
                                                         const isUserPresent = attendanceEvents.some(e => 
                                                             e.userId === u.id && 
                                                             e.timestamp?.substring(0, 10) === dateStr &&
                                                             (e.type === 'punch-in' || e.type === 'site-in')
                                                         );
-
                                                         if (isUserPresent) {
                                                             const isHoliday = siteHolidays.some(h => h.date === dateStr);
                                                             if (isHoliday && config.nhBillingConfig === 'Double') {
@@ -898,20 +906,22 @@ const ClientDashboard: React.FC = () => {
                                                         }
                                                     });
 
+                                                    const userTotal = userDuties * perDayRate;
+
                                                     return (
-                                                        <tr key={u.id} className={`transition-colors ${isMobile ? 'hover:bg-[#1a3225]/20' : 'hover:bg-slate-50/50'}`}>
+                                                        <tr key={u.id} className={isMobile ? 'hover:bg-[#041b0f]/50' : 'hover:bg-slate-50/50'}>
                                                             <td className="p-3">
-                                                                <p className={`font-bold ${isMobile ? 'text-white' : 'text-slate-900'}`}>{u.name}</p>
-                                                                <p className={`text-[10px] ${isMobile ? 'text-white/40' : 'text-slate-500'}`}>{u.designation || 'Staff'}</p>
+                                                                <p className={`font-semibold ${isMobile ? 'text-white' : 'text-slate-800'}`}>{u.name}</p>
+                                                                <p className={`text-[10px] ${isMobile ? 'text-white/40' : 'text-slate-400'}`}>{u.designation || 'Staff'}</p>
                                                             </td>
-                                                            <td className={`p-3 text-right ${isMobile ? 'text-white/80' : 'text-slate-700'}`}>
+                                                            <td className={`p-3 text-right font-medium ${isMobile ? 'text-white/80' : 'text-slate-600'}`}>
                                                                 ₹{perDayRate.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                                                             </td>
-                                                            <td className={`p-3 text-right ${isMobile ? 'text-white/80' : 'text-slate-700'}`}>
+                                                            <td className={`p-3 text-right font-medium ${isMobile ? 'text-white/80' : 'text-slate-600'}`}>
                                                                 {userDuties.toFixed(1)}
                                                             </td>
-                                                            <td className={`p-3 text-right font-bold ${isMobile ? 'text-emerald-400' : 'text-slate-900'}`}>
-                                                                ₹{(userDuties * perDayRate).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                                                            <td className={`p-3 text-right font-bold ${isMobile ? 'text-white' : 'text-slate-900'}`}>
+                                                                ₹{userTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                                                             </td>
                                                         </tr>
                                                     );
@@ -928,7 +938,7 @@ const ClientDashboard: React.FC = () => {
                 {/* Right Column - Designation Breakdown & Pending Leaves (2/5 Width) */}
                 <div className="lg:col-span-2 space-y-6">
                     {/* Present Roles Breakdown */}
-                    <div className={`${isMobile ? 'bg-[#182a20] border border-[#2a4536] p-5 rounded-3xl' : 'bg-white p-6 border border-slate-100 shadow-sm rounded-2xl'}`}>
+                    <div className={`${isMobile ? 'bg-[#092c19] border border-[#134426] p-5 rounded-3xl' : 'bg-white p-6 border border-slate-100 shadow-sm rounded-2xl'}`}>
                         <div className="pb-4 mb-4">
                             <h3 className={`text-[15px] font-bold ${isMobile ? 'text-white' : 'text-slate-800'}`}>
                                 Attendance by Department
@@ -941,7 +951,7 @@ const ClientDashboard: React.FC = () => {
 
                     {/* Site Attendance Trend — visible only when "All Sites" selected */}
                     {selectedSiteId === 'all' && siteTrendData.length > 0 && (
-                        <div className={`${isMobile ? 'bg-[#182a20] border border-[#2a4536] p-5 rounded-3xl' : 'bg-white p-6 border border-slate-100 shadow-sm rounded-2xl hover:shadow-md transition-all duration-300'}`}>
+                        <div className={`${isMobile ? 'bg-[#092c19] border border-[#134426] p-5 rounded-3xl' : 'bg-white p-6 border border-slate-100 shadow-sm rounded-2xl hover:shadow-md transition-all duration-300'}`}>
                             <div className="pb-4 mb-4">
                                 <h3 className={`text-[15px] font-bold ${isMobile ? 'text-white' : 'text-slate-800'}`}>
                                     Top Performers by Location
@@ -980,16 +990,16 @@ const ClientDashboard: React.FC = () => {
                     )}
 
                     {/* View-Only Pending Leaves List */}
-                    <div className={`${isMobile ? 'bg-[#182a20] border border-[#2a4536] p-5 rounded-3xl' : 'bg-white p-6 border border-slate-100 shadow-sm rounded-2xl hover:shadow-md transition-all duration-300'}`}>
-                        <div className={`flex items-center gap-2 border-b pb-3 mb-4 ${isMobile ? 'border-[#2a4536]' : 'border-slate-100'}`}>
-                            <Calendar className={`h-5 w-5 ${isMobile ? 'text-emerald-400' : 'text-[#006B3F]'}`} />
+                    <div className={`${isMobile ? 'bg-[#092c19] border border-[#134426] p-5 rounded-3xl' : 'bg-white p-6 border border-slate-100 shadow-sm rounded-2xl hover:shadow-md transition-all duration-300'}`}>
+                        <div className={`flex items-center gap-2 border-b pb-3 mb-4 ${isMobile ? 'border-[#134426]' : 'border-slate-100'}`}>
+                            <Calendar className={`h-5 w-5 ${isMobile ? 'text-[#44D62C]' : 'text-[#006B3F]'}`} />
                             <h3 className={`text-sm font-bold uppercase tracking-wider ${isMobile ? 'text-white' : 'text-slate-900'}`}>
                                 Pending Leave Requests
                             </h3>
                         </div>
 
                         {leaveRequests.length === 0 ? (
-                            <div className={`p-8 text-center text-xs border border-dashed rounded-xl ${isMobile ? 'text-white/40 border-[#2a4536] bg-[#091c13]/30' : 'text-slate-500 bg-slate-50/50 border-slate-200'}`}>
+                            <div className={`p-8 text-center text-xs border border-dashed rounded-xl ${isMobile ? 'text-white/40 border-[#134426] bg-[#041b0f]' : 'text-slate-500 bg-slate-50/50 border-slate-200'}`}>
                                 No pending leave requests found for this site.
                             </div>
                         ) : (
@@ -999,7 +1009,7 @@ const ClientDashboard: React.FC = () => {
                                     return (
                                         <div 
                                             key={leave.id} 
-                                            className={`p-3.5 border transition-all text-xs rounded-xl ${isMobile ? 'border-[#2a4536] bg-[#091c13]/30 hover:bg-[#091c13]/50' : 'border-slate-100 bg-slate-50/50 hover:bg-slate-50 hover:border-slate-200 hover:shadow-sm'}`}
+                                            className={`p-3.5 border transition-all text-xs rounded-xl ${isMobile ? 'border-[#134426] bg-[#041b0f] hover:bg-[#041b0f]/80' : 'border-slate-100 bg-slate-50/50 hover:bg-slate-50 hover:border-slate-200 hover:shadow-sm'}`}
                                         >
                                             <div className="flex justify-between items-start">
                                                 <div>
@@ -1008,17 +1018,17 @@ const ClientDashboard: React.FC = () => {
                                                         Role: {userObj?.designation || 'Staff'}
                                                     </p>
                                                 </div>
-                                                <span className={`px-2 py-0.5 border rounded-full text-[9px] uppercase font-bold tracking-wider ${isMobile ? 'bg-[#2a4536]/40 text-emerald-300 border-emerald-500/20' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                                                <span className={`px-2 py-0.5 border rounded-full text-[9px] uppercase font-bold tracking-wider ${isMobile ? 'bg-[#041b0f] text-[#44D62C] border-[#134426]' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
                                                     {leave.leaveType}
                                                 </span>
                                             </div>
-                                            <div className={`flex items-center gap-2 mt-2 pt-2 border-t text-[11px] ${isMobile ? 'border-[#2a4536]/40 text-white/50' : 'border-slate-100 text-slate-500'}`}>
+                                            <div className={`flex items-center gap-2 mt-2 pt-2 border-t text-[11px] ${isMobile ? 'border-[#134426] text-white/50' : 'border-slate-100 text-slate-500'}`}>
                                                 <span className="font-medium">
                                                     {leave.startDate} to {leave.endDate}
                                                 </span>
                                             </div>
                                             {leave.reason && (
-                                                <p className={`mt-1.5 text-[10px] border rounded-lg italic p-2 ${isMobile ? 'text-white/80 bg-[#091c13]/55 border-[#2a4536]/40' : 'text-slate-600 bg-white border-slate-100'}`}>
+                                                <p className={`mt-1.5 text-[10px] border rounded-lg italic p-2 ${isMobile ? 'text-white/80 bg-[#041b0f] border-[#134426]' : 'text-slate-600 bg-white border-slate-100'}`}>
                                                     "{leave.reason}"
                                                 </p>
                                             )}
@@ -1029,7 +1039,7 @@ const ClientDashboard: React.FC = () => {
                         )}
                     </div>
                 </div>
-            </div>
+            </div>            
         </div>
     );
 };

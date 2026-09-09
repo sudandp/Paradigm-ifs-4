@@ -1,16 +1,17 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import type { Organization, InvoiceData } from '../../types';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import Toast from '../../components/ui/Toast';
-import { Loader2, Download, Eye, X } from 'lucide-react';
+import { Loader2, Download, Eye, X, ArrowLeft, Search, FilterX, Users } from 'lucide-react';
 import { format } from 'date-fns';
 import Logo from '../../components/ui/Logo';
 import AdminPageHeader from '../../components/admin/AdminPageHeader';
 import Pagination from '../../components/ui/Pagination';
-import { Search, FilterX, Users } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
+import { useDevice } from '../../hooks/useDevice';
 import type { SiteResponsibilityMatrix } from '../../types/siteRouting';
 import { getUserRoutingScope, normalizeCompanyShortName } from '../../services/siteRoutingScope';
 
@@ -177,6 +178,8 @@ const InvoiceContent: React.FC<{
 
 
 const InvoiceSummary: React.FC = () => {
+    const navigate = useNavigate();
+    const { isMobile } = useDevice();
     const { user } = useAuthStore();
     const [allOrganizations, setAllOrganizations] = useState<Organization[]>([]);
     const [matrixList, setMatrixList] = useState<SiteResponsibilityMatrix[]>([]);
@@ -356,11 +359,29 @@ const InvoiceSummary: React.FC = () => {
     }
 
     return (
-        <div className="p-4 md:p-0">
+        <div className={`p-4 ${isMobile ? 'bg-[#041b0f] text-white min-h-screen pb-36' : 'md:p-0'}`}>
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
-            <div className="border-0 shadow-none md:bg-card md:p-6 md:rounded-xl md:shadow-card">
-                <AdminPageHeader title="Invoice Summary" />
+            {/* Standardized Mobile Top Navigation Bar */}
+            {isMobile && (
+                <div className="flex items-center gap-3 pt-1 pb-2 -mx-4 -mt-4 px-4 bg-[#041b0f] border-b border-[#134426]/60 sticky top-0 z-30 mb-4">
+                    <button
+                        type="button"
+                        onClick={() => window.history.state?.idx > 0 ? navigate(-1) : navigate('/mobile-home')}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                    >
+                        <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+                        <span>Back</span>
+                    </button>
+                    <div className="h-[1px] flex-1 bg-[#134426]" />
+                    <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#44D62C] bg-[#092c19] px-2.5 py-1 rounded-lg border border-[#134426]">
+                        INVOICE SUMMARY
+                    </span>
+                </div>
+            )}
+
+            <div className={`${isMobile ? 'bg-[#092c19] p-4 rounded-2xl border border-[#134426]' : 'border-0 shadow-none md:bg-card md:p-6 md:rounded-xl md:shadow-card'}`}>
+                {!isMobile && <AdminPageHeader title="Invoice Summary" />}
 
                 <div className="space-y-6">
                     <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">

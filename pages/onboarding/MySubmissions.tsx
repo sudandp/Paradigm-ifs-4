@@ -519,63 +519,124 @@ export const MySubmissions: React.FC = () => {
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
             {/* Top Bar Header */}
-            <div className="bg-white dark:bg-[#062415] border-b border-slate-200 dark:border-[#1f3d2b] px-4 py-4 md:px-8 shadow-xs flex flex-wrap items-center justify-between gap-4 sticky top-0 z-20">
-                <div className="flex items-center gap-3">
-                    <button 
-                        onClick={() => navigate(-1)} 
-                        aria-label="Go back" 
-                        className="p-2 rounded-xl border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 transition-all"
-                    >
-                        <ArrowLeft className="h-5 w-5 text-slate-600 dark:text-slate-300" />
-                    </button>
-                    <div>
-                        <div className="flex items-center gap-2">
-                            <h1 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-                                My Submissions
-                            </h1>
-                            <span className="bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-xs font-bold px-2.5 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-700/50">
-                                {userSubmissions.length} Total
-                            </span>
+            {isMobile ? (
+                <div className="p-4 pb-0 space-y-4">
+                    {/* Mobile Back Bar */}
+                    <div className="flex items-center gap-3">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (window.history.state && window.history.state.idx > 0) {
+                                    navigate(-1);
+                                } else {
+                                    navigate('/mobile-home');
+                                }
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                        >
+                            <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+                            <span>Back</span>
+                        </button>
+                        <div className="h-[1px] flex-1 bg-[#134426]" />
+                        <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#44D62C] bg-[#092c19] px-2.5 py-1 rounded-lg border border-[#134426]">
+                            My Submissions
+                        </span>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3 pt-1">
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <h1 className="text-xl font-black text-white tracking-tight">
+                                    My Submissions
+                                </h1>
+                                <span className="bg-[#44D62C]/15 text-[#44D62C] text-xs font-black px-2.5 py-0.5 rounded-full border border-[#44D62C]/30">
+                                    {userSubmissions.length} Total
+                                </span>
+                            </div>
+                            <p className="text-xs text-white/50 mt-0.5">
+                                Manage and verify employee onboarding applications
+                            </p>
                         </div>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                            Manage, review, and verify employee onboarding applications submitted by you
-                        </p>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={fetchSubmissions}
+                                disabled={isLoading}
+                                className="p-2.5 rounded-xl border border-[#134426] bg-[#092c19] text-white hover:bg-[#134426] active:scale-95 transition-all cursor-pointer"
+                                title="Refresh submissions"
+                            >
+                                <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin text-[#44D62C]' : ''}`} />
+                            </button>
+                            <button
+                                onClick={handleStartNew}
+                                className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] rounded-xl font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                            >
+                                <UserPlus className="h-4 w-4 stroke-[2.5]" />
+                                <span>New</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
+            ) : (
+                <div className="bg-white dark:bg-[#062415] border-b border-slate-200 dark:border-[#1f3d2b] px-4 py-4 md:px-8 shadow-xs flex flex-wrap items-center justify-between gap-4 sticky top-0 z-20">
+                    <div className="flex items-center gap-3">
+                        <button 
+                            onClick={() => navigate(-1)} 
+                            aria-label="Go back" 
+                            className="p-2 rounded-xl border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 transition-all"
+                        >
+                            <ArrowLeft className="h-5 w-5 text-slate-600 dark:text-slate-300" />
+                        </button>
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <h1 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+                                    My Submissions
+                                </h1>
+                                <span className="bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-xs font-bold px-2.5 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-700/50">
+                                    {userSubmissions.length} Total
+                                </span>
+                            </div>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                Manage, review, and verify employee onboarding applications submitted by you
+                            </p>
+                        </div>
+                    </div>
 
-                <div className="flex items-center gap-2.5">
-                    <button
-                        onClick={fetchSubmissions}
-                        disabled={isLoading}
-                        title="Refresh submissions"
-                        className="p-2.5 rounded-xl border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 text-slate-600 dark:text-slate-300 transition-all active:scale-95"
-                    >
-                        <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin text-emerald-500' : ''}`} />
-                    </button>
+                    <div className="flex items-center gap-2.5">
+                        <button
+                            onClick={fetchSubmissions}
+                            disabled={isLoading}
+                            title="Refresh submissions"
+                            className="p-2.5 rounded-xl border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 text-slate-600 dark:text-slate-300 transition-all active:scale-95"
+                        >
+                            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin text-emerald-500' : ''}`} />
+                        </button>
 
-                    <button
-                        onClick={handleStartNew}
-                        className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs md:text-sm shadow-md shadow-emerald-600/20 transition-all active:scale-95"
-                    >
-                        <UserPlus className="h-4 w-4" />
-                        <span>New Enrollment</span>
-                    </button>
+                        <button
+                            onClick={handleStartNew}
+                            className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs md:text-sm shadow-md shadow-emerald-600/20 transition-all active:scale-95"
+                        >
+                            <UserPlus className="h-4 w-4" />
+                            <span>New Enrollment</span>
+                        </button>
+                    </div>
                 </div>
-            </div>
+            )}
 
-            <div className="px-4 py-6 md:px-8 space-y-6">
+            <div className={`px-4 py-6 md:px-8 space-y-6 ${isMobile ? 'pb-36' : ''}`}>
                 {/* 5 Stats Cards Grid in 1 Row */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
                     {/* TOTAL */}
                     <div 
                         onClick={() => setStatusFilter('all')}
-                        className={`bg-white dark:bg-[#062415] p-4 rounded-2xl border transition-all cursor-pointer shadow-2xs hover:shadow-md flex flex-col justify-between ${
-                            statusFilter === 'all' ? 'ring-2 ring-emerald-500 border-emerald-500' : 'border-slate-200 dark:border-white/5'
+                        className={`p-4 rounded-2xl border transition-all cursor-pointer shadow-sm flex flex-col justify-between ${
+                            statusFilter === 'all' 
+                                ? (isMobile ? 'bg-[#092c19] border-[#44D62C] ring-1 ring-[#44D62C]/50 shadow-[0_0_12px_rgba(68,214,44,0.2)]' : 'ring-2 ring-emerald-500 border-emerald-500 bg-white dark:bg-[#062415]')
+                                : (isMobile ? 'bg-[#092c19] border-[#134426]' : 'bg-white dark:bg-[#062415] border-slate-200 dark:border-white/5')
                         }`}
                     >
                         <div className="flex items-center justify-between">
-                            <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">Total</span>
-                            <span className="p-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400">
+                            <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-white/60">Total</span>
+                            <span className={`p-1.5 rounded-xl ${isMobile ? 'bg-[#041b0f] text-[#44D62C] border border-[#134426]' : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400'}`}>
                                 <UserCheck className="h-4 w-4" />
                             </span>
                         </div>
@@ -587,51 +648,57 @@ export const MySubmissions: React.FC = () => {
                     {/* DRAFTS */}
                     <div 
                         onClick={() => setStatusFilter('draft')}
-                        className={`bg-white dark:bg-[#062415] p-4 rounded-2xl border transition-all cursor-pointer shadow-2xs hover:shadow-md flex flex-col justify-between ${
-                            statusFilter === 'draft' ? 'ring-2 ring-slate-700 border-slate-700' : 'border-slate-200 dark:border-white/5'
+                        className={`p-4 rounded-2xl border transition-all cursor-pointer shadow-sm flex flex-col justify-between ${
+                            statusFilter === 'draft' 
+                                ? (isMobile ? 'bg-[#092c19] border-[#44D62C] ring-1 ring-[#44D62C]/50 shadow-[0_0_12px_rgba(68,214,44,0.2)]' : 'ring-2 ring-slate-700 border-slate-700 bg-white dark:bg-[#062415]')
+                                : (isMobile ? 'bg-[#092c19] border-[#134426]' : 'bg-white dark:bg-[#062415] border-slate-200 dark:border-white/5')
                         }`}
                     >
                         <div className="flex items-center justify-between">
-                            <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">Drafts</span>
-                            <span className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                            <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-white/60">Drafts</span>
+                            <span className={`p-1.5 rounded-xl ${isMobile ? 'bg-[#041b0f] text-sky-400 border border-[#134426]' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}>
                                 <Edit2 className="h-4 w-4" />
                             </span>
                         </div>
                         <div className="mt-3 flex items-baseline justify-between">
                             <span className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white tracking-tight">{counts.draft}</span>
-                            <span className="text-[10px] font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">In Progress</span>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${isMobile ? 'text-white/70 bg-[#041b0f] border border-[#134426]' : 'text-slate-500 bg-slate-100 dark:bg-slate-800'}`}>In Progress</span>
                         </div>
                     </div>
 
                     {/* PENDING */}
                     <div 
                         onClick={() => setStatusFilter('pending')}
-                        className={`bg-white dark:bg-[#062415] p-4 rounded-2xl border transition-all cursor-pointer shadow-2xs hover:shadow-md flex flex-col justify-between ${
-                            statusFilter === 'pending' ? 'ring-2 ring-amber-500 border-amber-500' : 'border-slate-200 dark:border-white/5'
+                        className={`p-4 rounded-2xl border transition-all cursor-pointer shadow-sm flex flex-col justify-between ${
+                            statusFilter === 'pending' 
+                                ? (isMobile ? 'bg-[#092c19] border-[#ff7a00] ring-1 ring-[#ff7a00]/50 shadow-[0_0_12px_rgba(255,122,0,0.2)]' : 'ring-2 ring-amber-500 border-amber-500 bg-white dark:bg-[#062415]')
+                                : (isMobile ? 'bg-[#092c19] border-[#134426]' : 'bg-white dark:bg-[#062415] border-slate-200 dark:border-white/5')
                         }`}
                     >
                         <div className="flex items-center justify-between">
-                            <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">Pending</span>
-                            <span className="p-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400">
+                            <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-white/60">Pending</span>
+                            <span className={`p-1.5 rounded-xl ${isMobile ? 'bg-[#041b0f] text-[#ff7a00] border border-[#134426]' : 'bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400'}`}>
                                 <AlertTriangle className="h-4 w-4" />
                             </span>
                         </div>
                         <div className="mt-3 flex items-baseline justify-between">
                             <span className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white tracking-tight">{counts.pending}</span>
-                            <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">Action Needed</span>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${isMobile ? 'text-[#ff7a00] bg-[#ff7a00]/10 border border-[#ff7a00]/30' : 'text-amber-700 bg-amber-50 border border-amber-200'}`}>Action Needed</span>
                         </div>
                     </div>
 
                     {/* VERIFIED */}
                     <div 
                         onClick={() => setStatusFilter('verified')}
-                        className={`bg-white dark:bg-[#062415] p-4 rounded-2xl border transition-all cursor-pointer shadow-2xs hover:shadow-md flex flex-col justify-between ${
-                            statusFilter === 'verified' ? 'ring-2 ring-teal-500 border-teal-500' : 'border-slate-200 dark:border-white/5'
+                        className={`p-4 rounded-2xl border transition-all cursor-pointer shadow-sm flex flex-col justify-between ${
+                            statusFilter === 'verified' 
+                                ? (isMobile ? 'bg-[#092c19] border-[#44D62C] ring-1 ring-[#44D62C]/50 shadow-[0_0_12px_rgba(68,214,44,0.2)]' : 'ring-2 ring-teal-500 border-teal-500 bg-white dark:bg-[#062415]')
+                                : (isMobile ? 'bg-[#092c19] border-[#134426]' : 'bg-white dark:bg-[#062415] border-slate-200 dark:border-white/5')
                         }`}
                     >
                         <div className="flex items-center justify-between">
-                            <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">Verified</span>
-                            <span className="p-1.5 rounded-xl bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400">
+                            <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-white/60">Verified</span>
+                            <span className={`p-1.5 rounded-xl ${isMobile ? 'bg-[#041b0f] text-[#44D62C] border border-[#134426]' : 'bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400'}`}>
                                 <CheckCircle2 className="h-4 w-4" />
                             </span>
                         </div>
@@ -643,20 +710,22 @@ export const MySubmissions: React.FC = () => {
                     {/* REJECTED */}
                     <div 
                         onClick={() => setStatusFilter('rejected')}
-                        className={`bg-white dark:bg-[#062415] p-4 rounded-2xl border transition-all cursor-pointer shadow-2xs hover:shadow-md flex flex-col justify-between ${
-                            statusFilter === 'rejected' ? 'ring-2 ring-rose-500 border-rose-500' : 'border-slate-200 dark:border-white/5'
+                        className={`p-4 rounded-2xl border transition-all cursor-pointer shadow-sm flex flex-col justify-between ${
+                            statusFilter === 'rejected' 
+                                ? (isMobile ? 'bg-[#092c19] border-rose-500 ring-1 ring-rose-500/50 shadow-[0_0_12px_rgba(244,63,94,0.2)]' : 'ring-2 ring-rose-500 border-rose-500 bg-white dark:bg-[#062415]')
+                                : (isMobile ? 'bg-[#092c19] border-[#134426]' : 'bg-white dark:bg-[#062415] border-slate-200 dark:border-white/5')
                         }`}
                     >
                         <div className="flex items-center justify-between">
-                            <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">Rejected</span>
-                            <span className="p-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400">
+                            <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-white/60">Rejected</span>
+                            <span className={`p-1.5 rounded-xl ${isMobile ? 'bg-[#041b0f] text-rose-400 border border-[#134426]' : 'bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400'}`}>
                                 <XCircle className="h-4 w-4" />
                             </span>
                         </div>
                         <div className="mt-3 flex items-baseline justify-between">
                             <span className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white tracking-tight">{counts.rejected}</span>
                             {counts.rejected > 0 && (
-                                <span className="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md animate-pulse">
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${isMobile ? 'text-rose-300 bg-rose-950/60 border border-rose-800/60' : 'text-rose-700 bg-rose-50 border border-rose-200 animate-pulse'}`}>
                                     Needs Fix
                                 </span>
                             )}
@@ -665,91 +734,50 @@ export const MySubmissions: React.FC = () => {
                 </div>
 
                 {/* Table Container Card */}
-                <div className="bg-white dark:bg-[#062415] rounded-2xl border border-slate-200 dark:border-[#1f3d2b] shadow-xs overflow-hidden">
+                <div className={isMobile ? "space-y-3" : "bg-white dark:bg-[#062415] rounded-2xl border border-slate-200 dark:border-[#1f3d2b] shadow-xs overflow-hidden"}>
                     {/* Header Filter Bar */}
-                    <div className="p-4 border-b border-slate-200 dark:border-white/5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-slate-50/50 dark:bg-black/10">
+                    <div className={isMobile ? "bg-[#092c19] p-3.5 rounded-2xl border border-[#134426] space-y-3" : "p-4 border-b border-slate-200 dark:border-white/5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-slate-50/50 dark:bg-black/10"}>
                         {/* Status Tabs */}
                         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 no-scrollbar flex-shrink-0">
-                            <button
-                                onClick={() => setStatusFilter('all')}
-                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                                    statusFilter === 'all'
-                                        ? 'bg-slate-900 dark:bg-emerald-600 text-white shadow-xs'
-                                        : 'bg-white dark:bg-[#122e1e] border border-slate-200 dark:border-white/5 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5'
-                                }`}
-                            >
-                                <span>All</span>
-                                <span className="text-[11px] opacity-80">{counts.all}</span>
-                            </button>
-
-                            <button
-                                onClick={() => setStatusFilter('draft')}
-                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                                    statusFilter === 'draft'
-                                        ? 'bg-slate-800 dark:bg-slate-700 text-white shadow-xs'
-                                        : 'bg-white dark:bg-[#122e1e] border border-slate-200 dark:border-white/5 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5'
-                                }`}
-                            >
-                                <span>Draft</span>
-                                <span className="text-[11px] opacity-80">{counts.draft}</span>
-                            </button>
-
-                            <button
-                                onClick={() => setStatusFilter('pending')}
-                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                                    statusFilter === 'pending'
-                                        ? 'bg-amber-600 text-white shadow-xs'
-                                        : 'bg-white dark:bg-[#122e1e] border border-slate-200 dark:border-white/5 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5'
-                                }`}
-                            >
-                                <span>Pending</span>
-                                <span className="text-[11px] opacity-80">{counts.pending}</span>
-                            </button>
-
-                            <button
-                                onClick={() => setStatusFilter('verified')}
-                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                                    statusFilter === 'verified'
-                                        ? 'bg-teal-600 text-white shadow-xs'
-                                        : 'bg-white dark:bg-[#122e1e] border border-slate-200 dark:border-white/5 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5'
-                                }`}
-                            >
-                                <span>Verified</span>
-                                <span className="text-[11px] opacity-80">{counts.verified}</span>
-                            </button>
-
-                            {counts.rejected > 0 && (
+                            {[
+                                { key: 'all', label: 'All', count: counts.all },
+                                { key: 'draft', label: 'Draft', count: counts.draft },
+                                { key: 'pending', label: 'Pending', count: counts.pending },
+                                { key: 'verified', label: 'Verified', count: counts.verified },
+                                ...(counts.rejected > 0 ? [{ key: 'rejected', label: 'Rejected', count: counts.rejected }] : [])
+                            ].map(tab => (
                                 <button
-                                    onClick={() => setStatusFilter('rejected')}
-                                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                                        statusFilter === 'rejected'
-                                            ? 'bg-rose-600 text-white shadow-sm shadow-rose-600/30'
-                                            : 'bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/40 text-rose-700 dark:text-rose-300 hover:bg-rose-100'
+                                    key={tab.key}
+                                    onClick={() => setStatusFilter(tab.key as any)}
+                                    className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                                        statusFilter === tab.key
+                                            ? (isMobile ? 'bg-[#44D62C] text-[#0A1809] shadow-[0_2px_8px_rgba(68,214,44,0.3)]' : 'bg-slate-900 dark:bg-emerald-600 text-white shadow-xs')
+                                            : (isMobile ? 'bg-[#041b0f] border border-[#134426] text-white/70 hover:text-white' : 'bg-white dark:bg-[#122e1e] border border-slate-200 dark:border-white/5 text-slate-600 dark:text-slate-400')
                                     }`}
                                 >
-                                    <AlertTriangle className="h-3.5 w-3.5" />
-                                    <span>Rejected</span>
-                                    <span className="px-1.5 py-0.2 bg-rose-200 dark:bg-rose-900 text-rose-900 dark:text-rose-100 rounded-full text-[10px]">
-                                        {counts.rejected}
-                                    </span>
+                                    <span>{tab.label}</span>
+                                    <span className="text-[11px] opacity-80">{tab.count}</span>
                                 </button>
-                            )}
+                            ))}
                         </div>
 
                         {/* Search Input */}
                         <div className="relative w-full sm:w-80">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                            <Search className={`absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 ${isMobile ? 'text-[#44D62C]/70' : 'text-slate-400'}`} />
                             <input
                                 type="text"
                                 placeholder="Search by name, ID, or site..."
                                 value={searchTerm}
                                 onChange={e => setSearchTerm(e.target.value)}
-                                className="w-full pl-9 pr-8 py-2 bg-white dark:bg-[#062415] border border-slate-200 dark:border-[#1f3d2b] rounded-xl text-xs text-slate-800 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-2xs"
+                                className={isMobile 
+                                    ? "w-full pl-9 pr-8 py-2.5 bg-[#041b0f] border border-[#134426] rounded-xl text-xs text-white placeholder:text-white/40 focus:outline-none focus:border-[#44D62C] shadow-inner"
+                                    : "w-full pl-9 pr-8 py-2 bg-white dark:bg-[#062415] border border-slate-200 dark:border-[#1f3d2b] rounded-xl text-xs text-slate-800 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-2xs"
+                                }
                             />
                             {searchTerm && (
                                 <button
                                     onClick={() => setSearchTerm('')}
-                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/50 hover:text-white cursor-pointer"
                                 >
                                     <X className="h-3.5 w-3.5" />
                                 </button>
@@ -758,15 +786,15 @@ export const MySubmissions: React.FC = () => {
                     </div>
 
                     {/* Table or Responsive View */}
-                    <div className="overflow-x-auto">
+                    <div className={isMobile ? "space-y-3" : "overflow-x-auto"}>
                         {isMobile ? (
-                            <div className="divide-y divide-slate-100 dark:divide-white/5">
+                            <div className="space-y-3">
                                 {isLoading ? (
                                     <div className="p-4"><TableSkeleton rows={4} cols={colSpan} /></div>
                                 ) : filteredSubmissions.length === 0 ? (
-                                    <div className="p-12 text-center text-slate-400">
-                                        <Search className="h-10 w-10 mx-auto mb-2 text-emerald-600 opacity-40" />
-                                        <p className="font-semibold text-slate-700 dark:text-slate-300">No submissions found</p>
+                                    <div className="p-12 text-center text-white/50 bg-[#092c19] border border-[#134426] rounded-2xl">
+                                        <Search className="h-10 w-10 mx-auto mb-2 text-[#44D62C] opacity-40" />
+                                        <p className="font-bold text-white text-sm">No submissions found</p>
                                     </div>
                                 ) : (
                                     filteredSubmissions.map(s => {
@@ -777,60 +805,60 @@ export const MySubmissions: React.FC = () => {
                                         const rejectionReason = s.rejectionReason || (s as any).rejection_reason || (s.personal as any)?.rejectionReason || 'Profile Photo Mismatch';
 
                                         return (
-                                            <div key={s.id} className="p-4 space-y-3">
+                                            <div key={s.id} className="p-4 space-y-3 bg-[#092c19] border border-[#134426] rounded-2xl shadow-sm hover:border-[#44D62C]/40 transition-all">
                                                 <div className="flex items-center justify-between">
                                                     <div className="flex items-center gap-3">
                                                         {empPhoto ? (
-                                                            <img src={empPhoto} alt={displayName} className="h-10 w-10 rounded-full object-cover border-2 border-white shadow-2xs" />
+                                                            <img src={empPhoto} alt={displayName} className="h-11 w-11 rounded-full object-cover border-2 border-[#134426] shadow-sm" />
                                                         ) : (
-                                                            <div className="h-10 w-10 rounded-full bg-emerald-600 text-white font-bold text-xs flex items-center justify-center">
+                                                            <div className="h-11 w-11 rounded-full bg-[#041b0f] border border-[#134426] text-[#44D62C] font-black text-xs flex items-center justify-center">
                                                                 {displayName.slice(0, 2).toUpperCase()}
                                                             </div>
                                                         )}
                                                         <div>
-                                                            <div className="font-bold text-slate-900 dark:text-white capitalize">{displayName}</div>
-                                                            <div className="text-xs text-slate-500">{s.personal?.employeeId || 'ID: Pending'}</div>
+                                                            <div className="font-black text-white capitalize text-sm">{displayName}</div>
+                                                            <div className="text-xs text-white/50 font-medium">{s.personal?.employeeId || 'ID: Pending'}</div>
                                                         </div>
                                                     </div>
                                                     <StatusChip status={s.status} />
                                                 </div>
 
                                                 {isRejected && (
-                                                    <div className="bg-rose-50 border border-rose-200 rounded-lg p-2 text-xs text-rose-800 font-medium">
+                                                    <div className="bg-rose-950/60 border border-rose-800/60 rounded-xl p-2.5 text-xs text-rose-200 font-medium">
                                                         ⚠ {rejectionReason}
                                                     </div>
                                                 )}
 
-                                                <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-300">
-                                                    <span>{s.organizationName || s.organization?.organizationName || '-'}</span>
+                                                <div className="flex items-center justify-between text-xs text-white/60 bg-[#041b0f] px-3 py-2 rounded-xl border border-[#134426]">
+                                                    <span className="font-semibold text-white/80">{s.organizationName || s.organization?.organizationName || '-'}</span>
                                                     <span>{formatCreatedDate(s.createdAt || s.enrollmentDate)}</span>
                                                 </div>
 
-                                                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-white/5">
+                                                <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#134426]">
                                                     <button 
                                                         onClick={() => navigate(`/onboarding/add/review?id=${s.id}`)}
-                                                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold"
+                                                        className="px-3.5 py-1.5 bg-[#041b0f] hover:bg-[#134426] text-white border border-[#134426] rounded-xl text-xs font-bold transition-all cursor-pointer"
                                                     >
                                                         View
                                                     </button>
                                                     {isRejected ? (
                                                         <button 
                                                             onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)}
-                                                            className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold"
+                                                            className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-black shadow-sm transition-all cursor-pointer"
                                                         >
                                                             Fix Details
                                                         </button>
                                                     ) : isDraft ? (
                                                         <button 
                                                             onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)}
-                                                            className="px-3 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-bold"
+                                                            className="px-3.5 py-1.5 bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] rounded-xl text-xs font-black shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
                                                         >
                                                             Resume
                                                         </button>
                                                     ) : (
                                                         <button 
                                                             onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)}
-                                                            className="px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold"
+                                                            className="px-3.5 py-1.5 bg-[#041b0f] hover:bg-[#134426] text-[#44D62C] border border-[#134426] rounded-xl text-xs font-bold transition-all cursor-pointer"
                                                         >
                                                             Edit
                                                         </button>

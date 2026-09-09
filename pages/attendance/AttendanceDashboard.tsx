@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo, useId } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { isAdmin } from '../../utils/auth';
 
 // This component has been extended to support manual date entry for the attendance dashboard, enforce whole
@@ -77,7 +78,7 @@ import {
     startOfDay,
     endOfDay
 } from 'date-fns';
-import { Phone, Loader2, Download, Users, UserCheck, UserX, UserMinus, Clock, BarChart3, TrendingUp, Calendar, FileDown, Mail, Send, Save, Filter, ChevronDown, Monitor, MapPin, Lock, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Phone, Loader2, Download, Users, UserCheck, UserX, UserMinus, Clock, BarChart3, TrendingUp, Calendar, FileDown, Mail, Send, Save, Filter, ChevronDown, Monitor, MapPin, Lock, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 // Removed incorrect store imports
 // Import reverse geocode utility to convert lat/lon into human addresses for logs
 import { reverseGeocode } from '../../utils/locationUtils';
@@ -1067,6 +1068,7 @@ const TopPerformersList = ({ data, loading }: { data: TopPerformer[], loading: b
 };
 
 const AttendanceDashboard: React.FC = () => {
+    const navigate = useNavigate();
     const isSmallScreen = useMediaQuery('(max-width: 639px)');
     const { user } = useAuthStore();
     const currentUserRole = user?.role;
@@ -4925,7 +4927,7 @@ const AttendanceDashboard: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen p-4 space-y-6 md:bg-transparent bg-[#041b0f]">
+        <div className="min-h-screen p-4 space-y-6 md:bg-transparent bg-[#041b0f] max-md:pb-36">
             <style>{`
                 @keyframes reportFadeIn {
                     from { opacity: 0; transform: translateY(4px); }
@@ -4935,6 +4937,31 @@ const AttendanceDashboard: React.FC = () => {
                     animation: reportFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
                 }
             `}</style>
+
+            {/* Mobile Top Back Bar */}
+            {isSmallScreen && (
+                <div className="flex items-center gap-3 mb-2">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            if (window.history.state?.idx > 0) {
+                                navigate(-1);
+                            } else {
+                                navigate('/mobile-home');
+                            }
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                    >
+                        <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+                        <span>Back</span>
+                    </button>
+                    <div className="h-[1px] flex-1 bg-[#134426]" />
+                    <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#44D62C] bg-[#092c19] px-2.5 py-1 rounded-lg border border-[#134426]">
+                        Attendance
+                    </span>
+                </div>
+            )}
+
             <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
                 <h2 className="text-2xl font-bold text-primary-text md:text-gray-900">
                     {isEmployeeView ? 'My Attendance' : 'Attendance Dashboard'}
@@ -4964,9 +4991,9 @@ const AttendanceDashboard: React.FC = () => {
                             <button
                                 onClick={handleExportLeaveBalances}
                                 disabled={isExportingLeaves}
-                                className="flex flex-col items-center justify-center gap-2.5 py-4 px-2 rounded-2xl bg-gradient-to-br from-[#2f1b4c] to-[#190d2e] border border-[#482875] shadow-[0_4px_12px_rgba(0,0,0,0.3)] active:scale-[0.97] transition-all disabled:opacity-50"
+                                className="flex flex-col items-center justify-center gap-2.5 py-4 px-2 rounded-2xl bg-gradient-to-br from-[#0c3121] to-[#041b0f] border border-[#134426] shadow-[0_4px_12px_rgba(0,0,0,0.3)] active:scale-[0.97] transition-all disabled:opacity-50"
                             >
-                                <div className="p-2.5 rounded-full bg-[#8b5cf6]/20 text-[#8b5cf6] shadow-[inset_0_0_8px_rgba(139,92,246,0.3)]">
+                                <div className="p-2.5 rounded-full bg-[#44D62C]/20 text-[#44D62C] shadow-[inset_0_0_8px_rgba(68,214,44,0.3)]">
                                     {isExportingLeaves ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileDown className="w-5 h-5" />}
                                 </div>
                                 <span className="text-[11px] font-semibold text-gray-300 text-center leading-[1.2] tracking-wide">Export<br/>Balances</span>

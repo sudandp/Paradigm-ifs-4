@@ -1488,83 +1488,140 @@ const ApplyLeave: React.FC = () => {
     if (!user) return null;
 
     return (
-        <div className={`min-h-screen bg-page ${isMobile ? '' : 'p-6'}`}>
+        <div className={`min-h-screen bg-page ${isMobile ? 'bg-[#041b0f]' : 'p-6'}`}>
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
             
+            {/* Standardized Mobile Top Navigation Bar */}
+            {isMobile && (
+                <div className="flex items-center gap-3 px-4 pt-4 pb-2 bg-[#041b0f] border-b border-[#134426]/60 sticky top-0 z-30">
+                    <button
+                        type="button"
+                        onClick={() => window.history.state?.idx > 0 ? navigate(-1) : navigate('/mobile-home')}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                    >
+                        <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+                        <span>Back</span>
+                    </button>
+                    <div className="h-[1px] flex-1 bg-[#134426]" />
+                    <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#44D62C] bg-[#092c19] px-2.5 py-1 rounded-lg border border-[#134426]">
+                        {watchLeaveType === 'Correction' ? 'Correction' : watchLeaveType === 'Permission' ? 'Permission' : 'Leave Application'}
+                    </span>
+                </div>
+            )}
+
             <div className={`w-full ${isMobile ? '' : 'md:bg-card md:p-8 md:rounded-2xl md:shadow-card md:border md:border-border'}`}>
-                <header 
-                    className={`p-4 flex items-center justify-between gap-4 ${isMobile ? 'fixed top-0 left-0 right-0 z-50 bg-[#041b0f]/80 backdrop-blur-lg border-b border-emerald-500/10' : 'mb-8'}`}
-                    style={isMobile ? { paddingTop: 'calc(1rem + env(safe-area-inset-top))' } : {}}
-                >
-                    <div className="flex items-center gap-4">
-                        {isMobile && (
-                            <Button 
-                                variant="secondary" 
-                                onClick={() => navigate(-1)} 
-                                className="p-2 rounded-full h-10 w-10 flex items-center justify-center bg-emerald-500/10 border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/20"
-                            >
-                                <ArrowLeft className="h-6 w-6" />
-                            </Button>
+                {/* Desktop Header */}
+                {!isMobile ? (
+                    <header className="mb-8 flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-4">
+                            <div>
+                                <h1 className="text-2xl font-black text-primary-text tracking-tight uppercase text-lg flex items-center gap-2">
+                                    {isEditMode ? 'Edit Request' : `Applying for Leave`}
+                                    {isOffline && (
+                                        <span className="bg-orange-500/10 border border-orange-500/20 text-orange-500 px-2 py-0.5 rounded-full text-[10px] font-black flex items-center gap-1 shrink-0">
+                                            <CloudOff className="w-3 h-3" />
+                                            OFFLINE
+                                        </span>
+                                    )}
+                                </h1>
+                                {!isEditMode && !['Sick', 'Correction', 'Permission', 'Regularization'].includes(watchLeaveType) && (
+                                    <p className="text-xs font-bold text-muted/60 uppercase tracking-widest mt-0.5">
+                                        Balance: <span className="text-emerald-500">{leaveBalance.toFixed(1)} days</span>
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                        
+                        {['Permission', 'Correction'].includes(watchLeaveType) && (
+                            <div className="flex bg-emerald-500/10 p-1 rounded-lg shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={() => setPermissionSession('morning')}
+                                    className={`px-4 py-1.5 text-xs font-bold uppercase tracking-wider rounded-md transition-all ${
+                                        permissionSession === 'morning' ? 'bg-emerald-500 text-white shadow-sm' : 'text-emerald-600 hover:bg-emerald-500/20'
+                                    }`}
+                                >
+                                    1st Half
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setPermissionSession('evening')}
+                                    className={`px-4 py-1.5 text-xs font-bold uppercase tracking-wider rounded-md transition-all ${
+                                        permissionSession === 'evening' ? 'bg-emerald-500 text-white shadow-sm' : 'text-emerald-600 hover:bg-emerald-500/20'
+                                    }`}
+                                >
+                                    2nd Half
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setPermissionSession('both')}
+                                    className={`px-4 py-1.5 text-xs font-bold uppercase tracking-wider rounded-md transition-all ${
+                                        permissionSession === 'both' ? 'bg-emerald-500 text-white shadow-sm' : 'text-emerald-600 hover:bg-emerald-500/20'
+                                    }`}
+                                >
+                                    Both Halves
+                                </button>
+                            </div>
                         )}
+                    </header>
+                ) : (
+                    /* Mobile Sub-Header */
+                    <div className="px-4 pt-3 pb-2 flex items-center justify-between gap-2">
                         <div>
-                            <h1 className="text-2xl font-black text-primary-text tracking-tight uppercase text-lg flex items-center gap-2">
-                                {isEditMode ? 'Edit Request' : `Applying for Leave`}
+                            <h1 className="text-base font-black text-white tracking-tight uppercase flex items-center gap-2">
+                                {isEditMode ? 'Edit Request' : 'Apply Leave'}
                                 {isOffline && (
-                                    <span className="bg-orange-500/10 border border-orange-500/20 text-orange-500 px-2 py-0.5 rounded-full text-[10px] font-black flex items-center gap-1 shrink-0">
+                                    <span className="bg-orange-500/10 border border-orange-500/20 text-orange-400 px-2 py-0.5 rounded-full text-[10px] font-black flex items-center gap-1 shrink-0">
                                         <CloudOff className="w-3 h-3" />
                                         OFFLINE
                                     </span>
                                 )}
                             </h1>
                             {!isEditMode && !['Sick', 'Correction', 'Permission', 'Regularization'].includes(watchLeaveType) && (
-                                <p className="text-xs font-bold text-muted/60 uppercase tracking-widest mt-0.5">
-                                    Balance: <span className="text-emerald-500">{leaveBalance.toFixed(1)} days</span>
+                                <p className="text-xs font-bold text-white/50 uppercase tracking-widest mt-0.5">
+                                    Balance: <span className="text-[#44D62C]">{leaveBalance.toFixed(1)} days</span>
                                 </p>
                             )}
                         </div>
+                        {['Permission', 'Correction'].includes(watchLeaveType) && (
+                            <div className="flex bg-[#092c19] border border-[#134426] p-1 rounded-lg shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={() => setPermissionSession('morning')}
+                                    className={`px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider rounded transition-all ${
+                                        permissionSession === 'morning' ? 'bg-[#44D62C] text-[#0A1809] shadow-sm' : 'text-[#44D62C] hover:bg-[#44D62C]/10'
+                                    }`}
+                                >
+                                    1st Half
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setPermissionSession('evening')}
+                                    className={`px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider rounded transition-all ${
+                                        permissionSession === 'evening' ? 'bg-[#44D62C] text-[#0A1809] shadow-sm' : 'text-[#44D62C] hover:bg-[#44D62C]/10'
+                                    }`}
+                                >
+                                    2nd Half
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setPermissionSession('both')}
+                                    className={`px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider rounded transition-all ${
+                                        permissionSession === 'both' ? 'bg-[#44D62C] text-[#0A1809] shadow-sm' : 'text-[#44D62C] hover:bg-[#44D62C]/10'
+                                    }`}
+                                >
+                                    Both
+                                </button>
+                            </div>
+                        )}
                     </div>
-                    
-                    {['Permission', 'Correction'].includes(watchLeaveType) && (
-                        <div className="flex bg-emerald-500/10 p-1 rounded-lg shrink-0">
-                            <button
-                                type="button"
-                                onClick={() => setPermissionSession('morning')}
-                                className={`px-4 py-1.5 text-xs font-bold uppercase tracking-wider rounded-md transition-all ${
-                                    permissionSession === 'morning' ? 'bg-emerald-500 text-white shadow-sm' : 'text-emerald-600 hover:bg-emerald-500/20'
-                                }`}
-                            >
-                                1st Half
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setPermissionSession('evening')}
-                                className={`px-4 py-1.5 text-xs font-bold uppercase tracking-wider rounded-md transition-all ${
-                                    permissionSession === 'evening' ? 'bg-emerald-500 text-white shadow-sm' : 'text-emerald-600 hover:bg-emerald-500/20'
-                                }`}
-                            >
-                                2nd Half
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setPermissionSession('both')}
-                                className={`px-4 py-1.5 text-xs font-bold uppercase tracking-wider rounded-md transition-all ${
-                                    permissionSession === 'both' ? 'bg-emerald-500 text-white shadow-sm' : 'text-emerald-600 hover:bg-emerald-500/20'
-                                }`}
-                            >
-                                Both Halves
-                            </button>
-                        </div>
-                    )}
-                </header>
+                )}
 
-                <div 
-                    className={`${isMobile ? 'px-4' : ''}`} 
-                    style={isMobile ? { paddingTop: 'calc(5rem + env(safe-area-inset-top))' } : {}}
-                >
+                <div className={`${isMobile ? 'px-4 pt-2' : ''}`}>
                     <form 
                         id="leave-form" 
                         onSubmit={handleSubmit(onSubmit)} 
-                        className={`space-y-8 ${isMobile ? 'bg-[#0d2c18]/30 backdrop-blur-xl rounded-[2.5rem] p-8 border border-emerald-500/10 shadow-2xl' : ''}`}
+                        className={`space-y-8 ${isMobile ? 'bg-[#092c19] rounded-[2rem] p-6 border border-[#134426] shadow-2xl' : ''}`}
                     >
                         <div className="space-y-6">
                             <div className={`grid gap-4 ${showHalfDayOption ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
@@ -2524,8 +2581,16 @@ const ApplyLeave: React.FC = () => {
                             )}
                         </div>
 
-                        <div className={`flex items-center gap-4 ${isMobile ? 'pb-10 pt-4' : 'pt-6 justify-end'}`}>
-                            <Button type="button" variant="danger" onClick={() => navigate(-1)} disabled={isSubmitting} className="flex-1 md:flex-none md:w-36">Cancel</Button>
+                        <div className={`flex items-center gap-4 ${isMobile ? 'pb-36 pt-4' : 'pt-6 justify-end'}`}>
+                            <Button 
+                                type="button" 
+                                variant="danger" 
+                                onClick={() => navigate(-1)} 
+                                disabled={isSubmitting} 
+                                className={`flex-1 md:flex-none md:w-36 ${isMobile ? 'rounded-xl font-bold py-3.5' : ''}`}
+                            >
+                                Cancel
+                            </Button>
                             <Button 
                                 type="submit" 
                                 form="leave-form" 
@@ -2535,7 +2600,7 @@ const ApplyLeave: React.FC = () => {
                                     (watchLeaveType === 'Correction' && correctionUsage.enabled && correctionUsage.used >= correctionUsage.limit) || 
                                     (watchLeaveType === 'Permission' && permissionUsage.enabled && permissionUsage.usedMins >= (permissionUsage.limitHrs || 3) * 60)
                                 }
-                                className="flex-1 md:flex-none md:w-36"
+                                className={`flex-1 md:flex-none md:w-36 ${isMobile ? 'bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black rounded-xl py-3.5 shadow-lg shadow-[#44D62C]/20 border-0' : ''}`}
                             >
                                 {isEditMode ? 'Update' : 'Submit'}
                             </Button>

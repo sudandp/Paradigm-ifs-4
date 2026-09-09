@@ -22,9 +22,11 @@ import {
     ChevronDown, 
     Edit, 
     Search,
-    Filter
+    Filter,
+    ArrowLeft
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 
 const UniformStatusChip: React.FC<{ status: UniformRequest['status'] }> = ({ status }) => {
     const styles: Record<UniformRequest['status'], string> = {
@@ -94,25 +96,27 @@ const RequestDetailsModal: React.FC<{
     onClose: () => void;
     masterUniforms: { gents: MasterGentsUniforms, ladies: MasterLadiesUniforms };
 }> = ({ request, onClose, masterUniforms }) => {
-    if (!request) return null;
-
     const { pantsQuantities, shirtsQuantities, pantsCosts, shirtsCosts } = useMemo(() => {
         const pq: Record<string, number | null> = {};
         const sq: Record<string, number | null> = {};
         const pc: Record<string, number | null> = {};
         const sc: Record<string, number | null> = {};
         
-        request.items.forEach(item => {
-            if (item.category === 'Pants') {
-                pq[item.sizeId] = item.quantity;
-                pc[item.sizeId] = item.cost || null;
-            } else {
-                sq[item.sizeId] = item.quantity;
-                sc[item.sizeId] = item.cost || null;
-            }
-        });
+        if (request?.items) {
+            request.items.forEach(item => {
+                if (item.category === 'Pants') {
+                    pq[item.sizeId] = item.quantity;
+                    pc[item.sizeId] = item.cost || null;
+                } else {
+                    sq[item.sizeId] = item.quantity;
+                    sc[item.sizeId] = item.cost || null;
+                }
+            });
+        }
         return { pantsQuantities: pq, shirtsQuantities: sq, pantsCosts: pc, shirtsCosts: sc };
-    }, [request.items]);
+    }, [request?.items]);
+
+    if (!request) return null;
 
     const currentMaster = request.gender === 'Gents' ? masterUniforms.gents : masterUniforms.ladies;
 
@@ -163,6 +167,7 @@ const RequestDetailsModal: React.FC<{
 
 const UniformDashboard: React.FC = () => {
     const navigate = useNavigate();
+    const isMobile = useMediaQuery('(max-width: 767px)');
     const [requests, setRequests] = useState<UniformRequest[]>([]);
     const [sites, setSites] = useState<Organization[]>([]);
     const [masterUniforms, setMasterUniforms] = useState<{ gents: MasterGentsUniforms, ladies: MasterLadiesUniforms } | null>(null);
@@ -248,9 +253,27 @@ const UniformDashboard: React.FC = () => {
     }
 
     return (
-        <div className="p-4 md:p-8 space-y-8 animate-in fade-in duration-500">
+        <div className="p-4 md:p-8 space-y-8 animate-in fade-in duration-500 max-md:pb-36">
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
             {masterUniforms && viewingRequest && <RequestDetailsModal request={viewingRequest} onClose={() => setViewingRequest(null)} masterUniforms={masterUniforms} />}
+
+            {/* Mobile Top Back Bar */}
+            {isMobile && (
+                <div className="flex items-center gap-3 mb-2">
+                    <button
+                        type="button"
+                        onClick={() => window.history.state?.idx > 0 ? navigate(-1) : navigate('/mobile-home')}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                    >
+                        <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+                        <span>Back</span>
+                    </button>
+                    <div className="h-[1px] flex-1 bg-[#134426]" />
+                    <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#44D62C] bg-[#092c19] px-2.5 py-1 rounded-lg border border-[#134426]">
+                        UNIFORMS
+                    </span>
+                </div>
+            )}
 
             {/* Header / Stats Bento Section */}
             <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-4">
@@ -332,7 +355,50 @@ const UniformDashboard: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="overflow-x-auto custom-scrollbar">
+                {/* Mobile Responsive Cards */}
+                <div className="block md:hidden p-4 space-y-3">
+                    {filteredRequests.map(req => (
+                        <div key={req.id} className="bg-[#092c19] border border-[#134426] rounded-2xl p-4 shadow-sm space-y-3">
+                            <div className="flex items-start justify-between gap-2">
+                                <div>
+                                    <h3 className="text-sm font-black text-white">{req.siteName}</h3>
+                                    <p className="text-[10px] font-bold text-[#7D967B] uppercase tracking-wider">{req.department || 'N/A'}</p>
+                                </div>
+                                <UniformStatusChip status={req.status} />
+                            </div>
+                            <div className="flex items-center justify-between text-xs pt-2 border-t border-[#134426]/70">
+                                <span className="font-semibold text-gray-300">{req.designation || 'Personnel'} • {req.gender}</span>
+                                <span className="font-black text-[#44D62C]">{req.items.reduce((acc, item) => acc + item.quantity, 0)} Units</span>
+                            </div>
+                            <div className="flex items-center justify-between pt-1">
+                                <span className="text-xs font-black text-white">₹{req.totalCost?.toLocaleString() || '0'}</span>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => setViewingRequest(req)}
+                                        className="px-3 py-1.5 rounded-xl bg-[#041b0f] border border-[#134426] text-xs font-bold text-[#44D62C]"
+                                    >
+                                        Logs
+                                    </button>
+                                    <button
+                                        onClick={() => navigate(`/uniforms/request/edit/${req.id}`)}
+                                        className="p-1.5 rounded-xl bg-[#041b0f] border border-[#134426] text-gray-300"
+                                    >
+                                        <Edit className="h-4 w-4" />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                    {filteredRequests.length === 0 && (
+                        <div className="text-center py-12 text-[#7D967B]">
+                            <Shirt className="h-10 w-10 mx-auto mb-2 opacity-40 text-[#44D62C]" />
+                            <p className="text-xs font-bold">No uniform entries match your filters</p>
+                        </div>
+                    )}
+                </div>
+
+                {/* Desktop Table */}
+                <div className="hidden md:block overflow-x-auto custom-scrollbar">
                     <table className="min-w-full text-sm">
                         <thead>
                             <tr className="bg-page/50 text-[10px] font-black text-muted uppercase tracking-widest">

@@ -633,10 +633,26 @@ const AttendanceActionPage: React.FC = () => {
     }
 
     return (
-        <div className="min-h-screen bg-[#041b0f] w-full overflow-x-hidden relative pb-24">
+        <div className="min-h-screen bg-[#041b0f] w-full overflow-x-hidden relative pb-36">
             {/* Ambient Background Glows */}
             <div className="fixed top-[-15%] right-[-15%] w-[60%] h-[60%] bg-emerald-500/8 blur-[150px] rounded-full pointer-events-none" />
             <div className="fixed bottom-[-15%] left-[-15%] w-[60%] h-[60%] bg-emerald-900/15 blur-[150px] rounded-full pointer-events-none" />
+
+            {/* Standard Mobile Top Back Bar */}
+            <div className="flex items-center gap-3 px-4 pt-4 pb-2 relative z-20">
+                <button
+                    type="button"
+                    onClick={() => window.history.state?.idx > 0 ? navigate(-1) : navigate('/mobile-home')}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                >
+                    <MoveLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+                    <span>Back</span>
+                </button>
+                <div className="h-[1px] flex-1 bg-[#134426]" />
+                <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#44D62C] bg-[#092c19] px-2.5 py-1 rounded-lg border border-[#134426]">
+                    {action}
+                </span>
+            </div>
 
             {/* Editorial Watermark Background */}
             <div 
@@ -669,7 +685,7 @@ const AttendanceActionPage: React.FC = () => {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.1 }}
-                    className="flex flex-col items-center text-center pt-8 pb-6"
+                    className="flex flex-col items-center text-center pt-4 pb-6"
                 >
                     {/* Icon with breathing glow */}
                     <div className="relative mb-6">
@@ -684,7 +700,7 @@ const AttendanceActionPage: React.FC = () => {
                             }`}
                             style={{ top: '-8px', left: '-8px', width: 'calc(100% + 16px)', height: 'calc(100% + 16px)' }}
                         />
-                        <div className={`relative p-6 rounded-3xl ${iconBgColor} border border-white/10 backdrop-blur-sm`}>
+                        <div className={`relative p-6 rounded-3xl ${iconBgColor} border border-[#134426] backdrop-blur-sm`}>
                             {isBreakIn ? <Coffee className={`h-10 w-10 ${iconColor}`} /> : <Icon className={`h-10 w-10 ${iconColor}`} />}
                         </div>
                     </div>
@@ -698,7 +714,7 @@ const AttendanceActionPage: React.FC = () => {
                             'text-rose-500'
                         }`}>.</span>
                     </h1>
-                    <p className="text-slate-500 text-xs mt-2 font-medium">
+                    <p className="text-slate-400 text-xs mt-2 font-medium">
                         Are you sure you want to {action.toLowerCase()}?
                     </p>
                 </motion.div>
@@ -724,25 +740,25 @@ const AttendanceActionPage: React.FC = () => {
                                 <h3 className="text-xs font-black text-white/60 uppercase tracking-[0.2em] flex items-center gap-2">
                                     <Clock className="h-3.5 w-3.5 text-emerald-500" /> Schedule
                                 </h3>
-                                <div className="flex-1 h-[1px] bg-white/5" />
+                                <div className="flex-1 h-[1px] bg-[#134426]" />
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                                 {/* Alarm Time Card */}
-                                <div className="rounded-2xl p-4 bg-white/[0.03] border border-white/[0.06] backdrop-blur-sm">
+                                <div className="rounded-2xl p-4 bg-[#092c19] border border-[#134426] backdrop-blur-sm">
                                     <div className="flex items-center gap-1.5 mb-2.5">
-                                        <Bell className="w-3.5 h-3.5 text-emerald-400" />
-                                        <span className="text-[8px] font-black text-emerald-400/80 uppercase tracking-widest">Alarm</span>
+                                        <Bell className="w-3.5 h-3.5 text-[#44D62C]" />
+                                        <span className="text-[8px] font-black text-[#44D62C] uppercase tracking-widest">Alarm</span>
                                     </div>
                                     <p className="text-xl font-black text-white tabular-nums tracking-tight">{alarmTime}</p>
                                 </div>
                                 {/* Interval Card */}
-                                <div className="rounded-2xl p-4 bg-white/[0.03] border border-white/[0.06] backdrop-blur-sm">
+                                <div className="rounded-2xl p-4 bg-[#092c19] border border-[#134426] backdrop-blur-sm">
                                     <div className="flex items-center gap-1.5 mb-2.5">
                                         <Clock className="w-3.5 h-3.5 text-slate-400" />
-                                        <span className="text-[8px] font-black text-slate-400/80 uppercase tracking-widest">Repeat</span>
+                                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Repeat</span>
                                     </div>
                                     <p className="text-xl font-black text-white tracking-tight">
-                                        Every <span className="text-emerald-400">{PRESETS[selectedIdx].label}m</span>
+                                        Every <span className="text-[#44D62C]">{PRESETS[selectedIdx].label}m</span>
                                     </p>
                                 </div>
                             </div>
@@ -754,52 +770,52 @@ const AttendanceActionPage: React.FC = () => {
                                 <h3 className="text-xs font-black text-white/60 uppercase tracking-[0.2em] flex items-center gap-2">
                                     <Bell className="h-3.5 w-3.5 text-emerald-500" /> Reminder
                                 </h3>
-                                <div className="flex-1 h-[1px] bg-white/5" />
+                                <div className="flex-1 h-[1px] bg-[#134426]" />
                             </div>
 
                             {/* Set Alarm Toggle */}
-                            <div className="flex items-center justify-between rounded-2xl px-5 py-4 mb-3 bg-white/[0.03] border border-white/[0.06] backdrop-blur-sm">
+                            <div className="flex items-center justify-between rounded-2xl px-5 py-4 mb-3 bg-[#092c19] border border-[#134426] backdrop-blur-sm">
                                 <div className="flex items-center gap-3">
-                                    <Bell className={`w-5 h-5 transition-colors ${isAlarmEnabled ? 'text-emerald-400' : 'text-slate-500'}`} />
+                                    <Bell className={`w-5 h-5 transition-colors ${isAlarmEnabled ? 'text-[#44D62C]' : 'text-slate-500'}`} />
                                     <span className={`text-sm font-bold transition-colors ${isAlarmEnabled ? 'text-slate-200' : 'text-slate-500'}`}>Set break reminder</span>
                                 </div>
                                 <button 
                                     onClick={() => setIsAlarmEnabled(!isAlarmEnabled)}
-                                    className={`w-12 h-7 rounded-full transition-all duration-300 relative p-1 ${isAlarmEnabled ? 'bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.4)]' : 'bg-slate-700'}`}
+                                    className={`w-12 h-7 rounded-full transition-all duration-300 relative p-1 ${isAlarmEnabled ? 'bg-[#44D62C] shadow-[0_0_15px_rgba(68,214,44,0.4)]' : 'bg-slate-700'}`}
                                 >
                                     <motion.div 
                                         animate={{ x: isAlarmEnabled ? 20 : 0 }}
                                         transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                                        className="w-5 h-5 rounded-full bg-white shadow-lg"
+                                        className="w-5 h-5 rounded-full bg-[#0A1809] shadow-lg"
                                     />
                                 </button>
                             </div>
 
                             {/* Volume Slider */}
-                            <div className={`rounded-2xl px-5 py-4 mb-3 bg-white/[0.03] border border-white/[0.06] backdrop-blur-sm space-y-3 transition-opacity duration-300 ${isAlarmEnabled ? 'opacity-100' : 'opacity-30'}`}>
+                            <div className={`rounded-2xl px-5 py-4 mb-3 bg-[#092c19] border border-[#134426] backdrop-blur-sm space-y-3 transition-opacity duration-300 ${isAlarmEnabled ? 'opacity-100' : 'opacity-30'}`}>
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
-                                        <Volume2 className={`w-3.5 h-3.5 transition-colors ${isAlarmEnabled ? 'text-emerald-400' : 'text-slate-600'}`} />
-                                        <span className={`text-[10px] font-black uppercase tracking-widest transition-colors ${isAlarmEnabled ? 'text-emerald-400/80' : 'text-slate-600'}`}>Alarm sound</span>
+                                        <Volume2 className={`w-3.5 h-3.5 transition-colors ${isAlarmEnabled ? 'text-[#44D62C]' : 'text-slate-600'}`} />
+                                        <span className={`text-[10px] font-black uppercase tracking-widest transition-colors ${isAlarmEnabled ? 'text-[#44D62C]' : 'text-slate-600'}`}>Alarm sound</span>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                        <span className="text-[10px] font-bold text-slate-500 italic">Default Tone</span>
-                                        <span className={`text-[10px] font-bold tabular-nums transition-colors ${isAlarmEnabled ? 'text-emerald-400' : 'text-slate-600'}`}>{alarmVolume}%</span>
+                                        <span className="text-[10px] font-bold text-slate-400 italic">Default Tone</span>
+                                        <span className={`text-[10px] font-bold tabular-nums transition-colors ${isAlarmEnabled ? 'text-[#44D62C]' : 'text-slate-600'}`}>{alarmVolume}%</span>
                                     </div>
                                 </div>
                                 <div className="relative h-8 flex items-center group">
-                                    <div className="absolute inset-x-0 h-1.5 bg-white/5 rounded-full overflow-hidden pointer-events-none">
+                                    <div className="absolute inset-x-0 h-1.5 bg-[#041b0f] rounded-full overflow-hidden pointer-events-none">
                                         <motion.div 
                                             initial={false}
                                             animate={{ width: `${alarmVolume}%` }}
-                                            className={`h-full transition-colors ${isAlarmEnabled ? 'bg-emerald-500' : 'bg-slate-700'}`}
-                                            style={{ boxShadow: isAlarmEnabled ? '0 0 10px rgba(16,185,129,0.3)' : 'none' }}
+                                            className={`h-full transition-colors ${isAlarmEnabled ? 'bg-[#44D62C]' : 'bg-slate-700'}`}
+                                            style={{ boxShadow: isAlarmEnabled ? '0 0 10px rgba(68,214,44,0.3)' : 'none' }}
                                         />
                                     </div>
                                     <motion.div 
                                         animate={{ left: `calc(${alarmVolume}% - 10px)` }}
-                                        className={`absolute top-1/2 -translate-y-1/2 w-5 h-5 rounded-full border-2 transition-colors pointer-events-none ${isAlarmEnabled ? 'bg-white border-emerald-500' : 'bg-slate-600 border-slate-700'}`}
-                                        style={{ boxShadow: isAlarmEnabled ? '0 0 15px rgba(16,185,129,0.4)' : 'none' }}
+                                        className={`absolute top-1/2 -translate-y-1/2 w-5 h-5 rounded-full border-2 transition-colors pointer-events-none ${isAlarmEnabled ? 'bg-[#0A1809] border-[#44D62C]' : 'bg-slate-600 border-slate-700'}`}
+                                        style={{ boxShadow: isAlarmEnabled ? '0 0 15px rgba(68,214,44,0.4)' : 'none' }}
                                     />
                                     <input 
                                         type="range"
@@ -815,27 +831,27 @@ const AttendanceActionPage: React.FC = () => {
                             </div>
 
                             {/* Snooze Toggle */}
-                            <div className={`flex items-center justify-between rounded-2xl px-5 py-4 mb-3 bg-white/[0.03] border border-white/[0.06] backdrop-blur-sm transition-all duration-300 ${!isAlarmEnabled ? 'opacity-30 pointer-events-none' : 'opacity-100'}`}>
+                            <div className={`flex items-center justify-between rounded-2xl px-5 py-4 mb-3 bg-[#092c19] border border-[#134426] backdrop-blur-sm transition-all duration-300 ${!isAlarmEnabled ? 'opacity-30 pointer-events-none' : 'opacity-100'}`}>
                                 <div className="flex items-center gap-3">
                                     <motion.div animate={isSnoozeEnabled && isAlarmEnabled ? { rotate: [0, -10, 10, -10, 10, 0] } : {}} transition={{ duration: 0.5, repeat: isSnoozeEnabled ? Infinity : 0, repeatDelay: 2 }}>
-                                        <Bell className={`w-5 h-5 transition-colors ${isSnoozeEnabled ? 'text-emerald-400' : 'text-slate-500'}`} />
+                                        <Bell className={`w-5 h-5 transition-colors ${isSnoozeEnabled ? 'text-[#44D62C]' : 'text-slate-500'}`} />
                                     </motion.div>
                                     <span className={`text-sm font-bold transition-colors ${isSnoozeEnabled ? 'text-slate-200' : 'text-slate-500'}`}>Snooze (5m)</span>
                                 </div>
                                 <button 
                                     onClick={() => setIsSnoozeEnabled(!isSnoozeEnabled)}
                                     disabled={!isAlarmEnabled}
-                                    className={`w-12 h-7 rounded-full transition-all duration-300 relative p-1 ${isSnoozeEnabled ? 'bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.4)]' : 'bg-slate-700'}`}
+                                    className={`w-12 h-7 rounded-full transition-all duration-300 relative p-1 ${isSnoozeEnabled ? 'bg-[#44D62C] shadow-[0_0_15px_rgba(68,214,44,0.4)]' : 'bg-slate-700'}`}
                                 >
                                     <motion.div 
                                         animate={{ x: isSnoozeEnabled ? 20 : 0 }}
                                         transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                                        className="w-5 h-5 rounded-full bg-white shadow-lg"
+                                        className="w-5 h-5 rounded-full bg-[#0A1809] shadow-lg"
                                     />
                                 </button>
                             </div>
 
-                            <p className="text-[9px] text-slate-600 text-center font-medium italic px-4">
+                            <p className="text-[9px] text-slate-500 text-center font-medium italic px-4">
                                 {isAlarmEnabled 
                                     ? "Rings until acknowledged · Works in background" 
                                     : "Reminders are disabled for this session"}
@@ -855,17 +871,17 @@ const AttendanceActionPage: React.FC = () => {
                         onClick={() => handleConfirm()}
                         variant={isCheckIn || isBreakIn || isBreakOut || actionParam === 'site-ot-in' ? "primary" : "danger"}
                         className={`w-full !rounded-2xl !py-5 !text-sm font-black tracking-widest uppercase italic shadow-2xl active:scale-[0.98] transition-transform ${
-                            isBreakIn ? '!bg-emerald-600 !border-emerald-700 hover:!bg-emerald-700 shadow-emerald-900/40' :
+                            isBreakIn ? '!bg-[#44D62C] hover:!bg-[#39E722] !text-[#0A1809] !border-none shadow-[0_4px_16px_rgba(68,214,44,0.3)]' :
                             isBreakOut ? '!bg-amber-600 !border-amber-700 shadow-amber-900/40' :
                             actionParam?.includes('site-ot') ? '!bg-indigo-600 !border-indigo-700 shadow-indigo-900/40' :
-                            (isCheckIn ? '!bg-emerald-600 !border-emerald-700 shadow-emerald-900/40' : '')
+                            (isCheckIn ? '!bg-[#44D62C] hover:!bg-[#39E722] !text-[#0A1809] !border-none shadow-[0_4px_16px_rgba(68,214,44,0.3)]' : '')
                         }`}
                         isLoading={isSubmitting}
                     >
                         {isBreakIn ? 'Set Alarm & Break In' : `Confirm ${action}`}
                     </Button>
                     <button onClick={() => navigate(-1)} disabled={isSubmitting}
-                        className="w-full py-3 text-[10px] font-black text-red-500 hover:text-red-400 uppercase tracking-widest transition-colors">
+                        className="w-full py-3 text-[10px] font-black text-red-500 hover:text-red-400 uppercase tracking-widest transition-colors cursor-pointer">
                         Cancel Action
                     </button>
                 </motion.div>

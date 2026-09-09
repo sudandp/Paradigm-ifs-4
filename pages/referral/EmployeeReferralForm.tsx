@@ -96,40 +96,53 @@ const EmployeeReferralForm: React.FC = () => {
 
     return (
         <div className={`flex flex-col h-full ${isMobile ? 'min-h-screen bg-[#041b0f]' : 'bg-page'}`}>
-            {/* Header */}
-            <div 
-                className={`flex-shrink-0 flex items-center gap-4 px-6 pb-4 border-b sticky top-0 z-20 backdrop-blur-md ${
-                    isMobile ? 'border-white/10 bg-[#041b0f]/80' : 'border-gray-200 bg-white/80'
-                }`}
-                style={{ paddingTop: isMobile ? 'calc(1rem + env(safe-area-inset-top))' : '1rem' }}
-            >
-                <button
-                    onClick={() => navigate(-1)}
-                    className={`p-2.5 rounded-xl transition-all hover:scale-105 active:scale-95 ${isMobile ? 'hover:bg-white/10 text-white' : 'hover:bg-gray-100 text-gray-700'}`}
-                >
-                    <ArrowLeft className="h-6 w-6" />
-                </button>
+            {/* Standard Mobile Top Back Bar */}
+            {isMobile ? (
+                <div className="flex items-center gap-3 px-6 pt-4 pb-2 bg-[#041b0f] border-b border-[#134426]/60 sticky top-0 z-30">
+                    <button
+                        type="button"
+                        onClick={() => window.history.state?.idx > 0 ? navigate(-1) : navigate('/mobile-home')}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                    >
+                        <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+                        <span>Back</span>
+                    </button>
+                    <div className="h-[1px] flex-1 bg-[#134426]" />
+                    <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#44D62C] bg-[#092c19] px-2.5 py-1 rounded-lg border border-[#134426]">
+                        CANDIDATE REFERRAL
+                    </span>
+                </div>
+            ) : (
+                /* Desktop Header */
+                <div className="flex-shrink-0 flex items-center gap-4 px-6 pb-4 pt-4 border-b border-gray-200 bg-white/80 sticky top-0 z-20 backdrop-blur-md">
+                    <button
+                        onClick={() => navigate(-1)}
+                        className="p-2.5 rounded-xl transition-all hover:scale-105 active:scale-95 hover:bg-gray-100 text-gray-700"
+                    >
+                        <ArrowLeft className="h-6 w-6" />
+                    </button>
 
-                <div className={`flex items-center gap-3.5 flex-1 ${isMobile ? 'text-white' : 'text-gray-900'}`}>
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#006b3f] to-[#004d2d] flex items-center justify-center shadow-lg shadow-emerald-900/20 ring-2 ring-emerald-500/20">
-                        <UserPlus className="h-5 w-5 text-white" />
-                    </div>
-                    <div>
-                        <h1 className="text-lg font-extrabold tracking-tight leading-tight">Employee Referral</h1>
-                        <p className={`text-xs font-semibold ${isMobile ? 'text-white/50' : 'text-gray-400'}`}>Native Candidate Referral Portal</p>
+                    <div className="flex items-center gap-3.5 flex-1 text-gray-900">
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#006b3f] to-[#004d2d] flex items-center justify-center shadow-lg shadow-emerald-900/20 ring-2 ring-emerald-500/20">
+                            <UserPlus className="h-5 w-5 text-white" />
+                        </div>
+                        <div>
+                            <h1 className="text-lg font-extrabold tracking-tight leading-tight">Employee Referral</h1>
+                            <p className="text-xs font-semibold text-gray-400">Native Candidate Referral Portal</p>
+                        </div>
                     </div>
                 </div>
-            </div>
+            )}
 
-            <div className="flex-1 overflow-y-auto pb-16 hide-scrollbar">
-                <form onSubmit={handleSubmit(onSubmit)} className="max-w-7xl px-6 py-10 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="flex-1 overflow-y-auto pb-36 hide-scrollbar">
+                <form onSubmit={handleSubmit(onSubmit)} className="max-w-7xl px-6 py-8 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     
                     {!user && (
                         <div className={`group rounded-3xl p-8 space-y-6 transition-all duration-300 ${
-                            isMobile ? 'bg-white/5 border border-white/10' : 'bg-card shadow-card hover:shadow-2xl hover:shadow-emerald-900/5'
+                            isMobile ? 'bg-[#092c19] border border-[#134426]' : 'bg-card shadow-card hover:shadow-2xl hover:shadow-emerald-900/5'
                         }`}>
                             <div className="flex items-center gap-3">
-                                <div className="w-1.5 h-6 bg-emerald-500 rounded-full" />
+                                <div className="w-1.5 h-6 bg-[#44D62C] rounded-full" />
                                 <h2 className={`text-lg font-black tracking-tight ${isMobile ? 'text-white' : 'text-primary-text'}`}>Are you an AP Group Employee?</h2>
                             </div>
                             <div className="flex gap-4">
@@ -138,8 +151,8 @@ const EmployeeReferralForm: React.FC = () => {
                                     onClick={() => setIsParadigmEmployee(true)}
                                     className={`flex-1 py-4 rounded-2xl font-bold transition-all ${
                                         isParadigmEmployee === true
-                                            ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/20'
-                                            : isMobile ? 'bg-white/5 text-white/50 border border-white/10' : 'bg-gray-100 text-gray-500'
+                                            ? 'bg-[#44D62C] text-[#0A1809] shadow-lg shadow-[#44D62C]/20'
+                                            : isMobile ? 'bg-[#041b0f] text-white/50 border border-[#134426]' : 'bg-gray-100 text-gray-500'
                                     }`}
                                 >
                                     Yes, I am an Employee
@@ -149,8 +162,8 @@ const EmployeeReferralForm: React.FC = () => {
                                     onClick={() => setIsParadigmEmployee(false)}
                                     className={`flex-1 py-4 rounded-2xl font-bold transition-all ${
                                         isParadigmEmployee === false
-                                            ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/20'
-                                            : isMobile ? 'bg-white/5 text-white/50 border border-white/10' : 'bg-gray-100 text-gray-500'
+                                            ? 'bg-[#44D62C] text-[#0A1809] shadow-lg shadow-[#44D62C]/20'
+                                            : isMobile ? 'bg-[#041b0f] text-white/50 border border-[#134426]' : 'bg-gray-100 text-gray-500'
                                     }`}
                                 >
                                     No, I am an Outsider
@@ -162,7 +175,7 @@ const EmployeeReferralForm: React.FC = () => {
                     {/* Referrer Info Section */}
                     {(isParadigmEmployee !== null || user) && (
                         <div className={`group rounded-3xl p-8 space-y-8 transition-all duration-300 ${
-                            isMobile ? 'bg-white/5 border border-white/10' : 'bg-card shadow-card hover:shadow-2xl hover:shadow-emerald-900/5'
+                            isMobile ? 'bg-[#092c19] border border-[#134426]' : 'bg-card shadow-card hover:shadow-2xl hover:shadow-emerald-900/5'
                         }`}>
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
@@ -184,7 +197,7 @@ const EmployeeReferralForm: React.FC = () => {
                                     registration={register('referrerName', { required: 'Your name is required' })}
                                     error={errors.referrerName?.message}
                                     placeholder="Enter your full name"
-                                    className={isMobile ? 'bg-white/10 border-white/10 text-white' : 'bg-page/50'}
+                                    className={isMobile ? 'bg-[#041b0f] border-[#134426] text-white' : 'bg-page/50'}
                                     readOnly={!!user}
                                 />
                                 <Input
@@ -199,7 +212,7 @@ const EmployeeReferralForm: React.FC = () => {
                                     placeholder="e.g. 9876543210"
                                     inputMode="numeric"
                                     pattern="9999999999"
-                                    className={isMobile ? 'bg-white/10 border-white/10 text-white' : 'bg-page/50'}
+                                    className={isMobile ? 'bg-[#041b0f] border-[#134426] text-white' : 'bg-page/50'}
                                     readOnly={!!user}
                                 />
                             </div>
@@ -213,7 +226,7 @@ const EmployeeReferralForm: React.FC = () => {
                                         registration={register('employeeId', { required: isParadigmEmployee ? 'Employee ID is required' : false })}
                                         error={errors.employeeId?.message}
                                         placeholder="e.g. AP1234"
-                                        className={isMobile ? 'bg-white/10 border-white/10 text-white' : 'bg-page/50'}
+                                        className={isMobile ? 'bg-[#041b0f] border-[#134426] text-white' : 'bg-page/50'}
                                     />
                                     <Select
                                         label="Site / Location"
@@ -221,7 +234,7 @@ const EmployeeReferralForm: React.FC = () => {
                                         requiredIndicator={!!isParadigmEmployee}
                                         registration={register('siteLocation', { required: isParadigmEmployee ? 'Site/Location is required' : false })}
                                         error={errors.siteLocation?.message}
-                                        className={isMobile ? 'bg-white/10 border-white/10 text-white' : 'bg-page/50'}
+                                        className={isMobile ? 'bg-[#041b0f] border-[#134426] text-white' : 'bg-page/50'}
                                     >
                                         <option value="">Select City / Location</option>
                                         {CITIES.map(c => <option key={c} value={c}>{c}</option>)}
@@ -233,23 +246,23 @@ const EmployeeReferralForm: React.FC = () => {
                                         registration={register('referrerRole', { required: 'Designation is required' })}
                                         error={errors.referrerRole?.message}
                                         placeholder="e.g. Admin, Manager"
-                                        className={isMobile ? 'bg-white/10 border-white/10 text-white' : 'bg-page/50'}
+                                        className={isMobile ? 'bg-[#041b0f] border-[#134426] text-white' : 'bg-page/50'}
                                         readOnly={!!user}
                                     />
                                 </div>
                             ) : (
                                 <div className="space-y-8">
-                                    <div className="flex items-center gap-2 text-emerald-500 font-bold text-sm">
+                                    <div className="flex items-center gap-2 text-[#44D62C] font-bold text-sm">
                                         <Wallet className="h-4 w-4" />
                                         <span>Payment Details (For Referral Reward)</span>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                         <div className={`space-y-6 p-6 rounded-3xl border transition-all duration-300 ${
-                                            isMobile ? 'bg-white/5 border-white/10' : 'bg-white border-border shadow-sm hover:shadow-md hover:border-emerald-500/20'
+                                            isMobile ? 'bg-[#041b0f] border-[#134426]' : 'bg-white border-border shadow-sm hover:shadow-md hover:border-emerald-500/20'
                                         }`}>
                                             <div className="flex items-center justify-between">
-                                                <div className={`flex items-center gap-2 text-xs font-black uppercase tracking-widest ${isMobile ? 'text-white/40' : 'text-muted'}`}>
-                                                    <Landmark className={`h-3.5 w-3.5 ${isMobile ? 'text-emerald-400' : 'text-emerald-600'}`} />
+                                                <div className={`flex items-center gap-2 text-xs font-black uppercase tracking-widest ${isMobile ? 'text-[#44D62C]' : 'text-muted'}`}>
+                                                    <Landmark className={`h-3.5 w-3.5 ${isMobile ? 'text-[#44D62C]' : 'text-emerald-600'}`} />
                                                     <span>Bank Transfer</span>
                                                 </div>
                                                 {!isMobile && <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center"><Landmark className="h-4 w-4 text-emerald-600" /></div>}
@@ -259,28 +272,28 @@ const EmployeeReferralForm: React.FC = () => {
                                                     label="Bank Name"
                                                     registration={register('bankName')}
                                                     placeholder="e.g. HDFC Bank"
-                                                    className={isMobile ? 'bg-white/10 border-white/10 text-white' : 'bg-page/30'}
+                                                    className={isMobile ? 'bg-[#092c19] border-[#134426] text-white' : 'bg-page/30'}
                                                 />
                                                 <Input
                                                     label="Account Number"
                                                     registration={register('accountNumber')}
                                                     placeholder="Enter account number"
-                                                    className={isMobile ? 'bg-white/10 border-white/10 text-white' : 'bg-page/30'}
+                                                    className={isMobile ? 'bg-[#092c19] border-[#134426] text-white' : 'bg-page/30'}
                                                 />
                                                 <Input
                                                     label="IFSC Code"
                                                     registration={register('ifscCode')}
                                                     placeholder="e.g. HDFC0001234"
-                                                    className={isMobile ? 'bg-white/10 border-white/10 text-white' : 'bg-page/30'}
+                                                    className={isMobile ? 'bg-[#092c19] border-[#134426] text-white' : 'bg-page/30'}
                                                 />
                                             </div>
                                         </div>
                                         <div className={`space-y-6 p-6 rounded-3xl border transition-all duration-300 ${
-                                            isMobile ? 'bg-white/5 border-white/10' : 'bg-white border-border shadow-sm hover:shadow-md hover:border-emerald-500/20'
+                                            isMobile ? 'bg-[#041b0f] border-[#134426]' : 'bg-white border-border shadow-sm hover:shadow-md hover:border-emerald-500/20'
                                         }`}>
                                             <div className="flex items-center justify-between">
-                                                <div className={`flex items-center gap-2 text-xs font-black uppercase tracking-widest ${isMobile ? 'text-white/40' : 'text-muted'}`}>
-                                                    <Phone className={`h-3.5 w-3.5 ${isMobile ? 'text-emerald-400' : 'text-emerald-600'}`} />
+                                                <div className={`flex items-center gap-2 text-xs font-black uppercase tracking-widest ${isMobile ? 'text-[#44D62C]' : 'text-muted'}`}>
+                                                    <Phone className={`h-3.5 w-3.5 ${isMobile ? 'text-[#44D62C]' : 'text-emerald-600'}`} />
                                                     <span>UPI Payment</span>
                                                 </div>
                                                 {!isMobile && <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center"><Phone className="h-4 w-4 text-emerald-600" /></div>}
@@ -290,10 +303,10 @@ const EmployeeReferralForm: React.FC = () => {
                                                     label="UPI ID"
                                                     registration={register('upiId')}
                                                     placeholder="e.g. 9876543210@paytm"
-                                                    className={isMobile ? 'bg-white/10 border-white/10 text-white' : 'bg-page/30'}
+                                                    className={isMobile ? 'bg-[#092c19] border-[#134426] text-white' : 'bg-page/30'}
                                                 />
                                                 <div className={`mt-6 p-4 rounded-xl border ${
-                                                    isMobile ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-emerald-50 border-emerald-100 text-emerald-700'
+                                                    isMobile ? 'bg-[#092c19] border-[#134426] text-[#44D62C]' : 'bg-emerald-50 border-emerald-100 text-emerald-700'
                                                 }`}>
                                                     <p className="text-[10px] font-bold leading-relaxed">
                                                         * Please provide either Bank or UPI details to receive your referral reward after successful verification.
@@ -309,7 +322,7 @@ const EmployeeReferralForm: React.FC = () => {
                                         registration={register('referrerRole', { required: 'This field is required' })}
                                         error={errors.referrerRole?.message}
                                         placeholder="e.g. Friend, Vendor Name"
-                                        className={isMobile ? 'bg-white/10 border-white/10 text-white' : 'bg-white border-border'}
+                                        className={isMobile ? 'bg-[#041b0f] border-[#134426] text-white' : 'bg-white border-border'}
                                     />
                                 </div>
                             )}
@@ -318,10 +331,10 @@ const EmployeeReferralForm: React.FC = () => {
 
                     {/* Candidate Info Section */}
                     <div className={`group rounded-3xl p-8 space-y-8 transition-all duration-300 ${
-                        isMobile ? 'bg-white/5 border border-white/10' : 'bg-card shadow-card hover:shadow-2xl hover:shadow-emerald-900/5'
+                        isMobile ? 'bg-[#092c19] border border-[#134426]' : 'bg-card shadow-card hover:shadow-2xl hover:shadow-emerald-900/5'
                     }`}>
                         <div className="flex items-center gap-3">
-                            <div className="w-1.5 h-6 bg-emerald-500 rounded-full" />
+                            <div className="w-1.5 h-6 bg-[#44D62C] rounded-full" />
                             <h2 className={`text-lg font-black tracking-tight ${isMobile ? 'text-white' : 'text-primary-text'}`}>Candidate Details</h2>
                         </div>
 
@@ -332,7 +345,7 @@ const EmployeeReferralForm: React.FC = () => {
                                 registration={register('candidateName', { required: 'Candidate name is required' })}
                                 error={errors.candidateName?.message}
                                 placeholder="Enter candidate's full name"
-                                className={isMobile ? 'bg-white/10 border-white/10 text-white' : ''}
+                                className={isMobile ? 'bg-[#041b0f] border-[#134426] text-white' : ''}
                             />
                             <Input
                                 label="Candidate Mobile Number"
@@ -345,7 +358,7 @@ const EmployeeReferralForm: React.FC = () => {
                                 placeholder="e.g. 9876543210"
                                 inputMode="numeric"
                                 pattern="9999999999"
-                                className={isMobile ? 'bg-white/10 border-white/10 text-white' : ''}
+                                className={isMobile ? 'bg-[#041b0f] border-[#134426] text-white' : ''}
                             />
                             <Input
                                 label="Candidate Email Address"
@@ -357,7 +370,7 @@ const EmployeeReferralForm: React.FC = () => {
                                 error={errors.candidateEmail?.message}
                                 placeholder="e.g. candidate@example.com"
                                 type="email"
-                                className={isMobile ? 'bg-white/10 border-white/10 text-white' : ''}
+                                className={isMobile ? 'bg-[#041b0f] border-[#134426] text-white' : ''}
                             />
                         </div>
 
@@ -368,13 +381,13 @@ const EmployeeReferralForm: React.FC = () => {
                                 registration={register('candidateRole', { required: 'Role is required' })}
                                 error={errors.candidateRole?.message}
                                 placeholder="e.g. Security Guard, Supervisor"
-                                className={isMobile ? 'bg-white/10 border-white/10 text-white' : ''}
+                                className={isMobile ? 'bg-[#041b0f] border-[#134426] text-white' : ''}
                             />
                             <Input
                                 label="Candidate's Current Experience/Role"
                                 registration={register('referredPersonRole')}
                                 placeholder="e.g. 2 years experience in Security"
-                                className={isMobile ? 'bg-white/10 border-white/10 text-white' : ''}
+                                className={isMobile ? 'bg-[#041b0f] border-[#134426] text-white' : ''}
                             />
                         </div>
                     </div>
@@ -388,7 +401,7 @@ const EmployeeReferralForm: React.FC = () => {
 
                     <Button 
                         type="submit" 
-                        className="w-full h-14 text-lg font-black tracking-widest uppercase shadow-2xl shadow-emerald-900/30 transition-all hover:scale-[1.01] active:scale-[0.99] bg-gradient-to-r from-[#006b3f] to-[#005d22]"
+                        className="w-full h-14 text-base font-black tracking-widest uppercase shadow-2xl active:scale-[0.99] transition-all bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] border-none shadow-[0_4px_16px_rgba(68,214,44,0.3)] cursor-pointer"
                         isLoading={isSubmitting}
                     >
                         Submit Referral

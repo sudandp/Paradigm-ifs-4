@@ -131,7 +131,7 @@ const CandidateDetailPage: React.FC = () => {
   ];
 
   return (
-    <div className={`w-full animate-fade-in min-w-0 ${isMobile ? 'bg-[#091c13] text-white p-4 pt-6 space-y-6 pb-24 min-h-screen' : 'space-y-8 pb-32'}`}>
+    <div className={`w-full animate-fade-in min-w-0 ${isMobile ? 'bg-[#041b0f] text-white p-4 pt-6 space-y-6 pb-24 min-h-screen' : 'space-y-8 pb-32'}`}>
       {/* Modern Header - Sticky on Mobile */}
       <div className={`flex flex-col md:flex-row justify-between items-start md:items-center gap-4 md:gap-6 ${isMobile ? '' : ''}`}>
         <div className="flex flex-col gap-1 w-full">

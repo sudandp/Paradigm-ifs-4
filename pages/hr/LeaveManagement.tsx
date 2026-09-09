@@ -15,7 +15,7 @@ import {
 
 Chart.register(BarController, BarElement, DoughnutController, ArcElement, CategoryScale, LinearScale, Tooltip, Legend);
 import { LeaveRequest, LeaveRequestStatus, ExtraWorkLog, UserHoliday, LeaveType } from '../../types';
-import { Loader2, Check, X, Plus, XCircle, User, Calendar, FilterX, ChevronLeft, ChevronRight, Info, Pencil, Download, RotateCcw, PenTool, FileText, FileSpreadsheet, ChevronDown, Trash2, Eye, Undo2 } from 'lucide-react';
+import { Loader2, Check, X, Plus, XCircle, User, Calendar, FilterX, ChevronLeft, ChevronRight, Info, Pencil, Download, RotateCcw, PenTool, FileText, FileSpreadsheet, ChevronDown, Trash2, Eye, Undo2, ArrowLeft } from 'lucide-react';
 import ManualAttendanceModal from '../../components/attendance/ManualAttendanceModal';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
@@ -1073,6 +1073,30 @@ const LeaveManagement: React.FC = () => {
                 request={selectedLeaveRequest}
                 onStatusChanged={fetchData}
             />
+
+            {/* Mobile Back Bar */}
+            {isMobile && (
+                <div className="flex items-center gap-3 mb-5">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            if (window.history.state && window.history.state.idx > 0) {
+                                navigate(-1);
+                            } else {
+                                navigate('/mobile-home');
+                            }
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                    >
+                        <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+                        <span>Back</span>
+                    </button>
+                    <div className="h-[1px] flex-1 bg-[#134426]" />
+                    <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#44D62C] bg-[#092c19] px-2.5 py-1 rounded-lg border border-[#134426]">
+                        Leave Management
+                    </span>
+                </div>
+            )}
 
             <div className="flex justify-between items-center mb-6">
                 <h2 className="text-2xl font-bold text-primary-text">Leave Approval Inbox</h2>

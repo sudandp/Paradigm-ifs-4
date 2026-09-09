@@ -10,6 +10,7 @@ import { FIXED_HOLIDAYS, HOLIDAY_SELECTION_POOL } from '../../utils/constants';
 import Button from '../../components/ui/Button';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 import { buildAttendanceDayKeyByEventId } from '../../utils/attendanceDayGrouping';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 
 
 interface AttendanceCalendarProps {
@@ -23,6 +24,7 @@ interface AttendanceCalendarProps {
     isLoading?: boolean;
     onMonthPaydaysChange?: (payDays: number) => void;
     onSiteOtDaysChange?: (otDays: number) => void;
+    isMobile?: boolean;
 }
 
 const getLeaveAbbreviation = (leaveType?: string): string => {
@@ -50,8 +52,11 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
     recurringHolidays,
     isLoading = false,
     onMonthPaydaysChange,
-    onSiteOtDaysChange
+    onSiteOtDaysChange,
+    isMobile: isMobileProp
 }) => {
+    const isMobileQuery = useMediaQuery('(max-width: 767px)');
+    const isMobile = isMobileProp ?? isMobileQuery;
     const { user } = useAuthStore();
     const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
     const isFemale = ['female', 'ladies'].includes((user?.gender || '').toLowerCase());
@@ -501,11 +506,31 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                         </span>
                     )}
                 </div>
-                <div className="flex items-center gap-1">
-                    <Button variant="secondary" size="sm" className="btn-icon !p-1 h-6 w-6" onClick={() => setCurrentDate(subMonths(currentDate, 1))}><ChevronLeft className="h-4 w-4" /></Button>
-                    <span className="font-medium min-w-[80px] text-center text-xs">{format(currentDate, 'MMMM yyyy')}</span>
-                    <Button variant="secondary" size="sm" className="btn-icon !p-1 h-6 w-6" onClick={() => setCurrentDate(addMonths(currentDate, 1))}><ChevronRight className="h-4 w-4" /></Button>
-                </div>
+                {isMobile ? (
+                    <div className="flex items-center gap-1.5">
+                        <button 
+                            onClick={() => setCurrentDate(subMonths(currentDate, 1))}
+                            className="h-7 w-7 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] flex items-center justify-center shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                            aria-label="Previous month"
+                        >
+                            <ChevronLeft className="h-4 w-4 stroke-[2.5]" />
+                        </button>
+                        <span className="font-bold min-w-[80px] text-center text-xs text-white">{format(currentDate, 'MMMM yyyy')}</span>
+                        <button 
+                            onClick={() => setCurrentDate(addMonths(currentDate, 1))}
+                            className="h-7 w-7 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] flex items-center justify-center shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                            aria-label="Next month"
+                        >
+                            <ChevronRight className="h-4 w-4 stroke-[2.5]" />
+                        </button>
+                    </div>
+                ) : (
+                    <div className="flex items-center gap-1">
+                        <Button variant="secondary" size="sm" className="btn-icon !p-1 h-6 w-6" onClick={() => setCurrentDate(subMonths(currentDate, 1))}><ChevronLeft className="h-4 w-4" /></Button>
+                        <span className="font-medium min-w-[80px] text-center text-xs">{format(currentDate, 'MMMM yyyy')}</span>
+                        <Button variant="secondary" size="sm" className="btn-icon !p-1 h-6 w-6" onClick={() => setCurrentDate(addMonths(currentDate, 1))}><ChevronRight className="h-4 w-4" /></Button>
+                    </div>
+                )}
             </div>
 
             {isLoading ? (

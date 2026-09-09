@@ -217,18 +217,18 @@ const MyReferralsPage: React.FC = () => {
   }
 
   return (
-    <div className={`animate-fade-in min-w-0 overflow-x-hidden min-h-screen ${isMobile ? 'bg-[#091c13] text-white p-4 pt-6 space-y-6 pb-24' : 'space-y-8 pb-32 md:pb-8'}`}>
+    <div className={`animate-fade-in min-w-0 overflow-x-hidden min-h-screen ${isMobile ? 'bg-[#041b0f] text-white p-4 pt-6 space-y-6 pb-24' : 'space-y-8 pb-32 md:pb-8'}`}>
       {/* Page Header */}
       <div className={`flex justify-between items-start sm:items-center ${isMobile ? 'flex-col gap-4' : 'flex-col sm:flex-row gap-6'}`}>
         <div className="w-full sm:w-auto">
           <h1 className={`font-bold tracking-tight ${isMobile ? 'text-xl text-white' : 'text-xl md:text-2xl text-primary-text'}`}>My Referrals</h1>
-          <p className={`mt-1 text-xs md:text-sm leading-relaxed ${isMobile ? 'text-white/60' : 'text-muted'}`}>Track your submitted candidates, business leads & bonus rewards</p>
+          <p className={`mt-1 text-xs md:text-sm leading-relaxed ${isMobile ? 'text-[#7D967B]' : 'text-muted'}`}>Track your submitted candidates, business leads & bonus rewards</p>
         </div>
         <div className="flex items-center gap-3 w-full sm:w-auto">
           <button
             onClick={handleRefresh}
             disabled={refreshing}
-            className={`flex items-center justify-center gap-2 transition-all active:scale-95 ${isMobile ? 'bg-[#182a20] border border-[#2a4536] text-white px-4 h-11 rounded-2xl text-xs font-bold' : 'btn btn-secondary btn-md shadow-sm'}`}
+            className={`flex items-center justify-center gap-2 transition-all active:scale-95 ${isMobile ? 'bg-[#1A2819] border border-[#2B3E2A] text-white px-4 h-11 rounded-2xl text-xs font-bold' : 'btn btn-secondary btn-md shadow-sm'}`}
           >
             <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
             <span>Refresh</span>

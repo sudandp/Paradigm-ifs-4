@@ -157,17 +157,17 @@ const HRCallQueue: React.FC = () => {
   });
 
   return (
-    <div className={`animate-fade-in min-w-0 overflow-x-hidden min-h-screen ${isMobile ? 'bg-[#091c13] text-white p-4 pt-6 space-y-6 pb-24' : 'space-y-8 pb-32 md:pb-8'}`}>
+    <div className={`animate-fade-in min-w-0 overflow-x-hidden min-h-screen ${isMobile ? 'bg-[#041b0f] text-white p-4 pt-6 space-y-6 pb-24' : 'space-y-8 pb-32 md:pb-8'}`}>
       {/* Header */}
       <div className={`flex justify-between items-start sm:items-center ${isMobile ? 'flex-col gap-4' : 'flex-col sm:flex-row gap-6'}`}>
         <div className="w-full sm:w-auto">
           <h1 className={`font-bold tracking-tight ${isMobile ? 'text-xl text-white' : 'text-xl md:text-2xl text-primary-text'}`}>HR Call Queue</h1>
-          <p className={`mt-1 text-xs md:text-sm leading-relaxed ${isMobile ? 'text-white/60' : 'text-muted'}`}>Manage recruitment pipeline & SLA follow-ups</p>
+          <p className={`mt-1 text-xs md:text-sm leading-relaxed ${isMobile ? 'text-[#7D967B]' : 'text-muted'}`}>Manage recruitment pipeline & SLA follow-ups</p>
         </div>
         <button
           onClick={handleRefresh}
           disabled={refreshing}
-          className={`flex items-center gap-2 transition-all active:scale-95 ${isMobile ? 'bg-[#006b3f] text-white px-5 py-2.5 rounded-full font-bold shadow-lg shadow-[#006b3f]/20 self-start' : 'btn btn-primary btn-md shadow-xl shadow-accent/20 hover:shadow-accent/40'}`}
+          className={`flex items-center gap-2 transition-all active:scale-95 ${isMobile ? 'bg-[#44D62C] text-[#0A1809] px-6 py-2.5 rounded-full font-bold shadow-lg shadow-[#44D62C]/25 hover:bg-[#3bc125] self-start' : 'btn btn-primary btn-md shadow-xl shadow-accent/20 hover:shadow-accent/40'}`}
         >
           <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
           <span>Refresh Queue</span>
@@ -179,19 +179,20 @@ const HRCallQueue: React.FC = () => {
         <StatCard isMobile={isMobile} icon={<Users className="w-5 h-5 md:w-6 md:h-6" />} label="Total Queue" value={totalCount} color="#3b82f6" trend="Active Pipeline" />
         <StatCard isMobile={isMobile} icon={<Flame className="w-5 h-5 md:w-6 md:h-6" />} label="Overdue" value={overdueCount} color="#ef4444" trend=">48h SLA" />
         <StatCard isMobile={isMobile} icon={<Target className="w-5 h-5 md:w-6 md:h-6" />} label="Today" value={todayCount} color="#f59e0b" trend="Scheduled" />
-        <StatCard isMobile={isMobile} icon={<TrendingUp className="w-5 h-5 md:w-6 md:h-6" />} label="Selected" value={selectedIds.length} color="#10b981" trend="For Assign" />
+        <StatCard isMobile={isMobile} icon={<TrendingUp className="w-5 h-5 md:w-6 md:h-6" />} label="Selected" value={selectedIds.length} color="#44D62C" trend="For Assign" />
       </div>
 
       {/* Reminders Alert Banner */}
       {reminders.length > 0 && (
-        <div className={`p-5 rounded-3xl border transition-all ${isMobile ? 'bg-[#182a20] border-[#2a4536] space-y-4' : 'bg-amber-50 border-amber-200 shadow-sm space-y-4'}`}>
+        <div className={`p-5 rounded-[24px] border transition-all ${isMobile ? 'bg-[#092c19] border-[#134426] shadow-[0_4px_16px_rgba(0,0,0,0.35)] space-y-4 relative overflow-hidden' : 'bg-amber-50 border-amber-200 shadow-sm space-y-4'}`}>
+          {isMobile && <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-[#44D62C]/25 to-transparent pointer-events-none" />}
           <div className="flex items-center gap-3">
             <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${isMobile ? 'bg-amber-500/20' : 'bg-amber-500/10'}`}>
               <Clock className={`w-5 h-5 ${isMobile ? 'text-amber-400' : 'text-amber-600'}`} />
             </div>
             <div>
               <h4 className={`text-sm font-bold ${isMobile ? 'text-white' : 'text-primary-text'}`}>Pending Callback Reminders</h4>
-              <p className={`text-xs ${isMobile ? 'text-white/50' : 'text-muted'}`}>Scheduled recruiter call follow-ups that require immediate action.</p>
+              <p className={`text-xs ${isMobile ? 'text-[#7D967B]' : 'text-muted'}`}>Scheduled recruiter call follow-ups that require immediate action.</p>
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -199,16 +200,16 @@ const HRCallQueue: React.FC = () => {
               <div
                 key={cand.id}
                 onClick={() => navigate(`/hrm/candidate/${cand.id}`)}
-                className={`p-3.5 rounded-2xl cursor-pointer border transition-all flex justify-between items-center group ${isMobile ? 'bg-[#121f17] border-[#2a4536] hover:bg-[#15251c]' : 'bg-white border-border hover:shadow-md hover:border-amber-300'}`}
+                className={`p-3.5 rounded-2xl cursor-pointer border transition-all flex justify-between items-center group ${isMobile ? 'bg-[#041b0f] border-[#134426] hover:bg-[#072414]' : 'bg-white border-border hover:shadow-md hover:border-amber-300'}`}
               >
                 <div className="min-w-0">
-                  <p className={`text-xs font-bold truncate group-hover:text-emerald-500 transition-colors ${isMobile ? 'text-white' : 'text-primary-text'}`}>{cand.candidateName}</p>
-                  <p className={`text-[10px] uppercase font-bold tracking-widest mt-0.5 ${isMobile ? 'text-white/40' : 'text-muted'}`}>{cand.candidateRole}</p>
+                  <p className={`text-xs font-bold truncate group-hover:text-[#44D62C] transition-colors ${isMobile ? 'text-white' : 'text-primary-text'}`}>{cand.candidateName}</p>
+                  <p className={`text-[10px] uppercase font-bold tracking-widest mt-0.5 ${isMobile ? 'text-[#7D967B]' : 'text-muted'}`}>{cand.candidateRole}</p>
                   <p className={`text-[9px] font-mono mt-1 ${isMobile ? 'text-amber-400/80' : 'text-amber-600 font-bold'}`}>
                     Due: {new Date(cand.lastCall!.nextCallAt!).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                   </p>
                 </div>
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition-colors ${isMobile ? 'bg-white/5 group-hover:bg-emerald-500 text-white/30 group-hover:text-white' : 'bg-slate-50 group-hover:bg-emerald-500 text-slate-400 group-hover:text-white'}`}>
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition-colors ${isMobile ? 'bg-white/5 group-hover:bg-[#44D62C] text-white/40 group-hover:text-[#0A1809]' : 'bg-slate-50 group-hover:bg-emerald-500 text-slate-400 group-hover:text-white'}`}>
                   <ChevronRight className="w-4 h-4" />
                 </div>
               </div>
@@ -218,19 +219,20 @@ const HRCallQueue: React.FC = () => {
       )}
 
       {/* Controls */}
-      <div className={`flex flex-col lg:flex-row gap-4 items-stretch lg:items-center ${isMobile ? 'bg-[#182a20] rounded-[24px] border border-[#2a4536] p-4 shadow-sm' : 'bg-white md:bg-white backdrop-blur-xl md:backdrop-blur-none p-3 md:p-5 rounded-3xl border border-border md:border-border shadow-sm md:shadow-sm max-md:bg-[#0d2c18]/40 max-md:border-white/5 max-md:shadow-2xl'}`}>
+      <div className={`flex flex-col lg:flex-row gap-4 items-stretch lg:items-center ${isMobile ? 'bg-[#092c19] rounded-[24px] border border-[#134426] p-4 shadow-[0_4px_16px_rgba(0,0,0,0.35)] relative overflow-hidden' : 'bg-white md:bg-white backdrop-blur-xl md:backdrop-blur-none p-3 md:p-5 rounded-3xl border border-border md:border-border shadow-sm md:shadow-sm max-md:bg-[#0d2c18]/40 max-md:border-white/5 max-md:shadow-2xl'}`}>
+        {isMobile && <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-[#44D62C]/25 to-transparent pointer-events-none" />}
         <div className="relative flex-1 group">
-          <Search className={`absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 md:w-5 md:h-5 transition-colors ${isMobile ? 'text-white/40' : 'text-muted group-focus-within:text-emerald-500 max-md:text-white/20'}`} />
+          <Search className={`absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 md:w-5 md:h-5 transition-colors ${isMobile ? 'text-[#7D967B]' : 'text-muted group-focus-within:text-emerald-500 max-md:text-white/20'}`} />
           <input
             type="text"
             placeholder="Search candidates..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className={`w-full h-11 md:h-12 rounded-2xl pl-11 md:pl-12 pr-4 text-sm md:text-base outline-none transition-all ${isMobile ? 'bg-[#121f17] border border-transparent text-white placeholder:text-white/30 focus:bg-[#15251c]' : 'bg-white md:bg-white border border-border md:border-border text-primary-text md:text-primary-text placeholder:text-muted md:placeholder:text-muted focus:ring-2 focus:ring-emerald-500/20 max-md:bg-white/[0.05] max-md:border-transparent max-md:text-white max-md:placeholder:text-white/20 max-md:focus:bg-white/[0.08]'}`}
+            className={`w-full h-11 md:h-12 rounded-2xl pl-11 md:pl-12 pr-4 text-sm md:text-base outline-none transition-all ${isMobile ? 'bg-[#041b0f] border border-[#134426] text-white placeholder:text-[#7D967B] focus:border-[#44D62C] focus:bg-[#072414]' : 'bg-white md:bg-white border border-border md:border-border text-primary-text md:text-primary-text placeholder:text-muted md:placeholder:text-muted focus:ring-2 focus:ring-emerald-500/20 max-md:bg-white/[0.05] max-md:border-transparent max-md:text-white max-md:placeholder:text-white/20 max-md:focus:bg-white/[0.08]'}`}
           />
         </div>
         <div className="flex items-center gap-3 overflow-x-auto no-scrollbar">
-          <div className={`flex p-1 rounded-2xl border ${isMobile ? 'bg-[#0a140f] border-transparent' : 'bg-page border-border md:bg-page md:border-border max-md:bg-white/[0.05] max-md:border-white/5'}`}>
+          <div className={`flex p-1 rounded-2xl border ${isMobile ? 'bg-[#041b0f] border-[#134426]' : 'bg-page border-border md:bg-page md:border-border max-md:bg-white/[0.05] max-md:border-white/5'}`}>
             {[
               { id: 'mine', label: 'My Queue' },
               { id: 'all', label: 'All' },
@@ -242,8 +244,8 @@ const HRCallQueue: React.FC = () => {
                 onClick={() => setFilterType(tab.id as any)}
                 className={`whitespace-nowrap px-4 py-2.5 rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all ${
                   filterType === tab.id
-                    ? (isMobile ? 'bg-[#00a859] text-white shadow-lg' : 'bg-emerald-500 text-white md:bg-accent md:text-white shadow-lg shadow-emerald-500/20')
-                    : (isMobile ? 'text-white/40 hover:text-white' : 'text-muted md:text-muted hover:text-primary-text md:hover:text-primary-text max-md:text-white/40')
+                    ? (isMobile ? 'bg-[#44D62C] text-[#0A1809] font-bold shadow-md shadow-[#44D62C]/20' : 'bg-emerald-500 text-white md:bg-accent md:text-white shadow-lg shadow-emerald-500/20')
+                    : (isMobile ? 'text-[#7D967B] hover:text-white' : 'text-muted md:text-muted hover:text-primary-text md:hover:text-primary-text max-md:text-white/40')
                 }`}
               >
                 {tab.label}
@@ -255,23 +257,23 @@ const HRCallQueue: React.FC = () => {
 
       {/* Bulk Assignment panel */}
       {selectedIds.length > 0 && (
-        <div className={`flex flex-col md:flex-row justify-between items-start md:items-center p-5 gap-4 rounded-3xl transition-all animate-fade-in ${isMobile ? 'bg-[#182a20] border border-[#2a4536]' : 'bg-emerald-50/80 border border-emerald-200/60 shadow-sm'}`}>
+        <div className={`flex flex-col md:flex-row justify-between items-start md:items-center p-5 gap-4 rounded-[24px] transition-all animate-fade-in ${isMobile ? 'bg-[#092c19] border border-[#134426] shadow-[0_4px_16px_rgba(0,0,0,0.35)]' : 'bg-emerald-50/80 border border-emerald-200/60 shadow-sm'}`}>
           <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${isMobile ? 'bg-emerald-500/20' : 'bg-emerald-500/10'}`}>
-              <UserCheck className={`w-5 h-5 ${isMobile ? 'text-emerald-400' : 'text-emerald-600'}`} />
+            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${isMobile ? 'bg-[#44D62C]/20' : 'bg-emerald-500/10'}`}>
+              <UserCheck className={`w-5 h-5 ${isMobile ? 'text-[#44D62C]' : 'text-emerald-600'}`} />
             </div>
             <div>
               <p className={`text-sm font-bold ${isMobile ? 'text-white' : 'text-primary-text'}`}>
                 {selectedIds.length} candidate(s) selected
               </p>
-              <p className={`text-xs ${isMobile ? 'text-white/50' : 'text-muted'}`}>Assign selected to a recruiter</p>
+              <p className={`text-xs ${isMobile ? 'text-[#7D967B]' : 'text-muted'}`}>Assign selected to a recruiter</p>
             </div>
           </div>
           <div className="flex items-center gap-3 w-full md:w-auto">
             <select
               value={assigneeId}
               onChange={(e) => setAssigneeId(e.target.value)}
-              className={`h-11 px-3 rounded-2xl text-sm outline-none flex-1 md:flex-none ${isMobile ? 'bg-[#121f17] border border-[#2a4536] text-white' : 'bg-white border border-border text-primary-text'}`}
+              className={`h-11 px-3 rounded-2xl text-sm outline-none flex-1 md:flex-none ${isMobile ? 'bg-[#041b0f] border border-[#134426] text-white' : 'bg-white border border-border text-primary-text'}`}
             >
               <option value="">Select Recruiter...</option>
               {hrUsers.map((hr) => (
@@ -307,41 +309,42 @@ const HRCallQueue: React.FC = () => {
 
       {/* Empty State */}
       {!loading && filteredCandidates.length === 0 && (
-        <div className={`text-center py-20 rounded-3xl border border-dashed ${isMobile ? 'border-[#2a4536] bg-[#182a20]' : 'border-border bg-white'}`}>
-          <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 border border-dashed ${isMobile ? 'bg-white/[0.05] border-white/10' : 'bg-page border-border'}`}>
-            <Search className={`w-8 h-8 ${isMobile ? 'text-white/10' : 'text-muted/30'}`} />
+        <div className={`text-center py-20 rounded-[24px] border ${isMobile ? 'border-[#134426] bg-[#092c19] shadow-[0_4px_16px_rgba(0,0,0,0.35)] relative overflow-hidden' : 'border-dashed border-border bg-white'}`}>
+          {isMobile && <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-[#44D62C]/25 to-transparent pointer-events-none" />}
+          <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 border ${isMobile ? 'bg-[#041b0f] border-[#134426]' : 'bg-page border-border border-dashed'}`}>
+            <Search className={`w-8 h-8 ${isMobile ? 'text-[#7D967B]/60' : 'text-muted/30'}`} />
           </div>
           <p className={`text-lg font-bold ${isMobile ? 'text-white' : 'text-primary-text'}`}>No candidates in queue</p>
-          <p className={`text-sm mt-1 ${isMobile ? 'text-white/30' : 'text-muted'}`}>All follow-ups completed or queue matches filters</p>
+          <p className={`text-sm mt-1 ${isMobile ? 'text-[#7D967B]' : 'text-muted'}`}>All follow-ups completed or queue matches filters</p>
         </div>
       )}
 
       {/* Table View */}
       {!loading && filteredCandidates.length > 0 && (
-        <div className={`overflow-hidden ${isMobile ? 'bg-[#182a20] rounded-[24px] border border-[#2a4536] shadow-2xl' : 'bg-white rounded-3xl border border-border shadow-sm'} pb-4`}>
+        <div className={`overflow-hidden ${isMobile ? 'bg-[#092c19] rounded-[24px] border border-[#134426] shadow-[0_4px_16px_rgba(0,0,0,0.35)]' : 'bg-white rounded-3xl border border-border shadow-sm'} pb-4`}>
           <div className="overflow-x-auto no-scrollbar">
             <table className="w-full text-sm">
               <thead>
-                <tr className={`border-b ${isMobile ? 'bg-[#0a140f] border-[#2a4536]' : 'bg-page border-border'}`}>
+                <tr className={`border-b ${isMobile ? 'bg-[#041b0f] border-[#134426]' : 'bg-page border-border'}`}>
                   <th className="text-left px-4 md:px-5 py-5 w-12">
                     <button onClick={toggleSelectAll} className={`p-1 rounded-lg transition-colors ${isMobile ? 'hover:bg-white/5' : 'hover:bg-slate-100'}`}>
                       {selectedIds.length === filteredCandidates.length ? (
-                        <CheckSquare className={`w-4 h-4 ${isMobile ? 'text-emerald-400' : 'text-emerald-600'}`} />
+                        <CheckSquare className={`w-4 h-4 ${isMobile ? 'text-[#44D62C]' : 'text-emerald-600'}`} />
                       ) : (
                         <Square className={`w-4 h-4 ${isMobile ? 'text-white/30' : 'text-muted'}`} />
                       )}
                     </button>
                   </th>
-                  <th className={`text-left px-4 md:px-5 py-5 font-black uppercase tracking-widest text-[10px] ${isMobile ? 'text-white/40' : 'text-muted'}`}>Candidate / Role</th>
-                  <th className={`text-left px-4 md:px-5 py-5 font-black uppercase tracking-widest text-[10px] hidden md:table-cell ${isMobile ? 'text-white/40' : 'text-muted'}`}>Referrer</th>
-                  <th className={`text-left px-4 md:px-5 py-5 font-black uppercase tracking-widest text-[10px] hidden md:table-cell ${isMobile ? 'text-white/40' : 'text-muted'}`}>Assigned To</th>
-                  <th className={`text-left px-4 md:px-5 py-5 font-black uppercase tracking-widest text-[10px] ${isMobile ? 'text-white/40' : 'text-muted'}`}>Stage</th>
-                  <th className={`text-left px-4 md:px-5 py-5 font-black uppercase tracking-widest text-[10px] hidden lg:table-cell ${isMobile ? 'text-white/40' : 'text-muted'}`}>Last Contact</th>
-                  <th className={`text-left px-4 md:px-5 py-5 font-black uppercase tracking-widest text-[10px] hidden lg:table-cell ${isMobile ? 'text-white/40' : 'text-muted'}`}>Timeline</th>
-                  <th className={`text-left px-4 md:px-5 py-5 font-black uppercase tracking-widest text-[10px] ${isMobile ? 'text-white/40' : 'text-muted'}`}></th>
+                  <th className={`text-left px-4 md:px-5 py-5 font-black uppercase tracking-widest text-[10px] ${isMobile ? 'text-[#7D967B]' : 'text-muted'}`}>Candidate / Role</th>
+                  <th className={`text-left px-4 md:px-5 py-5 font-black uppercase tracking-widest text-[10px] hidden md:table-cell ${isMobile ? 'text-[#7D967B]' : 'text-muted'}`}>Referrer</th>
+                  <th className={`text-left px-4 md:px-5 py-5 font-black uppercase tracking-widest text-[10px] hidden md:table-cell ${isMobile ? 'text-[#7D967B]' : 'text-muted'}`}>Assigned To</th>
+                  <th className={`text-left px-4 md:px-5 py-5 font-black uppercase tracking-widest text-[10px] ${isMobile ? 'text-[#7D967B]' : 'text-muted'}`}>Stage</th>
+                  <th className={`text-left px-4 md:px-5 py-5 font-black uppercase tracking-widest text-[10px] hidden lg:table-cell ${isMobile ? 'text-[#7D967B]' : 'text-muted'}`}>Last Contact</th>
+                  <th className={`text-left px-4 md:px-5 py-5 font-black uppercase tracking-widest text-[10px] hidden lg:table-cell ${isMobile ? 'text-[#7D967B]' : 'text-muted'}`}>Timeline</th>
+                  <th className={`text-left px-4 md:px-5 py-5 font-black uppercase tracking-widest text-[10px] ${isMobile ? 'text-[#7D967B]' : 'text-muted'}`}></th>
                 </tr>
               </thead>
-              <tbody className={`divide-y ${isMobile ? 'divide-[#2a4536]' : 'divide-border'}`}>
+              <tbody className={`divide-y ${isMobile ? 'divide-[#134426]' : 'divide-border'}`}>
                 {filteredCandidates.map((cand) => {
                   const isSelected = selectedIds.includes(cand.id);
                   const createdDate = new Date(cand.createdAt).toLocaleDateString('en-IN', {
@@ -355,7 +358,7 @@ const HRCallQueue: React.FC = () => {
                       onClick={() => navigate(`/hrm/candidate/${cand.id}`)}
                       className={`cursor-pointer transition-colors group ${
                         isMobile
-                          ? (isSelected ? 'bg-emerald-500/5' : 'hover:bg-white/[0.02]')
+                          ? (isSelected ? 'bg-[#44D62C]/10' : 'hover:bg-[#041b0f]/60')
                           : (isSelected ? 'bg-emerald-50/30' : 'hover:bg-accent/[0.02]')
                       }`}
                     >
@@ -443,25 +446,26 @@ const HRCallQueue: React.FC = () => {
   );
 };
 
-// Stat Card - Matches CRM design language
+// Stat Card - Matches CRM design language with rich emerald forest theme
 const StatCard: React.FC<{ icon: React.ReactNode; label: string; value: number; color: string; trend?: string; isMobile?: boolean }> = ({ icon, label, value, color, trend, isMobile }) => (
-  <div className={`relative overflow-hidden group hover:shadow-lg transition-all duration-300 ${isMobile ? 'bg-[#182a20] rounded-[24px] border border-[#2a4536] p-4' : 'bg-white rounded-3xl border border-border p-4 md:p-5 shadow-sm'}`}>
+  <div className={`relative overflow-hidden group hover:shadow-lg transition-all duration-300 ${isMobile ? 'bg-[#092c19] rounded-[24px] border border-[#134426] shadow-[0_4px_16px_rgba(0,0,0,0.35)] p-4 relative' : 'bg-white rounded-3xl border border-border p-4 md:p-5 shadow-sm'}`}>
+    {isMobile && <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-[#44D62C]/25 to-transparent pointer-events-none" />}
     <div className={`absolute top-0 right-0 p-3 transition-opacity ${isMobile ? 'opacity-5 group-hover:opacity-10' : 'opacity-[0.05] group-hover:opacity-[0.08]'}`}>
       {React.cloneElement(icon as React.ReactElement, { className: 'w-16 h-16 md:w-20 md:h-20' } as any)}
     </div>
-    <div className="flex items-center gap-3 md:gap-4 mb-3 md:mb-4">
-      <div className="w-10 h-10 md:w-12 md:h-12 rounded-2xl flex items-center justify-center shadow-inner" style={{ backgroundColor: `${color}15` }}>
+    <div className="flex items-center gap-3 md:gap-4 mb-3 md:mb-4 relative z-10">
+      <div className="w-10 h-10 md:w-12 md:h-12 rounded-2xl flex items-center justify-center shadow-inner" style={{ backgroundColor: isMobile ? '#041b0f' : `${color}15`, border: isMobile ? '1px solid #134426' : 'none' }}>
         <div style={{ color }}>{icon}</div>
       </div>
       <div className="min-w-0">
-        <p className={`text-[9px] md:text-xs font-black uppercase tracking-widest truncate ${isMobile ? 'text-white/60' : 'text-muted'}`}>{label}</p>
+        <p className={`text-[9px] md:text-xs font-black uppercase tracking-widest truncate ${isMobile ? 'text-[#7D967B]' : 'text-muted'}`}>{label}</p>
         <p className={`text-lg md:text-2xl font-black mt-0.5 ${isMobile ? 'text-white' : 'text-primary-text'}`}>{value}</p>
       </div>
     </div>
     {trend && (
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1.5 relative z-10">
         <div className="w-1 h-1 rounded-full animate-pulse" style={{ backgroundColor: color }} />
-        <p className={`text-[8px] md:text-[10px] font-black uppercase tracking-tighter ${isMobile ? 'text-white/40' : 'text-muted'}`}>{trend}</p>
+        <p className={`text-[8px] md:text-[10px] font-black uppercase tracking-tighter ${isMobile ? 'text-[#7D967B]' : 'text-muted'}`}>{trend}</p>
       </div>
     )}
   </div>
