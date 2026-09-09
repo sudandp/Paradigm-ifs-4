@@ -45,63 +45,128 @@ import LeaveDetailsModal from '../../components/modals/LeaveDetailsModal';
 
 // --- Reusable Components ---
 
-const LeaveBalanceCard: React.FC<{ title: string; value: string; icon: React.ElementType; isExpired?: boolean; description?: string; isLoading?: boolean; onViewDetails?: () => void; infoMessage?: string }> = ({ title, value, icon: Icon, isExpired, description, isLoading, onViewDetails, infoMessage }) => {
-    const isMobileCard = useMediaQuery('(max-width: 767px)');
+const LeaveBalanceCard: React.FC<{ 
+    title: string; 
+    value: string; 
+    icon: React.ElementType; 
+    isExpired?: boolean; 
+    description?: string; 
+    isLoading?: boolean; 
+    onViewDetails?: () => void; 
+    infoMessage?: string;
+    isFeatured?: boolean;
+}> = ({ title, value, icon: Icon, isExpired, description, isLoading, onViewDetails, infoMessage, isFeatured }) => {
     const [showInfo, setShowInfo] = useState(false);
     
     return (
-    <div className={`relative p-3.5 md:p-4 rounded-2xl flex flex-col lg:flex-row items-center lg:items-center gap-2 md:gap-4 border text-center lg:text-left w-full h-full justify-center lg:justify-start ${
+    <div className={`relative p-3.5 md:p-4 rounded-2xl border transition-all duration-200 shadow-xs hover:shadow-md w-full h-full flex flex-col justify-between ${
         isExpired
-            ? 'border-amber-500/50 bg-amber-500/5'
-            : isMobileCard
-                ? 'bg-[#092c19] border-[#134426] shadow-sm'
-                : 'bg-card border-border'
+            ? 'border-amber-500/50 bg-amber-500/5 dark:bg-amber-950/20'
+            : 'bg-white dark:bg-[#092c19] border-slate-200/80 dark:border-[#134426] hover:border-slate-300 dark:hover:border-[#44D62C]/40'
     }`}>
-        {onViewDetails && !isLoading && (
-            <button 
-                onClick={onViewDetails} 
-                className="absolute top-2 right-2 p-1.5 rounded-full hover:bg-black/5 text-muted-foreground hover:text-primary transition-colors z-10"
-                title="View Timeline"
-            >
-                <Eye className="w-4 h-4 md:w-5 md:h-5 text-red-500" />
-            </button>
-        )}
-        <div className={`${isExpired ? 'bg-amber-100 dark:bg-amber-950/40' : isMobileCard ? 'bg-[#041b0f] text-[#44D62C] border border-[#134426]' : 'bg-accent-light'} p-2.5 rounded-xl flex-shrink-0`}>
-            {isLoading ? (
-                <div className="h-5 w-5 md:h-6 md:w-6 animate-pulse bg-gray-200 rounded-full" />
-            ) : (
-                <Icon className={`h-5 w-5 md:h-6 md:w-6 ${isExpired ? 'text-amber-600' : 'text-accent-dark'}`} />
+        {/* Actions (View Timeline Eye & Info Modal) */}
+        <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5 z-10">
+            {infoMessage && (
+                <div className="relative flex items-center">
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setShowInfo(true);
+                        }}
+                        className="p-1 rounded-full text-slate-400 hover:text-slate-600 dark:text-white/50 dark:hover:text-[#44D62C] transition-colors"
+                        title={`${title} Info`}
+                    >
+                        <Info className="w-3.5 h-3.5" />
+                    </button>
+                    <Modal isOpen={showInfo} onClose={() => setShowInfo(false)} title={`${title} Info`}>
+                        <div className="p-5 text-sm text-slate-800 dark:text-white/90 leading-relaxed">
+                            {infoMessage}
+                        </div>
+                    </Modal>
+                </div>
+            )}
+            {onViewDetails && !isLoading && (
+                <button 
+                    type="button"
+                    onClick={onViewDetails} 
+                    className="p-1.5 rounded-full bg-red-500/10 hover:bg-red-500/20 text-red-500 dark:text-red-400 border border-red-500/20 transition-colors"
+                    title="View Timeline"
+                >
+                    <Eye className="w-3.5 h-3.5" />
+                </button>
             )}
         </div>
-        <div className="flex-1 w-full text-center lg:text-left flex flex-col items-center lg:items-start">
-            <div className="flex items-center justify-center lg:justify-start gap-2">
-                <p className="text-xs md:text-sm text-muted font-medium">{title}</p>
-                {isExpired && <span className="text-[10px] bg-amber-500 text-white px-1.5 py-0.5 rounded-full font-bold uppercase">Expired</span>}
-                {infoMessage && (
-                    <div className="relative flex items-center">
-                        <Info 
-                            className="w-3.5 h-3.5 text-muted-foreground hover:text-primary cursor-pointer transition-colors" 
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                setShowInfo(true);
-                            }}
-                        />
-                        <Modal isOpen={showInfo} onClose={() => setShowInfo(false)} title={`${title} Info`}>
-                            <div className="p-5 text-sm text-primary-text leading-relaxed">
-                                {infoMessage}
-                            </div>
-                        </Modal>
+
+        {isFeatured ? (
+            /* Featured layout on mobile (Full-width row) / Standard horizontal on desktop */
+            <div className="flex flex-row items-center justify-between gap-3 w-full h-full pr-2">
+                <div className="flex items-center gap-3 min-w-0">
+                    <div className={`p-2.5 rounded-xl flex-shrink-0 border ${
+                        isExpired 
+                            ? 'bg-amber-100 dark:bg-amber-950/60 border-amber-200 dark:border-amber-800/60 text-amber-600 dark:text-amber-400' 
+                            : 'bg-emerald-50 dark:bg-[#041b0f] border-emerald-100 dark:border-[#134426] text-emerald-600 dark:text-[#44D62C]'
+                    }`}>
+                        {isLoading ? (
+                            <div className="h-5 w-5 md:h-6 md:w-6 animate-pulse bg-slate-200 dark:bg-slate-700 rounded-full" />
+                        ) : (
+                            <Icon className="h-5 w-5 md:h-6 md:w-6" />
+                        )}
                     </div>
-                )}
+                    <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs md:text-sm font-bold text-slate-500 dark:text-white/70 uppercase tracking-wider">{title}</span>
+                            {isExpired && <span className="text-[10px] bg-amber-500 text-white px-1.5 py-0.5 rounded-full font-bold uppercase">Expired</span>}
+                        </div>
+                        {description && !isLoading && (
+                            <p className="text-[10px] md:text-xs text-slate-500 dark:text-[#a3c4b1] mt-0.5 leading-snug line-clamp-1">{description}</p>
+                        )}
+                    </div>
+                </div>
+                <div className="flex-shrink-0">
+                    {isLoading ? (
+                        <div className="h-7 md:h-8 w-16 bg-slate-100 dark:bg-slate-800 animate-pulse rounded" />
+                    ) : (
+                        <div className={`text-2xl md:text-3xl font-black ${isExpired ? 'text-amber-600 dark:text-amber-400' : 'text-slate-900 dark:text-white'}`}>
+                            {value}
+                        </div>
+                    )}
+                </div>
             </div>
-            {isLoading ? (
-                <div className="h-7 md:h-8 w-24 bg-gray-100 animate-pulse rounded mt-1 mx-auto lg:mx-0" />
-            ) : (
-                <p className={`text-lg md:text-2xl font-bold ${isExpired ? 'text-amber-600' : 'text-primary-text'}`}>{value}</p>
-            )}
-            {description && !isLoading && <p className="text-[9px] md:text-xs text-muted-foreground mt-1 text-center lg:text-left">{description}</p>}
-            {isLoading && <div className="h-3 w-32 bg-gray-50 animate-pulse rounded mt-2 mx-auto lg:mx-0" />}
-        </div>
+        ) : (
+            /* Standard Grid Card: Vertical on Mobile, Horizontal on Desktop */
+            <div className="flex flex-col lg:flex-row items-start lg:items-center gap-2 md:gap-4 w-full h-full text-left">
+                <div className={`p-2.5 rounded-xl flex-shrink-0 border ${
+                    isExpired 
+                        ? 'bg-amber-100 dark:bg-amber-950/60 border-amber-200 dark:border-amber-800/60 text-amber-600 dark:text-amber-400' 
+                        : 'bg-emerald-50 dark:bg-[#041b0f] border-emerald-100 dark:border-[#134426] text-emerald-600 dark:text-[#44D62C]'
+                }`}>
+                    {isLoading ? (
+                        <div className="h-5 w-5 md:h-6 md:w-6 animate-pulse bg-slate-200 dark:bg-slate-700 rounded-full" />
+                    ) : (
+                        <Icon className="h-5 w-5 md:h-6 md:w-6" />
+                    )}
+                </div>
+                <div className="flex-1 w-full min-w-0">
+                    <div className="flex items-center gap-1.5">
+                        <span className="text-xs md:text-sm font-bold text-slate-500 dark:text-white/70 uppercase tracking-wider truncate">{title}</span>
+                        {isExpired && <span className="text-[10px] bg-amber-500 text-white px-1.5 py-0.5 rounded-full font-bold uppercase">Expired</span>}
+                    </div>
+                    {isLoading ? (
+                        <div className="h-6 md:h-7 w-20 bg-slate-100 dark:bg-slate-800 animate-pulse rounded mt-1" />
+                    ) : (
+                        <div className={`text-xl md:text-2xl font-black mt-0.5 ${isExpired ? 'text-amber-600 dark:text-amber-400' : 'text-slate-900 dark:text-white'}`}>
+                            {value}
+                        </div>
+                    )}
+                    {description && !isLoading && (
+                        <p className="text-[10px] md:text-xs text-slate-500 dark:text-[#a3c4b1] mt-1 leading-snug line-clamp-2">
+                            {description}
+                        </p>
+                    )}
+                </div>
+            </div>
+        )}
     </div>
     );
 };
@@ -1306,35 +1371,59 @@ const LeaveDashboard: React.FC = () => {
                 </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
-                {balanceCards.map(b => <div key={b.title} className="w-full h-full flex"><LeaveBalanceCard {...b} /></div>)}
-                {/* Show Overtime card only if OT conversion is enabled for the user's role */}
-                {isOtConversionEnabled && (
-                    <div className="relative group w-full h-full flex">
-                        <LeaveBalanceCard 
-                            title="Monthly OT Hours" 
-                            value={formatPreciseHours(calculatedOTHours || user?.monthlyOtHours || 0)} 
-                            description={`Calculated from hours exceeding ${threshold}h daily.`}
-                            icon={Clock} 
-                            isLoading={isLoading}
-                        />
-                        {/* Position tooltip below or above so it doesn't overlap text, and use solid bg-card */}
-                        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none">
-                            <div className="bg-card text-primary-text text-[10px] p-3 rounded-lg shadow-xl border border-border w-56 relative text-center lg:text-left">
-                                {/* Small triangle arrow at the top */}
-                                <div className="absolute -top-2 left-1/2 -translate-x-1/2 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[8px] border-b-border" />
-                                <div className="absolute -top-[7px] left-1/2 -translate-x-1/2 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[8px] border-b-card" />
-                                
-                                <p className="font-bold border-b border-border mb-1.5 pb-1">OT Accumulation</p>
-                                <p className="mb-1">Current Bank: <span className="text-accent-dark font-bold text-[11px]">
-                                    {formatPreciseHours(user?.otHoursBank || 0)}
-                                </span></p>
-                                <p className="text-muted-foreground italic leading-tight">Every 8h of accumulated OT is automatically converted to 1 Comp Off.</p>
+            {(() => {
+                const totalCardsCount = balanceCards.length + (isOtConversionEnabled ? 1 : 0);
+                const isOdd = totalCardsCount % 2 !== 0;
+                // If odd, give Monthly Pay Days full-width on mobile (col-span-2) so the grid remains balanced
+                const hasMonthlyPayDays = balanceCards.some(b => b.title === 'Monthly Pay Days');
+
+                return (
+                    <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 lg:gap-6">
+                        {balanceCards.map((b, idx) => {
+                            const isFeaturedCard = isOdd && (
+                                hasMonthlyPayDays 
+                                    ? b.title === 'Monthly Pay Days' 
+                                    : idx === balanceCards.length - 1
+                            );
+
+                            return (
+                                <div 
+                                    key={b.title} 
+                                    className={`w-full h-full flex ${isFeaturedCard ? 'col-span-2 lg:col-span-1' : 'col-span-1'}`}
+                                >
+                                    <LeaveBalanceCard {...b} isFeatured={isFeaturedCard} />
+                                </div>
+                            );
+                        })}
+                        {/* Show Overtime card only if OT conversion is enabled for the user's role */}
+                        {isOtConversionEnabled && (
+                            <div className="relative group w-full h-full flex col-span-1">
+                                <LeaveBalanceCard 
+                                    title="Monthly OT Hours" 
+                                    value={formatPreciseHours(calculatedOTHours || user?.monthlyOtHours || 0)} 
+                                    description={`Calculated from hours exceeding ${threshold}h daily.`}
+                                    icon={Clock} 
+                                    isLoading={isLoading}
+                                />
+                                {/* Position tooltip below or above so it doesn't overlap text, and use solid bg-card */}
+                                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none">
+                                    <div className="bg-white dark:bg-[#092c19] text-slate-800 dark:text-white text-[10px] p-3 rounded-lg shadow-xl border border-slate-200 dark:border-[#134426] w-56 relative text-center lg:text-left">
+                                        {/* Small triangle arrow at the top */}
+                                        <div className="absolute -top-2 left-1/2 -translate-x-1/2 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[8px] border-b-slate-200 dark:border-b-[#134426]" />
+                                        <div className="absolute -top-[7px] left-1/2 -translate-x-1/2 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[8px] border-b-white dark:border-b-[#092c19]" />
+                                        
+                                        <p className="font-bold border-b border-slate-200 dark:border-[#134426] mb-1.5 pb-1">OT Accumulation</p>
+                                        <p className="mb-1">Current Bank: <span className="text-emerald-600 dark:text-[#44D62C] font-bold text-[11px]">
+                                            {formatPreciseHours(user?.otHoursBank || 0)}
+                                        </span></p>
+                                        <p className="text-slate-500 dark:text-[#a3c4b1] italic leading-tight">Every 8h of accumulated OT is automatically converted to 1 Comp Off.</p>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
+                        )}
                     </div>
-                )}
-            </div>
+                );
+            })()}
 
             {/* Maternity & Child Care Cards */}
             {maternityCards.length > 0 && (
