@@ -425,8 +425,15 @@ export async function runSchedulerTick(supabase: SupabaseClient) {
       for (const rule of activeEmailRules) {
         const targetTime = rule.schedule_config?.time || '09:00';
         if (targetTime === currentIstTime) {
-          const lastSent = rule.last_sent_at ? getISTDateString(new Date(rule.last_sent_at)) : null;
-          if (lastSent !== currentIstDate) {
+          let alreadySentTodayForSlot = false;
+          if (rule.last_sent_at) {
+            const lastSentDate = getISTDateString(new Date(rule.last_sent_at));
+            const lastSentTime = getISTTimeString(new Date(rule.last_sent_at));
+            if (lastSentDate === currentIstDate && lastSentTime >= targetTime) {
+              alreadySentTodayForSlot = true;
+            }
+          }
+          if (!alreadySentTodayForSlot) {
             await dispatchEmailSchedule(supabase, rule, false);
           }
         }

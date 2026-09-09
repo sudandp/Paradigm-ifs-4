@@ -5862,7 +5862,7 @@ export const api = {
     if (rule.id) {
       const { data, error } = await supabase
         .from('email_schedule_rules')
-        .update({ ...payload, updated_at: new Date().toISOString() })
+        .update({ ...payload, last_sent_at: null, updated_at: new Date().toISOString() })
         .eq('id', rule.id)
         .select()
         .single();

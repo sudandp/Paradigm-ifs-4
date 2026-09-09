@@ -128,7 +128,7 @@ const reportGenerators = {
     const endOfTodayUTC = new Date(`${todayStr}T23:59:59.999+05:30`);
     const [settingsRes, usersRes, eventsRes, leavesRes] = await Promise.all([
       supabase.from('settings').select('attendance_settings').eq('id', 'singleton').maybeSingle(),
-      supabase.from('users').select('id, name, biometric_id, location, location_name, society_name, department, is_blocked, status, role:roles(display_name)'),
+      supabase.from('users').select('id, name, biometric_id, society_id, society_name, location_id, is_blocked, status, role_id, role:roles(display_name)').neq('role_id', 'unverified'),
       supabase.from('attendance_events')
         .select('user_id, type, timestamp')
         .gte('timestamp', startOfTodayUTC.toISOString())
@@ -204,7 +204,7 @@ const reportGenerators = {
       if (filters.filterEmployeeLocation && filters.filterEmployeeLocation !== 'All') {
         const locQ = String(filters.filterEmployeeLocation).trim().toLowerCase();
         targetUsers = targetUsers.filter((u: any) => {
-          const loc = (u.location_name || u.location || '').toLowerCase();
+          const loc = (u.society_name || u.location_id || '').toLowerCase();
           return loc.includes(locQ);
         });
       }
@@ -223,7 +223,7 @@ const reportGenerators = {
     if (filters?.filterDepartmentEnabled && Array.isArray(filters.filterDepartments) && filters.filterDepartments.length > 0) {
       const allowedDepts = filters.filterDepartments.map((d: string) => d.trim().toLowerCase());
       targetUsers = targetUsers.filter((u: any) => {
-        const dept = (u.location_name || u.location || u.department || '').toLowerCase();
+        const dept = (u.society_name || u.location_id || u.organization_name || '').toLowerCase();
         return allowedDepts.some((ad: string) => dept.includes(ad) || ad.includes(dept));
       });
     }
@@ -341,7 +341,7 @@ const reportGenerators = {
 
     const [settingsRes, usersRes, snapshotsRes, eventsRes, leavesRes, holidaysRes] = await Promise.all([
       supabase.from('settings').select('attendance_settings').eq('id', 'singleton').maybeSingle(),
-      supabase.from('users').select('id, name, biometric_id, location, location_name, society_name, department, is_blocked, status, role:roles(display_name)').neq('role_id', 'unverified').order('name'),
+      supabase.from('users').select('id, name, biometric_id, society_id, society_name, location_id, is_blocked, status, role_id, role:roles(display_name)').neq('role_id', 'unverified').order('name'),
       supabase.from('attendance_month_snapshots').select('*').eq('year', targetDate.getFullYear()).eq('month', targetDate.getMonth() + 1),
       supabase.from('attendance_events').select('user_id, type, timestamp').gte('timestamp', firstDayOfMonth.toISOString()).lte('timestamp', lastDayOfMonth.toISOString()).order('timestamp', { ascending: true }),
       supabase.from('leave_requests').select('user_id, start_date, end_date, leave_type, status, day_option').eq('status', 'approved').gte('end_date', getISTDateString(firstDayOfMonth)).lte('start_date', getISTDateString(lastDayOfMonth)),
@@ -418,7 +418,7 @@ const reportGenerators = {
       if (filters.filterEmployeeLocation && filters.filterEmployeeLocation !== 'All') {
         const locQ = String(filters.filterEmployeeLocation).trim().toLowerCase();
         targetUsers = targetUsers.filter((u: any) => {
-          const loc = (u.location_name || u.location || '').toLowerCase();
+          const loc = (u.society_name || u.location_id || '').toLowerCase();
           return loc.includes(locQ);
         });
       }
@@ -437,7 +437,7 @@ const reportGenerators = {
     if (filters?.filterDepartmentEnabled && Array.isArray(filters.filterDepartments) && filters.filterDepartments.length > 0) {
       const allowedDepts = filters.filterDepartments.map((d: string) => d.trim().toLowerCase());
       targetUsers = targetUsers.filter((u: any) => {
-        const dept = (u.location_name || u.location || u.department || '').toLowerCase();
+        const dept = (u.society_name || u.location_id || u.organization_name || '').toLowerCase();
         return allowedDepts.some((ad: string) => dept.includes(ad) || ad.includes(dept));
       });
     }
@@ -512,9 +512,15 @@ const reportGenerators = {
 
         let status = '', color = '#64748b', cellBg = 'transparent';
 
-        if (userSnapshot && userSnapshot.daily_data) {
-          const snapshotDay = userSnapshot.daily_data.find((d: any) => d.date === dateStr);
-          status = snapshotDay ? snapshotDay.status : 'A';
+        const snapshotDay = userSnapshot?.daily_data?.find((item: any) => 
+          item.date === d || 
+          String(item.date) === String(d) || 
+          item.date === dateStr || 
+          String(item.date).padStart(2, '0') === String(d).padStart(2, '0')
+        );
+
+        if (snapshotDay && snapshotDay.status && snapshotDay.status !== 'A') {
+          status = snapshotDay.status;
           if (status === 'P') { countP++; totalPresentCount++; }
           else if (status === '0.5P' || status === '1/2P') { countHalfP++; totalPresentCount += 0.5; status = '0.5P'; }
           else if (status === 'H') countH++;
@@ -522,8 +528,7 @@ const reportGenerators = {
           else if (status.includes('SL')) { countSL += status.includes('0.5') ? 0.5 : 1; userPaidLeave += status.includes('0.5') ? 0.5 : 1; }
           else if (status.includes('EL') || status.includes('E/L')) { countEL += status.includes('0.5') ? 0.5 : 1; userPaidLeave += status.includes('0.5') ? 0.5 : 1; }
           else if (status.includes('CO') || status.includes('C/O')) { countCO += status.includes('0.5') ? 0.5 : 1; userPaidLeave += status.includes('0.5') ? 0.5 : 1; }
-          else if (status.includes('L') && !status.includes('SL') && !status.includes('EL') && !status.includes('E/L')) { userPaidLeave += status.includes('0.5') ? 0.5 : 1; }
-          else if (status === 'A' || status === '0.5A') { countA += status === '0.5A' ? 0.5 : 1; totalAbsentCount += status === '0.5A' ? 0.5 : 1; }
+          else if (status.includes('L')) { userPaidLeave += status.includes('0.5') ? 0.5 : 1; }
         } else {
           const dayEvents = events.filter(e => e.user_id === user.id && getISTDateString(e.timestamp) === dateStr);
           const dayLeave = leaves.find(l => l.user_id === user.id && dateStr >= l.start_date && dateStr <= l.end_date);
@@ -624,6 +629,8 @@ const reportGenerators = {
       generatedTime: safeFormat(nowIST, 'hh:mm a'),
       year: safeFormat(nowIST, 'yyyy'),
       totalEmployees: String(targetUsers.length), 
+      activeStaff: String(targetUsers.length),
+      totalStaff: String(targetUsers.length),
       table: tableHtml,
       attendancePercentage: String(attendancePercentage),
       totalAbsent: String(Math.round(totalAbsentCount)),

@@ -5,9 +5,34 @@ import { format, startOfDay, isSameDay } from 'date-fns';
 
 const IST_OFFSET = 5.5 * 60 * 60 * 1000;
 
-function getISTDateString(date: Date): string {
-  const istDate = new Date(date.getTime() + IST_OFFSET);
-  return istDate.toISOString().substring(0, 10);
+function getISTDateString(date: any = new Date()): string {
+  try {
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return format(new Date(), 'yyyy-MM-dd');
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
+  } catch {
+    return format(new Date(), 'yyyy-MM-dd');
+  }
+}
+
+function getISTTimeString(date: any = new Date()): string {
+  try {
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return '09:00 PM';
+    return new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true }).format(d);
+  } catch {
+    return '09:00 PM';
+  }
+}
+
+function safeFormat(date: any, formatStr: string, fallback = '—') {
+  try {
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return fallback;
+    return format(d, formatStr);
+  } catch {
+    return fallback;
+  }
 }
 
 function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -118,8 +143,8 @@ const reportGenerators = {
     const startOfTodayUTC = new Date(`${todayStr}T00:00:00+05:30`);
     const endOfTodayUTC = new Date(`${todayStr}T23:59:59.999+05:30`);
     const [settingsRes, usersRes, eventsRes, leavesRes] = await Promise.all([
-      supabase.from('settings').select('attendance_settings').eq('id', 'singleton').single(),
-      supabase.from('users').select('id, name, biometric_id, location, location_name, society_name, department, is_blocked, status, role:roles(display_name)').neq('role_id', 'unverified'),
+      supabase.from('settings').select('attendance_settings').eq('id', 'singleton').maybeSingle(),
+      supabase.from('users').select('id, name, biometric_id, society_id, society_name, location_id, is_blocked, status, role_id, role:roles(display_name)').neq('role_id', 'unverified'),
       supabase.from('attendance_events')
         .select('user_id, type, timestamp')
         .gte('timestamp', startOfTodayUTC.toISOString())
@@ -183,7 +208,7 @@ const reportGenerators = {
       if (filters.filterEmployeeLocation && filters.filterEmployeeLocation !== 'All') {
         const locQ = String(filters.filterEmployeeLocation).trim().toLowerCase();
         filteredUsers = filteredUsers.filter((u: any) => {
-          const loc = (u.location_name || u.location || '').toLowerCase();
+          const loc = (u.society_name || u.location_id || '').toLowerCase();
           return loc.includes(locQ);
         });
       }
@@ -202,7 +227,7 @@ const reportGenerators = {
     if (filters?.filterDepartmentEnabled && Array.isArray(filters.filterDepartments) && filters.filterDepartments.length > 0) {
       const allowedDepts = filters.filterDepartments.map((d: string) => d.trim().toLowerCase());
       filteredUsers = filteredUsers.filter((u: any) => {
-        const dept = (u.location_name || u.location || u.department || '').toLowerCase();
+        const dept = (u.society_name || u.location_id || u.organization_name || '').toLowerCase();
         return allowedDepts.some((ad: string) => dept.includes(ad) || ad.includes(dept));
       });
     }
@@ -240,7 +265,7 @@ const reportGenerators = {
       } else if (onLeaveUserIds.has(user.id)) { status = 'On Leave'; color = '#2563eb'; }
       else if (recentlyActiveUserIds.has(user.id)) { status = 'Absent'; color = '#dc2626'; }
       else { status = 'Inactive'; color = '#9ca3af'; }
-      tableHtml += `<tr style="background:${i%2===0?'#fff':'#f9fafb'}"><td style="border:1px solid #ee;padding:8px">${i+1}</td><td style="border:1px solid #eee;padding:8px;font-weight:500">${user.name}</td><td style="border:1px solid #eee;padding:8px">${dept}</td><td style="border:1px solid #eee;padding:8px">${pin}</td><td style="border:1px solid #eee;padding:8px">${pout}</td><td style="border:1px solid #eee;padding:8px">${wh}</td><td style="border:1px solid #eee;padding:8px;color:${color};font-weight:600">${status}</td></tr>`;
+      tableHtml += `<tr style="background:${i%2===0?'#fff':'#f9fafb'}"><td style="border:1px solid #eee;padding:8px">${i+1}</td><td style="border:1px solid #eee;padding:8px;font-weight:500">${user.name}</td><td style="border:1px solid #eee;padding:8px">${dept}</td><td style="border:1px solid #eee;padding:8px">${pin}</td><td style="border:1px solid #eee;padding:8px">${pout}</td><td style="border:1px solid #eee;padding:8px">${wh}</td><td style="border:1px solid #eee;padding:8px;color:${color};font-weight:600">${status}</td></tr>`;
     });
     const totalPresent = presentUserIds.size;
     const onLeaveCount = Array.from(onLeaveUserIds).filter(id => staffIds.has(id)).length;
@@ -248,9 +273,11 @@ const reportGenerators = {
     return {
       date: format(parsedTargetDate, 'EEEE, MMMM do, yyyy'),
       reportDate: format(parsedTargetDate, 'dd MMM yyyy'),
-      generatedTime: format(nowIST, 'hh:mm a'),
+      generatedTime: getISTTimeString(new Date()),
       year: format(parsedTargetDate, 'yyyy'),
       totalEmployees: String(filteredUsers.length),
+      activeStaff: String(filteredUsers.length),
+      totalStaff: String(filteredUsers.length),
       totalPresent: String(totalPresent),
       totalAbsent: String(Math.max(0, filteredUsers.length - totalPresent - onLeaveCount)),
       lateCount: String(lateCount),
@@ -259,34 +286,306 @@ const reportGenerators = {
       table: tableHtml || '<tr><td colspan="7">No data</td></tr>'
     };
   },
-  attendance_monthly: async (supabase: SupabaseClient, nowIST: Date) => {
-    const targetDate = new Date(nowIST.getFullYear(), nowIST.getMonth() - 1, 1);
+  attendance_monthly: async (supabase: SupabaseClient, nowIST: Date, filters?: any) => {
+    const targetDate = filters?.dateRange?.start ? new Date(filters.dateRange.start) : nowIST;
     const firstDayOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
     const lastDayOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0);
     const monthStr = format(targetDate, 'MMMM yyyy');
     const daysInMonth = lastDayOfMonth.getDate();
-    const [usersRes, eventsRes] = await Promise.all([
-      supabase.from('users').select('id, name').neq('role_id', 'unverified').order('name'),
-      supabase.from('attendance_events').select('user_id, type, timestamp').gte('timestamp', firstDayOfMonth.toISOString()).lte('timestamp', lastDayOfMonth.toISOString()),
+    const today = new Date();
+
+    const startUtc = new Date(`${format(firstDayOfMonth, 'yyyy-MM-dd')}T00:00:00+05:30`);
+    const endUtc = new Date(`${format(lastDayOfMonth, 'yyyy-MM-dd')}T23:59:59.999+05:30`);
+
+    const [settingsRes, usersRes, snapshotsRes, eventsRes, leavesRes, holidaysRes] = await Promise.all([
+      supabase.from('settings').select('attendance_settings').eq('id', 'singleton').maybeSingle(),
+      supabase.from('users').select('id, name, biometric_id, society_id, society_name, location_id, is_blocked, status, role_id, role:roles(display_name)').neq('role_id', 'unverified').order('name'),
+      supabase.from('attendance_month_snapshots').select('*').eq('year', targetDate.getFullYear()).eq('month', targetDate.getMonth() + 1),
+      supabase.from('attendance_events').select('user_id, type, timestamp').gte('timestamp', startUtc.toISOString()).lte('timestamp', endUtc.toISOString()).order('timestamp', { ascending: true }),
+      supabase.from('leave_requests').select('user_id, start_date, end_date, leave_type, status, day_option').eq('status', 'approved').gte('end_date', getISTDateString(firstDayOfMonth)).lte('start_date', getISTDateString(lastDayOfMonth)),
+      supabase.from('holidays').select('*').gte('date', getISTDateString(firstDayOfMonth)).lte('date', getISTDateString(lastDayOfMonth))
     ]);
-    const users = usersRes.data || [];
-    const events = eventsRes.data || [];
-    let tableHtml = `<table style="width:100%; border-collapse: collapse; font-family: sans-serif; font-size: 9px; border: 1px solid #ddd;"><thead><tr style="background: #e5e7eb; color: #111827;"><th style="border: 1px solid #999; padding: 4px; text-align: left; width: 120px;">Employee Name</th>`;
-    for (let d = 1; d <= daysInMonth; d++) tableHtml += `<th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">${String(d).padStart(2, '0')}</th>`;
-    tableHtml += `<th style="border: 1px solid #999; padding: 4px; text-align: center; background: #ddd;">Tot</th></tr></thead><tbody>`;
-    users.forEach((user, idx) => {
-      tableHtml += `<tr style="background: ${idx % 2 === 0 ? '#fff' : '#f3f4f6'};"><td style="border: 1px solid #bbb; padding: 4px; font-weight: 600;">${user.name}</td>`;
-      let presentCount = 0;
-      for (let d = 1; d <= daysInMonth; d++) {
-        const dateStr = format(new Date(nowIST.getFullYear(), nowIST.getMonth(), d), 'yyyy-MM-dd');
-        const hasPunch = events.some(e => e.user_id === user.id && getISTDateString(new Date(e.timestamp)) === dateStr);
-        if (hasPunch) { presentCount++; tableHtml += `<td style="border: 1px solid #bbb; padding: 2px; text-align: center; color: #16a34a; font-weight: bold;">P</td>`; }
-        else { tableHtml += `<td style="border: 1px solid #bbb; padding: 2px; text-align: center; color: #dc2626;">A</td>`; }
+
+    const users = (usersRes.data || []) as any[];
+    const events = (eventsRes.data || []) as any[];
+    const leaves = (leavesRes.data || []) as any[];
+    const holidays = (holidaysRes.data || []) as any[];
+    const snapshots = (snapshotsRes.data || []) as any[];
+
+    let targetUsers = users;
+
+    // 1. Employee Status filter (all, active, inactive)
+    if (filters?.filterEmployeeStatus === 'active') {
+      targetUsers = targetUsers.filter((u: any) => !u.is_blocked && u.status !== 'left' && u.status !== 'blocked');
+    } else if (filters?.filterEmployeeStatus === 'inactive') {
+      targetUsers = targetUsers.filter((u: any) => u.is_blocked || u.status === 'left' || u.status === 'blocked');
+    } else if (!filters?.filterEmployeeStatus) {
+      targetUsers = targetUsers.filter((u: any) => !u.is_blocked && u.status !== 'left');
+    }
+
+    // 2. Specific user or role filter
+    if (filters?.user?.id) {
+      targetUsers = targetUsers.filter(u => u.id === filters.user.id);
+    } else if (filters?.role) {
+      targetUsers = targetUsers.filter((u: any) => {
+        const roleName = (Array.isArray(u.role) ? u.role[0]?.display_name : u.role?.display_name) || '';
+        return roleName.toLowerCase() === filters.role.toLowerCase();
+      });
+    }
+
+    // 3. Employee Filter Options (eTimeTrackLite)
+    if (filters?.filterEmployeeEnabled) {
+      if (filters.filterEmployeeCode) {
+        const codeQ = String(filters.filterEmployeeCode).trim().toLowerCase();
+        targetUsers = targetUsers.filter((u: any) => {
+          const bio = String(u.biometric_id || u.id || '').trim().toLowerCase();
+          return filters.filterEmployeeExact ? bio === codeQ : bio.includes(codeQ);
+        });
       }
-      tableHtml += `<td style="border: 1px solid #bbb; padding: 4px; text-align: center; font-weight: 900; background: #f3f4f6;">${presentCount}</td></tr>`;
+      if (filters.filterEmployeeName) {
+        const nameQ = String(filters.filterEmployeeName).trim().toLowerCase();
+        targetUsers = targetUsers.filter((u: any) => (u.name || '').toLowerCase().includes(nameQ));
+      }
+      if (filters.filterEmployeeCategory && filters.filterEmployeeCategory !== 'All') {
+        const catQ = String(filters.filterEmployeeCategory).toLowerCase();
+        targetUsers = targetUsers.filter((u: any) => {
+          const roleStr = ((Array.isArray(u.role) ? u.role[0]?.display_name : u.role?.display_name) || u.role || '').toLowerCase();
+          const staffCat = (u.staff_category || '').toLowerCase();
+          if (staffCat) return staffCat === catQ;
+          if (catQ === 'office') {
+            return roleStr.includes('admin') || roleStr.includes('hr') || roleStr.includes('manager') || roleStr.includes('office') || roleStr.includes('account') || roleStr.includes('billing');
+          }
+          if (catQ === 'field') {
+            return roleStr.includes('field') || roleStr.includes('area') || roleStr.includes('executive') || roleStr.includes('bdm');
+          }
+          if (catQ === 'site') {
+            return roleStr.includes('site') || roleStr.includes('guard') || roleStr.includes('technician') || roleStr.includes('plumber') || roleStr.includes('electrician') || roleStr.includes('housekeeping') || roleStr.includes('security');
+          }
+          return true;
+        });
+      }
+      if (filters.filterEmployeeDesignation && filters.filterEmployeeDesignation !== 'All') {
+        const desigQ = String(filters.filterEmployeeDesignation).trim().toLowerCase();
+        targetUsers = targetUsers.filter((u: any) => {
+          const roleName = ((Array.isArray(u.role) ? u.role[0]?.display_name : u.role?.display_name) || '').toLowerCase();
+          return roleName === desigQ;
+        });
+      }
+      if (filters.filterEmployeeLocation && filters.filterEmployeeLocation !== 'All') {
+        const locQ = String(filters.filterEmployeeLocation).trim().toLowerCase();
+        targetUsers = targetUsers.filter((u: any) => {
+          const loc = (u.society_name || u.location_id || '').toLowerCase();
+          return loc.includes(locQ);
+        });
+      }
+    }
+
+    // 4. Company Filter
+    if (filters?.filterCompanyEnabled && Array.isArray(filters.filterCompanies) && filters.filterCompanies.length > 0) {
+      const allowedComps = filters.filterCompanies.map((c: string) => c.trim().toLowerCase());
+      targetUsers = targetUsers.filter((u: any) => {
+        const comp = (u.society_name || u.organization_name || '').toLowerCase();
+        return allowedComps.some((ac: string) => comp.includes(ac) || ac.includes(comp));
+      });
+    }
+
+    // 5. Department / Site Filter
+    if (filters?.filterDepartmentEnabled && Array.isArray(filters.filterDepartments) && filters.filterDepartments.length > 0) {
+      const allowedDepts = filters.filterDepartments.map((d: string) => d.trim().toLowerCase());
+      targetUsers = targetUsers.filter((u: any) => {
+        const dept = (u.society_name || u.location_id || u.organization_name || '').toLowerCase();
+        return allowedDepts.some((ad: string) => dept.includes(ad) || ad.includes(dept));
+      });
+    }
+
+    let totalPresentCount = 0;
+    let totalAbsentCount = 0;
+    const totalLateCount = 0;
+
+    let tableHtml = `<style>
+.report-grid { width: 100%; border-collapse: collapse; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 8px; border: 1px solid #e2e8f0; }
+.report-grid th { border: 1px solid #e2e8f0; padding: 6px 3px; font-weight: 700; background-color: #f8fafc; color: #1e293b; }
+.report-grid td { border: 1px solid #e2e8f0; padding: 4px 2px; text-align: center; color: #334155; }
+.report-grid td.emp-name { text-align: left; font-weight: 600; min-width: 120px; padding: 6px 6px; color: #0f172a; }
+.report-grid td.p { color: #166534; font-weight: bold; background-color: #f0fdf4; }
+.report-grid td.a { color: #991b1b; background-color: #fef2f2; }
+.report-grid td.wo { color: #4b5563; background-color: #f9fafb; }
+.report-grid td.h { color: #854d0e; background-color: #fffbeb; font-weight: bold; }
+.report-grid td.hd { color: #92400e; background-color: #fffbeb; font-weight: bold; }
+.report-grid td.ot { color: #075985; background-color: #f0f9ff; font-weight: bold; }
+.report-grid td.co { color: #9d174d; background-color: #fdf2f8; font-weight: bold; }
+.report-grid td.el { color: #5b21b6; background-color: #f5f3ff; font-weight: bold; }
+.report-grid td.sl { color: #9f1239; background-color: #fff1f2; font-weight: bold; }
+.report-grid td.tot { font-weight: 800; background-color: #ecfdf5; color: #065f46; border-left: 2px solid #10b981; }
+.report-grid tr.even { background-color: #ffffff; }
+.report-grid tr.odd { background-color: #f8fafc; }
+</style>
+<table class="report-grid">
+    <thead>
+      <tr style="background: #f8fafc; color: #1e293b; border-bottom: 2px solid #e2e8f0;">
+        <th style="border: 1px solid #e2e8f0; padding: 10px 8px; text-align: left; min-width: 140px; font-weight: 700;">Employee Name</th>`;
+    
+    for (let d = 1; d <= daysInMonth; d++) {
+      tableHtml += `<th style="border: 1px solid #e2e8f0; padding: 4px 2px; text-align: center; width: 22px; font-size: 9px; font-weight: 600;">${d}</th>`;
+    }
+    tableHtml += `
+          <th style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; background: #f0fdf4; color: #166534; width: 25px; font-weight: 700;">P</th>
+          <th style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; background: #fffbeb; color: #92400e; width: 35px; font-weight: 700;">0.5P</th>
+          <th style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; background: #f0f9ff; color: #075985; width: 25px; font-weight: 700;">OT</th>
+          <th style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; background: #fdf2f8; color: #9d174d; width: 25px; font-weight: 700;">C/O</th>
+          <th style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; background: #f5f3ff; color: #5b21b6; width: 25px; font-weight: 700;">E/L</th>
+          <th style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; background: #fff1f2; color: #9f1239; width: 25px; font-weight: 700;">S/L</th>
+          <th style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; background: #fef2f2; color: #991b1b; width: 25px; font-weight: 700;">A</th>
+          <th style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; background: #f9fafb; color: #4b5563; width: 30px; font-weight: 700;">W/O</th>
+          <th style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; background: #fffbeb; color: #854d0e; width: 25px; font-weight: 700;">H</th>
+          <th style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; background: #ecfdf5; color: #065f46; width: 35px; font-weight: 800; border-left: 2px solid #10b981;">Pay</th>
+        </tr>
+    </thead>
+    <tbody>`;
+
+    targetUsers.forEach((user, idx) => {
+      tableHtml += `<tr class="${idx % 2 === 0 ? 'even' : 'odd'}">
+        <td class="emp-name">${user.name}</td>`;
+      
+      const countOT = 0;
+      let countP = 0, countHalfP = 0, countCO = 0, countEL = 0, countSL = 0, countA = 0, countWO = 0, countH = 0, userPaidLeave = 0;
+      let daysPresentInWeek = 0;
+
+      const userSnapshot = snapshots.find(s => s.employee_id === user.id);
+
+      for (let d = 1; d <= daysInMonth; d++) {
+        const currentDate = new Date(firstDayOfMonth.getFullYear(), firstDayOfMonth.getMonth(), d);
+        const dateStr = format(currentDate, 'yyyy-MM-dd');
+        const isFuture = currentDate > today;
+        const isSunday = currentDate.getDay() === 0;
+        const isMonday = currentDate.getDay() === 1;
+        if (isMonday) daysPresentInWeek = 0;
+
+        if (isFuture) {
+          tableHtml += `<td style="border: 1px solid #e2e8f0; padding: 2px; text-align: center; color: #ccc; font-size: 8px;">—</td>`;
+          continue;
+        }
+
+        let status = '', color = '#64748b', cellBg = 'transparent';
+
+        const snapshotDay = userSnapshot?.daily_data?.find((item: any) => 
+          item.date === d || 
+          String(item.date) === String(d) || 
+          item.date === dateStr || 
+          String(item.date).padStart(2, '0') === String(d).padStart(2, '0')
+        );
+
+        if (snapshotDay && snapshotDay.status && snapshotDay.status !== 'A') {
+          status = snapshotDay.status;
+          if (status === 'P') { countP++; totalPresentCount++; }
+          else if (status === '0.5P' || status === '1/2P') { countHalfP++; totalPresentCount += 0.5; status = '0.5P'; }
+          else if (status === 'H') countH++;
+          else if (status === 'W/O' || status === 'WO') countWO++;
+          else if (status.includes('SL')) { countSL += status.includes('0.5') ? 0.5 : 1; userPaidLeave += status.includes('0.5') ? 0.5 : 1; }
+          else if (status.includes('EL') || status.includes('E/L')) { countEL += status.includes('0.5') ? 0.5 : 1; userPaidLeave += status.includes('0.5') ? 0.5 : 1; }
+          else if (status.includes('CO') || status.includes('C/O')) { countCO += status.includes('0.5') ? 0.5 : 1; userPaidLeave += status.includes('0.5') ? 0.5 : 1; }
+          else if (status.includes('L')) { userPaidLeave += status.includes('0.5') ? 0.5 : 1; }
+        } else {
+          const dayEvents = events.filter(e => e.user_id === user.id && getISTDateString(e.timestamp) === dateStr);
+          const dayLeave = leaves.find(l => l.user_id === user.id && dateStr >= l.start_date && dateStr <= l.end_date);
+          const isPublicHoliday = holidays.find(h => h.date === dateStr);
+          
+          const punchIn = dayEvents.find(e => e.type === 'punch-in' || e.type === 'check_in');
+          const punchOut = dayEvents.filter(e => e.type === 'punch-out' || e.type === 'check_out').pop();
+
+          if (punchIn || punchOut) {
+            status = 'P'; color = '#16a34a'; cellBg = '#f0fdf4'; countP++; totalPresentCount++;
+          } else if (dayLeave) {
+            const isHalfDay = dayLeave.day_option === 'half';
+            const leaveType = dayLeave.leave_type?.toLowerCase() || '';
+            if (leaveType === 'loss of pay' || leaveType === 'lop') {
+              status = isHalfDay ? '0.5A' : 'A'; color = '#dc2626'; cellBg = '#fef2f2'; countA += isHalfDay ? 0.5 : 1; totalAbsentCount += isHalfDay ? 0.5 : 1;
+            } else {
+              if (leaveType.includes('sick')) { status = isHalfDay ? '0.5SL' : 'S/L'; countSL += isHalfDay ? 0.5 : 1; cellBg = '#fff1f2'; }
+              else if (leaveType.includes('earned') || leaveType.includes('annual')) { status = isHalfDay ? '0.5EL' : 'E/L'; countEL += isHalfDay ? 0.5 : 1; cellBg = '#f5f3ff'; }
+              else if (leaveType.includes('comp') || leaveType.includes('c/o')) { status = isHalfDay ? '0.5CO' : 'C/O'; countCO += isHalfDay ? 0.5 : 1; cellBg = '#fdf2f8'; }
+              else { status = isHalfDay ? '0.5L' : 'L'; cellBg = '#eff6ff'; }
+              color = '#2563eb'; userPaidLeave += isHalfDay ? 0.5 : 1;
+            }
+          } else if (isPublicHoliday) {
+            status = 'H'; color = '#854d0e'; cellBg = '#fef3c7'; countH++;
+          } else if (isSunday) {
+            if (daysPresentInWeek >= 3) {
+              status = 'W/O'; color = '#64748b'; cellBg = '#f1f5f9'; countWO++;
+            } else {
+              status = 'A'; color = '#dc2626'; cellBg = '#fef2f2'; countA++; totalAbsentCount++;
+            }
+          } else {
+            status = 'A'; color = '#dc2626'; cellBg = '#fef2f2'; countA++; totalAbsentCount++;
+          }
+
+          if (['P', '0.5P', 'L', 'EL', 'SL', 'CO', 'C/O', 'H'].some(s => status.includes(s))) daysPresentInWeek++;
+        }
+
+        let cellClass = "";
+        if (status === 'P') cellClass = 'class="p"';
+        else if (status === 'A') cellClass = 'class="a"';
+        else if (status === 'W/O' || status === 'WO') cellClass = 'class="wo"';
+        else if (status === 'H') cellClass = 'class="h"';
+        else if (status.includes('0.5')) cellClass = 'class="hd"';
+        else if (status.includes('SL')) cellClass = 'class="sl"';
+        else if (status.includes('EL')) cellClass = 'class="el"';
+        else if (status.includes('CO') || status.includes('C/O')) cellClass = 'class="co"';
+        else if (status === '—') cellClass = '';
+        else cellClass = `style="color: ${color}; background: ${cellBg}; font-weight: 700;"`;
+
+        tableHtml += `<td ${cellClass}>${status || '—'}</td>`;
+      }
+
+      const payableDays = countP + (countHalfP * 0.5) + countWO + countH + userPaidLeave;
+      tableHtml += `<td class="p">${countP}</td><td class="hd">${countHalfP}</td><td class="ot">${countOT}</td><td class="co">${countCO}</td><td class="el">${countEL}</td><td class="sl">${countSL}</td><td class="a">${countA}</td><td class="wo">${countWO}</td><td class="h">${countH}</td><td class="tot">${payableDays}</td></tr>`;
     });
     tableHtml += `</tbody></table>`;
-    return { date: monthStr, totalEmployees: String(users.length), table: tableHtml };
+    
+    // Add Legend
+    tableHtml += `<div style="margin-top: 20px; padding: 15px; background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; font-family: sans-serif;">
+      <table style="width: 100%; border-collapse: collapse; text-align: center;">
+        <tr>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #166534; font-weight: bold;">P:</span> PRESENT</td>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #991b1b; font-weight: bold;">A:</span> ABSENT</td>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #991b1b; font-weight: bold;">LOP:</span> LOSS OF PAY</td>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #92400e; font-weight: bold;">0.5P:</span> HALF DAY</td>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #155e75; font-weight: bold;">W/H:</span> WFH</td>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #0c4a6e; font-weight: bold;">W/P:</span> WEEK OFF WORK</td>
+        </tr>
+        <tr>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #475569; font-weight: bold;">W/O:</span> WEEKLY OFF</td>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #b45309; font-weight: bold;">H:</span> HOLIDAY</td>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #0369a1; font-weight: bold;">OT(P):</span> OT / EXTRAP</td>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #6d28d9; font-weight: bold;">S/L:</span> SICK LEAVE</td>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #4338ca; font-weight: bold;">E/L:</span> EARNED LEAVE</td>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #be185d; font-weight: bold;">C/O:</span> COMP OFF</td>
+        </tr>
+      </table>
+      <div style="text-align: center; margin-top: 15px; font-size: 10px; color: #94a3b8; font-weight: bold; text-transform: uppercase;">Paradigm Services - Monthly Status Report</div>
+    </div>`;
+
+    const totalPossible = targetUsers.length * daysInMonth;
+    const attendancePercentage = totalPossible > 0 ? Math.round((totalPresentCount / totalPossible) * 100) : 0;
+    const billingCycle = `01 ${safeFormat(targetDate, 'MMM yyyy')} - ${daysInMonth} ${safeFormat(targetDate, 'MMM yyyy')}`;
+
+    return { 
+      date: monthStr, 
+      reportDate: safeFormat(new Date(), 'dd MMM yyyy'),
+      generatedTime: getISTTimeString(new Date()),
+      year: safeFormat(targetDate, 'yyyy'),
+      totalEmployees: String(targetUsers.length), 
+      activeStaff: String(targetUsers.length),
+      totalStaff: String(targetUsers.length),
+      table: tableHtml,
+      attendancePercentage: String(attendancePercentage),
+      totalAbsent: String(Math.round(totalAbsentCount)),
+      lateCount: String(totalLateCount),
+      logo: (filters?.showCompanyLogo === false) ? '' : '<img src="https://app.paradigmfms.com/paradigm-logo.png" alt="Logo" style="height: 40px; display: block;">',
+      totalPresent: String(Math.round(totalPresentCount)),
+      generatedBy: filters?.triggeredBy || 'Automated Schedule',
+      billingCycle: billingCycle
+    };
   },
   document_expiry: async (s:any,now:any) => { return {date:format(now,'yyyy-MM-dd')}; },
   crm_bd_daily: async (supabase: SupabaseClient, nowIST: Date) => {
@@ -708,7 +1007,16 @@ export async function processSchedules(req: any) {
       const config = rule.schedule_config || {};
       const [hour, minute] = (config.time || '21:00').split(':').map(Number);
       if (nowIST.getUTCHours() < hour || (nowIST.getUTCHours() === hour && nowIST.getUTCMinutes() < minute)) continue;
-      if (rule.last_sent_at && isSameDay(new Date(new Date(rule.last_sent_at).getTime() + IST_OFFSET), nowIST)) continue;
+      if (rule.last_sent_at) {
+        const lastSentIST = new Date(new Date(rule.last_sent_at).getTime() + IST_OFFSET);
+        const lastSentDateStr = getISTDateString(new Date(rule.last_sent_at));
+        const currentIstDateStr = getISTDateString(now);
+        const lastSentHours = String(lastSentIST.getUTCHours()).padStart(2, '0');
+        const lastSentMinutes = String(lastSentIST.getUTCMinutes()).padStart(2, '0');
+        const lastSentTimeStr = `${lastSentHours}:${lastSentMinutes}`;
+        const targetTime = config.time || '21:00';
+        if (lastSentDateStr === currentIstDateStr && lastSentTimeStr >= targetTime) continue;
+      }
     }
 
     // ── Pick SMTP Account ─────────────────────────────────────────────────
@@ -784,24 +1092,31 @@ export async function processSchedules(req: any) {
     // ── Generate Report Data ──────────────────────────────────────────────
     const config = rule.schedule_config || {};
     const dateRangeMode = config.dateRangeMode || (rule.report_type === 'attendance_monthly' ? 'previous_month' : 'today');
-    let targetDateIST = new Date(nowIST.getTime());
+    
+    const todayISTStr = getISTDateString(now);
+    let targetDateStr = todayISTStr;
     if (dateRangeMode === 'yesterday') {
-      targetDateIST = new Date(targetDateIST.getTime() - 24 * 60 * 60 * 1000);
+      const y = new Date(new Date(`${todayISTStr}T12:00:00+05:30`).getTime() - 24 * 3600 * 1000);
+      targetDateStr = getISTDateString(y);
     } else if (dateRangeMode === 'previous_month') {
-      targetDateIST = new Date(targetDateIST.getFullYear(), targetDateIST.getMonth() - 1, 1);
+      const [y, m] = todayISTStr.split('-').map(Number);
+      const prevM = m === 1 ? 12 : m - 1;
+      const prevY = m === 1 ? y - 1 : y;
+      targetDateStr = `${prevY}-${String(prevM).padStart(2, '0')}-01`;
     } else if (dateRangeMode === 'current_month') {
-      targetDateIST = new Date(targetDateIST.getFullYear(), targetDateIST.getMonth(), 1);
+      const [y, m] = todayISTStr.split('-').map(Number);
+      targetDateStr = `${y}-${String(m).padStart(2, '0')}-01`;
     }
 
-    const targetDateStr = targetDateIST.toISOString().substring(0, 10);
     const reportFilters = {
       dateRange: { start: targetDateStr, end: targetDateStr },
       dateRangeMode,
       ...rule.schedule_config
     };
 
+    const targetDateForGenerator = new Date(`${targetDateStr}T12:00:00+05:30`);
     const generator = (reportGenerators as any)[reportType] || reportGenerators.attendance_daily;
-    const reportData = await generator(supabase, targetDateIST, reportFilters);
+    const reportData = await generator(supabase, targetDateForGenerator, reportFilters);
 
     const template = templateMap.get(rule.template_id);
     const reportDataList = Array.isArray(reportData) ? reportData : [reportData];

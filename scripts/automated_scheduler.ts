@@ -122,8 +122,12 @@ async function run() {
       if (rule.last_sent_at) {
         const lastSentIST = new Date(new Date(rule.last_sent_at).getTime() + IST_OFFSET);
         const lastSentDateStr = lastSentIST.toISOString().substring(0, 10);
-        if (lastSentDateStr === istDateStr) {
-          console.log(`  → Skipped: Already sent today (${lastSentDateStr})`);
+        const lastSentHours = String(lastSentIST.getUTCHours()).padStart(2, '0');
+        const lastSentMinutes = String(lastSentIST.getUTCMinutes()).padStart(2, '0');
+        const lastSentTimeStr = `${lastSentHours}:${lastSentMinutes}`;
+        const targetTime = config.time || '21:00';
+        if (lastSentDateStr === istDateStr && lastSentTimeStr >= targetTime) {
+          console.log(`  → Skipped: Already sent for this slot today (${lastSentDateStr} ${lastSentTimeStr} >= ${targetTime})`);
           continue;
         }
       }

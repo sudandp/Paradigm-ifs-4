@@ -5,7 +5,7 @@
   "type": "module",
   "description": "A frontend prototype for the Paradigm Employee Onboarding system, running entirely on mock data.",
   "scripts": {
-    "server": "tsx src/server.ts",
+    "server": "tsx watch src/server.ts",
     "predev": "node scripts/generate-firebase-sw.js",
     "dev": "concurrently -c \"green,blue\" \"npm run server\" \"vite\"",
     "prebuild": "node scripts/generate-firebase-sw.js",
