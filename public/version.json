@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 118,
-  "latestVersionName": "20.8.0",
+  "latestVersionCode": 119,
+  "latestVersionName": "20.9.0",
   "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
   "apkDownloadUrl": "https://play.google.com/store/apps/details?id=com.paradigm.ifs",
-  "releaseNotes": "feat: implement automated email scheduling system with attendance reporting and travel distance calculation logic\nfeat: implement site staff attendance, billing, and leave management system\nfeat: add monthly attendance calculation utilities and reporting view components\nfeat: implement core HR, recruitment, and operational dashboards with associated management components\nfeat: implement comprehensive onboarding workflow with document management, e-signing, and offline synchronization capabilities",
+  "releaseNotes": "feat: update version to 20.8.0, implement HR/attendance management systems, and configure Android build with automated proxy and network settings.\nfeat: implement automated email scheduling system with attendance reporting and travel distance calculation logic\nfeat: implement site staff attendance, billing, and leave management system\nfeat: add monthly attendance calculation utilities and reporting view components\nfeat: implement core HR, recruitment, and operational dashboards with associated management components",
   "isMandatory": false
 }
