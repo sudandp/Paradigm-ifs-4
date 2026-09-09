@@ -51,8 +51,8 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ requiredPermission, chi
     // provide essential base permissions to avoid premature lockout.
     if (combined.length === 0 && user.id && user.role !== 'unverified') {
         const basePermissions: Permission[] = roleName.includes('client')
-            ? ['view_site_attendance', 'view_client_dashboard']
-            : ['view_profile', 'view_own_attendance', 'view_mobile_nav_home', 'view_mobile_nav_profile'];
+            ? ['view_site_attendance', 'view_client_dashboard', 'apply_for_leave']
+            : ['view_profile', 'view_own_attendance', 'apply_for_leave', 'view_mobile_nav_home', 'view_mobile_nav_profile'];
         return basePermissions;
     }
 
@@ -63,7 +63,8 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ requiredPermission, chi
   
   // Base permissions that are ALWAYS allowed for any verified user
   const isEssentialPermission = requiredPermission === 'view_profile' || 
-                               requiredPermission === 'view_own_attendance';
+                               requiredPermission === 'view_own_attendance' ||
+                               requiredPermission === 'apply_for_leave';
 
   const roleLower = (user.role || '').toLowerCase();
   const roleIdLower = (user.roleId || '').toLowerCase();

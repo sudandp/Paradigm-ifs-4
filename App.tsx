@@ -1714,12 +1714,12 @@ const App: React.FC = () => {
       // 2. Purge dead TCP sockets and reconnect Supabase Realtime
       reconnectSupabaseRealtime();
 
-      // 3. Refresh notifications with a strict 6-second timeout
+      // 3. Refresh notifications with a 15-second timeout
       const currentUser = useAuthStore.getState().user;
       if (currentUser) {
         withTimeout(
-          useNotificationStore.getState().fetchNotifications(),
-          6000,
+          useNotificationStore.getState().fetchNotifications(true),
+          15000,
           'Notifications fetch on resume timed out'
         ).catch(err => {
           console.warn('[AppResume] Notification refresh notice:', err?.message || err);
@@ -2205,6 +2205,7 @@ const App: React.FC = () => {
           <Route path="settings/devices" element={<DeviceManagement />} />
 
           <Route element={<ProtectedRoute requiredPermission="apply_for_leave" />}>
+            <Route path="leaves" element={<Navigate to="/leaves/dashboard" replace />} />
             <Route path="leaves/dashboard" element={<LeaveDashboard />} />
             <Route path="leaves/activity-timeline" element={<ActivityTimelinePage />} />
             <Route path="leaves/apply" element={<ApplyLeave />} />

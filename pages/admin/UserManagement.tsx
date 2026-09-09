@@ -1451,8 +1451,12 @@ const UserManagement: React.FC = () => {
             {isLoading && users.length === 0 ? (
                 <div className="w-full">
                     {/* Desktop Skeleton */}
-                    <div className="hidden lg:block">
-                        <TableSkeleton rows={5} cols={6} />
+                    <div className="hidden lg:block bg-card rounded-2xl border border-border overflow-hidden">
+                        <table className="min-w-full border-collapse text-sm table-fixed">
+                            <tbody className="divide-y divide-border">
+                                <TableSkeleton rows={5} cols={6} />
+                            </tbody>
+                        </table>
                     </div>
                     {/* Mobile/Tablet Skeleton */}
                     <div className="lg:hidden grid grid-cols-1 md:grid-cols-2 gap-4">

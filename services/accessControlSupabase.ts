@@ -398,7 +398,12 @@ export interface AttendanceCorrectionDB {
   correctedAt: string;
 }
 
+let correctionsTableMissing = false;
+
 export async function fetchCorrectionsFromSupabase(attendanceDate: string): Promise<AttendanceCorrectionDB[] | null> {
+  if (correctionsTableMissing) {
+    return null;
+  }
   try {
     const { data, error } = await supabase
       .from('attendance_corrections')
@@ -407,7 +412,14 @@ export async function fetchCorrectionsFromSupabase(attendanceDate: string): Prom
       .order('corrected_at', { ascending: false });
 
     if (error) {
-      console.warn('Supabase attendance_corrections fetch warning:', error.message);
+      if (error.code === 'PGRST205' || error.message?.includes('Could not find the table') || error.message?.includes('schema cache')) {
+        if (!correctionsTableMissing) {
+          correctionsTableMissing = true;
+          console.info('[Supabase] Note: attendance_corrections table not yet present in Supabase schema. Run migration 20260909_create_attendance_corrections.sql in SQL Editor.');
+        }
+      } else {
+        console.warn('Supabase attendance_corrections fetch warning:', error.message);
+      }
       return null;
     }
 
@@ -451,9 +463,15 @@ export async function saveCorrectionToSupabase(correction: AttendanceCorrectionD
       .upsert(payload, { onConflict: 'emp_code,attendance_date' });
 
     if (error) {
-      console.warn('Supabase upsert attendance_corrections error:', error.message);
+      if (error.code === 'PGRST205' || error.message?.includes('Could not find the table') || error.message?.includes('schema cache')) {
+        correctionsTableMissing = true;
+        console.info('[Supabase] Note: attendance_corrections table not yet present in Supabase schema. Run migration 20260909_create_attendance_corrections.sql in SQL Editor.');
+      } else {
+        console.warn('Supabase upsert attendance_corrections error:', error.message);
+      }
       return false;
     }
+    correctionsTableMissing = false;
     return true;
   } catch (err) {
     console.warn('Could not save attendance correction to Supabase:', err);
@@ -462,6 +480,7 @@ export async function saveCorrectionToSupabase(correction: AttendanceCorrectionD
 }
 
 export async function deleteCorrectionFromSupabase(empCode: string, attendanceDate: string): Promise<void> {
+  if (correctionsTableMissing) return;
   try {
     const { error } = await supabase
       .from('attendance_corrections')
@@ -470,7 +489,11 @@ export async function deleteCorrectionFromSupabase(empCode: string, attendanceDa
       .eq('attendance_date', attendanceDate);
 
     if (error) {
-      console.warn('Supabase delete attendance_corrections error:', error.message);
+      if (error.code === 'PGRST205' || error.message?.includes('Could not find the table') || error.message?.includes('schema cache')) {
+        correctionsTableMissing = true;
+      } else {
+        console.warn('Supabase delete attendance_corrections error:', error.message);
+      }
     }
   } catch (err) {
     console.warn('Could not delete attendance correction from Supabase:', err);

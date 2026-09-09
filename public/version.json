@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 117,
-  "latestVersionName": "20.7.0",
+  "latestVersionCode": 118,
+  "latestVersionName": "20.8.0",
   "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
   "apkDownloadUrl": "https://play.google.com/store/apps/details?id=com.paradigm.ifs",
-  "releaseNotes": "feat: implement AttendanceCalendar and LeaveDashboard components with updated user profile data fetching script\nfeat: implement onboarding flow for GMC and enrollment rules with state management and form validation\nfeat: implement automated notification rules engine and job scheduler service with support for missed punch-out tracking.\nfeat: implement automated email notification system with attendance reporting and bulk administrative tools\nfeat: implement comprehensive monthly attendance reporting system with calculation utilities and administrative tools",
+  "releaseNotes": "feat: implement automated email scheduling system with attendance reporting and travel distance calculation logic\nfeat: implement site staff attendance, billing, and leave management system\nfeat: add monthly attendance calculation utilities and reporting view components\nfeat: implement core HR, recruitment, and operational dashboards with associated management components\nfeat: implement comprehensive onboarding workflow with document management, e-signing, and offline synchronization capabilities",
   "isMandatory": false
 }

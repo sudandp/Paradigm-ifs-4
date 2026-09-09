@@ -1,20 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import { NavLink, useNavigate, useLocation } from 'react-router-dom';
+import React, { useState } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
 import { Home, ClipboardCheck, Calendar, User, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePermissionsStore } from '../../store/permissionsStore';
 import { useAuthStore } from '../../store/authStore';
-import { useNotificationStore } from '../../store/notificationStore';
 import { useUiSettingsStore } from '../../store/uiSettingsStore';
 
 const BottomNav: React.FC = () => {
-    const navigate = useNavigate();
     const location = useLocation();
     const { user } = useAuthStore();
     const { permissions } = usePermissionsStore();
-    const { setIsPanelOpen, unreadCount } = useNotificationStore();
     const { setReferralModalOpen } = useUiSettingsStore();
-    const [showReferBadge, setShowReferBadge] = useState(true);
+    const [showReferBadge] = useState(true);
 
     if (!user) return null;
 
@@ -60,14 +57,65 @@ const BottomNav: React.FC = () => {
         }
     ].filter(item => item.show);
 
-    const handleQuickAction = () => {
-        navigate('/attendance/dashboard');
-    };
-
     // Helper to determine if a route is active
     const isActive = (to: string) => {
         if (to === '#notification') return false; 
+        if (to === '/leaves/dashboard') {
+            return location.pathname === '/leaves' || location.pathname.startsWith('/leaves');
+        }
+        if (to === '/tasks') {
+            return location.pathname === '/tasks' || location.pathname.startsWith('/tasks');
+        }
+        if (to === '/profile') {
+            return location.pathname === '/profile' || location.pathname.startsWith('/profile');
+        }
+        if (to === '/mobile-home') {
+            return location.pathname === '/mobile-home' || location.pathname === '/' || location.pathname === '/home';
+        }
         return location.pathname === to;
+    };
+
+    const renderNavItem = (item: typeof navItems[0]) => {
+        const active = isActive(item.to);
+        return (
+            <NavLink
+                key={item.to}
+                to={item.to}
+                className="relative flex-1 flex items-center justify-center h-full"
+            >
+                <div className="relative flex items-center justify-center">
+                    {active && (
+                        <motion.div
+                            layoutId="activePill"
+                            className="absolute inset-0 bg-[#44D62C] rounded-full z-0"
+                            style={{ padding: '0 12px' }}
+                            transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                        />
+                    )}
+
+                    <div className="relative z-10 flex items-center gap-1.5 px-3 py-2">
+                        <item.icon
+                            className={`transition-colors duration-300 ${
+                                active ? 'text-[#0A1809]' : 'text-[#7D967B]'
+                            }`}
+                            style={{ width: 'clamp(20px, 5vw, 24px)', height: 'clamp(20px, 5vw, 24px)' }}
+                        />
+                        <AnimatePresence>
+                            {active && (
+                                <motion.span
+                                    initial={{ opacity: 0, width: 0 }}
+                                    animate={{ opacity: 1, width: 'auto' }}
+                                    exit={{ opacity: 0, width: 0 }}
+                                    className="text-[11px] font-bold text-[#0A1809] tracking-tight whitespace-nowrap overflow-hidden"
+                                >
+                                    {item.label}
+                                </motion.span>
+                            )}
+                        </AnimatePresence>
+                    </div>
+                </div>
+            </NavLink>
+        );
     };
 
     return (
@@ -81,48 +129,7 @@ const BottomNav: React.FC = () => {
                 <div className="w-full bg-[#041b0f]/95 backdrop-blur-xl rounded-[28px] h-[68px] flex items-center justify-around shadow-[0_10px_30px_rgba(0,0,0,0.7)] border border-[#1d422f] relative px-1">
                     
                     {/* Render first two items */}
-                    {navItems.slice(0, 2).map((item) => {
-                        const active = isActive(item.to);
-                        return (
-                            <NavLink
-                                key={item.to}
-                                to={item.to}
-                                className="relative flex-1 flex items-center justify-center h-full"
-                            >
-                                <div className="relative flex items-center justify-center">
-                                    <AnimatePresence>
-                                        {active && (
-                                            <motion.div
-                                                layoutId="activePill"
-                                                className="absolute inset-0 bg-[#44D62C] rounded-full z-0"
-                                                style={{ padding: '0 12px' }}
-                                                transition={{ type: "spring", stiffness: 350, damping: 30 }}
-                                            />
-                                        )}
-                                    </AnimatePresence>
-
-                                    <div className="relative z-10 flex items-center gap-1.5 px-3 py-2">
-                                        <item.icon
-                                            className={`transition-colors duration-300 ${
-                                                active ? 'text-[#0A1809]' : 'text-[#7D967B]'
-                                            }`}
-                                            style={{ width: 'clamp(20px, 5vw, 24px)', height: 'clamp(20px, 5vw, 24px)' }}
-                                        />
-                                        {active && (
-                                            <motion.span
-                                                initial={{ opacity: 0, width: 0 }}
-                                                animate={{ opacity: 1, width: 'auto' }}
-                                                exit={{ opacity: 0, width: 0 }}
-                                                className="text-[11px] font-bold text-[#0A1809] tracking-tight whitespace-nowrap overflow-hidden"
-                                            >
-                                                {item.label}
-                                            </motion.span>
-                                        )}
-                                    </div>
-                                </div>
-                            </NavLink>
-                        );
-                    })}
+                    {navItems.slice(0, 2).map(renderNavItem)}
 
                     {/* Center Referral Button — 72px outer ring, 52px inner circle */}
                     <div className="flex-1 flex items-center justify-center h-full relative" style={{ minWidth: 74 }}>
@@ -193,48 +200,7 @@ const BottomNav: React.FC = () => {
                     </div>
 
                     {/* Render remaining items */}
-                    {navItems.slice(2).map((item) => {
-                        const active = isActive(item.to);
-                        return (
-                            <NavLink
-                                key={item.to}
-                                to={item.to}
-                                className="relative flex-1 flex items-center justify-center h-full"
-                            >
-                                <div className="relative flex items-center justify-center">
-                                    <AnimatePresence>
-                                        {active && (
-                                             <motion.div
-                                                 layoutId="activePill"
-                                                 className="absolute inset-0 bg-[#44D62C] rounded-full z-0"
-                                                 style={{ padding: '0 12px' }}
-                                                 transition={{ type: "spring", stiffness: 350, damping: 30 }}
-                                             />
-                                        )}
-                                    </AnimatePresence>
-
-                                    <div className="relative z-10 flex items-center gap-1.5 px-3 py-2">
-                                        <item.icon
-                                            className={`transition-colors duration-300 ${
-                                                active ? 'text-[#0A1809]' : 'text-[#7D967B]'
-                                            }`}
-                                            style={{ width: 'clamp(20px, 5vw, 24px)', height: 'clamp(20px, 5vw, 24px)' }}
-                                        />
-                                        {active && (
-                                            <motion.span
-                                                initial={{ opacity: 0, width: 0 }}
-                                                animate={{ opacity: 1, width: 'auto' }}
-                                                exit={{ opacity: 0, width: 0 }}
-                                                className="text-[11px] font-bold text-[#0A1809] tracking-tight whitespace-nowrap overflow-hidden"
-                                            >
-                                                {item.label}
-                                            </motion.span>
-                                        )}
-                                    </div>
-                                </div>
-                            </NavLink>
-                        );
-                    })}
+                    {navItems.slice(2).map(renderNavItem)}
                 </div>
             </div>
         </nav>

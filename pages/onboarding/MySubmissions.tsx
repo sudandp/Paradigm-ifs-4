@@ -790,7 +790,7 @@ export const MySubmissions: React.FC = () => {
                         {isMobile ? (
                             <div className="space-y-3">
                                 {isLoading ? (
-                                    <div className="p-4"><TableSkeleton rows={4} cols={colSpan} /></div>
+                                    <div className="p-4"><TableSkeleton rows={4} cols={colSpan} isMobile={true} /></div>
                                 ) : filteredSubmissions.length === 0 ? (
                                     <div className="p-12 text-center text-white/50 bg-[#092c19] border border-[#134426] rounded-2xl">
                                         <Search className="h-10 w-10 mx-auto mb-2 text-[#44D62C] opacity-40" />

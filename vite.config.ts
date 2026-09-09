@@ -3,6 +3,14 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
+import dns from 'dns';
+
+try {
+  dns.setDefaultResultOrder('ipv4first');
+  dns.setServers(['1.1.1.1', '8.8.8.8', '1.0.0.1']);
+} catch {
+  // Ignore DNS override errors in environments that restrict custom resolvers
+}
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -88,33 +96,26 @@ export default defineConfig({
 
           const candidateBases = [
             'https://attendance.cctv.rest',
-            'https://cctv.cctv.rest',
+            'http://localhost:3000',
             'https://attendance.paradigmfms.com',
-            'https://cctv.paradigmfms.com',
-            'http://localhost:4000',
-            'http://127.0.0.1:4000',
-            'https://tassel-estranged-prism.ngrok-free.dev',
-            'http://192.168.51.112:4000',
           ];
 
           try {
-            const sbRes = await fetch('https://fmyafuhxlorbafbacywa.supabase.co/rest/v1/cctv_devices?select=ngrok_url,device_secret&order=updated_at.desc&limit=1', {
+            const sbRes = await fetch('https://fmyafuhxlorbafbacywa.supabase.co/rest/v1/cctv_devices?select=device_secret&order=updated_at.desc&limit=1', {
               headers: {
                 apikey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZteWFmdWh4bG9yYmFmYmFjeXdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyMjg1NDYsImV4cCI6MjA3NzgwNDU0Nn0.RqsniEqzNec6ww35TXJtLJD3mafnGbMI82om4XRUdUU',
                 Authorization: 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZteWFmdWh4bG9yYmFmYmFjeXdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyMjg1NDYsImV4cCI6MjA3NzgwNDU0Nn0.RqsniEqzNec6ww35TXJtLJD3mafnGbMI82om4XRUdUU'
               },
-              signal: AbortSignal.timeout(1800),
+              signal: AbortSignal.timeout(2000),
             });
             if (sbRes.ok) {
               const data: any = await sbRes.json();
-              if (Array.isArray(data) && data[0]) {
-                const attLive = data[0].device_secret?.replace(/\/$/, '');
-                const cctvLive = data[0].ngrok_url?.replace(/\/$/, '');
-                if (attLive && attLive.startsWith('http') && !candidateBases.includes(attLive)) {
+              if (Array.isArray(data) && data[0]?.device_secret) {
+                const attLive = data[0].device_secret.replace(/\/$/, '');
+                if (attLive.startsWith('http')) {
+                  const idx = candidateBases.indexOf(attLive);
+                  if (idx !== -1) candidateBases.splice(idx, 1);
                   candidateBases.unshift(attLive);
-                }
-                if (cctvLive && cctvLive.startsWith('http') && !candidateBases.includes(cctvLive)) {
-                  candidateBases.unshift(cctvLive);
                 }
               }
             }
@@ -129,7 +130,8 @@ export default defineConfig({
           const attemptLogs: string[] = [];
 
           for (const base of candidateBases) {
-            const targetUrl = `${base}${subPath}${search}`;
+            const isLocalServer = base.includes(':3000');
+            const targetUrl = isLocalServer ? `${base}${path}${search}` : `${base}${subPath}${search}`;
             try {
               const fetchRes = await fetch(targetUrl, {
                 method: req.method || 'GET',
@@ -137,11 +139,13 @@ export default defineConfig({
                   'x-api-key': 'paradigm-attendance-secret-2024',
                   'x-api-secret': 'paradigm-attendance-secret-2024',
                   'Content-Type': 'application/json',
+                  'Connection': 'close',
                   'ngrok-skip-browser-warning': '1',
                   'bypass-tunnel-reminder': 'true',
                   'Bypass-Tunnel-Reminder': '1',
+                  ...(req.headers['authorization'] ? { 'Authorization': req.headers['authorization'] } : {}),
                 },
-                signal: AbortSignal.timeout(6000),
+                signal: AbortSignal.timeout(3500),
               });
               if (fetchRes.ok) {
                 const data = await fetchRes.text();

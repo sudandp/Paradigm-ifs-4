@@ -23,6 +23,8 @@ const BadgeHelper = registerPlugin<BadgeHelperPlugin>('BadgeHelper');
 // can skip duplicate subscriptions and remove stale ones between user sessions.
 let _activeChannel: ReturnType<typeof supabase.channel> | null = null;
 let _activeChannelUserId: string | null = null;
+let _activeFetchPromise: Promise<void> | null = null;
+let _lastFetchTime = 0;
 
 interface NotificationState {
   notifications: Notification[];
@@ -34,7 +36,7 @@ interface NotificationState {
   isPanelOpen: boolean;
   setIsPanelOpen: (isOpen: boolean) => void;
   togglePanel: () => void;
-  fetchNotifications: () => Promise<void>;
+  fetchNotifications: (force?: boolean) => Promise<void>;
   markAsRead: (notificationId: string) => Promise<void>;
   markNotificationsAsRead: (notificationIds: string[]) => Promise<void>;
   markAllAsRead: () => Promise<void>;
@@ -99,143 +101,160 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
   setIsPanelOpen: (isOpen: boolean) => set({ isPanelOpen: isOpen }),
   togglePanel: () => set((state) => ({ isPanelOpen: !state.isPanelOpen })),
 
-  fetchNotifications: async () => {
-    const user = useAuthStore.getState().user;
-    if (!user) return;
-
-    set({ isLoading: true, error: null });
-    
-    // Robust UUID check before calling API
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!user.id || !uuidRegex.test(user.id)) {
-      console.warn('[NotificationStore] Skipping fetch: Invalid user.id (UUID expected):', user.id);
-      set({ isLoading: false, notifications: [], unreadCount: 0 });
+  fetchNotifications: async (force = false) => {
+    const now = Date.now();
+    // Return existing in-flight request if one is already processing
+    if (_activeFetchPromise) {
+      return _activeFetchPromise;
+    }
+    // Throttle rapid duplicate calls within 2.5 seconds unless explicitly forced
+    if (!force && now - _lastFetchTime < 2500) {
       return;
     }
 
-    try {
-      const notifications = await api.getNotifications(user.id);
-      
-      const role = (user.role || '').toLowerCase();
-      const isSuperAdmin = ['admin', 'super_admin', 'developer'].includes(role);
-      const isManagerRole = [
-        'admin', 'super_admin', 'management', 'hr', 'hr_ops', 'finance', 'finance_manager', 
-        'developer', 'operation_manager', 'site_manager', 'director', 'business_developer'
-      ].includes(role) || role.includes('manager');
+    _activeFetchPromise = (async () => {
+      const user = useAuthStore.getState().user;
+      if (!user) return;
 
-      // For managers/directors, routine punch-ins/breaks older than 7 days shouldn't inflate the unread count
-      let unreadItems = notifications.filter(n => !n.isRead);
-      if (isManagerRole && !isSuperAdmin) {
-          unreadItems = unreadItems.filter(n => {
-              let meta = n.metadata as any;
-              if (typeof meta === 'string') {
-                  try { meta = JSON.parse(meta); } catch(e) { meta = {}; }
-              }
-              const isRoutine = meta?.isTeamActivity || meta?.is_team_activity || 
-                     n.message.includes('punched in') || 
-                     n.message.includes('punched out') || 
-                     n.message.includes('checked in') || 
-                     n.message.includes('checked out') || 
-                     n.message.toLowerCase().includes('break');
-              if (isRoutine && n.createdAt) {
-                  const ageInDays = (Date.now() - new Date(n.createdAt).getTime()) / (1000 * 60 * 60 * 24);
-                  if (ageInDays > 7) return false;
-              }
-              return true;
-          });
+      set({ isLoading: true, error: null });
+      
+      // Robust UUID check before calling API
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!user.id || !uuidRegex.test(user.id)) {
+        console.warn('[NotificationStore] Skipping fetch: Invalid user.id (UUID expected):', user.id);
+        set({ isLoading: false, notifications: [], unreadCount: 0 });
+        return;
       }
-      const unreadCount = unreadItems.length;
-      console.log(`[NotificationStore] Fetched ${notifications.length} notifications, ${unreadCount} active unread.`);
-      
-      // Also fetch pending approvals count for admins/managers
-      let pendingApprovalsCount = 0;
 
-      console.log(`[NotificationStore] User role: ${role}, isManagerRole: ${isManagerRole}`);
+      try {
+        const notifications = await api.getNotifications(user.id);
+        _lastFetchTime = Date.now();
+        
+        const role = (user.role || '').toLowerCase();
+        const isSuperAdmin = ['admin', 'super_admin', 'developer'].includes(role);
+        const isManagerRole = [
+          'admin', 'super_admin', 'management', 'hr', 'hr_ops', 'finance', 'finance_manager', 
+          'developer', 'operation_manager', 'site_manager', 'director', 'business_developer'
+        ].includes(role) || role.includes('manager');
 
-      if (isManagerRole) {
-        try {
-          const isDirector = role === 'director' || role.includes('director');
-          const isFinanceRole = ['finance', 'finance_manager'].includes(role);
-          
-          let leavesPromise;
-          if (isSuperAdmin) {
-              leavesPromise = api.getLeaveRequests({ status: 'pending_manager_approval' });
-          } else {
-              leavesPromise = api.getLeaveRequests({ 
-                  status: 'pending_manager_approval',
-                  forApproverId: user.id 
-              });
-          }
-
-          const fetchInvoices = !isDirector && (isSuperAdmin || isFinanceRole);
-
-          const [unlocks, leaves, claims, finance, invoices] = await Promise.all([
-              api.getAttendanceUnlockRequests(isSuperAdmin ? undefined : user.id).catch(() => []),
-              leavesPromise.catch(() => ({ data: [] })),
-              api.getExtraWorkLogs({ 
-                  status: 'Pending', 
-                  managerId: isSuperAdmin ? undefined : user.id 
-              }).catch(() => ({ data: [] })),
-              api.getPendingFinanceRecords(user.id).catch(() => []),
-              fetchInvoices ? api.getSiteInvoiceRecords(user.id).catch(() => []) : Promise.resolve([])
-          ]);
-
-          const today = new Date().toISOString().split('T')[0];
-          
-          const counts = [
-            (unlocks || []).filter((r: any) => r.userId !== user.id).length,
-            (leaves?.data || []).filter((r: any) => {
-                const isNotSelf = r.userId !== user.id;
-                const hasActioned = r.approvalHistory?.some((h: any) => h.approverId === user.id || h.approver_id === user.id);
-                return isNotSelf && !hasActioned;
-            }).length,
-            (claims?.data || []).filter((c: any) => c.userId !== user.id).length,
-            (finance || []).filter((f: any) => f.createdBy !== user.id).length,
-            (invoices || []).filter((inv: any) => 
-                !inv.invoiceSentDate && inv.invoiceSharingTentativeDate && inv.invoiceSharingTentativeDate <= today
-            ).length
-          ];
-          
-          pendingApprovalsCount = counts.reduce((a, b) => a + b, 0);
-          console.log(`[NotificationStore] Pending approvals count: ${pendingApprovalsCount} (Unlocks: ${counts[0]}, Leaves: ${counts[1]}, Claims: ${counts[2]}, Finance: ${counts[3]}, Invoices: ${counts[4]})`);
-        } catch (approvalErr) {
-          console.warn('[NotificationStore] Failed to fetch pending approvals count:', approvalErr);
+        // For managers/directors, routine punch-ins/breaks older than 7 days shouldn't inflate the unread count
+        let unreadItems = notifications.filter(n => !n.isRead);
+        if (isManagerRole && !isSuperAdmin) {
+            unreadItems = unreadItems.filter(n => {
+                let meta = n.metadata as any;
+                if (typeof meta === 'string') {
+                    try { meta = JSON.parse(meta); } catch(e) { meta = {}; }
+                }
+                const isRoutine = meta?.isTeamActivity || meta?.is_team_activity || 
+                       n.message.includes('punched in') || 
+                       n.message.includes('punched out') || 
+                       n.message.includes('checked in') || 
+                       n.message.includes('checked out') || 
+                       n.message.toLowerCase().includes('break');
+                if (isRoutine && n.createdAt) {
+                    const ageInDays = (Date.now() - new Date(n.createdAt).getTime()) / (1000 * 60 * 60 * 24);
+                    if (ageInDays > 7) return false;
+                }
+                return true;
+            });
         }
-      }
+        const unreadCount = unreadItems.length;
+        console.log(`[NotificationStore] Fetched ${notifications.length} notifications, ${unreadCount} active unread.`);
+        
+        // Also fetch pending approvals count for admins/managers
+        let pendingApprovalsCount = 0;
 
-      const totalUnreadCount = unreadCount + pendingApprovalsCount;
-      console.log(`[NotificationStore] Final total unread count: ${totalUnreadCount}`);
+        console.log(`[NotificationStore] User role: ${role}, isManagerRole: ${isManagerRole}`);
 
-      set({ 
-        notifications, 
-        unreadCount, 
-        pendingApprovalsCount,
-        totalUnreadCount,
-        isLoading: false 
-      });
+        if (isManagerRole) {
+          try {
+            const isDirector = role === 'director' || role.includes('director');
+            const isFinanceRole = ['finance', 'finance_manager'].includes(role);
+            
+            let leavesPromise;
+            if (isSuperAdmin) {
+                leavesPromise = api.getLeaveRequests({ status: 'pending_manager_approval' });
+            } else {
+                leavesPromise = api.getLeaveRequests({ 
+                    status: 'pending_manager_approval',
+                    forApproverId: user.id 
+                });
+            }
 
-      // Auto-start punch out timer for the most recent unread punch out reminder
-      const { pendingAutoPunchOut } = useAuthStore.getState();
-      if (!pendingAutoPunchOut) {
-          const now = Date.now();
-          const recentReminder = notifications.find(n => !n.isRead && (
-             n.message.toLowerCase().includes("haven't punched out") ||
-             n.message.toLowerCase().includes('reminder: punch out required') ||
-             n.message.toLowerCase().includes('punch out requested')
-          ) && (now - new Date(n.createdAt).getTime()) <= 15 * 60 * 1000);
-          if (recentReminder) {
-              checkAndStartAutoPunchOutTimer(recentReminder);
+            const fetchInvoices = !isDirector && (isSuperAdmin || isFinanceRole);
+
+            const [unlocks, leaves, claims, finance, invoices] = await Promise.all([
+                api.getAttendanceUnlockRequests(isSuperAdmin ? undefined : user.id).catch(() => []),
+                leavesPromise.catch(() => ({ data: [] })),
+                api.getExtraWorkLogs({ 
+                    status: 'Pending', 
+                    managerId: isSuperAdmin ? undefined : user.id 
+                }).catch(() => ({ data: [] })),
+                api.getPendingFinanceRecords(user.id).catch(() => []),
+                fetchInvoices ? api.getSiteInvoiceRecords(user.id).catch(() => []) : Promise.resolve([])
+            ]);
+
+            const today = new Date().toISOString().split('T')[0];
+            
+            const counts = [
+              (unlocks || []).filter((r: any) => r.userId !== user.id).length,
+              (leaves?.data || []).filter((r: any) => {
+                  const isNotSelf = r.userId !== user.id;
+                  const hasActioned = r.approvalHistory?.some((h: any) => h.approverId === user.id || h.approver_id === user.id);
+                  return isNotSelf && !hasActioned;
+              }).length,
+              (claims?.data || []).filter((c: any) => c.userId !== user.id).length,
+              (finance || []).filter((f: any) => f.createdBy !== user.id).length,
+              (invoices || []).filter((inv: any) => 
+                  !inv.invoiceSentDate && inv.invoiceSharingTentativeDate && inv.invoiceSharingTentativeDate <= today
+              ).length
+            ];
+            
+            pendingApprovalsCount = counts.reduce((a, b) => a + b, 0);
+            console.log(`[NotificationStore] Pending approvals count: ${pendingApprovalsCount} (Unlocks: ${counts[0]}, Leaves: ${counts[1]}, Claims: ${counts[2]}, Finance: ${counts[3]}, Invoices: ${counts[4]})`);
+          } catch (approvalErr) {
+            console.warn('[NotificationStore] Failed to fetch pending approvals count:', approvalErr);
           }
+        }
+
+        const totalUnreadCount = unreadCount + pendingApprovalsCount;
+        console.log(`[NotificationStore] Final total unread count: ${totalUnreadCount}`);
+
+        set({ 
+          notifications, 
+          unreadCount, 
+          pendingApprovalsCount,
+          totalUnreadCount,
+          isLoading: false 
+        });
+
+        // Auto-start punch out timer for the most recent unread punch out reminder
+        const { pendingAutoPunchOut } = useAuthStore.getState();
+        if (!pendingAutoPunchOut) {
+            const nowTime = Date.now();
+            const recentReminder = notifications.find(n => !n.isRead && (
+               n.message.toLowerCase().includes("haven't punched out") ||
+               n.message.toLowerCase().includes('reminder: punch out required') ||
+               n.message.toLowerCase().includes('punch out requested')
+            ) && (nowTime - new Date(n.createdAt).getTime()) <= 15 * 60 * 1000);
+            if (recentReminder) {
+                checkAndStartAutoPunchOutTimer(recentReminder);
+            }
+        }
+        
+        // Update global app icon badge count
+        if (Capacitor.isNativePlatform()) {
+          get().updateBadgeCount();
+        }
+      } catch (err) {
+        console.error('Failed to fetch notifications:', err);
+        set({ error: 'Failed to fetch notifications.', isLoading: false });
+      } finally {
+        _activeFetchPromise = null;
       }
-      
-      // Update global app icon badge count
-      if (Capacitor.isNativePlatform()) {
-        get().updateBadgeCount();
-      }
-    } catch (err) {
-      console.error('Failed to fetch notifications:', err);
-      set({ error: 'Failed to fetch notifications.', isLoading: false });
-    }
+    })();
+
+    return _activeFetchPromise;
   },
 
   markAsRead: async (notificationId: string) => {

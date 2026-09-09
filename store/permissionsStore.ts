@@ -183,7 +183,7 @@ export const usePermissionsStore = create(
             
             // If valid permissions found, use them, but always ensure view_profile is there if it's a valid role
             // This is a safety measure to prevent lockout.
-            const basePermissions: Permission[] = ['view_profile', 'view_own_attendance', 'view_mobile_nav_home', 'view_mobile_nav_profile'];
+            const basePermissions: Permission[] = ['view_profile', 'view_own_attendance', 'apply_for_leave', 'view_mobile_nav_home', 'view_mobile_nav_profile'];
             const mergedPermissions = [...new Set([...basePermissions, ...validPermissions])];
             const cleanId = role.id.toLowerCase();
             newPermissions[cleanId] = mergedPermissions;

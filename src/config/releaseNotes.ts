@@ -1,11 +1,11 @@
 export const RELEASE_NOTES = {
-  version: '20.7.0',
-  date: '2026-09-08',
+  version: '20.8.0',
+  date: '2026-09-09',
   notes: [
-  "feat: implement AttendanceCalendar and LeaveDashboard components with updated user profile data fetching script",
-  "feat: implement onboarding flow for GMC and enrollment rules with state management and form validation",
-  "feat: implement automated notification rules engine and job scheduler service with support for missed punch-out tracking.",
-  "feat: implement automated email notification system with attendance reporting and bulk administrative tools",
-  "feat: implement comprehensive monthly attendance reporting system with calculation utilities and administrative tools"
+  "feat: implement automated email scheduling system with attendance reporting and travel distance calculation logic",
+  "feat: implement site staff attendance, billing, and leave management system",
+  "feat: add monthly attendance calculation utilities and reporting view components",
+  "feat: implement core HR, recruitment, and operational dashboards with associated management components",
+  "feat: implement comprehensive onboarding workflow with document management, e-signing, and offline synchronization capabilities"
 ]
 };

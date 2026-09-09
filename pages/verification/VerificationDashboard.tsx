@@ -5,7 +5,7 @@ import type { OnboardingData } from '@/types';
 import StatusChip from '@/components/ui/StatusChip';
 import Button from '@/components/ui/Button';
 import { useNavigate } from 'react-router-dom';
-import { Search, Eye, FileText, Send, RefreshCw, AlertTriangle, Loader2, CheckSquare, XSquare, Square, Edit2, Trash2, Bug, Play, RotateCcw, X, CheckCircle2, Users, Clock, XCircle, MapPin, Briefcase, Calendar, Bot, Sparkles, UserCheck, Building2 } from 'lucide-react';
+import { Search, Eye, FileText, Send, RefreshCw, AlertTriangle, Loader2, CheckSquare, XSquare, Square, Edit2, Trash2, Bug, Play, RotateCcw, X, CheckCircle2, Users, Clock, XCircle, MapPin, Briefcase, Calendar, Bot, Sparkles, UserCheck, Building2, ArrowLeft } from 'lucide-react';
 import Toast from '@/components/ui/Toast';
 import TableSkeleton from '@/components/skeletons/TableSkeleton';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -381,37 +381,37 @@ const DocumentVerificationBadges: React.FC<DocumentVerificationBadgesProps> = ({
             key: 'pan', 
             label: 'PAN', 
             verified: isPanVerified,
-            activeColor: 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100',
-            iconColor: 'text-blue-600'
+            activeColor: 'bg-blue-50 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 hover:bg-blue-100',
+            iconColor: 'text-blue-600 dark:text-blue-400'
         },
         { 
             key: 'aadhaar', 
             label: 'Aadhaar', 
             verified: isAadhaarVerified,
-            activeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100',
-            iconColor: 'text-emerald-600'
+            activeColor: 'bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100',
+            iconColor: 'text-emerald-600 dark:text-emerald-400'
         },
         { 
             key: 'uan', 
             label: 'UAN', 
             verified: isUanVerified, 
             applicable: isUanApplicable,
-            activeColor: 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100',
-            iconColor: 'text-amber-600'
+            activeColor: 'bg-amber-50 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800 hover:bg-amber-100',
+            iconColor: 'text-amber-600 dark:text-amber-400'
         },
         { 
             key: 'bank', 
             label: 'Bank', 
             verified: isBankVerified,
-            activeColor: 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100',
-            iconColor: 'text-indigo-600'
+            activeColor: 'bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100',
+            iconColor: 'text-indigo-600 dark:text-indigo-400'
         },
         { 
             key: 'address', 
             label: 'Address', 
             verified: isAddressVerified,
-            activeColor: 'bg-teal-50 text-teal-700 border-teal-200 hover:bg-teal-100',
-            iconColor: 'text-teal-600'
+            activeColor: 'bg-teal-50 dark:bg-teal-950/80 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800 hover:bg-teal-100',
+            iconColor: 'text-teal-600 dark:text-teal-400'
         },
     ];
 
@@ -422,12 +422,12 @@ const DocumentVerificationBadges: React.FC<DocumentVerificationBadgesProps> = ({
                     return (
                         <span 
                             key={doc.key} 
-                            className={`inline-flex items-center justify-center gap-1 rounded-md text-[10px] font-bold bg-slate-100 text-slate-400 border border-slate-200 ${
+                            className={`inline-flex items-center justify-center gap-1 rounded-md text-[10px] font-bold bg-slate-100 dark:bg-[#041b0f] text-slate-400 dark:text-white/40 border border-slate-200 dark:border-[#134426] ${
                                 hideLabels ? 'w-6 h-6 p-0' : 'px-2 py-0.5'
                             }`}
                             title={`${doc.label}: Not Applicable`}
                         >
-                            <Square className="w-3 h-3 text-slate-300" />
+                            <Square className="w-3 h-3 text-slate-300 dark:text-white/30" />
                             {!hideLabels && <span>{doc.label} (N/A)</span>}
                         </span>
                     );
@@ -446,7 +446,7 @@ const DocumentVerificationBadges: React.FC<DocumentVerificationBadgesProps> = ({
                         } ${
                             isVerified 
                                 ? doc.activeColor 
-                                : 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
+                                : 'bg-rose-50 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 hover:bg-rose-100'
                         }`}
                         title={`${doc.label}: ${isVerified ? 'Verified (Click to toggle)' : 'Not Verified (Click to toggle)'}`}
                     >
@@ -1154,34 +1154,52 @@ const VerificationDashboard: React.FC = () => {
     }
 
     return (
-        <div className="p-3 md:p-6 flex-1 flex flex-col bg-slate-50/50 min-h-screen md:min-h-0 space-y-5">
+        <div className="p-3 md:p-6 flex-1 flex flex-col bg-slate-50/50 dark:bg-[#041b0f] min-h-screen md:min-h-0 space-y-5 max-md:pb-36">
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
             
+            {/* Mobile Top Back Bar */}
+            {isMobile && (
+                <div className="flex items-center gap-3 mb-1">
+                    <button
+                        type="button"
+                        onClick={() => window.history.state?.idx > 0 ? navigate(-1) : navigate('/mobile-home')}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                    >
+                        <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+                        <span>Back</span>
+                    </button>
+                    <div className="h-[1px] flex-1 bg-[#134426]" />
+                    <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#44D62C] bg-[#092c19] px-2.5 py-1 rounded-lg border border-[#134426]">
+                        ONBOARDING
+                    </span>
+                </div>
+            )}
+
             {/* Header section */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <div className="flex items-center gap-2">
-                        <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">Onboarding Forms</h2>
-                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                        <h2 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">Onboarding Forms</h2>
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 dark:bg-[#092c19] text-emerald-800 dark:text-[#44D62C] border border-emerald-200 dark:border-[#134426]">
                             {companyScopedSubmissions.length} Total
                         </span>
                         {isSouthWallUser && !isGlobalHROrOps && (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300">
-                                <Building2 className="w-3 h-3 text-amber-700" />
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                                <Building2 className="w-3 h-3 text-amber-700 dark:text-amber-400" />
                                 SouthWall Security
                             </span>
                         )}
                     </div>
-                    <p className="text-slate-500 text-sm mt-0.5">
+                    <p className="text-slate-500 dark:text-white/60 text-sm mt-0.5">
                         {isSouthWallUser && !isGlobalHROrOps
                             ? 'Showing SouthWall employee onboarding applications & records'
                             : 'Manage, review, and verify employee onboarding applications across sites'}
                     </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2.5">
-                    <div className="flex items-center bg-white p-1 rounded-xl border border-slate-200 shadow-2xs">
-                        <span className="text-[11px] font-bold text-slate-500 px-2 flex items-center gap-1">
-                            <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                    <div className="flex items-center bg-white dark:bg-[#092c19] p-1 rounded-xl border border-slate-200 dark:border-[#134426] shadow-2xs">
+                        <span className="text-[11px] font-bold text-slate-500 dark:text-white/50 px-2 flex items-center gap-1">
+                            <Building2 className="w-3.5 h-3.5 text-slate-400 dark:text-[#44D62C]" />
                             Company:
                         </span>
                         <button
@@ -1189,8 +1207,8 @@ const VerificationDashboard: React.FC = () => {
                             onClick={() => setCompanyFilter('all')}
                             className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
                                 companyFilter === 'all'
-                                    ? 'bg-emerald-600 text-white shadow-xs'
-                                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                                    ? 'bg-emerald-600 dark:bg-[#44D62C] text-white dark:text-[#0A1809] shadow-xs'
+                                    : 'text-slate-600 dark:text-white/70 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#134426]/50'
                             }`}
                         >
                             All ({submissions.length})
@@ -1201,7 +1219,7 @@ const VerificationDashboard: React.FC = () => {
                             className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
                                 companyFilter === 'southwall'
                                     ? 'bg-amber-600 text-white shadow-xs'
-                                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                                    : 'text-slate-600 dark:text-white/70 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#134426]/50'
                             }`}
                         >
                             SouthWall ({submissions.filter(s => isSubmissionForSouthWall(s)).length})
@@ -1211,8 +1229,8 @@ const VerificationDashboard: React.FC = () => {
                             onClick={() => setCompanyFilter('paradigm')}
                             className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
                                 companyFilter === 'paradigm'
-                                    ? 'bg-emerald-700 text-white shadow-xs'
-                                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                                    ? 'bg-emerald-700 dark:bg-emerald-600 text-white shadow-xs'
+                                    : 'text-slate-600 dark:text-white/70 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#134426]/50'
                             }`}
                         >
                             Paradigm ({submissions.filter(s => !isSubmissionForSouthWall(s)).length})
@@ -1220,18 +1238,18 @@ const VerificationDashboard: React.FC = () => {
                     </div>
                     <button
                       onClick={() => navigate('/onboarding/submissions')}
-                      className="px-3.5 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-1.5 border border-emerald-200 shadow-xs"
+                      className="px-3.5 py-2.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-[#092c19] dark:hover:bg-[#134426] text-emerald-800 dark:text-[#44D62C] rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-1.5 border border-emerald-200 dark:border-[#134426] shadow-xs cursor-pointer"
                       title="View only submissions created by you"
                     >
-                      <UserCheck className="w-3.5 h-3.5 text-emerald-600" /> My Submissions
+                      <UserCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-[#44D62C]" /> My Submissions
                     </button>
                     <button
                       onClick={handleManualSync}
                       disabled={isSyncing}
-                      className={`px-4 py-2.5 rounded-xl text-xs font-bold shadow-xs transition-all duration-200 flex items-center gap-2 border ${
+                      className={`px-4 py-2.5 rounded-xl text-xs font-bold shadow-xs transition-all duration-200 flex items-center gap-2 border cursor-pointer ${
                         pendingOrFailedCount > 0
                           ? 'bg-amber-600 hover:bg-amber-700 text-white border-amber-500 shadow-amber-500/20'
-                          : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200 hover:border-slate-300'
+                          : 'bg-white hover:bg-slate-100 dark:bg-[#092c19] dark:hover:bg-[#134426] text-slate-700 dark:text-white border-slate-200 dark:border-[#134426]'
                       }`}
                       title="Trigger immediate sync of all offline records"
                     >
@@ -1240,7 +1258,7 @@ const VerificationDashboard: React.FC = () => {
                     </button>
                     <button
                       onClick={() => setShowDebugModal(true)}
-                      className="px-3.5 py-2.5 bg-white hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-1.5 border border-slate-200 hover:border-slate-300 shadow-xs"
+                      className="px-3.5 py-2.5 bg-white hover:bg-slate-100 dark:bg-[#092c19] dark:hover:bg-[#134426] text-slate-700 dark:text-amber-400 rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-1.5 border border-slate-200 dark:border-[#134426] shadow-xs cursor-pointer"
                       title="View sync diagnostics and error tracebacks"
                     >
                       <Bug className="w-3.5 h-3.5 text-amber-500" /> Debug
@@ -1252,108 +1270,120 @@ const VerificationDashboard: React.FC = () => {
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4">
                 <div 
                     onClick={() => setStatusFilter('all')}
-                    className={`cursor-pointer bg-white p-4 rounded-2xl border transition-all duration-200 shadow-xs hover:shadow-md ${
-                        statusFilter === 'all' ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-slate-200/80 hover:border-slate-300'
+                    className={`col-span-2 sm:col-span-1 cursor-pointer bg-white dark:bg-[#092c19] p-4 rounded-2xl border transition-all duration-200 shadow-xs hover:shadow-md ${
+                        statusFilter === 'all' 
+                            ? 'border-emerald-500 dark:border-[#44D62C] ring-2 ring-emerald-500/20 dark:ring-[#44D62C]/20' 
+                            : 'border-slate-200/80 dark:border-[#134426] hover:border-slate-300 dark:hover:border-[#44D62C]/40'
                     }`}
                 >
                     <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total</span>
-                        <div className="p-2 bg-emerald-50 rounded-xl text-emerald-600">
-                            <Users className="w-4 h-4" />
+                        <div>
+                            <span className="text-xs font-bold text-slate-500 dark:text-white/60 uppercase tracking-wider">Total Submissions</span>
+                            <div className="text-2xl font-black text-slate-900 dark:text-white mt-1">{counts.all}</div>
+                        </div>
+                        <div className="p-2.5 bg-emerald-50 dark:bg-[#041b0f] rounded-xl text-emerald-600 dark:text-[#44D62C] border border-emerald-100 dark:border-[#134426]">
+                            <Users className="w-5 h-5" />
                         </div>
                     </div>
-                    <div className="text-2xl font-black text-slate-900 mt-2">{counts.all}</div>
                 </div>
 
                 <div 
                     onClick={() => setStatusFilter('draft')}
-                    className={`cursor-pointer bg-white p-4 rounded-2xl border transition-all duration-200 shadow-xs hover:shadow-md ${
-                        statusFilter === 'draft' ? 'border-slate-600 ring-2 ring-slate-600/20' : 'border-slate-200/80 hover:border-slate-300'
+                    className={`cursor-pointer bg-white dark:bg-[#092c19] p-4 rounded-2xl border transition-all duration-200 shadow-xs hover:shadow-md ${
+                        statusFilter === 'draft' 
+                            ? 'border-slate-600 dark:border-slate-400 ring-2 ring-slate-600/20' 
+                            : 'border-slate-200/80 dark:border-[#134426] hover:border-slate-300 dark:hover:border-[#44D62C]/40'
                     }`}
                 >
                     <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Drafts</span>
-                        <div className="p-2 bg-slate-100 rounded-xl text-slate-600">
+                        <span className="text-xs font-bold text-slate-500 dark:text-white/60 uppercase tracking-wider">Drafts</span>
+                        <div className="p-2 bg-slate-100 dark:bg-[#041b0f] rounded-xl text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-[#134426]">
                             <Edit2 className="w-4 h-4" />
                         </div>
                     </div>
                     <div className="flex items-baseline justify-between mt-2">
-                        <span className="text-2xl font-black text-slate-900">{counts.draft}</span>
+                        <span className="text-2xl font-black text-slate-900 dark:text-white">{counts.draft}</span>
                         {counts.draft > 0 && (
-                            <span className="text-[10px] font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-full">In Progress</span>
+                            <span className="text-[10px] font-bold text-slate-700 dark:text-white/80 bg-slate-100 dark:bg-[#041b0f] border border-slate-200 dark:border-[#134426] px-2 py-0.5 rounded-full">In Progress</span>
                         )}
                     </div>
                 </div>
 
                 <div 
                     onClick={() => setStatusFilter('pending')}
-                    className={`cursor-pointer bg-white p-4 rounded-2xl border transition-all duration-200 shadow-xs hover:shadow-md ${
-                        statusFilter === 'pending' ? 'border-amber-500 ring-2 ring-amber-500/20' : 'border-slate-200/80 hover:border-slate-300'
+                    className={`cursor-pointer bg-white dark:bg-[#092c19] p-4 rounded-2xl border transition-all duration-200 shadow-xs hover:shadow-md ${
+                        statusFilter === 'pending' 
+                            ? 'border-amber-500 dark:border-amber-400 ring-2 ring-amber-500/20 dark:ring-amber-400/20' 
+                            : 'border-slate-200/80 dark:border-[#134426] hover:border-slate-300 dark:hover:border-[#44D62C]/40'
                     }`}
                 >
                     <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Pending</span>
-                        <div className="p-2 bg-amber-50 rounded-xl text-amber-600">
+                        <span className="text-xs font-bold text-slate-500 dark:text-white/60 uppercase tracking-wider">Pending</span>
+                        <div className="p-2 bg-amber-50 dark:bg-amber-950/60 rounded-xl text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60">
                             <Clock className="w-4 h-4" />
                         </div>
                     </div>
                     <div className="flex items-baseline justify-between mt-2">
-                        <span className="text-2xl font-black text-slate-900">{counts.pending}</span>
+                        <span className="text-2xl font-black text-slate-900 dark:text-white">{counts.pending}</span>
                         {counts.pending > 0 && (
-                            <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full animate-pulse">Action Needed</span>
+                            <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/80 border border-amber-300 dark:border-amber-800/80 px-2 py-0.5 rounded-full animate-pulse">Action Needed</span>
                         )}
                     </div>
                 </div>
 
                 <div 
                     onClick={() => setStatusFilter('verified')}
-                    className={`cursor-pointer bg-white p-4 rounded-2xl border transition-all duration-200 shadow-xs hover:shadow-md ${
-                        statusFilter === 'verified' ? 'border-teal-500 ring-2 ring-teal-500/20' : 'border-slate-200/80 hover:border-slate-300'
+                    className={`cursor-pointer bg-white dark:bg-[#092c19] p-4 rounded-2xl border transition-all duration-200 shadow-xs hover:shadow-md ${
+                        statusFilter === 'verified' 
+                            ? 'border-teal-500 dark:border-[#44D62C] ring-2 ring-teal-500/20 dark:ring-[#44D62C]/20' 
+                            : 'border-slate-200/80 dark:border-[#134426] hover:border-slate-300 dark:hover:border-[#44D62C]/40'
                     }`}
                 >
                     <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Verified</span>
-                        <div className="p-2 bg-teal-50 rounded-xl text-teal-600">
+                        <span className="text-xs font-bold text-slate-500 dark:text-white/60 uppercase tracking-wider">Verified</span>
+                        <div className="p-2 bg-teal-50 dark:bg-emerald-950/60 rounded-xl text-teal-600 dark:text-[#44D62C] border border-teal-200 dark:border-emerald-800/60">
                             <CheckCircle2 className="w-4 h-4" />
                         </div>
                     </div>
-                    <div className="text-2xl font-black text-slate-900 mt-2">{counts.verified}</div>
+                    <div className="text-2xl font-black text-slate-900 dark:text-white mt-2">{counts.verified}</div>
                 </div>
 
                 <div 
                     onClick={() => setStatusFilter('rejected')}
-                    className={`cursor-pointer bg-white p-4 rounded-2xl border transition-all duration-200 shadow-xs hover:shadow-md ${
-                        statusFilter === 'rejected' ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-slate-200/80 hover:border-slate-300'
+                    className={`cursor-pointer bg-white dark:bg-[#092c19] p-4 rounded-2xl border transition-all duration-200 shadow-xs hover:shadow-md ${
+                        statusFilter === 'rejected' 
+                            ? 'border-rose-500 dark:border-rose-400 ring-2 ring-rose-500/20 dark:ring-rose-400/20' 
+                            : 'border-slate-200/80 dark:border-[#134426] hover:border-slate-300 dark:hover:border-[#44D62C]/40'
                     }`}
                 >
                     <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Rejected</span>
-                        <div className="p-2 bg-rose-50 rounded-xl text-rose-600">
+                        <span className="text-xs font-bold text-slate-500 dark:text-white/60 uppercase tracking-wider">Rejected</span>
+                        <div className="p-2 bg-rose-50 dark:bg-rose-950/60 rounded-xl text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800/60">
                             <XCircle className="w-4 h-4" />
                         </div>
                     </div>
-                    <div className="text-2xl font-black text-slate-900 mt-2">{counts.rejected}</div>
+                    <div className="text-2xl font-black text-slate-900 dark:text-white mt-2">{counts.rejected}</div>
                 </div>
             </div>
 
             {/* Main Table Card */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden flex-1 flex flex-col">
-                <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex-shrink-0">
+            <div className="bg-white dark:bg-[#092c19] rounded-2xl shadow-sm border border-slate-200/80 dark:border-[#134426] overflow-hidden flex-1 flex flex-col">
+                <div className="p-4 border-b border-slate-100 dark:border-[#134426] bg-slate-50/50 dark:bg-[#092c19] flex-shrink-0">
                     <div className="flex flex-col lg:flex-row justify-between items-center gap-4">
-                        <div className="bg-slate-200/60 p-1 rounded-xl w-full lg:w-auto self-start">
+                        <div className="bg-slate-200/60 dark:bg-[#041b0f] border border-transparent dark:border-[#134426] p-1 rounded-xl w-full lg:w-auto self-start">
                             <nav className="flex space-x-1" aria-label="Tabs">
                                 {filterTabs.map(tab => (
                                     <button
                                         key={tab}
                                         onClick={() => setStatusFilter(tab)}
                                         className={`${statusFilter === tab
-                                            ? 'bg-white text-emerald-800 shadow-xs font-bold'
-                                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-300/40'
+                                            ? 'bg-white dark:bg-[#44D62C] text-emerald-800 dark:text-[#0A1809] shadow-xs font-black'
+                                            : 'text-slate-600 dark:text-white/70 hover:text-slate-900 dark:hover:text-white hover:bg-slate-300/40 dark:hover:bg-[#134426]/50'
                                             } whitespace-nowrap py-1.5 px-3.5 rounded-lg text-xs capitalize transition-all duration-200 flex items-center gap-2`}
                                     >
                                         {tab}
                                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                            statusFilter === tab ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-300/60 text-slate-600'
+                                            statusFilter === tab ? 'bg-emerald-100 dark:bg-[#0A1809] text-emerald-800 dark:text-[#44D62C]' : 'bg-slate-300/60 dark:bg-[#092c19] text-slate-600 dark:text-white/70 border border-transparent dark:border-[#134426]'
                                         }`}>
                                             {counts[tab as keyof typeof counts]}
                                         </span>
@@ -1363,7 +1393,7 @@ const VerificationDashboard: React.FC = () => {
                         </div>
                         <div className="relative w-full lg:max-w-md">
                             <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                                <Search className="h-4 w-4 text-slate-400" />
+                                <Search className="h-4 w-4 text-slate-400 dark:text-white/40" />
                             </div>
                             <input
                                 id="onboarding-search"
@@ -1373,7 +1403,7 @@ const VerificationDashboard: React.FC = () => {
                                 aria-label="Search onboarding forms"
                                 value={searchTerm}
                                 onChange={e => setSearchTerm(e.target.value)}
-                                className="block w-full bg-white border border-slate-200 rounded-xl py-2 pl-10 pr-4 text-xs placeholder-slate-400 text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-xs"
+                                className="block w-full bg-white dark:bg-[#041b0f] border border-slate-200 dark:border-[#134426] rounded-xl py-2 pl-10 pr-4 text-xs placeholder-slate-400 dark:placeholder-white/40 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 dark:focus:border-[#44D62C] transition-all shadow-xs"
                             />
                         </div>
                     </div>
@@ -1384,20 +1414,20 @@ const VerificationDashboard: React.FC = () => {
                     <div className="flex flex-col gap-3 px-1 mt-2">
                         {isLoading ? (
                             Array.from({ length: 4 }).map((_, i) => (
-                                <div key={i} className="h-40 bg-slate-100 rounded-2xl border border-slate-200 animate-pulse"></div>
+                                <div key={i} className="h-40 bg-slate-100 dark:bg-[#092c19] rounded-2xl border border-slate-200 dark:border-[#134426] animate-pulse"></div>
                             ))
                         ) : filteredSubmissions.length === 0 ? (
-                            <div className="text-center py-16 bg-slate-50/50 rounded-2xl border border-slate-200/80">
-                                <div className="flex flex-col items-center justify-center text-slate-400">
-                                    <Search className="h-10 w-10 mb-3 opacity-30 text-emerald-600" />
-                                    <p className="text-sm font-semibold text-slate-700">
+                            <div className="text-center py-16 bg-slate-50/50 dark:bg-[#092c19] rounded-2xl border border-slate-200/80 dark:border-[#134426]">
+                                <div className="flex flex-col items-center justify-center text-slate-400 dark:text-white/40">
+                                    <Search className="h-10 w-10 mb-3 opacity-30 text-emerald-600 dark:text-[#44D62C]" />
+                                    <p className="text-sm font-semibold text-slate-700 dark:text-white">
                                         {companyFilter === 'southwall' 
                                             ? 'No SouthWall onboarding submissions found' 
                                             : companyFilter === 'paradigm' 
                                                 ? 'No Paradigm onboarding submissions found' 
                                                 : 'No submissions found'}
                                     </p>
-                                    <p className="text-xs text-slate-400 mt-1">
+                                    <p className="text-xs text-slate-400 dark:text-white/50 mt-1">
                                         {submissions.length > 0 && companyFilter !== 'all' 
                                             ? `There are ${submissions.length} submission(s) in other company views.` 
                                             : 'Try adjusting your search or filters'}
@@ -1406,7 +1436,7 @@ const VerificationDashboard: React.FC = () => {
                                         <button
                                             type="button"
                                             onClick={() => setCompanyFilter('all')}
-                                            className="mt-3 px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold transition-all shadow-2xs"
+                                            className="mt-3 px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-[#041b0f] dark:hover:bg-[#134426] text-emerald-700 dark:text-[#44D62C] border border-emerald-200 dark:border-[#134426] rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer"
                                         >
                                             View All Submissions ({submissions.length})
                                         </button>
@@ -1421,7 +1451,7 @@ const VerificationDashboard: React.FC = () => {
                                 const isDraft = s.status === 'draft';
 
                                 return (
-                                <div key={s.id} className={`bg-white border ${s.requiresManualVerification ? 'border-amber-300 bg-amber-50/30' : isDraft ? 'border-slate-300 bg-slate-50/30' : 'border-slate-200/80'} rounded-2xl p-4 shadow-xs flex flex-col gap-3 relative overflow-hidden transition-all duration-300 hover:shadow-md`}>
+                                <div key={s.id} className={`bg-white dark:bg-[#092c19] border ${s.requiresManualVerification ? 'border-amber-300 dark:border-amber-500/60 bg-amber-50/30 dark:bg-amber-950/20' : isDraft ? 'border-slate-300 dark:border-[#134426] bg-slate-50/30 dark:bg-[#092c19]' : 'border-slate-200/80 dark:border-[#134426]'} rounded-2xl p-4 shadow-xs flex flex-col gap-3 relative overflow-hidden transition-all duration-300 hover:shadow-md`}>
                                     {s.requiresManualVerification && (
                                         <div className="absolute top-0 left-0 w-1.5 h-full bg-amber-500"></div>
                                     )}
@@ -1432,7 +1462,7 @@ const VerificationDashboard: React.FC = () => {
                                                     <img 
                                                         src={empPhoto} 
                                                         alt={empDisplayName} 
-                                                        className="h-11 w-11 rounded-full object-cover border-2 border-slate-200 shadow-2xs"
+                                                        className="h-11 w-11 rounded-full object-cover border-2 border-slate-200 dark:border-[#134426] shadow-2xs"
                                                         onError={(e) => {
                                                             e.currentTarget.style.display = 'none';
                                                             const fb = e.currentTarget.parentElement?.querySelector('.emp-fallback-m') as HTMLElement;
@@ -1441,29 +1471,29 @@ const VerificationDashboard: React.FC = () => {
                                                     />
                                                 ) : null}
                                                 <div 
-                                                    className={`emp-fallback-m h-11 w-11 rounded-full ${isDraft ? 'bg-slate-700' : 'bg-gradient-to-br from-emerald-500 to-teal-700'} text-white items-center justify-center font-black text-sm shadow-2xs border-2 border-white uppercase ${empPhoto ? 'hidden' : 'flex'}`}
+                                                    className={`emp-fallback-m h-11 w-11 rounded-full ${isDraft ? 'bg-slate-700 dark:bg-[#041b0f] dark:text-white/60' : 'bg-gradient-to-br from-emerald-500 to-teal-700'} text-white items-center justify-center font-black text-sm shadow-2xs border-2 border-white dark:border-[#134426] uppercase ${empPhoto ? 'hidden' : 'flex'}`}
                                                 >
                                                     {empInitials}
                                                 </div>
                                             </div>
                                             <div className="flex flex-col">
                                                 <div className="flex items-center gap-2">
-                                                    <span className="text-sm font-bold text-slate-900 capitalize">
+                                                    <span className="text-sm font-bold text-slate-900 dark:text-white capitalize">
                                                         {empDisplayName}
                                                     </span>
                                                     {s.requiresManualVerification && (
                                                         <AlertTriangle className="h-4 w-4 text-amber-500" />
                                                     )}
                                                 </div>
-                                                <div className="font-mono text-xs text-slate-500 mt-0.5">{s.personal.employeeId || 'ID: Pending'}</div>
+                                                <div className="font-mono text-xs text-slate-500 dark:text-white/50 mt-0.5">{s.personal.employeeId || 'ID: Pending'}</div>
                                             </div>
                                         </div>
                                         {statusFilter !== 'verified' && (
                                             <div>
                                                 <StatusChip status={s.status} />
                                                 {s.status === 'rejected' && (
-                                                    <div className="mt-1.5 flex items-center gap-1.5 text-[11px] font-bold text-rose-800 bg-rose-50 border border-rose-200 px-2 py-1 rounded-md shadow-2xs" title={s.rejectionReason || (s as any).rejection_reason || s.personal?.rejectionReason || 'Profile Photo Mismatch'}>
-                                                        <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                                                    <div className="mt-1.5 flex items-center gap-1.5 text-[11px] font-bold text-rose-800 dark:text-rose-200 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 px-2 py-1 rounded-md shadow-2xs" title={s.rejectionReason || (s as any).rejection_reason || s.personal?.rejectionReason || 'Profile Photo Mismatch'}>
+                                                        <AlertTriangle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400 shrink-0" />
                                                         <span className="truncate max-w-[180px]">
                                                             {s.rejectionReason || (s as any).rejection_reason || s.personal?.rejectionReason || 'Profile Photo Mismatch'}
                                                         </span>
@@ -1473,53 +1503,53 @@ const VerificationDashboard: React.FC = () => {
                                         )}
                                     </div>
                                     
-                                    <div className="flex flex-col gap-2.5 bg-slate-50/80 rounded-xl p-3 border border-slate-200/60 mt-1">
+                                    <div className="flex flex-col gap-2.5 bg-slate-50/80 dark:bg-[#041b0f] rounded-xl p-3 border border-slate-200/60 dark:border-[#134426] mt-1">
                                         <div className="flex items-center justify-between">
-                                            <span className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">Designation</span>
-                                            <span className="text-xs text-slate-800 font-semibold">{s.organization?.designation || '-'}</span>
+                                            <span className="text-[11px] text-slate-500 dark:text-white/50 font-bold uppercase tracking-wider">Designation</span>
+                                            <span className="text-xs text-slate-800 dark:text-white font-semibold">{s.organization?.designation || '-'}</span>
                                         </div>
-                                        <div className="w-full h-px bg-slate-200/60"></div>
+                                        <div className="w-full h-px bg-slate-200/60 dark:bg-[#134426]"></div>
                                         <div className="flex items-center justify-between">
-                                            <span className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">Site Location</span>
-                                            <span className="text-xs text-slate-800 font-semibold">{s.organizationName || s.organization?.organizationName || '-'}</span>
+                                            <span className="text-[11px] text-slate-500 dark:text-white/50 font-bold uppercase tracking-wider">Site Location</span>
+                                            <span className="text-xs text-slate-800 dark:text-white font-semibold">{s.organizationName || s.organization?.organizationName || '-'}</span>
                                         </div>
-                                        <div className="w-full h-px bg-slate-200/60"></div>
+                                        <div className="w-full h-px bg-slate-200/60 dark:bg-[#134426]"></div>
                                         <div className="flex flex-col gap-1.5">
-                                            <span className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">Verified Documents</span>
+                                            <span className="text-[11px] text-slate-500 dark:text-white/50 font-bold uppercase tracking-wider">Verified Documents</span>
                                             <DocumentVerificationBadges submission={s} onToggleDoc={(key) => handleToggleDocVerification(s.id!, key)} />
                                         </div>
-                                        <div className="w-full h-px bg-slate-200/60"></div>
+                                        <div className="w-full h-px bg-slate-200/60 dark:bg-[#134426]"></div>
                                         <div className="flex items-center justify-between">
-                                            <span className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">Created By</span>
+                                            <span className="text-[11px] text-slate-500 dark:text-white/50 font-bold uppercase tracking-wider">Created By</span>
                                             {(() => {
                                                 const creator = getCreatorInfo(s);
                                                 return (
                                                     <div className="flex items-center gap-1.5">
                                                         {creator.photo ? (
-                                                            <img src={creator.photo} alt={creator.name} className="h-5 w-5 rounded-full object-cover border border-slate-300" />
+                                                            <img src={creator.photo} alt={creator.name} className="h-5 w-5 rounded-full object-cover border border-slate-300 dark:border-[#134426]" />
                                                         ) : (
-                                                            <div className="h-5 w-5 rounded-full bg-slate-700 text-white font-black text-[8.5px] flex items-center justify-center uppercase">
+                                                            <div className="h-5 w-5 rounded-full bg-slate-700 dark:bg-[#092c19] text-white dark:text-[#44D62C] font-black text-[8.5px] flex items-center justify-center uppercase border border-transparent dark:border-[#134426]">
                                                                 {creator.initials}
                                                             </div>
                                                         )}
-                                                        <span className="text-xs text-slate-800 font-bold capitalize">{creator.name}</span>
+                                                        <span className="text-xs text-slate-800 dark:text-white font-bold capitalize">{creator.name}</span>
                                                     </div>
                                                 );
                                             })()}
                                         </div>
-                                        <div className="w-full h-px bg-slate-200/60"></div>
+                                        <div className="w-full h-px bg-slate-200/60 dark:bg-[#134426]"></div>
                                         <div className="flex items-center justify-between">
-                                            <span className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">Created Date/Time</span>
-                                            <span className="text-xs text-slate-800 font-semibold">{formatCreatedDate(s.createdAt || s.created_at || s.enrollmentDate)}</span>
+                                            <span className="text-[11px] text-slate-500 dark:text-white/50 font-bold uppercase tracking-wider">Created Date/Time</span>
+                                            <span className="text-xs text-slate-800 dark:text-white font-semibold">{formatCreatedDate(s.createdAt || s.created_at || s.enrollmentDate)}</span>
                                         </div>
                                         {s.status === 'verified' && (
                                             <>
-                                                <div className="w-full h-px bg-slate-200/60"></div>
+                                                <div className="w-full h-px bg-slate-200/60 dark:bg-[#134426]"></div>
                                                 <div className="flex items-center justify-between">
-                                                    <span className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">Approved By</span>
+                                                    <span className="text-[11px] text-slate-500 dark:text-white/50 font-bold uppercase tracking-wider">Approved By</span>
                                                     {s.verificationMode === 'auto' || s.verifiedBy === 'Paradigm AI Agent' ? (
-                                                        <span className="inline-flex items-center gap-1 text-xs font-bold text-violet-800 bg-violet-50 px-2 py-0.5 rounded-md border border-violet-200">
-                                                            <Bot className="h-3.5 w-3.5 text-violet-600" />
+                                                        <span className="inline-flex items-center gap-1 text-xs font-bold text-violet-800 dark:text-violet-300 bg-violet-50 dark:bg-violet-950/60 px-2 py-0.5 rounded-md border border-violet-200 dark:border-violet-800">
+                                                            <Bot className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
                                                             Verified by Paradigm AI Agent
                                                         </span>
                                                     ) : (
@@ -1531,44 +1561,44 @@ const VerificationDashboard: React.FC = () => {
                                                                     {s.verifiedBy ? s.verifiedBy.split(' ').map(n => n[0]).join('').slice(0, 2) : 'HR'}
                                                                 </div>
                                                             )}
-                                                            <span className="text-xs font-bold text-slate-800">{s.verifiedBy || 'HR Admin'}</span>
+                                                            <span className="text-xs font-bold text-slate-800 dark:text-white">{s.verifiedBy || 'HR Admin'}</span>
                                                         </div>
                                                     )}
                                                 </div>
-                                                <div className="w-full h-px bg-slate-200/60"></div>
+                                                <div className="w-full h-px bg-slate-200/60 dark:bg-[#134426]"></div>
                                                 <div className="flex items-center justify-between">
-                                                    <span className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">FCU Status</span>
+                                                    <span className="text-[11px] text-slate-500 dark:text-white/50 font-bold uppercase tracking-wider">FCU Status</span>
                                                     {(() => {
                                                         const fcuSt = (s as any).fcuStatus || (s as any).fcu_status;
                                                         if (fcuSt === 'verified') {
                                                             return (
-                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                                                    <CheckCircle2 size={10} className="text-emerald-600" /> Verified
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                                                                    <CheckCircle2 size={10} className="text-emerald-600 dark:text-emerald-400" /> Verified
                                                                 </span>
                                                             );
                                                         }
                                                         if (fcuSt === 'failed') {
                                                             return (
-                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-50 text-red-700 border border-red-200">
-                                                                    <XCircle size={10} className="text-red-600" /> Failed
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-50 dark:bg-rose-950/60 text-red-700 dark:text-rose-300 border border-red-200 dark:border-rose-800">
+                                                                    <XCircle size={10} className="text-red-600 dark:text-rose-400" /> Failed
                                                                 </span>
                                                             );
                                                         }
                                                         if (fcuSt === 'pending') {
                                                             return (
                                                                 <div className="flex items-center gap-1">
-                                                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                                                                        <Clock size={10} className="text-amber-600 animate-pulse" /> Pending
+                                                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                                                                        <Clock size={10} className="text-amber-600 dark:text-amber-400 animate-pulse" /> Pending
                                                                     </span>
                                                                     <button
                                                                         onClick={() => s.id && api.updateFcuStatus(s.id, 'verified').then(() => fetchSubmissions())}
-                                                                        className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100"
+                                                                        className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 cursor-pointer"
                                                                     >
                                                                         Done
                                                                     </button>
                                                                     <button
                                                                         onClick={() => s.id && api.updateFcuStatus(s.id, 'failed', 'FCU failed').then(() => fetchSubmissions())}
-                                                                        className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-50 text-red-700 border border-red-200 hover:bg-red-100"
+                                                                        className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-50 dark:bg-rose-950/60 text-red-700 dark:text-rose-300 border border-red-200 dark:border-rose-800 hover:bg-red-100 cursor-pointer"
                                                                     >
                                                                         Fail
                                                                     </button>
@@ -1578,7 +1608,7 @@ const VerificationDashboard: React.FC = () => {
                                                         return (
                                                             <button
                                                                 onClick={() => s.id && api.acknowledgeOnboardingVerification(s.id).then(() => fetchSubmissions())}
-                                                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-50 text-slate-600 border border-slate-200 hover:bg-teal-50 hover:text-teal-700"
+                                                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-50 dark:bg-[#041b0f] text-slate-600 dark:text-white/70 border border-slate-200 dark:border-[#134426] hover:bg-teal-50 dark:hover:bg-[#134426] hover:text-teal-700 dark:hover:text-[#44D62C] cursor-pointer"
                                                             >
                                                                 <Play size={9} /> Start FCU
                                                             </button>
@@ -1589,15 +1619,15 @@ const VerificationDashboard: React.FC = () => {
                                         )}
                                         {s.status === 'rejected' && (
                                             <>
-                                                <div className="w-full h-px bg-slate-200/60"></div>
+                                                <div className="w-full h-px bg-slate-200/60 dark:bg-[#134426]"></div>
                                                 <div className="flex items-center justify-between">
-                                                    <span className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">Rejected By</span>
-                                                    <span className="text-xs font-bold text-rose-900">{s.rejectedBy || (s as any).rejected_by || s.personal?.rejectedBy || 'HR Admin'}</span>
+                                                    <span className="text-[11px] text-slate-500 dark:text-white/50 font-bold uppercase tracking-wider">Rejected By</span>
+                                                    <span className="text-xs font-bold text-rose-900 dark:text-rose-300">{s.rejectedBy || (s as any).rejected_by || s.personal?.rejectedBy || 'HR Admin'}</span>
                                                 </div>
-                                                <div className="w-full h-px bg-slate-200/60"></div>
+                                                <div className="w-full h-px bg-slate-200/60 dark:bg-[#134426]"></div>
                                                 <div className="flex items-center justify-between">
-                                                    <span className="text-[11px] text-rose-600 font-bold uppercase tracking-wider">Rejection Reason</span>
-                                                    <span className="text-xs font-extrabold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                                                    <span className="text-[11px] text-rose-600 dark:text-rose-400 font-bold uppercase tracking-wider">Rejection Reason</span>
+                                                    <span className="text-xs font-extrabold text-rose-700 dark:text-rose-200 bg-rose-50 dark:bg-rose-950/60 px-2 py-0.5 rounded border border-rose-200 dark:border-rose-800">
                                                         {s.rejectionReason || (s as any).rejection_reason || s.personal?.rejectionReason || 'Profile Photo Mismatch'}
                                                     </span>
                                                 </div>
@@ -1605,77 +1635,76 @@ const VerificationDashboard: React.FC = () => {
                                         )}
                                     </div>
 
-                                    <div className="flex items-center justify-end gap-2 mt-1 pt-3 border-t border-slate-100 flex-wrap">
+                                    <div className="flex items-center justify-end gap-2 mt-1 pt-3 border-t border-slate-100 dark:border-[#134426] flex-wrap">
                                         {isDraft && (
                                             <button 
                                                 onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)}
-                                                className="px-3 py-1.5 text-white bg-slate-800 hover:bg-slate-900 rounded-lg text-xs font-bold transition-all duration-200 flex items-center gap-1.5 shadow-xs"
+                                                className="px-3 py-1.5 text-white bg-slate-800 dark:bg-[#041b0f] hover:bg-slate-900 dark:hover:bg-[#134426] border border-transparent dark:border-[#134426] rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-1.5 shadow-xs cursor-pointer"
                                                 title="Resume Incomplete Enrollment"
                                             >
-                                                <Play className="h-3 w-3 fill-current" /> Resume
+                                                <Play className="h-3 w-3 fill-current text-emerald-400" /> Resume
                                             </button>
                                         )}
                                         <button 
                                             onClick={() => navigate(`/onboarding/add/review?id=${s.id}`)}
-                                            className="px-3 py-1.5 text-slate-600 hover:text-emerald-700 bg-slate-100 hover:bg-emerald-50 rounded-lg text-xs font-bold transition-all duration-200 flex items-center gap-1 border border-slate-200 hover:border-emerald-200"
+                                            className="px-3 py-1.5 text-slate-600 dark:text-white hover:text-emerald-700 dark:hover:text-[#44D62C] bg-slate-100 dark:bg-[#041b0f] hover:bg-emerald-50 dark:hover:bg-[#134426] rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-1 border border-slate-200 dark:border-[#134426] cursor-pointer"
                                             title="View Details"
                                         >
-                                            <Eye className="h-3.5 w-3.5" /> View
+                                            <Eye className="h-3.5 w-3.5 text-slate-500 dark:text-[#44D62C]" /> View
                                         </button>
                                         <button 
                                             onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)}
-                                            className="px-3 py-1.5 text-slate-600 hover:text-blue-700 bg-slate-100 hover:bg-blue-50 rounded-lg text-xs font-bold transition-all duration-200 flex items-center gap-1 border border-slate-200 hover:border-blue-200"
+                                            className="px-3 py-1.5 text-slate-600 dark:text-white hover:text-blue-700 dark:hover:text-blue-400 bg-slate-100 dark:bg-[#041b0f] hover:bg-blue-50 dark:hover:bg-[#134426] rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-1 border border-slate-200 dark:border-[#134426] cursor-pointer"
                                             title="Edit Submission"
                                         >
-                                            <Edit2 className="h-3.5 w-3.5" /> Edit
+                                            <Edit2 className="h-3.5 w-3.5 text-slate-500 dark:text-blue-400" /> Edit
                                         </button>
                                         <button 
                                             onClick={() => navigate(`/onboarding/pdf/${s.id}`)}
-                                            className="px-3 py-1.5 text-slate-600 hover:text-teal-700 bg-slate-100 hover:bg-teal-50 rounded-lg text-xs font-bold transition-all duration-200 flex items-center gap-1 border border-slate-200 hover:border-teal-200"
+                                            className="px-3 py-1.5 text-slate-600 dark:text-white hover:text-teal-700 dark:hover:text-teal-400 bg-slate-100 dark:bg-[#041b0f] hover:bg-teal-50 dark:hover:bg-[#134426] rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-1 border border-slate-200 dark:border-[#134426] cursor-pointer"
                                             title="Download Forms"
                                         >
-                                            <FileText className="h-3.5 w-3.5" /> Forms
+                                            <FileText className="h-3.5 w-3.5 text-slate-500 dark:text-teal-400" /> Forms
                                         </button>
                                         <button 
                                             onClick={() => handleDelete(s.id!)}
-                                            className="px-3 py-1.5 text-slate-600 hover:text-rose-700 bg-slate-100 hover:bg-rose-50 rounded-lg text-xs font-bold transition-all duration-200 border border-slate-200 hover:border-rose-200 flex items-center gap-1"
+                                            className="px-3 py-1.5 text-slate-600 dark:text-rose-300 hover:text-rose-700 dark:hover:text-rose-200 bg-slate-100 dark:bg-[#041b0f] hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-xl text-xs font-bold transition-all duration-200 border border-slate-200 dark:border-[#134426] flex items-center gap-1 cursor-pointer"
                                             title="Delete Submission"
                                         >
-                                            <Trash2 className="h-3.5 w-3.5" /> Delete
+                                            <Trash2 className="h-3.5 w-3.5 text-rose-500" /> Delete
                                         </button>
                                         
                                         {s.status === 'pending' && (
                                             <>
                                                 <button 
                                                     onClick={() => handleApprove(s.id!)}
-                                                    className="px-3 py-1.5 text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg text-xs font-bold transition-all duration-200 shadow-xs flex items-center gap-1"
+                                                    className="px-3.5 py-1.5 text-[#0A1809] bg-[#44D62C] hover:bg-[#39E722] rounded-xl text-xs font-black transition-all duration-200 shadow-xs flex items-center gap-1 cursor-pointer"
                                                 >
-                                                    <CheckSquare className="h-3.5 w-3.5" /> Approve
+                                                    <CheckSquare className="h-3.5 w-3.5 stroke-[2.5]" /> Approve
                                                 </button>
                                                 <button 
                                                     onClick={() => handleOpenRejectModal(s)}
-                                                    className="px-3 py-1.5 text-rose-600 bg-white hover:bg-rose-50 border border-rose-200 rounded-lg text-xs font-bold transition-all duration-200 flex items-center gap-1"
+                                                    className="px-3.5 py-1.5 text-rose-400 bg-[#041b0f] hover:bg-rose-950/60 border border-rose-800/80 rounded-xl text-xs font-black transition-all duration-200 flex items-center gap-1 cursor-pointer"
                                                 >
                                                     <XSquare className="h-3.5 w-3.5" /> Reject
                                                 </button>
                                             </>
                                         )}
-
                                         {s.status === 'rejected' && (
                                             <>
                                                 <button 
                                                     onClick={() => handleOpenRejectModal(s)}
-                                                    className="px-3 py-1.5 text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg text-xs font-bold transition-all duration-200 flex items-center gap-1"
+                                                    className="px-3 py-1.5 text-rose-400 bg-[#041b0f] hover:bg-rose-950/60 border border-rose-800/80 rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-1 cursor-pointer"
                                                     title="Update Rejection Reason"
                                                 >
                                                     <Edit2 className="h-3.5 w-3.5" /> Reason
                                                 </button>
                                                 <button 
                                                     onClick={() => handleApprove(s.id!)}
-                                                    className="px-3 py-1.5 text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg text-xs font-bold transition-all duration-200 shadow-xs flex items-center gap-1"
+                                                    className="px-3.5 py-1.5 text-[#0A1809] bg-[#44D62C] hover:bg-[#39E722] rounded-xl text-xs font-black transition-all duration-200 shadow-xs flex items-center gap-1 cursor-pointer"
                                                     title="Approve Submission"
                                                 >
-                                                    <CheckSquare className="h-3.5 w-3.5" /> Approve
+                                                    <CheckSquare className="h-3.5 w-3.5 stroke-[2.5]" /> Approve
                                                 </button>
                                             </>
                                         )}

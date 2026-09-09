@@ -80,21 +80,18 @@ async function getCandidateProxyUrls(): Promise<{ urls: string[]; secret: string
   const secret = process.env.MSSQL_API_SECRET?.trim() || 'paradigm-attendance-secret-2024';
   const urls: string[] = [
     'https://attendance.cctv.rest',
-    'https://cctv.cctv.rest',
     'https://attendance.paradigmfms.com',
-    'https://cctv.paradigmfms.com',
     process.env.MSSQL_PROXY_URL?.trim() || '',
     'http://localhost:4000',
     'http://127.0.0.1:4000',
     'https://tassel-estranged-prism.ngrok-free.dev',
-    'http://192.168.51.112:4000',
   ].filter(Boolean);
 
   // Dynamic fallback: auto-detect live tunnel URL from Supabase cctv_devices heartbeat
   try {
     const sbUrl = process.env.VITE_SUPABASE_URL || 'https://fmyafuhxlorbafbacywa.supabase.co';
     const sbKey = process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZteWFmdWh4bG9yYmFmYmFjeXdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyMjg1NDYsImV4cCI6MjA3NzgwNDU0Nn0.RqsniEqzNec6ww35TXJtLJD3mafnGbMI82om4XRUdUU';
-    const res = await fetch(`${sbUrl}/rest/v1/cctv_devices?select=ngrok_url,device_secret&order=last_seen.desc&limit=1`, {
+    const res = await fetch(`${sbUrl}/rest/v1/cctv_devices?select=device_secret&order=last_seen.desc&limit=1`, {
       headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` },
       signal: AbortSignal.timeout(1800),
     });
@@ -102,12 +99,8 @@ async function getCandidateProxyUrls(): Promise<{ urls: string[]; secret: string
       const data = await res.json();
       if (Array.isArray(data) && data[0]) {
         const attLive = data[0].device_secret?.replace(/\/$/, '');
-        const cctvLive = data[0].ngrok_url?.replace(/\/$/, '');
         if (attLive && attLive.startsWith('http') && !urls.includes(attLive)) {
           urls.unshift(attLive);
-        }
-        if (cctvLive && cctvLive.startsWith('http') && !urls.includes(cctvLive)) {
-          urls.unshift(cctvLive);
         }
       }
     }
@@ -144,11 +137,12 @@ export async function getAttendanceData(
             'x-api-key': secret,
             'x-api-secret': secret,
             'Content-Type': 'application/json',
+            'Connection': 'close',
             'ngrok-skip-browser-warning': '1',
             'bypass-tunnel-reminder': 'true',
             'Bypass-Tunnel-Reminder': '1',
           },
-          signal: AbortSignal.timeout(3500), // Fast 3.5s failover
+          signal: AbortSignal.timeout(12000),
         });
 
         if (res.ok) {
@@ -159,8 +153,9 @@ export async function getAttendanceData(
           const body = await res.text();
           lastError = `[${endpoint}] HTTP ${res.status}: ${body.slice(0, 100)}`;
         }
-      } catch (err: any) {
-        lastError = `[${endpoint}] ${err.message}`;
+      } catch (err: unknown) {
+        const errObj = err as Error;
+        lastError = `[${endpoint}] ${errObj?.message || 'Error'}`;
       }
     }
   }
@@ -206,7 +201,9 @@ export async function getDeviceData(): Promise<DeviceResponse> {
         const data = await res.json() as DeviceResponse;
         return data;
       }
-    } catch (_) {}
+    } catch {
+      // Ignore failure on candidate and try next endpoint
+    }
   }
 
   return { devices: [], online: 0, offline: 0, total: 0, note: 'All proxy endpoints failed' };
@@ -222,12 +219,12 @@ export async function debugMssqlConnection(): Promise<{
   attendanceStatus: string;
   details: string;
 }> {
-  const { urls, secret } = await getCandidateProxyUrls();
+  const { urls } = await getCandidateProxyUrls();
   const primaryUrl = urls[0] || 'NOT_SET';
 
   let healthStatus = 'UNKNOWN';
-  let devicesStatus = 'UNKNOWN';
-  let attendanceStatus = 'UNKNOWN';
+  const devicesStatus = 'UNKNOWN';
+  const attendanceStatus = 'UNKNOWN';
   const notes: string[] = [];
 
   for (const proxyUrl of urls) {
@@ -246,8 +243,9 @@ export async function debugMssqlConnection(): Promise<{
         healthStatus = `OK (${ms}ms) via ${proxyUrl}`;
         break;
       }
-    } catch (err: any) {
-      notes.push(`[${proxyUrl}] Health failed: ${err.message}`);
+    } catch (err: unknown) {
+      const errObj = err as Error;
+      notes.push(`[${proxyUrl}] Health failed: ${errObj?.message || 'Error'}`);
     }
   }
 
@@ -295,7 +293,9 @@ export async function updateMssqlEmployeeDetails(
         const data = await res.json();
         return { success: true, rowsAffected: data.rowsAffected };
       }
-    } catch (_) {}
+    } catch {
+      // Ignore candidate failure and try next endpoint
+    }
   }
 
   return { success: false, error: 'All proxy update endpoints failed' };
