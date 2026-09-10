@@ -55,7 +55,16 @@ const BdDailyReport: React.FC = () => {
 
   const formatTime = (iso: string | null) => {
     if (!iso) return '';
-    try { return format(new Date(iso), 'hh:mm a'); } catch { return ''; }
+    try {
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return '';
+      return new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Kolkata',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+      }).format(d).replace(/\u202f/g, ' ');
+    } catch { return ''; }
   };
 
   const calcWorkingHours = useCallback(() => {

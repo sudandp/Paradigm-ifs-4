@@ -132,6 +132,10 @@ export interface EmailScheduleRule {
     filterEmployeeType?: string;
     filterEmployeeSubDept?: string;
     filterEmployeeDivision?: string;
+    // Multi-select arrays (backoffice filter panel)
+    filterEmployeeCategories?: string[];
+    filterEmployeeDesignations?: string[];
+    filterEmployeeLocations?: string[];
     filterCompanyEnabled?: boolean;
     filterCompanies?: string[];
     filterDepartmentEnabled?: boolean;
@@ -139,10 +143,16 @@ export interface EmailScheduleRule {
     exportFileFormat?: 'html' | 'excel' | 'pdf' | 'csv';
     recalculateAttendance?: boolean;
     showCompanyLogo?: boolean;
-    filterEmployeeStatus?: 'all' | 'active' | 'inactive';
+    filterEmployeeStatus?: 'all' | 'active' | 'inactive' | string;
     filterSiteEnabled?: boolean;
     filterSites?: string[];
     filterSite?: string;
+    filterCompany?: string;
+    filterEmployeeUserId?: string;
+    filterRecordType?: string;
+    filterShowRecords?: number;
+    customDateStart?: string;
+    customDateEnd?: string;
   };
   eventType?: string;
   expiryConfig?: {

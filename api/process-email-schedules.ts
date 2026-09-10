@@ -19,9 +19,41 @@ function getISTTimeString(date: any = new Date()): string {
   try {
     const d = new Date(date);
     if (isNaN(d.getTime())) return '09:00 PM';
-    return new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true }).format(d);
+    return new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true }).format(d).replace(/\u202f/g, ' ');
   } catch {
     return '09:00 PM';
+  }
+}
+
+function formatTimeIST(date: any, fallback = 'N/A'): string {
+  if (!date) return fallback;
+  try {
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return fallback;
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Kolkata',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    }).format(d).replace(/\u202f/g, ' ');
+  } catch {
+    return fallback;
+  }
+}
+
+function formatTime24IST(date: any, fallback = '00:00'): string {
+  if (!date) return fallback;
+  try {
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return fallback;
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Kolkata',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(d);
+  } catch {
+    return fallback;
   }
 }
 
@@ -214,8 +246,44 @@ const reportGenerators = {
       }
     }
 
-    // 3. Company Filter
-    if (filters?.filterCompanyEnabled && Array.isArray(filters.filterCompanies) && filters.filterCompanies.length > 0) {
+    // 2b. Multi-select backoffice filters (filterEmployeeCategories / Designations / Locations)
+    const matchCategoryKeywords = (roleStr: string, catQ: string) => {
+      if (catQ === 'office') return roleStr.includes('admin') || roleStr.includes('hr') || roleStr.includes('manager') || roleStr.includes('office') || roleStr.includes('account') || roleStr.includes('billing');
+      if (catQ === 'field') return roleStr.includes('field') || roleStr.includes('area') || roleStr.includes('executive') || roleStr.includes('bdm');
+      if (catQ === 'site') return roleStr.includes('site') || roleStr.includes('guard') || roleStr.includes('technician') || roleStr.includes('plumber') || roleStr.includes('electrician') || roleStr.includes('housekeeping') || roleStr.includes('security');
+      return false;
+    };
+    if (Array.isArray(filters?.filterEmployeeCategories) && filters.filterEmployeeCategories.length > 0) {
+      const cats = filters.filterEmployeeCategories.map((c: string) => c.toLowerCase());
+      filteredUsers = filteredUsers.filter((u: any) => {
+        const roleStr = ((Array.isArray(u.role) ? u.role[0]?.display_name : u.role?.display_name) || '').toLowerCase();
+        const staffCat = (u.staff_category || '').toLowerCase();
+        return cats.some((catQ: string) => staffCat ? staffCat === catQ : matchCategoryKeywords(roleStr, catQ));
+      });
+    }
+    if (Array.isArray(filters?.filterEmployeeDesignations) && filters.filterEmployeeDesignations.length > 0) {
+      const desigs = filters.filterEmployeeDesignations.map((d: string) => d.trim().toLowerCase());
+      filteredUsers = filteredUsers.filter((u: any) => {
+        const roleName = ((Array.isArray(u.role) ? u.role[0]?.display_name : u.role?.display_name) || '').toLowerCase();
+        return desigs.includes(roleName);
+      });
+    }
+    if (Array.isArray(filters?.filterEmployeeLocations) && filters.filterEmployeeLocations.length > 0) {
+      const locs = filters.filterEmployeeLocations.map((l: string) => l.trim().toLowerCase());
+      filteredUsers = filteredUsers.filter((u: any) => {
+        const loc = (u.society_name || u.location_id || '').toLowerCase();
+        return locs.some((lq: string) => loc.includes(lq) || lq.includes(loc));
+      });
+    }
+
+    // 3. Single Company Filter or Multi-Company Filter
+    if (filters?.filterCompany && filters.filterCompany !== 'all') {
+      const compQ = filters.filterCompany.trim().toLowerCase();
+      filteredUsers = filteredUsers.filter((u: any) => {
+        const comp = (u.society_name || u.organization_name || '').toLowerCase();
+        return comp.includes(compQ);
+      });
+    } else if (filters?.filterCompanyEnabled && Array.isArray(filters.filterCompanies) && filters.filterCompanies.length > 0) {
       const allowedComps = filters.filterCompanies.map((c: string) => c.trim().toLowerCase());
       filteredUsers = filteredUsers.filter((u: any) => {
         const comp = (u.society_name || u.organization_name || '').toLowerCase();
@@ -223,13 +291,33 @@ const reportGenerators = {
       });
     }
 
-    // 4. Department / Site Filter
-    if (filters?.filterDepartmentEnabled && Array.isArray(filters.filterDepartments) && filters.filterDepartments.length > 0) {
+    // 4. Single Site Filter or Multi-Department Filter
+    if (filters?.filterSite && filters.filterSite !== 'all') {
+      const siteQ = filters.filterSite.trim().toLowerCase();
+      filteredUsers = filteredUsers.filter((u: any) => {
+        const site = (u.society_name || u.location_id || u.organization_name || '').toLowerCase();
+        return site.includes(siteQ);
+      });
+    } else if (filters?.filterDepartmentEnabled && Array.isArray(filters.filterDepartments) && filters.filterDepartments.length > 0) {
       const allowedDepts = filters.filterDepartments.map((d: string) => d.trim().toLowerCase());
       filteredUsers = filteredUsers.filter((u: any) => {
         const dept = (u.society_name || u.location_id || u.organization_name || '').toLowerCase();
         return allowedDepts.some((ad: string) => dept.includes(ad) || ad.includes(dept));
       });
+    }
+
+    // 5. Single Location Filter
+    if (filters?.filterEmployeeLocation && filters.filterEmployeeLocation !== 'all' && (!Array.isArray(filters?.filterEmployeeLocations) || filters.filterEmployeeLocations.length === 0)) {
+      const locQ = filters.filterEmployeeLocation.trim().toLowerCase();
+      filteredUsers = filteredUsers.filter((u: any) => {
+        const loc = (u.society_name || u.location_id || '').toLowerCase();
+        return loc.includes(locQ);
+      });
+    }
+
+    // 6. Single Employee Filter (by ID or name)
+    if (filters?.filterEmployeeUserId && filters.filterEmployeeUserId !== 'all') {
+      filteredUsers = filteredUsers.filter((u: any) => u.id === filters.filterEmployeeUserId);
     }
 
     const staffIds = new Set(filteredUsers.map((u: any) => u.id));
@@ -244,6 +332,40 @@ const reportGenerators = {
       presentUserIds.add(e.user_id);
       if ((e.type === 'punch-in' || e.type === 'check_in') && !userFirstPunches[e.user_id]) userFirstPunches[e.user_id] = e.timestamp;
     });
+
+    // 7. Status Filter
+    if (filters?.filterEmployeeStatus && filters.filterEmployeeStatus !== 'all') {
+      if (filters.filterEmployeeStatus === 'active') {
+        filteredUsers = filteredUsers.filter((u: any) => u.is_active !== false);
+      } else if (filters.filterEmployeeStatus === 'inactive') {
+        filteredUsers = filteredUsers.filter((u: any) => u.is_active === false);
+      } else if (filters.filterEmployeeStatus === 'ACTIVE_USERS') {
+        filteredUsers = filteredUsers.filter((u: any) => recentlyActiveUserIds.has(u.id) || presentUserIds.has(u.id));
+      } else if (filters.filterEmployeeStatus === 'P') {
+        filteredUsers = filteredUsers.filter((u: any) => presentUserIds.has(u.id));
+      } else if (filters.filterEmployeeStatus === 'A') {
+        filteredUsers = filteredUsers.filter((u: any) => !presentUserIds.has(u.id) && !onLeaveUserIds.has(u.id));
+      }
+    }
+
+    // 8. Record Type Filter
+    if (filters?.filterRecordType && filters.filterRecordType !== 'all') {
+      filteredUsers = filteredUsers.filter((u: any) => {
+        const uEvents = todayEvents.filter((e: any) => e.user_id === u.id);
+        const hasIn = uEvents.some((e: any) => e.type === 'punch-in' || e.type === 'check_in');
+        const hasOut = uEvents.some((e: any) => e.type === 'punch-out' || e.type === 'check_out');
+        if (filters.filterRecordType === 'complete') return hasIn && hasOut;
+        if (filters.filterRecordType === 'missing_checkout') return hasIn && !hasOut;
+        if (filters.filterRecordType === 'missing_checkin') return !hasIn && hasOut;
+        if (filters.filterRecordType === 'incomplete') return (hasIn && !hasOut) || (!hasIn && hasOut);
+        return true;
+      });
+    }
+
+    // 9. Show Records Limit
+    if (typeof filters?.filterShowRecords === 'number' && filters.filterShowRecords > 0) {
+      filteredUsers = filteredUsers.slice(0, filters.filterShowRecords);
+    }
     let tableHtml = '';
     let lateCount = 0;
     filteredUsers.forEach((user: any, i: number) => {
@@ -252,13 +374,12 @@ const reportGenerators = {
       let status = 'Present', color = '#16a34a', pin = '—', pout = '—', wh = '—';
       if (presentUserIds.has(user.id)) {
         const inTs = userFirstPunches[user.id];
-        const inDate = new Date(new Date(inTs).getTime() + IST_OFFSET);
-        pin = format(inDate, 'hh:mm a');
-        const inTime = `${String(inDate.getUTCHours()).padStart(2, '0')}:${String(inDate.getUTCMinutes()).padStart(2, '0')}`;
+        pin = formatTimeIST(inTs, '—');
+        const inTime = formatTime24IST(inTs, '00:00');
         if (inTime > configStartTime) { status = 'Late'; color = '#d97706'; lateCount++; }
         const lastOut = todayEvents.filter((e: any) => e.user_id === user.id && (e.type === 'punch-out' || e.type === 'check_out')).pop();
         if (lastOut) {
-          pout = format(new Date(new Date(lastOut.timestamp).getTime() + IST_OFFSET), 'hh:mm a');
+          pout = formatTimeIST(lastOut.timestamp, '—');
           const diff = new Date(lastOut.timestamp).getTime() - new Date(inTs).getTime();
           wh = `${Math.floor(diff/3600000)}h ${Math.floor((diff%3600000)/60000)}m`;
         }
@@ -284,6 +405,160 @@ const reportGenerators = {
       attendancePercentage: filteredUsers.length > 0 ? Math.round((totalPresent/filteredUsers.length)*100).toString() : '0',
       onLeaveCount: String(onLeaveCount),
       table: tableHtml || '<tr><td colspan="7">No data</td></tr>'
+    };
+  },
+  attendance_site_daily: async (supabase: SupabaseClient, nowIST: Date, filters?: any) => {
+    // Site Daily Attendance — same data pipeline as attendance_daily but:
+    // • Company/Entity (filterCompanyEnabled + filterCompanies) and
+    // • Department/Site (filterDepartmentEnabled + filterDepartments) filters are the primary selectors
+    // • Also defaults to site-category staff if no explicit category is set
+    const todayStr = (filters?.dateRange?.start && filters?.dateRange?.end && filters?.dateRange?.start === filters?.dateRange?.end)
+      ? filters.dateRange.start
+      : getISTDateString(nowIST);
+    const startOfTodayUTC = new Date(`${todayStr}T00:00:00+05:30`);
+    const endOfTodayUTC = new Date(`${todayStr}T23:59:59.999+05:30`);
+    const [settingsRes, usersRes, eventsRes, leavesRes] = await Promise.all([
+      supabase.from('settings').select('attendance_settings').eq('id', 'singleton').maybeSingle(),
+      supabase.from('users').select('id, name, biometric_id, society_id, society_name, location_id, is_blocked, status, role_id, role:roles(display_name)').neq('role_id', 'unverified'),
+      supabase.from('attendance_events')
+        .select('user_id, type, timestamp')
+        .gte('timestamp', startOfTodayUTC.toISOString())
+        .lte('timestamp', endOfTodayUTC.toISOString())
+        .order('timestamp', { ascending: true }),
+      supabase.from('leave_requests').select('user_id').eq('status', 'approved').lte('start_date', todayStr).gte('end_date', todayStr)
+    ]);
+    const configStartTime = settingsRes.data?.attendance_settings?.office?.fixedOfficeHours?.checkInTime || '09:30';
+    let filteredUsers = (usersRes.data || []).filter((u: any) => {
+      const roleName = (Array.isArray(u.role) ? u.role[0]?.display_name : u.role?.display_name) || '';
+      return roleName.toLowerCase() !== 'management';
+    });
+
+    // 1. Employee Status filter
+    if (filters?.filterEmployeeStatus === 'active') {
+      filteredUsers = filteredUsers.filter((u: any) => !u.is_blocked && u.status !== 'left' && u.status !== 'blocked');
+    } else if (filters?.filterEmployeeStatus === 'inactive') {
+      filteredUsers = filteredUsers.filter((u: any) => u.is_blocked || u.status === 'left' || u.status === 'blocked');
+    } else if (!filters?.filterEmployeeStatus) {
+      filteredUsers = filteredUsers.filter((u: any) => !u.is_blocked && u.status !== 'left');
+    }
+
+    // 2. Employee Criteria filter (code, name, category, designation, location)
+    if (filters?.filterEmployeeEnabled) {
+      if (filters.filterEmployeeCode) {
+        const codeQ = String(filters.filterEmployeeCode).trim().toLowerCase();
+        filteredUsers = filteredUsers.filter((u: any) => {
+          const bio = String(u.biometric_id || u.id || '').trim().toLowerCase();
+          return filters.filterEmployeeExact ? bio === codeQ : bio.includes(codeQ);
+        });
+      }
+      if (filters.filterEmployeeName) {
+        const nameQ = String(filters.filterEmployeeName).trim().toLowerCase();
+        filteredUsers = filteredUsers.filter((u: any) => (u.name || '').toLowerCase().includes(nameQ));
+      }
+      if (filters.filterEmployeeCategory && filters.filterEmployeeCategory !== 'All') {
+        const catQ = String(filters.filterEmployeeCategory).toLowerCase();
+        filteredUsers = filteredUsers.filter((u: any) => {
+          const roleStr = ((Array.isArray(u.role) ? u.role[0]?.display_name : u.role?.display_name) || u.role || '').toLowerCase();
+          const staffCat = (u.staff_category || '').toLowerCase();
+          if (staffCat) return staffCat === catQ;
+          if (catQ === 'site') {
+            return roleStr.includes('site') || roleStr.includes('guard') || roleStr.includes('technician') || roleStr.includes('plumber') || roleStr.includes('electrician') || roleStr.includes('housekeeping') || roleStr.includes('security');
+          }
+          if (catQ === 'office') {
+            return roleStr.includes('admin') || roleStr.includes('hr') || roleStr.includes('manager') || roleStr.includes('office') || roleStr.includes('account') || roleStr.includes('billing');
+          }
+          if (catQ === 'field') {
+            return roleStr.includes('field') || roleStr.includes('area') || roleStr.includes('executive') || roleStr.includes('bdm');
+          }
+          return true;
+        });
+      }
+      if (filters.filterEmployeeDesignation && filters.filterEmployeeDesignation !== 'All') {
+        const desigQ = String(filters.filterEmployeeDesignation).trim().toLowerCase();
+        filteredUsers = filteredUsers.filter((u: any) => {
+          const roleName = ((Array.isArray(u.role) ? u.role[0]?.display_name : u.role?.display_name) || '').toLowerCase();
+          return roleName === desigQ;
+        });
+      }
+      if (filters.filterEmployeeLocation && filters.filterEmployeeLocation !== 'All') {
+        const locQ = String(filters.filterEmployeeLocation).trim().toLowerCase();
+        filteredUsers = filteredUsers.filter((u: any) => {
+          const loc = (u.society_name || u.location_id || '').toLowerCase();
+          return loc.includes(locQ);
+        });
+      }
+    }
+
+    // 3. Company / Entity filter (primary site filter)
+    if (filters?.filterCompanyEnabled && Array.isArray(filters.filterCompanies) && filters.filterCompanies.length > 0) {
+      const allowedComps = filters.filterCompanies.map((c: string) => c.trim().toLowerCase());
+      filteredUsers = filteredUsers.filter((u: any) => {
+        const comp = (u.society_name || u.organization_name || '').toLowerCase();
+        return allowedComps.some((ac: string) => comp.includes(ac) || ac.includes(comp));
+      });
+    }
+
+    // 4. Department / Site filter (primary site filter)
+    if (filters?.filterDepartmentEnabled && Array.isArray(filters.filterDepartments) && filters.filterDepartments.length > 0) {
+      const allowedDepts = filters.filterDepartments.map((d: string) => d.trim().toLowerCase());
+      filteredUsers = filteredUsers.filter((u: any) => {
+        const dept = (u.society_name || u.location_id || u.organization_name || '').toLowerCase();
+        return allowedDepts.some((ad: string) => dept.includes(ad) || ad.includes(dept));
+      });
+    }
+
+    const staffIds = new Set(filteredUsers.map((u: any) => u.id));
+    const todayEvents = (eventsRes.data || []).filter((e: any) => staffIds.has(e.user_id));
+    const onLeaveUserIds = new Set((leavesRes.data || []).map((l: any) => l.user_id));
+    const tenDaysAgoUTC = new Date(startOfTodayUTC.getTime() - (9 * 24 * 60 * 60 * 1000));
+    const { data: recentEvents } = await supabase.from('attendance_events').select('user_id').gte('timestamp', tenDaysAgoUTC.toISOString());
+    const recentlyActiveUserIds = new Set((recentEvents || []).map((e: any) => e.user_id));
+    const presentUserIds = new Set<string>();
+    const userFirstPunches: Record<string, string> = {};
+    todayEvents.forEach((e: any) => {
+      presentUserIds.add(e.user_id);
+      if ((e.type === 'punch-in' || e.type === 'check_in') && !userFirstPunches[e.user_id]) userFirstPunches[e.user_id] = e.timestamp;
+    });
+    let tableHtml = '';
+    let lateCount = 0;
+    filteredUsers.forEach((user: any, i: number) => {
+      let dept = (Array.isArray(user.role) ? user.role[0]?.display_name : user.role?.display_name) || 'Staff';
+      dept = dept.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+      const siteName = user.society_name || user.location_id || '—';
+      let status = 'Present', color = '#16a34a', pin = '—', pout = '—', wh = '—';
+      if (presentUserIds.has(user.id)) {
+        const inTs = userFirstPunches[user.id];
+        pin = formatTimeIST(inTs, '—');
+        const inTime = formatTime24IST(inTs, '00:00');
+        if (inTime > configStartTime) { status = 'Late'; color = '#d97706'; lateCount++; }
+        const lastOut = todayEvents.filter((e: any) => e.user_id === user.id && (e.type === 'punch-out' || e.type === 'check_out')).pop();
+        if (lastOut) {
+          pout = formatTimeIST(lastOut.timestamp, '—');
+          const diff = new Date(lastOut.timestamp).getTime() - new Date(inTs).getTime();
+          wh = `${Math.floor(diff/3600000)}h ${Math.floor((diff%3600000)/60000)}m`;
+        }
+      } else if (onLeaveUserIds.has(user.id)) { status = 'On Leave'; color = '#2563eb'; }
+      else if (recentlyActiveUserIds.has(user.id)) { status = 'Absent'; color = '#dc2626'; }
+      else { status = 'Inactive'; color = '#9ca3af'; }
+      tableHtml += `<tr style="background:${i%2===0?'#fff':'#f9fafb'}"><td style="border:1px solid #eee;padding:8px">${i+1}</td><td style="border:1px solid #eee;padding:8px;font-weight:500">${user.name}</td><td style="border:1px solid #eee;padding:8px">${dept}</td><td style="border:1px solid #eee;padding:8px;color:#475569">${siteName}</td><td style="border:1px solid #eee;padding:8px">${pin}</td><td style="border:1px solid #eee;padding:8px">${pout}</td><td style="border:1px solid #eee;padding:8px">${wh}</td><td style="border:1px solid #eee;padding:8px;color:${color};font-weight:600">${status}</td></tr>`;
+    });
+    const totalPresent = presentUserIds.size;
+    const onLeaveCount = Array.from(onLeaveUserIds).filter(id => staffIds.has(id)).length;
+    const parsedTargetDate = new Date(`${todayStr}T12:00:00+05:30`);
+    return {
+      date: format(parsedTargetDate, 'EEEE, MMMM do, yyyy'),
+      reportDate: format(parsedTargetDate, 'dd MMM yyyy'),
+      generatedTime: getISTTimeString(new Date()),
+      year: format(parsedTargetDate, 'yyyy'),
+      totalEmployees: String(filteredUsers.length),
+      activeStaff: String(filteredUsers.length),
+      totalStaff: String(filteredUsers.length),
+      totalPresent: String(totalPresent),
+      totalAbsent: String(Math.max(0, filteredUsers.length - totalPresent - onLeaveCount)),
+      lateCount: String(lateCount),
+      attendancePercentage: filteredUsers.length > 0 ? Math.round((totalPresent/filteredUsers.length)*100).toString() : '0',
+      onLeaveCount: String(onLeaveCount),
+      table: tableHtml || '<tr><td colspan="8">No data</td></tr>'
     };
   },
   attendance_monthly: async (supabase: SupabaseClient, nowIST: Date, filters?: any) => {
@@ -590,7 +865,8 @@ const reportGenerators = {
   document_expiry: async (s:any,now:any) => { return {date:format(now,'yyyy-MM-dd')}; },
   crm_bd_daily: async (supabase: SupabaseClient, nowIST: Date) => {
     const todayStr = getISTDateString(nowIST);
-    const startOfTodayUTC = startOfDay(new Date(nowIST.getTime() - IST_OFFSET));
+    const startOfTodayUTC = new Date(`${todayStr}T00:00:00+05:30`);
+    const endOfTodayUTC = new Date(`${todayStr}T23:59:59.999+05:30`);
     const sevenDaysAgoUTC = new Date(startOfTodayUTC.getTime() - 7 * 24 * 3600000);
 
     const { data: usersRes } = await supabase.from('users').select('id, name, role_id, role:roles(display_name)').eq('is_blocked', false);
@@ -639,9 +915,9 @@ const reportGenerators = {
     }
 
     const [eventsRes, leadsRes, callsRes, allLeadsRes, sevenDayFollowupsRes, sevenDayEventsRes] = await Promise.all([
-      supabase.from('attendance_events').select('user_id, type, timestamp, latitude, longitude, travel_distance').gte('timestamp', startOfTodayUTC.toISOString()).order('timestamp', { ascending: true }),
-      supabase.from('crm_leads').select('id, created_by, assigned_to, company_name, client_name, association_name, contact_person, status, source, city, created_at, stage_updated_at, updated_at, next_followup_date, lost_reason').gte('created_at', startOfTodayUTC.toISOString()),
-      supabase.from('crm_followups').select('created_by, type, outcome, lead_id, created_at, next_followup_date').gte('created_at', startOfTodayUTC.toISOString()),
+      supabase.from('attendance_events').select('user_id, type, timestamp, latitude, longitude, travel_distance').gte('timestamp', startOfTodayUTC.toISOString()).lte('timestamp', endOfTodayUTC.toISOString()).order('timestamp', { ascending: true }),
+      supabase.from('crm_leads').select('id, created_by, assigned_to, company_name, client_name, association_name, contact_person, status, source, city, created_at, stage_updated_at, updated_at, next_followup_date, lost_reason').gte('created_at', startOfTodayUTC.toISOString()).lte('created_at', endOfTodayUTC.toISOString()),
+      supabase.from('crm_followups').select('created_by, type, outcome, lead_id, created_at, next_followup_date').gte('created_at', startOfTodayUTC.toISOString()).lte('created_at', endOfTodayUTC.toISOString()),
       supabase.from('crm_leads').select('id, created_by, assigned_to, company_name, client_name, association_name, contact_person, status, source, city, created_at, stage_updated_at, updated_at, next_followup_date, lost_reason'),
       supabase.from('crm_followups').select('created_by, type, outcome, lead_id, created_at, next_followup_date').gte('created_at', sevenDaysAgoUTC.toISOString()),
       supabase.from('attendance_events').select('user_id, type, timestamp').gte('timestamp', sevenDaysAgoUTC.toISOString()).eq('type', 'punch-in')
@@ -667,13 +943,12 @@ const reportGenerators = {
     for (const bd of bdUsers) {
       const bdEvents = [...events.filter((e: any) => e.user_id === bd.id)].sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
       const attendance_status = bdEvents.length > 0 ? 'Present' : 'Absent';
-      const toIST = (ts: string): Date => new Date(new Date(ts).getTime() + IST_OFFSET);
-      const firstPunchIn = bdEvents.find((e: any) => e.type === 'punch-in');
-      const lastPunchOut = [...bdEvents].reverse().find((e: any) => e.type === 'punch-out');
+      const firstPunchIn = bdEvents.find((e: any) => e.type === 'punch-in' || e.type === 'site-in' || e.type === 'site-ot-in' || e.type === 'check_in');
+      const lastPunchOut = [...bdEvents].reverse().find((e: any) => e.type === 'punch-out' || e.type === 'site-out' || e.type === 'site-ot-out' || e.type === 'check_out');
       let check_in_time = 'N/A';
       let check_out_time = 'N/A';
-      if (firstPunchIn) check_in_time = format(toIST(firstPunchIn.timestamp), 'hh:mm a');
-      if (lastPunchOut) check_out_time = format(toIST(lastPunchOut.timestamp), 'hh:mm a');
+      if (firstPunchIn) check_in_time = formatTimeIST(firstPunchIn.timestamp);
+      if (lastPunchOut) check_out_time = formatTimeIST(lastPunchOut.timestamp);
       let working_hours = '0h 0m';
       if (firstPunchIn && lastPunchOut) {
         const totalMs = new Date(lastPunchOut.timestamp).getTime() - new Date(firstPunchIn.timestamp).getTime();
@@ -868,8 +1143,8 @@ const reportGenerators = {
 
       reports.push({
         bd_name: bd.name, bdName: bd.name,
-        report_date: format(nowIST, 'dd MMM yyyy'), reportDate: format(nowIST, 'dd MMM yyyy'),
-        date: format(nowIST, 'EEEE, MMMM do, yyyy'),
+        report_date: format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy'), reportDate: format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy'),
+        date: format(new Date(`${todayStr}T12:00:00+05:30`), 'EEEE, MMMM do, yyyy'),
         attendance_status, attendanceStatus: attendance_status,
         check_in_time, checkInTime: check_in_time,
         check_out_time, checkOutTime: check_out_time,
@@ -1095,21 +1370,49 @@ export async function processSchedules(req: any) {
     
     const todayISTStr = getISTDateString(now);
     let targetDateStr = todayISTStr;
+    let startDateStr = todayISTStr;
+    let endDateStr = todayISTStr;
+
     if (dateRangeMode === 'yesterday') {
       const y = new Date(new Date(`${todayISTStr}T12:00:00+05:30`).getTime() - 24 * 3600 * 1000);
       targetDateStr = getISTDateString(y);
+      startDateStr = targetDateStr;
+      endDateStr = targetDateStr;
+    } else if (dateRangeMode === 'last_3_days') {
+      const s = new Date(new Date(`${todayISTStr}T12:00:00+05:30`).getTime() - 2 * 24 * 3600 * 1000);
+      startDateStr = getISTDateString(s);
+      endDateStr = todayISTStr;
+      targetDateStr = todayISTStr;
+    } else if (dateRangeMode === 'last_7_days') {
+      const s = new Date(new Date(`${todayISTStr}T12:00:00+05:30`).getTime() - 6 * 24 * 3600 * 1000);
+      startDateStr = getISTDateString(s);
+      endDateStr = todayISTStr;
+      targetDateStr = todayISTStr;
     } else if (dateRangeMode === 'previous_month') {
       const [y, m] = todayISTStr.split('-').map(Number);
       const prevM = m === 1 ? 12 : m - 1;
       const prevY = m === 1 ? y - 1 : y;
       targetDateStr = `${prevY}-${String(prevM).padStart(2, '0')}-01`;
+      startDateStr = targetDateStr;
+      endDateStr = new Date(prevY, prevM, 0).toISOString().split('T')[0];
     } else if (dateRangeMode === 'current_month') {
       const [y, m] = todayISTStr.split('-').map(Number);
       targetDateStr = `${y}-${String(m).padStart(2, '0')}-01`;
+      startDateStr = targetDateStr;
+      endDateStr = todayISTStr;
+    } else if (dateRangeMode === 'last_3_months') {
+      const s = new Date(new Date(`${todayISTStr}T12:00:00+05:30`).getTime() - 90 * 24 * 3600 * 1000);
+      startDateStr = getISTDateString(s);
+      endDateStr = todayISTStr;
+      targetDateStr = todayISTStr;
+    } else if (dateRangeMode === 'custom' && config.customDateStart) {
+      startDateStr = config.customDateStart;
+      endDateStr = config.customDateEnd || config.customDateStart;
+      targetDateStr = endDateStr;
     }
 
     const reportFilters = {
-      dateRange: { start: targetDateStr, end: targetDateStr },
+      dateRange: { start: startDateStr, end: endDateStr },
       dateRangeMode,
       ...rule.schedule_config
     };

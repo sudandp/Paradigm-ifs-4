@@ -9,12 +9,46 @@ export interface ReportData {
   [key: string]: string;
 }
 
-/**
- * Shared Helper: Get IST Date String (YYYY-MM-DD)
- */
-export function getISTDateString(date: Date): string {
-  const istDate = new Date(date.getTime() + IST_OFFSET);
-  return istDate.toISOString().substring(0, 10);
+export function getISTDateString(date: any = new Date()): string {
+  try {
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return format(new Date(), 'yyyy-MM-dd');
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
+  } catch {
+    return format(new Date(), 'yyyy-MM-dd');
+  }
+}
+
+export function formatTimeIST(date: any, fallback = 'N/A'): string {
+  if (!date) return fallback;
+  try {
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return fallback;
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Kolkata',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    }).format(d).replace(/\u202f/g, ' ');
+  } catch {
+    return fallback;
+  }
+}
+
+export function formatTime24IST(date: any, fallback = '00:00'): string {
+  if (!date) return fallback;
+  try {
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return fallback;
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Kolkata',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(d);
+  } catch {
+    return fallback;
+  }
 }
 
 function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -150,8 +184,7 @@ export const reportGenerators = {
 
     let lateCount = 0;
     Object.values(userFirstPunches).forEach(ts => {
-      const inDate = new Date(new Date(ts).getTime() + IST_OFFSET);
-      const inTime = `${String(inDate.getUTCHours()).padStart(2, '0')}:${String(inDate.getUTCMinutes()).padStart(2, '0')}`;
+      const inTime = formatTime24IST(ts, '00:00');
       if (inTime > configStartTime) lateCount++;
     });
 
@@ -169,15 +202,14 @@ export const reportGenerators = {
       if (presentUserIds.has(user.id)) {
         const inTs = userFirstPunches[user.id];
         if (inTs) {
-          const inDate = new Date(new Date(inTs).getTime() + IST_OFFSET);
-          pin = format(inDate, 'hh:mm a');
-          const inTime = `${String(inDate.getUTCHours()).padStart(2, '0')}:${String(inDate.getUTCMinutes()).padStart(2, '0')}`;
+          pin = formatTimeIST(inTs, '—');
+          const inTime = formatTime24IST(inTs, '00:00');
           if (inTime > configStartTime) { status = 'Late'; color = '#d97706'; }
         }
 
         const lastOut = todayEvents.filter((e: any) => e.user_id === user.id && (e.type === 'punch-out' || e.type === 'check_out')).pop();
         if (lastOut) {
-          pout = format(new Date(new Date(lastOut.timestamp).getTime() + IST_OFFSET), 'hh:mm a');
+          pout = formatTimeIST(lastOut.timestamp, '—');
           if (inTs) {
             const diff = new Date(lastOut.timestamp).getTime() - new Date(inTs).getTime();
             wh = `${Math.floor(diff/3600000)}h ${Math.floor((diff%3600000)/60000)}m`;
@@ -201,7 +233,7 @@ export const reportGenerators = {
     return {
       date: format(nowIST, 'EEEE, MMMM do, yyyy'),
       reportDate: format(nowIST, 'dd MMM yyyy'),
-      generatedTime: format(nowIST, 'hh:mm a'),
+      generatedTime: formatTimeIST(new Date()),
       year: format(nowIST, 'yyyy'),
       totalEmployees: String(filteredUsers.length),
       totalPresent: String(totalPresent),
@@ -212,6 +244,14 @@ export const reportGenerators = {
       inactiveCount: String(inactiveCount),
       table: tableHtml || '<tr><td colspan="7">No data</td></tr>'
     };
+  },
+
+  /**
+   * Site Daily Attendance — delegates to attendance_daily for now;
+   * Entity/Site filters are applied at the API layer via scheduleConfig.
+   */
+  attendance_site_daily: async (supabase: SupabaseClient, nowIST: Date): Promise<ReportData> => {
+    return reportGenerators.attendance_daily(supabase, nowIST);
   },
 
   /**
@@ -748,7 +788,8 @@ export const reportGenerators = {
    */
   crm_bd_daily: async (supabase: SupabaseClient, nowIST: Date): Promise<ReportData | ReportData[]> => {
     const todayStr = getISTDateString(nowIST);
-    const startOfTodayUTC = startOfDay(new Date(nowIST.getTime() - IST_OFFSET));
+    const startOfTodayUTC = new Date(`${todayStr}T00:00:00+05:30`);
+    const endOfTodayUTC = new Date(`${todayStr}T23:59:59.999+05:30`);
     const sevenDaysAgoUTC = new Date(startOfTodayUTC.getTime() - 7 * 24 * 3600000);
 
     const { data: usersRes } = await supabase.from('users').select('id, name, role_id, role:roles(display_name)').eq('is_blocked', false);
@@ -797,9 +838,9 @@ export const reportGenerators = {
     }
 
     const [eventsRes, leadsRes, callsRes, allLeadsRes, sevenDayFollowupsRes, sevenDayEventsRes] = await Promise.all([
-      supabase.from('attendance_events').select('user_id, type, timestamp, latitude, longitude, travel_distance').gte('timestamp', startOfTodayUTC.toISOString()).order('timestamp', { ascending: true }),
-      supabase.from('crm_leads').select('id, created_by, assigned_to, company_name, client_name, association_name, contact_person, status, source, city, created_at, stage_updated_at, updated_at, next_followup_date, lost_reason').gte('created_at', startOfTodayUTC.toISOString()),
-      supabase.from('crm_followups').select('created_by, type, outcome, lead_id, created_at, next_followup_date').gte('created_at', startOfTodayUTC.toISOString()),
+      supabase.from('attendance_events').select('user_id, type, timestamp, latitude, longitude, travel_distance').gte('timestamp', startOfTodayUTC.toISOString()).lte('timestamp', endOfTodayUTC.toISOString()).order('timestamp', { ascending: true }),
+      supabase.from('crm_leads').select('id, created_by, assigned_to, company_name, client_name, association_name, contact_person, status, source, city, created_at, stage_updated_at, updated_at, next_followup_date, lost_reason').gte('created_at', startOfTodayUTC.toISOString()).lte('created_at', endOfTodayUTC.toISOString()),
+      supabase.from('crm_followups').select('created_by, type, outcome, lead_id, created_at, next_followup_date').gte('created_at', startOfTodayUTC.toISOString()).lte('created_at', endOfTodayUTC.toISOString()),
       supabase.from('crm_leads').select('id, created_by, assigned_to, company_name, client_name, association_name, contact_person, status, source, city, created_at, stage_updated_at, updated_at, next_followup_date, lost_reason'),
       supabase.from('crm_followups').select('created_by, type, outcome, lead_id, created_at, next_followup_date').gte('created_at', sevenDaysAgoUTC.toISOString()),
       supabase.from('attendance_events').select('user_id, type, timestamp').gte('timestamp', sevenDaysAgoUTC.toISOString()).eq('type', 'punch-in')
@@ -825,13 +866,12 @@ export const reportGenerators = {
     for (const bd of bdUsers) {
       const bdEvents = [...events.filter((e: any) => e.user_id === bd.id)].sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
       const attendance_status = bdEvents.length > 0 ? 'Present' : 'Absent';
-      const toIST = (ts: string): Date => new Date(new Date(ts).getTime() + IST_OFFSET);
-      const firstPunchIn = bdEvents.find((e: any) => e.type === 'punch-in');
-      const lastPunchOut = [...bdEvents].reverse().find((e: any) => e.type === 'punch-out');
+      const firstPunchIn = bdEvents.find((e: any) => e.type === 'punch-in' || e.type === 'site-in' || e.type === 'site-ot-in' || e.type === 'check_in');
+      const lastPunchOut = [...bdEvents].reverse().find((e: any) => e.type === 'punch-out' || e.type === 'site-out' || e.type === 'site-ot-out' || e.type === 'check_out');
       let check_in_time = 'N/A';
       let check_out_time = 'N/A';
-      if (firstPunchIn) check_in_time = format(toIST(firstPunchIn.timestamp), 'hh:mm a');
-      if (lastPunchOut) check_out_time = format(toIST(lastPunchOut.timestamp), 'hh:mm a');
+      if (firstPunchIn) check_in_time = formatTimeIST(firstPunchIn.timestamp);
+      if (lastPunchOut) check_out_time = formatTimeIST(lastPunchOut.timestamp);
       let working_hours = '0h 0m';
       if (firstPunchIn && lastPunchOut) {
         const totalMs = new Date(lastPunchOut.timestamp).getTime() - new Date(firstPunchIn.timestamp).getTime();
@@ -1025,8 +1065,8 @@ export const reportGenerators = {
 
       reports.push({
         bd_name: bd.name, bdName: bd.name,
-        report_date: format(nowIST, 'dd MMM yyyy'), reportDate: format(nowIST, 'dd MMM yyyy'),
-        date: format(nowIST, 'EEEE, MMMM do, yyyy'),
+        report_date: format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy'), reportDate: format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy'),
+        date: format(new Date(`${todayStr}T12:00:00+05:30`), 'EEEE, MMMM do, yyyy'),
         attendance_status, attendanceStatus: attendance_status,
         check_in_time, checkInTime: check_in_time,
         check_out_time, checkOutTime: check_out_time,

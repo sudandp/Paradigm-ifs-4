@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import DOMPurify from 'dompurify';
 import {
     Mail,
@@ -30,7 +30,9 @@ import {
     Search,
     UserCheck,
     Layers,
-    FileSpreadsheet
+    FileSpreadsheet,
+    Filter,
+    ChevronDown
 } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
@@ -410,12 +412,29 @@ const REPORT_SUBTYPE_OPTIONS = [
 ];
 
 const PARADIGM_STAFF_CATEGORIES = [
-    { id: 'All', label: 'All Staff Categories' },
     { id: 'office', label: 'Office Staff' },
     { id: 'field', label: 'Field Staff' },
     { id: 'site', label: 'Site Staff' },
 ];
 
+const getStaffCategoryDisplayLabel = (categories?: string[]) => {
+    if (!categories || categories.length === 0 || categories.length === 3 || categories.includes('all') || categories.includes('All')) {
+        return 'All Staff';
+    }
+    const labelMap: Record<string, string> = {
+        office: 'Office Staff',
+        field: 'Field Staff',
+        site: 'Site Staff'
+    };
+    return categories.map(c => labelMap[c] || c).join(', ');
+};
+
+const isAllStaffSelected = (categories?: string[]) => {
+    if (!categories || categories.length === 0 || categories.length === 3 || categories.includes('all') || categories.includes('All')) {
+        return true;
+    }
+    return false;
+};
 
 const EmailConfigPanel: React.FC = () => {
     const { user } = useAuthStore();
@@ -447,6 +466,8 @@ const EmailConfigPanel: React.FC = () => {
     const [availableDepartments, setAvailableDepartments] = useState<string[]>([]);
     const [companySearch, setCompanySearch] = useState('');
     const [departmentSearch, setDepartmentSearch] = useState('');
+    const [designationSearch, setDesignationSearch] = useState('');
+    const [locationSearch, setLocationSearch] = useState('');
     const [showSmtpForm, setShowSmtpForm] = useState(false);
     const [editingSmtp, setEditingSmtp] = useState<any | null>(null);
     const [smtpTestEmail, setSmtpTestEmail] = useState('');
@@ -466,6 +487,22 @@ const EmailConfigPanel: React.FC = () => {
     const [showScheduleForm, setShowScheduleForm] = useState(false);
     const [editingSchedule, setEditingSchedule] = useState<Partial<EmailScheduleRule> | null>(null);
     const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+
+    // Backoffice filter panel states (parity with Attendance Dashboard)
+    const staffCategoryRef = useRef<HTMLDivElement>(null);
+    const [isStaffCategoryOpen, setIsStaffCategoryOpen] = useState(false);
+    const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+    const [appliedFilterFlash, setAppliedFilterFlash] = useState(false);
+
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (staffCategoryRef.current && !staffCategoryRef.current.contains(e.target as Node)) {
+                setIsStaffCategoryOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     const handlePreview = (template: Partial<EmailTemplate>) => {
         let customGreeting = `Here is your automated status update for <strong>{date}</strong>. The data below reflects real-time triggers from the Paradigm system as of <strong>{generatedTime} IST</strong>.`;
@@ -1351,7 +1388,8 @@ const EmailConfigPanel: React.FC = () => {
                                     onChange={e => setEditingSchedule({ ...editingSchedule, reportType: e.target.value })}
                                 >
                                     <option value="">No report data</option>
-                                    <option value="attendance_daily">📊 Daily Attendance Report</option>
+                                    <option value="attendance_daily">📊 Daily Attendance Back Office</option>
+                                    <option value="attendance_site_daily">🏗️ Daily Attendance Report - Site</option>
                                     <option value="attendance_monthly">📈 Monthly Attendance Summary</option>
                                     <option value="attendance_work_hours">⏱️ Work Hours Report (Grid)</option>
                                     <option value="attendance_site_ot">🏗️ Site OT Report</option>
@@ -1399,9 +1437,13 @@ const EmailConfigPanel: React.FC = () => {
                                             })}
                                         >
                                             <option value="today">Today (Real-time / Current Day)</option>
-                                            <option value="yesterday">Yesterday (Previous Day — Recommended for 5 AM / Morning)</option>
-                                            <option value="previous_month">Previous Month (Complete Prior Month)</option>
+                                            <option value="yesterday">Yesterday (Previous Day — Recommended for Morning)</option>
+                                            <option value="last_3_days">Last 3 Days</option>
+                                            <option value="last_7_days">Last 7 Days</option>
                                             <option value="current_month">Current Month (Month to Date)</option>
+                                            <option value="previous_month">Previous Month (Complete Prior Month)</option>
+                                            <option value="last_3_months">Last 3 Months</option>
+                                            <option value="custom">Custom Range</option>
                                         </Select>
                                     </div>
 
@@ -1512,31 +1554,42 @@ const EmailConfigPanel: React.FC = () => {
                                             </div>
                                             <div>
                                                 <h5 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                                                    Attendance Report Data & Target Filters
+                                                    {editingSchedule.reportType === 'attendance_daily'
+                                                        ? 'Backoffice Attendance Filters'
+                                                        : editingSchedule.reportType === 'attendance_site_daily'
+                                                        ? 'Site Attendance Report Filters'
+                                                        : 'Attendance Report Data & Target Filters'}
                                                     <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
                                                         Live System
                                                     </span>
                                                 </h5>
                                                 <p className="text-[11px] text-slate-500">
-                                                    Filter attendance scope by registered entities, client sites, locations, designations, and employee status
+                                                    {editingSchedule.reportType === 'attendance_daily'
+                                                        ? 'Filter backoffice staff by role, category, and employment status'
+                                                        : 'Filter attendance scope by registered entities, client sites, locations, designations, and employee status'}
                                                 </p>
                                             </div>
                                         </div>
 
                                         <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-600">
-                                            <span className="px-2 py-0.5 bg-white rounded-md border border-slate-200 shadow-2xs">
-                                                🏢 {(editingSchedule.scheduleConfig?.filterCompanies || []).length} / {availableCompanies.length} Entities
-                                            </span>
-                                            <span className="px-2 py-0.5 bg-white rounded-md border border-slate-200 shadow-2xs">
-                                                📍 {(editingSchedule.scheduleConfig?.filterDepartments || []).length} / {availableDepartments.length} Sites & Depts
-                                            </span>
+                                            {editingSchedule.reportType !== 'attendance_daily' && (
+                                                <>
+                                                    <span className="px-2 py-0.5 bg-white rounded-md border border-slate-200 shadow-2xs">
+                                                        🏢 {(editingSchedule.scheduleConfig?.filterCompanies || []).length} / {availableCompanies.length} Entities
+                                                    </span>
+                                                    <span className="px-2 py-0.5 bg-white rounded-md border border-slate-200 shadow-2xs">
+                                                        📍 {(editingSchedule.scheduleConfig?.filterDepartments || []).length} / {availableDepartments.length} Sites & Depts
+                                                    </span>
+                                                </>
+                                            )}
                                             <span className="px-2 py-0.5 bg-white rounded-md border border-slate-200 shadow-2xs capitalize">
                                                 👤 Status: {editingSchedule.scheduleConfig?.filterEmployeeStatus || 'all'}
                                             </span>
                                         </div>
                                     </div>
 
-                                    {/* Top Control Bar: Group By, Report Sub-Type, Employee Code Digits, Prefix Zero */}
+                                    {/* Top Control Bar: Group By, Report Sub-Type, Employee Code Digits, Prefix Zero — hidden for Back Office */}
+                                    {editingSchedule.reportType !== 'attendance_daily' && (
                                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 items-end">
                                         <Select
                                             label="Group By"
@@ -1578,8 +1631,459 @@ const EmailConfigPanel: React.FC = () => {
                                             />
                                         </div>
                                     </div>
+                                    )} {/* end top control bar */}
 
-                                    {/* 3 Columns Filter Grid */}
+                                    {/* ── BACKOFFICE DAILY: Attendance Dashboard Filters (Image 1 Same-to-Same) ── */}
+                                    {editingSchedule.reportType === 'attendance_daily' && (
+                                        <div className="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-gray-200 flex flex-col gap-5">
+                                            
+                                            {/* Date Pills — Identical to Image 1 Dashboard */}
+                                            <div className="relative">
+                                                <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none no-scrollbar">
+                                                    {[
+                                                        { label: 'Today', key: 'today' },
+                                                        { label: 'Yesterday', key: 'yesterday' },
+                                                        { label: 'Last 3 Days', key: 'last_3_days' },
+                                                        { label: 'Last 7 Days', key: 'last_7_days' },
+                                                        { label: 'This Month', key: 'current_month' },
+                                                        { label: 'Last Month', key: 'previous_month' },
+                                                        { label: 'Last 3 Months', key: 'last_3_months' },
+                                                    ].map(filter => {
+                                                        const isSelected = (editingSchedule.scheduleConfig?.dateRangeMode || 'today') === filter.key;
+                                                        return (
+                                                            <button
+                                                                key={filter.key}
+                                                                type="button"
+                                                                onClick={() => updateScheduleConfig({ dateRangeMode: filter.key })}
+                                                                className={`whitespace-nowrap flex items-center justify-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold transition-all duration-150 active:scale-95 cursor-pointer shadow-xs ${
+                                                                    isSelected
+                                                                        ? "bg-[#006b3f] text-white shadow-md border border-[#005632]"
+                                                                        : "bg-white text-gray-700 hover:bg-gray-100 hover:text-gray-900 border border-gray-300 hover:border-gray-400"
+                                                                }`}
+                                                            >
+                                                                <span>{filter.label}</span>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                    <div className="flex-shrink-0">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const isCustom = editingSchedule.scheduleConfig?.dateRangeMode === 'custom';
+                                                                if (!isCustom) {
+                                                                    updateScheduleConfig({ dateRangeMode: 'custom' });
+                                                                    setIsDatePickerOpen(true);
+                                                                } else {
+                                                                    setIsDatePickerOpen(!isDatePickerOpen);
+                                                                }
+                                                            }}
+                                                            className={`whitespace-nowrap flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-all duration-150 active:scale-95 cursor-pointer shadow-xs ${
+                                                                editingSchedule.scheduleConfig?.dateRangeMode === 'custom'
+                                                                    ? "bg-[#006b3f] text-white shadow-md border border-[#005632]"
+                                                                    : "bg-white text-gray-700 hover:bg-gray-100 hover:text-gray-900 border border-gray-300 hover:border-gray-400"
+                                                            }`}
+                                                        >
+                                                            <Calendar className="h-4 w-4" />
+                                                            <span>
+                                                                {editingSchedule.scheduleConfig?.dateRangeMode === 'custom' && editingSchedule.scheduleConfig?.customDateStart && editingSchedule.scheduleConfig?.customDateEnd
+                                                                    ? `${editingSchedule.scheduleConfig.customDateStart} - ${editingSchedule.scheduleConfig.customDateEnd}`
+                                                                    : 'Custom Range'}
+                                                            </span>
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                {/* Custom Date Range Picker inputs when Custom Range is active */}
+                                                {(editingSchedule.scheduleConfig?.dateRangeMode === 'custom' || isDatePickerOpen) && (
+                                                    <div className="flex flex-wrap items-center gap-4 p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-xl mb-1 animate-in fade-in duration-200">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-xs font-semibold text-emerald-900">From Date:</span>
+                                                            <input
+                                                                type="date"
+                                                                value={editingSchedule.scheduleConfig?.customDateStart || ''}
+                                                                onChange={e => updateScheduleConfig({ customDateStart: e.target.value })}
+                                                                className="px-3 py-1.5 text-xs bg-white border border-emerald-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                                            />
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-xs font-semibold text-emerald-900">To Date:</span>
+                                                            <input
+                                                                type="date"
+                                                                value={editingSchedule.scheduleConfig?.customDateEnd || ''}
+                                                                onChange={e => updateScheduleConfig({ customDateEnd: e.target.value })}
+                                                                className="px-3 py-1.5 text-xs bg-white border border-emerald-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                                            />
+                                                        </div>
+                                                        <span className="text-[11px] text-emerald-700 italic">Report will compile attendance between these bounds</span>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Dropdowns Row 1: Report Type, Location, Company, Site, Staff Category, Role */}
+                                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 items-end">
+                                                {/* Report Type */}
+                                                <div className="col-span-1">
+                                                    <label className="block text-xs font-medium text-gray-500 mb-1">Report Type</label>
+                                                    <div className="relative">
+                                                        <select
+                                                            className="w-full border border-gray-200 rounded-lg pl-3 pr-8 py-2 text-xs md:text-sm bg-white text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none transition-all cursor-pointer shadow-2xs"
+                                                            value={editingSchedule.scheduleConfig?.reportSubType || 'basic'}
+                                                            onChange={e => updateScheduleConfig({ reportSubType: e.target.value })}
+                                                        >
+                                                            <option value="basic">Basic Report</option>
+                                                            <option value="monthly">Monthly Summary</option>
+                                                            <option value="work_hours">Work Hours Report</option>
+                                                            <option value="leave_balance">Leave Balance Tracker</option>
+                                                            <option value="site_ot">Site OT Report</option>
+                                                            <option value="log">Attendance Logs</option>
+                                                            <option value="audit">Audit Logs</option>
+                                                        </select>
+                                                        <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                                                            <Filter className="h-3.5 w-3.5 opacity-50" />
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Location */}
+                                                <div className="col-span-1">
+                                                    <label className="block text-xs font-medium text-gray-500 mb-1">Location</label>
+                                                    <div className="relative">
+                                                        <select
+                                                            className="w-full border border-gray-200 rounded-lg pl-3 pr-8 py-2 text-xs md:text-sm bg-white text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none transition-all cursor-pointer shadow-2xs"
+                                                            value={editingSchedule.scheduleConfig?.filterEmployeeLocation || 'all'}
+                                                            onChange={e => {
+                                                                const val = e.target.value;
+                                                                updateScheduleConfig({
+                                                                    filterEmployeeLocation: val,
+                                                                    filterEmployeeLocations: val === 'all' ? [] : [val]
+                                                                });
+                                                            }}
+                                                        >
+                                                            <option value="all">All Locations</option>
+                                                            {availableDepartments.map(loc => (
+                                                                <option key={loc} value={loc}>{loc}</option>
+                                                            ))}
+                                                        </select>
+                                                        <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                                                            <Filter className="h-3.5 w-3.5 opacity-50" />
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Company */}
+                                                <div className="col-span-1">
+                                                    <label className="block text-xs font-medium text-gray-500 mb-1">Company</label>
+                                                    <div className="relative">
+                                                        <select
+                                                            className="w-full border border-gray-200 rounded-lg pl-3 pr-8 py-2 text-xs md:text-sm bg-white text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none transition-all cursor-pointer shadow-2xs"
+                                                            value={editingSchedule.scheduleConfig?.filterCompany || 'all'}
+                                                            onChange={e => {
+                                                                const val = e.target.value;
+                                                                updateScheduleConfig({
+                                                                    filterCompany: val,
+                                                                    filterCompanyEnabled: val !== 'all',
+                                                                    filterCompanies: val === 'all' ? [] : [val]
+                                                                });
+                                                            }}
+                                                        >
+                                                            <option value="all">All Companies</option>
+                                                            {availableCompanies.map(comp => (
+                                                                <option key={comp} value={comp}>{comp}</option>
+                                                            ))}
+                                                        </select>
+                                                        <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                                                            <Filter className="h-3.5 w-3.5 opacity-50" />
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Site */}
+                                                <div className="col-span-1">
+                                                    <label className="block text-xs font-medium text-gray-500 mb-1">Site</label>
+                                                    <div className="relative">
+                                                        <select
+                                                            className="w-full border border-gray-200 rounded-lg pl-3 pr-8 py-2 text-xs md:text-sm bg-white text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none transition-all cursor-pointer shadow-2xs"
+                                                            value={editingSchedule.scheduleConfig?.filterSite || 'all'}
+                                                            onChange={e => {
+                                                                const val = e.target.value;
+                                                                updateScheduleConfig({
+                                                                    filterSite: val,
+                                                                    filterSiteEnabled: val !== 'all',
+                                                                    filterSites: val === 'all' ? [] : [val],
+                                                                    filterDepartmentEnabled: val !== 'all',
+                                                                    filterDepartments: val === 'all' ? [] : [val]
+                                                                });
+                                                            }}
+                                                        >
+                                                            <option value="all">All Sites</option>
+                                                            {availableDepartments.map(site => (
+                                                                <option key={site} value={site}>{site}</option>
+                                                            ))}
+                                                        </select>
+                                                        <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                                                            <Filter className="h-3.5 w-3.5 opacity-50" />
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Staff Category — Dropdown with interactive checkboxes popover */}
+                                                <div className="col-span-1 relative" ref={staffCategoryRef}>
+                                                    <label className="block text-xs font-medium text-gray-500 mb-1">Staff Category</label>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setIsStaffCategoryOpen(prev => !prev)}
+                                                        className="w-full border border-gray-200 rounded-lg pl-3 pr-2 py-2 text-xs md:text-sm bg-white text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none text-left flex items-center justify-between transition-all cursor-pointer shadow-2xs"
+                                                    >
+                                                        <span className="truncate pr-1 text-xs md:text-sm font-medium">
+                                                            {getStaffCategoryDisplayLabel(editingSchedule.scheduleConfig?.filterEmployeeCategories)}
+                                                        </span>
+                                                        <ChevronDown className={`h-3.5 w-3.5 text-gray-400 transition-transform duration-200 flex-shrink-0 ${isStaffCategoryOpen ? 'rotate-180' : ''}`} />
+                                                    </button>
+                                                    {isStaffCategoryOpen && (
+                                                        <div className="absolute top-full left-0 mt-1 z-50 w-56 bg-white border border-gray-200 rounded-xl shadow-xl p-2 space-y-1 animate-in fade-in zoom-in-95 duration-150">
+                                                            {/* All Staff Option */}
+                                                            <label
+                                                                className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-emerald-50 cursor-pointer text-xs font-semibold text-gray-800 transition-colors"
+                                                                onClick={(e) => e.stopPropagation()}
+                                                            >
+                                                                <input
+                                                                    type="checkbox"
+                                                                    className="w-4 h-4 rounded text-emerald-600 border-gray-300 focus:ring-emerald-500 cursor-pointer accent-emerald-600"
+                                                                    checked={isAllStaffSelected(editingSchedule.scheduleConfig?.filterEmployeeCategories)}
+                                                                    onChange={(e) => {
+                                                                        if (e.target.checked) {
+                                                                            updateScheduleConfig({ filterEmployeeCategories: ['office', 'field', 'site'] });
+                                                                        } else {
+                                                                            updateScheduleConfig({ filterEmployeeCategories: [] });
+                                                                        }
+                                                                    }}
+                                                                />
+                                                                <span>All Staff</span>
+                                                            </label>
+                                                            <div className="h-px bg-gray-100 my-1" />
+                                                            {PARADIGM_STAFF_CATEGORIES.map(cat => {
+                                                                const cats = editingSchedule.scheduleConfig?.filterEmployeeCategories || [];
+                                                                const isChecked = cats.includes(cat.id);
+                                                                return (
+                                                                    <label
+                                                                        key={cat.id}
+                                                                        className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-emerald-50 cursor-pointer text-xs font-medium text-gray-700 transition-colors"
+                                                                        onClick={(e) => e.stopPropagation()}
+                                                                    >
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            className="w-4 h-4 rounded text-emerald-600 border-gray-300 focus:ring-emerald-500 cursor-pointer accent-emerald-600"
+                                                                            checked={isChecked}
+                                                                            onChange={(e) => {
+                                                                                let nextCats: string[];
+                                                                                if (e.target.checked) {
+                                                                                    nextCats = [...cats, cat.id];
+                                                                                } else {
+                                                                                    nextCats = cats.filter(c => c !== cat.id);
+                                                                                }
+                                                                                updateScheduleConfig({ filterEmployeeCategories: nextCats });
+                                                                            }}
+                                                                        />
+                                                                        <span>{cat.label}</span>
+                                                                    </label>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* Role */}
+                                                <div className="col-span-1">
+                                                    <label className="block text-xs font-medium text-gray-500 mb-1">Role</label>
+                                                    <div className="relative">
+                                                        <select
+                                                            className="w-full border border-gray-200 rounded-lg pl-3 pr-8 py-2 text-xs md:text-sm bg-white text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none transition-all cursor-pointer shadow-2xs"
+                                                            value={editingSchedule.scheduleConfig?.filterEmployeeDesignation || 'all'}
+                                                            onChange={e => {
+                                                                const val = e.target.value;
+                                                                updateScheduleConfig({
+                                                                    filterEmployeeDesignation: val,
+                                                                    filterEmployeeDesignations: val === 'all' ? [] : [val]
+                                                                });
+                                                            }}
+                                                        >
+                                                            <option value="all">All Roles</option>
+                                                            {dynamicDesignations.map(role => (
+                                                                <option key={role} value={role}>
+                                                                    {role ? role.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : ''}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                        <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                                                            <Filter className="h-3.5 w-3.5 opacity-50" />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Dropdowns Row 2: Employee, Status, Record Type, Show Records, Apply Filters */}
+                                            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:flex xl:flex-wrap items-end gap-3 pt-1">
+                                                {/* Employee */}
+                                                <div className="col-span-1 min-w-[170px] flex-1">
+                                                    <label className="block text-xs font-medium text-gray-500 mb-1">Employee</label>
+                                                    <div className="relative">
+                                                        <select
+                                                            className="w-full border border-gray-200 rounded-lg pl-3 pr-8 py-2 text-xs md:text-sm bg-white text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none transition-all cursor-pointer shadow-2xs"
+                                                            value={editingSchedule.scheduleConfig?.filterEmployeeUserId || 'all'}
+                                                            onChange={e => {
+                                                                const val = e.target.value;
+                                                                const uObj = users.find(u => u.id === val);
+                                                                updateScheduleConfig({
+                                                                    filterEmployeeUserId: val,
+                                                                    filterEmployeeName: val === 'all' ? '' : (uObj?.name || '')
+                                                                });
+                                                            }}
+                                                        >
+                                                            <option value="all">All Employees</option>
+                                                            {users
+                                                                .filter(u => {
+                                                                    const selectedCats = editingSchedule.scheduleConfig?.filterEmployeeCategories;
+                                                                    if (selectedCats && selectedCats.length > 0 && selectedCats.length < 3 && !selectedCats.includes('all')) {
+                                                                        const roleStr = (u.role || '').toLowerCase();
+                                                                        const staffCat = ((u as any).staff_category || '').toLowerCase();
+                                                                        const matches = selectedCats.some(cat => staffCat ? staffCat === cat.toLowerCase() : roleStr.includes(cat.toLowerCase()));
+                                                                        if (!matches) return false;
+                                                                    }
+                                                                    const desig = editingSchedule.scheduleConfig?.filterEmployeeDesignation;
+                                                                    if (desig && desig !== 'all' && u.role !== desig) return false;
+                                                                    const comp = editingSchedule.scheduleConfig?.filterCompany;
+                                                                    if (comp && comp !== 'all' && (u.societyName || (u as any).organizationName) !== comp) return false;
+                                                                    const loc = editingSchedule.scheduleConfig?.filterEmployeeLocation;
+                                                                    if (loc && loc !== 'all' && (u.location || (u as any).locationName) !== loc) return false;
+                                                                    return true;
+                                                                })
+                                                                .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+                                                                .map(u => (
+                                                                    <option key={u.id} value={u.id}>{u.name}</option>
+                                                                ))
+                                                            }
+                                                        </select>
+                                                        <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                                                            <Filter className="h-3.5 w-3.5 opacity-50" />
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Status */}
+                                                <div className="col-span-1 min-w-[160px] flex-1">
+                                                    <label className="block text-xs font-medium text-gray-500 mb-1">Status</label>
+                                                    <div className="relative">
+                                                        <select
+                                                            className="w-full border border-gray-200 rounded-lg pl-3 pr-8 py-2 text-xs md:text-sm bg-white text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none transition-all cursor-pointer shadow-2xs"
+                                                            value={editingSchedule.scheduleConfig?.filterEmployeeStatus || 'all'}
+                                                            onChange={e => updateScheduleConfig({ filterEmployeeStatus: e.target.value })}
+                                                        >
+                                                            <option value="all">All Status</option>
+                                                            <option value="ACTIVE_USERS">Active Users Only</option>
+                                                            <optgroup label="── Attendance ──">
+                                                                <option value="P">P — Present</option>
+                                                                <option value="0.5P">0.5P — Half Day</option>
+                                                                <option value="0.75P">0.75P — Three-Quarter Day</option>
+                                                                <option value="0.25P">0.25P — Quarter Day</option>
+                                                                <option value="A">A — Absent</option>
+                                                                <option value="LOP">LOP — Loss of Pay</option>
+                                                            </optgroup>
+                                                            <optgroup label="── Offs &amp; Holidays ──">
+                                                                <option value="W/O">W/O — Weekly Off</option>
+                                                                <option value="H">H — Public Holiday</option>
+                                                                <option value="H/P">H/P — Holiday Present</option>
+                                                                <option value="W/P">W/P — Weekend Present</option>
+                                                                <option value="W/H">W/H — Work From Home</option>
+                                                                <option value="BL">BL — Blue Leave (3rd Sat)</option>
+                                                                <option value="PL">PL — Pink Leave (Female)</option>
+                                                            </optgroup>
+                                                            <optgroup label="── Leave Types ──">
+                                                                <option value="SL">SL — Sick Leave</option>
+                                                                <option value="EL">EL — Earned Leave</option>
+                                                                <option value="CL">CL — Casual Leave</option>
+                                                                <option value="C/O">C/O — Comp Off</option>
+                                                                <option value="ML">ML — Maternity Leave</option>
+                                                                <option value="CC">CC — Child Care Leave</option>
+                                                            </optgroup>
+                                                            <optgroup label="── Requests ──">
+                                                                <option value="RP">RP — Request Permission</option>
+                                                                <option value="RC">RC — Request Correction</option>
+                                                            </optgroup>
+                                                        </select>
+                                                        <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                                                            <Filter className="h-3.5 w-3.5 opacity-50" />
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Record Type */}
+                                                <div className="col-span-1 min-w-[160px] flex-1">
+                                                    <label className="block text-xs font-medium text-gray-500 mb-1">Record Type</label>
+                                                    <div className="relative">
+                                                        <select
+                                                            className="w-full border border-gray-200 rounded-lg pl-3 pr-8 py-2 text-xs md:text-sm bg-white text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none transition-all cursor-pointer shadow-2xs"
+                                                            value={editingSchedule.scheduleConfig?.filterRecordType || 'all'}
+                                                            onChange={e => updateScheduleConfig({ filterRecordType: e.target.value })}
+                                                        >
+                                                            <option value="all">All Records</option>
+                                                            <option value="complete">Complete (Punch-in &amp; Punch-out)</option>
+                                                            <option value="missing_checkout">Missing Punch-out</option>
+                                                            <option value="missing_checkin">Missing Punch-in</option>
+                                                            <option value="incomplete">Incomplete (Any Missing)</option>
+                                                            <option value="auto_checkout">Auto Punch-out</option>
+                                                        </select>
+                                                        <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                                                            <Filter className="h-3.5 w-3.5 opacity-50" />
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Show Records */}
+                                                <div className="col-span-1 min-w-[120px]">
+                                                    <label className="block text-xs font-medium text-gray-500 mb-1">Show Records</label>
+                                                    <div className="relative">
+                                                        <select
+                                                            className="w-full border border-gray-200 rounded-lg pl-3 pr-8 py-2 text-xs md:text-sm bg-white text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none transition-all cursor-pointer shadow-2xs"
+                                                            value={editingSchedule.scheduleConfig?.filterShowRecords ?? 20}
+                                                            onChange={e => updateScheduleConfig({ filterShowRecords: Number(e.target.value) })}
+                                                        >
+                                                            <option value={20}>20 Records</option>
+                                                            <option value={50}>50 Records</option>
+                                                            <option value={100}>100 Records</option>
+                                                            <option value={0}>All Records</option>
+                                                        </select>
+                                                        <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                                                            <Filter className="h-3.5 w-3.5 opacity-50" />
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Apply Filters Button — Styled same to same as Image 1 */}
+                                                <div className="col-span-2 md:col-span-1 xl:ml-auto">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setAppliedFilterFlash(true);
+                                                            setToast({ message: 'Filters applied to Back Office daily report schedule', type: 'success' });
+                                                            setTimeout(() => setAppliedFilterFlash(false), 2000);
+                                                        }}
+                                                        className={`w-full md:w-auto md:min-w-[170px] shadow-sm flex items-center justify-center gap-2 py-2.5 px-6 rounded-xl font-semibold text-sm transition-all duration-200 cursor-pointer ${
+                                                            appliedFilterFlash
+                                                                ? "bg-emerald-600 text-white border border-emerald-600 scale-95"
+                                                                : "bg-[#006b3f] hover:bg-[#005632] text-white border border-[#005632] active:scale-95"
+                                                        }`}
+                                                    >
+                                                        <Filter className="w-4 h-4" />
+                                                        {appliedFilterFlash ? 'Filters Applied ✓' : 'Apply Filters'}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+
+                                    {/* ── SITE / OTHER REPORTS: Full 3-column filter grid ── */}
+                                    {editingSchedule.reportType !== 'attendance_daily' && (
                                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 pt-1">
                                         {/* COLUMN 1: FILTER EMPLOYEE */}
                                         <div className={`p-4 rounded-xl border flex flex-col justify-between transition-all h-full ${editingSchedule.scheduleConfig?.filterEmployeeEnabled ? 'bg-white border-emerald-500/40 shadow-xs' : 'bg-slate-50/60 border-slate-200/80'}`}>
@@ -1876,6 +2380,7 @@ const EmailConfigPanel: React.FC = () => {
                                             </div>
                                         </div>
                                     </div>
+                                    )} {/* end site/other 3-col grid */}
 
                                     {/* Bottom Strip: Export File Format, Recalculate Attendance & Show Company Logo */}
                                     <div className="pt-3 border-t border-slate-200 flex flex-wrap items-center justify-between gap-4">
@@ -2277,7 +2782,8 @@ const EmailConfigPanel: React.FC = () => {
             {/* ═══════════════ SMTP POOL TAB ═══════════════ */}
             {activeSubTab === 'smtp_pool' && (() => {
                 const REPORT_TYPE_OPTIONS = [
-                    { value: 'attendance_daily', label: 'Daily Attendance' },
+                    { value: 'attendance_daily', label: 'Daily Attendance Back Office' },
+                    { value: 'attendance_site_daily', label: 'Daily Attendance - Site' },
                     { value: 'attendance_monthly', label: 'Monthly Attendance' },
                     { value: 'crm_bd_daily', label: 'BD Daily CRM' },
                     { value: 'document_expiry', label: 'Document Expiry' },

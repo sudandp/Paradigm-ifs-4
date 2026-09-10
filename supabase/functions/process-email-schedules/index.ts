@@ -126,17 +126,65 @@ interface LeaveRequest {
 
 // ─── Helper: Get IST date string (YYYY-MM-DD) from a UTC Date ──────────────
 function getISTDateString(date: Date): string {
-  const istTime = new Date(date.getTime() + IST_OFFSET);
-  return istTime.toISOString().substring(0, 10);
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(date);
+  } catch {
+    const istTime = new Date(date.getTime() + IST_OFFSET);
+    return istTime.toISOString().substring(0, 10);
+  }
+}
+
+function formatTimeIST(date: any, fallback = 'N/A'): string {
+  if (!date) return fallback;
+  try {
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return fallback;
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Kolkata',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    }).format(d).replace(/\u202f/g, ' ');
+  } catch {
+    return fallback;
+  }
+}
+
+function formatTime24IST(date: any, fallback = '00:00'): string {
+  if (!date) return fallback;
+  try {
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return fallback;
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Kolkata',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(d);
+  } catch {
+    return fallback;
+  }
 }
 
 // ─── Helper: Get IST hours and minutes from a UTC Date ──────────────────────
 function getISTHoursMinutes(date: Date): { hours: number; minutes: number } {
-  const istTime = new Date(date.getTime() + IST_OFFSET);
-  return {
-    hours: istTime.getUTCHours(),
-    minutes: istTime.getUTCMinutes(),
-  };
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Kolkata',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    }).formatToParts(date);
+    const hours = Number(parts.find(p => p.type === 'hour')?.value || 0);
+    const minutes = Number(parts.find(p => p.type === 'minute')?.value || 0);
+    return { hours, minutes };
+  } catch {
+    const istTime = new Date(date.getTime() + IST_OFFSET);
+    return {
+      hours: istTime.getUTCHours(),
+      minutes: istTime.getUTCMinutes(),
+    };
+  }
 }
 
 serve(async (req: Request) => {
@@ -298,9 +346,13 @@ serve(async (req: Request) => {
 
       let reportData: Record<string, string> = { date: format(targetDateIST, 'EEEE, MMMM do, yyyy') };
       if (rule.report_type === 'attendance_daily') {
-        console.log(`  Generating daily attendance report (mode: ${dateRangeMode}, target: ${format(targetDateIST, 'yyyy-MM-dd')})...`);
+        console.log(`  Generating daily attendance report - Backoffice (mode: ${dateRangeMode}, target: ${format(targetDateIST, 'yyyy-MM-dd')})...`);
         reportData = await generateDailyAttendanceReport(supabase, targetDateIST);
         console.log(`  Report generated: ${reportData.totalEmployees} employees, ${reportData.totalPresent} present`);
+      } else if (rule.report_type === 'attendance_site_daily') {
+        console.log(`  Generating daily attendance report - Site (mode: ${dateRangeMode}, target: ${format(targetDateIST, 'yyyy-MM-dd')})...`);
+        reportData = await generateDailyAttendanceReport(supabase, targetDateIST);
+        console.log(`  Site report generated: ${reportData.totalEmployees} employees, ${reportData.totalPresent} present`);
       } else if (rule.report_type === 'attendance_monthly') {
         console.log(`  Generating monthly attendance report (Grid)...`);
         reportData = await generateMonthlyAttendanceReport(supabase, targetDateIST);
@@ -425,7 +477,10 @@ serve(async (req: Request) => {
             greetingMessage = `Dear Management,<br/><br/>This is the consolidated attendance summary for the period of <strong>{date}</strong>. It covers overall employee presence across all <strong>{totalEmployees}</strong> active members of the staff.<br/><br/>Overall attendance stands at <strong>{attendancePercentage}%</strong>. Please review the detailed monthly attendance grid below for any discrepancies.`;
         } else if (rule.report_type === 'attendance_daily') {
             const periodText = dateRangeMode === 'yesterday' ? "Yesterday's" : "Today's";
-            greetingMessage = `Dear Team,<br/><br/>${periodText} attendance for <strong>{date}</strong> stands at <strong>{attendancePercentage}%</strong>. A total of <strong>{totalAbsent}</strong> employees were absent, and <strong>{lateCount}</strong> reported late.<br/><br/>Attendance summary:`;
+            greetingMessage = `Dear Team,<br/><br/>${periodText} backoffice attendance for <strong>{date}</strong> stands at <strong>{attendancePercentage}%</strong>. A total of <strong>{totalAbsent}</strong> employees were absent, and <strong>{lateCount}</strong> reported late.<br/><br/>Attendance summary:`;
+        } else if (rule.report_type === 'attendance_site_daily') {
+            const periodText = dateRangeMode === 'yesterday' ? "Yesterday's" : "Today's";
+            greetingMessage = `Dear Team,<br/><br/>${periodText} site attendance for <strong>{date}</strong> stands at <strong>{attendancePercentage}%</strong>. A total of <strong>{totalAbsent}</strong> site staff were absent, and <strong>{lateCount}</strong> reported late.<br/><br/>Site attendance summary:`;
         } else if (rule.report_type === 'crm_bd_daily' || rule.report_type === 'bd_daily') {
             greetingMessage = `Dear Management,<br/><br/>Daily Activity Report for <strong>{bd_name}</strong> for <strong>{report_date}</strong>.`;
         }
@@ -648,13 +703,12 @@ async function generateDailyAttendanceReport(supabase: ReturnType<typeof createC
     if (presentUserIds.has(user.id)) {
       const userEvents = todayEvents.filter((e: AttendanceEvent) => e.user_id === user.id);
       const inTs = userFirstPunches[user.id];
-      const inDate = new Date(new Date(inTs).getTime() + IST_OFFSET);
-      pin = format(inDate, 'hh:mm a');
-      if (format(inDate, 'HH:mm') > configStartTime) { status = 'Late'; color = '#d97706'; }
+      pin = formatTimeIST(inTs, '—');
+      if (formatTime24IST(inTs) > configStartTime) { status = 'Late'; color = '#d97706'; }
       
       const lastOut = userEvents.filter((e: AttendanceEvent) => e.type === 'punch-out').pop();
       if (lastOut) {
-        pout = format(new Date(new Date(lastOut.timestamp).getTime() + IST_OFFSET), 'hh:mm a');
+        pout = formatTimeIST(lastOut.timestamp, '—');
         const diff = new Date(lastOut.timestamp).getTime() - new Date(inTs).getTime();
         wh = `${Math.floor(diff/3600000)}h ${Math.floor((diff%3600000)/60000)}m`;
       }
@@ -662,14 +716,14 @@ async function generateDailyAttendanceReport(supabase: ReturnType<typeof createC
       // Fetch Breaks
       const firstBIn = userEvents.find((e: AttendanceEvent) => e.type === 'break-in');
       const lastBOut = userEvents.filter((e: AttendanceEvent) => e.type === 'break-out').pop();
-      if (firstBIn) bin = format(new Date(new Date(firstBIn.timestamp).getTime() + IST_OFFSET), 'hh:mm a');
-      if (lastBOut) bout = format(new Date(new Date(lastBOut.timestamp).getTime() + IST_OFFSET), 'hh:mm a');
+      if (firstBIn) bin = formatTimeIST(firstBIn.timestamp, '—');
+      if (lastBOut) bout = formatTimeIST(lastBOut.timestamp, '—');
 
       // Fetch Site OT
       const firstOTIn = userEvents.find((e: AttendanceEvent) => e.type === 'site-ot-in');
       const lastOTOut = userEvents.filter((e: AttendanceEvent) => e.type === 'site-ot-out').pop();
-      if (firstOTIn) otin = format(new Date(new Date(firstOTIn.timestamp).getTime() + IST_OFFSET), 'hh:mm a');
-      if (lastOTOut) otout = format(new Date(new Date(lastOTOut.timestamp).getTime() + IST_OFFSET), 'hh:mm a');
+      if (firstOTIn) otin = formatTimeIST(firstOTIn.timestamp, '—');
+      if (lastOTOut) otout = formatTimeIST(lastOTOut.timestamp, '—');
     } else if (onLeaveUserIds.has(user.id)) { status = 'On Leave'; color = '#2563eb'; }
     else if (recentlyActiveUserIds.has(user.id)) { status = 'Absent'; color = '#dc2626'; }
     else { status = 'Inactive'; color = '#9ca3af'; }
@@ -1647,7 +1701,8 @@ function calculateDailyTravelKm(events: any[]): number {
 
 async function generateCRMBdDailyReport(supabase: ReturnType<typeof createClient>, nowIST: Date): Promise<Record<string, string>[]> {
   const todayStr = getISTDateString(nowIST);
-  const startOfTodayUTC = startOfDay(new Date(nowIST.getTime() - IST_OFFSET));
+  const startOfTodayUTC = new Date(`${todayStr}T00:00:00+05:30`);
+  const endOfTodayUTC = new Date(`${todayStr}T23:59:59.999+05:30`);
 
   const { data: usersRes } = await supabase.from('users').select('id, name, role_id, role:roles(display_name)').eq('is_blocked', false);
   const bdUsers = ((usersRes || []) as User[]).filter((u: any) => {
@@ -1695,9 +1750,9 @@ async function generateCRMBdDailyReport(supabase: ReturnType<typeof createClient
   }
 
   const [eventsRes, leadsRes, callsRes] = await Promise.all([
-    supabase.from('attendance_events').select('user_id, type, timestamp, latitude, longitude, travel_distance').gte('timestamp', startOfTodayUTC.toISOString()).order('timestamp', { ascending: true }),
-    supabase.from('crm_leads').select('id, created_by, assigned_to, company_name, contact_person, status, created_at').gte('created_at', startOfTodayUTC.toISOString()),
-    supabase.from('crm_followups').select('created_by, type, lead_id, created_at').gte('created_at', startOfTodayUTC.toISOString())
+    supabase.from('attendance_events').select('user_id, type, timestamp, latitude, longitude, travel_distance').gte('timestamp', startOfTodayUTC.toISOString()).lte('timestamp', endOfTodayUTC.toISOString()).order('timestamp', { ascending: true }),
+    supabase.from('crm_leads').select('id, created_by, assigned_to, company_name, contact_person, status, created_at').gte('created_at', startOfTodayUTC.toISOString()).lte('created_at', endOfTodayUTC.toISOString()),
+    supabase.from('crm_followups').select('created_by, type, lead_id, created_at').gte('created_at', startOfTodayUTC.toISOString()).lte('created_at', endOfTodayUTC.toISOString())
   ]);
 
   const events = eventsRes.data || [];
@@ -1716,14 +1771,14 @@ async function generateCRMBdDailyReport(supabase: ReturnType<typeof createClient
     let check_out_time = 'N/A';
     let working_hours = '0h 0m';
     
-    const punchesIn = bdEvents.filter((e: any) => e.type === 'punch-in' || e.type === 'site-in' || e.type === 'site-ot-in');
-    const punchesOut = bdEvents.filter((e: any) => e.type === 'punch-out' || e.type === 'site-out' || e.type === 'site-ot-out');
+    const punchesIn = bdEvents.filter((e: any) => e.type === 'punch-in' || e.type === 'site-in' || e.type === 'site-ot-in' || e.type === 'check_in');
+    const punchesOut = bdEvents.filter((e: any) => e.type === 'punch-out' || e.type === 'site-out' || e.type === 'site-ot-out' || e.type === 'check_out');
     
     if (punchesIn.length > 0) {
-      check_in_time = format(new Date(punchesIn[0].timestamp), 'hh:mm a');
+      check_in_time = formatTimeIST(punchesIn[0].timestamp);
     }
     if (punchesOut.length > 0) {
-      check_out_time = format(new Date(punchesOut[punchesOut.length - 1].timestamp), 'hh:mm a');
+      check_out_time = formatTimeIST(punchesOut[punchesOut.length - 1].timestamp);
     }
   
     let netWorkMinutes = 0;
@@ -1842,11 +1897,11 @@ async function generateCRMBdDailyReport(supabase: ReturnType<typeof createClient
     <div style="margin-top:8px;text-align:right;font-size:11px;color:#94a3b8;padding:8px;">Total active pipeline: ${activeTotal} leads</div>`;
 
     reports.push({
-      date: format(nowIST, 'dd MMM yyyy'),
+      date: format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy'),
       bd_name: bd.name || 'BD',
       bdName: bd.name || 'BD',
-      report_date: format(nowIST, 'dd MMM yyyy'),
-      reportDate: format(nowIST, 'dd MMM yyyy'),
+      report_date: format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy'),
+      reportDate: format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy'),
       attendance_status,
       attendanceStatus: attendance_status,
       check_in_time,
