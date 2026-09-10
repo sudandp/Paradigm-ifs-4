@@ -102,6 +102,19 @@ const HybridAuthStorage = {
     // Write to Capacitor Preferences (Android SharedPreferences)
     try {
       await Preferences.set({ key, value });
+      // Keep rememberMe token in sync whenever Supabase client updates or rotates the session
+      if (key.includes('-auth-token')) {
+        try {
+          const parsed = JSON.parse(value);
+          if (parsed?.refresh_token) {
+            await Preferences.set({ key: 'supabase.auth.rememberMe', value: parsed.refresh_token });
+            const { secureSet } = await import('../utils/secureStorage');
+            await secureSet('supabase.auth.rememberMe', parsed.refresh_token);
+          }
+        } catch {
+          // Non-critical token parse sync
+        }
+      }
     } catch (e: any) {
       console.warn('[HybridAuthStorage] Preferences set warning:', e?.message);
     }

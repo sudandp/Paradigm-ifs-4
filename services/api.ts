@@ -6216,33 +6216,71 @@ export const api = {
       userData = await offlineDb.getCache(`user_profile_leave_${userId}`);
     }
     
-    // Fallback: active user profile from authStore
+    // Fallback 1: cached user from localStorage (contains full profile from previous session)
+    if (!userData && typeof window !== 'undefined') {
+      try {
+        const cachedRaw = localStorage.getItem('paradigm:cachedUser');
+        if (cachedRaw) {
+          const parsed = JSON.parse(cachedRaw);
+          if (parsed && (parsed.id === userId || !userId)) {
+            userData = {
+              id: parsed.id,
+              role_id: parsed.roleId || parsed.role || 'office_staff',
+              role: { display_name: parsed.role || 'Office Staff' },
+              earned_leave_opening_balance: parsed.earnedLeaveOpeningBalance ?? parsed.earned_leave_opening_balance ?? 0,
+              earned_leave_opening_date: parsed.earnedLeaveOpeningDate || parsed.earned_leave_opening_date,
+              sick_leave_opening_balance: parsed.sickLeaveOpeningBalance ?? parsed.sick_leave_opening_balance ?? 0,
+              sick_leave_opening_date: parsed.sickLeaveOpeningDate || parsed.sick_leave_opening_date,
+              child_care_leave_opening_balance: parsed.childCareLeaveOpeningBalance ?? parsed.child_care_leave_opening_balance ?? 0,
+              child_care_leave_opening_date: parsed.childCareLeaveOpeningDate || parsed.child_care_leave_opening_date,
+              comp_off_opening_balance: parsed.compOffOpeningBalance ?? parsed.comp_off_opening_balance ?? 0,
+              comp_off_opening_date: parsed.compOffOpeningDate || parsed.comp_off_opening_date,
+              floating_leave_opening_balance: parsed.floatingLeaveOpeningBalance ?? parsed.floating_leave_opening_balance ?? 0,
+              floating_leave_opening_date: parsed.floatingLeaveOpeningDate || parsed.floating_leave_opening_date,
+              joining_date: parsed.joiningDate || parsed.joining_date,
+              gender: parsed.gender || 'male',
+              created_at: parsed.createdAt || parsed.created_at,
+              organization_name: parsed.organizationName || parsed.organization_name,
+              society_name: parsed.societyName || parsed.society_name,
+              society_id: parsed.societyId || parsed.society_id,
+              location_id: parsed.locationId || parsed.location_id,
+              location: parsed.location
+            };
+          }
+        }
+      } catch {
+        // Ignore
+      }
+    }
+
+    // Fallback 2: active user profile from authStore
     if (!userData) {
       try {
         const { useAuthStore } = await import('../store/authStore');
         const activeUser = useAuthStore.getState().user;
-        if (activeUser && activeUser.id === userId) {
+        if (activeUser && (activeUser.id === userId || !userId)) {
           userData = {
-            role_id: activeUser.roleId || activeUser.role,
-            role: { display_name: activeUser.role },
-            earned_leave_opening_balance: activeUser.earnedLeaveOpeningBalance,
-            earned_leave_opening_date: activeUser.earnedLeaveOpeningDate,
-            sick_leave_opening_balance: activeUser.sickLeaveOpeningBalance,
-            sick_leave_opening_date: activeUser.sickLeaveOpeningDate,
-            child_care_leave_opening_balance: activeUser.childCareLeaveOpeningBalance,
-            child_care_leave_opening_date: activeUser.childCareLeaveOpeningDate,
-            comp_off_opening_balance: activeUser.compOffOpeningBalance,
-            comp_off_opening_date: activeUser.compOffOpeningDate,
-            floating_leave_opening_balance: activeUser.floatingLeaveOpeningBalance,
-            floating_leave_opening_date: activeUser.floatingLeaveOpeningDate,
-            joining_date: activeUser.joiningDate,
-            gender: activeUser.gender,
-            created_at: activeUser.createdAt,
-            organization_name: activeUser.organizationName,
-            society_name: activeUser.societyName,
-            society_id: activeUser.societyId,
-            location_id: activeUser.locationId,
-            location: activeUser.location
+            id: activeUser.id,
+            role_id: (activeUser as any).roleId || activeUser.role || 'office_staff',
+            role: { display_name: activeUser.role || 'Office Staff' },
+            earned_leave_opening_balance: (activeUser as any).earnedLeaveOpeningBalance ?? 0,
+            earned_leave_opening_date: (activeUser as any).earnedLeaveOpeningDate,
+            sick_leave_opening_balance: (activeUser as any).sickLeaveOpeningBalance ?? 0,
+            sick_leave_opening_date: (activeUser as any).sickLeaveOpeningDate,
+            child_care_leave_opening_balance: (activeUser as any).childCareLeaveOpeningBalance ?? 0,
+            child_care_leave_opening_date: (activeUser as any).childCareLeaveOpeningDate,
+            comp_off_opening_balance: (activeUser as any).compOffOpeningBalance ?? 0,
+            comp_off_opening_date: (activeUser as any).compOffOpeningDate,
+            floating_leave_opening_balance: (activeUser as any).floatingLeaveOpeningBalance ?? 0,
+            floating_leave_opening_date: (activeUser as any).floatingLeaveOpeningDate,
+            joining_date: (activeUser as any).joiningDate,
+            gender: (activeUser as any).gender || 'male',
+            created_at: (activeUser as any).createdAt,
+            organization_name: (activeUser as any).organizationName,
+            society_name: (activeUser as any).societyName,
+            society_id: (activeUser as any).societyId,
+            location_id: (activeUser as any).locationId,
+            location: (activeUser as any).location
           };
         }
       } catch {
@@ -6284,7 +6322,14 @@ export const api = {
     }
 
     if (!settingsData?.attendance_settings) throw new Error('Could not load attendance rules.');
-    if (!userData) throw new Error('User profile data not available offline.');
+    if (!userData) {
+      console.warn('[getLeaveBalancesForUser] User profile not found in cloud or cache, using fallback profile for calculation');
+      userData = {
+        role_id: 'office_staff',
+        role: { display_name: 'Office Staff' },
+        gender: 'male'
+      };
+    }
 
     // Get role name from join or fallback to role_id string
     const roleData = userData.role;

@@ -1527,11 +1527,36 @@ const App: React.FC = () => {
                 console.error('Failed to restore session from long-term token:', refreshError.message);
                 const isDefinitiveFailure = refreshError.message?.includes('400') || 
                                            refreshError.message?.includes('invalid refresh token') ||
+                                           refreshError.message?.includes('Already Used') ||
                                            refreshError.message?.includes('not found');
                 
-                if (isDefinitiveFailure && !Capacitor.isNativePlatform()) {
-                  console.warn('Invalid refresh token detected on web. Clearing persistent storage.');
-                  await Preferences.remove({ key: 'supabase.auth.rememberMe' });
+                // If the refresh token was already used or revoked, try silent credential recovery
+                if (isDefinitiveFailure) {
+                  try {
+                    const cachedRaw = localStorage.getItem('paradigm:cachedUser');
+                    if (cachedRaw) {
+                      const cachedUser = JSON.parse(cachedRaw);
+                      if (cachedUser?.email && cachedUser?.passcode) {
+                        console.log('[App] Attempting seamless credential re-auth...');
+                        const { data: autoData } = await supabase.auth.signInWithPassword({
+                          email: cachedUser.email,
+                          password: `PAR_${cachedUser.passcode}`
+                        });
+                        if (autoData?.session) {
+                          session = autoData.session;
+                          console.log('[App] ✅ Seamless credential re-auth succeeded!');
+                        }
+                      }
+                    }
+                  } catch (reAuthErr) {
+                    console.warn('[App] Credential re-auth exception:', reAuthErr);
+                  }
+
+                  if (!session) {
+                    console.warn('Invalid refresh token detected. Clearing persistent storage.');
+                    await Preferences.remove({ key: 'supabase.auth.rememberMe' });
+                    await secureRemove('supabase.auth.rememberMe').catch(() => {});
+                  }
                 }
               } else {
                 session = refreshData.session;
@@ -1649,7 +1674,7 @@ const App: React.FC = () => {
           // On mobile, keep the user logged in and auto-renew the session in the background.
           // Guard against rapid-fire infinite loops if the refresh token is expired/revoked.
           const now = Date.now();
-          if (now - lastSilentRenewalAttempt > 30000 && silentRenewalFailureCount < 3) {
+          if (now - lastSilentRenewalAttempt > 15000 && silentRenewalFailureCount < 3) {
             lastSilentRenewalAttempt = now;
             console.warn('[AuthEvent] SIGNED_OUT received on Mobile without explicit user logout. Attempting silent token renewal...');
             secureGet('supabase.auth.rememberMe').then(async (storedToken) => {
@@ -1662,6 +1687,26 @@ const App: React.FC = () => {
                   } else {
                     silentRenewalFailureCount++;
                     console.warn('[AuthEvent] Silent token renewal unsuccessful:', rErr?.message);
+                    // Attempt credential re-auth if token was invalid/already used
+                    try {
+                      const cachedRaw = localStorage.getItem('paradigm:cachedUser');
+                      if (cachedRaw) {
+                        const cachedUser = JSON.parse(cachedRaw);
+                        if (cachedUser?.email && cachedUser?.passcode) {
+                          supabase.auth.signInWithPassword({
+                            email: cachedUser.email,
+                            password: `PAR_${cachedUser.passcode}`
+                          }).then(({ data: reData }) => {
+                            if (reData?.session) {
+                              silentRenewalFailureCount = 0;
+                              console.log('[AuthEvent] ✅ Re-authenticated successfully with cached credentials on mobile.');
+                            }
+                          }).catch(() => {});
+                        }
+                      }
+                    } catch (err) {
+                      console.warn('[AuthEvent] Credential re-auth parse failure:', err);
+                    }
                   }
                 }).catch((rErr) => {
                   silentRenewalFailureCount++;
@@ -1671,6 +1716,12 @@ const App: React.FC = () => {
                 silentRenewalFailureCount++;
               }
             }).catch(() => {});
+          } else if (silentRenewalFailureCount >= 3) {
+            console.warn('[AuthEvent] Multiple token renewals failed on mobile. Redirecting to login to restore live records.');
+            if (isMounted) {
+              setUser(null);
+              navigate('/auth/login', { replace: true });
+            }
           } else {
             console.warn('[AuthEvent] Suppressing rapid-fire silent token renewal on mobile to prevent infinite loop.');
           }
