@@ -96,6 +96,8 @@ export default defineConfig({
 
           const candidateBases = [
             'https://attendance.cctv.rest',
+            'http://localhost:4000',
+            'http://127.0.0.1:4000',
             'http://localhost:3000',
             'https://attendance.paradigmfms.com',
           ];
@@ -140,12 +142,11 @@ export default defineConfig({
                   'x-api-secret': 'paradigm-attendance-secret-2024',
                   'Content-Type': 'application/json',
                   'Connection': 'close',
-                  'ngrok-skip-browser-warning': '1',
                   'bypass-tunnel-reminder': 'true',
                   'Bypass-Tunnel-Reminder': '1',
                   ...(req.headers['authorization'] ? { 'Authorization': req.headers['authorization'] } : {}),
                 },
-                signal: AbortSignal.timeout(3500),
+                signal: AbortSignal.timeout(8000),
               });
               if (fetchRes.ok) {
                 const data = await fetchRes.text();

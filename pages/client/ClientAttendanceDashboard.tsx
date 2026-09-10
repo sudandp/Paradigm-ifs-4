@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
+import { Capacitor } from '@capacitor/core';
 import {
   format, subDays, startOfDay, endOfDay, startOfMonth, endOfMonth,
   subMonths, eachDayOfInterval, isSameDay
@@ -1728,7 +1729,10 @@ const ClientAttendanceDashboard: React.FC = () => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token || '';
 
-      const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+      const apiBaseUrl = (
+        import.meta.env.VITE_API_URL || 
+        (Capacitor.isNativePlatform() ? 'https://app.paradigmfms.com' : '')
+      ).replace(/\/$/, '');
       const [attRes, deviceRes] = await Promise.all([
         fetch(`${apiBaseUrl}/api/mssql-attendance?date=${selectedDate}&siteId=all`, {
           headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -1744,14 +1748,29 @@ const ClientAttendanceDashboard: React.FC = () => {
         throw new Error(msg);
       }
       const json: AttendanceData = await attRes.json();
-      setData(json);
 
-      // Save to localStorage for instant startup display on next load
-      try {
-        localStorage.setItem(`${ATTENDANCE_CACHE_PREFIX}${selectedDate}`, JSON.stringify(json));
-        localStorage.setItem(ATTENDANCE_CACHE_LATEST, JSON.stringify(json));
-      } catch (e) {
-        void e;
+      if (json.connectionStatus === 'error') {
+        const cached = getLocalAttendanceCache(selectedDate);
+        if (cached && (cached.employees?.length || 0) > 0) {
+          setData({
+            ...cached,
+            connectionStatus: 'error',
+            errorMessage: json.errorMessage,
+          });
+        } else {
+          setData(json);
+        }
+      } else {
+        setData(json);
+        // Save to localStorage for instant startup display on next load only if healthy records exist
+        try {
+          if ((json.employees?.length || 0) > 0) {
+            localStorage.setItem(`${ATTENDANCE_CACHE_PREFIX}${selectedDate}`, JSON.stringify(json));
+            localStorage.setItem(ATTENDANCE_CACHE_LATEST, JSON.stringify(json));
+          }
+        } catch (e) {
+          void e;
+        }
       }
 
       if (deviceRes.ok) {

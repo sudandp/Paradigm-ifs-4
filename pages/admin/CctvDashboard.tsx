@@ -911,7 +911,7 @@ const CctvDashboard: React.FC = () => {
           .limit(50),
         supabase
           .from('users')
-          .select('id, name, email, role:roles(display_name), role_id, location, biometric_id, photo_url, face_embedding_512, organization_name, company')
+          .select('id, name, email, role:roles(display_name), role_id, location_id, biometric_id, photo_url, face_embedding_512, organization_name')
           .order('name', { ascending: true })
           .limit(500)
           .then(({ data, error }) => {
@@ -1039,19 +1039,27 @@ const CctvDashboard: React.FC = () => {
       setLogs(dedupedLogs);
 
       if (Array.isArray(usersResult) && usersResult.length > 0) {
+        const locMap = new Map<string, string>();
+        if (Array.isArray(locationsResult)) {
+          locationsResult.forEach((l: any) => {
+            if (l.id && (l.name || l.address)) locMap.set(l.id, l.name || l.address);
+          });
+        }
+
         setUserOptions(usersResult.map((u: any) => {
           const emb = u.face_embedding_512 || u.faceEmbedding_512 || u.faceEmbedding512;
           const isEnrolled = Boolean(
             emb && (Array.isArray(emb) ? emb.length > 0 : true)
           );
           const roleDisplay = (Array.isArray(u.role) ? u.role[0]?.display_name : u.role?.display_name) || u.role_id || u.role || '';
+          const locName = u.location_id ? locMap.get(u.location_id) : null;
           return {
             id: u.id,
             name: u.name || 'Unnamed Employee',
             email: u.email || null,
             role: roleDisplay,
-            company: u.organizationName || u.organization_name || u.company || 'PARADIGM INTEGRATED FACILITY SERVICES PVT LTD',
-            location: u.location || null,
+            company: u.organizationName || u.organization_name || 'PARADIGM INTEGRATED FACILITY SERVICES PVT LTD',
+            location: locName || u.location_id || null,
             biometricId: u.biometricId || u.biometric_id || null,
             photoUrl: u.photoUrl || u.photo_url || null,
             isFaceEnrolled: isEnrolled,

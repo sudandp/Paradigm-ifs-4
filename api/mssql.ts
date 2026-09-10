@@ -17,14 +17,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     'https://attendance.cctv.rest',
     'https://attendance.paradigmfms.com',
     (process.env.MSSQL_PROXY_URL || '').replace(/\/$/, ''),
-    'https://tassel-estranged-prism.ngrok-free.dev',
   ].filter(Boolean);
 
-  // Dynamic fallback: auto-detect live attendance tunnel URL from Supabase cctv_devices
+  // Dynamic fallback: auto-detect live attendance Cloudflare tunnel URL from Supabase cctv_devices
   try {
     const sbUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://fmyafuhxlorbafbacywa.supabase.co';
     const sbKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZteWFmdWh4bG9yYmFmYmFjeXdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyMjg1NDYsImV4cCI6MjA3NzgwNDU0Nn0.RqsniEqzNec6ww35TXJtLJD3mafnGbMI82om4XRUdUU';
-    const sbRes = await fetch(`${sbUrl}/rest/v1/cctv_devices?select=ngrok_url,device_secret&order=updated_at.desc&limit=1`, {
+    const sbRes = await fetch(`${sbUrl}/rest/v1/cctv_devices?select=device_secret&order=updated_at.desc&limit=1`, {
       headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` },
       signal: AbortSignal.timeout(2000),
     });
@@ -37,7 +36,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
     }
-  } catch {}
+  } catch (error) {
+    // Ignore dynamic endpoint lookup failure and proceed with candidateBaseUrls
+    void error;
+  }
 
   const apiSecret = process.env.MSSQL_API_SECRET || 'paradigm-attendance-secret-2024';
   const action = (req.query.action as string) || 'attendance';
@@ -57,18 +59,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             'x-api-secret': apiSecret,
             'x-api-key': apiSecret,
             'Content-Type': 'application/json',
-            'ngrok-skip-browser-warning': '1',
             'bypass-tunnel-reminder': 'true',
             'Bypass-Tunnel-Reminder': '1',
           },
-          signal: AbortSignal.timeout(3500),
+          signal: AbortSignal.timeout(8000),
         });
 
         if (response.ok) {
           const data = await response.json();
           return res.status(200).json(data);
         }
-      } catch (_) {}
+      } catch (error) {
+        // Fall through to next candidate endpoint
+        void error;
+      }
     }
     return res.status(200).json({ devices: [], total: 0, online: 0, offline: 0 });
   }
@@ -90,19 +94,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             'x-api-secret': apiSecret,
             'x-api-key': apiSecret,
             'Content-Type': 'application/json',
-            'ngrok-skip-browser-warning': '1',
             'bypass-tunnel-reminder': 'true',
             'Bypass-Tunnel-Reminder': '1',
           },
           body: JSON.stringify(req.body),
-          signal: AbortSignal.timeout(3500),
+          signal: AbortSignal.timeout(8000),
         });
 
         if (response.ok) {
           const data = await response.json();
           return res.status(200).json(data);
         }
-      } catch (_) {}
+      } catch (error) {
+        // Fall through to next candidate endpoint
+        void error;
+      }
     }
     return res.status(500).json({ success: false, error: 'Could not connect to MS SQL update proxy endpoint' });
   }
@@ -126,11 +132,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           'x-api-secret': apiSecret,
           'x-api-key': apiSecret,
           'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': '1',
           'bypass-tunnel-reminder': 'true',
           'Bypass-Tunnel-Reminder': '1',
         },
-        signal: AbortSignal.timeout(3500),
+        signal: AbortSignal.timeout(8000),
       });
 
       if (response.ok) {
@@ -140,8 +145,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const errorText = await response.text();
         lastError = `[${targetUrl}] HTTP ${response.status}: ${errorText.slice(0, 150)}`;
       }
-    } catch (err: any) {
-      lastError = `[${targetUrl}] Fetch failed: ${err.message}`;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      lastError = `[${targetUrl}] Fetch failed: ${msg}`;
     }
   }
 

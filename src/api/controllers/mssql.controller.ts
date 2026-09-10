@@ -84,7 +84,6 @@ async function getCandidateProxyUrls(): Promise<{ urls: string[]; secret: string
     process.env.MSSQL_PROXY_URL?.trim() || '',
     'http://localhost:4000',
     'http://127.0.0.1:4000',
-    'https://tassel-estranged-prism.ngrok-free.dev',
   ].filter(Boolean);
 
   // Dynamic fallback: auto-detect live tunnel URL from Supabase cctv_devices heartbeat
@@ -138,7 +137,6 @@ export async function getAttendanceData(
             'x-api-secret': secret,
             'Content-Type': 'application/json',
             'Connection': 'close',
-            'ngrok-skip-browser-warning': '1',
             'bypass-tunnel-reminder': 'true',
             'Bypass-Tunnel-Reminder': '1',
           },
@@ -232,7 +230,6 @@ export async function debugMssqlConnection(): Promise<{
       const t0 = Date.now();
       const res = await fetch(`${proxyUrl}/health`, {
         headers: {
-          'ngrok-skip-browser-warning': '1',
           'bypass-tunnel-reminder': 'true',
           'Bypass-Tunnel-Reminder': '1',
         },
@@ -281,7 +278,6 @@ export async function updateMssqlEmployeeDetails(
           'x-api-key': secret,
           'x-api-secret': secret,
           'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': '1',
           'bypass-tunnel-reminder': 'true',
           'Bypass-Tunnel-Reminder': '1',
         },

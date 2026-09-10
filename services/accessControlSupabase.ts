@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { Capacitor } from '@capacitor/core';
 
 export interface UserSitePermissionDB {
   id: string;
@@ -507,7 +508,10 @@ export async function updateMssqlEmployeeDirectly(
   designation?: string
 ): Promise<boolean> {
   try {
-    const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+    const apiBaseUrl = (
+      import.meta.env.VITE_API_URL || 
+      (Capacitor.isNativePlatform() ? 'https://app.paradigmfms.com' : '')
+    ).replace(/\/$/, '');
     const res = await fetch(`${apiBaseUrl}/api/mssql-update-employee`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
