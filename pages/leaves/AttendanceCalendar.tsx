@@ -4,11 +4,9 @@ import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { getStaffCategory, calculateWorkingHours } from '../../utils/attendanceCalculations';
-import { api } from '../../services/api';
 import type { AttendanceEvent, UserHoliday, LeaveRequest, AttendanceSettings, RecurringHolidayRule } from '../../types';
-import { FIXED_HOLIDAYS, HOLIDAY_SELECTION_POOL } from '../../utils/constants';
+import { FIXED_HOLIDAYS } from '../../utils/constants';
 import Button from '../../components/ui/Button';
-import LoadingScreen from '../../components/ui/LoadingScreen';
 import { buildAttendanceDayKeyByEventId } from '../../utils/attendanceDayGrouping';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 
@@ -182,11 +180,25 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
         });
     }, [currentDate]);
 
+    // Guard against stale events passed during month transitions:
+    // If events array is non-empty but ALL events belong to another month,
+    // mark events as not relevant to avoid temporarily calculating every past day as Absent.
+    const isEventsRelevant = useMemo(() => {
+        if (!events || events.length === 0) return true;
+        const windowStartMs = startOfWeek(subDays(startOfMonth(currentDate), 15), { weekStartsOn: 1 }).getTime() - 24 * 60 * 60 * 1000;
+        const windowEndMs = endOfMonth(currentDate).getTime() + 48 * 60 * 60 * 1000;
+        return events.some(e => {
+            if (!e?.timestamp) return false;
+            const t = new Date(e.timestamp).getTime();
+            return t >= windowStartMs && t <= windowEndMs;
+        });
+    }, [events, currentDate]);
+
     // PRE-CALCULATE STATUS MAP FOR THE MONTH (WITH BUFFER)
     const dayStatusMap = useMemo(() => {
         const statusMap = new Map<string, { status: string; holidayName: string; presenceVal: number; isSiteOtPresent: boolean; isPoolHoliday: boolean }>();
-        // If user is not available we cannot compute any meaningful status
-        if (!user) return statusMap;
+        // If user is not available or events belong to another month, do not compute misleading statuses
+        if (!user || !isEventsRelevant) return statusMap;
 
         // Use settings if available; fall back to safe defaults so the calendar
         // renders Sundays/presence/holidays even while settings are still loading
@@ -350,7 +362,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
         });
 
         return statusMap;
-    }, [currentDate, events, leaveRequests, userHolidays, holidays, recurringHolidayDates, settings, user, employmentStartDate]);
+    }, [currentDate, events, leaveRequests, userHolidays, holidays, recurringHolidayDates, settings, user, employmentStartDate, isEventsRelevant]);
 
     // All notation definitions — dot color matches actual calendar cell color
     const ALL_NOTATIONS: { code: string; label: string; dot: string }[] = [
@@ -403,8 +415,8 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
     const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const startDay = getDay(startOfMonth(currentDate)); // 0-6
 
-    // Calculate Payable days and Site OT days for the current month view
     const { monthlyPaydaysCount, monthlySiteOtCount } = useMemo(() => {
+        if (!isEventsRelevant) return { monthlyPaydaysCount: 0, monthlySiteOtCount: 0 };
         let count = 0;
         let otCount = 0;
         const today = startOfDay(new Date());
@@ -493,9 +505,10 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
             count += normalPay; // Site OT is tracked separately — does NOT add to payable days
         });
         return { monthlyPaydaysCount: count, monthlySiteOtCount: otCount };
-    }, [daysInMonth, dayStatusMap, events, settings, user, leaveRequests, employmentStartDate]);
+    }, [daysInMonth, dayStatusMap, events, settings, user, leaveRequests, employmentStartDate, isEventsRelevant]);
 
     useEffect(() => {
+        if (!isEventsRelevant) return;
         if (onMonthPaydaysChange) {
             const cappedPay = Math.min(daysInMonth.length, monthlyPaydaysCount);
             onMonthPaydaysChange(cappedPay);
@@ -503,7 +516,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
         if (onSiteOtDaysChange) {
             onSiteOtDaysChange(monthlySiteOtCount);
         }
-    }, [monthlyPaydaysCount, monthlySiteOtCount, onMonthPaydaysChange, onSiteOtDaysChange, daysInMonth]);
+    }, [monthlyPaydaysCount, monthlySiteOtCount, onMonthPaydaysChange, onSiteOtDaysChange, daysInMonth, isEventsRelevant]);
 
 
     return (
@@ -544,7 +557,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                 )}
             </div>
 
-            {isLoading ? (
+            {isLoading || !isEventsRelevant ? (
                 <div className="flex-1 flex items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-muted" /></div>
             ) : (
                 <div className="grid grid-cols-7 gap-1 flex-1">

@@ -370,6 +370,7 @@ const LeaveDashboard: React.FC = () => {
     const [viewingDate, setViewingDate] = useState(new Date());
     const [threshold, setThreshold] = useState(8);
     const [monthlyPaydays, setMonthlyPaydays] = useState<number | null>(null);
+    const [monthlyPaydaysMap, setMonthlyPaydaysMap] = useState<Record<string, number>>({});
     const [siteOtDays, setSiteOtDays] = useState(0);
     const [monthlyTravelKm, setMonthlyTravelKm] = useState<number>(0);
     const [monthlyTravelDuration, setMonthlyTravelDuration] = useState<number>(0);
@@ -390,6 +391,60 @@ const LeaveDashboard: React.FC = () => {
         recurringData: any[];
         userChildrenData: UserChild[];
     }>>(new Map());
+
+    // In-memory Month Stats Cache (travel, duration, footsteps, snapshots)
+    const monthStatsCacheRef = useRef<Map<string, {
+        snapshotData: any;
+        monthlyTravelKm: number;
+        monthlyTravelDuration: number;
+        monthlySteps: number;
+        dailyRecords: any[];
+    }>>(new Map());
+
+    const handleMonthPaydaysChange = useCallback((count: number) => {
+        const key = format(viewingDate, 'yyyy-MM');
+        setMonthlyPaydaysMap(prev => (prev[key] === count ? prev : { ...prev, [key]: count }));
+        setMonthlyPaydays(count);
+    }, [viewingDate]);
+
+    // Synchronous derivation of active month events & requests from year bundle cache
+    // Prevents state-tearing where switching months temporarily renders absent/wrong data
+    const activeMonthEvents = useMemo(() => {
+        const targetYear = viewingDate.getFullYear();
+        const cached = yearBundleCacheRef.current.get(targetYear);
+        const sourceEvents = cached?.yearlyEvents || yearlyData?.events;
+        
+        if (sourceEvents && sourceEvents.length > 0) {
+            const startOfMonthDate = startOfMonth(viewingDate);
+            const dateStartMs = new Date(startOfWeek(subDays(startOfMonthDate, 15), { weekStartsOn: 1 }).getTime() - 12 * 60 * 60 * 1000).getTime();
+            const dateEndMs = new Date(endOfMonth(viewingDate).getTime() + 36 * 60 * 60 * 1000).getTime();
+
+            return sourceEvents.filter(e => {
+                if (!e || !e.timestamp) return false;
+                const t = new Date(e.timestamp).getTime();
+                return t >= dateStartMs && t <= dateEndMs;
+            });
+        }
+        return events;
+    }, [viewingDate, yearlyData?.events, events]);
+
+    const activeRequests = useMemo(() => {
+        const targetYear = viewingDate.getFullYear();
+        const cached = yearBundleCacheRef.current.get(targetYear);
+        return cached?.yearlyRequests || yearlyData?.leaves || requests;
+    }, [viewingDate, yearlyData?.leaves, requests]);
+
+    const activeUserHolidays = useMemo(() => {
+        const targetYear = viewingDate.getFullYear();
+        const cached = yearBundleCacheRef.current.get(targetYear);
+        return cached?.selections || userHolidays;
+    }, [viewingDate, userHolidays]);
+
+    const activeCompOffLogs = useMemo(() => {
+        const targetYear = viewingDate.getFullYear();
+        const cached = yearBundleCacheRef.current.get(targetYear);
+        return cached?.compOffData || compOffLogs;
+    }, [viewingDate, compOffLogs]);
 
     const formatPreciseHours = (hours: number) => {
         const totalMinutes = Math.round((hours || 0) * 60);
@@ -443,6 +498,16 @@ const LeaveDashboard: React.FC = () => {
             setUserChildren(cachedBundle.userChildrenData);
             setCompOffLogs(cachedBundle.compOffData);
             setIsCalendarLoading(false);
+
+            // Restore cached month stats (travel, footsteps, snapshot) if available
+            const cachedMonthStats = monthStatsCacheRef.current.get(format(viewingDate, 'yyyy-MM'));
+            if (cachedMonthStats) {
+                setSnapshotData(cachedMonthStats.snapshotData);
+                setMonthlyTravelKm(cachedMonthStats.monthlyTravelKm);
+                setMonthlyTravelDuration(cachedMonthStats.monthlyTravelDuration);
+                setMonthlySteps(cachedMonthStats.monthlySteps);
+                setDailyActivityRecords(cachedMonthStats.dailyRecords);
+            }
         } else {
             // ── Cache MISS: Show loading spinner only when we don't have this year cached yet ──
             setIsCalendarLoading(true);
@@ -855,7 +920,15 @@ const LeaveDashboard: React.FC = () => {
             setMonthlyTravelKm(Number(totalTravelKm.toFixed(2)));
             setMonthlyTravelDuration(totalTravelDurationMins);
             setMonthlySteps(totalMonthlySteps);
-            setDailyActivityRecords(dailyRecords.sort((a, b) => new Date(b.dateStr).getTime() - new Date(a.dateStr).getTime()));
+            const currentSortedRecords = dailyRecords.sort((a, b) => new Date(b.dateStr).getTime() - new Date(a.dateStr).getTime());
+            setDailyActivityRecords(currentSortedRecords);
+            monthStatsCacheRef.current.set(format(viewingDate, 'yyyy-MM'), {
+                snapshotData: snapshotDataRes,
+                monthlyTravelKm: Number(totalTravelKm.toFixed(2)),
+                monthlyTravelDuration: totalTravelDurationMins,
+                monthlySteps: totalMonthlySteps,
+                dailyRecords: currentSortedRecords
+            });
             setActiveHolidayPool(userRules?.holidayPool || HOLIDAY_SELECTION_POOL);
             setIsOtConversionEnabled(userRules?.enableOtToCompOffConversion || false);
             setIsShortfallEnabled(userRules?.enableShortfall || false);
@@ -1340,9 +1413,12 @@ const LeaveDashboard: React.FC = () => {
         },
         {
             title: 'Monthly Pay Days',
-            value: monthlyPaydays !== null
-                ? `${monthlyPaydays}`
-                : (snapshotData?.summary?.totalPayableDays !== undefined ? `${snapshotData.summary.totalPayableDays}` : '-'),
+            value: (() => {
+                const key = format(viewingDate, 'yyyy-MM');
+                if (monthlyPaydaysMap[key] !== undefined) return `${monthlyPaydaysMap[key]}`;
+                if (monthlyPaydays !== null) return `${monthlyPaydays}`;
+                return snapshotData?.summary?.totalPayableDays !== undefined ? `${snapshotData.summary.totalPayableDays}` : '-';
+            })(),
             description: `Total payable days tracked for ${format(viewingDate, 'MMMM yyyy')}.`,
             icon: Calculator,
             isExpired: false
@@ -1397,7 +1473,11 @@ const LeaveDashboard: React.FC = () => {
         ...(isTechnicalRole(user?.role) || isProbation ? [] : [{ title: 'Compensatory Off', value: `${Number(user?.compOffOpeningBalance || 0)} / 4`, icon: CalendarClock, isLoading: false }]),
         {
             title: 'Monthly Pay Days',
-            value: monthlyPaydays !== null ? `${monthlyPaydays}` : '-',
+            value: (() => {
+                const key = format(viewingDate, 'yyyy-MM');
+                if (monthlyPaydaysMap[key] !== undefined) return `${monthlyPaydaysMap[key]}`;
+                return monthlyPaydays !== null ? `${monthlyPaydays}` : '-';
+            })(),
             icon: Calculator,
             isLoading: false
         },
@@ -1595,34 +1675,34 @@ const LeaveDashboard: React.FC = () => {
             {/* Attendance Calendar Section - Grid layout matching summary cards for uniform sizing */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
                 <AttendanceCalendar 
-                    leaveRequests={[...requests, ...autoEarlyDepartureRequests]} 
-                    userHolidays={userHolidays} 
+                    leaveRequests={[...activeRequests, ...autoEarlyDepartureRequests]} 
+                    userHolidays={activeUserHolidays} 
                     currentDate={viewingDate}
                     setCurrentDate={setViewingDate}
-                    events={events}
+                    events={activeMonthEvents}
                     settings={attendanceSettings || useSettingsStore.getState().attendance}
                     recurringHolidays={recurringHolidays}
                     isLoading={isLoading || isCalendarLoading}
                     earliestAttendanceDate={earliestRecordDate}
-                    onMonthPaydaysChange={setMonthlyPaydays}
+                    onMonthPaydaysChange={handleMonthPaydaysChange}
                     onSiteOtDaysChange={setSiteOtDays}
                     isMobile={isMobile}
                 />
                 {!isTechnicalRole(user?.role) && (
                     <CompOffCalendar 
-                        logs={compOffLogs} 
-                        leaveRequests={[...requests, ...autoEarlyDepartureRequests]} 
-                        userHolidays={userHolidays} 
+                        logs={activeCompOffLogs} 
+                        leaveRequests={[...activeRequests, ...autoEarlyDepartureRequests]} 
+                        userHolidays={activeUserHolidays} 
                         isLoading={isLoading || isCalendarLoading} 
                         viewingDate={viewingDate}
                         onDateChange={setViewingDate}
-                        events={events}
+                        events={activeMonthEvents}
                         isMobile={isMobile}
                     />
                 )}
                 <HolidayCalendar 
                     adminHolidays={adminHolidays} 
-                    userSelectedHolidays={userHolidays} 
+                    userSelectedHolidays={activeUserHolidays} 
                     isLoading={isLoading || isCalendarLoading} 
                     viewingDate={viewingDate}
                     onDateChange={setViewingDate}
