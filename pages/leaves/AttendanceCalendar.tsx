@@ -22,6 +22,7 @@ interface AttendanceCalendarProps {
     settings: AttendanceSettings | null;
     recurringHolidays: RecurringHolidayRule[];
     isLoading?: boolean;
+    earliestAttendanceDate?: Date | null;
     onMonthPaydaysChange?: (payDays: number) => void;
     onSiteOtDaysChange?: (otDays: number) => void;
     isMobile?: boolean;
@@ -51,6 +52,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
     settings,
     recurringHolidays,
     isLoading = false,
+    earliestAttendanceDate,
     onMonthPaydaysChange,
     onSiteOtDaysChange,
     isMobile: isMobileProp
@@ -59,27 +61,34 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
     const isMobile = isMobileProp ?? isMobileQuery;
     const { user } = useAuthStore();
     const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
+    const [, setTick] = useState(0);
+
+    // Live-update calendar every minute so today's hour-by-hour progress refreshes automatically
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setTick(t => t + 1);
+        }, 60000);
+        return () => clearInterval(timer);
+    }, []);
+
     const isFemale = ['female', 'ladies'].includes((user?.gender || '').toLowerCase());
     const isMale = !isFemale;
 
     const employmentStartDate = useMemo(() => {
+        if (earliestAttendanceDate) return startOfDay(earliestAttendanceDate);
         if (!user) return null;
-        const rawJoining = user.joiningDate || (user as any).joining_date || user.createdAt || (user as any).created_at;
-        let startDate: Date | null = rawJoining ? startOfDay(new Date(String(rawJoining).replace(/-/g, '/'))) : null;
+        const rawJoining = user.joiningDate || (user as any).joining_date;
+        if (rawJoining) return startOfDay(new Date(String(rawJoining).replace(/-/g, '/')));
         if (events && events.length > 0) {
             const punchDates = events
                 .filter(e => e && e.timestamp)
                 .map(e => startOfDay(new Date(e.timestamp)).getTime());
             if (punchDates.length > 0) {
-                const earliestPunchMs = Math.min(...punchDates);
-                const earliestPunchDate = new Date(earliestPunchMs);
-                if (!startDate || earliestPunchDate < startDate) {
-                    startDate = earliestPunchDate;
-                }
+                return startOfDay(new Date(Math.min(...punchDates)));
             }
         }
-        return startDate;
-    }, [user, events]);
+        return null;
+    }, [user, events, earliestAttendanceDate]);
 
     const isMonthBeforeJoining = useMemo(() => {
         if (!employmentStartDate) return false;
@@ -226,8 +235,8 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
 
             const dayEvents = eventsByGroup[dateStr] || [];
             const { workingHours } = calculateWorkingHours(dayEvents, day);
-            const hasCheckIn = dayEvents.some(e => ['punch-in', 'site-in', 'check-in'].includes(e.type.toLowerCase()));
-            const hasCheckOut = dayEvents.some(e => ['punch-out', 'site-out', 'check-out'].includes(e.type.toLowerCase()));
+            const hasCheckIn = dayEvents.some(e => ['punch-in', 'site-in', 'check-in', 'check_in'].includes(e.type?.toLowerCase())) || workingHours > 0;
+            const hasCheckOut = dayEvents.some(e => ['punch-out', 'site-out', 'check-out', 'check_out'].includes(e.type?.toLowerCase()));
             const hasOtPunchIn = dayEvents.some(e => e.type === 'site-ot-in');
             const hasOtPunchOut = dayEvents.some(e => e.type === 'site-ot-out');
             
@@ -235,7 +244,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
             const isPast = isAfter(startOfDay(new Date()), startOfDay(day));
             
             // Normal Duty Status
-            const isDetailedPresent = (hasCheckIn && hasCheckOut) || (hasCheckIn && isToday);
+            const isDetailedPresent = (hasCheckIn && hasCheckOut) || (hasCheckIn && isToday) || (workingHours && workingHours > 0);
             // Site OT Status
             const isSiteOtPresent = !!dayEvents.find(e => e.type === 'site-ot-in');
 
@@ -310,9 +319,9 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
             } else if (foundLeave) {
                 finalStatus = 'leave';
             } else if (isSunday) {
-                finalStatus = visuallyActiveCurr ? 'sunday' : (isPast ? 'absent' : 'neutral');
+                finalStatus = isBeforeEmployment ? 'neutral' : 'sunday';
             } else if (isPast) {
-                finalStatus = 'absent';
+                finalStatus = isBeforeEmployment ? 'neutral' : 'absent';
             }
 
             // Update Counters
@@ -734,39 +743,98 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                 const isHalf = workingHours >= halfThreshold;
                                 const prefix = holidayName === 'Blue Leave' ? 'BL' : (holidayName === 'Pink Leave' ? 'PL' : 'W');
                                 
-                                if (status === 'holiday-present') {
-                                    overlayText = isHalf ? '0.5H/P' : 'H';
-                                } else if (status === 'weekend-present') {
-                                    overlayText = isHalf ? `0.5${prefix}/P` : prefix;
+                                if (isToday) {
+                                    // Live Green & Red split based on hours worked today (e.g. 4 hrs = half green / half red)
+                                    const shiftHours = fullThreshold || 8;
+                                    const rawWorkedFraction = workingHours / shiftHours;
+                                    const workedFraction = Math.min(0.99, Math.max(0.00, Math.round(rawWorkedFraction * 100) / 100));
+                                    const greenPercentage = Math.round(workedFraction * 100);
+                                    const redPercentage = 100 - greenPercentage;
+
+                                    if (status === 'holiday-present') {
+                                        const side = Math.min(100, Math.max(5, Math.round(Math.sqrt(2 * (greenPercentage / 100)) * 1000) / 10));
+                                        customStyle = { background: '#38bdf8', borderColor: 'transparent' };
+                                        splitOverlay = (
+                                            <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
+                                                <polygon points={`0,0 ${side},0 0,${side}`} fill="#10b981" />
+                                            </svg>
+                                        );
+                                        overlayText = `${workedFraction.toFixed(2)}H/P`;
+                                    } else if (status === 'weekend-present') {
+                                        const baseBg = holidayName === 'Blue Leave' ? '#1d4ed8' : (holidayName === 'Pink Leave' ? '#ec4899' : '#fda4af');
+                                        const side = Math.min(100, Math.max(5, Math.round(Math.sqrt(2 * (greenPercentage / 100)) * 1000) / 10));
+                                        customStyle = { background: baseBg, borderColor: 'transparent' };
+                                        splitOverlay = (
+                                            <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
+                                                <polygon points={`0,0 ${side},0 0,${side}`} fill="#10b981" />
+                                            </svg>
+                                        );
+                                        overlayText = `${workedFraction.toFixed(2)}${prefix}/P`;
+                                    } else if (greenPercentage <= 0) {
+                                        customStyle = { background: '#ef4444', borderColor: 'transparent' };
+                                        overlayText = '0.00P';
+                                        splitOverlay = null;
+                                    } else if (redPercentage <= 50) {
+                                        // Green >= 50%: Base is Green (#10b981), Red (#ef4444) fills the remaining bottom-right corner
+                                        customStyle = { background: '#10b981', borderColor: 'transparent' };
+                                        const side = Math.min(100, Math.max(5, Math.round(Math.sqrt(2 * (redPercentage / 100)) * 1000) / 10));
+                                        splitOverlay = (
+                                            <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
+                                                <polygon points={`${100 - side},100 100,100 100,${100 - side}`} fill="#ef4444" />
+                                            </svg>
+                                        );
+                                        overlayText = isSelected 
+                                            ? `${workedFraction.toFixed(2)}P+${(1 - workedFraction).toFixed(2)}A`
+                                            : (workedFraction === 0.5 ? '0.5P' : (workedFraction === 0.75 ? '0.75P' : `${workedFraction.toFixed(2)}P`));
+                                    } else {
+                                        // Green < 50%: Base is Red (#ef4444), Green (#10b981) fills the worked top-left corner
+                                        customStyle = { background: '#ef4444', borderColor: 'transparent' };
+                                        const side = Math.min(100, Math.max(5, Math.round(Math.sqrt(2 * (greenPercentage / 100)) * 1000) / 10));
+                                        splitOverlay = (
+                                            <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
+                                                <polygon points={`0,0 ${side},0 0,${side}`} fill="#10b981" />
+                                            </svg>
+                                        );
+                                        overlayText = isSelected 
+                                            ? `${workedFraction.toFixed(2)}P+${(1 - workedFraction).toFixed(2)}A`
+                                            : (workedFraction === 0.25 ? '0.25P' : `${workedFraction.toFixed(2)}P`);
+                                    }
+                                    cellTooltip = `${workingHours.toFixed(1)}h worked (${greenPercentage}%) + ${(Math.max(0, shiftHours - workingHours)).toFixed(1)}h remaining (${redPercentage}%) - Shift in Progress`;
                                 } else {
-                                    overlayText = isHalf ? '0.5P' : 'A';
-                                }
-                                const fractionValue = isHalf ? 0.5 : 0;
-                                const greenPercentage = isHalf ? 50 : 0;
-                                let leftColor = '#10b981';
-                                if (status === 'holiday-present') {
-                                    leftColor = '#38bdf8';
-                                } else if (status === 'weekend-present') {
-                                    leftColor = holidayName === 'Blue Leave' ? '#1d4ed8' : (holidayName === 'Pink Leave' ? '#ec4899' : '#fda4af');
-                                }
-                                
-                                const redPercentage = 100 - greenPercentage;
-                                if (redPercentage <= 50) {
-                                    customStyle = { background: leftColor, borderColor: 'transparent' };
-                                    const side = Math.min(100, Math.max(5, Math.round(Math.sqrt(2 * (redPercentage / 100)) * 1000) / 10));
-                                    splitOverlay = (
-                                        <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
-                                            <polygon points={`${100 - side},100 100,100 100,${100 - side}`} fill="#ef4444" />
-                                        </svg>
-                                    );
-                                } else {
-                                    customStyle = { background: '#ef4444', borderColor: 'transparent' };
-                                    const side = Math.min(100, Math.max(5, Math.round(Math.sqrt(2 * (greenPercentage / 100)) * 1000) / 10));
-                                    splitOverlay = (
-                                        <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
-                                            <polygon points={`0,0 ${side},0 0,${side}`} fill={leftColor} />
-                                        </svg>
-                                    );
+                                    if (status === 'holiday-present') {
+                                        overlayText = isHalf ? '0.5H/P' : 'H';
+                                    } else if (status === 'weekend-present') {
+                                        overlayText = isHalf ? `0.5${prefix}/P` : prefix;
+                                    } else {
+                                        overlayText = isHalf ? '0.5P' : 'A';
+                                    }
+                                    const fractionValue = isHalf ? 0.5 : 0;
+                                    const greenPercentage = isHalf ? 50 : 0;
+                                    let leftColor = '#10b981';
+                                    if (status === 'holiday-present') {
+                                        leftColor = '#38bdf8';
+                                    } else if (status === 'weekend-present') {
+                                        leftColor = holidayName === 'Blue Leave' ? '#1d4ed8' : (holidayName === 'Pink Leave' ? '#ec4899' : '#fda4af');
+                                    }
+                                    
+                                    const redPercentage = 100 - greenPercentage;
+                                    if (redPercentage <= 50) {
+                                        customStyle = { background: leftColor, borderColor: 'transparent' };
+                                        const side = Math.min(100, Math.max(5, Math.round(Math.sqrt(2 * (redPercentage / 100)) * 1000) / 10));
+                                        splitOverlay = (
+                                            <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
+                                                <polygon points={`${100 - side},100 100,100 100,${100 - side}`} fill="#ef4444" />
+                                            </svg>
+                                        );
+                                    } else {
+                                        customStyle = { background: '#ef4444', borderColor: 'transparent' };
+                                        const side = Math.min(100, Math.max(5, Math.round(Math.sqrt(2 * (greenPercentage / 100)) * 1000) / 10));
+                                        splitOverlay = (
+                                            <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
+                                                <polygon points={`0,0 ${side},0 0,${side}`} fill={leftColor} />
+                                            </svg>
+                                        );
+                                    }
                                 }
                             }
                         } else if (status === 'company-holiday' || status === 'floating-holiday' || status === 'sunday') {
@@ -856,10 +924,10 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                 style={customStyle} 
                                 onClick={() => setSelectedDayKey(prev => prev === dateKey ? null : dateKey)}
                                 title={cellTooltip || holidayName || undefined}
-                                className={`h-9 rounded flex flex-col items-center justify-center ${colorClass} transition-all border ${isSelected ? 'border-amber-400 ring-2 ring-amber-400/70 shadow-md z-30' : 'border-transparent hover:border-border/50'} group relative cursor-pointer select-none overflow-hidden`}
+                                className={`h-9 rounded flex flex-col items-center justify-center ${colorClass} transition-all border ${isSelected ? 'border-amber-400 ring-2 ring-amber-400/70 shadow-md z-30' : (isToday && status === 'neutral' ? 'ring-2 ring-emerald-500/60 border-emerald-500' : 'border-transparent hover:border-border/50')} group relative cursor-pointer select-none overflow-hidden`}
                             >
                                 {splitOverlay}
-                                <span className={`font-bold leading-none ${overlayText ? 'text-[11px] mb-[1px]' : 'text-xs'} relative z-10`}>
+                                <span className={`font-bold leading-none ${overlayText ? 'text-[11px] mb-[1px]' : 'text-xs'} ${isToday ? 'text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]' : ''} relative z-10`}>
                                     {format(date, 'd')}
                                 </span>
                                  {overlayText && (

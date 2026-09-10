@@ -4876,16 +4876,33 @@ export const api = {
     const status = await Network.getStatus();
     if (status.connected) {
       try {
-        const { data, error } = await supabase
-          .from('route_history')
-          .select('*')
-          .eq('user_id', userId)
-          .gte('timestamp', start)
-          .lte('timestamp', end)
-          .order('timestamp', { ascending: true });
-        
-        if (error) throw error;
-        remotePoints = (data || []).map(toCamelCase) as RoutePoint[];
+        const allData: any[] = [];
+        let from = 0;
+        const pageSize = 1000;
+        let hasMore = true;
+        while (hasMore) {
+          const { data, error } = await supabase
+            .from('route_history')
+            .select('*')
+            .eq('user_id', userId)
+            .gte('timestamp', start)
+            .lte('timestamp', end)
+            .order('timestamp', { ascending: true })
+            .range(from, from + pageSize - 1);
+          
+          if (error) throw error;
+          if (!data || data.length === 0) {
+            hasMore = false;
+            break;
+          }
+          allData.push(...data);
+          if (data.length < pageSize || allData.length >= 15000) {
+            hasMore = false;
+            break;
+          }
+          from += pageSize;
+        }
+        remotePoints = allData.map(toCamelCase) as RoutePoint[];
       } catch (err) {
         console.warn('[RouteTracking] Failed to fetch route points from Supabase, using local cache only.', err);
       }
@@ -4920,16 +4937,33 @@ export const api = {
     
     if (status.connected) {
       try {
-        const { data, error } = await supabase
-          .from('route_history')
-          .select('*')
-          .in('user_id', userIds)
-          .gte('timestamp', start)
-          .lte('timestamp', end)
-          .order('timestamp', { ascending: true });
-        
-        if (error) throw error;
-        remotePoints = (data || []).map(toCamelCase) as RoutePoint[];
+        const allData: any[] = [];
+        let from = 0;
+        const pageSize = 1000;
+        let hasMore = true;
+        while (hasMore) {
+          const { data, error } = await supabase
+            .from('route_history')
+            .select('*')
+            .in('user_id', userIds)
+            .gte('timestamp', start)
+            .lte('timestamp', end)
+            .order('timestamp', { ascending: true })
+            .range(from, from + pageSize - 1);
+          
+          if (error) throw error;
+          if (!data || data.length === 0) {
+            hasMore = false;
+            break;
+          }
+          allData.push(...data);
+          if (data.length < pageSize || allData.length >= 25000) {
+            hasMore = false;
+            break;
+          }
+          from += pageSize;
+        }
+        remotePoints = allData.map(toCamelCase) as RoutePoint[];
       } catch (err) {
         console.warn('[RouteTracking] Failed to fetch route points for users from Supabase.', err);
       }

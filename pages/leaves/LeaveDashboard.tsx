@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
@@ -279,6 +279,27 @@ const LeaveDashboard: React.FC = () => {
         leaves: LeaveRequest[];
     } | null>(null);
 
+    const earliestRecordDate = useMemo(() => {
+        if (!user) return null;
+        const rawJoining = user.joiningDate || (user as any).joining_date;
+        if (rawJoining) return startOfDay(new Date(String(rawJoining).replace(/-/g, '/')));
+        
+        const timestamps: number[] = [];
+        (yearlyData?.events || []).forEach(e => {
+            if (e && e.timestamp) timestamps.push(new Date(e.timestamp).getTime());
+        });
+        (events || []).forEach(e => {
+            if (e && e.timestamp) timestamps.push(new Date(e.timestamp).getTime());
+        });
+        (requests || []).forEach(r => {
+            if (r && r.startDate) timestamps.push(new Date(r.startDate.replace(/-/g, '/')).getTime());
+        });
+        if (timestamps.length > 0) {
+            return startOfDay(new Date(Math.min(...timestamps)));
+        }
+        return null;
+    }, [user, yearlyData?.events, events, requests]);
+
     // Emergency Self-Healing for Attendance Rules
     useEffect(() => {
         const repairSettings = async () => {
@@ -355,7 +376,20 @@ const LeaveDashboard: React.FC = () => {
     const [monthlySteps, setMonthlySteps] = useState<number>(0);
     const [dailyActivityRecords, setDailyActivityRecords] = useState<{dateStr: string, travelKm: number, travelDuration: number, steps: number, startTime: string | null, endTime: string | null, startLocation: string | null, endLocation: string | null}[]>([]);
     const [snapshotData, setSnapshotData] = useState<any | null>(null);
+    const [isCalendarLoading, setIsCalendarLoading] = useState(false);
+    const fetchSeqRef = useRef(0);
     const currentYear = viewingDate.getFullYear();
+
+    // In-memory Year Data Bundle Cache to make month navigation instantaneous (0ms) like Yearly Attendance
+    const yearBundleCacheRef = useRef<Map<number, {
+        yearlyEvents: AttendanceEvent[];
+        yearlyRequests: LeaveRequest[];
+        selections: UserHoliday[];
+        compOffData: CompOffLog[];
+        settings: any;
+        recurringData: any[];
+        userChildrenData: UserChild[];
+    }>>(new Map());
 
     const formatPreciseHours = (hours: number) => {
         const totalMinutes = Math.round((hours || 0) * 60);
@@ -373,21 +407,52 @@ const LeaveDashboard: React.FC = () => {
         return officeHolidays;
     }, [user, fieldHolidays, officeHolidays]);
 
-    const fetchData = useCallback(async (isSilent = false) => {
+    const fetchData = useCallback(async (isSilent = false, forceRefresh = false) => {
         if (!user) return;
-        // Only trigger full page loading state if we don't have any balance data yet
-        if (!isSilent && !balanceDataState) {
-            setIsLoading(true);
-        }
-        setError(null);
-        // Stale-while-revalidate: Do NOT clear existing balance, events, or paydays to null/empty
-        // This ensures the user never sees empty skeleton flashes while data is refreshing.
+        const seq = ++fetchSeqRef.current;
+        
+        const targetYear = viewingDate.getFullYear();
+        const cachedBundle = (!forceRefresh) ? yearBundleCacheRef.current.get(targetYear) : null;
         
         const dateStr = format(viewingDate, 'yyyy-MM-dd');
         const startOfMonthDate = startOfMonth(viewingDate);
         // Expand range to catch night shifts at the start and end of the month
         const startStr = new Date(startOfWeek(subDays(startOfMonthDate, 15), { weekStartsOn: 1 }).getTime() - 12 * 60 * 60 * 1000).toISOString();
         const endStr = new Date(endOfMonth(viewingDate).getTime() + 36 * 60 * 60 * 1000).toISOString();
+
+        if (cachedBundle) {
+            // ── Cache HIT: Immediately populate all calendars from cache (0ms latency, zero spinners!) ──
+            const dateStartMs = new Date(startOfWeek(subDays(startOfMonthDate, 15), { weekStartsOn: 1 }).getTime() - 12 * 60 * 60 * 1000).getTime();
+            const dateEndMs = new Date(endOfMonth(viewingDate).getTime() + 36 * 60 * 60 * 1000).getTime();
+            
+            const immediateMonthEvents = cachedBundle.yearlyEvents.filter(e => {
+                if (!e || !e.timestamp) return false;
+                const t = new Date(e.timestamp).getTime();
+                return t >= dateStartMs && t <= dateEndMs;
+            });
+
+            setEvents(immediateMonthEvents);
+            setYearlyData({
+                events: cachedBundle.yearlyEvents,
+                userHolidays: cachedBundle.selections,
+                leaves: cachedBundle.yearlyRequests
+            });
+            setAttendanceSettings(cachedBundle.settings);
+            setRecurringHolidays(cachedBundle.recurringData);
+            setUserHolidays(cachedBundle.selections);
+            setUserChildren(cachedBundle.userChildrenData);
+            setCompOffLogs(cachedBundle.compOffData);
+            setIsCalendarLoading(false);
+        } else {
+            // ── Cache MISS: Show loading spinner only when we don't have this year cached yet ──
+            setIsCalendarLoading(true);
+            if (!isSilent && !balanceDataState) {
+                setIsLoading(true);
+            }
+        }
+        setError(null);
+        // Stale-while-revalidate: Do NOT clear existing balance, events, or paydays to null/empty
+        // This ensures the user never sees empty skeleton flashes while data is refreshing.
 
         // ── Performance timer ──
         const t0 = performance.now();
@@ -398,35 +463,122 @@ const LeaveDashboard: React.FC = () => {
             const startOfYearStr = startOfYear(viewingDate).toISOString();
             const endOfYearStr = endOfYear(viewingDate).toISOString();
 
-            // Fetch base data points
             tFetchStart = performance.now();
-            const [balanceData, requestsData, compOffData, eventsData, settings, recurringData, selections, yearlyEvents, yearlyRequests, userChildrenData, routePointsData, snapshotDataRes] = await Promise.all([
-                // Use the selected calendar month for balance calculation
-                api.getLeaveBalancesForUser(user.id, format(endOfMonth(viewingDate), 'yyyy-MM-dd')).catch(err => { console.warn('Leave balance fetch failed (offline?):', err.message); return null; }),
-                api.getLeaveRequests({
-                    userId: user.id,
-                    status: filter === 'all' ? undefined : filter
-                }).then(res => res.data).catch(() => []),
-                api.getCompOffLogs(user.id).catch(() => []),
-                api.getAttendanceEvents(user.id, startStr, endStr).catch(err => { console.warn('Attendance events fetch failed (offline?):', err.message); return []; }),
-                api.getAttendanceSettings().catch(err => { console.warn('Attendance settings fetch failed (offline?):', err.message); return null; }),
-                api.getRecurringHolidays().catch(() => []),
-                api.getUserHolidays(user.id).catch(() => []),
-                api.getAttendanceEvents(user.id, startOfYearStr, endOfYearStr).catch(() => []),
-                api.getLeaveRequests({
-                    userId: user.id,
-                    status: 'approved',
-                    startDate: startOfYearStr,
-                    endDate: endOfYearStr
-                }).then(res => res.data).catch(() => []),
-                api.getUserChildren(user.id).catch(() => []),
-                api.getRoutePoints(user.id, startStr, endStr).catch(() => [] as RoutePoint[]),
-                api.getMonthSnapshot(user.id, viewingDate.getFullYear(), viewingDate.getMonth() + 1).catch(() => null)
-            ]);
+            let balanceData: any = null;
+            let requestsData: any[] = [];
+            let compOffData: any[] = [];
+            let eventsData: AttendanceEvent[] = [];
+            let effectiveSettings: any = null;
+            let recurringData: any[] = [];
+            let selections: any[] = [];
+            let yearlyEvents: AttendanceEvent[] = [];
+            let yearlyRequests: LeaveRequest[] = [];
+            let userChildrenData: any[] = [];
+            let routePointsData: RoutePoint[] = [];
+            let snapshotDataRes: any = null;
+
+            if (cachedBundle) {
+                // Background delta fetch: only fetch month-specific items
+                const [balRes, reqRes, evRes, rpRes, snapRes] = await Promise.all([
+                    api.getLeaveBalancesForUser(user.id, format(endOfMonth(viewingDate), 'yyyy-MM-dd')).catch(err => { console.warn('Leave balance fetch failed (offline?):', err.message); return null; }),
+                    api.getLeaveRequests({
+                        userId: user.id,
+                        status: filter === 'all' ? undefined : filter
+                    }).then(res => res.data).catch(() => []),
+                    api.getAttendanceEvents(user.id, startStr, endStr).catch(err => { console.warn('Attendance events fetch failed (offline?):', err.message); return []; }),
+                    api.getRoutePoints(user.id, startStr, endStr).catch(() => [] as RoutePoint[]),
+                    api.getMonthSnapshot(user.id, viewingDate.getFullYear(), viewingDate.getMonth() + 1).catch(() => null)
+                ]);
+
+                balanceData = balRes;
+                requestsData = reqRes;
+                eventsData = evRes;
+                routePointsData = rpRes;
+                snapshotDataRes = snapRes;
+
+                // Merge latest month events into cached yearly events
+                if (eventsData && eventsData.length > 0) {
+                    const existingIds = new Set(cachedBundle.yearlyEvents.map(e => e.id));
+                    let hasNew = false;
+                    eventsData.forEach(e => {
+                        if (!existingIds.has(e.id)) {
+                            cachedBundle.yearlyEvents.push(e);
+                            existingIds.add(e.id);
+                            hasNew = true;
+                        }
+                    });
+                    if (hasNew) {
+                        cachedBundle.yearlyEvents.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                        setYearlyData({
+                            events: [...cachedBundle.yearlyEvents],
+                            userHolidays: cachedBundle.selections,
+                            leaves: cachedBundle.yearlyRequests
+                        });
+                    }
+                }
+                yearlyEvents = cachedBundle.yearlyEvents;
+                yearlyRequests = cachedBundle.yearlyRequests;
+                compOffData = cachedBundle.compOffData;
+                effectiveSettings = cachedBundle.settings;
+                recurringData = cachedBundle.recurringData;
+                selections = cachedBundle.selections;
+                userChildrenData = cachedBundle.userChildrenData;
+            } else {
+                // Full Year Bundle Fetch (Cache MISS)
+                const [balRes, reqRes, compRes, evRes, setRes, recRes, selRes, yEvRes, yReqRes, uChildRes, rpRes, snapRes] = await Promise.all([
+                    api.getLeaveBalancesForUser(user.id, format(endOfMonth(viewingDate), 'yyyy-MM-dd')).catch(err => { console.warn('Leave balance fetch failed (offline?):', err.message); return null; }),
+                    api.getLeaveRequests({
+                        userId: user.id,
+                        status: filter === 'all' ? undefined : filter
+                    }).then(res => res.data).catch(() => []),
+                    api.getCompOffLogs(user.id).catch(() => []),
+                    api.getAttendanceEvents(user.id, startStr, endStr).catch(err => { console.warn('Attendance events fetch failed (offline?):', err.message); return []; }),
+                    api.getAttendanceSettings().catch(err => { console.warn('Attendance settings fetch failed (offline?):', err.message); return null; }),
+                    api.getRecurringHolidays().catch(() => []),
+                    api.getUserHolidays(user.id).catch(() => []),
+                    api.getAttendanceEvents(user.id, startOfYearStr, endOfYearStr).catch(() => []),
+                    api.getLeaveRequests({
+                        userId: user.id,
+                        status: 'approved',
+                        startDate: startOfYearStr,
+                        endDate: endOfYearStr
+                    }).then(res => res.data).catch(() => []),
+                    api.getUserChildren(user.id).catch(() => []),
+                    api.getRoutePoints(user.id, startStr, endStr).catch(() => [] as RoutePoint[]),
+                    api.getMonthSnapshot(user.id, viewingDate.getFullYear(), viewingDate.getMonth() + 1).catch(() => null)
+                ]);
+
+                balanceData = balRes;
+                requestsData = reqRes;
+                compOffData = compRes;
+                eventsData = evRes;
+                const fallbackSettings = useSettingsStore.getState().attendance || {};
+                effectiveSettings = (setRes && Object.keys(setRes).length > 0) ? setRes : fallbackSettings;
+                recurringData = recRes;
+                selections = selRes;
+                yearlyEvents = yEvRes || [];
+                yearlyRequests = yReqRes || [];
+                userChildrenData = (uChildRes as UserChild[]) || [];
+                routePointsData = rpRes;
+                snapshotDataRes = snapRes;
+
+                // Store into cache
+                yearBundleCacheRef.current.set(targetYear, {
+                    yearlyEvents: yearlyEvents || [],
+                    yearlyRequests: yearlyRequests || [],
+                    selections: selections || [],
+                    compOffData: compOffData || [],
+                    settings: effectiveSettings,
+                    recurringData: recurringData || [],
+                    userChildrenData: (userChildrenData as UserChild[]) || []
+                });
+            }
             tFetchEnd = performance.now();
 
-            const fallbackSettings = useSettingsStore.getState().attendance || {};
-            const effectiveSettings = (settings && Object.keys(settings).length > 0) ? settings : fallbackSettings;
+            if (seq !== fetchSeqRef.current) {
+                // A newer month fetch has already started; discard this stale response
+                return;
+            }
 
             if (balanceData) {
                 setBalance(balanceData);
@@ -741,6 +893,9 @@ const LeaveDashboard: React.FC = () => {
             if (tProcess !== null) console.log(`  ⚙️  Post-processing:         ${tProcess.toFixed(0)} ms`);
             console.log(`  🕐 Total load time:         ${tTotal.toFixed(0)} ms`);
             console.groupEnd();
+            if (seq === fetchSeqRef.current) {
+                setIsCalendarLoading(false);
+            }
         }
     }, [user?.id, user?.role, filter, viewingDate, isCheckedIn, dailyPunchCount]);
 
@@ -786,7 +941,7 @@ const LeaveDashboard: React.FC = () => {
         try {
             await api.withdrawLeaveRequest(id, user!.id);
             setToast({ message: 'Leave request withdrawn successfully.', type: 'success' });
-            fetchData();
+            fetchData(false, true);
         } catch (error) {
             setToast({ message: 'Failed to withdraw leave request.', type: 'error' });
         } finally {
@@ -801,7 +956,7 @@ const LeaveDashboard: React.FC = () => {
         try {
             await api.deleteLeaveRequest(id);
             setToast({ message: 'Record deleted successfully.', type: 'success' });
-            fetchData();
+            fetchData(false, true);
         } catch (error) {
             setToast({ message: 'Failed to delete record.', type: 'error' });
         } finally {
@@ -1447,7 +1602,8 @@ const LeaveDashboard: React.FC = () => {
                     events={events}
                     settings={attendanceSettings || useSettingsStore.getState().attendance}
                     recurringHolidays={recurringHolidays}
-                    isLoading={isLoading}
+                    isLoading={isLoading || isCalendarLoading}
+                    earliestAttendanceDate={earliestRecordDate}
                     onMonthPaydaysChange={setMonthlyPaydays}
                     onSiteOtDaysChange={setSiteOtDays}
                     isMobile={isMobile}
@@ -1457,7 +1613,7 @@ const LeaveDashboard: React.FC = () => {
                         logs={compOffLogs} 
                         leaveRequests={[...requests, ...autoEarlyDepartureRequests]} 
                         userHolidays={userHolidays} 
-                        isLoading={isLoading} 
+                        isLoading={isLoading || isCalendarLoading} 
                         viewingDate={viewingDate}
                         onDateChange={setViewingDate}
                         events={events}
@@ -1467,7 +1623,7 @@ const LeaveDashboard: React.FC = () => {
                 <HolidayCalendar 
                     adminHolidays={adminHolidays} 
                     userSelectedHolidays={userHolidays} 
-                    isLoading={isLoading} 
+                    isLoading={isLoading || isCalendarLoading} 
                     viewingDate={viewingDate}
                     onDateChange={setViewingDate}
                     isMobile={isMobile}
@@ -1476,6 +1632,11 @@ const LeaveDashboard: React.FC = () => {
                     data={yearlyData}
                     isLoading={isLoading}
                     isMobile={isMobile}
+                    selectedMonth={viewingDate.getMonth()}
+                    viewingYear={viewingDate.getFullYear()}
+                    onMonthSelect={(monthIdx) => {
+                        setViewingDate(new Date(viewingDate.getFullYear(), monthIdx, 1));
+                    }}
                 />
                 {(isOtConversionEnabled || isTechnicalRole(user?.role)) && (
                     <OTCalendar 

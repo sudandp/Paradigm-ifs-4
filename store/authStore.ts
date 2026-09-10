@@ -1331,7 +1331,12 @@ export const useAuthStore = create<AuthState>()(
                             ]).catch(() => [[], []]);
                             if (todayEvents?.length || routePoints?.length) {
                                 const { distance } = calculateDailyPathTravelKm(todayEvents, routePoints);
-                                distanceKmValue = Number(distance.toFixed(3));
+                                if (distance > 0 && distance <= 500) {
+                                    distanceKmValue = Number(distance.toFixed(3));
+                                } else if (distance > 500) {
+                                    console.warn(`[authStore] Outlier session distance rejected: ${distance} km`);
+                                    distanceKmValue = undefined;
+                                }
                                 console.log(`[authStore] GPS distance for session: ${distanceKmValue} km`);
                             }
                         } catch (err) {

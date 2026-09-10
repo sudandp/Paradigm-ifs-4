@@ -1152,29 +1152,43 @@ export function evaluateAttendanceStatus(params: {
 }
 
 /**
+ * Helper to check if a coordinate is a known simulator/mock or corrupt coordinate.
+ * e.g., Android Studio Emulator default at Googleplex CA: (37.422, -122.084),
+ * Apple Simulator default at Cupertino CA: (37.331, -122.030), Null Island: (0, 0).
+ */
+function isMockOrCorruptCoordinate(lat: number, lng: number): boolean {
+  if (isNaN(lat) || isNaN(lng)) return true;
+  if (lat === 0 && lng === 0) return true;
+  if (Math.abs(lat - 37.422) < 0.1 && Math.abs(lng - (-122.084)) < 0.1) return true;
+  if (Math.abs(lat - 37.331) < 0.1 && Math.abs(lng - (-122.030)) < 0.1) return true;
+  return false;
+}
+
+/**
  * Calculate the total travel distance in kilometers for a given set of daily events.
  * It first sums the `travelDistance` database field if present, and falls back to dynamic geodetic calculation.
  */
 export function calculateDailyTravelKm(events: AttendanceEvent[]): number {
   if (!events || events.length === 0) return 0;
 
-  // 1. Sum up saved travelDistance fields if available and positive
+  // 1. Sum up saved travelDistance fields if available and positive (rejecting corrupt/outlier values > 500 km)
   let savedDistance = 0;
   let hasNonZeroSavedDistance = false;
   events.forEach(e => {
-    if (e.travelDistance !== undefined && e.travelDistance !== null && e.travelDistance > 0) {
+    if (e.travelDistance !== undefined && e.travelDistance !== null && e.travelDistance > 0 && e.travelDistance <= 500) {
       savedDistance += e.travelDistance;
       hasNonZeroSavedDistance = true;
     }
   });
 
-  if (hasNonZeroSavedDistance) {
+  if (hasNonZeroSavedDistance && savedDistance <= 1000) {
     return Number(savedDistance.toFixed(2));
   }
 
   // 2. Fallback: calculate travel dynamically from consecutive punch coordinates (both within and between sites)
   const sorted = [...events]
       .filter(e => e.type === 'punch-in' || e.type === 'punch-out')
+      .filter(e => e.latitude && e.longitude && !isMockOrCorruptCoordinate(Number(e.latitude), Number(e.longitude)))
       .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 
   let totalDist = 0;
@@ -1183,12 +1197,14 @@ export function calculateDailyTravelKm(events: AttendanceEvent[]): number {
       const next = sorted[i + 1];
       if (current.latitude && current.longitude && next.latitude && next.longitude) {
           const dist = calculateDistanceMeters(
-              current.latitude,
-              current.longitude,
-              next.latitude,
-              next.longitude
+              Number(current.latitude),
+              Number(current.longitude),
+              Number(next.latitude),
+              Number(next.longitude)
           ) / 1000;
-          totalDist += dist;
+          if (dist <= 500) {
+              totalDist += dist;
+          }
       }
   }
 
@@ -1213,7 +1229,7 @@ export function calculateDailyPathTravelKm(
     return { distance: dist, duration: 0 };
   }
 
-  // 1. Map events that have coordinate data
+  // 1. Map events that have coordinate data, filtering out corrupt/mock coordinates
   const eventCoords = events
     .filter(e => e.latitude && e.longitude)
     .map(e => ({
@@ -1221,9 +1237,10 @@ export function calculateDailyPathTravelKm(
       longitude: Number(e.longitude),
       timestamp: e.timestamp,
       isEvent: true
-    }));
+    }))
+    .filter(p => !isMockOrCorruptCoordinate(p.latitude, p.longitude));
 
-  // 2. Map routePoints that have coordinate data
+  // 2. Map routePoints that have coordinate data, filtering out corrupt/mock coordinates
   const routeCoords = routePoints
     .filter(p => p.latitude && p.longitude)
     .map(p => ({
@@ -1231,7 +1248,8 @@ export function calculateDailyPathTravelKm(
       longitude: Number(p.longitude),
       timestamp: p.timestamp,
       isEvent: false
-    }));
+    }))
+    .filter(p => !isMockOrCorruptCoordinate(p.latitude, p.longitude));
 
   // 3. Combine and sort chronologically by timestamp
   const combined = [...eventCoords, ...routeCoords].sort(
@@ -1260,16 +1278,52 @@ export function calculateDailyPathTravelKm(
     return { distance: 0, duration: 0 };
   }
 
-  // 5. Calculate cumulative distance
+  // 5. GPS Outlier Gate 1: Radius filter from median centroid (drop points > 150 km away)
+  const sortedLats = deduped.map(p => p.latitude).sort((a, b) => a - b);
+  const sortedLngs = deduped.map(p => p.longitude).sort((a, b) => a - b);
+  const medianLat = sortedLats[Math.floor(sortedLats.length / 2)];
+  const medianLng = sortedLngs[Math.floor(sortedLngs.length / 2)];
+
+  const radiusFiltered = deduped.filter(p => {
+    const distMeters = calculateDistanceMeters(medianLat, medianLng, p.latitude, p.longitude);
+    return distMeters <= 150 * 1000;
+  });
+
+  if (radiusFiltered.length < 2) {
+    return { distance: 0, duration: 0 };
+  }
+
+  // 6. GPS Outlier Gate 2: Speed filter (drop hops that imply speed > 150 km/h over distances > 200m)
+  const cleanPoints: typeof radiusFiltered = [radiusFiltered[0]];
+  for (let i = 1; i < radiusFiltered.length; i++) {
+    const prev = cleanPoints[cleanPoints.length - 1];
+    const curr = radiusFiltered[i];
+    const distMeters = calculateDistanceMeters(prev.latitude, prev.longitude, curr.latitude, curr.longitude);
+    const timeDiffSecs = (new Date(curr.timestamp).getTime() - new Date(prev.timestamp).getTime()) / 1000;
+
+    if (timeDiffSecs <= 0) continue;
+
+    const speedKmh = (distMeters / timeDiffSecs) * 3.6;
+    if (distMeters > 200 && speedKmh > 150) {
+      continue;
+    }
+    cleanPoints.push(curr);
+  }
+
+  if (cleanPoints.length < 2) {
+    return { distance: 0, duration: 0 };
+  }
+
+  // 7. Calculate cumulative distance & duration from cleaned points
   let totalDist = 0;
   let vehicleDist = 0; // Distance covered at > 12 km/h
-  for (let i = 0; i < deduped.length - 1; i++) {
+  for (let i = 0; i < cleanPoints.length - 1; i++) {
     const distMeters = calculateDistanceMeters(
-      deduped[i].latitude, deduped[i].longitude,
-      deduped[i + 1].latitude, deduped[i + 1].longitude
+      cleanPoints[i].latitude, cleanPoints[i].longitude,
+      cleanPoints[i + 1].latitude, cleanPoints[i + 1].longitude
     );
     
-    const timeDiffSecs = (new Date(deduped[i + 1].timestamp).getTime() - new Date(deduped[i].timestamp).getTime()) / 1000;
+    const timeDiffSecs = (new Date(cleanPoints[i + 1].timestamp).getTime() - new Date(cleanPoints[i].timestamp).getTime()) / 1000;
     
     totalDist += distMeters;
     
@@ -1281,8 +1335,8 @@ export function calculateDailyPathTravelKm(
     }
   }
 
-  const startTime = new Date(deduped[0].timestamp).getTime();
-  const endTime = new Date(deduped[deduped.length - 1].timestamp).getTime();
+  const startTime = new Date(cleanPoints[0].timestamp).getTime();
+  const endTime = new Date(cleanPoints[cleanPoints.length - 1].timestamp).getTime();
   const totalDurationMs = endTime - startTime;
   const durationMins = Math.max(0, Math.floor(totalDurationMs / (1000 * 60)));
 

@@ -28,6 +28,8 @@ Chart.register(
     Legend
 );
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
 interface YearlyAttendanceChartProps {
     data?: {
         events: AttendanceEvent[];
@@ -37,9 +39,20 @@ interface YearlyAttendanceChartProps {
     isLoading?: boolean;
     onTotalPaydaysChange?: (total: number, year: number) => void;
     isMobile?: boolean;
+    selectedMonth?: number;
+    viewingYear?: number;
+    onMonthSelect?: (monthIndex: number) => void;
 }
 
-const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isLoading: isLoadingProp, onTotalPaydaysChange, isMobile: isMobileProp }) => {
+const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ 
+    data, 
+    isLoading: isLoadingProp, 
+    onTotalPaydaysChange, 
+    isMobile: isMobileProp,
+    selectedMonth,
+    viewingYear,
+    onMonthSelect
+}) => {
     const isMobileQuery = useMediaQuery('(max-width: 767px)');
     const isMobileEffective = isMobileProp ?? isMobileQuery;
     const { user } = useAuthStore();
@@ -48,7 +61,13 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isL
     const [userHolidays, setUserHolidays] = useState<string[]>([]);
     const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
     const [isLoading, setIsLoading] = useState(false);
-    const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+    const [currentYear, setCurrentYear] = useState(viewingYear ?? new Date().getFullYear());
+
+    useEffect(() => {
+        if (typeof viewingYear === 'number' && viewingYear !== currentYear) {
+            setCurrentYear(viewingYear);
+        }
+    }, [viewingYear, currentYear]);
     
     const chartRef = useRef<HTMLCanvasElement>(null);
     const chartInstance = useRef<Chart | null>(null);
@@ -258,7 +277,7 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isL
 
 
 
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const activeMonthIdx = (viewingYear === currentYear && typeof selectedMonth === 'number') ? selectedMonth : -1;
 
     useEffect(() => {
         if (!chartRef.current || isLoading) return;
@@ -285,22 +304,35 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isL
                     const webColors = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ea580c'];
                     ds.backgroundColor = webColors[i];
                 }
+                (ds as any).borderWidth = (c: any) => c.dataIndex === activeMonthIdx ? 2 : 0;
+                (ds as any).borderColor = (c: any) => c.dataIndex === activeMonthIdx ? (isMobileEffective ? '#44D62C' : '#312e81') : 'transparent';
             });
+            if (chartInstance.current.options.scales?.x?.ticks) {
+                (chartInstance.current.options.scales.x.ticks as any).color = (c: any) => 
+                    c.index === activeMonthIdx 
+                        ? (isMobileEffective ? '#44D62C' : '#4f46e5') 
+                        : (isMobileEffective ? '#7D967B' : '#64748b');
+                (chartInstance.current.options.scales.x.ticks as any).font = (c: any) => ({
+                    size: c.index === activeMonthIdx ? 11 : 10,
+                    weight: c.index === activeMonthIdx ? 700 : 500
+                });
+            }
             chartInstance.current.update('none'); // 'none' = instant, no animation
             return;
         }
 
         // First mount: create the chart with animations disabled
-        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         chartInstance.current = new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: months,
+                labels: MONTHS,
                 datasets: [
                     {
                         label: 'WORKED',
                         data: stats.monthlyWorked,
                         backgroundColor: isMobileEffective ? '#44D62C' : '#6366f1',
+                        borderColor: ((c: any) => c.dataIndex === activeMonthIdx ? (isMobileEffective ? '#44D62C' : '#312e81') : 'transparent') as any,
+                        borderWidth: ((c: any) => c.dataIndex === activeMonthIdx ? 2 : 0) as any,
                         stack: 'payable',
                         borderRadius: 4,
                     },
@@ -308,6 +340,8 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isL
                         label: 'WH',
                         data: stats.monthlyLeaves,
                         backgroundColor: isMobileEffective ? '#38bdf8' : '#8b5cf6',
+                        borderColor: ((c: any) => c.dataIndex === activeMonthIdx ? (isMobileEffective ? '#44D62C' : '#312e81') : 'transparent') as any,
+                        borderWidth: ((c: any) => c.dataIndex === activeMonthIdx ? 2 : 0) as any,
                         stack: 'payable',
                         borderRadius: 4,
                     },
@@ -315,6 +349,8 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isL
                         label: 'HOLIDAYS',
                         data: stats.monthlyHolidays,
                         backgroundColor: '#10b981',
+                        borderColor: ((c: any) => c.dataIndex === activeMonthIdx ? (isMobileEffective ? '#44D62C' : '#312e81') : 'transparent') as any,
+                        borderWidth: ((c: any) => c.dataIndex === activeMonthIdx ? 2 : 0) as any,
                         stack: 'payable',
                         borderRadius: 4,
                     },
@@ -322,6 +358,8 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isL
                         label: 'WEEK OFFS',
                         data: stats.monthlySundays,
                         backgroundColor: '#f59e0b',
+                        borderColor: ((c: any) => c.dataIndex === activeMonthIdx ? (isMobileEffective ? '#44D62C' : '#312e81') : 'transparent') as any,
+                        borderWidth: ((c: any) => c.dataIndex === activeMonthIdx ? 2 : 0) as any,
                         stack: 'payable',
                         borderRadius: 4,
                     },
@@ -329,6 +367,8 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isL
                         label: 'SITE OT',
                         data: stats.monthlySiteOt,
                         backgroundColor: isMobileEffective ? '#f97316' : '#ea580c',
+                        borderColor: ((c: any) => c.dataIndex === activeMonthIdx ? (isMobileEffective ? '#44D62C' : '#312e81') : 'transparent') as any,
+                        borderWidth: ((c: any) => c.dataIndex === activeMonthIdx ? 2 : 0) as any,
                         stack: 'siteot',
                         borderRadius: 4,
                     }
@@ -339,6 +379,14 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isL
                 animation: false,
                 responsive: true,
                 maintainAspectRatio: false,
+                onClick: (_evt, elements) => {
+                    if (elements && elements.length > 0 && onMonthSelect) {
+                        const idx = elements[0].index;
+                        if (typeof idx === 'number' && idx >= 0 && idx < 12) {
+                            onMonthSelect(idx);
+                        }
+                    }
+                },
                 plugins: {
                     legend: {
                         display: true,
@@ -384,15 +432,20 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isL
                         stacked: true,
                         grid: { display: false },
                         ticks: { 
-                            font: { size: 10, weight: 500 }, 
-                            color: isMobileEffective ? '#7D967B' : '#64748b' 
+                            font: ((c: any) => ({
+                                size: c.index === activeMonthIdx ? 11 : 10,
+                                weight: c.index === activeMonthIdx ? 700 : 500
+                            })) as any, 
+                            color: ((c: any) => c.index === activeMonthIdx 
+                                ? (isMobileEffective ? '#44D62C' : '#4f46e5') 
+                                : (isMobileEffective ? '#7D967B' : '#64748b')) as any
                         }
                     }
                 }
             }
         });
         // No cleanup returned here — cleanup is handled by the unmount-only effect below
-    }, [stats, isLoading, isMobileEffective]);
+    }, [stats, isLoading, isMobileEffective, activeMonthIdx, onMonthSelect]);
 
     // Unmount-only cleanup — runs ONLY when component leaves the DOM, not on re-renders
     useEffect(() => {
@@ -434,9 +487,20 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isL
                     }`}>
                         <BarChart2 className={`h-4 w-4 ${isMobileEffective ? 'text-[#22c55e]' : 'text-indigo-600'}`} />
                     </div>
-                    <h3 className={`text-sm font-bold ${isMobileEffective ? 'text-white' : 'text-primary-text'}`}>
-                        Yearly Attendance
-                    </h3>
+                    <div className="flex items-center gap-1.5">
+                        <h3 className={`text-sm font-bold ${isMobileEffective ? 'text-white' : 'text-primary-text'}`}>
+                            Yearly Attendance
+                        </h3>
+                        {activeMonthIdx >= 0 && (
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                isMobileEffective 
+                                    ? 'bg-[#134426] text-[#44D62C] border border-[#2a4536]' 
+                                    : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                            }`}>
+                                {MONTHS[activeMonthIdx]}
+                            </span>
+                        )}
+                    </div>
                 </div>
                 <div className="flex items-center gap-1">
                     <Button 
