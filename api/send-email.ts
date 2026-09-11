@@ -732,9 +732,9 @@ const reportGenerators = {
     // Fetch all data in one parallel batch
     const [eventsRes, leadsRes, callsRes, allLeadsRes, sevenDayFollowupsRes, sevenDayEventsRes] = await Promise.all([
       supabase.from('attendance_events').select('user_id, type, timestamp, latitude, longitude, travel_distance').gte('timestamp', startOfTodayUTC.toISOString()).lte('timestamp', endOfTodayUTC.toISOString()).order('timestamp', { ascending: true }),
-      supabase.from('crm_leads').select('id, created_by, assigned_to, company_name, client_name, association_name, contact_person, status, source, city, created_at, stage_updated_at, updated_at, next_followup_date, lost_reason').gte('created_at', startOfTodayUTC.toISOString()).lte('created_at', endOfTodayUTC.toISOString()),
+      supabase.from('crm_leads').select('id, created_by, assigned_to, client_name, association_name, contact_person, status, source, city, created_at, stage_updated_at, updated_at, lost_reason').gte('created_at', startOfTodayUTC.toISOString()).lte('created_at', endOfTodayUTC.toISOString()),
       supabase.from('crm_followups').select('created_by, type, outcome, lead_id, created_at, next_followup_date').gte('created_at', startOfTodayUTC.toISOString()).lte('created_at', endOfTodayUTC.toISOString()),
-      supabase.from('crm_leads').select('id, created_by, assigned_to, company_name, client_name, association_name, contact_person, status, source, city, created_at, stage_updated_at, updated_at, next_followup_date, lost_reason'),
+      supabase.from('crm_leads').select('id, created_by, assigned_to, client_name, association_name, contact_person, status, source, city, created_at, stage_updated_at, updated_at, lost_reason'),
       supabase.from('crm_followups').select('created_by, type, outcome, lead_id, created_at, next_followup_date').gte('created_at', sevenDaysAgoUTC.toISOString()),
       supabase.from('attendance_events').select('user_id, type, timestamp').gte('timestamp', sevenDaysAgoUTC.toISOString()).eq('type', 'punch-in')
     ]);
@@ -746,8 +746,18 @@ const reportGenerators = {
     const sevenDayFollowups = sevenDayFollowupsRes.data || [];
     const sevenDayEvents = sevenDayEventsRes.data || [];
 
+    const leadNextFollowupMap = new Map<string, string>();
+    sevenDayFollowups.forEach((f: any) => {
+      if (f.lead_id && f.next_followup_date) {
+        const cur = leadNextFollowupMap.get(f.lead_id);
+        if (!cur || new Date(f.next_followup_date) > new Date(cur)) {
+          leadNextFollowupMap.set(f.lead_id, f.next_followup_date);
+        }
+      }
+    });
+
     // Helpers
-    const leadName = (l: any) => l.company_name || l.association_name || l.client_name || 'Unknown';
+    const leadName = (l: any) => l.client_name || l.association_name || 'Lead';
     const daysSince = (dateStr: string | null | undefined): number => {
       if (!dateStr) return 999;
       return (nowIST.getTime() - new Date(dateStr).getTime()) / 86400000;
@@ -960,6 +970,8 @@ const reportGenerators = {
         }).join('') +
         `</tbody></table><div style="margin-top:8px;text-align:right;font-size:12px;font-weight:700;color:#166534;padding:8px;background:#f0fdf4;border-top:1px solid #bbf7d0;">Total active pipeline: ${activeTotal} leads</div>`;
 
+      const bdGreeting = `Here is the Daily Activity Report for <strong>${bd.name}</strong>. The data below reflects activities logged on <strong>${format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy')}</strong>.`;
+
       reports.push({
         bd_name: bd.name, bdName: bd.name,
         report_date: format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy'), reportDate: format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy'),
@@ -977,6 +989,9 @@ const reportGenerators = {
         new_leads_table, newLeadsTable: new_leads_table,
         metrics_table, metricsTable: metrics_table,
         pipeline_snapshot, pipelineSnapshot: pipeline_snapshot,
+        greetingMessage: bdGreeting, customGreeting: bdGreeting,
+        greeting_message: bdGreeting, custom_greeting: bdGreeting,
+        summary: bdGreeting,
         // 10 new enhanced sections
         followup_completion_block, followupCompletionBlock: followup_completion_block,
         overdue_leads_block, overdueLeadsBlock: overdue_leads_block,
@@ -1046,8 +1061,8 @@ export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseSe
   const { url, serviceKey } = getSupabaseConfig(supabaseUrl, supabaseServiceKey);
   const supabase = createClient(url, serviceKey);
   
-  const { cc, ruleId, test, testEmail, smtpConfig, reportType, filters } = body;
-  let { to, subject, html, triggerType } = body;
+  const { cc, ruleId, test, testEmail, smtpConfig, reportType, filters, subject, triggerType } = body;
+  let { to, html } = body;
   
   // Fallback for body vs html naming mismatch
   if (!html && body.body) html = body.body;
@@ -1111,6 +1126,37 @@ export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseSe
       ...filters
     };
     const reportData = await generator(supabase, targetDateIST, reportFilters);
+    const reportDataList: Record<string, any>[] = Array.isArray(reportData) ? reportData : [reportData];
+
+    if (test && typeof testEmail === 'string' && testEmail.includes('@')) {
+      to = [testEmail];
+      console.log(`[send-email] Test mode: Overriding recipients with ${testEmail}`);
+    } else if (!to || (Array.isArray(to) && to.length === 0)) {
+      to = await resolveRecipientsInternal(supabase, rule);
+      console.log(`[send-email] Resolved recipients from rule ${ruleId}: ${to.join(', ')}`);
+    }
+
+    const toAddresses = (Array.isArray(to) ? to : [to]).filter(e => typeof e === 'string' && e.includes('@'));
+    if (toAddresses.length === 0) throw new Error('No valid recipients found');
+
+    const ccAddresses = (Array.isArray(cc) ? cc : [cc]).filter(e => typeof e === 'string' && e.includes('@'));
+
+    const authUser = (config.user || config.smtpUser || '').trim();
+    let authPass = (config.pass || config.smtpPass || '').trim();
+    if (authUser.endsWith('@gmail.com') || (config.host || '').includes('gmail')) {
+      authPass = authPass.replace(/\s+/g, '');
+    }
+
+    const transporter = nodemailer.createTransport({
+      host: config.host || config.smtpHost, 
+      port: config.port || config.smtpPort, 
+      secure: config.secure !== undefined ? config.secure : config.smtpSecure,
+      auth: { user: authUser, pass: authPass },
+      tls: { rejectUnauthorized: false },
+    });
+
+    const fromEmail = (config.fromEmail || config.smtpFromEmail || config.user || config.smtpUser || '').toLowerCase();
+    const results: any[] = [];
 
     const render = (text: string, data: any) => {
       if (!text) return '';
@@ -1124,75 +1170,114 @@ export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseSe
       });
     };
 
-    // Support for custom message Injection from template variables
-    let greetingMessage = `Here is your automated status update for <strong>{date}</strong>. The data below reflects real-time triggers from the Paradigm system as of <strong>{generatedTime} IST</strong>.`;
-    
-    // Override greeting for Monthly Report
-    if (rule.report_type === 'attendance_monthly') {
+    for (const dataItem of reportDataList) {
+      let greetingMessage = `Here is your automated status update for <strong>{date}</strong>. The data below reflects real-time triggers from the Paradigm system as of <strong>{generatedTime} IST</strong>.`;
+
+      if (rule.report_type === 'attendance_monthly') {
         greetingMessage = `Dear Management,<br/><br/>This is the consolidated attendance summary for the period of <strong>{date}</strong>. It covers overall employee presence across all <strong>{totalEmployees}</strong> active members of the staff.<br/><br/>Overall attendance stands at <strong>{attendancePercentage}%</strong>. Please review the detailed monthly attendance grid below for any discrepancies.`;
-    } else if (rule.report_type === 'attendance_daily') {
+      } else if (rule.report_type === 'attendance_daily') {
         const periodText = dateRangeMode === 'yesterday' ? "Yesterday's" : "Today's";
         greetingMessage = `Dear Team,<br/><br/>${periodText} backoffice attendance for <strong>{date}</strong> stands at <strong>{attendancePercentage}%</strong>. A total of <strong>{totalAbsent}</strong> employees were absent, and <strong>{lateCount}</strong> reported late.<br/><br/>Attendance summary:`;
-    } else if (rule.report_type === 'attendance_site_daily') {
+      } else if (rule.report_type === 'attendance_site_daily') {
         const periodText = dateRangeMode === 'yesterday' ? "Yesterday's" : "Today's";
         greetingMessage = `Dear Team,<br/><br/>${periodText} site attendance for <strong>{date}</strong> stands at <strong>{attendancePercentage}%</strong>. A total of <strong>{totalAbsent}</strong> site staff were absent, and <strong>{lateCount}</strong> reported late.<br/><br/>Site attendance summary:`;
-    }
+      } else if (rule.report_type === 'crm_bd_daily' || rule.report_type === 'bd_daily') {
+        greetingMessage = `Dear Management,<br/><br/>Daily Activity Report for <strong>${dataItem.bd_name || dataItem.bdName || 'Business Developer'}</strong> for <strong>${dataItem.report_date || dataItem.reportDate || 'Today'}</strong>.`;
+      }
 
-    if (template?.variables && Array.isArray(template.variables)) {
+      if (template?.variables && Array.isArray(template.variables)) {
         const customMsgObj = template.variables.find((v: any) => v.key === '_custom_message');
         if (customMsgObj && customMsgObj.description && customMsgObj.description.trim()) {
-            const evaluatedMsg = evaluateConditionalsInternal(customMsgObj.description, reportData || {});
-            greetingMessage = evaluatedMsg.replace(/\n/g, '<br/>');
+          const evaluatedMsg = evaluateConditionalsInternal(customMsgObj.description, dataItem || {});
+          greetingMessage = evaluatedMsg.replace(/\n/g, '<br/>');
         }
-    }
-    
-    // CRITICAL: Render the greeting message itself with available reportData 
-    // This ensures nested placeholders like {attendancePercentage} are replaced
-    greetingMessage = render(greetingMessage, reportData || {});
-    
-    // Inject the greeting into reportData so it can be evaluated in the template
-    // Providing multiple common keys for maximum template compatibility
-    reportData.greetingMessage = greetingMessage;
-    reportData.customGreeting = greetingMessage;
-    reportData.greeting_message = greetingMessage;
-    reportData.custom_greeting = greetingMessage;
-    reportData.summary = greetingMessage;
+      }
 
-    html = template?.body_template;
-    if (!html) {
-        const getMonthlyReportPremiumTemplate = () => `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"><style>@media only screen and (max-width: 600px) { .stats-container { display: block !important; } .stat-card { margin-bottom: 16px !important; width: 100% !important; } .header-content { display: block !important; text-align: center !important; } .header-right { text-align: center !important; margin-top: 20px !important; } .logo-container { justify-content: center !important; margin-bottom: 12px !important; } } body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; } table { width: 100%; border-collapse: collapse; } .report-grid { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 11px; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; } .report-grid th { padding: 12px 6px; font-weight: 600; background-color: #f8fafc; color: #475569; border-bottom: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; } .report-grid td { padding: 10px 4px; text-align: center; color: #334155; border-bottom: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; font-weight: 500; } .report-grid td:last-child, .report-grid th:last-child { border-right: none; } .report-grid tr:last-child td { border-bottom: none; } .report-grid td.emp-name { text-align: left; font-weight: 600; min-width: 150px; padding: 10px 14px; color: #0f172a; } .report-grid td.p { color: #059669; font-weight: 700; background-color: rgba(16, 185, 129, 0.08); } .report-grid td.a { color: #dc2626; background-color: rgba(239, 68, 68, 0.08); } .report-grid td.wo { color: #64748b; background-color: #f1f5f9; } .report-grid td.h { color: #d97706; background-color: rgba(245, 158, 11, 0.08); font-weight: 700; } .report-grid td.hd { color: #ea580c; background-color: rgba(249, 115, 22, 0.08); font-weight: 700; } .report-grid td.ot { color: #0284c7; background-color: rgba(14, 165, 233, 0.08); font-weight: 700; } .report-grid td.co { color: #db2777; background-color: rgba(236, 72, 153, 0.08); font-weight: 700; } .report-grid td.el { color: #7c3aed; background-color: rgba(139, 92, 246, 0.08); font-weight: 700; } .report-grid td.sl { color: #e11d48; background-color: rgba(225, 29, 72, 0.08); font-weight: 700; } .report-grid td.tot { font-weight: 800; background-color: #f0fdf4; color: #047857; }</style></head><body style="margin: 0; padding: 0; background-color: #f4fbf7; -webkit-font-smoothing: antialiased;"><div style="max-width: 1000px; margin: 40px auto; background-color: #ffffff; border-radius: 24px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(4, 120, 87, 0.08), 0 0 0 1px rgba(4,120,87,0.02);"><div style="background: linear-gradient(135deg, #065f46 0%, #10b981 100%); padding: 48px 40px; color: white;"><div style="display: flex; justify-content: space-between; align-items: center;" class="header-content"><div><div class="logo-container" style="display: flex; align-items: center; margin-bottom: 12px;"><div style="background: white; padding: 10px 14px; border-radius: 12px; display: inline-flex; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"><img src="https://app.paradigmfms.com/paradigm-logo.png" alt="Paradigm Services" style="height: 36px; display: block;"></div></div><div style="font-size: 13px; font-weight: 600; color: #a7f3d0; text-transform: uppercase; letter-spacing: 2px;">Paradigm Services</div></div><div style="text-align: right;" class="header-right"><h1 style="margin: 0 0 12px 0; font-size: 28px; font-weight: 800; letter-spacing: -0.5px; color: white;">Monthly Attendance</h1><div style="display: inline-block; background: rgba(255, 255, 255, 0.15); padding: 8px 16px; border-radius: 20px; font-size: 15px; font-weight: 600; color: #ffffff; backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.2);">{date}</div></div></div></div><div style="padding: 40px;"><div style="margin-bottom: 40px; padding: 24px; background: #f0fdf4; border-radius: 16px; border-left: 4px solid #10b981;"><p style="margin: 0; color: #064e3b; font-size: 16px; line-height: 1.7; font-weight: 400;">{customGreeting}</p></div><div class="stats-container" style="display: flex; gap: 24px; margin-bottom: 48px;"><div class="stat-card" style="flex: 1; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 28px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02); position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; width: 4px; height: 100%; background-color: #059669;"></div><div style="font-size: 13px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">Monthly Presence</div><div style="font-size: 40px; font-weight: 800; color: #064e3b; letter-spacing: -1px; line-height: 1;">{attendancePercentage}<span style="font-size: 24px; color: #059669; font-weight: 700; margin-left: 2px;">%</span></div></div><div class="stat-card" style="flex: 1; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 28px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02); position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; width: 4px; height: 100%; background-color: #34d399;"></div><div style="font-size: 13px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">Total Punches</div><div style="font-size: 40px; font-weight: 800; color: #064e3b; letter-spacing: -1px; line-height: 1;">{totalPresent}</div></div><div class="stat-card" style="flex: 1; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 28px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02); position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; width: 4px; height: 100%; background-color: #6ee7b7;"></div><div style="font-size: 13px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">Active Staff</div><div style="font-size: 40px; font-weight: 800; color: #064e3b; letter-spacing: -1px; line-height: 1;">{totalEmployees}</div></div></div><div style="margin-bottom: 48px;"><div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 20px;"><div><h3 style="margin: 0 0 6px 0; color: #064e3b; font-size: 18px; font-weight: 700; letter-spacing: -0.3px;">Detailed Attendance Grid</h3><div style="font-size: 13px; color: #64748b; font-weight: 400;">Comprehensive overview of daily attendance records</div></div><div style="font-size: 12px; color: #047857; font-weight: 600; background: #ecfdf5; padding: 8px 14px; border-radius: 8px; border: 1px solid #a7f3d0; display: inline-flex; align-items: center; gap: 6px;"><span style="font-size: 14px;">↔</span> Scroll on mobile</div></div><div style="overflow-x: auto; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">{table}</div></div><div style="padding-top: 40px; border-top: 1px solid #e2e8f0; display: flex; flex-direction: column; align-items: center; text-align: center;"><div style="margin-bottom: 20px;"><img src="https://app.paradigmfms.com/paradigm-logo.png" alt="Paradigm" style="height: 28px; opacity: 0.6;"></div><p style="margin: 0 0 24px 0; color: #64748b; font-size: 13px; font-weight: 400; max-width: 500px; line-height: 1.6;">This is an official automated compliance report generated by the Paradigm Attendance Management System.</p><div style="display: inline-flex; align-items: center; gap: 16px; background: #f0fdf4; padding: 12px 24px; border-radius: 100px; border: 1px solid #bbf7d0;"><a href="https://app.paradigmfms.com" style="color: #047857; text-decoration: none; font-weight: 700; font-size: 13px;">Open Dashboard &rarr;</a><span style="color: #6ee7b7;">|</span><span style="color: #064e3b; font-size: 13px; font-weight: 500;">&copy; {year} Paradigm Facility Management Services</span></div><div style="margin-top: 24px; font-size: 11px; color: #94a3b8; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">Generated: {generatedTime} &bull; Request By: {generatedBy}</div></div></div></div></body></html>`;
-        const getDefaultPremiumTemplate = () => `<!DOCTYPE html><html><head><meta charset="utf-8"><style>@media only screen and (max-width: 600px) { .stats-container { display: block !important; } .stat-card { margin-bottom: 12px !important; width: 100% !important; } }</style></head><body style="margin: 0; padding: 0; background-color: #f1f5f9;"><div style="font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 800px; margin: 20px auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);"><!-- Header --><div style="background: linear-gradient(135deg, #064e3b 0%, #065f46 100%); padding: 32px; color: white;"><div style="display: flex; justify-content: space-between; align-items: center;"><div style="display: flex; align-items: center; gap: 12px;"><div style="background: rgba(255,255,255,0.1); padding: 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2);"><img src="https://app.paradigmfms.com/paradigm-logo.png" alt="Logo" style="height: 40px; display: block;" onerror="this.style.display='none'"><span style="font-size: 24px; font-weight: 800; letter-spacing: -0.5px; margin-left: 2px;">PARADIGM</span></div></div><div style="text-align: right;"><div style="font-size: 11px; opacity: 0.7; text-transform: uppercase; font-weight: 700; letter-spacing: 1px;">Attendance Management System</div><div style="font-size: 16px; font-weight: 600;">{reportDate}</div></div></div></div><div style="padding: 32px;"><div style="margin-bottom: 32px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px;"><div style="font-size: 20px; font-weight: 700; color: #1e293b; margin-bottom: 12px;">Hi,</div><p style="margin: 0; color: #475569; font-size: 15px; line-height: 1.6;">{greetingMessage}</p></div><div class="stats-container" style="display: flex; gap: 16px; margin-bottom: 32px;"><div class="stat-card" style="flex: 1; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);"><div style="font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 8px;">Staff Presence</div><div style="font-size: 28px; font-weight: 800; color: #059669;">{attendancePercentage}%</div></div><div class="stat-card" style="flex: 1; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);"><div style="font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 8px;">Total Present</div><div style="font-size: 28px; font-weight: 800; color: #10b981;">{totalPresent}</div></div><div class="stat-card" style="flex: 1; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);"><div style="font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 8px;">Total Late</div><div style="font-size: 28px; font-weight: 800; color: #f59e0b;">{lateCount}</div></div></div><div style="margin-bottom: 32px; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden;"><div style="background: #f8fafc; padding: 16px 24px; border-bottom: 1px solid #e2e8f0;"><h3 style="margin: 0; color: #1e293b; font-size: 16px; font-weight: 700;">Detailed Overview</h3></div><div style="overflow-x: auto;">{table}</div></div></div></div></body></html>`;
-        html = (rule.report_type === 'attendance_monthly') ? getMonthlyReportPremiumTemplate() : getDefaultPremiumTemplate();
-    }
+      greetingMessage = render(greetingMessage, dataItem || {});
 
-    const hasGreetingPlaceholder = html.includes('{greetingMessage}') || 
-                                   html.includes('{customGreeting}') || 
-                                   html.includes('{greeting_message}') || 
-                                   html.includes('{custom_greeting}') ||
-                                   html.includes('{summary}');
+      dataItem.greetingMessage = greetingMessage;
+      dataItem.customGreeting = greetingMessage;
+      dataItem.greeting_message = greetingMessage;
+      dataItem.custom_greeting = greetingMessage;
+      dataItem.summary = greetingMessage;
 
-    if (template?.body_template && !hasGreetingPlaceholder) {
-        const greetingBlock = `\n<div style="font-family: Arial, sans-serif; padding: 0 0 20px 0; color: #333; font-size: 14px; line-height: 1.6; text-align: left;">\n  {greetingMessage}\n</div>\n`;
-        if (html.toLowerCase().includes('<body')) {
-            html = html.replace(/(<body[^>]*>)/i, `$1${greetingBlock}`);
+      let itemHtml = template?.body_template;
+      if (!itemHtml) {
+        const getMonthlyReportPremiumTemplate = () => `<!DOCTYPE html><html><body style="font-family:sans-serif;padding:20px;"><h2>Monthly Attendance</h2><p>{greetingMessage}</p>{table}</body></html>`;
+        const getDefaultPremiumTemplate = () => `<!DOCTYPE html><html><body style="font-family:sans-serif;padding:20px;"><h2>Attendance Summary</h2><p>{greetingMessage}</p>{table}</body></html>`;
+        itemHtml = (rule.report_type === 'attendance_monthly') ? getMonthlyReportPremiumTemplate() : getDefaultPremiumTemplate();
+      }
+
+      const hasGreetingPlaceholder = itemHtml.includes('{greetingMessage}') || 
+                                     itemHtml.includes('{customGreeting}') || 
+                                     itemHtml.includes('{greeting_message}') || 
+                                     itemHtml.includes('{custom_greeting}') ||
+                                     itemHtml.includes('{summary}');
+
+      if (template?.body_template && !hasGreetingPlaceholder && !rule.report_type.includes('bd_daily')) {
+        const greetingBlock = `\n<div style="font-family: Arial, sans-serif; padding: 0 0 20px 0; color: #333; font-size: 14px; line-height: 1.6; text-align: left;">\n  ${greetingMessage}\n</div>\n`;
+        if (itemHtml.toLowerCase().includes('<body')) {
+          itemHtml = itemHtml.replace(/(<body[^>]*>)/i, `$1${greetingBlock}`);
         } else {
-            html = greetingBlock + html;
+          itemHtml = greetingBlock + itemHtml;
         }
+      }
+
+      const itemSubject = render(evaluateConditionalsInternal(template?.subject_template || rule.name, dataItem), dataItem);
+      itemHtml = render(evaluateConditionalsInternal(itemHtml, dataItem), dataItem);
+
+      // Clean up any remaining {greetingMessage} or {customGreeting}
+      itemHtml = itemHtml.replace(/\{greetingMessage\}/gi, greetingMessage);
+      itemHtml = itemHtml.replace(/\{customGreeting\}/gi, greetingMessage);
+      itemHtml = itemHtml.replace(/\{greeting_message\}/gi, greetingMessage);
+      itemHtml = itemHtml.replace(/\{custom_greeting\}/gi, greetingMessage);
+      itemHtml = itemHtml.replace(/\{summary\}/gi, greetingMessage);
+
+      for (const recipient of toAddresses) {
+        const mailOptions: any = {
+          from: `"${config.fromName || config.smtpFromName || 'Paradigm FMS'}" <${fromEmail}>`,
+          to: recipient,
+          subject: itemSubject,
+          html: itemHtml,
+          replyTo: config.replyTo || config.smtpReplyTo || fromEmail
+        };
+        if (ccAddresses.length > 0) mailOptions.cc = ccAddresses.join(', ');
+        if (body.attachments && Array.isArray(body.attachments)) {
+          mailOptions.attachments = body.attachments.map((att: any) => {
+            const isBase64 = att.encoding === 'base64' || (typeof att.content === 'string' && !att.content.startsWith('%PDF'));
+            return {
+              filename: att.filename,
+              content: isBase64 ? Buffer.from(att.content, 'base64') : att.content,
+              contentType: att.contentType || 'application/pdf',
+            };
+          });
+        }
+
+        const info = await transporter.sendMail(mailOptions);
+        results.push(info);
+
+        try {
+          await supabase.from('email_logs').insert({
+            recipient_email: recipient, 
+            subject: itemSubject, 
+            status: 'sent', 
+            rule_id: ruleId || null, 
+            metadata: { 
+              trigger_type: triggerType || (test ? 'manual' : 'automatic'),
+              vercel_env: process.env.VERCEL_ENV || 'development',
+              individual_send: true,
+              bd_name: dataItem.bd_name || undefined
+            },
+            created_at: new Date().toISOString()
+          });
+        } catch (logLog) {
+          console.error(`[send-email] Logging failed for ${recipient}:`, logLog);
+        }
+      }
     }
 
-    subject = render(evaluateConditionalsInternal(template?.subject_template || rule.name, reportData), reportData);
-    html = render(evaluateConditionalsInternal(html, reportData), reportData);
-
-    if (test && typeof testEmail === 'string' && testEmail.includes('@')) {
-      to = [testEmail];
-      console.log(`[send-email] Test mode: Overriding recipients with ${testEmail}`);
-    } else if (!to || (Array.isArray(to) && to.length === 0)) {
-      to = await resolveRecipientsInternal(supabase, rule);
-      console.log(`[send-email] Resolved recipients from rule ${ruleId}: ${to.join(', ')}`);
-    }
-
-    
-    if (!triggerType) triggerType = 'automatic';
+    await supabase.from('email_schedule_rules').update({ last_sent_at: new Date().toISOString() }).eq('id', ruleId);
+    return results[0] || { messageId: 'batch-complete' };
   } else if (reportType && triggerType === 'manual' && !html) {
     // Handle manual triggers from dashboard without a ruleId
     const reportTypeKey = reportType.toLowerCase().replace(/\s+/g, '_');

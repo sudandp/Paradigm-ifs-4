@@ -841,7 +841,9 @@ const LeaveDashboard: React.FC = () => {
             credit: number;
             source: string;
             details: string;
-            status: string;
+            status: 'Active' | 'Used' | 'Expired' | 'Credited';
+            statusReason?: string;
+            validUntil?: string;
             type: 'opening' | 'attendance' | 'manual' | 'correction';
             hoursWorked?: number;
             punchCount?: number;
@@ -933,7 +935,7 @@ const LeaveDashboard: React.FC = () => {
             const isWeeklyOff = weeklyOffDays.includes(dow);
             const holidayName = holidayMap.get(dateStr);
 
-            // Helper for floating holiday validity (Months without floating holidays will be normal working days)
+            // Helper for floating holiday validity
             const isFloatingHolidayValid = (dateToCheck: string) => {
                 const fMonths = rules?.floatingHolidayMonths || (rules as any)?.floating_holiday_months;
                 if (fMonths && fMonths.length > 0) {
@@ -1004,7 +1006,7 @@ const LeaveDashboard: React.FC = () => {
                         credit,
                         source: occasion,
                         details: `${reasonPrefix} • ${dayEvents.length} biometric punch${dayEvents.length === 1 ? '' : 'es'}`,
-                        status: 'Earned',
+                        status: 'Earned' as any,
                         type: hasCorrection ? 'correction' : 'attendance',
                         hoursWorked: workingHours,
                         punchCount: dayEvents.length
@@ -1026,9 +1028,161 @@ const LeaveDashboard: React.FC = () => {
                 credit: amt,
                 source: 'HR / Admin Comp Off Grant',
                 details: log.reason || 'Manually granted compensatory off credit',
-                status: log.status || 'Earned',
+                status: (log.status || 'Earned') as any,
                 type: 'manual'
             });
+        });
+
+        // 7. Month-by-Month Simulation for 2-Month Validity & Max 2.0d Carry-Forward
+        const sortedForSim = [...list].sort((a, b) => new Date(a.date.replace(/-/g, '/')).getTime() - new Date(b.date.replace(/-/g, '/')).getTime());
+
+        const coLeaves = allLeaves
+            .filter(l => {
+                const lType = String(l.leaveType || (l as any).leave_type || (l as any).type || '').toLowerCase();
+                const lStatus = String(l.status || '').toLowerCase();
+                return lType.includes('comp') && (lStatus === 'approved' || lStatus === 'correction_made');
+            })
+            .map(l => {
+                let days = l.dayOption === 'half' ? 0.5 : 1;
+                if (l.startDate !== l.endDate && l.dayOption !== 'half') {
+                    days = differenceInCalendarDays(new Date(l.endDate.replace(/-/g, '/')), new Date(l.startDate.replace(/-/g, '/'))) + 1;
+                }
+                return {
+                    id: l.id,
+                    startDate: l.startDate,
+                    endDate: l.endDate,
+                    days,
+                    reason: l.reason
+                };
+            });
+
+        const itemStateMap = new Map<string, {
+            remaining: number;
+            validUntilStr: string;
+            status: 'Active' | 'Used' | 'Expired';
+            statusReason: string;
+            usedBy: Array<{ date: string; days: number; reason?: string }>;
+        }>();
+
+        sortedForSim.forEach(item => {
+            const itemDate = new Date(item.date.replace(/-/g, '/'));
+            const m = itemDate.getMonth();
+            const nextMonthEnd = new Date(targetYear, m + 2, 0);
+            const validUntilStr = format(nextMonthEnd, 'dd MMM yyyy');
+            itemStateMap.set(item.id, {
+                remaining: item.credit,
+                validUntilStr,
+                status: 'Active',
+                statusReason: `Valid until ${validUntilStr}`,
+                usedBy: []
+            });
+        });
+
+        let carriedOver: Array<{ id: string; remaining: number }> = [];
+        const viewingMonth = viewingDate.getMonth();
+
+        for (let m = 0; m <= viewingMonth; m++) {
+            const monthEarned = sortedForSim
+                .filter(item => new Date(item.date.replace(/-/g, '/')).getMonth() === m)
+                .map(item => ({ id: item.id, remaining: item.credit }));
+
+            const monthLeaves = coLeaves.filter(l => new Date(l.startDate.replace(/-/g, '/')).getMonth() === m);
+
+            for (const leave of monthLeaves) {
+                let needed = leave.days;
+                for (const credit of carriedOver) {
+                    if (needed <= 0) break;
+                    if (credit.remaining > 0) {
+                        const deduct = Math.min(credit.remaining, needed);
+                        credit.remaining -= deduct;
+                        needed -= deduct;
+                        const st = itemStateMap.get(credit.id);
+                        if (st) {
+                            st.remaining -= deduct;
+                            st.usedBy.push({ date: leave.startDate, days: deduct, reason: leave.reason });
+                        }
+                    }
+                }
+                for (const credit of monthEarned) {
+                    if (needed <= 0) break;
+                    if (credit.remaining > 0) {
+                        const deduct = Math.min(credit.remaining, needed);
+                        credit.remaining -= deduct;
+                        needed -= deduct;
+                        const st = itemStateMap.get(credit.id);
+                        if (st) {
+                            st.remaining -= deduct;
+                            st.usedBy.push({ date: leave.startDate, days: deduct, reason: leave.reason });
+                        }
+                    }
+                }
+            }
+
+            // End of month m
+            const monthEndDate = new Date(targetYear, m + 1, 0);
+            const monthEndDisplay = format(monthEndDate, 'dd MMM yyyy');
+
+            // 1. Carried-over credits expire at the end of month m
+            for (const credit of carriedOver) {
+                if (credit.remaining > 0) {
+                    const st = itemStateMap.get(credit.id);
+                    if (st) {
+                        st.remaining = 0;
+                        st.status = 'Expired';
+                        st.statusReason = `Expired on ${monthEndDisplay} (Unused within 2-month window)`;
+                    }
+                    credit.remaining = 0;
+                }
+            }
+
+            // 2. Carry-forward cap (max 2.0d)
+            const totalMonthRemaining = monthEarned.reduce((sum, c) => sum + c.remaining, 0);
+            if (totalMonthRemaining > 2.0) {
+                let excess = Math.round((totalMonthRemaining - 2.0) * 10) / 10;
+                for (let i = monthEarned.length - 1; i >= 0 && excess > 0; i--) {
+                    const c = monthEarned[i];
+                    const deduct = Math.min(c.remaining, excess);
+                    c.remaining -= deduct;
+                    excess -= deduct;
+                    const st = itemStateMap.get(c.id);
+                    if (st) {
+                        st.remaining -= deduct;
+                        if (st.remaining <= 0) {
+                            st.status = 'Expired';
+                            st.statusReason = `Forfeited on ${monthEndDisplay} (Exceeded 2-day carry-forward cap)`;
+                        }
+                    }
+                }
+            }
+
+            carriedOver = monthEarned.filter(c => c.remaining > 0);
+        }
+
+        // Apply calculated states back to list items
+        list.forEach(item => {
+            const st = itemStateMap.get(item.id);
+            if (st) {
+                item.validUntil = st.validUntilStr;
+                if (st.status === 'Active') {
+                    if (st.remaining <= 0) {
+                        item.status = 'Used';
+                        const firstUse = st.usedBy[0];
+                        const dateFormatted = firstUse ? format(new Date(firstUse.date.replace(/-/g, '/')), 'dd MMM') : '';
+                        item.statusReason = st.usedBy.length > 1
+                            ? `Used across ${st.usedBy.length} leaves (${st.usedBy.map(u => `${u.days}d on ${format(new Date(u.date.replace(/-/g, '/')), 'dd MMM')}`).join(', ')})`
+                            : `Used on ${dateFormatted} for Comp Off leave`;
+                    } else if (st.remaining < item.credit) {
+                        item.status = 'Active';
+                        item.statusReason = `${st.remaining.toFixed(1)}d available until ${st.validUntilStr} (${(item.credit - st.remaining).toFixed(1)}d used)`;
+                    } else {
+                        item.status = 'Active';
+                        item.statusReason = `Available until ${st.validUntilStr}`;
+                    }
+                } else {
+                    item.status = st.status;
+                    item.statusReason = st.statusReason;
+                }
+            }
         });
 
         // Sort descending by date (latest first)
@@ -1056,6 +1210,7 @@ const LeaveDashboard: React.FC = () => {
             approvedDateStr?: string;
             reason?: string;
             isCapped?: boolean;
+            isExpiry?: boolean;
         };
 
         const entries: Omit<CompLedgerEntry, 'runningBalance'>[] = [];
@@ -1094,7 +1249,7 @@ const LeaveDashboard: React.FC = () => {
                 return type.includes('comp') && (status === 'approved' || status === 'correction_made');
             });
 
-        coLeaves.forEach((l, idx) => {
+        const coLeavesMapped = coLeaves.map((l, idx) => {
             let days = l.dayOption === 'half' ? 0.5 : 1;
             if (l.startDate !== l.endDate && l.dayOption !== 'half') {
                 days = differenceInCalendarDays(new Date(l.endDate.replace(/-/g, '/')), new Date(l.startDate.replace(/-/g, '/'))) + 1;
@@ -1105,26 +1260,124 @@ const LeaveDashboard: React.FC = () => {
                 ? format(new Date(l.startDate.replace(/-/g, '/')), 'dd MMM yyyy')
                 : `${format(new Date(l.startDate.replace(/-/g, '/')), 'dd MMM')} - ${format(new Date(l.endDate.replace(/-/g, '/')), 'dd MMM yyyy')}`;
 
-            entries.push({
+            return {
                 id: l.id || `co-taken-${idx}`,
                 date: l.startDate,
-                type: 'debit',
-                description: `Compensatory Off Taken (${dateDisplay})`,
-                amount: days,
-                details: l.reason || 'Applied compensatory leave',
+                days,
+                dateDisplay,
+                reason: l.reason,
                 approverName,
                 approverPhoto,
-                approvedDateStr,
+                approvedDateStr
+            };
+        });
+
+        coLeavesMapped.forEach(l => {
+            entries.push({
+                id: l.id,
+                date: l.date,
+                type: 'debit',
+                description: `Compensatory Off Taken (${l.dateDisplay})`,
+                amount: l.days,
+                details: l.reason || 'Applied compensatory leave',
+                approverName: l.approverName,
+                approverPhoto: l.approverPhoto,
+                approvedDateStr: l.approvedDateStr,
                 reason: l.reason
             });
         });
 
-        // Sort chronologically
+        // Add monthly expiration & carry-forward cap forfeiture debits
+        const targetYear = viewingDate.getFullYear();
+        const viewingMonth = viewingDate.getMonth();
+        const sortedCredits = [...compOffEarnedBreakup]
+            .filter(item => item.type !== 'opening')
+            .sort((a, b) => new Date(a.date.replace(/-/g, '/')).getTime() - new Date(b.date.replace(/-/g, '/')).getTime());
+
+        let simCarriedOver: Array<{ id: string; source: string; remaining: number }> = [];
+
+        for (let m = 0; m <= viewingMonth; m++) {
+            const monthEarned = sortedCredits
+                .filter(item => new Date(item.date.replace(/-/g, '/')).getMonth() === m)
+                .map(item => ({ id: item.id, source: item.source, remaining: item.credit }));
+
+            const monthLeaves = coLeavesMapped.filter(l => new Date(l.date.replace(/-/g, '/')).getMonth() === m);
+
+            for (const l of monthLeaves) {
+                let needed = l.days;
+                for (const c of simCarriedOver) {
+                    if (needed <= 0) break;
+                    if (c.remaining > 0) {
+                        const deduct = Math.min(c.remaining, needed);
+                        c.remaining -= deduct;
+                        needed -= deduct;
+                    }
+                }
+                for (const c of monthEarned) {
+                    if (needed <= 0) break;
+                    if (c.remaining > 0) {
+                        const deduct = Math.min(c.remaining, needed);
+                        c.remaining -= deduct;
+                        needed -= deduct;
+                    }
+                }
+            }
+
+            const monthEndDate = new Date(targetYear, m + 1, 0);
+            const monthEndStr = format(monthEndDate, 'yyyy-MM-dd');
+            const monthEndDisplay = format(monthEndDate, 'dd MMM yyyy');
+
+            // 1. Carried-over credits from m-1 expire at end of month m
+            for (const c of simCarriedOver) {
+                if (c.remaining > 0) {
+                    entries.push({
+                        id: `comp-expiry-${c.id}-${m}`,
+                        date: monthEndStr,
+                        type: 'debit',
+                        description: `Expired: Unused Comp Off (${c.source})`,
+                        amount: c.remaining,
+                        details: `Expired on ${monthEndDisplay} (Unused within 2-month validity period)`,
+                        isExpiry: true,
+                        reason: '2-Month Validity Expiry'
+                    });
+                    c.remaining = 0;
+                }
+            }
+
+            // 2. Carry-forward cap (max 2.0d)
+            const totalMonthRemaining = monthEarned.reduce((sum, c) => sum + c.remaining, 0);
+            if (totalMonthRemaining > 2.0) {
+                const excess = Math.round((totalMonthRemaining - 2.0) * 10) / 10;
+                entries.push({
+                    id: `comp-forfeit-${m}`,
+                    date: monthEndStr,
+                    type: 'debit',
+                    description: `Carry-Forward Cap (Max 2.0d/mo)`,
+                    amount: excess,
+                    details: `Forfeited on ${monthEndDisplay} (Exceeded 2-day carry-forward cap)`,
+                    isExpiry: true,
+                    reason: 'Monthly Carry-Forward Cap'
+                });
+                let ex = excess;
+                for (let i = monthEarned.length - 1; i >= 0 && ex > 0; i--) {
+                    const deduct = Math.min(monthEarned[i].remaining, ex);
+                    monthEarned[i].remaining -= deduct;
+                    ex -= deduct;
+                }
+            }
+
+            simCarriedOver = monthEarned.filter(c => c.remaining > 0);
+        }
+
+        // Sort chronologically:
+        // Date asc -> credit before debit -> leave debit before expiry debit
         entries.sort((a, b) => {
             const cmp = new Date(a.date.replace(/-/g, '/')).getTime() - new Date(b.date.replace(/-/g, '/')).getTime();
             if (cmp !== 0) return cmp;
             if (a.type === 'credit' && b.type === 'debit') return -1;
             if (a.type === 'debit' && b.type === 'credit') return 1;
+            if (!a.isExpiry && b.isExpiry) return -1;
+            if (a.isExpiry && !b.isExpiry) return 1;
             return 0;
         });
 
@@ -3568,15 +3821,15 @@ const LeaveDashboard: React.FC = () => {
                                     <div className="flex items-center gap-2">
                                         <CalendarClock className="w-4 h-4 text-[#44D62C] flex-shrink-0" />
                                         <span className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-white">
-                                            Comp Off Policy & Capacity
+                                            Comp Off Policy & Validity Rules
                                         </span>
                                     </div>
                                     <span className="text-[11px] sm:text-xs font-bold px-2.5 py-0.5 rounded-md bg-[#44D62C]/20 text-[#44D62C] border border-[#44D62C]/30 w-fit">
-                                        Max Capacity: 4.0 Days
+                                        Max Capacity: 4.0 Days • Carry-Forward: Max 2.0 Days
                                     </span>
                                 </div>
                                 <p className="text-xs text-slate-600 dark:text-white/80 leading-relaxed">
-                                    Compensatory Off is earned by working on scheduled Weekly Offs (Sundays) or approved Company Holidays. As per company policy, accumulated Compensatory Off is capped at a maximum of <strong>4.0 days</strong> at any time.
+                                    Compensatory Off is earned by working on scheduled Weekly Offs (Sundays) or approved Company Holidays. As per company policy, earned credits are valid for use in the earned month and the following month (<strong>2-month validity window</strong>), can carry forward up to <strong>2.0 days</strong> across months, and the total active pool is capped at a maximum of <strong>4.0 days</strong> at any time.
                                 </p>
 
                                 {/* Capacity Bar */}
@@ -3586,7 +3839,7 @@ const LeaveDashboard: React.FC = () => {
                                     return (
                                         <div className="space-y-1.5 pt-1">
                                             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center text-[11px] font-semibold text-slate-500 dark:text-white/70 gap-0.5">
-                                                <span>Current Pool: <strong className="text-slate-900 dark:text-white">{availableCompOff.toFixed(1)} days</strong></span>
+                                                <span>Current Active Pool: <strong className="text-slate-900 dark:text-white">{availableCompOff.toFixed(1)} days</strong></span>
                                                 <span>Capacity Used: <strong className="text-emerald-600 dark:text-[#44D62C]">{capPercent.toFixed(0)}%</strong> (Max 4d)</span>
                                             </div>
                                             <div className="w-full bg-slate-200 dark:bg-[#092c19] h-2.5 rounded-full overflow-hidden border border-slate-300 dark:border-[#134426]">
@@ -3613,7 +3866,7 @@ const LeaveDashboard: React.FC = () => {
                                 {compOffEarnedBreakup.length > 0 ? (
                                     <>
                                         <div className="hidden sm:block border border-slate-200 dark:border-[#134426] rounded-xl overflow-x-auto shadow-2xs">
-                                            <table className="w-full text-left text-xs border-collapse min-w-[540px]">
+                                            <table className="w-full text-left text-xs border-collapse min-w-[620px]">
                                                 <thead>
                                                     <tr className="bg-slate-100/80 dark:bg-[#041b0f] text-slate-600 dark:text-white/80 font-bold border-b border-slate-200 dark:border-[#134426]">
                                                         <th className="py-2.5 px-3 w-10 text-center">#</th>
@@ -3621,7 +3874,8 @@ const LeaveDashboard: React.FC = () => {
                                                         <th className="py-2.5 px-3 text-center whitespace-nowrap font-bold text-emerald-600 dark:text-[#44D62C]">Credit</th>
                                                         <th className="py-2.5 px-3">Occasion / Source</th>
                                                         <th className="py-2.5 px-3">Attendance & Hours</th>
-                                                        <th className="py-2.5 px-3 text-center whitespace-nowrap">Status</th>
+                                                        <th className="py-2.5 px-3 whitespace-nowrap">Valid Until</th>
+                                                        <th className="py-2.5 px-3 text-center whitespace-nowrap">Status & Details</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-slate-100 dark:divide-[#134426]/60">
@@ -3641,10 +3895,24 @@ const LeaveDashboard: React.FC = () => {
                                                             <td className="py-2.5 px-3 text-slate-500 dark:text-white/60 text-[11px]">
                                                                 {item.details}
                                                             </td>
+                                                            <td className="py-2.5 px-3 text-slate-600 dark:text-white/70 text-xs whitespace-nowrap">
+                                                                {item.validUntil || '-'}
+                                                            </td>
                                                             <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                                                                <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                                                                <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                                                    item.status === 'Active'
+                                                                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-[#44D62C]'
+                                                                        : item.status === 'Used'
+                                                                        ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                                                                        : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
+                                                                }`}>
                                                                     {item.status}
                                                                 </span>
+                                                                {item.statusReason && (
+                                                                    <div className="text-[10px] text-slate-500 dark:text-white/60 mt-0.5 max-w-[200px] mx-auto truncate" title={item.statusReason}>
+                                                                        {item.statusReason}
+                                                                    </div>
+                                                                )}
                                                             </td>
                                                         </tr>
                                                     ))}
@@ -3673,7 +3941,13 @@ const LeaveDashboard: React.FC = () => {
                                                             <span className="text-xs font-bold text-emerald-600 dark:text-[#44D62C]">
                                                                 +{item.credit.toFixed(1)}d
                                                             </span>
-                                                            <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 flex-shrink-0">
+                                                            <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider flex-shrink-0 ${
+                                                                item.status === 'Active'
+                                                                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-[#44D62C]'
+                                                                    : item.status === 'Used'
+                                                                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                                                                    : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
+                                                            }`}>
                                                                 {item.status}
                                                             </span>
                                                         </div>
@@ -3685,6 +3959,17 @@ const LeaveDashboard: React.FC = () => {
                                                         <p className="text-[11px] text-slate-500 dark:text-white/60 mt-0.5">
                                                             {item.details}
                                                         </p>
+                                                        {item.validUntil && (
+                                                            <div className="text-[10px] text-slate-500 dark:text-white/60 flex items-center justify-between mt-1 pt-1 border-t border-slate-100 dark:border-white/5">
+                                                                <span>Valid Until:</span>
+                                                                <strong className="text-slate-700 dark:text-white/80">{item.validUntil}</strong>
+                                                            </div>
+                                                        )}
+                                                        {item.statusReason && (
+                                                            <p className="text-[10px] text-slate-500 dark:text-white/60 italic mt-0.5">
+                                                                {item.statusReason}
+                                                            </p>
+                                                        )}
                                                     </div>
                                                 </div>
                                             ))}
@@ -3948,13 +4233,15 @@ const LeaveDashboard: React.FC = () => {
                                                         </td>
                                                         <td className="py-2 px-3 text-center whitespace-nowrap">
                                                             <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                                                                entry.type === 'credit'
+                                                                entry.isExpiry
+                                                                    ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
+                                                                    : entry.type === 'credit'
                                                                     ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
                                                                     : entry.type === 'debit'
                                                                     ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
                                                                     : 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300'
                                                             }`}>
-                                                                {entry.type === 'credit' ? 'Credit (+)' : entry.type === 'debit' ? 'Debit (-)' : 'Opening'}
+                                                                {entry.isExpiry ? (entry.description.includes('Cap') ? 'Cap (-)' : 'Expired (-)') : entry.type === 'credit' ? 'Credit (+)' : entry.type === 'debit' ? 'Debit (-)' : 'Opening'}
                                                             </span>
                                                         </td>
                                                         <td className={`py-2 px-3 text-center font-bold whitespace-nowrap ${
@@ -3973,7 +4260,12 @@ const LeaveDashboard: React.FC = () => {
                                                             )}
                                                         </td>
                                                         <td className="py-2 px-3 whitespace-nowrap text-slate-600 dark:text-white/70">
-                                                            {entry.approverName ? (
+                                                            {entry.isExpiry ? (
+                                                                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400">
+                                                                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                                                                    {entry.reason || '2-Month Validity Expiry'}
+                                                                </span>
+                                                            ) : entry.approverName ? (
                                                                 <div className="flex items-center gap-1.5">
                                                                     {entry.approverPhoto && (
                                                                         <img src={entry.approverPhoto} alt={entry.approverName} className="w-5 h-5 rounded-full object-cover" />
@@ -4003,13 +4295,15 @@ const LeaveDashboard: React.FC = () => {
                                                         </span>
                                                     </div>
                                                     <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                                                        entry.type === 'credit'
+                                                        entry.isExpiry
+                                                            ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
+                                                            : entry.type === 'credit'
                                                             ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
                                                             : entry.type === 'debit'
                                                             ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
                                                             : 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300'
                                                     }`}>
-                                                        {entry.type === 'credit' ? `+${entry.amount.toFixed(1)}d Credit` : entry.type === 'debit' ? `-${entry.amount.toFixed(1)}d Debit` : `${entry.amount.toFixed(1)}d Opening`}
+                                                        {entry.isExpiry ? (entry.description.includes('Cap') ? `-${entry.amount.toFixed(1)}d Cap` : `-${entry.amount.toFixed(1)}d Expired`) : entry.type === 'credit' ? `+${entry.amount.toFixed(1)}d Credit` : entry.type === 'debit' ? `-${entry.amount.toFixed(1)}d Debit` : `${entry.amount.toFixed(1)}d Opening`}
                                                     </span>
                                                 </div>
                                                 <div className="text-xs text-slate-800 dark:text-white font-semibold">
@@ -4022,7 +4316,7 @@ const LeaveDashboard: React.FC = () => {
                                                 )}
                                                 <div className="flex items-center justify-between text-xs pt-1.5 border-t border-slate-200/60 dark:border-[#134426]/60">
                                                     <span className="text-slate-500 dark:text-white/60 text-[11px]">
-                                                        {entry.approverName ? `Approved by ${entry.approverName}` : 'Biometric Work Grant'}
+                                                        {entry.isExpiry ? (entry.reason || '2-Month Validity Expiry') : entry.approverName ? `Approved by ${entry.approverName}` : 'Biometric Work Grant'}
                                                     </span>
                                                     <span className="text-[11px] font-bold text-slate-900 dark:text-white">
                                                         Pool: <strong className="text-blue-600 dark:text-blue-400 text-xs font-black">{entry.runningBalance.toFixed(1)}d / 4</strong>

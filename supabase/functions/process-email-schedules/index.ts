@@ -531,6 +531,9 @@ serve(async (req: Request) => {
         subject = render(subject, dataItem || {});
         html = render(html, dataItem || {});
 
+        // Clean up any unreplaced greeting placeholders
+        html = html.replace(/\{greetingMessage\}/gi, greetingMessage || '').replace(/\{greeting_message\}/gi, greetingMessage || '');
+
         // ── Resolve recipients ──
         let emails = await resolveRecipients(supabase, rule);
         
@@ -1751,7 +1754,7 @@ async function generateCRMBdDailyReport(supabase: ReturnType<typeof createClient
 
   const [eventsRes, leadsRes, callsRes] = await Promise.all([
     supabase.from('attendance_events').select('user_id, type, timestamp, latitude, longitude, travel_distance').gte('timestamp', startOfTodayUTC.toISOString()).lte('timestamp', endOfTodayUTC.toISOString()).order('timestamp', { ascending: true }),
-    supabase.from('crm_leads').select('id, created_by, assigned_to, company_name, contact_person, status, created_at').gte('created_at', startOfTodayUTC.toISOString()).lte('created_at', endOfTodayUTC.toISOString()),
+    supabase.from('crm_leads').select('id, created_by, assigned_to, client_name, association_name, contact_person, status, created_at').gte('created_at', startOfTodayUTC.toISOString()).lte('created_at', endOfTodayUTC.toISOString()),
     supabase.from('crm_followups').select('created_by, type, lead_id, created_at').gte('created_at', startOfTodayUTC.toISOString()).lte('created_at', endOfTodayUTC.toISOString())
   ]);
 
@@ -1836,7 +1839,7 @@ async function generateCRMBdDailyReport(supabase: ReturnType<typeof createClient
       newLeadsToday.forEach((lead: any, i: number) => {
         const bg = i % 2 === 0 ? '#ffffff' : '#f8fafc';
         new_leads_table += `<tr style="background:${bg};">
-          <td style="padding:12px 14px;font-size:12px;color:#1e293b;font-weight:600;border-top:1px solid #f1f5f9;">${lead.company_name}</td>
+          <td style="padding:12px 14px;font-size:12px;color:#1e293b;font-weight:600;border-top:1px solid #f1f5f9;">${lead.client_name || lead.association_name || 'Lead'}</td>
           <td style="padding:12px 14px;font-size:12px;color:#475569;border-top:1px solid #f1f5f9;">${lead.contact_person || '-'}</td>
           <td style="padding:12px 14px;text-align:center;border-top:1px solid #f1f5f9;">
             <span style="background:#e0e7ff;color:#4338ca;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600;">${lead.status}</span>
@@ -1902,6 +1905,9 @@ async function generateCRMBdDailyReport(supabase: ReturnType<typeof createClient
       bdName: bd.name || 'BD',
       report_date: format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy'),
       reportDate: format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy'),
+      greetingMessage: `Daily Activity Report for ${bd.name || 'BD'} for ${format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy')}.`,
+      customGreeting: `Daily Activity Report for ${bd.name || 'BD'} for ${format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy')}.`,
+      summary: `Daily Activity Report for ${bd.name || 'BD'} for ${format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy')}.`,
       attendance_status,
       attendanceStatus: attendance_status,
       check_in_time,

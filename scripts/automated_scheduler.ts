@@ -135,12 +135,12 @@ async function run() {
 
     // Generate Report
     console.log(`  → Executing: Generating ${rule.report_type} report...`);
-    let reportData: Record<string, string> = { date: format(nowIST, 'EEEE, MMMM do, yyyy') };
+    let reportData: any = { date: format(nowIST, 'EEEE, MMMM do, yyyy') };
     
     try {
       const generator = reportGenerators[rule.report_type as keyof typeof reportGenerators];
       if (generator) {
-        reportData = await generator(supabase, nowIST);
+        reportData = await (generator as any)(supabase, nowIST);
       } else {
         console.warn(`  [!] No generator found for report type: ${rule.report_type}`);
         // Default placeholders
@@ -151,23 +151,6 @@ async function run() {
       continue;
     }
 
-    // Render Template
-    const template = templateMap.get(rule.template_id);
-    let subject = template?.subject_template || rule.name;
-    let html = template?.body_template || getDefaultTemplate();
-
-    // Conditionals & Placeholders
-    subject = evaluateConditionals(subject, reportData);
-    html = evaluateConditionals(html, reportData);
-
-    const render = (text: string) => text.replace(/\{(\w+)\}/g, (match, key) => {
-      const dataKey = Object.keys(reportData).find(k => k.toLowerCase() === key.toLowerCase());
-      return dataKey ? reportData[dataKey] : match;
-    });
-
-    subject = render(subject);
-    html = render(html);
-
     // Resolve Recipients
     const emails = await resolveRecipients(supabase, rule);
     if (emails.length === 0) {
@@ -175,41 +158,78 @@ async function run() {
       continue;
     }
 
-    // Send Email
-    try {
-      console.log(`  → Sending email to ${emails.length} recipient(s)...`);
-      const info = await transporter.sendMail({
-        from: `"${fromName}" <${fromEmail}>`,
-        to: emails.join(', '),
-        replyTo,
-        subject,
-        html,
+    // Render Template
+    const template = templateMap.get(rule.template_id);
+    const reportDataList: any[] = Array.isArray(reportData) ? reportData : [reportData];
+
+    for (const dataItem of reportDataList) {
+      let greetingMessage = dataItem.greetingMessage || dataItem.customGreeting || `Here is your automated status update for ${dataItem.date || istDateStr}.`;
+      if (rule.report_type === 'attendance_daily') {
+        greetingMessage = `Dear Team,<br/><br/>Today's attendance for <strong>${dataItem.date || istDateStr}</strong> stands at <strong>${dataItem.attendancePercentage || '0'}%</strong>. A total of <strong>${dataItem.totalAbsent || '0'}</strong> employees were absent, and <strong>${dataItem.lateCount || '0'}</strong> reported late.<br/><br/>Attendance summary:`;
+      } else if (rule.report_type === 'crm_bd_daily' || rule.report_type === 'bd_daily') {
+        greetingMessage = `Dear Management,<br/><br/>Daily Activity Report for <strong>${dataItem.bd_name || dataItem.bdName || 'BD'}</strong> for <strong>${dataItem.report_date || dataItem.reportDate || istDateStr}</strong>.`;
+      }
+
+      dataItem.greetingMessage = greetingMessage;
+      dataItem.customGreeting = greetingMessage;
+      dataItem.summary = greetingMessage;
+
+      let subject = template?.subject_template || rule.name;
+      let html = template?.body_template || getDefaultTemplate();
+
+      // Conditionals & Placeholders
+      subject = evaluateConditionals(subject, dataItem);
+      html = evaluateConditionals(html, dataItem);
+
+      const render = (text: string) => text.replace(/\{(\w+)\}/g, (match, key) => {
+        const cleanKey = key.toLowerCase().replace(/[_-]/g, '');
+        const dataKey = Object.keys(dataItem).find(k => k.toLowerCase().replace(/[_-]/g, '') === cleanKey);
+        return (dataKey && dataItem[dataKey] !== undefined && dataItem[dataKey] !== null) ? String(dataItem[dataKey]) : match;
       });
 
-      console.log(`  ✅ Success: ${info.messageId}`);
+      subject = render(subject);
+      html = render(html);
 
-      // Log & Update
-      await Promise.all([
-        ...emails.map(email => supabase.from('email_logs').insert({ 
+      // Clean up any unreplaced greeting placeholders
+      html = html.replace(/\{greetingMessage\}/gi, greetingMessage).replace(/\{greeting_message\}/gi, greetingMessage);
+
+      // Send Email
+      try {
+        console.log(`  → Sending email to ${emails.length} recipient(s)...`);
+        const info = await transporter.sendMail({
+          from: `"${fromName}" <${fromEmail}>`,
+          to: emails.join(', '),
+          replyTo,
+          subject,
+          html,
+        });
+
+        console.log(`  ✅ Success: ${info.messageId}`);
+
+        // Log
+        await Promise.all([
+          ...emails.map(email => supabase.from('email_logs').insert({ 
+            rule_id: rule.id, 
+            template_id: rule.template_id, 
+            recipient_email: email, 
+            subject, 
+            status: 'sent' 
+          }))
+        ]);
+      } catch (sendErr: any) {
+        console.error(`  ❌ Failed to send email:`, sendErr.message);
+        await Promise.all(emails.map(email => supabase.from('email_logs').insert({ 
           rule_id: rule.id, 
           template_id: rule.template_id, 
           recipient_email: email, 
           subject, 
-          status: 'sent' 
-        })),
-        supabase.from('email_schedule_rules').update({ last_sent_at: now.toISOString() }).eq('id', rule.id)
-      ]);
-    } catch (sendErr: any) {
-      console.error(`  ❌ Failed to send email:`, sendErr.message);
-      await Promise.all(emails.map(email => supabase.from('email_logs').insert({ 
-        rule_id: rule.id, 
-        template_id: rule.template_id, 
-        recipient_email: email, 
-        subject, 
-        status: 'failed', 
-        error_message: sendErr.message 
-      })));
+          status: 'failed', 
+          error_message: sendErr.message 
+        })));
+      }
     }
+
+    await supabase.from('email_schedule_rules').update({ last_sent_at: now.toISOString() }).eq('id', rule.id);
   }
 
   console.log(`\n[Scheduler] Completed. ${new Date().toISOString()}`);

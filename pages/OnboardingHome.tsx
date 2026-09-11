@@ -60,14 +60,14 @@ const OnboardingHome: React.FC = () => {
               {hasDraft && (
                 <button
                   onClick={handleContinue}
-                  className="w-full py-3 px-4 rounded-2xl bg-[#041b0f] border border-[#134426] text-white font-black text-xs uppercase tracking-wider hover:border-[#44D62C]/40 active:scale-95 transition-all cursor-pointer"
+                  className="w-full py-3.5 px-4 rounded-2xl btn-primary font-black text-sm uppercase tracking-wider cursor-pointer"
                 >
                   Continue Previous Application
                 </button>
               )}
               <button
                 onClick={handleStart}
-                className="w-full py-3.5 px-4 rounded-2xl bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-sm uppercase tracking-wider shadow-[0_4px_16px_rgba(68,214,44,0.35)] active:scale-95 transition-all cursor-pointer"
+                className={`w-full py-3.5 px-4 rounded-2xl ${hasDraft ? 'fo-btn-secondary font-bold text-xs uppercase' : 'btn-primary font-black text-sm uppercase'} tracking-wider cursor-pointer`}
               >
                 {hasDraft ? 'Start Fresh' : 'Start New Application'}
               </button>

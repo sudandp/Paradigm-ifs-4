@@ -4144,7 +4144,7 @@ const ProfilePage: React.FC = () => {
                                                     <option value="Other">Other</option>
                                                 </select>
                                             </div>
-                                            <Button type="submit" isLoading={isSaving} disabled={!isDirty} className="w-full !bg-emerald-600 hover:!bg-emerald-700 text-white font-bold h-11 rounded-xl shadow-lg shadow-emerald-500/10">Save Changes</Button>
+                                            <Button type="submit" isLoading={isSaving} disabled={!isDirty} className="w-full font-bold h-11 rounded-xl shadow-lg">Save Changes</Button>
                                         </form>
                                     </section>
 

@@ -571,7 +571,7 @@ export const getQueue = async (req: Request, res: Response) => {
     // Call Queue = candidates needing HR follow-up (new + contacted stages)
     let query = supabase
       .from('candidate_referrals')
-      .select('*, assigned_hr:users!candidate_referrals_assigned_hr_id_fkey(name)')
+      .select('*, assigned_hr:users!candidate_referrals_assigned_hr_id_fkey(id, name, role_id, reporting_manager_id)')
       .in('current_stage', ['new', 'contacted']);
 
     // Filter by assigned HR
@@ -584,52 +584,160 @@ export const getQueue = async (req: Request, res: Response) => {
     const { data: candidates, error } = await query;
     if (error) throw error;
 
+    // Batch fetch reporting managers for assigned recruiters
+    const managerIds = Array.from(
+      new Set(
+        (candidates || [])
+          .map((c: any) => c.assigned_hr?.reporting_manager_id)
+          .filter(Boolean)
+      )
+    );
+
+    const managersMap: Record<string, { id: string; name: string; role_id?: string }> = {};
+    if (managerIds.length > 0) {
+      try {
+        const { data: managers } = await supabase
+          .from('users')
+          .select('id, name, role_id')
+          .in('id', managerIds);
+        if (managers) {
+          managers.forEach((m: any) => {
+            managersMap[m.id] = m;
+          });
+        }
+      } catch (mErr) {
+        console.warn('[hrmController] Failed to load reporting managers:', mErr);
+      }
+    }
+
     const enrichedRows: any[] = [];
     const now = new Date();
     const fortyEightHrsAgo = new Date();
     fortyEightHrsAgo.setHours(fortyEightHrsAgo.getHours() - 48);
 
     for (const cand of candidates || []) {
-      // Get last call summary
       const { data: calls } = await supabase
         .from('hrm_call_logs')
-        .select('*')
+        .select('*, called_by_user:users!hrm_call_logs_called_by_fkey(name, role_id)')
         .eq('candidate_id', cand.id)
         .order('called_at', { ascending: false })
         .limit(1);
 
-      const lastCall = calls && calls.length > 0 ? calls[0] : null;
-      let isOverdue = false;
+      const { data: stages } = await supabase
+        .from('hrm_candidate_stages')
+        .select('stage, changed_at, reason, changed_by_user:users!hrm_candidate_stages_changed_by_fkey(name, role_id)')
+        .eq('candidate_id', cand.id)
+        .order('changed_at', { ascending: false })
+        .limit(1);
 
-      if (!lastCall) {
-        // No call ever made — overdue if created > 48hrs ago
-        const createdDate = new Date(cand.created_at);
-        if (createdDate < fortyEightHrsAgo) {
-          isOverdue = true;
-        }
-      } else {
-        // Has a call log — check if next_call_at is past due
-        if (lastCall.next_call_at && new Date(lastCall.next_call_at) < now) {
-          isOverdue = true;
-        }
-        // Also overdue if last call was > 48hrs ago and still not progressed
-        const lastCallDate = new Date(lastCall.called_at);
-        if (lastCallDate < fortyEightHrsAgo) {
-          isOverdue = true;
-        }
+      const lastCall = calls && calls.length > 0 ? calls[0] : null;
+      const lastStage = stages && stages.length > 0 ? stages[0] : null;
+
+      const latestFollowup = lastStage ? {
+        stage: lastStage.stage,
+        changedAt: lastStage.changed_at,
+        changedBy: lastStage.changed_by_user?.name || cand.assigned_hr?.name,
+        changedByRole: lastStage.changed_by_user?.role_id || cand.assigned_hr?.role_id,
+        reason: lastStage.reason
+      } : (cand.assigned_hr ? {
+        stage: cand.current_stage || 'new',
+        changedAt: cand.assigned_at || cand.created_at,
+        changedBy: cand.assigned_hr.name,
+        changedByRole: cand.assigned_hr.role_id,
+        reason: null
+      } : null);
+
+      let contactSummary: any = null;
+      if (lastCall) {
+        contactSummary = {
+          outcome: lastCall.outcome,
+          calledAt: lastCall.called_at,
+          calledBy: lastCall.called_by_user?.name || cand.assigned_hr?.name,
+          nextCallAt: lastCall.next_call_at
+        };
+      } else if (lastStage && lastStage.stage !== 'new') {
+        contactSummary = {
+          outcome: lastStage.reason || lastStage.stage,
+          calledAt: lastStage.changed_at,
+          calledBy: lastStage.changed_by_user?.name || cand.assigned_hr?.name,
+          nextCallAt: null
+        };
       }
+
+      // SLA & Overdue calculation (48 hours threshold)
+      let isOverdue = false;
+      let overdueHours = 0;
+      let overdueDays = 0;
+      let remainingHours = 0;
+
+      const refDate = contactSummary?.calledAt
+        ? new Date(contactSummary.calledAt)
+        : (cand.assigned_at ? new Date(cand.assigned_at) : new Date(cand.created_at));
+
+      const elapsedMs = now.getTime() - refDate.getTime();
+      const slaLimitMs = 48 * 60 * 60 * 1000;
+
+      if (contactSummary?.nextCallAt && new Date(contactSummary.nextCallAt) < now) {
+        isOverdue = true;
+        const diffMs = now.getTime() - new Date(contactSummary.nextCallAt).getTime();
+        overdueHours = Math.max(1, Math.round(diffMs / (1000 * 60 * 60)));
+        overdueDays = Math.floor(overdueHours / 24);
+      } else if (elapsedMs > slaLimitMs) {
+        isOverdue = true;
+        const overdueMs = elapsedMs - slaLimitMs;
+        overdueHours = Math.max(1, Math.round(overdueMs / (1000 * 60 * 60)));
+        overdueDays = Math.floor(overdueHours / 24);
+      } else {
+        isOverdue = false;
+        const remainingMs = Math.max(0, slaLimitMs - elapsedMs);
+        remainingHours = Math.round(remainingMs / (1000 * 60 * 60));
+      }
+
+      const reportingMgrId = cand.assigned_hr?.reporting_manager_id;
+      const reportingManager = reportingMgrId ? (managersMap[reportingMgrId] || null) : null;
+      const responsibleName = cand.assigned_hr?.name || 'Unassigned';
+      const responsibleRoleId = cand.assigned_hr?.role_id;
+      const reportingManagerName = reportingManager?.name;
+
+      const statusText = isOverdue
+        ? (overdueDays >= 1 ? `Overdue by ${overdueDays}d` : `Overdue by ${overdueHours}h`)
+        : `${remainingHours}h remaining`;
+
+      const slaDetails = {
+        isOverdue,
+        overdueDays,
+        overdueHours,
+        remainingHours,
+        responsibleName,
+        responsibleRoleId,
+        reportingManagerName,
+        reportingManagerId: reportingMgrId,
+        statusText
+      };
+
+      const locationCluster = ((loc?: string | null) => {
+        if (!loc) return 'Bangalore';
+        const l = loc.toLowerCase().trim();
+        if (l.includes('hyd') || l.includes('secunderabad') || l.includes('telangana')) return 'Hyderabad';
+        return 'Bangalore';
+      })(cand.site_location);
 
       const row = {
         ...toCamelCase(cand),
-        lastCall: lastCall ? toCamelCase(lastCall) : null,
+        siteLocation: cand.site_location || 'Bangalore',
+        locationCluster,
+        assignedAt: cand.assigned_at || (cand.assigned_hr_id ? cand.created_at : null),
+        lastCall: contactSummary ? toCamelCase(contactSummary) : null,
+        latestFollowup: latestFollowup ? toCamelCase(latestFollowup) : null,
+        reportingManager: reportingManager ? toCamelCase(reportingManager) : null,
+        slaDetails,
         isOverdue
       };
 
-      // Filter status
       if (status === 'overdue' && !isOverdue) continue;
       if (status === 'today') {
         const todayStr = now.toISOString().split('T')[0];
-        const nextCallStr = lastCall?.next_call_at ? new Date(lastCall.next_call_at).toISOString().split('T')[0] : '';
+        const nextCallStr = contactSummary?.nextCallAt ? new Date(contactSummary.nextCallAt).toISOString().split('T')[0] : '';
         const createdTodayStr = new Date(cand.created_at).toISOString().split('T')[0];
         if (nextCallStr !== todayStr && createdTodayStr !== todayStr) continue;
       }
@@ -650,32 +758,63 @@ export const getQueue = async (req: Request, res: Response) => {
 export const assignHr = async (req: Request, res: Response) => {
   try {
     const { candidateIds, hrUserId } = req.body;
+    const nowIso = new Date().toISOString();
     
     const { error } = await supabase
       .from('candidate_referrals')
-      .update({ assigned_hr_id: hrUserId })
+      .update({ assigned_hr_id: hrUserId, assigned_at: nowIso })
       .in('id', candidateIds);
+
+    if (error) {
+      const fallback = await supabase
+        .from('candidate_referrals')
+        .update({ assigned_hr_id: hrUserId })
+        .in('id', candidateIds);
+      if (fallback.error) throw fallback.error;
+    }
 
     if (error) throw error;
 
-    // Trigger in-app notification and FCM push for the newly assigned recruiter
+    // Trigger in-app notification and FCM push for the newly assigned recruiter and reporting manager
     if (hrUserId && candidateIds && candidateIds.length > 0) {
       try {
-        const title = 'New Candidates Assigned';
-        const msg = `You have been assigned ${candidateIds.length} new candidate(s) to follow up on.`;
+        const { data: hrUser } = await supabase
+          .from('users')
+          .select('id, name, reporting_manager_id')
+          .eq('id', hrUserId)
+          .single();
 
-        // In-app Notification
+        const title = 'New Candidates Assigned';
+        const candidateCount = candidateIds.length;
+        const msg = `You have been assigned ${candidateCount} new candidate(s) to follow up on (48h SLA).`;
+
+        // In-app Notification to recruiter
         await supabase.from('notifications').insert({
           user_id: hrUserId,
           message: msg,
           type: 'task_assigned',
+          severity: 'Medium',
+          link_to: '/hrm/calls/queue',
           is_read: false
         });
+
+        // In-app Notification to reporting manager
+        if (hrUser?.reporting_manager_id) {
+          const mgrMsg = `Lead Allocation: ${hrUser.name || 'Recruiter'} has been assigned ${candidateCount} candidate(s) (48h SLA).`;
+          await supabase.from('notifications').insert({
+            user_id: hrUser.reporting_manager_id,
+            message: mgrMsg,
+            type: 'task_assigned',
+            severity: 'Medium',
+            link_to: '/hrm/calls/queue',
+            is_read: false
+          });
+        }
 
         // FCM Push Notification
         await supabase.functions.invoke('send-notification', {
           body: {
-            userIds: [hrUserId],
+            userIds: [hrUserId, hrUser?.reporting_manager_id].filter(Boolean),
             title: title,
             message: msg,
             data: { type: 'task_assigned' }

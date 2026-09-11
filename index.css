@@ -1413,44 +1413,89 @@ html.dark input::placeholder, html.dark textarea::placeholder,
     box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.25) !important;
 }
 
-/* Primary Action CTA (Next / Save / Submit) - High-contrast Lime Pill */
-.pro-dark-theme .btn-primary {
-    background-color: #44D62C !important;
+/* Primary Action CTA (Next / Save / Submit / Continue) - Dark Mode Mobile App Only */
+.pro-dark-theme .btn-primary,
+.pro-dark-theme .fo-btn-primary,
+html.dark .btn-primary,
+html.dark .fo-btn-primary {
+    background: radial-gradient(circle at 40% 35%, #5af140, #44d62c 60%, #2fb81b) !important;
     color: #0A1809 !important;
     font-weight: 700 !important;
     font-size: 15px;
-    padding: 14px 28px;
+    padding: 12px 24px;
     text-transform: capitalize;
-    border-radius: 9999px !important;
+    border-radius: 14px !important;
     border: none !important;
-    box-shadow: 0 4px 18px rgba(68, 214, 44, 0.28) !important;
+    box-shadow: inset 0 2px 6px rgba(255, 255, 255, 0.25), 0 4px 14px rgba(68, 214, 44, 0.4) !important;
     letter-spacing: -0.01em;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
-.pro-dark-theme .btn-primary:hover {
-    background-color: #3bc125 !important;
-    box-shadow: 0 6px 22px rgba(68, 214, 44, 0.38) !important;
+
+.pro-dark-theme .btn-primary svg,
+.pro-dark-theme .fo-btn-primary svg,
+html.dark .btn-primary svg,
+html.dark .fo-btn-primary svg {
+    color: #0A1809 !important;
+    stroke: #0A1809 !important;
 }
-.pro-dark-theme .btn-primary:active {
-    transform: scale(0.98);
+
+.pro-dark-theme .btn-primary:hover,
+.pro-dark-theme .fo-btn-primary:hover,
+html.dark .btn-primary:hover,
+html.dark .fo-btn-primary:hover {
+    filter: brightness(1.08) !important;
+    box-shadow: inset 0 2px 6px rgba(255, 255, 255, 0.35), 0 6px 20px rgba(68, 214, 44, 0.5) !important;
+}
+
+.pro-dark-theme .btn-primary:active,
+.pro-dark-theme .fo-btn-primary:active,
+html.dark .btn-primary:active,
+html.dark .fo-btn-primary:active {
+    transform: scale(0.97);
+}
+
+.pro-dark-theme .btn-primary:disabled,
+.pro-dark-theme .fo-btn-primary:disabled,
+html.dark .btn-primary:disabled,
+html.dark .fo-btn-primary:disabled {
+    background: radial-gradient(circle at 40% 35%, #5af140, #44d62c 60%, #2fb81b) !important;
+    color: #0A1809 !important;
+    opacity: 0.55 !important;
+    cursor: not-allowed !important;
+    box-shadow: inset 0 1px 3px rgba(255, 255, 255, 0.2), 0 2px 8px rgba(68, 214, 44, 0.2) !important;
 }
 
 /* Secondary Button (Back / Upload) - Deep Emerald Pill */
-.pro-dark-theme .btn-secondary {
+.pro-dark-theme .btn-secondary,
+.pro-dark-theme .fo-btn-secondary,
+html.dark .btn-secondary,
+html.dark .fo-btn-secondary {
     background-color: #092c19 !important;
     color: #ffffff !important;
     border: 1px solid #134426 !important;
     font-weight: 600;
     font-size: 14px;
     padding: 12px 24px;
-    border-radius: 9999px !important;
+    border-radius: 14px !important;
     transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
-.pro-dark-theme .btn-secondary:hover {
+.pro-dark-theme .btn-secondary:hover,
+.pro-dark-theme .fo-btn-secondary:hover,
+html.dark .btn-secondary:hover,
+html.dark .fo-btn-secondary:hover {
     background-color: #2F442E !important;
     border-color: #3e583d !important;
 }
-.pro-dark-theme .btn-secondary:active {
+.pro-dark-theme .btn-secondary:active,
+.pro-dark-theme .fo-btn-secondary:active,
+html.dark .btn-secondary:active,
+html.dark .fo-btn-secondary:active {
     transform: scale(0.98);
 }
 

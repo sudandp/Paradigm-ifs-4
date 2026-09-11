@@ -7167,11 +7167,9 @@ export const api = {
         if (!expiryStates.floating || isFloatingHolidayValid(leaveStart)) {
           if (isApproved) {
             balance.floatingUsed += leaveAmount;
-            balance.compOffUsed += leaveAmount;
           }
           if (isPending) {
             balance.floatingPending += leaveAmount;
-            balance.compOffPending += leaveAmount;
           }
         }
       } else if (type.includes('pink')) {
@@ -7201,30 +7199,34 @@ export const api = {
       }
     });
 
-    // --- COMP OFF CAP SIMULATION ---
-    // The user policy strictly caps the max available Comp Off balance at 4 at any time.
-    // Any balance > 4 at the end of the month is permanently forfeited.
-    // We simulate this month-by-month to accurately calculate lost leaves and adjust the total.
+    // --- COMP OFF 2-MONTH VALIDITY & CARRY-FORWARD SIMULATION ---
+    // Policy Rules:
+    // 1. Comp Off earned in month M is valid to use in month M and month M+1 (expires at end of M+1).
+    // 2. Maximum carry-forward from month M to M+1 is 2.0 days (excess is forfeited at end of M).
+    // 3. At any time, maximum active available balance is capped at 4.0 days.
+    // 4. Blue Leaves / Floating Leaves are separate and do not consume Comp Off.
+    // 5. FIFO deduction: leaves in month M consume carried-over balance from M-1 first, then current month M earnings.
     {
         const startMonth = new Date(yearStart.replace(/-/g, '/')).getMonth();
         const endMonth = referenceDate.getMonth();
-        
-        let simulatedBalance = 0;
-        if (!compOffOpeningDateObj || compOffOpeningDateObj < new Date(currentYear, startMonth, 1)) {
-            simulatedBalance += effectiveCompOffOpeningBalance;
-        }
-        
-        let totalLost = 0;
-        
+
+        let carriedFromPrev = 0; // Valid unexpired credits carried from month m-1 (max 2.0)
+        let activeBalance = 0;
+
         for (let m = startMonth; m <= endMonth; m++) {
-            let earnedThisMonth = 0;
-            let usedThisMonth = 0;
-            
-            if (compOffOpeningDateObj && compOffOpeningDateObj.getMonth() === m && compOffOpeningDateObj.getFullYear() === currentYear) {
-                simulatedBalance += effectiveCompOffOpeningBalance;
+            let carriedAvailable = carriedFromPrev;
+            let currentEarned = 0;
+
+            // Opening balance applies in its designated opening month
+            if (compOffOpeningDateObj) {
+                if (compOffOpeningDateObj.getMonth() === m && compOffOpeningDateObj.getFullYear() === currentYear) {
+                    currentEarned += effectiveCompOffOpeningBalance;
+                }
+            } else if (m === startMonth) {
+                currentEarned += effectiveCompOffOpeningBalance;
             }
-            
-            // 1. Dynamic Earned
+
+            // 1. Dynamic Earned in month m
             workDatesSet.forEach(dateStr => {
                 const date = new Date(dateStr.replace(/-/g, '/'));
                 if (date.getMonth() === m && date.getFullYear() === currentYear && date <= accrualEndDate) {
@@ -7239,20 +7241,20 @@ export const api = {
                                    l.start_date === dateStr;
                         });
                         if (hasCorrection) {
-                            earnedThisMonth += 1;
+                            currentEarned += 1;
                         } else {
                             const dayEvents = eventsByDay[dateStr] || [];
                             const { workingHours } = calculateWorkingHours(dayEvents, date);
                             const hasPunch = dayEvents.some(e => ['punch-in', 'site-in', 'check-in', 'site-ot-in'].includes(String(e.type || '').toLowerCase()));
-                            if (workingHours >= fullThreshold) earnedThisMonth += 1;
-                            else if (workingHours >= halfThreshold) earnedThisMonth += 0.5;
-                            else if (hasPunch) earnedThisMonth += 0.5;
+                            if (workingHours >= fullThreshold) currentEarned += 1;
+                            else if (workingHours >= halfThreshold) currentEarned += 0.5;
+                            else if (hasPunch) currentEarned += 0.5;
                         }
                     }
                 }
             });
-            
-            // 2. Manual Granted (deduplicated with dynamic events)
+
+            // 2. Manual Granted in month m
             (compOffData || []).forEach((log: any) => {
                 if (log.status === 'earned') {
                     const logDateStr = log.date_earned || log.dateEarned;
@@ -7260,26 +7262,33 @@ export const api = {
                         const logDate = new Date(logDateStr || log.created_at || log.createdAt);
                         if (logDate.getMonth() === m && logDate.getFullYear() === currentYear && logDate <= accrualEndDate) {
                             const val = typeof log.amount === 'number' ? log.amount : (log.day_option === 'half' ? 0.5 : 1);
-                            earnedThisMonth += val;
+                            currentEarned += val;
                         }
                     }
                 }
             });
-            
-            // 3. Manual Used
+
+            // Cap total pool in this month at 4.0
+            if (carriedAvailable + currentEarned > 4.0) {
+                currentEarned = Math.max(0, 4.0 - carriedAvailable);
+            }
+
+            // 3. Manual Used in month m (not linked to leave requests)
+            let usedInMonth = 0;
             (compOffData || []).forEach((log: any) => {
                 if (log.status === 'used' && !log.leave_request_id && !(log as any).leaveRequestId) {
                     const logDate = new Date(log.date_earned || log.dateEarned || log.created_at || log.createdAt);
                     if (logDate.getMonth() === m && logDate.getFullYear() === currentYear && logDate <= accrualEndDate) {
-                        usedThisMonth += 1;
+                        usedInMonth += 1;
                     }
                 }
             });
-            
-            // 4. Leave Requests (Approved + Pending)
+
+            // 4. Comp Off Leaves in month m (Approved + Pending)
             approvedLeaves.forEach(leave => {
                 const type = (leave.leave_type || '').toLowerCase();
-                if (type.includes('comp') || type === 'co' || type.includes('floating') || type === 'fh' || type.includes('blue leave')) {
+                // ONLY Comp Off leaves (exclude floating / blue leave)
+                if (type.includes('comp') || type === 'co') {
                     const leaveStart = new Date(leave.start_date.replace(/-/g, '/'));
                     if (leaveStart.getMonth() === m && leaveStart.getFullYear() === currentYear && leaveStart <= monthEnd) {
                         let amount = 0;
@@ -7294,25 +7303,40 @@ export const api = {
                             });
                         }
                         if (leave.status === 'approved' || leave.status === 'pending_manager_approval' || leave.status === 'pending_hr_confirmation') {
-                            usedThisMonth += amount;
+                            usedInMonth += amount;
                         }
                     }
                 }
             });
-            
-            simulatedBalance += earnedThisMonth;
-            
-            // Apply max cap of 4
-            if (simulatedBalance > 4) {
-                totalLost += (simulatedBalance - 4);
-                simulatedBalance = 4;
+
+            // Deduct FIFO:
+            // First consume carriedAvailable from month m-1 (which would otherwise expire at end of month m)
+            let remToDeduct = usedInMonth;
+            if (carriedAvailable > 0) {
+                const deductFromCarried = Math.min(carriedAvailable, remToDeduct);
+                carriedAvailable -= deductFromCarried;
+                remToDeduct -= deductFromCarried;
             }
-            
-            simulatedBalance -= usedThisMonth;
-            if (simulatedBalance < 0) simulatedBalance = 0;
+            // Then consume current month earnings
+            if (remToDeduct > 0 && currentEarned > 0) {
+                const deductFromCurrent = Math.min(currentEarned, remToDeduct);
+                currentEarned -= deductFromCurrent;
+                remToDeduct -= deductFromCurrent;
+            }
+
+            if (m === endMonth) {
+                // For the currently viewed month, active balance is what is usable right now
+                activeBalance = Math.min(4.0, Math.max(0, carriedAvailable + currentEarned));
+            } else {
+                // End of month m:
+                // 1) Any remaining carriedAvailable from month m-1 now EXPIRES (past 2nd month)
+                carriedAvailable = 0;
+                // 2) From currentEarned (month m earnings), maximum 2.0 can carry forward to month m+1
+                carriedFromPrev = Math.min(2.0, currentEarned);
+            }
         }
-        
-        balance.compOffTotal = Math.min(4, Math.max(0, simulatedBalance)) + balance.compOffUsed + balance.compOffPending;
+
+        balance.compOffTotal = activeBalance + balance.compOffUsed + balance.compOffPending;
     }
 
     balance.debug = {

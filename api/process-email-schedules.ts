@@ -391,7 +391,11 @@ const reportGenerators = {
     const totalPresent = presentUserIds.size;
     const onLeaveCount = Array.from(onLeaveUserIds).filter(id => staffIds.has(id)).length;
     const parsedTargetDate = new Date(`${todayStr}T12:00:00+05:30`);
+    const greetingMsg = 'Please find below the detailed daily attendance summary for today.';
     return {
+      greetingMessage: greetingMsg,
+      customGreeting: greetingMsg,
+      summary: greetingMsg,
       date: format(parsedTargetDate, 'EEEE, MMMM do, yyyy'),
       reportDate: format(parsedTargetDate, 'dd MMM yyyy'),
       generatedTime: getISTTimeString(new Date()),
@@ -916,9 +920,9 @@ const reportGenerators = {
 
     const [eventsRes, leadsRes, callsRes, allLeadsRes, sevenDayFollowupsRes, sevenDayEventsRes] = await Promise.all([
       supabase.from('attendance_events').select('user_id, type, timestamp, latitude, longitude, travel_distance').gte('timestamp', startOfTodayUTC.toISOString()).lte('timestamp', endOfTodayUTC.toISOString()).order('timestamp', { ascending: true }),
-      supabase.from('crm_leads').select('id, created_by, assigned_to, company_name, client_name, association_name, contact_person, status, source, city, created_at, stage_updated_at, updated_at, next_followup_date, lost_reason').gte('created_at', startOfTodayUTC.toISOString()).lte('created_at', endOfTodayUTC.toISOString()),
+      supabase.from('crm_leads').select('id, created_by, assigned_to, client_name, association_name, contact_person, status, source, city, created_at, stage_updated_at, updated_at, lost_reason').gte('created_at', startOfTodayUTC.toISOString()).lte('created_at', endOfTodayUTC.toISOString()),
       supabase.from('crm_followups').select('created_by, type, outcome, lead_id, created_at, next_followup_date').gte('created_at', startOfTodayUTC.toISOString()).lte('created_at', endOfTodayUTC.toISOString()),
-      supabase.from('crm_leads').select('id, created_by, assigned_to, company_name, client_name, association_name, contact_person, status, source, city, created_at, stage_updated_at, updated_at, next_followup_date, lost_reason'),
+      supabase.from('crm_leads').select('id, created_by, assigned_to, client_name, association_name, contact_person, status, source, city, created_at, stage_updated_at, updated_at, lost_reason'),
       supabase.from('crm_followups').select('created_by, type, outcome, lead_id, created_at, next_followup_date').gte('created_at', sevenDaysAgoUTC.toISOString()),
       supabase.from('attendance_events').select('user_id, type, timestamp').gte('timestamp', sevenDaysAgoUTC.toISOString()).eq('type', 'punch-in')
     ]);
@@ -930,7 +934,17 @@ const reportGenerators = {
     const sevenDayFollowups = sevenDayFollowupsRes.data || [];
     const sevenDayEvents = sevenDayEventsRes.data || [];
 
-    const leadName = (l: any) => l.company_name || l.association_name || l.client_name || 'Unknown';
+    const leadNextFollowupMap = new Map<string, string>();
+    sevenDayFollowups.forEach((f: any) => {
+      if (f.lead_id && f.next_followup_date) {
+        const cur = leadNextFollowupMap.get(f.lead_id);
+        if (!cur || new Date(f.next_followup_date) > new Date(cur)) {
+          leadNextFollowupMap.set(f.lead_id, f.next_followup_date);
+        }
+      }
+    });
+
+    const leadName = (l: any) => l.client_name || l.association_name || 'Lead';
     const daysSince = (dateStr: string | null | undefined): number => {
       if (!dateStr) return 999;
       return (nowIST.getTime() - new Date(dateStr).getTime()) / 86400000;
@@ -1003,8 +1017,9 @@ const reportGenerators = {
       const overdueLeads = allBDLeads.filter((l: any) => {
         if (['Won', 'Lost'].includes(l.status)) return false;
         const lastActivity = l.stage_updated_at || l.updated_at || l.created_at;
+        const nextDate = leadNextFollowupMap.get(l.id) || l.next_followup_date;
         const daysStale = daysSince(lastActivity);
-        const hasOverdueFollowup = l.next_followup_date && new Date(l.next_followup_date) < nowIST;
+        const hasOverdueFollowup = nextDate && new Date(nextDate) < nowIST;
         return daysStale >= 7 || hasOverdueFollowup;
       }).sort((a: any, b: any) => daysSince(b.stage_updated_at || b.updated_at || b.created_at) - daysSince(a.stage_updated_at || a.updated_at || a.created_at));
       let overdue_leads_block = '';
@@ -1019,8 +1034,9 @@ const reportGenerators = {
             const days = Math.floor(daysSince(l.stage_updated_at || l.updated_at || l.created_at));
             const daysColor = days >= 14 ? '#ef4444' : days >= 7 ? '#f59e0b' : '#64748b';
             const sc = stageColor[l.status] || '#64748b';
-            const nextAction = l.next_followup_date ? format(new Date(l.next_followup_date), 'dd MMM') : 'Not set';
-            const overdueNote = l.next_followup_date && new Date(l.next_followup_date) < nowIST ? ' ⚠️' : '';
+            const nd = leadNextFollowupMap.get(l.id) || l.next_followup_date;
+            const nextAction = nd ? format(new Date(nd), 'dd MMM') : 'Not set';
+            const overdueNote = nd && new Date(nd) < nowIST ? ' ⚠️' : '';
             return `<tr style="background:${i % 2 === 0 ? '#fff' : '#f9fafb'};border-top:1px solid #f1f5f9;"><td style="padding:10px 12px;font-weight:600;color:#1e293b;">${leadName(l)}</td><td style="padding:10px 12px;"><span style="background:${sc}20;color:${sc};padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600;">${l.status}</span></td><td style="padding:10px 12px;text-align:center;font-weight:700;color:${daysColor};">${days}d</td><td style="padding:10px 12px;text-align:center;font-size:11px;color:#64748b;">${nextAction}${overdueNote}</td></tr>`;
           }).join('') + `</tbody></table>`;
       }
@@ -1032,7 +1048,8 @@ const reportGenerators = {
         : `<table width="100%" style="border-collapse:collapse;font-size:12px;"><thead><tr style="background:#f8fafc;"><th style="padding:8px 12px;text-align:left;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;">#</th><th style="padding:8px 12px;text-align:left;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;">Lead</th><th style="padding:8px 12px;text-align:left;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;">Stage</th><th style="padding:8px 12px;text-align:left;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;">City</th><th style="padding:8px 12px;text-align:center;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;">Next Followup</th></tr></thead><tbody>` +
           activeLeads.map((l: any, i: number) => {
             const sc = stageColor[l.status] || '#64748b';
-            const nf = l.next_followup_date ? format(new Date(l.next_followup_date), 'dd MMM') : '—';
+            const nd = leadNextFollowupMap.get(l.id) || l.next_followup_date;
+            const nf = nd ? format(new Date(nd), 'dd MMM') : '—';
             return `<tr style="background:${i % 2 === 0 ? '#fff' : '#f9fafb'};border-top:1px solid #f1f5f9;"><td style="padding:10px 12px;font-weight:700;color:#94a3b8;">${i + 1}</td><td style="padding:10px 12px;font-weight:600;color:#1e293b;">${leadName(l)}</td><td style="padding:10px 12px;"><span style="background:${sc}20;color:${sc};padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600;">${l.status}</span></td><td style="padding:10px 12px;color:#64748b;">${l.city || '—'}</td><td style="padding:10px 12px;text-align:center;font-size:11px;color:#64748b;">${nf}</td></tr>`;
           }).join('') + `</tbody></table>`;
 
@@ -1145,6 +1162,9 @@ const reportGenerators = {
         bd_name: bd.name, bdName: bd.name,
         report_date: format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy'), reportDate: format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy'),
         date: format(new Date(`${todayStr}T12:00:00+05:30`), 'EEEE, MMMM do, yyyy'),
+        greetingMessage: `Daily Activity Report for ${bd.name || 'BD'} for ${format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy')}.`,
+        customGreeting: `Daily Activity Report for ${bd.name || 'BD'} for ${format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy')}.`,
+        summary: `Daily Activity Report for ${bd.name || 'BD'} for ${format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy')}.`,
         attendance_status, attendanceStatus: attendance_status,
         check_in_time, checkInTime: check_in_time,
         check_out_time, checkOutTime: check_out_time,
@@ -1461,9 +1481,11 @@ export async function processSchedules(req: any) {
       dataItem.summary = greetingMessage;
 
       let subject = template?.subject_template || rule.name;
-      let html = template?.body_template || `<h2>Report</h2>{table}`;
       subject = render(evaluateConditionals(subject, dataItem), dataItem);
       html = render(evaluateConditionals(html, dataItem), dataItem);
+
+      // Clean up any unreplaced greeting placeholders
+      html = html.replace(/\{greetingMessage\}/gi, greetingMessage || '').replace(/\{greeting_message\}/gi, greetingMessage || '');
 
       // Determine from address
       const fromEmail = smtpAccount

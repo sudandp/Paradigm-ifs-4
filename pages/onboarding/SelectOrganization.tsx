@@ -11,6 +11,7 @@ import { format } from 'date-fns';
 import { useAuthStore } from '../../store/authStore';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 import MobileTopBar from '../../components/navigation/MobileTopBar';
+import MobileBottomSheetSelect from '../../components/ui/MobileBottomSheetSelect';
 
 const SelectOrganization = () => {
     const navigate = useNavigate();
@@ -46,7 +47,7 @@ const SelectOrganization = () => {
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
     const [manpowerStatus, setManpowerStatus] = useState({ isOverLimit: false, message: '' });
 
-    const isMobileView = user?.role === 'field_staff' && isMobile;
+    const isMobileView = isMobile || user?.role === 'field_staff';
 
     useEffect(() => {
         const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -381,72 +382,102 @@ const SelectOrganization = () => {
 
                         <div className="space-y-4">
                             {/* Company Group */}
-                            <select
+                            <MobileBottomSheetSelect
+                                label="Company Group"
+                                id="group-mobile"
                                 value={selectedGroupId}
-                                onChange={e => { setSelectedGroupId(e.target.value); resetFromGroup(); }}
-                                className="form-input"
-                            >
-                                {uniqueGroups.length !== 1 && <option value="">-- Select a Group --</option>}
-                                {uniqueGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                            </select>
+                                onChange={val => {
+                                    setSelectedGroupId(val);
+                                    resetFromGroup();
+                                }}
+                                options={uniqueGroups.map(g => ({
+                                    value: g.id,
+                                    label: g.name
+                                }))}
+                                placeholder="Select a Group"
+                                sheetTitle="Select Company Group"
+                            />
 
-                            {/* Location — from company.location values */}
-                            <div className="space-y-1">
-                                <label className="text-xs font-semibold text-muted uppercase tracking-wide flex items-center gap-1.5">
-                                    <MapPin className="h-3.5 w-3.5" /> Location
-                                </label>
-                                <select
-                                    value={selectedLocation}
-                                    onChange={e => { setSelectedLocation(e.target.value); resetFromLocation(); }}
-                                    disabled={!selectedGroupId}
-                                    className="form-input"
-                                >
-                                    {availableLocations.length !== 1 && <option value="">-- Select a Location --</option>}
-                                    {availableLocations.map(loc => <option key={loc} value={loc}>{loc}</option>)}
-                                </select>
-                            </div>
+                            {/* Location */}
+                            <MobileBottomSheetSelect
+                                label="Location"
+                                id="location-mobile"
+                                icon={<MapPin className="h-4 w-4" />}
+                                value={selectedLocation}
+                                onChange={val => {
+                                    setSelectedLocation(val);
+                                    resetFromLocation();
+                                }}
+                                disabled={!selectedGroupId}
+                                options={availableLocations.map(loc => ({
+                                    value: loc,
+                                    label: loc
+                                }))}
+                                placeholder={!selectedGroupId ? "Select Group first" : "Select a Location"}
+                                sheetTitle="Select Location"
+                            />
 
-                            {/* Company — filtered by location */}
-                            <select
+                            {/* Company */}
+                            <MobileBottomSheetSelect
+                                label="Company"
+                                id="company-mobile"
                                 value={selectedCompanyId}
-                                onChange={e => { setSelectedCompanyId(e.target.value); resetFromCompany(); }}
+                                onChange={val => {
+                                    setSelectedCompanyId(val);
+                                    resetFromCompany();
+                                }}
                                 disabled={!selectedLocation}
-                                className="form-input"
-                            >
-                                {locationFilteredCompanies.length !== 1 && <option value="">-- Select a Company --</option>}
-                                {locationFilteredCompanies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                            </select>
+                                options={locationFilteredCompanies.map(c => ({
+                                    value: c.id,
+                                    label: c.name
+                                }))}
+                                placeholder={!selectedLocation ? "Select Location first" : "Select a Company"}
+                                sheetTitle="Select Company"
+                            />
 
                             {/* Client / Site */}
                             {!isManualSite ? (
-                                <div className="space-y-2">
-                                    <select
-                                        value={selectedEntityId}
-                                        onChange={e => setSelectedEntityId(e.target.value)}
-                                        disabled={!selectedCompanyId}
-                                        className="form-input"
-                                    >
-                                        {entities.length !== 1 && <option value="">-- Select a Client/Site --</option>}
-                                        {entities.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-                                    </select>
-                                    {selectedCompanyId && (
-                                        <button onClick={() => { setIsManualSite(true); setSelectedEntityId(''); }} className="text-xs text-accent underline flex items-center gap-1">
-                                            <Plus className="h-3 w-3" /> Can't find the site? Add manually
-                                        </button>
-                                    )}
-                                </div>
+                                <MobileBottomSheetSelect
+                                    label="Client / Site"
+                                    id="entity-mobile"
+                                    value={selectedEntityId}
+                                    onChange={val => setSelectedEntityId(val)}
+                                    disabled={!selectedCompanyId}
+                                    options={entities.map(e => ({
+                                        value: e.id,
+                                        label: e.name
+                                    }))}
+                                    placeholder={!selectedCompanyId ? "Select Company first" : "Select a Client / Site"}
+                                    sheetTitle="Select Client / Site"
+                                    allowManual={!!selectedCompanyId}
+                                    onManualClick={() => {
+                                        setIsManualSite(true);
+                                        setSelectedEntityId('');
+                                    }}
+                                    manualLabel="Can't find the site? Add manually"
+                                />
                             ) : (
                                 <div className="space-y-2">
+                                    <label className="block text-xs font-bold text-slate-400 dark:text-white/70 uppercase tracking-wider">
+                                        Client / Site (Manual Entry)
+                                    </label>
                                     <div className="flex items-center gap-2">
                                         <input
                                             type="text"
                                             value={manualSiteName}
                                             onChange={e => setManualSiteName(e.target.value)}
                                             placeholder="Type client/site name..."
-                                            className="form-input flex-1"
+                                            className="form-input flex-1 !bg-[#041b0f] !border-[#134426] text-white"
                                             autoFocus
                                         />
-                                        <button onClick={() => { setIsManualSite(false); setManualSiteName(''); }} className="text-gray-400 hover:text-red-400 p-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setIsManualSite(false);
+                                                setManualSiteName('');
+                                            }}
+                                            className="text-gray-400 hover:text-red-400 p-2"
+                                        >
                                             <X className="h-4 w-4" />
                                         </button>
                                     </div>
@@ -454,36 +485,53 @@ const SelectOrganization = () => {
                                 </div>
                             )}
 
-                            {/* Designation — with manual entry fallback */}
+                            {/* Designation */}
                             {!isManualDesignation ? (
-                                <div className="space-y-2">
-                                    <select
-                                        value={selectedDesignation}
-                                        onChange={e => setSelectedDesignation(e.target.value)}
-                                        disabled={!siteIsSelected}
-                                        className="form-input"
-                                    >
-                                        {designationsForSite.length !== 1 && <option value="">-- Select a Designation --</option>}
-                                        {designationsForSite.map(d => <option key={d.id} value={d.designation}>{d.designation}</option>)}
-                                    </select>
-                                    {siteIsSelected && (
-                                        <button onClick={() => { setIsManualDesignation(true); setSelectedDesignation(''); }} className="text-xs text-accent underline flex items-center gap-1">
-                                            <Plus className="h-3 w-3" /> Not listed? Add manually
-                                        </button>
-                                    )}
-                                </div>
+                                <MobileBottomSheetSelect
+                                    label="Designation"
+                                    id="designation-mobile"
+                                    value={selectedDesignation}
+                                    onChange={val => setSelectedDesignation(val)}
+                                    disabled={!siteIsSelected}
+                                    options={designationsForSite.map(d => ({
+                                        value: d.designation,
+                                        label: d.designation
+                                    }))}
+                                    placeholder={!siteIsSelected ? "Select Site first" : "Select a Designation"}
+                                    sheetTitle="Select Designation"
+                                    allowManual={siteIsSelected}
+                                    onManualClick={() => {
+                                        setIsManualDesignation(true);
+                                        setSelectedDesignation('');
+                                    }}
+                                    manualLabel="Not listed? Add manually"
+                                />
                             ) : (
                                 <div className="space-y-2">
+                                    <label className="block text-xs font-bold text-slate-400 dark:text-white/70 uppercase tracking-wider">
+                                        Designation (Manual Entry)
+                                    </label>
                                     <div className="flex items-center gap-2">
                                         <input
                                             type="text"
                                             value={manualDesignationName}
-                                            onChange={e => { setManualDesignationName(e.target.value); setSelectedDesignation(e.target.value); }}
+                                            onChange={e => {
+                                                setManualDesignationName(e.target.value);
+                                                setSelectedDesignation(e.target.value);
+                                            }}
                                             placeholder="Type designation name..."
-                                            className="form-input flex-1"
+                                            className="form-input flex-1 !bg-[#041b0f] !border-[#134426] text-white"
                                             autoFocus
                                         />
-                                        <button onClick={() => { setIsManualDesignation(false); setManualDesignationName(''); setSelectedDesignation(''); }} className="text-gray-400 hover:text-red-400 p-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setIsManualDesignation(false);
+                                                setManualDesignationName('');
+                                                setSelectedDesignation('');
+                                            }}
+                                            className="text-gray-400 hover:text-red-400 p-2"
+                                        >
                                             <X className="h-4 w-4" />
                                         </button>
                                     </div>
@@ -502,7 +550,11 @@ const SelectOrganization = () => {
 
                 <footer className="p-4 flex-shrink-0 flex items-center justify-between gap-4">
                     <button onClick={() => navigate('/onboarding')} className="fo-btn-secondary px-6">Back</button>
-                    <button onClick={handleContinue} disabled={canContinue} className="fo-btn-primary flex-1">
+                    <button
+                        onClick={handleContinue}
+                        disabled={canContinue}
+                        className="fo-btn-primary flex-1 py-3 px-4 rounded-xl font-bold text-base flex items-center justify-center gap-2"
+                    >
                         Continue
                     </button>
                 </footer>
@@ -703,9 +755,13 @@ const SelectOrganization = () => {
                 )}
 
                 <div className="mt-8 pt-6 border-t flex justify-end">
-                    <Button onClick={handleContinue} disabled={canContinue}>
-                        Continue <ArrowRight className="ml-2 h-4 w-4" />
-                    </Button>
+                    <button
+                        onClick={handleContinue}
+                        disabled={canContinue}
+                        className="btn-primary flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm transition-all duration-200"
+                    >
+                        Continue <ArrowRight className="h-4 w-4" />
+                    </button>
                 </div>
             </div>
         </div>

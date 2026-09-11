@@ -230,6 +230,9 @@ export const reportGenerators = {
       </tr>`;
     });
 
+    const attPct = filteredUsers.length > 0 ? Math.round((totalPresent/filteredUsers.length)*100).toString() : '0';
+    const defaultGreeting = `Dear Team,<br/><br/>Today's backoffice attendance stands at <strong>${attPct}%</strong>. A total of <strong>${totalAbsent}</strong> employees were absent, and <strong>${lateCount}</strong> reported late.<br/><br/>Attendance summary:`;
+
     return {
       date: format(nowIST, 'EEEE, MMMM do, yyyy'),
       reportDate: format(nowIST, 'dd MMM yyyy'),
@@ -239,9 +242,14 @@ export const reportGenerators = {
       totalPresent: String(totalPresent),
       totalAbsent: String(totalAbsent),
       lateCount: String(lateCount),
-      attendancePercentage: filteredUsers.length > 0 ? Math.round((totalPresent/filteredUsers.length)*100).toString() : '0',
+      attendancePercentage: attPct,
       onLeaveCount: String(onLeaveCount),
       inactiveCount: String(inactiveCount),
+      greetingMessage: defaultGreeting,
+      customGreeting: defaultGreeting,
+      greeting_message: defaultGreeting,
+      custom_greeting: defaultGreeting,
+      summary: defaultGreeting,
       table: tableHtml || '<tr><td colspan="7">No data</td></tr>'
     };
   },
@@ -839,9 +847,9 @@ export const reportGenerators = {
 
     const [eventsRes, leadsRes, callsRes, allLeadsRes, sevenDayFollowupsRes, sevenDayEventsRes] = await Promise.all([
       supabase.from('attendance_events').select('user_id, type, timestamp, latitude, longitude, travel_distance').gte('timestamp', startOfTodayUTC.toISOString()).lte('timestamp', endOfTodayUTC.toISOString()).order('timestamp', { ascending: true }),
-      supabase.from('crm_leads').select('id, created_by, assigned_to, company_name, client_name, association_name, contact_person, status, source, city, created_at, stage_updated_at, updated_at, next_followup_date, lost_reason').gte('created_at', startOfTodayUTC.toISOString()).lte('created_at', endOfTodayUTC.toISOString()),
+      supabase.from('crm_leads').select('id, created_by, assigned_to, client_name, association_name, contact_person, status, source, city, created_at, stage_updated_at, updated_at, lost_reason').gte('created_at', startOfTodayUTC.toISOString()).lte('created_at', endOfTodayUTC.toISOString()),
       supabase.from('crm_followups').select('created_by, type, outcome, lead_id, created_at, next_followup_date').gte('created_at', startOfTodayUTC.toISOString()).lte('created_at', endOfTodayUTC.toISOString()),
-      supabase.from('crm_leads').select('id, created_by, assigned_to, company_name, client_name, association_name, contact_person, status, source, city, created_at, stage_updated_at, updated_at, next_followup_date, lost_reason'),
+      supabase.from('crm_leads').select('id, created_by, assigned_to, client_name, association_name, contact_person, status, source, city, created_at, stage_updated_at, updated_at, lost_reason'),
       supabase.from('crm_followups').select('created_by, type, outcome, lead_id, created_at, next_followup_date').gte('created_at', sevenDaysAgoUTC.toISOString()),
       supabase.from('attendance_events').select('user_id, type, timestamp').gte('timestamp', sevenDaysAgoUTC.toISOString()).eq('type', 'punch-in')
     ]);
@@ -853,7 +861,17 @@ export const reportGenerators = {
     const sevenDayFollowups = sevenDayFollowupsRes.data || [];
     const sevenDayEvents = sevenDayEventsRes.data || [];
 
-    const leadName = (l: any) => l.company_name || l.association_name || l.client_name || 'Unknown';
+    const leadNextFollowupMap = new Map<string, string>();
+    sevenDayFollowups.forEach((f: any) => {
+      if (f.lead_id && f.next_followup_date) {
+        const cur = leadNextFollowupMap.get(f.lead_id);
+        if (!cur || new Date(f.next_followup_date) > new Date(cur)) {
+          leadNextFollowupMap.set(f.lead_id, f.next_followup_date);
+        }
+      }
+    });
+
+    const leadName = (l: any) => l.client_name || l.association_name || 'Lead';
     const daysSince = (dateStr: string | null | undefined): number => {
       if (!dateStr) return 999;
       return (nowIST.getTime() - new Date(dateStr).getTime()) / 86400000;
@@ -1063,6 +1081,8 @@ export const reportGenerators = {
         }).join('') +
         `</tbody></table><div style="margin-top:8px;text-align:right;font-size:12px;font-weight:700;color:#166534;padding:8px;background:#f0fdf4;border-top:1px solid #bbf7d0;">Total active pipeline: ${activeTotal} leads</div>`;
 
+      const bdGreeting = `Here is the Daily Activity Report for <strong>${bd.name}</strong>. The data below reflects activities logged on <strong>${format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy')}</strong>.`;
+
       reports.push({
         bd_name: bd.name, bdName: bd.name,
         report_date: format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy'), reportDate: format(new Date(`${todayStr}T12:00:00+05:30`), 'dd MMM yyyy'),
@@ -1080,6 +1100,9 @@ export const reportGenerators = {
         new_leads_table, newLeadsTable: new_leads_table,
         metrics_table, metricsTable: metrics_table,
         pipeline_snapshot, pipelineSnapshot: pipeline_snapshot,
+        greetingMessage: bdGreeting, customGreeting: bdGreeting,
+        greeting_message: bdGreeting, custom_greeting: bdGreeting,
+        summary: bdGreeting,
         // 10 new enhanced sections
         followup_completion_block, followupCompletionBlock: followup_completion_block,
         overdue_leads_block, overdueLeadsBlock: overdue_leads_block,
