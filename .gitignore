@@ -33,6 +33,7 @@ Downloads/
 *.apk
 *.aab
 android/app/build/
+android/app/release/
 android/.gradle/
 android/local.properties
 android/captures/

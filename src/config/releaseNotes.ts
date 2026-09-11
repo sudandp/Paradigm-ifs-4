@@ -1,11 +1,11 @@
 export const RELEASE_NOTES = {
-  version: '21.0.0',
-  date: '2026-09-09',
+  version: '21.1.0',
+  date: '2026-09-11',
   notes: [
-  "feat: update app version to 20.9.0 and configure native Android build settings with Firebase and Supabase integration",
-  "feat: add LeaveDashboard module and initialize app version 20.9.0 with release notes",
-  "feat: update version to 20.8.0, implement HR/attendance management systems, and configure Android build with automated proxy and network settings.",
-  "feat: implement automated email scheduling system with attendance reporting and travel distance calculation logic",
-  "feat: implement site staff attendance, billing, and leave management system"
+  "feat: initialize comprehensive enterprise management modules, Android configuration, and utility services",
+  "feat: add attendance dashboard and support for MS SQL data integration via new controllers and services",
+  "feat: implement AttendanceCalendar and LeaveDashboard pages for leave management tracking",
+  "feat: implement leave management dashboard with attendance tracking, calendar views, and state management integration",
+  "feat: implement automated daily email reporting system with scheduling and attendance tracking modules"
 ]
 };
