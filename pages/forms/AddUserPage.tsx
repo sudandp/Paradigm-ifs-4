@@ -21,6 +21,7 @@ import { api } from '../../services/api';
 import { UserPlus, ArrowLeft, Calendar, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useAuthStore } from '../../store/authStore';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 /** Normalize role display names to Title Case regardless of DB storage format */
 const toTitleCase = (str: string): string =>
@@ -1044,9 +1045,10 @@ const AddUserPage: React.FC = () => {
   if (isMobile) {
 
     return (
-      <div className="h-full flex flex-col">
-        <header className="p-4 flex-shrink-0 fo-mobile-header">
-          <h1>{isEditing ? 'Edit User' : 'Add User'}</h1>
+      <div className="h-full flex flex-col p-4 bg-[#041b0f] min-h-screen text-white">
+        <MobileTopBar title={isEditing ? "EDIT USER" : "ADD USER"} parentPath="/admin/users" />
+        <header className="py-2 flex-shrink-0 fo-mobile-header">
+          <h1 className="text-xl font-bold">{isEditing ? 'Edit User' : 'Add User'}</h1>
         </header>
         <main className="flex-1 overflow-y-auto p-4">
           <div className="bg-card rounded-2xl p-6 space-y-6">

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { supabase } from '../../services/supabase';
+import { supabase, reconnectSupabaseRealtime } from '../../services/supabase';
+import { App as CapApp } from '@capacitor/app';
 import { api } from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
 import LoadingScreen from '../../components/ui/LoadingScreen';
@@ -7,6 +8,7 @@ import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import Modal from '../../components/ui/Modal';
 import AdminPageHeader from '../../components/admin/AdminPageHeader';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 import { ProfilePlaceholder } from '../../components/ui/ProfilePlaceholder';
 import {
   Activity, ArrowRight, ArrowLeft, AlertTriangle, RefreshCw,
@@ -18,6 +20,7 @@ import {
 import { CctvQuickMapModal, UserOptionItem, SiteLocationItem, QuickMapTargetLog } from '../../components/cctv/CctvQuickMapModal';
 import { CctvActionZoneModal, ActionZonePoint, resampleToFixed20Points } from '../../components/cctv/CctvActionZoneModal';
 import { cctvAttendanceBridgeService } from '../../services/cctvAttendanceBridge';
+import { safeCopyToClipboard } from '../../utils/clipboardHelper';
 
 // Fallback URL used ONLY when Supabase has no ngrok_url yet (first boot before heartbeat).
 const NGROK_PROXY_FALLBACK = 'https://cctv.cctv.rest';
@@ -237,36 +240,37 @@ const NvrCameraStream: React.FC<{
         )}
 
         {/* Top OSD Bar */}
-        <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none z-20">
-          <div className="flex items-center gap-2">
-            <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-neutral-900/80 border border-white/10 text-[10px] font-semibold text-white backdrop-blur-md shadow-xs">
-              <span className={`h-2 w-2 rounded-full bg-rose-500 ${isConnected ? 'animate-pulse' : ''}`} />
+        <div className="absolute top-2 left-2 right-2 flex items-center justify-between pointer-events-none z-20 gap-1.5">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/80 border border-white/10 text-[9px] sm:text-[10px] font-bold text-white backdrop-blur-md shadow-xs shrink-0">
+              <span className={`h-1.5 w-1.5 rounded-full bg-rose-500 ${isConnected ? 'animate-pulse' : ''}`} />
               LIVE
             </span>
-            <span className="text-[11px] font-semibold text-neutral-200 bg-neutral-900/80 border border-white/10 px-2.5 py-1 rounded-full backdrop-blur-md">
-              CAM-01 • {locationName || 'Paradigm Office (Main Gate)'}
+            <span className="text-[10px] sm:text-[11px] font-semibold text-neutral-200 bg-black/80 border border-white/10 px-2.5 py-0.5 rounded-full backdrop-blur-md truncate max-w-[140px] sm:max-w-[260px] whitespace-nowrap">
+              CAM-01 • {locationName ? locationName.replace(/\(Main Gate\)/i, 'Gate').trim() : 'Main Gate'}
             </span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 shrink-0">
             {hasValidActionZone && showZoneOverlay && (
-              <span className="text-[10px] font-bold text-rose-300 bg-rose-950/80 border border-rose-500/40 px-2 py-0.5 rounded-full backdrop-blur-md flex items-center gap-1">
+              <span className="text-[9px] font-bold text-rose-300 bg-rose-950/80 border border-rose-500/40 px-2 py-0.5 rounded-full backdrop-blur-md hidden xs:flex items-center gap-1">
                 <span className="h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse" />
-                ZONE FILTER: ACTIVE
+                ZONE
               </span>
             )}
-            <span className="text-[11px] font-mono text-neutral-300 bg-neutral-900/80 border border-white/10 px-2.5 py-1 rounded-full backdrop-blur-md">
-              {currentTime}
+            <span className="text-[9px] sm:text-[10px] font-mono text-neutral-300 bg-black/80 border border-white/10 px-2 py-0.5 rounded-full backdrop-blur-md whitespace-nowrap">
+              <span className="hidden sm:inline">{currentTime.split(' ')[0]} </span>
+              {currentTime.split(' ')[1] || currentTime}
             </span>
           </div>
         </div>
 
         {/* Bottom OSD Bar */}
-        <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between pointer-events-none z-20">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-medium text-emerald-300 font-mono bg-neutral-900/80 border border-emerald-500/30 px-2.5 py-1 rounded-full backdrop-blur-md flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> AI ACTIVE
+        <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between pointer-events-none z-20 gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[9px] sm:text-[10px] font-medium text-[#44D62C] font-mono bg-black/80 border border-[#44D62C]/30 px-2 py-0.5 rounded-full backdrop-blur-md flex items-center gap-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#44D62C]" /> AI ACTIVE
             </span>
-            <span className="text-[10px] font-mono text-neutral-300 bg-neutral-900/80 border border-white/10 px-2.5 py-1 rounded-full backdrop-blur-md">
+            <span className="text-[9px] sm:text-[10px] font-mono text-neutral-300 bg-black/80 border border-white/10 px-2 py-0.5 rounded-full backdrop-blur-md">
               {isConnected ? `${fps} FPS` : 'CONNECTING...'}
             </span>
           </div>
@@ -274,7 +278,7 @@ const NvrCameraStream: React.FC<{
             {onOpenActionZoneModal && (
               <button
                 onClick={(e) => { e.stopPropagation(); onOpenActionZoneModal(); }}
-                className="p-2 bg-neutral-900/85 hover:bg-neutral-800 text-rose-400 hover:text-rose-300 rounded-xl border border-white/15 backdrop-blur-md transition-all shadow-sm flex items-center gap-1"
+                className="p-1.5 sm:p-2 bg-neutral-900/85 hover:bg-neutral-800 text-rose-400 hover:text-rose-300 rounded-xl border border-white/15 backdrop-blur-md transition-all shadow-sm flex items-center gap-1"
                 title="Define Action Zone (Face Capture Area)"
               >
                 <Crosshair className="h-3.5 w-3.5" />
@@ -282,14 +286,14 @@ const NvrCameraStream: React.FC<{
             )}
             <button
               onClick={handleDownloadSnapshot}
-              className="p-2 bg-neutral-900/85 hover:bg-neutral-800 text-white rounded-xl border border-white/15 backdrop-blur-md transition-all shadow-sm"
+              className="p-1.5 sm:p-2 bg-neutral-900/85 hover:bg-neutral-800 text-white rounded-xl border border-white/15 backdrop-blur-md transition-all shadow-sm"
               title="Capture Snapshot"
             >
               <Download className="h-3.5 w-3.5" />
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); setIsFullscreen(true); }}
-              className="p-2 bg-neutral-900/85 hover:bg-neutral-800 text-white rounded-xl border border-white/15 backdrop-blur-md transition-all shadow-sm"
+              className="p-1.5 sm:p-2 bg-neutral-900/85 hover:bg-neutral-800 text-white rounded-xl border border-white/15 backdrop-blur-md transition-all shadow-sm"
               title="Fullscreen View"
             >
               <Maximize2 className="h-3.5 w-3.5" />
@@ -706,6 +710,10 @@ const CctvDashboard: React.FC = () => {
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [zoomPhotoLoading, setZoomPhotoLoading] = useState(false);
 
+  // In-flight guard to prevent stacking concurrent queries & timeout aborts
+  const isFetchingLogsRef = useRef(false);
+  const hasCleanedStaleRef = useRef(false);
+
   // Dynamic height sync: locks right detections panel height to CCTV stream card
   const leftCardRef = useRef<HTMLDivElement>(null);
   const [cctvCardHeight, setCctvCardHeight] = useState<number | undefined>(undefined);
@@ -888,14 +896,87 @@ const CctvDashboard: React.FC = () => {
     });
   };
 
-  const fetchLogs = useCallback(async () => {
+  // Fetch users & locations once on mount or manual refresh (never hammered in polling loop)
+  const fetchStaticData = useCallback(async () => {
     try {
-      // 1. Fetch from Supabase (Cloud) & API Service
+      const [usersResult, locationsResult] = await Promise.all([
+        supabase
+          .from('users')
+          .select('id, name, email, role:roles(display_name), role_id, location_id, biometric_id, photo_url, face_embedding_512, organization_name')
+          .order('name', { ascending: true })
+          .limit(500)
+          .then(({ data, error }) => {
+            if (error && !error.message?.toLowerCase().includes('abort')) {
+              console.warn('[CCTV] Supabase users fetch notice:', error);
+            }
+            return data || [];
+          }),
+        api.getLocations().catch(async () => {
+          try {
+            const { data } = await supabase.from('locations').select('*').limit(1000);
+            return data || [];
+          } catch {
+            return [];
+          }
+        }),
+      ]);
+
+      if (Array.isArray(usersResult) && usersResult.length > 0) {
+        const locMap = new Map<string, string>();
+        if (Array.isArray(locationsResult)) {
+          locationsResult.forEach((l: any) => {
+            if (l.id && (l.name || l.address)) locMap.set(l.id, l.name || l.address);
+          });
+        }
+
+        setUserOptions(usersResult.map((u: any) => {
+          const emb = u.face_embedding_512 || u.faceEmbedding_512 || u.faceEmbedding512;
+          const isEnrolled = Boolean(
+            emb && (Array.isArray(emb) ? emb.length > 0 : true)
+          );
+          const roleDisplay = (Array.isArray(u.role) ? u.role[0]?.display_name : u.role?.display_name) || u.role_id || u.role || '';
+          const locName = u.location_id ? locMap.get(u.location_id) : null;
+          return {
+            id: u.id,
+            name: u.name || 'Unnamed Employee',
+            email: u.email || null,
+            role: roleDisplay,
+            company: u.organizationName || u.organization_name || 'PARADIGM INTEGRATED FACILITY SERVICES PVT LTD',
+            location: locName || u.location_id || null,
+            biometricId: u.biometricId || u.biometric_id || null,
+            photoUrl: u.photoUrl || u.photo_url || null,
+            isFaceEnrolled: isEnrolled,
+          };
+        }));
+      }
+
+      if (Array.isArray(locationsResult) && locationsResult.length > 0) {
+        const formattedLocs: SiteLocationItem[] = locationsResult.map((l: any) => ({
+          id: l.id,
+          name: l.name || l.address || 'Site Location',
+          address: l.address || null,
+          coordinates: l.latitude && l.longitude ? `${l.latitude}, ${l.longitude}` : (l.coordinates || null),
+          radius: l.radius || 100,
+        }));
+        setSiteLocations(formattedLocs);
+        const paradigmLoc = formattedLocs.find(l => l.name.toLowerCase().includes('paradigm'));
+        if (paradigmLoc && !selectedSiteLocation) {
+          setSelectedSiteLocation(paradigmLoc.name);
+        }
+      }
+    } catch {
+      // Ignore background static fetch notice
+    }
+  }, [selectedSiteLocation]);
+
+  const fetchLogs = useCallback(async () => {
+    if (isFetchingLogsRef.current) return;
+    isFetchingLogsRef.current = true;
+    try {
+      // 1. Fetch from Supabase (Cloud) for attendance & enrollment queue
       const [
         { data: logsData, error: logsError },
         { data: unknownData, error: unknownError },
-        usersResult,
-        locationsResult
       ] = await Promise.all([
         supabase
           .from('cctv_attendance_logs')
@@ -909,34 +990,29 @@ const CctvDashboard: React.FC = () => {
           .gte('detected_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
           .order('detected_at', { ascending: false })
           .limit(50),
-        supabase
-          .from('users')
-          .select('id, name, email, role:roles(display_name), role_id, location_id, biometric_id, photo_url, face_embedding_512, organization_name')
-          .order('name', { ascending: true })
-          .limit(500)
-          .then(({ data, error }) => {
-            if (error) console.warn('[CCTV] Supabase users fetch error:', error);
-            return data || [];
-          }),
-        api.getLocations().catch(async () => {
-          const { data } = await supabase.from('locations').select('*').limit(1000);
-          return data || [];
-        }),
       ]);
 
-      if (logsError) console.warn('[CCTV] Supabase logs error:', logsError);
-      if (unknownError) console.warn('[CCTV] Supabase queue error:', unknownError);
+      if (logsError && !logsError.message?.toLowerCase().includes('abort')) {
+        console.warn('[CCTV] Supabase logs notice:', logsError);
+      }
+      if (unknownError && !unknownError.message?.toLowerCase().includes('abort')) {
+        console.warn('[CCTV] Supabase queue notice:', unknownError);
+      }
 
-      // Auto-cleanup: silently dismiss stale pending unknowns older than 24 hours
-      const staleThreshold = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-      supabase
-        .from('cctv_enrollment_queue')
-        .delete()
-        .eq('status', 'pending')
-        .lt('detected_at', staleThreshold)
-        .then(({ error: cleanupErr }) => {
-          if (cleanupErr) console.debug('[CCTV] Stale cleanup warning:', cleanupErr.message);
-        });
+      // One-time daily cleanup of stale pending unknown detections (older than 24h)
+      if (!hasCleanedStaleRef.current) {
+        hasCleanedStaleRef.current = true;
+        const staleThreshold = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        supabase
+          .from('cctv_enrollment_queue')
+          .delete()
+          .eq('status', 'pending')
+          .lt('detected_at', staleThreshold)
+          .then(
+            () => {},
+            () => {}
+          );
+      }
 
       const mergedLogs: CctvLog[] = (logsData || []).map((l: any) => ({
         id: l.id,
@@ -982,39 +1058,41 @@ const CctvDashboard: React.FC = () => {
       setUnknownQueue(mergedUnknown);
 
       // 2. Also fetch from Edge Server local DB (if online) for instant local zero-delay sync
-      try {
-        const edgeRes = await fetch(`${ngrokProxy}/logs/today?ngrok-skip-browser-warning=1`, {
-          headers: { 'ngrok-skip-browser-warning': '1' },
-          signal: AbortSignal.timeout(3000),
-        });
-        if (edgeRes.ok) {
-          const edgeData = await edgeRes.json();
-          if (Array.isArray(edgeData?.logs)) {
-            const edgeLogs = edgeData.logs.map((el: any) => ({
-              id: `edge-${el.id || el.timestamp}`,
-              edgeLogId: typeof el.id === 'number' ? el.id : null,
-              userId: el.user_id,
-              userName: el.user_name || (el.user_id ? 'Employee' : 'Unknown Person'),
-              cameraName: el.camera_name,
-              direction: el.direction || 'entry',
-              confidence: el.confidence || 0.85,
-              detectedAt: el.timestamp ? new Date(el.timestamp * 1000).toISOString() : new Date().toISOString(),
-              snapshotUrl: el.snapshot_path ? `${ngrokProxy}/logs/snapshot/${el.id}?mode=portrait&ngrok-skip-browser-warning=1` : null,
-              edgeDeviceId: 'edge-server-main',
-            }));
+      if (ngrokProxy) {
+        try {
+          const edgeRes = await fetch(`${ngrokProxy}/logs/today?ngrok-skip-browser-warning=1`, {
+            headers: { 'ngrok-skip-browser-warning': '1' },
+            signal: AbortSignal.timeout(3000),
+          });
+          if (edgeRes.ok) {
+            const edgeData = await edgeRes.json();
+            if (Array.isArray(edgeData?.logs)) {
+              const edgeLogs = edgeData.logs.map((el: any) => ({
+                id: `edge-${el.id || el.timestamp}`,
+                edgeLogId: typeof el.id === 'number' ? el.id : null,
+                userId: el.user_id,
+                userName: el.user_name || (el.user_id ? 'Employee' : 'Unknown Person'),
+                cameraName: el.camera_name,
+                direction: el.direction || 'entry',
+                confidence: el.confidence || 0.85,
+                detectedAt: el.timestamp ? new Date(el.timestamp * 1000).toISOString() : new Date().toISOString(),
+                snapshotUrl: el.snapshot_path ? `${ngrokProxy}/logs/snapshot/${el.id}?mode=portrait&ngrok-skip-browser-warning=1` : null,
+                edgeDeviceId: 'edge-server-main',
+              }));
 
-            // Merge avoiding duplicates by timestamp / name proximity
-            const existingTimes = new Set(mergedLogs.map(l => l.detectedAt.slice(0, 19)));
-            for (const el of edgeLogs) {
-              if (!existingTimes.has(el.detectedAt.slice(0, 19))) {
-                mergedLogs.push(el);
+              // Merge avoiding duplicates by timestamp / name proximity
+              const existingTimes = new Set(mergedLogs.map(l => l.detectedAt.slice(0, 19)));
+              for (const el of edgeLogs) {
+                if (!existingTimes.has(el.detectedAt.slice(0, 19))) {
+                  mergedLogs.push(el);
+                }
               }
+              mergedLogs.sort((a, b) => new Date(b.detectedAt).getTime() - new Date(a.detectedAt).getTime());
             }
-            mergedLogs.sort((a, b) => new Date(b.detectedAt).getTime() - new Date(a.detectedAt).getTime());
           }
+        } catch {
+          // Edge direct fetch offline/skipped — Supabase data is used
         }
-      } catch {
-        // Edge direct fetch offline/skipped — Supabase data is used
       }
 
       // Deduplicate unknown-person entries in attendance logs
@@ -1037,56 +1115,15 @@ const CctvDashboard: React.FC = () => {
       }
 
       setLogs(dedupedLogs);
-
-      if (Array.isArray(usersResult) && usersResult.length > 0) {
-        const locMap = new Map<string, string>();
-        if (Array.isArray(locationsResult)) {
-          locationsResult.forEach((l: any) => {
-            if (l.id && (l.name || l.address)) locMap.set(l.id, l.name || l.address);
-          });
-        }
-
-        setUserOptions(usersResult.map((u: any) => {
-          const emb = u.face_embedding_512 || u.faceEmbedding_512 || u.faceEmbedding512;
-          const isEnrolled = Boolean(
-            emb && (Array.isArray(emb) ? emb.length > 0 : true)
-          );
-          const roleDisplay = (Array.isArray(u.role) ? u.role[0]?.display_name : u.role?.display_name) || u.role_id || u.role || '';
-          const locName = u.location_id ? locMap.get(u.location_id) : null;
-          return {
-            id: u.id,
-            name: u.name || 'Unnamed Employee',
-            email: u.email || null,
-            role: roleDisplay,
-            company: u.organizationName || u.organization_name || 'PARADIGM INTEGRATED FACILITY SERVICES PVT LTD',
-            location: locName || u.location_id || null,
-            biometricId: u.biometricId || u.biometric_id || null,
-            photoUrl: u.photoUrl || u.photo_url || null,
-            isFaceEnrolled: isEnrolled,
-          };
-        }));
-      }
-
-      if (Array.isArray(locationsResult) && locationsResult.length > 0) {
-        const formattedLocs: SiteLocationItem[] = locationsResult.map((l: any) => ({
-          id: l.id,
-          name: l.name || l.address || 'Site Location',
-          address: l.address || null,
-          coordinates: l.latitude && l.longitude ? `${l.latitude}, ${l.longitude}` : (l.coordinates || null),
-          radius: l.radius || 100,
-        }));
-        setSiteLocations(formattedLocs);
-        const paradigmLoc = formattedLocs.find(l => l.name.toLowerCase().includes('paradigm'));
-        if (paradigmLoc && !selectedSiteLocation) {
-          setSelectedSiteLocation(paradigmLoc.name);
-        }
-      }
     } catch (err: any) {
-      console.error('[CCTV] Fetch logs error:', err);
+      if (!err?.message?.toLowerCase().includes('abort')) {
+        console.warn('[CCTV] Fetch logs notice:', err);
+      }
     } finally {
+      isFetchingLogsRef.current = false;
       setIsLoading(false);
     }
-  }, [ngrokProxy, selectedSiteLocation]);
+  }, [ngrokProxy]);
 
   // Stream Connection Inspector & Manual Override
   const [showStreamInspector, setShowStreamInspector] = useState(false);
@@ -1167,10 +1204,32 @@ const CctvDashboard: React.FC = () => {
     loadProxyUrl();
   }, []);
 
-  // Realtime subscription
+  // Realtime subscription and App Lifecycle Sync (active from open to close)
   useEffect(() => {
+    fetchStaticData();
     fetchLogs();
-    const pollId = setInterval(fetchLogs, 4000);
+
+    // Fallback polling every 10 seconds (Supabase Realtime provides instant push)
+    const pollId = setInterval(fetchLogs, 10000);
+
+    // Keep active when app transitions between foreground/background
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        reconnectSupabaseRealtime();
+        fetchLogs();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    let appStateSub: any = null;
+    try {
+      CapApp.addListener('appStateChange', ({ isActive }) => {
+        if (isActive) {
+          reconnectSupabaseRealtime();
+          fetchLogs();
+        }
+      }).then(sub => { appStateSub = sub; }).catch(() => {});
+    } catch { /* Non-Capacitor environment */ }
 
     const channel = supabase
       .channel('cctv-live-dash')
@@ -1240,9 +1299,11 @@ const CctvDashboard: React.FC = () => {
 
     return () => {
       clearInterval(pollId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (appStateSub?.remove) appStateSub.remove();
       supabase.removeChannel(channel);
     };
-  }, [fetchLogs]);
+  }, [fetchLogs, fetchStaticData]);
 
   const handleDismiss = async (id: string) => {
     await supabase
@@ -1487,7 +1548,8 @@ const CctvDashboard: React.FC = () => {
   if (isLoading) return <LoadingScreen message="Loading CCTV surveillance telemetry..." />;
 
   return (
-    <div className="p-4 md:p-6 w-full">
+    <div className="p-4 md:p-6 w-full pb-28 md:pb-6">
+      <MobileTopBar title="CCTV DASHBOARD" parentPath="/mobile-home" />
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
       {/* ── Page Header ── */}
@@ -1513,45 +1575,45 @@ const CctvDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* ── Metrics Summary Strip (Green & White Theme) ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div className="bg-card border border-border rounded-xl p-5 shadow-sm flex items-center gap-4">
-          <div className="p-3 rounded-lg bg-emerald-500/10 text-emerald-600">
-            <ArrowRight className="h-6 w-6" />
+      {/* ── Metrics Summary Strip (2x2 on Mobile, 4x1 on Desktop) ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 mb-5">
+        <div className="bg-card border border-border rounded-xl p-3 sm:p-5 shadow-sm flex items-center gap-2.5 sm:gap-4">
+          <div className="p-2 sm:p-3 rounded-lg bg-emerald-500/10 text-emerald-600 shrink-0">
+            <ArrowRight className="h-5 w-5 sm:h-6 sm:w-6" />
           </div>
-          <div>
-            <p className="text-sm text-muted">Today's Entries</p>
-            <h4 className="text-2xl font-bold text-primary-text">{stats.entries}</h4>
-          </div>
-        </div>
-
-        <div className="bg-card border border-border rounded-xl p-5 shadow-sm flex items-center gap-4">
-          <div className="p-3 rounded-lg bg-blue-500/10 text-blue-600">
-            <ArrowLeft className="h-6 w-6" />
-          </div>
-          <div>
-            <p className="text-sm text-muted">Today's Exits</p>
-            <h4 className="text-2xl font-bold text-primary-text">{stats.exits}</h4>
+          <div className="min-w-0">
+            <p className="text-xs sm:text-sm text-muted truncate">Today's Entries</p>
+            <h4 className="text-lg sm:text-2xl font-bold text-primary-text">{stats.entries}</h4>
           </div>
         </div>
 
-        <div className={`bg-card border rounded-xl p-5 shadow-sm flex items-center gap-4 ${stats.unknown > 0 ? 'border-amber-300' : 'border-border'}`}>
-          <div className={`p-3 rounded-lg ${stats.unknown > 0 ? 'bg-amber-500/10 text-amber-600' : 'bg-gray-100 text-gray-400'}`}>
-            <AlertTriangle className="h-6 w-6" />
+        <div className="bg-card border border-border rounded-xl p-3 sm:p-5 shadow-sm flex items-center gap-2.5 sm:gap-4">
+          <div className="p-2 sm:p-3 rounded-lg bg-blue-500/10 text-blue-600 shrink-0">
+            <ArrowLeft className="h-5 w-5 sm:h-6 sm:w-6" />
           </div>
-          <div>
-            <p className="text-sm text-muted">Unknown Faces</p>
-            <h4 className="text-2xl font-bold text-primary-text">{stats.unknown}</h4>
+          <div className="min-w-0">
+            <p className="text-xs sm:text-sm text-muted truncate">Today's Exits</p>
+            <h4 className="text-lg sm:text-2xl font-bold text-primary-text">{stats.exits}</h4>
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-xl p-5 shadow-sm flex items-center gap-4">
-          <div className="p-3 rounded-lg bg-emerald-500/10 text-emerald-600">
-            <Shield className="h-6 w-6" />
+        <div className={`bg-card border rounded-xl p-3 sm:p-5 shadow-sm flex items-center gap-2.5 sm:gap-4 ${stats.unknown > 0 ? 'border-amber-400/80 bg-amber-950/10' : 'border-border'}`}>
+          <div className={`p-2 sm:p-3 rounded-lg shrink-0 ${stats.unknown > 0 ? 'bg-amber-500/15 text-amber-500' : 'bg-neutral-900 text-neutral-500'}`}>
+            <AlertTriangle className="h-5 w-5 sm:h-6 sm:w-6" />
           </div>
-          <div>
-            <p className="text-sm text-muted">Total Face Punches</p>
-            <h4 className="text-2xl font-bold text-primary-text">{stats.totalToday}</h4>
+          <div className="min-w-0">
+            <p className="text-xs sm:text-sm text-muted truncate">Unknown Faces</p>
+            <h4 className="text-lg sm:text-2xl font-bold text-primary-text">{stats.unknown}</h4>
+          </div>
+        </div>
+
+        <div className="bg-card border border-border rounded-xl p-3 sm:p-5 shadow-sm flex items-center gap-2.5 sm:gap-4">
+          <div className="p-2 sm:p-3 rounded-lg bg-emerald-500/10 text-[#44D62C] shrink-0">
+            <Shield className="h-5 w-5 sm:h-6 sm:w-6" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs sm:text-sm text-muted truncate">Face Punches</p>
+            <h4 className="text-lg sm:text-2xl font-bold text-primary-text">{stats.totalToday}</h4>
           </div>
         </div>
       </div>
@@ -1561,20 +1623,20 @@ const CctvDashboard: React.FC = () => {
         {/* Left Column: Live NVR Camera Window (7 cols) */}
         <div className="lg:col-span-7 flex flex-col">
           <div ref={leftCardRef} className="bg-card rounded-2xl border border-border p-4 shadow-sm flex flex-col justify-between">
-            <div className="flex items-center justify-between mb-3 px-1">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-3 px-1">
               <div className="flex items-center gap-2">
-                <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="h-2.5 w-2.5 rounded-full bg-[#44D62C] animate-pulse" />
                 <h3 className="font-bold text-primary-text text-sm uppercase tracking-wider">
                   Live CCTV Surveillance Stream
                 </h3>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 flex-wrap">
                 <button
                   onClick={() => setShowActionZoneModal(true)}
-                  className="px-2.5 py-1 text-[11px] font-bold rounded-md bg-rose-50 hover:bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-200 border border-rose-300 dark:border-rose-800 transition-all flex items-center gap-1.5 shadow-2xs"
+                  className="px-2.5 py-1 text-[11px] font-bold rounded-md bg-rose-950/70 hover:bg-rose-900/70 text-rose-200 border border-rose-800/60 transition-all flex items-center gap-1.5 shadow-2xs"
                   title="Define Face Capture Action Zone (ROI)"
                 >
-                  <Crosshair className="h-3.5 w-3.5 text-rose-600 animate-pulse" />
+                  <Crosshair className="h-3.5 w-3.5 text-rose-400 animate-pulse" />
                   <span>Action Zone</span>
                   <span className={`h-1.5 w-1.5 rounded-full ${isActionZoneEnabled ? 'bg-rose-500' : 'bg-gray-400'}`} />
                 </button>
@@ -1582,23 +1644,23 @@ const CctvDashboard: React.FC = () => {
                   onClick={() => setShowStreamZoneOverlay(prev => !prev)}
                   className={`px-2 py-1 text-[11px] font-bold rounded-md border transition-all flex items-center gap-1 ${
                     showStreamZoneOverlay 
-                      ? 'bg-rose-100/70 border-rose-300 text-rose-900 dark:bg-rose-950 dark:text-rose-200' 
-                      : 'bg-neutral-100 dark:bg-neutral-800 border-border text-muted'
+                      ? 'bg-rose-950/80 border-rose-700 text-rose-200' 
+                      : 'bg-[#062013] border-[#134426] text-emerald-300/80 hover:text-[#44D62C]'
                   }`}
                   title={showStreamZoneOverlay ? 'Hide Zone Outline Box' : 'Show Zone Outline Box'}
                 >
-                  {showStreamZoneOverlay ? <Eye className="h-3 w-3 text-rose-600" /> : <EyeOff className="h-3 w-3 text-gray-400" />}
+                  {showStreamZoneOverlay ? <Eye className="h-3 w-3 text-rose-400" /> : <EyeOff className="h-3 w-3 text-gray-400" />}
                   <span>{showStreamZoneOverlay ? 'Zone ON' : 'Zone OFF'}</span>
                 </button>
                 <button
                   onClick={() => setShowStreamInspector(prev => !prev)}
-                  className="px-2.5 py-1 text-[11px] font-bold rounded-md bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 text-primary-text border border-border transition-all flex items-center gap-1"
+                  className="px-2.5 py-1 text-[11px] font-bold rounded-md bg-[#062013] hover:bg-[#092c19] text-emerald-200 border border-[#134426] transition-all flex items-center gap-1"
                 >
-                  <Sliders className="h-3 w-3 text-emerald-600" />
+                  <Sliders className="h-3 w-3 text-[#44D62C]" />
                   {showStreamInspector ? 'Hide Inspector' : 'Stream Inspector'}
                 </button>
-                <span className="text-[11px] font-mono font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-md flex items-center gap-1">
-                  <MapPin className="h-3 w-3 text-emerald-600" />
+                <span className="text-[11px] font-mono font-bold bg-[#0a381f] text-[#44D62C] border border-[#134426] px-2 py-0.5 rounded-md flex items-center gap-1">
+                  <MapPin className="h-3 w-3 text-[#44D62C]" />
                   RTSP TCP • PARADIGM OFFICE
                 </span>
               </div>
@@ -1679,17 +1741,17 @@ const CctvDashboard: React.FC = () => {
         <div 
           className="lg:col-span-5 flex flex-col w-full min-h-0"
           style={{ 
-            height: cctvCardHeight ? `${cctvCardHeight}px` : undefined,
-            maxHeight: cctvCardHeight ? `${cctvCardHeight}px` : undefined 
+            height: (typeof window !== 'undefined' && window.innerWidth >= 1024 && cctvCardHeight) ? `${cctvCardHeight}px` : undefined,
+            maxHeight: (typeof window !== 'undefined' && window.innerWidth >= 1024 && cctvCardHeight) ? `${cctvCardHeight}px` : undefined 
           }}
         >
-          <div className="bg-card rounded-2xl border border-border shadow-sm flex flex-col overflow-hidden h-full max-h-full">
-            <div className="px-5 py-4 border-b border-border bg-emerald-50/50 flex items-center justify-between flex-shrink-0">
+          <div className="bg-card rounded-2xl border border-border shadow-sm flex flex-col overflow-hidden h-full max-h-full min-h-[460px] lg:min-h-0">
+            <div className="px-4 sm:px-5 py-3.5 border-b border-border bg-[#042111] flex items-center justify-between flex-shrink-0">
               <div className="flex items-center gap-2">
-                <Activity className="h-4 w-4 text-emerald-600" />
-                <h3 className="font-bold text-emerald-950 text-sm">Real-Time Face Detections</h3>
+                <Activity className="h-4 w-4 text-[#44D62C]" />
+                <h3 className="font-bold text-[#44D62C] text-sm">Real-Time Face Detections</h3>
               </div>
-              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-[#0a381f] text-[#44D62C] border border-[#134426]">
                 {logs.length} Today
               </span>
             </div>
@@ -1697,8 +1759,8 @@ const CctvDashboard: React.FC = () => {
             <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-border/60">
               {paginatedLogs.length === 0 ? (
                 <div className="py-16 flex flex-col items-center justify-center text-center p-6">
-                  <div className="h-12 w-12 bg-emerald-50 rounded-full flex items-center justify-center mb-3">
-                    <Camera className="h-6 w-6 text-emerald-500" />
+                  <div className="h-12 w-12 bg-[#0a381f] rounded-full flex items-center justify-center mb-3">
+                    <Camera className="h-6 w-6 text-[#44D62C]" />
                   </div>
                   <p className="text-sm font-bold text-primary-text">Waiting for Gate Activity...</p>
                   <p className="text-xs text-muted mt-1">Camera is scanning for faces in real-time.</p>
@@ -1708,47 +1770,47 @@ const CctvDashboard: React.FC = () => {
                   <div
                     key={log.id}
                     onClick={() => handleOpenLogPhoto(log)}
-                    className="p-3 hover:bg-emerald-50/40 cursor-pointer transition-colors flex items-center gap-3 group"
+                    className="p-3 hover:bg-[#072916]/50 cursor-pointer transition-colors flex items-center gap-3 group"
                   >
                     <div className="relative">
                       {log.snapshotUrl ? (
                         <img
                           src={log.snapshotUrl}
                           alt=""
-                          className="h-9 w-9 rounded-xl object-cover border border-emerald-500/30 group-hover:scale-105 transition-transform shadow-xs"
+                          className="h-9 w-9 rounded-xl object-cover border border-[#134426] group-hover:scale-105 transition-transform shadow-xs"
                         />
                       ) : (
                         <div className={`h-9 w-9 rounded-xl flex items-center justify-center text-xs font-extrabold flex-shrink-0 border ${
                           log.userId 
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
-                            : 'bg-gray-100 text-gray-500 border-gray-200'
+                            ? 'bg-[#0a381f] text-[#44D62C] border-[#134426]' 
+                            : 'bg-neutral-900 text-neutral-400 border border-neutral-800'
                         }`}>
                           {log.userName ? log.userName.charAt(0).toUpperCase() : '?'}
                         </div>
                       )}
-                      <span className={`absolute -bottom-1 -right-1 h-2.5 w-2.5 rounded-full border-2 border-white ${log.userId ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                      <span className={`absolute -bottom-1 -right-1 h-2.5 w-2.5 rounded-full border-2 border-card ${log.userId ? 'bg-[#44D62C]' : 'bg-amber-500'}`} />
                     </div>
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-bold text-xs text-primary-text truncate group-hover:text-emerald-700 transition-colors">
+                        <span className="font-bold text-xs text-primary-text truncate group-hover:text-[#44D62C] transition-colors">
                           {log.userName || 'Unknown Person'}
                         </span>
                         <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded ${
                           log.direction === 'entry'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : 'bg-blue-100 text-blue-800'
+                            ? 'bg-[#0a381f] text-[#44D62C] border border-[#134426]'
+                            : 'bg-blue-950/70 text-blue-300 border border-blue-800/60'
                         }`}>
                           {log.direction === 'entry' ? 'IN' : 'OUT'}
                         </span>
                       </div>
-                      <div className="text-[11px] text-muted flex items-center gap-1 mt-0.5">
-                        <Clock className="h-3 w-3 text-muted" /> {formatTime(log.detectedAt)} • {formatCameraLocation(log.cameraName)}
+                      <div className="text-[11px] text-muted flex items-center gap-1 mt-0.5 truncate">
+                        <Clock className="h-3 w-3 text-muted shrink-0" /> {formatTime(log.detectedAt)} • {formatCameraLocation(log.cameraName)}
                       </div>
                     </div>
 
                     <div className="text-right flex-shrink-0 flex items-center gap-1.5">
-                      <span className="text-xs font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                      <span className="text-xs font-mono font-bold text-[#44D62C] bg-[#041d0f] px-2 py-0.5 rounded border border-[#134426]">
                         {(log.confidence * 100).toFixed(0)}%
                       </span>
                       <button
@@ -1768,10 +1830,10 @@ const CctvDashboard: React.FC = () => {
                             edgeLogId: log.edgeLogId,
                           });
                         }}
-                        className="p-1 px-2 rounded-lg border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-[10px] flex items-center gap-1 transition-all shadow-2xs"
+                        className="p-1 px-2 rounded-lg border border-[#134426] bg-[#0a381f] hover:bg-[#134426] text-[#44D62C] font-bold text-[10px] flex items-center gap-1 transition-all shadow-2xs"
                         title="Quick Edit / Map User"
                       >
-                        <Edit2 className="h-3 w-3 text-emerald-600" />
+                        <Edit2 className="h-3 w-3 text-[#44D62C]" />
                         <span>{log.userId ? 'Edit' : 'Map'}</span>
                       </button>
                     </div>
@@ -2933,7 +2995,7 @@ BEGIN
     RETURN QUERY SELECT v_proc, v_bridged, v_merged, v_skipped;
 END;
 $$;`;
-          navigator.clipboard.writeText(sqlText);
+          safeCopyToClipboard(sqlText);
           setToast({ message: 'SQL trigger function copied to clipboard! Paste and run in Supabase SQL Editor.', type: 'success' });
           setShowSqlFixModal(false);
         }}

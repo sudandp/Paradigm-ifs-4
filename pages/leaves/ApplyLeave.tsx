@@ -394,7 +394,7 @@ const ApplyLeave: React.FC = () => {
             }
 
             const usedExplicitMins = calcPermMins(monthPerms);
-            const totalUsedPermMins = usedExplicitMins + totalEarlyDepartureMins;
+            const totalUsedPermMins = Math.min(180, usedExplicitMins + totalEarlyDepartureMins);
 
             const combinedRequests = [
                 ...monthPerms,
@@ -1841,7 +1841,7 @@ const ApplyLeave: React.FC = () => {
                                                         ? format(new Date(r.startDate.replace(/-/g, '/')), 'dd MMM yyyy')
                                                         : '—';
                                                     const timeRange = isEarlyDep
-                                                        ? `${r.permissionTimeRange || 'Permission'} • Left early at ${r.punchOutTime || 'punch-out'} (${r.formattedWorked} worked → Corrected: ${r.formattedCorrectedWorked || '8h 0m'})`
+                                                        ? `${r.permissionTimeRange || 'Permission'} • Left early at ${r.punchOutTime || 'punch-out'} (${r.formattedWorked} worked • ${durMins > 0 ? `-${durMins}m deducted` : '0m (3h Limit Reached)'})`
                                                         : (r.correctionDetails?.punchIn && r.correctionDetails?.punchOut
                                                             ? `${r.correctionDetails.punchIn} – ${r.correctionDetails.punchOut}${
                                                                 r.correctionDetails.punchIn2 && r.correctionDetails.punchOut2
@@ -1849,7 +1849,7 @@ const ApplyLeave: React.FC = () => {
                                                                     : ''
                                                               }`
                                                             : 'Time not recorded');
-                                                    const statusText = isEarlyDep ? 'Auto-Deducted' : r.status?.replace(/_/g, ' ');
+                                                    const statusText = isEarlyDep ? (durMins > 0 ? 'Auto-Deducted' : 'Limit Reached') : r.status?.replace(/_/g, ' ');
                                                     const statusColor = isEarlyDep
                                                         ? 'text-amber-600 font-bold'
                                                         : (r.status === 'approved'

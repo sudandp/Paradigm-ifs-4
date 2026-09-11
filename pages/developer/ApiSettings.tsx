@@ -9,6 +9,7 @@ import Checkbox from '../../components/ui/Checkbox';
 import PageInterfaceSettingsModal from '../../components/developer/PageInterfaceSettingsModal';
 import { useDevice } from '../../hooks/useDevice';
 import { useAuthStore } from '../../store/authStore';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 const LastUpdated = ({ updatedBy, updatedAt }: { updatedBy?: string, updatedAt?: string }) => {
     if (!updatedBy && !updatedAt) return null;
@@ -119,6 +120,7 @@ export const ApiSettings: React.FC = () => {
 
     return (
         <div className="space-y-8 p-4 md:p-0">
+            <MobileTopBar title="API SETTINGS" parentPath="/mobile-home" />
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
             <PageInterfaceSettingsModal isOpen={isInterfaceModalOpen} onClose={() => setIsInterfaceModalOpen(false)} />
 

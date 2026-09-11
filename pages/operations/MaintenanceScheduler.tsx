@@ -5,6 +5,7 @@ import Input from '../../components/ui/Input';
 import Toast from '../../components/ui/Toast';
 import type { OpsMaintenanceSchedule, MaintenanceFrequency } from '../../types/operations';
 import { Plus, Search, Calendar as CalIcon, Settings, CheckCircle2, Loader2, AlertTriangle } from 'lucide-react';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 const MaintenanceScheduler: React.FC = () => {
   const { schedules, fetchSchedules, createSchedule, updateSchedule, isLoading } = useOpsStore();
@@ -93,6 +94,7 @@ const MaintenanceScheduler: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <MobileTopBar title="MAINTENANCE" parentPath="/mobile-home" />
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
       
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">

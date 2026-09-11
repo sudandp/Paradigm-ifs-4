@@ -1,7 +1,6 @@
 import { LocalNotifications, LocalNotificationSchema } from '@capacitor/local-notifications';
 import { Camera } from '@capacitor/camera';
 import { Geolocation } from '@capacitor/geolocation';
-import { Contacts } from '@capacitor-community/contacts';
 import { Capacitor } from '@capacitor/core';
 import { pushNotificationService } from '../services/pushNotificationService';
 import { stepCounterService } from '../services/stepCounterService';
@@ -140,10 +139,6 @@ export const checkRequiredPermissions = async () => {
         // 4. Notifications
         const notif = await LocalNotifications.checkPermissions();
         if (notif.display !== 'granted') missing.push('Notifications');
-
-        // 5. Contacts
-        const cont = await Contacts.checkPermissions();
-        if (cont.contacts !== 'granted') missing.push('Contacts');
 
         // 6. Bluetooth (Nearby Devices)
         if (isAndroid) {
@@ -316,17 +311,6 @@ export const requestAllPermissions = async (onProgress?: (id: string, missing: s
             }
         } catch (e) { console.error('[iOS] Notifications failed:', e); }
 
-        // Step 4 → Contacts
-        try {
-            const { missing } = await checkRequiredPermissions();
-            if (missing.includes('Contacts')) {
-                if (onProgress) onProgress('Contacts', missing);
-                await Contacts.requestPermissions();
-                await reCheck('Contacts');
-                await delay(iosDelay);
-            }
-        } catch (e) { console.error('[iOS] Contacts failed:', e); }
-
         if (onProgress) onProgress('', (await checkRequiredPermissions()).missing);
         return;
     }
@@ -371,17 +355,6 @@ export const requestAllPermissions = async (onProgress?: (id: string, missing: s
             await delay(androidDelay);
         }
     } catch (e) { console.error('[Android] Notifications failed:', e); }
-
-    // Step 4 → Contacts  (Manifest: READ_CONTACTS)
-    try {
-        const { missing } = await checkRequiredPermissions();
-        if (missing.includes('Contacts')) {
-            if (onProgress) onProgress('Contacts', missing);
-            await Contacts.requestPermissions();
-            await reCheck('Contacts');
-            await delay(androidDelay);
-        }
-    } catch (e) { console.error('[Android] Contacts failed:', e); }
 
     // Step 5 → Physical Activity  (Manifest: ACTIVITY_RECOGNITION — Android 10+)
     try {
@@ -507,9 +480,6 @@ export const requestPermissionById = async (id: string): Promise<void> => {
             break;
         case 'Notifications':
             await LocalNotifications.requestPermissions().catch(e => console.error('Notification perm failed', e));
-            break;
-        case 'Contacts':
-            await Contacts.requestPermissions().catch(e => console.error('Contacts perm failed', e));
             break;
         case 'Physical Activity':
             if (isAndroid) {

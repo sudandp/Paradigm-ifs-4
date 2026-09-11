@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
+import { safeCopyToClipboard } from '../../utils/clipboardHelper';
 import {
   format, subDays, startOfDay, endOfDay, startOfMonth, endOfMonth,
   subMonths, eachDayOfInterval, isSameDay
@@ -15,8 +16,10 @@ import {
   Calendar, WifiOff, BarChart3, Building2, Shield, Radio, Bug, CheckCircle2,
   Plus, Trash2, Edit3, Copy, Sliders, Save, RotateCcw,
   Lock, ShieldCheck, CheckSquare, Square, UserPlus, FileText, Camera, Eye, X, Video, Moon, Pencil, Check,
-  FileDown, Mail, Filter, Download, FileSpreadsheet, Loader2, Send, Cpu, Sparkles, ArrowLeft
+  FileDown, Mail, Filter, Download, FileSpreadsheet, Loader2, Send, Cpu, Sparkles, ArrowLeft,
+  LayoutGrid, Table as TableIcon
 } from 'lucide-react';
+import { useDevice } from '../../hooks/useDevice';
 import { supabase } from '../../services/supabase';
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
@@ -188,7 +191,7 @@ const StatusBadge: React.FC<{
 
   if (status === 'Not Joined Yet') {
     return (
-      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-slate-100 text-slate-500 border border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700">
+      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-slate-100 text-slate-500 border border-slate-200 dark:bg-[#072415] dark:text-emerald-300/70 dark:border-[#134426]">
         <UserPlus size={11} className="text-slate-400 shrink-0" />
         Not Joined Yet
       </span>
@@ -226,7 +229,7 @@ const StatusBadge: React.FC<{
   if (status === 'Absent') {
     if (isToday) {
       return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-slate-100 text-slate-700 border border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700">
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-slate-100 text-slate-700 border border-slate-300 dark:bg-[#072415] dark:text-emerald-200 dark:border-[#134426]">
           <Clock size={11} className="text-amber-500 shrink-0 animate-pulse" />
           Shift Pending
         </span>
@@ -241,8 +244,8 @@ const StatusBadge: React.FC<{
 
   if (status === 'Expected Night Shift' || status === 'Night Shift Pending') {
     return (
-      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-indigo-100 text-indigo-900 border border-indigo-300 dark:bg-indigo-950/80 dark:text-indigo-300 dark:border-indigo-800">
-        <Moon size={11} className="text-indigo-600 dark:text-indigo-400 shrink-0 animate-pulse" />
+      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-teal-100 text-teal-900 border border-teal-300 dark:bg-[#072415] dark:text-teal-300 dark:border-[#134426]">
+        <Moon size={11} className="text-teal-600 dark:text-[#44D62C] shrink-0 animate-pulse" />
         Expected Night Shift (08:00 PM)
       </span>
     );
@@ -295,17 +298,17 @@ const StatusBadge: React.FC<{
 };
 
 const ShiftBadge: React.FC<{ shiftName?: string; shiftTiming?: string }> = ({ shiftName, shiftTiming }) => {
-  if (!shiftName) return <span className="text-slate-300 dark:text-slate-600">—</span>;
+  if (!shiftName) return <span className="text-slate-300 dark:text-emerald-300/40">—</span>;
 
   const colorMap: Record<string, string> = {
     'A Shift': 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-800',
-    'B Shift': 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/50 dark:text-purple-300 dark:border-purple-800',
-    'C Shift': 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-800',
-    'General Shift': 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
+    'B Shift': 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800',
+    'C Shift': 'bg-teal-50 text-teal-800 border-teal-200 dark:bg-teal-950/50 dark:text-teal-300 dark:border-teal-800',
+    'General Shift': 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-[#0d3820] dark:text-emerald-200 dark:border-[#1a5532]',
     'Day Shift (12h)': 'bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-950/50 dark:text-cyan-300 dark:border-cyan-800',
     'Night Shift (12h)': 'bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/50 dark:text-sky-300 dark:border-sky-800',
     'Security Day': 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800',
-    'Security Night': 'bg-teal-50 text-teal-800 border-teal-200 dark:bg-teal-950/50 dark:text-teal-300 dark:border-teal-800',
+    'Security Night': 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-[#0d3820] dark:text-[#44D62C] dark:border-[#1a5532]',
   };
 
   const style = colorMap[shiftName] || 'bg-slate-100 text-slate-700 border-slate-200';
@@ -339,32 +342,32 @@ interface KpiCardProps {
 const KpiCard: React.FC<KpiCardProps> = ({ label, value, icon, color, bgColor, subLabel, loading, onClick, isActive }) => (
   <button
     onClick={onClick}
-    className={`bg-white dark:bg-slate-900 rounded-2xl border ${
+    className={`bg-white dark:bg-[#072415] rounded-2xl border ${
       isActive
-        ? 'border-emerald-500 ring-2 ring-emerald-500/20 shadow-md bg-emerald-50/10 dark:bg-emerald-950/20'
-        : 'border-slate-200/80 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md'
-    } p-5 transition-all text-left group relative cursor-pointer w-full`}
+        ? 'border-[#44D62C] ring-2 ring-[#44D62C]/30 shadow-[0_4px_16px_rgba(68,214,44,0.15)] bg-emerald-50/10 dark:bg-[#0c3821]'
+        : 'border-slate-200/80 dark:border-[#134426] hover:border-slate-300 dark:hover:border-[#22633c] hover:shadow-md'
+    } p-3.5 sm:p-4.5 transition-all text-left group relative cursor-pointer w-full active:scale-[0.98]`}
   >
-    <div className="flex items-start justify-between gap-3">
+    <div className="flex items-start justify-between gap-2 sm:gap-3">
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 mb-1">
-          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+          <p className="text-[10px] sm:text-xs font-bold text-slate-500 dark:text-emerald-300/80 uppercase tracking-wider truncate">
             {label}
           </p>
           {isActive && (
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" title="Active View" />
+            <span className="w-2 h-2 rounded-full bg-[#44D62C] animate-pulse shrink-0" title="Active View" />
           )}
         </div>
         {loading && (value === undefined || value === null || value === '—') ? (
-          <div className="h-8 w-20 bg-slate-200 dark:bg-slate-700 rounded animate-pulse mt-1" />
+          <div className="h-7 sm:h-8 w-16 sm:w-20 bg-slate-200 dark:bg-[#0f4427] rounded animate-pulse mt-1" />
         ) : (
-          <p className={`text-3xl font-black ${color} leading-none`}>{value}</p>
+          <p className={`text-2xl sm:text-3xl font-black ${color} leading-none truncate`}>{value}</p>
         )}
         {subLabel && (
-          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5 font-medium">{subLabel}</p>
+          <p className="text-[10px] sm:text-[11px] text-slate-400 dark:text-emerald-400/80 mt-1 sm:mt-1.5 font-medium line-clamp-1">{subLabel}</p>
         )}
       </div>
-      <div className={`w-11 h-11 rounded-xl ${bgColor} flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform`}>
+      <div className={`w-9 h-9 sm:w-11 sm:h-11 rounded-xl ${bgColor} flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform border border-transparent dark:border-[#1a5532]/50`}>
         {icon}
       </div>
     </div>
@@ -638,6 +641,11 @@ const ClientAttendanceDashboard: React.FC = () => {
   const [pageSize, setPageSize] = useState<number>(50);
   const tableRef = useRef<HTMLDivElement>(null);
   const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ── Adaptive Mobile View Mode (Cards vs Table) ──────────────────────────────
+  const { isMobile } = useDevice();
+  const [viewMode, setViewMode] = useState<'cards' | 'table' | 'auto'>('auto');
+  const activeViewMode = viewMode === 'auto' ? (isMobile ? 'cards' : 'table') : viewMode;
 
   // ── Site Responsibility Matrix & Operations Manager Scoping ─────────────────
   const [matrixData, setMatrixData] = useState<SiteResponsibilityMatrix[]>([]);
@@ -2168,7 +2176,7 @@ const DetailedAuditReportView: React.FC<{
 
   if (!employees || employees.length === 0) {
     return (
-      <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
+      <div className="p-8 text-center bg-white dark:bg-[#072415] rounded-2xl border border-slate-200 dark:border-[#134426]">
         <p className="text-slate-500 font-bold text-sm">No employee data found matching current filter.</p>
       </div>
     );
@@ -2448,21 +2456,21 @@ const DetailedAuditReportView: React.FC<{
     const presenceScorePct = daysInMonth > 0 ? Math.round((totalPresentDays / daysInMonth) * 100) : 0;
 
     return (
-      <div key={`${emp.empCode}-${idx}`} className="border border-slate-200 dark:border-slate-800 rounded-2xl p-5 bg-white dark:bg-slate-900 space-y-4 shadow-xs">
-        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
+      <div key={`${emp.empCode}-${idx}`} className="border border-slate-200 dark:border-[#134426] rounded-2xl p-5 bg-white dark:bg-[#072415] space-y-4 shadow-xs">
+        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 border-b border-slate-100 dark:border-[#134426] pb-4">
           <div>
             <h2 className="text-lg font-black text-slate-900 dark:text-white tracking-tight">
               Name : <span className="text-emerald-700 dark:text-emerald-400 font-extrabold">{emp.empName}</span>
               <span className="ml-2 font-mono text-xs text-slate-400 font-bold">({emp.empCode})</span>
             </h2>
-            <p className="text-xs font-bold text-slate-600 dark:text-slate-400 mt-1">
-              Role: <span className="text-slate-800 dark:text-slate-200 font-semibold">{emp.designation || 'Field Officer'}</span>
+            <p className="text-xs font-bold text-slate-600 dark:text-emerald-300/70 mt-1">
+              Role: <span className="text-slate-800 dark:text-emerald-100 font-semibold">{emp.designation || 'Field Officer'}</span>
             </p>
-            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-0.5">
+            <p className="text-xs font-medium text-slate-500 dark:text-emerald-300/70 mt-0.5">
               Billing Cycle: <strong>1st {monthName} to {daysInMonth}th {monthName} {year}</strong>
             </p>
-            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-0.5">
-              ✉ Email: <span className="text-slate-700 dark:text-slate-300 font-semibold">{emp.empCode.toLowerCase()}@paradigmfms.com</span> &nbsp;|&nbsp; 📞 Contact: <strong>N/A</strong>
+            <p className="text-xs font-medium text-slate-500 dark:text-emerald-300/70 mt-0.5">
+              ✉ Email: <span className="text-slate-700 dark:text-emerald-200 font-semibold">{emp.empCode.toLowerCase()}@paradigmfms.com</span> &nbsp;|&nbsp; 📞 Contact: <strong>N/A</strong>
             </p>
           </div>
 
@@ -2490,34 +2498,34 @@ const DetailedAuditReportView: React.FC<{
             <p className="text-[10px] font-extrabold text-amber-700 dark:text-amber-400 uppercase tracking-wider">AVG HRS/DAY</p>
             <p className="text-xl font-black text-amber-900 dark:text-amber-200 mt-0.5">{avgHrsPerDayNum} <span className="text-xs font-semibold">Hrs</span></p>
           </div>
-          <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-            <p className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider">GROSS / BREAK</p>
-            <p className="text-xs font-bold text-slate-800 dark:text-slate-200 mt-1">GROSS: <span className="font-mono font-black">{grossHrsNum} h</span></p>
-            <p className="text-xs font-bold text-slate-600 dark:text-slate-400">BREAK: <span className="font-mono font-black">{breakHrsNum} h</span></p>
+          <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-[#072415] border border-slate-200 dark:border-[#134426]">
+            <p className="text-[10px] font-extrabold text-slate-500 dark:text-emerald-300/70 uppercase tracking-wider">GROSS / BREAK</p>
+            <p className="text-xs font-bold text-slate-800 dark:text-emerald-100 mt-1">GROSS: <span className="font-mono font-black">{grossHrsNum} h</span></p>
+            <p className="text-xs font-bold text-slate-600 dark:text-emerald-300/70">BREAK: <span className="font-mono font-black">{breakHrsNum} h</span></p>
           </div>
-          <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 col-span-2 flex flex-col justify-between">
-            <p className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider">ATTENDANCE DISTRIBUTION</p>
+          <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-[#072415] border border-slate-200 dark:border-[#134426] col-span-2 flex flex-col justify-between">
+            <p className="text-[10px] font-extrabold text-slate-500 dark:text-emerald-300/70 uppercase tracking-wider">ATTENDANCE DISTRIBUTION</p>
             <div className="flex flex-wrap gap-1 mt-1 text-[10px] font-bold">
               <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">Paid Days: {payableDaysNum}</span>
               <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300">Absent: {totalAbsentDays}</span>
-              <span className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-200">W/O: {totalWeeklyOffs}</span>
+              <span className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-800 dark:bg-[#0d3820] dark:text-emerald-100">W/O: {totalWeeklyOffs}</span>
               <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300">Holiday: 0</span>
             </div>
-            <div className="mt-1.5 pt-1 border-t border-slate-200 dark:border-slate-700 flex justify-between items-center text-xs">
-              <span className="font-bold text-slate-600 dark:text-slate-400">PAYABLE DAYS:</span>
+            <div className="mt-1.5 pt-1 border-t border-slate-200 dark:border-[#134426] flex justify-between items-center text-xs">
+              <span className="font-bold text-slate-600 dark:text-emerald-300/70">PAYABLE DAYS:</span>
               <span className="font-black text-emerald-600 text-base">{payableDaysNum}</span>
             </div>
           </div>
         </div>
 
         {/* IMAGE 2: 31-Day Matrix Table (Dynamically rendered per record) */}
-        <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
+        <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] shadow-xs">
           <table className="w-full text-[11px] text-center border-collapse">
             <thead>
-              <tr className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-extrabold border-b border-slate-200 dark:border-slate-700">
-                <th className="px-3 py-2 text-left sticky left-0 bg-slate-100 dark:bg-slate-800 min-w-[110px] z-10">Date</th>
+              <tr className="bg-slate-100 dark:bg-[#072415] text-slate-700 dark:text-emerald-200 font-extrabold border-b border-slate-200 dark:border-[#134426]">
+                <th className="px-3 py-2 text-left sticky left-0 bg-slate-100 dark:bg-[#072415] min-w-[110px] z-10">Date</th>
                 {daysArray.map(dayNum => (
-                  <th key={dayNum} className="px-1 py-2 min-w-[34px] border-r border-slate-200 dark:border-slate-700/60 font-mono text-center">
+                  <th key={dayNum} className="px-1 py-2 min-w-[34px] border-r border-slate-200 dark:border-[#134426]/60 font-mono text-center">
                     {dayNum}
                   </th>
                 ))}
@@ -2525,8 +2533,8 @@ const DetailedAuditReportView: React.FC<{
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800 font-mono">
               {/* Status Row */}
-              <tr className="bg-slate-50/50 dark:bg-slate-900/50">
-                <td className="px-3 py-1.5 font-bold text-left sticky left-0 bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white z-10">Status</td>
+              <tr className="bg-slate-50/50 dark:bg-[#072415]/50">
+                <td className="px-3 py-1.5 font-bold text-left sticky left-0 bg-slate-100 dark:bg-[#072415] text-slate-900 dark:text-white z-10">Status</td>
                 {dailyData.map(d => {
                   const st = d.status;
                   const bg = st === 'P' ? 'bg-emerald-100 text-emerald-800 font-bold'
@@ -2535,7 +2543,7 @@ const DetailedAuditReportView: React.FC<{
                            : st === '0.25P' || st === '0.5P' || st === '0.75P' ? 'bg-cyan-100 text-cyan-800 font-bold'
                            : 'bg-slate-200 text-slate-700 font-medium';
                   return (
-                    <td key={d.dayNum} className={`px-0.5 py-1 text-[10px] border-r border-slate-200 dark:border-slate-800 ${bg}`}>
+                    <td key={d.dayNum} className={`px-0.5 py-1 text-[10px] border-r border-slate-200 dark:border-[#134426] ${bg}`}>
                       {st}
                     </td>
                   );
@@ -2544,9 +2552,9 @@ const DetailedAuditReportView: React.FC<{
 
               {/* InTime Row */}
               <tr>
-                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-slate-900 font-semibold text-slate-600 dark:text-slate-400 z-10">InTime</td>
+                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-[#072415] font-semibold text-slate-600 dark:text-emerald-300/70 z-10">InTime</td>
                 {dailyData.map(d => (
-                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-emerald-600 dark:text-emerald-400 border-r border-slate-100 dark:border-slate-800">
+                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-emerald-600 dark:text-emerald-400 border-r border-slate-100 dark:border-[#134426]">
                     {d.inTime}
                   </td>
                 ))}
@@ -2554,9 +2562,9 @@ const DetailedAuditReportView: React.FC<{
 
               {/* OutTime Row */}
               <tr>
-                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-slate-900 font-semibold text-slate-600 dark:text-slate-400 z-10">OutTime</td>
+                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-[#072415] font-semibold text-slate-600 dark:text-emerald-300/70 z-10">OutTime</td>
                 {dailyData.map(d => (
-                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-slate-600 dark:text-slate-400 border-r border-slate-100 dark:border-slate-800">
+                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-slate-600 dark:text-emerald-300/70 border-r border-slate-100 dark:border-[#134426]">
                     {d.outTime}
                   </td>
                 ))}
@@ -2564,19 +2572,19 @@ const DetailedAuditReportView: React.FC<{
 
               {/* Perm Duration Row */}
               <tr>
-                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-slate-900 font-semibold text-slate-400 z-10">Perm Duration</td>
+                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-[#072415] font-semibold text-slate-400 z-10">Perm Duration</td>
                 {daysArray.map(d => (
-                  <td key={d} className="px-0.5 py-1 text-[10px] text-slate-400 border-r border-slate-100 dark:border-slate-800">
+                  <td key={d} className="px-0.5 py-1 text-[10px] text-slate-400 border-r border-slate-100 dark:border-[#134426]">
                     -
                   </td>
                 ))}
               </tr>
 
               {/* Gross Dur Row */}
-              <tr className="bg-slate-50/30 dark:bg-slate-800/20">
-                <td className="px-3 py-1 text-left sticky left-0 bg-slate-50 dark:bg-slate-800 font-semibold text-slate-700 dark:text-slate-300 z-10">Gross Dur</td>
+              <tr className="bg-slate-50/30 dark:bg-[#072415]/20">
+                <td className="px-3 py-1 text-left sticky left-0 bg-slate-50 dark:bg-[#072415] font-semibold text-slate-700 dark:text-emerald-200 z-10">Gross Dur</td>
                 {dailyData.map(d => (
-                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] border-r border-slate-100 dark:border-slate-800 font-medium">
+                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] border-r border-slate-100 dark:border-[#134426] font-medium">
                     {d.grossDur}
                   </td>
                 ))}
@@ -2584,9 +2592,9 @@ const DetailedAuditReportView: React.FC<{
 
               {/* Break In Row */}
               <tr>
-                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-slate-900 font-semibold text-slate-400 z-10">Break In</td>
+                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-[#072415] font-semibold text-slate-400 z-10">Break In</td>
                 {dailyData.map(d => (
-                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-slate-400 border-r border-slate-100 dark:border-slate-800">
+                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-slate-400 border-r border-slate-100 dark:border-[#134426]">
                     {d.breakIn}
                   </td>
                 ))}
@@ -2594,9 +2602,9 @@ const DetailedAuditReportView: React.FC<{
 
               {/* Break Out Row */}
               <tr>
-                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-slate-900 font-semibold text-slate-400 z-10">Break Out</td>
+                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-[#072415] font-semibold text-slate-400 z-10">Break Out</td>
                 {dailyData.map(d => (
-                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-slate-400 border-r border-slate-100 dark:border-slate-800">
+                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-slate-400 border-r border-slate-100 dark:border-[#134426]">
                     {d.breakOut}
                   </td>
                 ))}
@@ -2604,9 +2612,9 @@ const DetailedAuditReportView: React.FC<{
 
               {/* Break Dur Row */}
               <tr>
-                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-slate-900 font-semibold text-slate-400 z-10">Break Dur</td>
+                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-[#072415] font-semibold text-slate-400 z-10">Break Dur</td>
                 {dailyData.map(d => (
-                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-slate-400 border-r border-slate-100 dark:border-slate-800">
+                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-slate-400 border-r border-slate-100 dark:border-[#134426]">
                     {d.breakDur}
                   </td>
                 ))}
@@ -2616,7 +2624,7 @@ const DetailedAuditReportView: React.FC<{
               <tr className="bg-emerald-50/40 dark:bg-emerald-950/20 font-bold">
                 <td className="px-3 py-1 text-left sticky left-0 bg-emerald-50 dark:bg-emerald-950 text-emerald-900 dark:text-emerald-300 z-10">Net Worked</td>
                 {dailyData.map(d => (
-                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-emerald-700 dark:text-emerald-300 border-r border-slate-100 dark:border-slate-800">
+                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-emerald-700 dark:text-emerald-300 border-r border-slate-100 dark:border-[#134426]">
                     {d.netWorked}
                   </td>
                 ))}
@@ -2624,9 +2632,9 @@ const DetailedAuditReportView: React.FC<{
 
               {/* Travel (KM) Row */}
               <tr>
-                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-slate-900 font-semibold text-teal-600 dark:text-teal-400 z-10">Travel (KM)</td>
+                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-[#072415] font-semibold text-teal-600 dark:text-teal-400 z-10">Travel (KM)</td>
                 {daysArray.map(d => (
-                  <td key={d} className="px-0.5 py-1 text-[10px] text-teal-600 dark:text-teal-400 border-r border-slate-100 dark:border-slate-800">
+                  <td key={d} className="px-0.5 py-1 text-[10px] text-teal-600 dark:text-teal-400 border-r border-slate-100 dark:border-[#134426]">
                     -
                   </td>
                 ))}
@@ -2634,9 +2642,9 @@ const DetailedAuditReportView: React.FC<{
 
               {/* Late By Row (Matching Image 1) */}
               <tr>
-                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-slate-900 font-semibold text-rose-600 dark:text-rose-400 z-10">Late By</td>
+                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-[#072415] font-semibold text-rose-600 dark:text-rose-400 z-10">Late By</td>
                 {dailyData.map(d => (
-                  <td key={d.dayNum} className={`px-0.5 py-1 text-[10px] border-r border-slate-100 dark:border-slate-800 ${d.lateBy !== '-' ? 'font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40' : 'text-slate-400'}`}>
+                  <td key={d.dayNum} className={`px-0.5 py-1 text-[10px] border-r border-slate-100 dark:border-[#134426] ${d.lateBy !== '-' ? 'font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40' : 'text-slate-400'}`}>
                     {d.lateBy}
                   </td>
                 ))}
@@ -2646,7 +2654,7 @@ const DetailedAuditReportView: React.FC<{
               <tr className="bg-amber-50/30 dark:bg-amber-950/20 font-bold">
                 <td className="px-3 py-1 text-left sticky left-0 bg-amber-50 dark:bg-amber-950 text-amber-900 dark:text-amber-300 z-10">OT</td>
                 {dailyData.map(d => (
-                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-amber-700 dark:text-amber-300 border-r border-slate-100 dark:border-slate-800">
+                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-amber-700 dark:text-amber-300 border-r border-slate-100 dark:border-[#134426]">
                     {d.ot}
                   </td>
                 ))}
@@ -2654,19 +2662,19 @@ const DetailedAuditReportView: React.FC<{
 
               {/* Shortfall Row */}
               <tr>
-                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-slate-900 font-semibold text-slate-400 z-10">Shortfall</td>
+                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-[#072415] font-semibold text-slate-400 z-10">Shortfall</td>
                 {daysArray.map(d => (
-                  <td key={d} className="px-0.5 py-1 text-[10px] text-slate-400 border-r border-slate-100 dark:border-slate-800">
+                  <td key={d} className="px-0.5 py-1 text-[10px] text-slate-400 border-r border-slate-100 dark:border-[#134426]">
                     -
                   </td>
                 ))}
               </tr>
 
               {/* Shift Row */}
-              <tr className="bg-slate-100/60 dark:bg-slate-800/60">
-                <td className="px-3 py-1 text-left sticky left-0 bg-slate-100 dark:bg-slate-800 font-bold text-slate-700 dark:text-slate-300 z-10">Shift</td>
+              <tr className="bg-slate-100/60 dark:bg-[#072415]/60">
+                <td className="px-3 py-1 text-left sticky left-0 bg-slate-100 dark:bg-[#072415] font-bold text-slate-700 dark:text-emerald-200 z-10">Shift</td>
                 {dailyData.map(d => (
-                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] font-bold border-r border-slate-200 dark:border-slate-700">
+                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] font-bold border-r border-slate-200 dark:border-[#134426]">
                     {d.shift}
                   </td>
                 ))}
@@ -2676,14 +2684,14 @@ const DetailedAuditReportView: React.FC<{
         </div>
 
         {/* Summary Stats Bar (Matching Image 1 MSSQL exact output) */}
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-slate-600 dark:text-slate-400 pt-2 border-t border-slate-100 dark:border-slate-800">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-slate-600 dark:text-emerald-300/70 pt-2 border-t border-slate-100 dark:border-[#134426]">
           <span>AVG WORKING HOURS: <strong className="text-slate-900 dark:text-white font-mono">10:41H</strong></span>
           <span>SITE PRESENCE SCORE: <strong className="text-emerald-600 font-mono">{presenceScorePct}%</strong></span>
           <span>SHIFT DISTRIBUTION: <strong className="text-slate-900 dark:text-white font-mono">Shift GS({shiftGsCount}) Shift NS({shiftNsCount})</strong></span>
         </div>
 
         {/* Notation Reference Footer */}
-        <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
+        <div className="pt-3 border-t border-slate-200 dark:border-[#134426] space-y-2">
           <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">NOTATION REFERENCE</p>
           <div className="flex flex-wrap gap-1.5 text-[10px] font-bold">
             <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">P Present</span>
@@ -2695,9 +2703,9 @@ const DetailedAuditReportView: React.FC<{
             <span className="px-2 py-0.5 rounded bg-slate-200 text-slate-800">W/O Weekly Off</span>
             <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800">H Public Holiday</span>
             <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800">H/P Holiday Present</span>
-            <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-800">W/P Weekend Present</span>
-            <span className="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800">SL Sick Leave</span>
-            <span className="px-2 py-0.5 rounded bg-purple-200 text-purple-900">EL Earned Leave</span>
+            <span className="px-2 py-0.5 rounded bg-teal-100 text-teal-800">W/P Weekend Present</span>
+            <span className="px-2 py-0.5 rounded bg-sky-100 text-sky-800">SL Sick Leave</span>
+            <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">EL Earned Leave</span>
             <span className="px-2 py-0.5 rounded bg-slate-300 text-slate-900">C/O Comp Off</span>
           </div>
         </div>
@@ -2706,12 +2714,12 @@ const DetailedAuditReportView: React.FC<{
   };
 
   return (
-    <div className="space-y-6 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs relative">
+    <div className="space-y-6 bg-white dark:bg-[#072415] p-6 rounded-2xl border border-slate-200 dark:border-[#134426] shadow-xs relative">
       {/* ── FRIENDLY CONFIRMATION SAFETY MODAL ────────────────────────────── */}
       {showConfirmModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-slate-900 border-2 border-amber-500/50 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4">
-            <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+          <div className="bg-white dark:bg-[#072415] border-2 border-amber-500/50 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 border-b border-slate-100 dark:border-[#134426] pb-3">
               <div className="w-12 h-12 rounded-2xl bg-amber-100 dark:bg-amber-950 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
                 <AlertTriangle size={24} />
               </div>
@@ -2725,7 +2733,7 @@ const DetailedAuditReportView: React.FC<{
               </div>
             </div>
 
-            <p className="text-xs font-medium text-slate-600 dark:text-slate-300 leading-relaxed">
+            <p className="text-xs font-medium text-slate-600 dark:text-emerald-200 leading-relaxed">
               You have selected <strong className="text-amber-600 dark:text-amber-400 font-bold">"ALL EMPLOYEES"</strong>. Generating detailed 31-day attendance matrices for all <strong className="text-slate-900 dark:text-white font-bold">{employees.length} employees</strong> will render comprehensive report cards for every employee simultaneously.
             </p>
 
@@ -2736,7 +2744,7 @@ const DetailedAuditReportView: React.FC<{
             <div className="flex items-center justify-end gap-3 pt-2">
               <button
                 onClick={handleCancelShowAll}
-                className="px-4 py-2.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-all cursor-pointer"
+                className="px-4 py-2.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-[#072415] dark:hover:bg-[#134426] text-slate-700 dark:text-emerald-200 transition-all cursor-pointer"
               >
                 No, Keep Single View
               </button>
@@ -2753,13 +2761,13 @@ const DetailedAuditReportView: React.FC<{
       )}
 
       {/* ── EMPLOYEE SWITCHER & ACTION BAR ───────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-slate-50 dark:bg-[#072415]/60 rounded-2xl border border-slate-200 dark:border-[#134426]">
         <div className="flex flex-wrap items-center gap-2.5">
-          <span className="text-xs font-bold text-slate-800 dark:text-slate-200">Detailed Audit View Mode:</span>
+          <span className="text-xs font-bold text-slate-800 dark:text-emerald-100">Detailed Audit View Mode:</span>
           <select
             value={selectedEmpIndex}
             onChange={e => handleSelectChange(e.target.value)}
-            className="text-xs font-bold px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer max-w-xs"
+            className="text-xs font-bold px-3 py-2 rounded-xl border border-slate-300 dark:border-[#1a5532] bg-white dark:bg-[#072415] text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer max-w-xs"
           >
             <option value="all">🌐 ALL EMPLOYEES (Full Batch — {employees.length} Reports)</option>
             {employees.map((emp, idx) => (
@@ -2774,7 +2782,7 @@ const DetailedAuditReportView: React.FC<{
             className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
               viewMode === 'all'
                 ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
-                : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                : 'bg-white dark:bg-[#072415] text-slate-700 dark:text-emerald-200 border-slate-200 dark:border-[#134426] hover:bg-slate-100'
             }`}
           >
             {viewMode === 'all' ? `🌐 Displaying All ${employees.length} Reports` : `🌐 Show All ${employees.length} Reports`}
@@ -4348,12 +4356,12 @@ const DetailedAuditReportView: React.FC<{
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className={`min-h-screen bg-slate-50/60 dark:bg-slate-950 space-y-6 p-4 sm:p-6 lg:p-8 relative ${isScreenProtected && showScreenshotModal ? 'select-none filter blur-xs transition-all' : ''}`}>
+    <div className={`min-h-screen bg-slate-50/60 dark:bg-[#041b0f] space-y-4 sm:space-y-6 p-3 sm:p-6 lg:p-8 pb-24 sm:pb-8 relative ${isScreenProtected && showScreenshotModal ? 'select-none filter blur-xs transition-all' : ''}`}>
 
       {/* ── SECURITY TOAST NOTIFICATION ───────────────────────────────────── */}
       {securityToast && (
-        <div className="fixed top-4 right-4 z-50 bg-slate-900 text-white text-xs font-bold px-4 py-3 rounded-2xl shadow-2xl border border-purple-500/50 flex items-center gap-2 animate-in slide-in-from-top-3">
-          <Shield className="text-purple-400 shrink-0" size={18} />
+        <div className="fixed top-4 right-4 z-50 bg-[#072415] text-white text-xs font-bold px-4 py-3 rounded-2xl shadow-2xl border border-[#44D62C]/50 flex items-center gap-2 animate-in slide-in-from-top-3">
+          <Shield className="text-[#44D62C] shrink-0" size={18} />
           <span>{securityToast}</span>
         </div>
       )}
@@ -4381,13 +4389,13 @@ const DetailedAuditReportView: React.FC<{
       </div>
 
       {/* ── Page Header (Standard Web App Dashboard Style) ────────────────── */}
-      <div className="bg-white dark:bg-slate-900 p-5 border-l-4 border-l-[#006B3F] dark:border-l-emerald-500 border-y border-r border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-xs">
+      <div className="bg-white dark:bg-[#072415] p-4 sm:p-5 border-l-4 border-l-[#006B3F] dark:border-l-[#44D62C] border-y border-r border-slate-200/80 dark:border-[#134426] rounded-2xl shadow-xs">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
             <h1 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-white uppercase">
               Site Attendance Dashboard
             </h1>
-            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+            <p className="text-xs text-slate-500 dark:text-emerald-300/70 font-medium mt-0.5">
               Real-time site attendance overview & employee tracking
             </p>
             {selectedOpsManager !== 'all' && (
@@ -4400,174 +4408,181 @@ const DetailedAuditReportView: React.FC<{
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Operations Manager Filter */}
-            <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2">
-              <ShieldCheck size={16} className="text-emerald-600 dark:text-emerald-400" />
-              <select
-                value={selectedOpsManager}
-                onChange={e => {
-                  setSelectedOpsManager(e.target.value);
-                  setDepartmentFilter('all');
-                }}
-                disabled={Boolean(loggedInOpsManager)}
-                className="bg-transparent text-slate-800 dark:text-slate-200 text-xs font-semibold outline-none cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed"
-                title={loggedInOpsManager ? `Access strictly locked to ${loggedInOpsManager}'s mapped sites` : 'Filter sites by Operations Manager'}
-              >
-                <option value="all">🌐 All Operations Leads</option>
-                {opsManagerList.map(mgr => (
-                  <option key={mgr} value={mgr}>
-                    🛡️ Ops: {mgr}
+          <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2.5 sm:gap-3 w-full lg:w-auto">
+            {/* Filters Row: Ops Manager, Department, Date */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 lg:flex items-center gap-2 sm:gap-2.5 w-full sm:w-auto">
+              {/* Operations Manager Filter */}
+              <div className="flex items-center gap-2 bg-slate-100 dark:bg-[#0d3820] border border-slate-200 dark:border-[#1a5532] rounded-xl px-3 py-2 min-h-[38px]">
+                <ShieldCheck size={16} className="text-emerald-600 dark:text-[#44D62C] shrink-0" />
+                <select
+                  value={selectedOpsManager}
+                  onChange={e => {
+                    setSelectedOpsManager(e.target.value);
+                    setDepartmentFilter('all');
+                  }}
+                  disabled={Boolean(loggedInOpsManager)}
+                  className="bg-transparent text-slate-800 dark:text-emerald-100 text-xs font-semibold outline-none cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed w-full"
+                  title={loggedInOpsManager ? `Access strictly locked to ${loggedInOpsManager}'s mapped sites` : 'Filter sites by Operations Manager'}
+                >
+                  <option value="all" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">🌐 All Operations Leads</option>
+                  {opsManagerList.map(mgr => (
+                    <option key={mgr} value={mgr} className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">
+                      🛡️ Ops: {mgr}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Department / Site Filter */}
+              <div className="flex items-center gap-2 bg-slate-100 dark:bg-[#0d3820] border border-slate-200 dark:border-[#1a5532] rounded-xl px-3 py-2 min-h-[38px]">
+                <Building2 size={16} className="text-emerald-600 dark:text-[#44D62C] shrink-0" />
+                <select
+                  value={departmentFilter}
+                  onChange={e => setDepartmentFilter(e.target.value)}
+                  className="bg-transparent text-slate-800 dark:text-emerald-100 text-xs font-semibold outline-none cursor-pointer w-full"
+                >
+                  <option value="all" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">
+                    {selectedOpsManager !== 'all' ? `All ${selectedOpsManager} Sites (${departmentList.length})` : `All Sites / Depts (${departmentList.length})`}
                   </option>
-                ))}
-              </select>
+                  {departmentList.map(dept => (
+                    <option key={dept} value={dept} className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">
+                      {dept}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Date Picker */}
+              <div className="flex items-center gap-2 bg-slate-100 dark:bg-[#0d3820] border border-slate-200 dark:border-[#1a5532] rounded-xl px-3 py-2 min-h-[38px]">
+                <Calendar size={16} className="text-emerald-600 dark:text-[#44D62C] shrink-0" />
+                <input
+                  type="date"
+                  value={selectedDate}
+                  max={format(new Date(), 'yyyy-MM-dd')}
+                  onChange={e => setSelectedDate(e.target.value)}
+                  className="bg-transparent text-slate-800 dark:text-emerald-100 text-xs font-semibold outline-none cursor-pointer w-full"
+                />
+              </div>
             </div>
 
-            {/* Department / Site Filter */}
-            <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2">
-              <Building2 size={16} className="text-emerald-600 dark:text-emerald-400" />
-              <select
-                value={departmentFilter}
-                onChange={e => setDepartmentFilter(e.target.value)}
-                className="bg-transparent text-slate-800 dark:text-slate-200 text-xs font-semibold outline-none cursor-pointer"
+            {/* Actions Row: Debug, Tabs, Refresh */}
+            <div className="flex items-center justify-between sm:justify-start gap-2 flex-wrap sm:flex-nowrap w-full sm:w-auto">
+              {/* Admin Debug Toggle button */}
+              <button
+                onClick={() => setShowDebug(v => !v)}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all border cursor-pointer min-h-[38px] ${
+                  showDebug 
+                    ? 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800' 
+                    : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-200 dark:border-[#134426] dark:hover:bg-[#0d3820]'
+                }`}
+                title="Toggle Admin Technical Debugging"
               >
-                <option value="all">
-                  {selectedOpsManager !== 'all' ? `All ${selectedOpsManager} Sites (${departmentList.length})` : `All Sites / Depts (${departmentList.length})`}
-                </option>
-                {departmentList.map(dept => (
-                  <option key={dept} value={dept}>
-                    {dept}
-                  </option>
-                ))}
-              </select>
+                <Bug size={14} />
+                <span className="hidden xs:inline">{showDebug ? 'Debug: ON' : 'Debug: OFF'}</span>
+                <span className="xs:hidden">{showDebug ? 'ON' : 'OFF'}</span>
+              </button>
+
+              {/* Sub-page Navigation Tabs - Icon Only (Controlled by User Permission Rules) */}
+              <div className="flex items-center gap-1.5 px-1.5 py-0.5 overflow-x-auto no-scrollbar border-l border-r sm:border-r-0 border-slate-200 dark:border-[#134426] shrink-0">
+                {isTabAllowed('attendance') && (
+                  <button
+                    onClick={() => setActiveTab('attendance')}
+                    className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all border cursor-pointer shrink-0 ${
+                      activeTab === 'attendance'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-200 dark:border-[#134426] dark:hover:bg-[#0d3820] dark:hover:text-white'
+                    }`}
+                    title="Live Attendance Dashboard"
+                  >
+                    <BarChart3 size={16} className="shrink-0" />
+                  </button>
+                )}
+
+                {isTabAllowed('reports') && (
+                  <button
+                    onClick={() => setActiveTab('reports')}
+                    className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all border cursor-pointer relative shrink-0 ${
+                      activeTab === 'reports'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-200 dark:border-[#134426] dark:hover:bg-[#0d3820] dark:hover:text-white'
+                    }`}
+                    title="Attendance Reports & Multi-Format Export Center"
+                  >
+                    <FileSpreadsheet size={16} className="shrink-0" />
+                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-emerald-500 rounded-full" title="Reports & Generator" />
+                  </button>
+                )}
+
+                {isTabAllowed('shiftConfig') && (
+                  <button
+                    onClick={() => setActiveTab('shiftConfig')}
+                    className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all border cursor-pointer relative shrink-0 ${
+                      activeTab === 'shiftConfig'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-200 dark:border-[#134426] dark:hover:bg-[#0d3820] dark:hover:text-white'
+                    }`}
+                    title="Shift Rule & Group Config Sub-Page (Admin)"
+                  >
+                    <Sliders size={16} className="shrink-0" />
+                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-500 rounded-full" title="Shift Config" />
+                  </button>
+                )}
+
+                {isTabAllowed('userAccess') && (
+                  <button
+                    onClick={() => setActiveTab('userAccess')}
+                    className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all border cursor-pointer relative shrink-0 ${
+                      activeTab === 'userAccess'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-200 dark:border-[#134426] dark:hover:bg-[#0d3820] dark:hover:text-white'
+                    }`}
+                    title="User Site Access Control Sub-Page (Admin)"
+                  >
+                    <Lock size={16} className="shrink-0" />
+                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-blue-500 rounded-full" title="User Access Config" />
+                  </button>
+                )}
+
+                {isTabAllowed('auditLogs') && (
+                  <button
+                    onClick={() => setActiveTab('auditLogs')}
+                    className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all border cursor-pointer relative shrink-0 ${
+                      activeTab === 'auditLogs'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-200 dark:border-[#134426] dark:hover:bg-[#0d3820] dark:hover:text-white'
+                    }`}
+                    title="Screenshot Security Audit Logs Sub-Page (Admin)"
+                  >
+                    <FileText size={16} className="shrink-0" />
+                    {unreadLogsCount > 0 && (
+                      <span className="absolute -top-1 -right-1 px-1 py-0.2 bg-red-500 text-white text-[9px] font-extrabold rounded-full animate-pulse">
+                        {unreadLogsCount}
+                      </span>
+                    )}
+                  </button>
+                )}
+
+                {isTabAllowed('screenshotAudit') && (
+                  <button
+                    onClick={() => setShowScreenshotModal(true)}
+                    className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-300 border border-slate-200 dark:border-[#134426] dark:hover:bg-[#0d3820] cursor-pointer shrink-0"
+                    title="Simulate Screenshot Security Capture Reason"
+                  >
+                    <Camera size={16} className="text-emerald-600 dark:text-[#44D62C] shrink-0" />
+                  </button>
+                )}
+              </div>
+
+              {/* Refresh button */}
+              <button
+                onClick={() => fetchData(true)}
+                disabled={refreshing}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer shrink-0 min-h-[38px] active:scale-95"
+              >
+                <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+                <span className="hidden xs:inline">{refreshing ? 'Refreshing...' : 'Refresh'}</span>
+              </button>
             </div>
-
-            {/* Date Picker */}
-            <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2">
-              <Calendar size={16} className="text-emerald-600 dark:text-emerald-400" />
-              <input
-                type="date"
-                value={selectedDate}
-                max={format(new Date(), 'yyyy-MM-dd')}
-                onChange={e => setSelectedDate(e.target.value)}
-                className="bg-transparent text-slate-800 dark:text-slate-200 text-xs font-semibold outline-none cursor-pointer"
-              />
-            </div>
-
-            {/* Admin Debug Toggle button */}
-            <button
-              onClick={() => setShowDebug(v => !v)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all border cursor-pointer ${
-                showDebug 
-                  ? 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800' 
-                  : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
-              }`}
-              title="Toggle Admin Technical Debugging"
-            >
-              <Bug size={14} />
-              {showDebug ? 'Debug: ON' : 'Debug: OFF'}
-            </button>
-
-            {/* Sub-page Navigation Tabs - Icon Only (Controlled by User Permission Rules) */}
-            <div className="flex items-center gap-1.5 pl-2 border-l border-slate-200 dark:border-[#134426] shrink-0">
-              {isTabAllowed('attendance') && (
-                <button
-                  onClick={() => setActiveTab('attendance')}
-                  className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all border cursor-pointer shrink-0 ${
-                    activeTab === 'attendance'
-                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                      : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-200 dark:border-[#134426] dark:hover:bg-[#0d3820] dark:hover:text-white'
-                  }`}
-                  title="Live Attendance Dashboard"
-                >
-                  <BarChart3 size={16} className="shrink-0" />
-                </button>
-              )}
-
-              {isTabAllowed('reports') && (
-                <button
-                  onClick={() => setActiveTab('reports')}
-                  className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all border cursor-pointer relative shrink-0 ${
-                    activeTab === 'reports'
-                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                      : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-200 dark:border-[#134426] dark:hover:bg-[#0d3820] dark:hover:text-white'
-                  }`}
-                  title="Attendance Reports & Multi-Format Export Center"
-                >
-                  <FileSpreadsheet size={16} className="shrink-0" />
-                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-emerald-500 rounded-full" title="Reports & Generator" />
-                </button>
-              )}
-
-              {isTabAllowed('shiftConfig') && (
-                <button
-                  onClick={() => setActiveTab('shiftConfig')}
-                  className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all border cursor-pointer relative shrink-0 ${
-                    activeTab === 'shiftConfig'
-                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                      : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-200 dark:border-[#134426] dark:hover:bg-[#0d3820] dark:hover:text-white'
-                  }`}
-                  title="Shift Rule & Group Config Sub-Page (Admin)"
-                >
-                  <Sliders size={16} className="shrink-0" />
-                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-500 rounded-full" title="Shift Config" />
-                </button>
-              )}
-
-              {isTabAllowed('userAccess') && (
-                <button
-                  onClick={() => setActiveTab('userAccess')}
-                  className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all border cursor-pointer relative shrink-0 ${
-                    activeTab === 'userAccess'
-                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                      : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-200 dark:border-[#134426] dark:hover:bg-[#0d3820] dark:hover:text-white'
-                  }`}
-                  title="User Site Access Control Sub-Page (Admin)"
-                >
-                  <Lock size={16} className="shrink-0" />
-                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-blue-500 rounded-full" title="User Access Config" />
-                </button>
-              )}
-
-              {isTabAllowed('auditLogs') && (
-                <button
-                  onClick={() => setActiveTab('auditLogs')}
-                  className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all border cursor-pointer relative shrink-0 ${
-                    activeTab === 'auditLogs'
-                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                      : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-200 dark:border-[#134426] dark:hover:bg-[#0d3820] dark:hover:text-white'
-                  }`}
-                  title="Screenshot Security Audit Logs Sub-Page (Admin)"
-                >
-                  <FileText size={16} className="shrink-0" />
-                  {unreadLogsCount > 0 && (
-                    <span className="absolute -top-1 -right-1 px-1 py-0.2 bg-red-500 text-white text-[9px] font-extrabold rounded-full animate-pulse">
-                      {unreadLogsCount}
-                    </span>
-                  )}
-                </button>
-              )}
-
-              {isTabAllowed('screenshotAudit') && (
-                <button
-                  onClick={() => setShowScreenshotModal(true)}
-                  className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-[#072415] dark:text-purple-300 border border-slate-200 dark:border-[#134426] dark:hover:bg-[#0d3820] cursor-pointer shrink-0"
-                  title="Simulate Screenshot Security Capture Reason"
-                >
-                  <Camera size={16} className="text-purple-600 dark:text-purple-400 shrink-0" />
-                </button>
-              )}
-            </div>
-
-            {/* Refresh button */}
-            <button
-              onClick={() => fetchData(true)}
-              disabled={refreshing}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer shrink-0"
-            >
-              <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
-              {refreshing ? 'Refreshing...' : 'Refresh'}
-            </button>
           </div>
         </div>
 
@@ -4604,7 +4619,7 @@ const DetailedAuditReportView: React.FC<{
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setShowConnectionInspector(prev => !prev)}
-                className="px-3 py-2 bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 hover:bg-amber-100 text-amber-900 dark:text-amber-200 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
+                className="px-3 py-2 bg-white dark:bg-[#072415] border border-amber-300 dark:border-amber-800 hover:bg-amber-100 text-amber-900 dark:text-amber-200 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
               >
                 <Sliders size={13} />
                 {showConnectionInspector ? 'Hide Inspector' : 'Connection Inspector'}
@@ -4622,7 +4637,7 @@ const DetailedAuditReportView: React.FC<{
           {/* Interactive Connection Debugger & Manual Override Drawer */}
           {showConnectionInspector && (
             <div className="pt-3 border-t border-amber-200/80 dark:border-amber-800/80 space-y-3">
-              <div className="bg-white/80 dark:bg-slate-900/80 p-3.5 rounded-xl border border-amber-200 dark:border-amber-800/60 text-xs space-y-2">
+              <div className="bg-white/80 dark:bg-[#072415]/90 p-3.5 rounded-xl border border-amber-200 dark:border-amber-800/60 text-xs space-y-2">
                 <p className="font-bold text-amber-950 dark:text-amber-200 flex items-center gap-1.5">
                   <Cpu size={14} className="text-amber-600" />
                   Real-Time Candidate Endpoints Attempted:
@@ -4633,7 +4648,7 @@ const DetailedAuditReportView: React.FC<{
               </div>
 
               {/* Manual URL Override Box */}
-              <div className="bg-white/90 dark:bg-slate-900/90 p-3.5 rounded-xl border border-emerald-300 dark:border-emerald-800 shadow-xs space-y-2">
+              <div className="bg-white/90 dark:bg-[#072415] p-3.5 rounded-xl border border-emerald-300 dark:border-[#134426] shadow-xs space-y-2">
                 <p className="font-bold text-emerald-950 dark:text-emerald-200 text-xs flex items-center gap-1.5">
                   <Sparkles size={14} className="text-emerald-600" />
                   Manual Cloudflare / Proxy URL Override:
@@ -4671,7 +4686,7 @@ const DetailedAuditReportView: React.FC<{
         <div className="space-y-6 animate-in fade-in duration-200">
 
           {/* ── 1. DATE RANGE BAR ──────────────────────────────────────────── */}
-          <div className="bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs">
+          <div className="bg-white dark:bg-[#072415] p-3 rounded-2xl border border-slate-200/80 dark:border-[#134426] shadow-xs">
             <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto py-0.5">
               {['Today', 'Yesterday', 'Last 3 Days', 'Last 7 Days', 'This Month', 'Last Month', 'Last 3 Months'].map(preset => (
                 <button
@@ -4680,7 +4695,7 @@ const DetailedAuditReportView: React.FC<{
                   className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
                     activeDateFilter === preset
                       ? 'bg-[#006B3F] text-white shadow-xs'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-200 dark:hover:bg-[#134426]'
                   }`}
                 >
                   {preset}
@@ -4694,7 +4709,7 @@ const DetailedAuditReportView: React.FC<{
                   className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5 border ${
                     activeDateFilter === 'Custom'
                       ? 'bg-[#006B3F] text-white border-transparent shadow-xs'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-200 border-slate-200 dark:border-[#134426]'
                   }`}
                 >
                   <Calendar size={13} />
@@ -4703,7 +4718,7 @@ const DetailedAuditReportView: React.FC<{
                     : 'Custom Range'}
                 </button>
                 {isDatePickerOpen && (
-                  <div className="absolute top-full left-0 z-50 mt-1 shadow-2xl rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+                  <div className="absolute top-full left-0 z-50 mt-1 shadow-2xl rounded-2xl overflow-hidden border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415]">
                     <DateRangePicker
                       ranges={pendingDateRangeArray}
                       onChange={handleCustomDateChange}
@@ -4716,17 +4731,17 @@ const DetailedAuditReportView: React.FC<{
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-2 mt-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+            <div className="flex items-center gap-2 mt-2 text-xs font-semibold text-slate-500 dark:text-emerald-300/70">
               <Calendar size={13} className="text-emerald-600" />
               <span>Report Period: <strong className="text-slate-900 dark:text-white">{reportDateLabel}</strong></span>
-              <span className="text-slate-300 dark:text-slate-600">|</span>
+              <span className="text-slate-300 dark:text-emerald-300/40">|</span>
               <span>{filteredEmployees.length} records loaded</span>
             </div>
           </div>
 
           {/* ── 2. COMPREHENSIVE MULTI-FILTER TOOLBAR ────────────────────────── */}
-          <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border-2 border-emerald-500/30 shadow-xs space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+          <div className="bg-white dark:bg-[#072415] p-5 rounded-2xl border-2 border-emerald-500/30 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-[#134426] pb-3">
               <div className="flex items-center gap-2">
                 <Filter size={18} className="text-emerald-600 dark:text-emerald-400" />
                 <h2 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">
@@ -4739,8 +4754,8 @@ const DetailedAuditReportView: React.FC<{
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9 gap-3">
               {/* Report Type */}
               <div>
-                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Report Type</label>
-                <select value={pendingReportType} onChange={e => setPendingReportType(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500/20">
+                <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Report Type</label>
+                <select value={pendingReportType} onChange={e => setPendingReportType(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20">
                   <option value="basic">Basic Report</option>
                   <option value="monthly">Monthly Summary</option>
                   <option value="detailed">Detailed Audit (31-Day)</option>
@@ -4753,8 +4768,8 @@ const DetailedAuditReportView: React.FC<{
 
               {/* Location */}
               <div>
-                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Location</label>
-                <select value={pendingLocation} onChange={e => setPendingLocation(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500/20">
+                <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Location</label>
+                <select value={pendingLocation} onChange={e => setPendingLocation(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20">
                   <option value="all">All Locations ({locationList.length})</option>
                   {locationList.map(loc => (<option key={loc} value={loc}>{loc}</option>))}
                 </select>
@@ -4762,8 +4777,8 @@ const DetailedAuditReportView: React.FC<{
 
               {/* Company */}
               <div>
-                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Company</label>
-                <select value={pendingCompany} onChange={e => setPendingCompany(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500/20">
+                <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Company</label>
+                <select value={pendingCompany} onChange={e => setPendingCompany(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20">
                   <option value="all">All Companies ({companyList.length})</option>
                   {companyList.map(comp => (<option key={comp} value={comp}>{comp}</option>))}
                 </select>
@@ -4771,8 +4786,8 @@ const DetailedAuditReportView: React.FC<{
 
               {/* Site */}
               <div>
-                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Site</label>
-                <select value={pendingSite} onChange={e => setPendingSite(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500/20">
+                <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Site</label>
+                <select value={pendingSite} onChange={e => setPendingSite(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20">
                   <option value="all">All Sites ({departmentList.length})</option>
                   {departmentList.map(dept => (<option key={dept} value={dept}>{dept}</option>))}
                 </select>
@@ -4780,8 +4795,8 @@ const DetailedAuditReportView: React.FC<{
 
               {/* Role */}
               <div>
-                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Role</label>
-                <select value={pendingRole} onChange={e => setPendingRole(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500/20">
+                <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Role</label>
+                <select value={pendingRole} onChange={e => setPendingRole(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20">
                   <option value="all">All Roles ({roleList.length})</option>
                   {roleList.map(role => (<option key={role} value={role}>{role}</option>))}
                 </select>
@@ -4789,8 +4804,8 @@ const DetailedAuditReportView: React.FC<{
 
               {/* Employee */}
               <div>
-                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Employee</label>
-                <select value={pendingEmployee} onChange={e => setPendingEmployee(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500/20">
+                <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Employee</label>
+                <select value={pendingEmployee} onChange={e => setPendingEmployee(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20">
                   <option value="all">All Employees ({processedEmployees.length})</option>
                   {processedEmployees.map(e => (<option key={e.empCode} value={e.empCode}>{e.empName} ({e.empCode})</option>))}
                 </select>
@@ -4798,8 +4813,8 @@ const DetailedAuditReportView: React.FC<{
 
               {/* Status */}
               <div>
-                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Status</label>
-                <select value={pendingStatus} onChange={e => setPendingStatus(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500/20">
+                <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Status</label>
+                <select value={pendingStatus} onChange={e => setPendingStatus(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20">
                   <option value="all">All Status</option>
                   <option value="Present">Present</option>
                   <option value="Absent">Absent</option>
@@ -4811,8 +4826,8 @@ const DetailedAuditReportView: React.FC<{
 
               {/* Record Type */}
               <div>
-                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Record Type</label>
-                <select value={pendingRecordType} onChange={e => setPendingRecordType(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500/20">
+                <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Record Type</label>
+                <select value={pendingRecordType} onChange={e => setPendingRecordType(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20">
                   <option value="all">All Records</option>
                   <option value="complete">Complete (In + Out)</option>
                   <option value="missing_out">Missing Punch Out</option>
@@ -4822,8 +4837,8 @@ const DetailedAuditReportView: React.FC<{
 
               {/* Show Records */}
               <div>
-                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Show Records</label>
-                <select value={pendingPageSize} onChange={e => setPendingPageSize(Number(e.target.value))} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500/20">
+                <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Show Records</label>
+                <select value={pendingPageSize} onChange={e => setPendingPageSize(Number(e.target.value))} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20">
                   <option value={20}>20 Records</option>
                   <option value={50}>50 Records</option>
                   <option value={100}>100 Records</option>
@@ -4841,15 +4856,15 @@ const DetailedAuditReportView: React.FC<{
           </div>
 
           {/* ── 3. REPORT PREVIEW & EXPORT CENTER ──────────────────────────── */}
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-6 shadow-xs space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
+          <div className="bg-white dark:bg-[#072415] rounded-2xl border border-slate-200/80 dark:border-[#134426] p-6 shadow-xs space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-[#134426] pb-4">
               <div>
                 <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                   <FileSpreadsheet size={20} className="text-emerald-500" />
                   Report Preview & Export Center
                 </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  <span className="font-bold text-slate-700 dark:text-slate-300 capitalize">{reportType.replace(/_/g, ' ')}</span>
+                <p className="text-xs text-slate-500 dark:text-emerald-300/70 mt-1">
+                  <span className="font-bold text-slate-700 dark:text-emerald-200 capitalize">{reportType.replace(/_/g, ' ')}</span>
                   {' · '}{filteredEmployees.length} records{' · '}Period: <strong className="text-slate-900 dark:text-white">{reportDateLabel}</strong>
                 </p>
               </div>
@@ -4857,7 +4872,7 @@ const DetailedAuditReportView: React.FC<{
                 <button
                   onClick={handleDownloadPdf}
                   disabled={isDownloading}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-white dark:bg-slate-800 hover:bg-red-600 hover:text-white text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-slate-700 cursor-pointer shadow-xs disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-4 py-2 bg-white dark:bg-[#072415] hover:bg-red-600 hover:text-white text-slate-700 dark:text-emerald-200 rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-[#134426] cursor-pointer shadow-xs disabled:opacity-50"
                   title="Download as PDF"
                 >
                   {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} className="text-red-500" />}
@@ -4866,7 +4881,7 @@ const DetailedAuditReportView: React.FC<{
                 <button
                   onClick={handleDownloadExcel}
                   disabled={isDownloading}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-white dark:bg-slate-800 hover:bg-emerald-600 hover:text-white text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-slate-700 cursor-pointer shadow-xs disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-4 py-2 bg-white dark:bg-[#072415] hover:bg-emerald-600 hover:text-white text-slate-700 dark:text-emerald-200 rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-[#134426] cursor-pointer shadow-xs disabled:opacity-50"
                   title="Download as Excel Spreadsheet"
                 >
                   {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <FileSpreadsheet size={14} className="text-emerald-600" />}
@@ -4875,7 +4890,7 @@ const DetailedAuditReportView: React.FC<{
                 <button
                   onClick={handleDownloadCsv}
                   disabled={isDownloading}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-white dark:bg-slate-800 hover:bg-blue-600 hover:text-white text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-slate-700 cursor-pointer shadow-xs disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-4 py-2 bg-white dark:bg-[#072415] hover:bg-blue-600 hover:text-white text-slate-700 dark:text-emerald-200 rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-[#134426] cursor-pointer shadow-xs disabled:opacity-50"
                   title="Download as CSV"
                 >
                   {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} className="text-blue-600" />}
@@ -4894,7 +4909,7 @@ const DetailedAuditReportView: React.FC<{
             </div>
 
             {/* Report Header Card */}
-            <div className="bg-slate-50 dark:bg-slate-950/60 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+            <div className="bg-slate-50 dark:bg-[#041b0f]/60 p-5 rounded-2xl border border-slate-200 dark:border-[#134426] space-y-4">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <div className="w-11 h-11 rounded-xl bg-[#006B3F] text-white font-black flex items-center justify-center text-xl shadow-sm">P</div>
@@ -4917,7 +4932,7 @@ const DetailedAuditReportView: React.FC<{
                       : 'Attendance Report'}
                   </h4>
                   <p className="text-xs font-medium text-slate-500 mt-0.5">
-                    Period: <strong className="text-slate-800 dark:text-slate-200">{reportDateLabel}</strong>
+                    Period: <strong className="text-slate-800 dark:text-emerald-100">{reportDateLabel}</strong>
                   </p>
                   <p className="text-[10px] text-slate-400 mt-0.5">
                     Generated: {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })} by {currentUserEmail}
@@ -4927,7 +4942,7 @@ const DetailedAuditReportView: React.FC<{
 
               {/* Summary KPI Row */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-center">
+                <div className="p-3 rounded-xl bg-white dark:bg-[#072415] border border-slate-200 dark:border-[#134426] text-center">
                   <p className="text-[10px] font-bold text-slate-400 uppercase">Total Active</p>
                   <p className="text-2xl font-black text-slate-900 dark:text-white mt-0.5">
                     {isDateRangeActive ? multiDaySummaryTotals.totalActive : (s?.activeTotal ?? filteredEmployees.length)}
@@ -4979,9 +4994,9 @@ const DetailedAuditReportView: React.FC<{
 
             {/* MONTHLY SUMMARY */}
             {reportType === 'monthly' && (
-              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
+              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] shadow-xs">
                 <table className="w-full text-xs text-left">
-                  <thead className="bg-slate-100 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 uppercase tracking-wider font-extrabold text-[10px]">
+                  <thead className="bg-slate-100 dark:bg-[#072415]/80 border-b border-slate-200 dark:border-[#134426] text-slate-600 dark:text-emerald-200 uppercase tracking-wider font-extrabold text-[10px]">
                     <tr>
                       <th className="px-3.5 py-2.5">S.No</th>
                       <th className="px-3.5 py-2.5">Code</th>
@@ -5000,11 +5015,11 @@ const DetailedAuditReportView: React.FC<{
                       <tr><td colSpan={10} className="py-8 text-center text-slate-400 font-medium">No records match the selected filter.</td></tr>
                     ) : (
                       monthlySummaryReportData.slice((currentPage - 1) * pageSize, currentPage * pageSize).map(r => (
-                        <tr key={r.empCode} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                        <tr key={r.empCode} className="hover:bg-slate-50 dark:hover:bg-[#0d3820]/50 transition-colors">
                           <td className="px-3.5 py-2.5 font-mono text-slate-400">{r.sno}</td>
-                          <td className="px-3.5 py-2.5 font-mono text-slate-600 dark:text-slate-300 font-semibold">{r.empCode}</td>
+                          <td className="px-3.5 py-2.5 font-mono text-slate-600 dark:text-emerald-200 font-semibold">{r.empCode}</td>
                           <td className="px-3.5 py-2.5 font-bold text-slate-900 dark:text-white">{r.empName}</td>
-                          <td className="px-3.5 py-2.5 text-slate-600 dark:text-slate-400">{r.department}</td>
+                          <td className="px-3.5 py-2.5 text-slate-600 dark:text-emerald-300/70">{r.department}</td>
                           <td className="px-3.5 py-2.5 text-slate-500 text-[10px]">{r.designation}</td>
                           <td className="px-3.5 py-2.5 font-mono text-slate-500">{r.shiftCode}</td>
                           <td className="px-3.5 py-2.5 text-center font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50/40 dark:bg-emerald-950/20">{r.presentDays}</td>
@@ -5032,9 +5047,9 @@ const DetailedAuditReportView: React.FC<{
 
             {/* WORK HOURS SUMMARY */}
             {reportType === 'work_hours' && (
-              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
+              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] shadow-xs">
                 <table className="w-full text-xs text-left">
-                  <thead className="bg-slate-100 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 uppercase tracking-wider font-extrabold text-[10px]">
+                  <thead className="bg-slate-100 dark:bg-[#072415]/80 border-b border-slate-200 dark:border-[#134426] text-slate-600 dark:text-emerald-200 uppercase tracking-wider font-extrabold text-[10px]">
                     <tr>
                       <th className="px-3.5 py-2.5">S.No</th>
                       <th className="px-3.5 py-2.5">Code</th>
@@ -5054,11 +5069,11 @@ const DetailedAuditReportView: React.FC<{
                       <tr><td colSpan={11} className="py-8 text-center text-slate-400 font-medium">No records match the selected filter.</td></tr>
                     ) : (
                       workHoursReportData.slice((currentPage - 1) * pageSize, currentPage * pageSize).map(r => (
-                        <tr key={r.empCode} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                        <tr key={r.empCode} className="hover:bg-slate-50 dark:hover:bg-[#0d3820]/50 transition-colors">
                           <td className="px-3.5 py-2.5 font-mono text-slate-400">{r.sno}</td>
-                          <td className="px-3.5 py-2.5 font-mono text-slate-600 dark:text-slate-300 font-semibold">{r.empCode}</td>
+                          <td className="px-3.5 py-2.5 font-mono text-slate-600 dark:text-emerald-200 font-semibold">{r.empCode}</td>
                           <td className="px-3.5 py-2.5 font-bold text-slate-900 dark:text-white">{r.empName}</td>
-                          <td className="px-3.5 py-2.5 text-slate-600 dark:text-slate-400">{r.department}</td>
+                          <td className="px-3.5 py-2.5 text-slate-600 dark:text-emerald-300/70">{r.department}</td>
                           <td className="px-3.5 py-2.5 text-slate-500">{r.designation}</td>
                           <td className="px-3.5 py-2.5 font-mono text-slate-500">{r.shiftCode}</td>
                           <td className="px-3.5 py-2.5 text-center font-bold text-emerald-700 dark:text-emerald-300">{r.presentDays}</td>
@@ -5076,9 +5091,9 @@ const DetailedAuditReportView: React.FC<{
 
             {/* SITE OT REPORT */}
             {reportType === 'site_ot' && (
-              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
+              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] shadow-xs">
                 <table className="w-full text-xs text-left">
-                  <thead className="bg-slate-100 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 uppercase tracking-wider font-extrabold text-[10px]">
+                  <thead className="bg-slate-100 dark:bg-[#072415]/80 border-b border-slate-200 dark:border-[#134426] text-slate-600 dark:text-emerald-200 uppercase tracking-wider font-extrabold text-[10px]">
                     <tr>
                       <th className="px-3.5 py-2.5">S.No</th>
                       <th className="px-3.5 py-2.5">Code</th>
@@ -5098,12 +5113,12 @@ const DetailedAuditReportView: React.FC<{
                       siteOtReportData.map(r => (
                         <tr key={r.empCode} className="hover:bg-amber-50/30 dark:hover:bg-amber-950/20 transition-colors">
                           <td className="px-3.5 py-2.5 font-mono text-slate-400">{r.sno}</td>
-                          <td className="px-3.5 py-2.5 font-mono text-slate-600 dark:text-slate-300 font-semibold">{r.empCode}</td>
+                          <td className="px-3.5 py-2.5 font-mono text-slate-600 dark:text-emerald-200 font-semibold">{r.empCode}</td>
                           <td className="px-3.5 py-2.5 font-bold text-slate-900 dark:text-white">{r.empName}</td>
-                          <td className="px-3.5 py-2.5 text-slate-600 dark:text-slate-400">{r.department}</td>
+                          <td className="px-3.5 py-2.5 text-slate-600 dark:text-emerald-300/70">{r.department}</td>
                           <td className="px-3.5 py-2.5 font-mono text-slate-500">{r.shiftCode}</td>
                           <td className="px-3.5 py-2.5 font-mono text-emerald-600 dark:text-emerald-400">{r.siteOtIn}</td>
-                          <td className="px-3.5 py-2.5 font-mono text-slate-600 dark:text-slate-400">{r.siteOtOut}</td>
+                          <td className="px-3.5 py-2.5 font-mono text-slate-600 dark:text-emerald-300/70">{r.siteOtOut}</td>
                           <td className="px-3.5 py-2.5 text-center font-mono font-black text-amber-700 dark:text-amber-300 bg-amber-50/50 dark:bg-amber-950/20">{r.otDuration}</td>
                           <td className="px-3.5 py-2.5 text-slate-500">{r.date}</td>
                         </tr>
@@ -5116,9 +5131,9 @@ const DetailedAuditReportView: React.FC<{
 
             {/* ATTENDANCE LOG */}
             {reportType === 'log' && (
-              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
+              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] shadow-xs">
                 <table className="w-full text-xs text-left">
-                  <thead className="bg-slate-100 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 uppercase tracking-wider font-extrabold text-[10px]">
+                  <thead className="bg-slate-100 dark:bg-[#072415]/80 border-b border-slate-200 dark:border-[#134426] text-slate-600 dark:text-emerald-200 uppercase tracking-wider font-extrabold text-[10px]">
                     <tr>
                       <th className="px-3.5 py-2.5">S.No</th>
                       <th className="px-3.5 py-2.5">Code</th>
@@ -5135,13 +5150,13 @@ const DetailedAuditReportView: React.FC<{
                       <tr><td colSpan={8} className="py-8 text-center text-slate-400 font-medium">No punch events found for this date.</td></tr>
                     ) : (
                       attendanceLogData.slice((currentPage - 1) * pageSize, currentPage * pageSize).map(r => (
-                        <tr key={`${r.empCode}-${r.dateTime}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                        <tr key={`${r.empCode}-${r.dateTime}`} className="hover:bg-slate-50 dark:hover:bg-[#0d3820]/50 transition-colors">
                           <td className="px-3.5 py-2.5 font-mono text-slate-400">{r.sno}</td>
-                          <td className="px-3.5 py-2.5 font-mono text-slate-600 dark:text-slate-300 font-semibold">{r.empCode}</td>
+                          <td className="px-3.5 py-2.5 font-mono text-slate-600 dark:text-emerald-200 font-semibold">{r.empCode}</td>
                           <td className="px-3.5 py-2.5 font-bold text-slate-900 dark:text-white">{r.empName}</td>
-                          <td className="px-3.5 py-2.5 text-slate-600 dark:text-slate-400">{r.department}</td>
+                          <td className="px-3.5 py-2.5 text-slate-600 dark:text-emerald-300/70">{r.department}</td>
                           <td className="px-3.5 py-2.5 font-mono text-emerald-600 dark:text-emerald-400 font-bold">{r.dateTime}</td>
-                          <td className="px-3.5 py-2.5 font-mono text-slate-700 dark:text-slate-300">{r.outDateTime}</td>
+                          <td className="px-3.5 py-2.5 font-mono text-slate-700 dark:text-emerald-200">{r.outDateTime}</td>
                           <td className="px-3.5 py-2.5">
                             <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">{r.eventType}</span>
                           </td>
@@ -5156,9 +5171,9 @@ const DetailedAuditReportView: React.FC<{
 
             {/* LEAVE BALANCE TRACKER */}
             {reportType === 'leave_balance' && (
-              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
+              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] shadow-xs">
                 <table className="w-full text-xs text-left">
-                  <thead className="bg-slate-100 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 uppercase tracking-wider font-extrabold text-[10px]">
+                  <thead className="bg-slate-100 dark:bg-[#072415]/80 border-b border-slate-200 dark:border-[#134426] text-slate-600 dark:text-emerald-200 uppercase tracking-wider font-extrabold text-[10px]">
                     <tr>
                       <th className="px-3.5 py-2.5">S.No</th>
                       <th className="px-3.5 py-2.5">Code</th>
@@ -5176,11 +5191,11 @@ const DetailedAuditReportView: React.FC<{
                       <tr><td colSpan={9} className="py-8 text-center text-slate-400 font-medium">No leave balance records found for this filter.</td></tr>
                     ) : (
                       leaveBalanceReportData.slice((currentPage - 1) * pageSize, currentPage * pageSize).map(r => (
-                        <tr key={r.empCode} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                        <tr key={r.empCode} className="hover:bg-slate-50 dark:hover:bg-[#0d3820]/50 transition-colors">
                           <td className="px-3.5 py-2.5 font-mono text-slate-400">{r.sno}</td>
-                          <td className="px-3.5 py-2.5 font-mono text-slate-600 dark:text-slate-300 font-semibold">{r.empCode}</td>
+                          <td className="px-3.5 py-2.5 font-mono text-slate-600 dark:text-emerald-200 font-semibold">{r.empCode}</td>
                           <td className="px-3.5 py-2.5 font-bold text-slate-900 dark:text-white">{r.empName}</td>
-                          <td className="px-3.5 py-2.5 text-slate-600 dark:text-slate-400">{r.department}</td>
+                          <td className="px-3.5 py-2.5 text-slate-600 dark:text-emerald-300/70">{r.department}</td>
                           <td className="px-3.5 py-2.5 text-slate-500 text-[10px]">{r.designation}</td>
                           <td className="px-3.5 py-2.5 text-center font-bold text-blue-700 dark:text-blue-300 bg-blue-50/40 dark:bg-blue-950/20">{r.earnedLeave}</td>
                           <td className="px-3.5 py-2.5 text-center font-bold text-red-700 dark:text-red-300 bg-red-50/40 dark:bg-red-950/20">{r.usedLeave}</td>
@@ -5196,11 +5211,11 @@ const DetailedAuditReportView: React.FC<{
 
             {/* BASIC REPORT (default) */}
             {(reportType === 'basic' || (!['detailed', 'monthly', 'work_hours', 'site_ot', 'log', 'leave_balance'].includes(reportType))) && (
-              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
+              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] shadow-xs">
                 {isDateRangeActive ? (
                   /* ── Multi-Day Date Range Table View (e.g. Last Month, This Month, Custom Range) ── */
                   <table className="w-full text-xs text-left">
-                    <thead className="bg-slate-100 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 uppercase tracking-wider font-extrabold text-[10px]">
+                    <thead className="bg-slate-100 dark:bg-[#072415]/80 border-b border-slate-200 dark:border-[#134426] text-slate-600 dark:text-emerald-200 uppercase tracking-wider font-extrabold text-[10px]">
                       <tr>
                         <th className="px-3 py-2.5">S.No</th>
                         <th className="px-3 py-2.5">Code</th>
@@ -5210,7 +5225,7 @@ const DetailedAuditReportView: React.FC<{
                         <th className="px-2.5 py-2.5">Shift</th>
                         <th className="px-2.5 py-2.5 text-center bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300">Present</th>
                         <th className="px-2.5 py-2.5 text-center bg-red-50 dark:bg-red-950/40 text-red-800 dark:text-red-300">Absent</th>
-                        <th className="px-2.5 py-2.5 text-center bg-slate-50 dark:bg-slate-800/60">W/O</th>
+                        <th className="px-2.5 py-2.5 text-center bg-slate-50 dark:bg-[#072415]/60">W/O</th>
                         <th className="px-3 py-2.5 text-center bg-cyan-50 dark:bg-cyan-950/40 text-cyan-800 dark:text-cyan-300">Total Net Hrs</th>
                         <th className="px-2.5 py-2.5 text-center bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300">OT Hrs</th>
                         <th className="px-2.5 py-2.5 text-center bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300">Late</th>
@@ -5232,11 +5247,11 @@ const DetailedAuditReportView: React.FC<{
                           const isExpanded = expandedEmpCode === emp.empCode;
                           return (
                             <React.Fragment key={`${emp.empCode}-${index}`}>
-                              <tr className={`hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors ${isExpanded ? 'bg-emerald-50/20 dark:bg-emerald-950/10' : ''}`}>
+                              <tr className={`hover:bg-slate-50 dark:hover:bg-[#0d3820]/50 transition-colors ${isExpanded ? 'bg-emerald-50/20 dark:bg-emerald-950/10' : ''}`}>
                                 <td className="px-3 py-2.5 font-mono text-slate-400">{(currentPage - 1) * pageSize + index + 1}</td>
-                                <td className="px-3 py-2.5 font-mono text-slate-600 dark:text-slate-300 font-semibold">{emp.empCode}</td>
+                                <td className="px-3 py-2.5 font-mono text-slate-600 dark:text-emerald-200 font-semibold">{emp.empCode}</td>
                                 <td className="px-3.5 py-2.5 font-bold text-slate-900 dark:text-white">{emp.empName}</td>
-                                <td className="px-3.5 py-2.5 text-slate-600 dark:text-slate-400">{emp.department}</td>
+                                <td className="px-3.5 py-2.5 text-slate-600 dark:text-emerald-300/70">{emp.department}</td>
                                 <td className="px-3 py-2.5 text-slate-500 text-[10px]">{emp.designation}</td>
                                 <td className="px-2.5 py-2.5 font-mono text-slate-500">{emp.shiftCode}</td>
                                 <td className="px-2.5 py-2.5 text-center font-black text-emerald-700 dark:text-emerald-300 bg-emerald-50/50 dark:bg-emerald-950/20">
@@ -5245,7 +5260,7 @@ const DetailedAuditReportView: React.FC<{
                                 <td className="px-2.5 py-2.5 text-center font-bold text-red-700 dark:text-red-300 bg-red-50/50 dark:bg-red-950/20">
                                   {emp.absentDays}d
                                 </td>
-                                <td className="px-2.5 py-2.5 text-center font-semibold text-slate-600 dark:text-slate-400 bg-slate-50/80 dark:bg-slate-800/40">
+                                <td className="px-2.5 py-2.5 text-center font-semibold text-slate-600 dark:text-emerald-300/70 bg-slate-50/80 dark:bg-[#072415]/40">
                                   {emp.woDays}d
                                 </td>
                                 <td className="px-3 py-2.5 text-center font-mono font-bold text-cyan-700 dark:text-cyan-300 bg-cyan-50/50 dark:bg-cyan-950/20">
@@ -5278,7 +5293,7 @@ const DetailedAuditReportView: React.FC<{
                                     className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all border flex items-center gap-1 mx-auto cursor-pointer ${
                                       isExpanded
                                         ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                                        : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                                        : 'bg-slate-100 hover:bg-slate-200 dark:bg-[#072415] dark:hover:bg-[#134426] text-slate-700 dark:text-emerald-200 border-slate-200 dark:border-[#134426]'
                                     }`}
                                     title="Expand Daily Breakdown"
                                   >
@@ -5290,10 +5305,10 @@ const DetailedAuditReportView: React.FC<{
 
                               {/* Expanded Day-by-Day Punch Logs */}
                               {isExpanded && (
-                                <tr className="bg-slate-50/80 dark:bg-slate-900/90">
+                                <tr className="bg-slate-50/80 dark:bg-[#072415]/90">
                                   <td colSpan={16} className="p-4 border-y border-emerald-200 dark:border-emerald-900/60">
                                     <div className="space-y-3">
-                                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
+                                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-[#134426] pb-2">
                                         <div className="flex items-center gap-2">
                                           <Calendar size={15} className="text-emerald-600 dark:text-emerald-400" />
                                           <span className="font-extrabold text-slate-900 dark:text-white">
@@ -5301,7 +5316,7 @@ const DetailedAuditReportView: React.FC<{
                                           </span>
                                           <span className="text-xs text-slate-500 font-medium">({reportDateLabel})</span>
                                         </div>
-                                        <div className="flex items-center gap-3 text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                                        <div className="flex items-center gap-3 text-[11px] font-semibold text-slate-600 dark:text-emerald-200">
                                           <span className="text-emerald-600 dark:text-emerald-400">Present: {emp.presentDays}d</span>
                                           <span className="text-red-600 dark:text-red-400">Absent: {emp.absentDays}d</span>
                                           <span className="text-slate-500">W/O: {emp.woDays}d</span>
@@ -5317,7 +5332,7 @@ const DetailedAuditReportView: React.FC<{
                                             key={dp.dateStr}
                                             className={`p-2 rounded-xl border transition-all text-xs flex flex-col justify-between min-h-[78px] ${
                                               dp.status === 'W/O'
-                                                ? 'bg-slate-100/80 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700/60 text-slate-400'
+                                                ? 'bg-slate-100/80 dark:bg-[#072415]/40 border-slate-200 dark:border-[#134426]/60 text-slate-400'
                                                 : dp.status === 'A'
                                                 ? 'bg-red-50/70 dark:bg-red-950/30 border-red-200 dark:border-red-900/60 text-red-700 dark:text-red-300'
                                                 : dp.status === 'Late'
@@ -5331,7 +5346,7 @@ const DetailedAuditReportView: React.FC<{
                                             </div>
                                             <div className="my-1">
                                               <span className={`inline-block px-1.5 py-0.2 rounded text-[9px] font-extrabold ${
-                                                dp.status === 'W/O' ? 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300' :
+                                                dp.status === 'W/O' ? 'bg-slate-200 dark:bg-[#0d3820] text-slate-600 dark:text-emerald-200' :
                                                 dp.status === 'A' ? 'bg-red-200 dark:bg-red-900 text-red-900 dark:text-red-200' :
                                                 dp.status === 'Late' ? 'bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-200' :
                                                 'bg-emerald-200 dark:bg-emerald-900 text-emerald-900 dark:text-emerald-200'
@@ -5344,7 +5359,7 @@ const DetailedAuditReportView: React.FC<{
                                                 <>
                                                   <div className="text-emerald-700 dark:text-emerald-400 font-semibold">{dp.inTime}</div>
                                                   <div className="text-slate-500">{dp.outTime}</div>
-                                                  <div className="font-bold text-slate-700 dark:text-slate-300">{dp.hours}</div>
+                                                  <div className="font-bold text-slate-700 dark:text-emerald-200">{dp.hours}</div>
                                                 </>
                                               ) : (
                                                 <div className="text-slate-400 py-1">—</div>
@@ -5366,7 +5381,7 @@ const DetailedAuditReportView: React.FC<{
                 ) : (
                   /* ── Single-Day Table View (e.g. Today / Yesterday) ── */
                   <table className="w-full text-xs text-left">
-                    <thead className="bg-slate-100 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 uppercase tracking-wider font-extrabold text-[10px]">
+                    <thead className="bg-slate-100 dark:bg-[#072415]/80 border-b border-slate-200 dark:border-[#134426] text-slate-600 dark:text-emerald-200 uppercase tracking-wider font-extrabold text-[10px]">
                       <tr>
                         <th className="px-3.5 py-2.5">S.No</th>
                         <th className="px-3.5 py-2.5">Biometric Code</th>
@@ -5390,16 +5405,16 @@ const DetailedAuditReportView: React.FC<{
                         </tr>
                       ) : (
                         paginatedEmployees.map((emp, index) => (
-                          <tr key={`${emp.empCode}-${index}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                          <tr key={`${emp.empCode}-${index}`} className="hover:bg-slate-50 dark:hover:bg-[#0d3820]/50 transition-colors">
                             <td className="px-3.5 py-2.5 font-mono text-slate-400">{(currentPage - 1) * pageSize + index + 1}</td>
-                            <td className="px-3.5 py-2.5 font-mono text-slate-600 dark:text-slate-300 font-semibold">{emp.empCode}</td>
+                            <td className="px-3.5 py-2.5 font-mono text-slate-600 dark:text-emerald-200 font-semibold">{emp.empCode}</td>
                             <td className="px-3.5 py-2.5 font-bold text-slate-900 dark:text-white">{emp.empName}</td>
-                            <td className="px-3.5 py-2.5 text-slate-600 dark:text-slate-400">{emp.department}</td>
+                            <td className="px-3.5 py-2.5 text-slate-600 dark:text-emerald-300/70">{emp.department}</td>
                             <td className="px-3.5 py-2.5 text-slate-500 text-[10px]">{emp.designation}</td>
                             <td className="px-3.5 py-2.5 text-slate-500 font-medium">{formatShiftDisplay(emp)}</td>
                             <td className="px-3.5 py-2.5 font-mono text-emerald-600 dark:text-emerald-400 font-bold">{emp.inTime || '—'}</td>
-                            <td className="px-3.5 py-2.5 font-mono text-slate-700 dark:text-slate-300 font-medium">{emp.outTime || '—'}</td>
-                            <td className="px-3.5 py-2.5 font-mono text-slate-800 dark:text-slate-200 font-semibold">{formatLiveWorkingHours(emp, selectedDate)}</td>
+                            <td className="px-3.5 py-2.5 font-mono text-slate-700 dark:text-emerald-200 font-medium">{emp.outTime || '—'}</td>
+                            <td className="px-3.5 py-2.5 font-mono text-slate-800 dark:text-emerald-100 font-semibold">{formatLiveWorkingHours(emp, selectedDate)}</td>
                             <td className="px-3.5 py-2.5 text-center font-mono text-amber-700 dark:text-amber-300">{emp.lateMinutes > 0 ? `+${emp.lateMinutes}m` : '—'}</td>
                             <td className="px-3.5 py-2.5 text-center">
                               <StatusBadge status={emp.status} inTime={emp.inTime} outTime={emp.outTime} shiftCompleted={emp.shiftCompleted} />
@@ -5416,14 +5431,14 @@ const DetailedAuditReportView: React.FC<{
             {/* Pagination */}
             {totalPages > 1 && reportType !== 'detailed' && (
               <div className="flex items-center justify-between pt-2">
-                <p className="text-xs text-slate-500 dark:text-slate-400">
+                <p className="text-xs text-slate-500 dark:text-emerald-300/70">
                   Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, filteredEmployees.length)} of {filteredEmployees.length}
                 </p>
                 <div className="flex gap-1.5">
                   <button
                     disabled={currentPage === 1}
                     onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer"
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 dark:bg-[#072415] text-slate-700 dark:text-emerald-200 disabled:opacity-40 hover:bg-slate-200 dark:hover:bg-[#134426] cursor-pointer"
                   >
                     ← Prev
                   </button>
@@ -5431,7 +5446,7 @@ const DetailedAuditReportView: React.FC<{
                   <button
                     disabled={currentPage === totalPages}
                     onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer"
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 dark:bg-[#072415] text-slate-700 dark:text-emerald-200 disabled:opacity-40 hover:bg-slate-200 dark:hover:bg-[#134426] cursor-pointer"
                   >
                     Next →
                   </button>
@@ -5444,19 +5459,19 @@ const DetailedAuditReportView: React.FC<{
       ) : activeTab === 'auditLogs' ? (
         /* ── SCREENSHOT SECURITY AUDIT LOGS SUB-PAGE ──────────────────────── */
         <div className="space-y-6">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-6 shadow-xs">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
+          <div className="bg-white dark:bg-[#072415] rounded-2xl border border-slate-200/80 dark:border-[#134426] p-6 shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-[#134426] pb-4">
               <div>
                 <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <FileText size={20} className="text-purple-600 dark:text-purple-400" />
+                  <FileText size={20} className="text-emerald-600 dark:text-[#44D62C]" />
                   Admin Screenshot & Export Security Audit Logs
                 </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                <p className="text-xs text-slate-500 dark:text-emerald-300/70 mt-1">
                   Track screenshot attempts, capture reasons, and data export compliance events across site attendance dashboards.
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold px-3 py-1.5 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 flex items-center gap-1.5">
+                <span className="text-xs font-bold px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex items-center gap-1.5">
                   <ShieldCheck size={14} />
                   Total Audit Logs: <span className="font-extrabold text-slate-900 dark:text-white">{screenshotLogs.length}</span>
                 </span>
@@ -5471,9 +5486,9 @@ const DetailedAuditReportView: React.FC<{
             {/* Audit Logs List */}
             <div className="mt-6 space-y-4">
               {screenshotLogs.length === 0 ? (
-                <div className="text-center py-12 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800">
-                  <FileText size={32} className="mx-auto text-slate-400 mb-2" />
-                  <p className="text-xs font-bold text-slate-600 dark:text-slate-400">No screenshot security events recorded yet.</p>
+                <div className="text-center py-12 bg-slate-50 dark:bg-[#072415]/40 rounded-2xl border border-dashed border-slate-200 dark:border-[#134426]">
+                  <FileText size={32} className="mx-auto text-slate-400 dark:text-emerald-400/60 mb-2" />
+                  <p className="text-xs font-bold text-slate-600 dark:text-emerald-300/80">No screenshot security events recorded yet.</p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -5482,8 +5497,8 @@ const DetailedAuditReportView: React.FC<{
                       key={log.id}
                       className={`p-4 rounded-2xl border transition-all ${
                         log.status === 'unread'
-                          ? 'border-purple-300 dark:border-purple-800 bg-purple-50/40 dark:bg-purple-950/30 ring-1 ring-purple-500/20'
-                          : 'border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900'
+                          ? 'border-emerald-400 dark:border-[#44D62C] bg-emerald-50/40 dark:bg-emerald-950/30 ring-1 ring-emerald-500/20'
+                          : 'border-slate-200/80 dark:border-[#134426] bg-white dark:bg-[#072415]'
                       }`}
                     >
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -5498,26 +5513,26 @@ const DetailedAuditReportView: React.FC<{
                             </span>
                             <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md uppercase tracking-wider ${
                               log.captureType === 'screen_recording'
-                                ? 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300 border border-purple-200'
+                                ? 'bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300 border border-teal-200'
                                 : 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-200'
                             }`}>
                               {log.captureType === 'screen_recording' ? '🎥 Screen Recording' : '📸 Screen Capture'}
                             </span>
-                            <span className="text-xs font-mono text-slate-500 dark:text-slate-400">
+                            <span className="text-xs font-mono text-slate-500 dark:text-emerald-300/70">
                               {format(new Date(log.timestamp), 'dd MMM yyyy, hh:mm:ss a')}
                             </span>
                           </div>
 
                           <h4 className="font-bold text-slate-900 dark:text-white text-sm">
-                            Captured by: <span className="text-purple-700 dark:text-purple-300 font-mono">{log.userName}</span> ({log.userEmail})
+                            Captured by: <span className="text-emerald-700 dark:text-[#44D62C] font-mono">{log.userName}</span> ({log.userEmail})
                           </h4>
 
-                          <div className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 pt-1">
-                            <span className="font-bold bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700">
+                          <div className="flex items-center gap-2 text-xs text-slate-700 dark:text-emerald-200 pt-1">
+                            <span className="font-bold bg-slate-100 dark:bg-[#041b0f] px-2 py-1 rounded-lg border border-slate-200 dark:border-[#134426]">
                               Reason: {log.reason}
                             </span>
                             {log.customNotes && (
-                              <span className="text-slate-600 dark:text-slate-400 italic">
+                              <span className="text-slate-600 dark:text-emerald-300/70 italic">
                                 "{log.customNotes}"
                               </span>
                             )}
@@ -5551,14 +5566,14 @@ const DetailedAuditReportView: React.FC<{
       ) : activeTab === 'userAccess' ? (
         /* ── USER SITE ACCESS CONTROL SUB-PAGE ───────────────────────────── */
         <div className="space-y-6">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-6 shadow-xs">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
+          <div className="bg-white dark:bg-[#072415] rounded-2xl border border-slate-200/80 dark:border-[#134426] p-6 shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-[#134426] pb-4">
               <div>
                 <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                   <Lock size={20} className="text-blue-500" />
                   Admin User Site Permission & Access Control
                 </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                <p className="text-xs text-slate-500 dark:text-emerald-300/70 mt-1">
                   Configure which user can see which site data on the live attendance dashboard (e.g. admin@paradigmfms.com sees all, sudhan@paradigm sees only checked sites).
                 </p>
               </div>
@@ -5566,7 +5581,7 @@ const DetailedAuditReportView: React.FC<{
                 <button
                   type="button"
                   onClick={() => setShowSqlSchemaModal(s => !s)}
-                  className="text-xs font-bold px-3 py-1.5 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 flex items-center gap-1.5 hover:bg-purple-100 transition-colors cursor-pointer"
+                  className="text-xs font-bold px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex items-center gap-1.5 hover:bg-emerald-100 transition-colors cursor-pointer"
                 >
                   <Database size={14} />
                   Supabase DB Migration SQL
@@ -5579,7 +5594,7 @@ const DetailedAuditReportView: React.FC<{
             </div>
 
             {/* Form Section */}
-            <div className="mt-6 bg-slate-50 dark:bg-slate-800/50 p-5 rounded-2xl border border-slate-200/60 dark:border-slate-700/60 space-y-4">
+            <div className="mt-6 bg-slate-50 dark:bg-[#072415]/50 p-5 rounded-2xl border border-slate-200/60 dark:border-[#134426]/60 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <h3 className="text-xs font-extrabold uppercase tracking-wider text-blue-700 dark:text-blue-400 flex items-center gap-1.5">
                   <UserPlus size={14} />
@@ -5595,13 +5610,13 @@ const DetailedAuditReportView: React.FC<{
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="relative" ref={userDropdownRef}>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-emerald-200 mb-1">
                     Select System User (Database) *
                   </label>
                   <button
                     type="button"
                     onClick={() => setIsUserDropdownOpen(o => !o)}
-                    className="w-full flex items-center justify-between text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-medium cursor-pointer shadow-xs"
+                    className="w-full flex items-center justify-between text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-900 dark:text-white font-medium cursor-pointer shadow-xs"
                   >
                     <span className="truncate">
                       {isCreateNewAccount
@@ -5613,10 +5628,10 @@ const DetailedAuditReportView: React.FC<{
 
                   {/* Downward Popover Card */}
                   {isUserDropdownOpen && (
-                    <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-700 rounded-2xl shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150 w-full min-w-[280px]">
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-[#072415] border border-slate-200/90 dark:border-[#134426] rounded-2xl shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150 w-full min-w-[280px]">
                       {/* Search Filter Input */}
-                      <div className="p-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
-                        <div className="flex items-center gap-2 px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl">
+                      <div className="p-2 border-b border-slate-100 dark:border-[#134426] bg-slate-50 dark:bg-[#072415]/50">
+                        <div className="flex items-center gap-2 px-2 py-1 bg-white dark:bg-[#072415] border border-slate-200 dark:border-[#134426] rounded-xl">
                           <Search size={14} className="text-slate-400 shrink-0" />
                           <input
                             type="text"
@@ -5655,7 +5670,7 @@ const DetailedAuditReportView: React.FC<{
                               className={`w-full text-left p-2 rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-between ${
                                 isSelected
                                   ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-900 dark:text-blue-200 font-bold'
-                                  : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 text-slate-800 dark:text-slate-200'
+                                  : 'hover:bg-slate-50 dark:hover:bg-[#0d3820]/60 text-slate-800 dark:text-emerald-100'
                               }`}
                             >
                               <div className="truncate">
@@ -5672,7 +5687,7 @@ const DetailedAuditReportView: React.FC<{
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-emerald-200 mb-1">
                     User Email Address *
                   </label>
                   <input
@@ -5680,12 +5695,12 @@ const DetailedAuditReportView: React.FC<{
                     placeholder="e.g. sudhan@paradigm.com"
                     value={userEmailInput}
                     onChange={e => setUserEmailInput(e.target.value)}
-                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 font-mono"
+                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 font-mono"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-emerald-200 mb-1">
                     User Full Name / Designation
                   </label>
                   <input
@@ -5693,18 +5708,18 @@ const DetailedAuditReportView: React.FC<{
                     placeholder="e.g. Sudhan M (Operations Manager)"
                     value={userNameInput}
                     onChange={e => setUserNameInput(e.target.value)}
-                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20"
+                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-emerald-200 mb-1">
                     Access Permission Level
                   </label>
                   <select
                     value={accessTypeInput}
                     onChange={e => setAccessTypeInput(e.target.value as 'all' | 'restricted')}
-                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 font-bold"
+                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 font-bold"
                   >
                     <option value="restricted">🔒 Restricted Access (Selected Sites Only)</option>
                     <option value="all">🌐 Full Access (All Sites / Super Admin)</option>
@@ -5713,7 +5728,7 @@ const DetailedAuditReportView: React.FC<{
 
                 {/* Password feed input */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-emerald-200 mb-1">
                     Feed Account Password (Optional)
                   </label>
                   <input
@@ -5721,19 +5736,19 @@ const DetailedAuditReportView: React.FC<{
                     placeholder="e.g. Paradigm@2026"
                     value={passwordInput}
                     onChange={e => setPasswordInput(e.target.value)}
-                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-mono focus:ring-2 focus:ring-blue-500/20"
+                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-900 dark:text-white font-mono focus:ring-2 focus:ring-blue-500/20"
                   />
                 </div>
 
                 {/* Validity Expiry Control */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-emerald-200 mb-1">
                     Access Duration / Validity
                   </label>
                   <select
                     value={validityTypeInput}
                     onChange={e => setValidityTypeInput(e.target.value as 'permanent' | 'timebound')}
-                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 font-semibold"
+                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 font-semibold"
                   >
                     <option value="timebound">⏳ Time-Bound Access (Valid Until Expiration Date)</option>
                     <option value="permanent">🌐 Infinite (Permanent Access)</option>
@@ -5742,7 +5757,7 @@ const DetailedAuditReportView: React.FC<{
 
                 {/* Valid Until Date Field - Always Visible! */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-emerald-200 mb-1 flex items-center justify-between">
                     <span>Valid Until Expiration Date *</span>
                     {validityTypeInput === 'permanent' && (
                       <span className="text-[10px] text-emerald-600 font-bold">Infinite</span>
@@ -5757,16 +5772,16 @@ const DetailedAuditReportView: React.FC<{
                         setValidityTypeInput('timebound');
                       }
                     }}
-                    className={`w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-semibold focus:ring-2 focus:ring-blue-500/20 ${validityTypeInput === 'permanent' ? 'opacity-70' : ''}`}
+                    className={`w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-900 dark:text-white font-semibold focus:ring-2 focus:ring-blue-500/20 ${validityTypeInput === 'permanent' ? 'opacity-70' : ''}`}
                   />
                 </div>
               </div>
 
               {/* Site Checklist Selection (Multiple Checkboxes) */}
               {accessTypeInput === 'restricted' && (
-                <div className="mt-4 pt-4 border-t border-slate-200/60 dark:border-slate-700/60 space-y-2">
+                <div className="mt-4 pt-4 border-t border-slate-200/60 dark:border-[#134426]/60 space-y-2">
                   <div className="flex items-center justify-between">
-                    <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
+                    <label className="block text-xs font-bold text-slate-800 dark:text-emerald-100">
                       Permitted Sites Checklist for this User ({selectedSitesInput.length} selected)
                     </label>
                     <div className="flex items-center gap-2 text-xs">
@@ -5786,7 +5801,7 @@ const DetailedAuditReportView: React.FC<{
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-700 max-h-56 overflow-y-auto">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 bg-white dark:bg-[#072415] p-3.5 rounded-xl border border-slate-200/80 dark:border-[#134426] max-h-56 overflow-y-auto">
                     {departmentList.map(site => {
                       const isChecked = selectedSitesInput.includes(site);
                       return (
@@ -5796,7 +5811,7 @@ const DetailedAuditReportView: React.FC<{
                           className={`flex items-center gap-2 p-2 rounded-lg text-xs font-semibold cursor-pointer transition-all border ${
                             isChecked
                               ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-900 dark:text-blue-200 border-blue-300 dark:border-blue-800'
-                              : 'bg-slate-50 dark:bg-slate-800/40 text-slate-700 dark:text-slate-300 border-slate-200/60 dark:border-slate-700/60 hover:bg-slate-100'
+                              : 'bg-slate-50 dark:bg-[#072415]/40 text-slate-700 dark:text-emerald-200 border-slate-200/60 dark:border-[#134426]/60 hover:bg-slate-100'
                           }`}
                         >
                           {isChecked ? (
@@ -5813,9 +5828,9 @@ const DetailedAuditReportView: React.FC<{
               )}
 
               {/* Top-Right Header Module Icon Tabs Checklist (Red Box Icon Access Control) */}
-              <div className="mt-4 pt-4 border-t border-slate-200/60 dark:border-slate-700/60 space-y-2">
+              <div className="mt-4 pt-4 border-t border-slate-200/60 dark:border-[#134426]/60 space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <label className="block text-xs font-bold text-slate-800 dark:text-emerald-100 flex items-center gap-1.5">
                     <span>Permitted Top-Right Header Icon Tabs for this User</span>
                     <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300 border border-red-300">
                       Red-Box Icon Controls ({selectedTabsInput.length}/6 allowed)
@@ -5838,7 +5853,7 @@ const DetailedAuditReportView: React.FC<{
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-700">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 bg-white dark:bg-[#072415] p-3.5 rounded-xl border border-slate-200/80 dark:border-[#134426]">
                   {[
                     { id: 'attendance' as const, label: '📊 Live Attendance Overview', desc: 'KPI Cards & Live Table' },
                     { id: 'reports' as const, label: '📄 Attendance Reports & Export', desc: 'Multi-Filters & Downloads' },
@@ -5855,7 +5870,7 @@ const DetailedAuditReportView: React.FC<{
                         className={`flex items-start gap-2.5 p-2.5 rounded-xl text-xs font-semibold cursor-pointer transition-all border ${
                           isChecked
                             ? 'bg-emerald-50/70 dark:bg-emerald-950/50 text-emerald-950 dark:text-emerald-200 border-emerald-300 dark:border-emerald-800'
-                            : 'bg-slate-50 dark:bg-slate-800/40 text-slate-500 dark:text-slate-400 border-slate-200/60 dark:border-slate-700/60 hover:bg-slate-100'
+                            : 'bg-slate-50 dark:bg-[#072415]/40 text-slate-500 dark:text-emerald-300/70 border-slate-200/60 dark:border-[#134426]/60 hover:bg-slate-100'
                         }`}
                       >
                         {isChecked ? (
@@ -5889,7 +5904,7 @@ const DetailedAuditReportView: React.FC<{
                       setAccessTypeInput('restricted');
                       setSelectedSitesInput([]);
                     }}
-                    className="px-4 py-2 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-xl cursor-pointer"
+                    className="px-4 py-2 bg-slate-200 dark:bg-[#0d3820] text-slate-700 dark:text-emerald-200 text-xs font-bold rounded-xl cursor-pointer"
                   >
                     Cancel Edit
                   </button>
@@ -5911,7 +5926,7 @@ const DetailedAuditReportView: React.FC<{
                     className={`p-4 rounded-2xl border transition-all ${
                       editingPermId === perm.id
                         ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-950/40 ring-2 ring-blue-500/20'
-                        : 'border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300'
+                        : 'border-slate-200/80 dark:border-[#134426] bg-white dark:bg-[#072415] hover:border-slate-300'
                     }`}
                   >
                     <div className="flex items-start justify-between">
@@ -5949,14 +5964,14 @@ const DetailedAuditReportView: React.FC<{
                       <div className="flex items-center gap-1">
                         <button
                           onClick={() => handleEditPermission(perm)}
-                          className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                          className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-slate-100 dark:hover:bg-[#0d3820] transition-colors cursor-pointer"
                           title="Edit Access"
                         >
                           <Edit3 size={14} />
                         </button>
                         <button
                           onClick={() => handleDeletePermission(perm.id)}
-                          className="p-1.5 text-slate-400 hover:text-red-600 dark:hover:text-red-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                          className="p-1.5 text-slate-400 hover:text-red-600 dark:hover:text-red-400 rounded-lg hover:bg-slate-100 dark:hover:bg-[#0d3820] transition-colors cursor-pointer"
                           title="Delete Access Rule"
                         >
                           <Trash2 size={14} />
@@ -5964,15 +5979,15 @@ const DetailedAuditReportView: React.FC<{
                       </div>
                     </div>
 
-                    <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2 text-xs">
+                    <div className="mt-3 pt-3 border-t border-slate-100 dark:border-[#134426] space-y-2 text-xs">
                       <div>
-                        <p className="font-medium text-slate-500 dark:text-slate-400">Permitted Sites:</p>
+                        <p className="font-medium text-slate-500 dark:text-emerald-300/70">Permitted Sites:</p>
                         {perm.accessType === 'all' ? (
                           <p className="font-bold text-emerald-600 dark:text-emerald-400">🌐 All Sites Allowed</p>
                         ) : (
                           <div className="flex flex-wrap gap-1 mt-1">
                             {perm.allowedSites.map(s => (
-                              <span key={s} className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-semibold border border-slate-200 dark:border-slate-700">
+                              <span key={s} className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-[#072415] text-slate-700 dark:text-emerald-200 text-[10px] font-semibold border border-slate-200 dark:border-[#134426]">
                                 {s}
                               </span>
                             ))}
@@ -5981,7 +5996,7 @@ const DetailedAuditReportView: React.FC<{
                       </div>
 
                       <div>
-                        <p className="font-medium text-slate-500 dark:text-slate-400">Permitted Header Icon Tabs:</p>
+                        <p className="font-medium text-slate-500 dark:text-emerald-300/70">Permitted Header Icon Tabs:</p>
                         <div className="flex flex-wrap gap-1 mt-1">
                           {(!perm.allowedTabs || perm.allowedTabs.length === 6 || perm.accessType === 'all') ? (
                             <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 text-[10px] font-bold border border-emerald-200">
@@ -5989,7 +6004,7 @@ const DetailedAuditReportView: React.FC<{
                             </span>
                           ) : (
                             perm.allowedTabs.map(t => (
-                              <span key={t} className="px-2 py-0.5 rounded-md bg-purple-50 dark:bg-purple-950 text-purple-700 dark:text-purple-300 text-[10px] font-bold border border-purple-200">
+                              <span key={t} className="px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-[#072415] text-emerald-700 dark:text-[#44D62C] text-[10px] font-bold border border-emerald-200 dark:border-[#134426]">
                                 {t === 'attendance' ? '📊 Live' : t === 'reports' ? '📄 Reports' : t === 'shiftConfig' ? '🎛️ Shift' : t === 'userAccess' ? '🔒 Access' : t === 'auditLogs' ? '📝 Audit' : '📷 Screenshot'}
                               </span>
                             ))
@@ -6007,20 +6022,20 @@ const DetailedAuditReportView: React.FC<{
         /* ── SHIFT RULE & GROUPING CONFIG SUB-PAGE ────────────────────────── */
         <div className="space-y-6">
           {/* Sub-page Banner */}
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-6 shadow-xs">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
+          <div className="bg-white dark:bg-[#072415] rounded-2xl border border-slate-200/80 dark:border-[#134426] p-6 shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-[#134426] pb-4">
               <div>
                 <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                   <Sliders size={20} className="text-emerald-500" />
                   Admin Shift Group & Multi-Slot Configurator
                 </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                <p className="text-xs text-slate-500 dark:text-emerald-300/70 mt-1">
                   Feed custom shift groups and multiple start time slots (e.g. 06:30, 07:00, 07:30, 08:00 for A Shift) per site.
                 </p>
               </div>
               <button
                 onClick={handleResetDefaultRules}
-                className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-slate-700"
+                className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 dark:bg-[#072415] hover:bg-slate-200 text-slate-700 dark:text-emerald-200 rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-[#134426]"
               >
                 <RotateCcw size={14} />
                 Reset System Defaults
@@ -6028,7 +6043,7 @@ const DetailedAuditReportView: React.FC<{
             </div>
 
             {/* Form Section */}
-            <div className="mt-6 bg-slate-50 dark:bg-slate-800/50 p-5 rounded-2xl border border-slate-200/60 dark:border-slate-700/60 space-y-4">
+            <div className="mt-6 bg-slate-50 dark:bg-[#072415]/50 p-5 rounded-2xl border border-slate-200/60 dark:border-[#134426]/60 space-y-4">
               <h3 className="text-xs font-extrabold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
                 <Plus size={14} />
                 {editingRuleId ? 'Edit Shift Rule & Group' : 'Feed New Shift Group Rule'}
@@ -6036,7 +6051,7 @@ const DetailedAuditReportView: React.FC<{
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-emerald-200 mb-1">
                     Shift Group Name *
                   </label>
                   <input
@@ -6044,12 +6059,12 @@ const DetailedAuditReportView: React.FC<{
                     placeholder="e.g. A Shift Group"
                     value={groupNameInput}
                     onChange={e => setGroupNameInput(e.target.value)}
-                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500/20"
+                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500/20"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-emerald-200 mb-1">
                     Shift Code *
                   </label>
                   <input
@@ -6057,18 +6072,18 @@ const DetailedAuditReportView: React.FC<{
                     placeholder="e.g. A, B, C, DAY-12"
                     value={shiftCodeInput}
                     onChange={e => setShiftCodeInput(e.target.value)}
-                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500/20"
+                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500/20"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-emerald-200 mb-1">
                     Target Site
                   </label>
                   <select
                     value={siteNameInput}
                     onChange={e => setSiteNameInput(e.target.value)}
-                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500/20"
+                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500/20"
                   >
                     <option value="All Sites">All Sites (Global)</option>
                     {departmentList.map(site => (
@@ -6078,7 +6093,7 @@ const DetailedAuditReportView: React.FC<{
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-emerald-200 mb-1">
                     Display Timing Label
                   </label>
                   <input
@@ -6086,12 +6101,12 @@ const DetailedAuditReportView: React.FC<{
                     placeholder="e.g. 07:00 AM - 02:00 PM"
                     value={displayTimingInput}
                     onChange={e => setDisplayTimingInput(e.target.value)}
-                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500/20"
+                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500/20"
                   />
                 </div>
 
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-emerald-200 mb-1">
                     Multiple Start Time Slots (Comma-Separated) *
                   </label>
                   <input
@@ -6099,7 +6114,7 @@ const DetailedAuditReportView: React.FC<{
                     placeholder="e.g. 06:30, 07:00, 07:30, 08:00"
                     value={startTimeSlotsInput}
                     onChange={e => setStartTimeSlotsInput(e.target.value)}
-                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-mono focus:ring-2 focus:ring-emerald-500/20"
+                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-900 dark:text-white font-mono focus:ring-2 focus:ring-emerald-500/20"
                   />
                   <p className="text-[10px] text-slate-400 mt-1">
                     If employee punches in at any of these slots (e.g. 6:30, 7:00, 7:30, 8:00), they are automatically grouped under this Shift!
@@ -6107,7 +6122,7 @@ const DetailedAuditReportView: React.FC<{
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-emerald-200 mb-1">
                     Expected Duty Hours
                   </label>
                   <input
@@ -6115,12 +6130,12 @@ const DetailedAuditReportView: React.FC<{
                     step="0.5"
                     value={expectedHoursInput}
                     onChange={e => setExpectedHoursInput(Number(e.target.value))}
-                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500/20"
+                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500/20"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-emerald-200 mb-1">
                     Min Hours for Shift Completion
                   </label>
                   <input
@@ -6128,12 +6143,12 @@ const DetailedAuditReportView: React.FC<{
                     step="0.5"
                     value={minCompletedHoursInput}
                     onChange={e => setMinCompletedHoursInput(Number(e.target.value))}
-                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500/20"
+                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500/20"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-emerald-200 mb-1">
                     Biometric Code Series / Prefix (Optional)
                   </label>
                   <input
@@ -6141,7 +6156,7 @@ const DetailedAuditReportView: React.FC<{
                     placeholder="e.g. 32 (Security) or 31 (MEP)"
                     value={codePrefixInput}
                     onChange={e => setCodePrefixInput(e.target.value)}
-                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500/20"
+                    className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500/20"
                   />
                   <p className="text-[10px] text-slate-400 mt-1">
                     Auto-assigns employees whose biometric code starts with this series (e.g. 32001 or 31001).
@@ -6166,7 +6181,7 @@ const DetailedAuditReportView: React.FC<{
                       setStartTimeSlotsInput('');
                       setDisplayTimingInput('');
                     }}
-                    className="px-4 py-2 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-xl cursor-pointer"
+                    className="px-4 py-2 bg-slate-200 dark:bg-[#0d3820] text-slate-700 dark:text-emerald-200 text-xs font-bold rounded-xl cursor-pointer"
                   >
                     Cancel Edit
                   </button>
@@ -6188,7 +6203,7 @@ const DetailedAuditReportView: React.FC<{
                     className={`p-4 rounded-2xl border transition-all ${
                       editingRuleId === rule.id
                         ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/40 ring-2 ring-emerald-500/20'
-                        : 'border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300'
+                        : 'border-slate-200/80 dark:border-[#134426] bg-white dark:bg-[#072415] hover:border-slate-300'
                     }`}
                   >
                     <div className="flex items-start justify-between">
@@ -6197,27 +6212,27 @@ const DetailedAuditReportView: React.FC<{
                           {rule.shiftCode}
                         </span>
                         <h4 className="font-bold text-slate-900 dark:text-white text-sm mt-1.5">{rule.groupName}</h4>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{rule.displayTiming}</p>
+                        <p className="text-xs text-slate-500 dark:text-emerald-300/70 mt-0.5">{rule.displayTiming}</p>
                       </div>
 
                       <div className="flex items-center gap-1">
                         <button
                           onClick={() => handleDuplicateRule(rule)}
-                          className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                          className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-slate-100 dark:hover:bg-[#0d3820] transition-colors cursor-pointer"
                           title="Duplicate / Clone Shift Rule"
                         >
                           <Copy size={14} />
                         </button>
                         <button
                           onClick={() => handleEditRule(rule)}
-                          className="p-1.5 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                          className="p-1.5 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 rounded-lg hover:bg-slate-100 dark:hover:bg-[#0d3820] transition-colors cursor-pointer"
                           title="Edit Rule"
                         >
                           <Edit3 size={14} />
                         </button>
                         <button
                           onClick={() => handleDeleteRule(rule.id)}
-                          className="p-1.5 text-slate-400 hover:text-red-600 dark:hover:text-red-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                          className="p-1.5 text-slate-400 hover:text-red-600 dark:hover:text-red-400 rounded-lg hover:bg-slate-100 dark:hover:bg-[#0d3820] transition-colors cursor-pointer"
                           title="Delete Rule"
                         >
                           <Trash2 size={14} />
@@ -6225,21 +6240,21 @@ const DetailedAuditReportView: React.FC<{
                       </div>
                     </div>
 
-                    <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 space-y-1.5 text-xs">
-                      <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
+                    <div className="mt-3 pt-3 border-t border-slate-100 dark:border-[#134426] space-y-1.5 text-xs">
+                      <div className="flex items-center justify-between text-slate-600 dark:text-emerald-300/70">
                         <span className="font-medium">Site Target:</span>
-                        <span className="font-semibold text-slate-800 dark:text-slate-200">{rule.siteName}</span>
+                        <span className="font-semibold text-slate-800 dark:text-emerald-100">{rule.siteName}</span>
                       </div>
-                      <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
+                      <div className="flex items-center justify-between text-slate-600 dark:text-emerald-300/70">
                         <span className="font-medium">Start Slots:</span>
                         <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">{rule.startTimeSlots}</span>
                       </div>
-                      <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
+                      <div className="flex items-center justify-between text-slate-600 dark:text-emerald-300/70">
                         <span className="font-medium">Expected / Min Hrs:</span>
-                        <span className="font-mono text-slate-800 dark:text-slate-200">{rule.expectedHours}h / {rule.minCompletedHours}h min</span>
+                        <span className="font-mono text-slate-800 dark:text-emerald-100">{rule.expectedHours}h / {rule.minCompletedHours}h min</span>
                       </div>
                       {rule.codePrefix && (
-                        <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
+                        <div className="flex items-center justify-between text-slate-600 dark:text-emerald-300/70">
                           <span className="font-medium">Code Prefix:</span>
                           <span className="font-mono text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300 font-extrabold border border-blue-200 dark:border-blue-800">
                             {rule.codePrefix}xxx Series
@@ -6256,13 +6271,13 @@ const DetailedAuditReportView: React.FC<{
       ) : (
         /* ── LIVE ATTENDANCE DASHBOARD VIEW ───────────────────────────────── */
         <>
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-4">
         <KpiCard
           label="Total Active Employees"
           value={s?.activeTotal ?? s?.totalEmployees ?? 0}
           icon={<Users size={20} className="text-slate-600" />}
           color="text-slate-900 dark:text-white"
-          bgColor="bg-slate-100 dark:bg-slate-800"
+          bgColor="bg-slate-100 dark:bg-[#072415]"
           subLabel={s?.totalHeadcount ? `${s.activeTotal} active (14-day punches) of ${s.totalHeadcount} DB total` : 'Active on site'}
           loading={loading}
           onClick={() => {
@@ -6351,30 +6366,34 @@ const DetailedAuditReportView: React.FC<{
                 setShowDevicePanel(v => !v);
                 setShowMonthDetailsPanel(false);
               }}
-              className={`bg-white dark:bg-slate-900 rounded-2xl border ${
+              className={`bg-white dark:bg-[#072415] rounded-2xl border ${
                 showDevicePanel
-                  ? 'border-emerald-500 ring-2 ring-emerald-500/20 shadow-md bg-emerald-50/10 dark:bg-emerald-950/20'
-                  : 'border-slate-200/80 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md'
-              } p-5 transition-all text-left group relative cursor-pointer w-full`}
+                  ? 'border-[#44D62C] ring-2 ring-[#44D62C]/30 shadow-[0_4px_16px_rgba(68,214,44,0.15)] bg-emerald-50/10 dark:bg-[#0c3821]'
+                  : 'border-slate-200/80 dark:border-[#134426] hover:border-slate-300 dark:hover:border-[#22633c] hover:shadow-md'
+              } p-3.5 sm:p-4.5 transition-all text-left group relative cursor-pointer w-full active:scale-[0.98]`}
             >
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Devices Online</p>
-              <p className="text-3xl font-black text-emerald-700 dark:text-emerald-400 leading-none">
-                {ds ? ds.online : 45}
-                {ds && ds.total > 0 && (
-                  <span className="text-sm font-semibold text-slate-400"> / {ds.total}</span>
-                )}
-              </p>
-              {ds && ds.offline > 0 && (
-                <p className="text-[11px] text-red-500 font-semibold mt-1">⚠ {ds.offline} offline</p>
-              )}
-              {ds && ds.offline === 0 && ds.total > 0 && (
-                <p className="text-[11px] text-emerald-500 font-semibold mt-1">✓ All online</p>
-              )}
-              {(!ds || ds.total === 0) && (
-                <p className="text-[11px] text-slate-400 font-medium mt-1">Click to view details</p>
-              )}
-              <div className="absolute top-4 right-4 w-11 h-11 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 flex items-center justify-center group-hover:scale-105 transition-transform">
-                <Radio size={20} className="text-emerald-600" />
+              <div className="flex items-start justify-between gap-2 sm:gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] sm:text-xs font-bold text-slate-500 dark:text-emerald-300/80 uppercase tracking-wider mb-1 truncate">Devices Online</p>
+                  <p className="text-2xl sm:text-3xl font-black text-emerald-700 dark:text-[#44D62C] leading-none truncate">
+                    {ds ? ds.online : 45}
+                    {ds && ds.total > 0 && (
+                      <span className="text-xs sm:text-sm font-semibold text-slate-400 dark:text-emerald-300/60"> / {ds.total}</span>
+                    )}
+                  </p>
+                  {ds && ds.offline > 0 && (
+                    <p className="text-[10px] sm:text-[11px] text-red-500 dark:text-red-400 font-semibold mt-1">⚠ {ds.offline} offline</p>
+                  )}
+                  {ds && ds.offline === 0 && ds.total > 0 && (
+                    <p className="text-[10px] sm:text-[11px] text-emerald-500 dark:text-[#44D62C] font-semibold mt-1">✓ All online</p>
+                  )}
+                  {(!ds || ds.total === 0) && (
+                    <p className="text-[10px] sm:text-[11px] text-slate-400 dark:text-emerald-400/60 font-medium mt-1">Click to view</p>
+                  )}
+                </div>
+                <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-emerald-100 dark:bg-[#0d3820] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform border border-transparent dark:border-[#1a5532]">
+                  <Radio size={18} className="text-emerald-600 dark:text-[#44D62C] sm:w-5 sm:h-5" />
+                </div>
               </div>
             </button>
           );
@@ -6383,8 +6402,8 @@ const DetailedAuditReportView: React.FC<{
 
       {/* ── PRESENT MONTH ATTENDANCE DETAILS PANEL (collapsible) ───────────────────────── */}
       {showMonthDetailsPanel && (
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden p-5 space-y-4 animate-in fade-in duration-200">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+        <div className="bg-white dark:bg-[#072415] rounded-2xl border border-slate-200/80 dark:border-[#134426] shadow-xs overflow-hidden p-5 space-y-4 animate-in fade-in duration-200">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-[#134426] pb-3">
             <div>
               <div className="flex items-center gap-2">
                 <Calendar className="text-sky-600 dark:text-sky-400" size={18} />
@@ -6392,13 +6411,13 @@ const DetailedAuditReportView: React.FC<{
                   Present Month Attendance Overview — {format(new Date(selectedDate), 'MMMM yyyy')}
                 </h2>
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              <p className="text-xs text-slate-500 dark:text-emerald-300/70 mt-0.5">
                 30-day attendance analytics, month-to-date active workforce performance & site ratios
               </p>
             </div>
             <button
               onClick={() => setShowMonthDetailsPanel(false)}
-              className="text-slate-400 hover:text-slate-600 text-xs px-3 py-1 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 transition-colors cursor-pointer w-fit"
+              className="text-slate-400 dark:text-emerald-300 hover:text-slate-600 dark:hover:text-white text-xs px-3 py-1 rounded-xl border border-slate-200 dark:border-[#1a5532] hover:bg-slate-100 dark:hover:bg-[#0d3820] transition-colors cursor-pointer w-fit"
             >
               × Close Month Details
             </button>
@@ -6423,10 +6442,10 @@ const DetailedAuditReportView: React.FC<{
               <p className="text-[11px] text-red-700 dark:text-red-400 mt-1 font-medium">{s?.inactiveTotal ?? 0} long-term inactive excluded</p>
             </div>
 
-            <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700">
-              <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Total Database Headcount</p>
+            <div className="p-4 bg-slate-50 dark:bg-[#041b0f] rounded-2xl border border-slate-200 dark:border-[#134426]">
+              <p className="text-xs font-semibold text-slate-700 dark:text-emerald-300 uppercase tracking-wider">Total Database Headcount</p>
               <p className="text-2xl font-black text-slate-900 dark:text-white mt-1">{s?.totalHeadcount ?? s?.totalEmployees ?? 0}</p>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 font-medium">{s?.activeTotal ?? 0} active in last 25 days</p>
+              <p className="text-[11px] text-slate-500 dark:text-emerald-400/70 mt-1 font-medium">{s?.activeTotal ?? 0} active in last 25 days</p>
             </div>
           </div>
         </div>
@@ -6434,13 +6453,13 @@ const DetailedAuditReportView: React.FC<{
 
       {/* ── Device Status Panel (collapsible) ───────────────────────── */}
       {showDevicePanel && (
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
-          <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+        <div className="bg-white dark:bg-[#072415] rounded-2xl border border-slate-200/80 dark:border-[#134426] shadow-xs overflow-hidden">
+          <div className="p-4 border-b border-slate-100 dark:border-[#134426] flex items-center justify-between">
             <div>
               <h2 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
-                <Radio size={16} className="text-emerald-600" /> Biometric Device Status
+                <Radio size={16} className="text-emerald-600 dark:text-[#44D62C]" /> Biometric Device Status
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-xs text-slate-500 dark:text-emerald-300/70 mt-0.5">
                 {deviceData?.online ?? 0} online &middot; {deviceData?.offline ?? 0} offline &middot; {deviceData?.total ?? 0} total
               </p>
             </div>
@@ -6449,53 +6468,53 @@ const DetailedAuditReportView: React.FC<{
               <select
                 value={deviceStatusFilter}
                 onChange={e => setDeviceStatusFilter(e.target.value as 'all' | 'online' | 'offline')}
-                className="text-xs border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                className="text-xs border border-slate-200 dark:border-[#1a5532] rounded-lg px-2 py-1.5 bg-white dark:bg-[#0d3820] text-slate-700 dark:text-emerald-100 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
               >
-                <option value="all">All Devices</option>
-                <option value="online">Online Only</option>
-                <option value="offline">Offline Only</option>
+                <option value="all" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">All Devices</option>
+                <option value="online" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">Online Only</option>
+                <option value="offline" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">Offline Only</option>
               </select>
               <button
                 onClick={() => setShowDevicePanel(false)}
-                className="text-slate-400 hover:text-slate-600 text-xs px-2 py-1 rounded-lg hover:bg-slate-100 transition-colors"
+                className="text-slate-400 dark:text-emerald-300 hover:text-slate-600 dark:hover:text-white text-xs px-2 py-1 rounded-lg hover:bg-slate-100 dark:hover:bg-[#0d3820] transition-colors"
               >× Close</button>
             </div>
           </div>
 
           {!deviceData || deviceData.total === 0 ? (
-            <div className="py-12 text-center text-slate-400">
+            <div className="py-12 text-center text-slate-400 dark:text-emerald-400/60">
               <Radio size={32} className="mx-auto mb-2 opacity-40" />
               <p className="text-sm font-medium">{deviceData?.note || 'No device data available'}</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
-                <thead className="bg-slate-50 dark:bg-slate-800/60">
+                <thead className="bg-slate-50 dark:bg-[#041b0f]">
                   <tr>
                     {['Status', 'Device Name', 'Serial No', 'Location', 'Last Ping'].map(h => (
-                      <th key={h} className="text-left px-4 py-3 font-bold text-slate-500 uppercase tracking-wider">{h}</th>
+                      <th key={h} className="text-left px-4 py-3 font-bold text-slate-500 dark:text-emerald-300/80 uppercase tracking-wider">{h}</th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                <tbody className="divide-y divide-slate-100 dark:divide-[#134426]">
                   {deviceData.devices
                     .filter(d => deviceStatusFilter === 'all' || d.status === deviceStatusFilter)
                     .map((device, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                      <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-[#0d3820] transition-colors">
                         <td className="px-4 py-3">
                           <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
                             device.status === 'online'
-                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                              : 'bg-red-100 text-red-800 border border-red-200'
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200 dark:bg-emerald-950/80 dark:text-emerald-300 dark:border-emerald-800'
+                              : 'bg-red-100 text-red-800 border border-red-200 dark:bg-red-950/80 dark:text-red-300 dark:border-red-800'
                           }`}>
                             <span className={`w-1.5 h-1.5 rounded-full ${device.status === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
                             {device.status}
                           </span>
                         </td>
                         <td className="px-4 py-3 font-semibold text-slate-900 dark:text-white">{device.deviceName}</td>
-                        <td className="px-4 py-3 font-mono text-slate-500">{device.serialNo}</td>
-                        <td className="px-4 py-3 text-slate-500">{device.location || '—'}</td>
-                        <td className="px-4 py-3 text-slate-500">
+                        <td className="px-4 py-3 font-mono text-slate-500 dark:text-emerald-300/70">{device.serialNo}</td>
+                        <td className="px-4 py-3 text-slate-500 dark:text-emerald-300/70">{device.location || '—'}</td>
+                        <td className="px-4 py-3 text-slate-500 dark:text-emerald-300/70">
                           {formatDeviceLastPing(device.lastPing)}
                         </td>
                       </tr>
@@ -6508,20 +6527,20 @@ const DetailedAuditReportView: React.FC<{
       )}
 
       {/* ── Charts Row ─────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
 
         {/* 7-Day Trend Chart */}
-        <div className="lg:col-span-2 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-5 shadow-xs">
+        <div className="lg:col-span-2 bg-white dark:bg-[#072415] rounded-2xl border border-slate-200/80 dark:border-[#134426] p-4 sm:p-5 shadow-xs">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="font-bold text-slate-900 dark:text-white text-sm">7-Day Attendance Trend</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Present vs Absent daily</p>
+              <p className="text-xs text-slate-500 dark:text-emerald-300/70">Present vs Absent daily</p>
             </div>
-            <BarChart3 size={18} className="text-slate-400" />
+            <BarChart3 size={18} className="text-slate-400 dark:text-emerald-400" />
           </div>
 
           {loading && (!accessibleTrend || accessibleTrend.length === 0) ? (
-            <div className="h-52 bg-slate-100 dark:bg-slate-800 rounded-xl animate-pulse" />
+            <div className="h-44 sm:h-52 bg-slate-100 dark:bg-[#0d3820] rounded-xl animate-pulse" />
           ) : accessibleTrend && accessibleTrend.length > 0 ? (
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={accessibleTrend} barGap={4}>
@@ -6534,7 +6553,7 @@ const DetailedAuditReportView: React.FC<{
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="h-52 flex flex-col items-center justify-center text-slate-400 gap-2">
+            <div className="h-44 sm:h-52 flex flex-col items-center justify-center text-slate-400 dark:text-emerald-400/60 gap-2">
               <Database size={32} />
               <p className="text-xs font-medium">No trend data available</p>
             </div>
@@ -6542,7 +6561,7 @@ const DetailedAuditReportView: React.FC<{
         </div>
 
         {/* Site Breakdown */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-5 shadow-xs">
+        <div className="bg-white dark:bg-[#072415] rounded-2xl border border-slate-200/80 dark:border-[#134426] p-5 shadow-xs">
           <div className="flex items-center justify-between mb-4">
             <div>
               <div className="flex items-center gap-2">
@@ -6556,15 +6575,15 @@ const DetailedAuditReportView: React.FC<{
                   </button>
                 )}
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Click any site to view users</p>
+              <p className="text-xs text-slate-500 dark:text-emerald-300/70">Click any site to view users</p>
             </div>
-            <Building2 size={18} className="text-slate-400" />
+            <Building2 size={18} className="text-slate-400 dark:text-emerald-400" />
           </div>
 
           {loading && (!accessibleDepartments || accessibleDepartments.length === 0) ? (
             <div className="space-y-3">
               {[1, 2, 3, 4].map(i => (
-                <div key={i} className="h-8 bg-slate-100 dark:bg-slate-800 rounded-lg animate-pulse" />
+                <div key={i} className="h-8 bg-slate-100 dark:bg-[#0d3820] rounded-lg animate-pulse" />
               ))}
             </div>
           ) : accessibleDepartments && accessibleDepartments.length > 0 ? (
@@ -6585,11 +6604,11 @@ const DetailedAuditReportView: React.FC<{
                     className={`p-2 rounded-xl transition-all cursor-pointer border ${
                       isSelected
                         ? 'bg-emerald-50/90 dark:bg-emerald-950/60 border-emerald-500 shadow-xs'
-                        : 'border-transparent hover:bg-slate-50 dark:hover:bg-slate-800/60'
+                        : 'border-transparent hover:bg-slate-50 dark:hover:bg-[#0d3820]'
                     }`}
                   >
                     <div className="flex items-center justify-between text-xs font-medium">
-                      <span className={`truncate max-w-[160px] ${isSelected ? 'font-bold text-emerald-700 dark:text-emerald-300' : 'text-slate-700 dark:text-slate-300'}`}>
+                      <span className={`truncate max-w-[160px] ${isSelected ? 'font-bold text-emerald-700 dark:text-emerald-300' : 'text-slate-700 dark:text-emerald-100'}`}>
                         {dept.name}
                       </span>
                       <div className="flex items-center gap-1.5">
@@ -6598,10 +6617,10 @@ const DetailedAuditReportView: React.FC<{
                             Active
                           </span>
                         )}
-                        <span className="text-slate-500 font-mono text-[11px]">{dept.present}/{dept.total}</span>
+                        <span className="text-slate-500 dark:text-emerald-300/70 font-mono text-[11px]">{dept.present}/{dept.total}</span>
                       </div>
                     </div>
-                    <div className="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden mt-1.5">
+                    <div className="w-full bg-slate-100 dark:bg-[#041b0f] h-1.5 rounded-full overflow-hidden mt-1.5">
                       <div
                         className={`h-1.5 rounded-full transition-all ${pct >= 90 ? 'bg-emerald-500' : pct >= 70 ? 'bg-amber-400' : 'bg-red-400'}`}
                         style={{ width: `${pct}%` }}
@@ -6612,7 +6631,7 @@ const DetailedAuditReportView: React.FC<{
               })}
             </div>
           ) : (
-            <div className="h-52 flex flex-col items-center justify-center text-slate-400 gap-2">
+            <div className="h-52 flex flex-col items-center justify-center text-slate-400 dark:text-emerald-400/60 gap-2">
               <Building2 size={32} />
               <p className="text-xs font-medium">No site data</p>
             </div>
@@ -6623,50 +6642,50 @@ const DetailedAuditReportView: React.FC<{
       {/* ── Mail Report Modal ────────────────────────────────────────────────── */}
       {showMailModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl max-w-md w-full space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+          <div className="bg-white dark:bg-[#072415] p-6 rounded-2xl border border-slate-200 dark:border-[#134426] shadow-2xl max-w-md w-full space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-[#134426] pb-3">
               <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <Mail size={16} className="text-emerald-600" />
+                <Mail size={16} className="text-emerald-600 dark:text-[#44D62C]" />
                 Mail Attendance Report
               </h3>
-              <button onClick={() => setShowMailModal(false)} className="text-slate-400 hover:text-slate-600 text-xl leading-none cursor-pointer">×</button>
+              <button onClick={() => setShowMailModal(false)} className="text-slate-400 hover:text-slate-600 dark:text-emerald-300 dark:hover:text-white text-xl leading-none cursor-pointer">×</button>
             </div>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Recipient Email Address</label>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-emerald-300 mb-1">Recipient Email Address</label>
                 <input
                   type="email"
                   placeholder="client.admin@example.com"
                   value={mailRecipient}
                   onChange={e => setMailRecipient(e.target.value)}
-                  className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500/20 outline-none"
+                  className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-[#1a5532] bg-white dark:bg-[#041b0f] text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500/20 outline-none"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Subject</label>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-emerald-300 mb-1">Subject</label>
                 <input
                   type="text"
                   placeholder="Paradigm Attendance Report"
                   value={mailSubject}
                   onChange={e => setMailSubject(e.target.value)}
-                  className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500/20 outline-none"
+                  className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-[#1a5532] bg-white dark:bg-[#041b0f] text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500/20 outline-none"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Note / Message (Optional)</label>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-emerald-300 mb-1">Note / Message (Optional)</label>
                 <textarea
                   rows={3}
                   placeholder="Please find the attendance report attached..."
                   value={mailNote}
                   onChange={e => setMailNote(e.target.value)}
-                  className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500/20 outline-none resize-none"
+                  className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-[#1a5532] bg-white dark:bg-[#041b0f] text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500/20 outline-none resize-none"
                 />
               </div>
             </div>
-            <p className="text-[10px] text-slate-400">Report: <strong className="text-slate-600 dark:text-slate-300">{reportDateLabel}</strong> · Format: Excel + PDF attachment</p>
+            <p className="text-[10px] text-slate-400 dark:text-emerald-400/60">Report: <strong className="text-slate-600 dark:text-emerald-300/80">{reportDateLabel}</strong> · Format: Excel + PDF attachment</p>
             <div className="flex justify-end gap-2 pt-2">
-              <button onClick={() => setShowMailModal(false)} className="px-4 py-2 text-xs font-bold text-slate-600 rounded-xl hover:bg-slate-100 cursor-pointer">Cancel</button>
-              <button onClick={handleSendMail} disabled={isSendingEmail || !mailRecipient.trim()} className="px-5 py-2 text-xs font-extrabold bg-[#006B3F] text-white rounded-xl hover:bg-[#005632] flex items-center gap-2 disabled:opacity-50 cursor-pointer">
+              <button onClick={() => setShowMailModal(false)} className="px-4 py-2 text-xs font-bold text-slate-600 dark:text-emerald-300 rounded-xl hover:bg-slate-100 dark:hover:bg-[#0d3820] cursor-pointer">Cancel</button>
+              <button onClick={handleSendMail} disabled={isSendingEmail || !mailRecipient.trim()} className="px-5 py-2 text-xs font-extrabold bg-[#006B3F] hover:bg-[#005632] dark:bg-[#44D62C] dark:hover:bg-[#38b524] text-white dark:text-[#041b0f] rounded-xl flex items-center gap-2 disabled:opacity-50 cursor-pointer shadow-xs">
                 {isSendingEmail ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
                 {isSendingEmail ? 'Sending...' : 'Send Mail'}
               </button>
@@ -6675,71 +6694,130 @@ const DetailedAuditReportView: React.FC<{
         </div>
       )}
 
-      {/* ── Employee Table ─────────────────────────────────────────────────── */}
-      <div ref={tableRef} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
+      {/* ── Employee Table / Card View ─────────────────────────────────────── */}
+      <div ref={tableRef} className="bg-white dark:bg-[#072415] rounded-2xl border border-slate-200/80 dark:border-[#134426] shadow-xs overflow-hidden">
         {/* Table header + filters */}
-        <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
-          <div>
-            <h2 className="font-bold text-slate-900 dark:text-white text-sm">
-              Employee Attendance Details
+        <div className="p-3.5 sm:p-4 border-b border-slate-100 dark:border-[#134426] flex flex-col md:flex-row md:items-center gap-3 justify-between">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-1.5 flex-wrap">
+              <span>Employee Attendance Details</span>
               {!loading && (
-                <span className="ml-2 text-xs font-normal text-slate-500">
+                <span className="text-xs font-normal text-slate-500 dark:text-emerald-300/70">
                   ({filteredEmployees.length} of {data?.employees.length ?? 0})
                 </span>
               )}
             </h2>
+
+            {/* Mobile View Mode Switcher (Visible on small screens) */}
+            <div className="flex md:hidden items-center bg-slate-100 dark:bg-[#041b0f] p-0.5 rounded-xl border border-slate-200 dark:border-[#134426] shrink-0">
+              <button
+                type="button"
+                onClick={() => setViewMode('cards')}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                  activeViewMode === 'cards'
+                    ? 'bg-[#44D62C] text-[#041b0f] shadow-xs font-extrabold'
+                    : 'text-slate-600 dark:text-emerald-300 hover:text-slate-900 dark:hover:text-white'
+                }`}
+                title="Card View (Mobile Optimized)"
+              >
+                <LayoutGrid size={13} />
+                <span>Cards</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('table')}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                  activeViewMode === 'table'
+                    ? 'bg-[#44D62C] text-[#041b0f] shadow-xs font-extrabold'
+                    : 'text-slate-600 dark:text-emerald-300 hover:text-slate-900 dark:hover:text-white'
+                }`}
+                title="Table View (Full Columns)"
+              >
+                <TableIcon size={13} />
+                <span>Table</span>
+              </button>
+            </div>
           </div>
+
           <div className="flex flex-wrap items-center gap-2">
             {/* Shift filter */}
             <select
               value={shiftFilter}
               onChange={e => setShiftFilter(e.target.value)}
-              className="text-xs border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+              className="text-xs border border-slate-200 dark:border-[#1a5532] rounded-lg px-2.5 py-1.5 bg-white dark:bg-[#0d3820] text-slate-700 dark:text-emerald-100 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500/20 flex-1 sm:flex-initial"
             >
-              <option value="all">All Shifts</option>
-              <option value="DoubleTriple">⚠️ Multi-Shift (Double/Triple)</option>
-              <option value="A Shift">A Shift (07:00 - 14:00)</option>
-              <option value="B Shift">B Shift (14:00 - 21:00)</option>
-              <option value="C Shift">C Shift (21:00 - 07:00)</option>
-              <option value="General Shift">General (09:00 - 18:00)</option>
-              <option value="Day Shift (12h)">Day Shift (08:00 - 20:00)</option>
-              <option value="Night Shift (12h)">Night Shift (20:00 - 08:00)</option>
-              <option value="Security Day">Security Day (09:00 - 21:00)</option>
-              <option value="Security Night">Security Night (21:00 - 09:00)</option>
+              <option value="all" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">All Shifts</option>
+              <option value="DoubleTriple" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">⚠️ Multi-Shift (Double/Triple)</option>
+              <option value="A Shift" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">A Shift (07:00 - 14:00)</option>
+              <option value="B Shift" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">B Shift (14:00 - 21:00)</option>
+              <option value="C Shift" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">C Shift (21:00 - 07:00)</option>
+              <option value="General Shift" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">General (09:00 - 18:00)</option>
+              <option value="Day Shift (12h)" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">Day Shift (08:00 - 20:00)</option>
+              <option value="Night Shift (12h)" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">Night Shift (20:00 - 08:00)</option>
+              <option value="Security Day" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">Security Day (09:00 - 21:00)</option>
+              <option value="Security Night" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">Security Night (21:00 - 09:00)</option>
             </select>
 
             {/* Status filter */}
             <select
               value={statusFilter}
               onChange={e => setStatusFilter(e.target.value)}
-              className="text-xs border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+              className="text-xs border border-slate-200 dark:border-[#1a5532] rounded-lg px-2.5 py-1.5 bg-white dark:bg-[#0d3820] text-slate-700 dark:text-emerald-100 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500/20 flex-1 sm:flex-initial"
             >
-              <option value="Present">Present (All)</option>
-              <option value="OnDuty">On Duty (Active)</option>
-              <option value="Completed">Shift Completed (6+ hrs)</option>
-              <option value="all">All Status</option>
-              <option value="Absent">Absent</option>
-              <option value="Late">Late</option>
-              <option value="Half Day">Half Day</option>
+              <option value="Present" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">Present (All)</option>
+              <option value="OnDuty" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">On Duty (Active)</option>
+              <option value="Completed" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">Shift Completed (6+ hrs)</option>
+              <option value="all" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">All Status</option>
+              <option value="Absent" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">Absent</option>
+              <option value="Late" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">Late</option>
+              <option value="Half Day" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">Half Day</option>
             </select>
 
             {/* Search */}
-            <div className="relative">
-              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <div className="relative flex-1 sm:flex-initial min-w-[140px]">
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-emerald-400" />
               <input
                 type="text"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Search employee..."
-                className="pl-8 pr-3 py-1.5 text-xs border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 w-44"
+                className="pl-8 pr-3 py-1.5 text-xs border border-slate-200 dark:border-[#1a5532] rounded-lg bg-white dark:bg-[#0d3820] text-slate-700 dark:text-emerald-100 placeholder-slate-400 dark:placeholder-emerald-400/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 w-full sm:w-44"
               />
+            </div>
+
+            {/* Desktop View Mode Switcher (Visible on desktop) */}
+            <div className="hidden md:flex items-center bg-slate-100 dark:bg-[#041b0f] p-0.5 rounded-xl border border-slate-200 dark:border-[#134426]">
+              <button
+                type="button"
+                onClick={() => setViewMode('cards')}
+                className={`p-1.5 rounded-lg transition-all ${
+                  activeViewMode === 'cards'
+                    ? 'bg-[#44D62C] text-[#041b0f] shadow-xs font-bold'
+                    : 'text-slate-500 hover:text-slate-800 dark:text-emerald-300 dark:hover:text-white'
+                }`}
+                title="Cards View"
+              >
+                <LayoutGrid size={14} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('table')}
+                className={`p-1.5 rounded-lg transition-all ${
+                  activeViewMode === 'table'
+                    ? 'bg-[#44D62C] text-[#041b0f] shadow-xs font-bold'
+                    : 'text-slate-500 hover:text-slate-800 dark:text-emerald-300 dark:hover:text-white'
+                }`}
+                title="Table View"
+              >
+                <TableIcon size={14} />
+              </button>
             </div>
 
             {/* Clear All Column Filters Button if active */}
             {Object.keys(columnFilters).length > 0 && (
               <button
                 onClick={clearAllColumnFilters}
-                className="flex items-center gap-1 text-xs font-bold text-rose-600 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 px-2.5 py-1.5 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-900/50 transition-colors cursor-pointer"
+                className="flex items-center gap-1 text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 px-2.5 py-1.5 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-900/50 transition-colors cursor-pointer"
                 title="Clear all smart column filters"
               >
                 <X size={13} />
@@ -6749,10 +6827,200 @@ const DetailedAuditReportView: React.FC<{
           </div>
         </div>
 
-        {/* Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead className="bg-slate-50 dark:bg-slate-800/60">
+        {/* Table vs Cards View */}
+        {activeViewMode === 'cards' ? (
+          <div className="p-3 sm:p-4 space-y-3 bg-slate-50/50 dark:bg-[#041b0f]/60">
+            {loading && (!paginatedEmployees || paginatedEmployees.length === 0) ? (
+              Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="p-4 rounded-2xl bg-white dark:bg-[#072415] border border-slate-200 dark:border-[#134426] animate-pulse space-y-3">
+                  <div className="flex justify-between items-center">
+                    <div className="h-4 w-32 bg-slate-200 dark:bg-[#0d3820] rounded" />
+                    <div className="h-6 w-20 bg-slate-200 dark:bg-[#0d3820] rounded-full" />
+                  </div>
+                  <div className="h-3 w-48 bg-slate-200 dark:bg-[#0d3820] rounded" />
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-100 dark:border-[#134426]">
+                    <div className="h-10 bg-slate-100 dark:bg-[#0d3820] rounded-xl" />
+                    <div className="h-10 bg-slate-100 dark:bg-[#0d3820] rounded-xl" />
+                    <div className="h-10 bg-slate-100 dark:bg-[#0d3820] rounded-xl" />
+                    <div className="h-10 bg-slate-100 dark:bg-[#0d3820] rounded-xl" />
+                  </div>
+                </div>
+              ))
+            ) : filteredEmployees.length === 0 ? (
+              <div className="py-16 text-center text-slate-400 dark:text-emerald-400">
+                <Database size={36} className="mx-auto mb-2 opacity-40" />
+                <p className="font-medium text-slate-500 dark:text-emerald-300">
+                  {data?.connectionStatus === 'error' ? 'Database unavailable — check connection.' : 'No records found.'}
+                </p>
+                {search && (
+                  <button onClick={() => setSearch('')} className="mt-2 text-xs text-[#44D62C] hover:underline font-bold">
+                    Clear search
+                  </button>
+                )}
+              </div>
+            ) : (
+              paginatedEmployees.map((emp, idx) => {
+                const override = empOverrides[emp.empCode] || {};
+                const displayEmpName = override.empName ?? emp.empName;
+                const displaySite = override.site ?? emp.department;
+                const displayShift = override.shiftName ?? emp.shiftName;
+                const displayDesignation = override.designation ?? emp.designation;
+                const isEditable = canEditEmployee(emp.department);
+                const isBeingEdited = editingEmpCode === emp.empCode;
+
+                const cardBorder = emp.shiftType === 'triple'
+                  ? 'border-l-4 border-l-red-600 border-red-200 dark:border-red-900/60 bg-red-50/20 dark:bg-red-950/20'
+                  : emp.shiftType === 'double'
+                    ? 'border-l-4 border-l-amber-500 border-amber-200 dark:border-amber-900/60 bg-amber-50/20 dark:bg-amber-950/20'
+                    : 'border-slate-200/80 dark:border-[#134426] bg-white dark:bg-[#072415] hover:dark:border-[#22633c]';
+
+                const isNextDay = emp.isNextDayOut ?? ((emp.shiftName || '').toLowerCase().includes('night') && (emp.inTime || '').toLowerCase().includes('pm') && (emp.outTime || '').toLowerCase().includes('am'));
+
+                return (
+                  <div
+                    key={`card-${emp.empCode}-${idx}`}
+                    className={`rounded-2xl border p-3.5 sm:p-4 shadow-xs space-y-3 transition-all ${cardBorder}${isBeingEdited ? ' ring-2 ring-[#44D62C]' : ''}`}
+                  >
+                    {/* Top Row: Name + Code + Status */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={`text-sm font-extrabold text-slate-900 dark:text-white truncate ${override.empName ? 'text-emerald-700 dark:text-[#44D62C]' : ''}`}>
+                            {displayEmpName}
+                          </span>
+                          <span className="font-mono text-[11px] font-bold text-slate-500 dark:text-emerald-300 bg-slate-100 dark:bg-[#0d3820] border border-transparent dark:border-[#1a5532] px-1.5 py-0.5 rounded">
+                            #{emp.empCode || '—'}
+                          </span>
+                          {emp.lifecycleStatus === 'New Joinee' && (
+                            <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-emerald-800 bg-emerald-100 dark:bg-[#0d3820] dark:text-[#44D62C] border border-transparent dark:border-[#1a5532] px-1.5 py-0.5 rounded">
+                              <UserPlus size={9} /> New Joinee
+                            </span>
+                          )}
+                          {override.empName && (
+                            <span className="text-[9px] text-emerald-600 dark:text-[#44D62C] font-bold uppercase">✏ Corrected</span>
+                          )}
+                        </div>
+                        {/* Site & Designation */}
+                        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-emerald-300/80 mt-1 flex-wrap">
+                          <span className="inline-flex items-center gap-1 font-semibold text-slate-700 dark:text-emerald-200">
+                            <Building2 size={12} className="text-[#44D62C]" />
+                            {displaySite}
+                            {emp.isSmartSite && !override.site && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse inline-block" title="Auto-mapped site" />
+                            )}
+                          </span>
+                          <span className="text-slate-300 dark:text-[#1a5532]">•</span>
+                          <span className="truncate max-w-[140px] font-medium text-slate-600 dark:text-emerald-300/70">{displayDesignation || 'Staff'}</span>
+                        </div>
+                      </div>
+
+                      {/* Status Badge + Edit Action */}
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <StatusBadge
+                          status={emp.status}
+                          shiftCompleted={emp.shiftCompleted}
+                          inTime={emp.inTime}
+                          outTime={emp.outTime}
+                          shiftType={emp.shiftType}
+                          selectedDate={selectedDate}
+                          isMissedPunchIn={emp.isMissedPunchIn}
+                          isMissedPunchOut={emp.isMissedPunchOut}
+                        />
+                        {emp.lateMinutes > 0 && (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                            <Clock size={9} className="shrink-0 text-amber-600" />
+                            Late {emp.lateMinutes >= 60 ? `${Math.floor(emp.lateMinutes / 60)}h ${emp.lateMinutes % 60}m` : `${emp.lateMinutes}m`}
+                          </span>
+                        )}
+                        {isEditable && (
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(emp)}
+                            className="p-1 rounded-lg text-slate-400 hover:text-[#44D62C] hover:bg-emerald-50 dark:hover:bg-[#0d3820] transition-colors mt-0.5 cursor-pointer"
+                            title="Edit employee details"
+                          >
+                            <Pencil size={12} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Shift */}
+                    <div className="pt-0.5">
+                      <ShiftBadge shiftName={displayShift} shiftTiming={override.shiftName ? undefined : emp.shiftTiming} />
+                    </div>
+
+                    {/* Metrics Grid: In, Out, Duration, OT */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-100 dark:border-[#134426] text-xs">
+                      {/* IN */}
+                      <div className="bg-slate-50 dark:bg-[#041b0f] p-2.5 rounded-xl border border-slate-100 dark:border-[#134426]">
+                        <p className="text-[10px] uppercase font-bold text-slate-400 dark:text-emerald-300/70 tracking-wider">In Punch</p>
+                        {emp.inTime ? (
+                          <div className="mt-0.5">
+                            <p className="font-mono font-bold text-emerald-600 dark:text-[#44D62C] text-xs">{emp.inTime}</p>
+                            <p className="text-[10px] text-slate-400 dark:text-emerald-400/60 font-medium">{new Date(selectedDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</p>
+                          </div>
+                        ) : emp.isMissedPunchIn ? (
+                          <p className="font-bold text-amber-600 dark:text-amber-400 text-xs mt-0.5">Missed IN</p>
+                        ) : (
+                          <p className="text-slate-400 dark:text-emerald-300/40 text-xs mt-0.5">—</p>
+                        )}
+                      </div>
+
+                      {/* OUT */}
+                      <div className="bg-slate-50 dark:bg-[#041b0f] p-2.5 rounded-xl border border-slate-100 dark:border-[#134426]">
+                        <p className="text-[10px] uppercase font-bold text-slate-400 dark:text-emerald-300/70 tracking-wider">Out Punch</p>
+                        {emp.outTime ? (
+                          <div className="mt-0.5">
+                            <p className="font-mono font-bold text-slate-700 dark:text-emerald-100 text-xs">
+                              {emp.outTime}
+                              {isNextDay && <span className="text-[9px] text-[#44D62C] ml-1 font-bold">+1d</span>}
+                            </p>
+                            <p className="text-[10px] text-emerald-600 dark:text-emerald-300/70 font-medium">
+                              {(() => {
+                                if (isNextDay) {
+                                  const d = new Date(selectedDate);
+                                  d.setDate(d.getDate() + 1);
+                                  return `${d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} (+1d)`;
+                                }
+                                return new Date(selectedDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+                              })()}
+                            </p>
+                          </div>
+                        ) : emp.isMissedPunchOut ? (
+                          <p className="font-bold text-amber-600 dark:text-amber-400 text-xs mt-0.5">Missed OUT</p>
+                        ) : (
+                          <p className="text-slate-400 dark:text-emerald-300/40 text-xs mt-0.5">—</p>
+                        )}
+                      </div>
+
+                      {/* DURATION */}
+                      <div className="bg-slate-50 dark:bg-[#041b0f] p-2.5 rounded-xl border border-slate-100 dark:border-[#134426]">
+                        <p className="text-[10px] uppercase font-bold text-slate-400 dark:text-emerald-300/70 tracking-wider">Hours Worked</p>
+                        <p className="font-mono font-bold text-slate-800 dark:text-white mt-0.5 text-xs">
+                          {formatLiveWorkingHours(emp, selectedDate)}
+                        </p>
+                      </div>
+
+                      {/* OT */}
+                      <div className="bg-slate-50 dark:bg-[#041b0f] p-2.5 rounded-xl border border-slate-100 dark:border-[#134426]">
+                        <p className="text-[10px] uppercase font-bold text-slate-400 dark:text-emerald-300/70 tracking-wider">Overtime</p>
+                        <p className="font-mono font-bold text-amber-600 dark:text-amber-400 mt-0.5 text-xs">
+                          {emp.otHours || '0h 00m'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        ) : (
+          /* Table View */
+          <div className="overflow-x-auto">
+            <div className="min-w-[950px]">
+              <table className="w-full text-xs">
+            <thead className="bg-slate-50 dark:bg-[#041b0f] border-b border-slate-200 dark:border-[#134426]">
               <tr>
                 {[
                   { key: 'empCode', label: 'Biometric Code' },
@@ -6780,7 +7048,7 @@ const DetailedAuditReportView: React.FC<{
                   return (
                     <th
                       key={col.key}
-                      className={`px-3 py-3 font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider select-none relative ${isCentered ? 'text-center' : 'text-left'}`}
+                      className={`px-3 py-3 font-bold text-slate-500 dark:text-emerald-300/80 uppercase tracking-wider select-none relative ${isCentered ? 'text-center' : 'text-left'}`}
                     >
                       <div className={`inline-flex items-center gap-1.5 ${isCentered ? 'justify-center w-full' : ''}`}>
                         {/* Column Label & Sort */}
@@ -6801,7 +7069,7 @@ const DetailedAuditReportView: React.FC<{
                           className={`p-1 rounded-md transition-all cursor-pointer ${
                             isFiltered
                               ? 'bg-emerald-600 text-white shadow-xs'
-                              : 'text-slate-400 hover:text-slate-700 hover:bg-slate-200/70 dark:hover:bg-slate-700'
+                              : 'text-slate-400 hover:text-slate-700 hover:bg-slate-200/70 dark:hover:bg-[#0d3820] dark:text-emerald-300'
                           }`}
                           title={`Smart Filter by ${col.label}`}
                         >
@@ -6821,22 +7089,22 @@ const DetailedAuditReportView: React.FC<{
                         <div
                           ref={filterDropdownRef}
                           onClick={e => e.stopPropagation()}
-                          className="absolute top-full left-0 mt-1.5 z-50 w-64 p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl space-y-2.5 font-sans normal-case text-left text-slate-900 dark:text-white"
+                          className="absolute top-full left-0 mt-1.5 z-50 w-64 p-3 bg-white dark:bg-[#072415] border border-slate-200 dark:border-[#134426] rounded-2xl shadow-2xl space-y-2.5 font-sans normal-case text-left text-slate-900 dark:text-white"
                         >
                           {/* Search Input */}
                           <div className="relative">
-                            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-emerald-400" />
                             <input
                               type="text"
                               placeholder={`Search ${col.label}...`}
                               value={columnSearchQuery[col.key] || ''}
                               onChange={e => setColumnSearchQuery(prev => ({ ...prev, [col.key]: e.target.value }))}
-                              className="w-full pl-8 pr-2 py-1.5 text-xs font-semibold border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/25"
+                              className="w-full pl-8 pr-2 py-1.5 text-xs font-semibold border border-slate-200 dark:border-[#1a5532] rounded-xl bg-slate-50 dark:bg-[#041b0f] text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-emerald-400/50 outline-none focus:ring-2 focus:ring-emerald-500/25"
                             />
                           </div>
 
                           {/* Quick Actions Header */}
-                          <div className="flex items-center justify-between text-[11px] font-extrabold border-b border-slate-100 dark:border-slate-800 pb-2 px-0.5">
+                          <div className="flex items-center justify-between text-[11px] font-extrabold border-b border-slate-100 dark:border-[#134426] pb-2 px-0.5">
                             <button
                               onClick={() => selectAllColumnFilterVals(col.key, allUnique.map(u => u.val))}
                               className="text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
@@ -6856,7 +7124,7 @@ const DetailedAuditReportView: React.FC<{
                           {/* Checkbox Options List */}
                           <div className="max-h-52 overflow-y-auto space-y-0.5 pr-1 text-xs font-semibold">
                             {filteredUnique.length === 0 ? (
-                              <p className="py-4 text-center text-slate-400 text-[11px]">No matching values</p>
+                              <p className="py-4 text-center text-slate-400 dark:text-emerald-400/60 text-[11px]">No matching values</p>
                             ) : (
                               filteredUnique.map(item => {
                                 const isChecked = activeSelectedVals.includes(item.val);
@@ -6866,7 +7134,7 @@ const DetailedAuditReportView: React.FC<{
                                     className={`flex items-center justify-between px-2.5 py-1.5 rounded-xl transition-colors cursor-pointer select-none ${
                                       isChecked
                                         ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-900 dark:text-emerald-200'
-                                        : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
+                                        : 'hover:bg-slate-100 dark:hover:bg-[#0d3820] text-slate-700 dark:text-emerald-100'
                                     }`}
                                   >
                                     <div className="flex items-center gap-2 min-w-0">
@@ -6878,7 +7146,7 @@ const DetailedAuditReportView: React.FC<{
                                       />
                                       <span className="truncate font-semibold text-xs">{item.val}</span>
                                     </div>
-                                    <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500 font-bold ml-2">
+                                    <span className="text-[10px] font-mono text-slate-400 dark:text-emerald-400/70 font-bold ml-2">
                                       {item.count}
                                     </span>
                                   </label>
@@ -6888,18 +7156,18 @@ const DetailedAuditReportView: React.FC<{
                           </div>
 
                           {/* Footer Actions */}
-                          <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                          <div className="pt-2 border-t border-slate-100 dark:border-[#134426] flex items-center justify-between">
                             <button
                               onClick={() => {
                                 handleSort(col.key as keyof EmployeeRow);
                               }}
-                              className="text-[10px] font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer flex items-center gap-1"
+                              className="text-[10px] font-bold text-slate-500 dark:text-emerald-300 hover:text-slate-800 dark:hover:text-white cursor-pointer flex items-center gap-1"
                             >
                               Sort {sortKey === col.key && sortDir === 'asc' ? 'Z → A' : 'A → Z'}
                             </button>
                             <button
                               onClick={() => setActiveFilterDropdown(null)}
-                              className="px-3 py-1 rounded-lg text-xs font-extrabold bg-slate-900 dark:bg-white text-white dark:text-slate-900 cursor-pointer hover:opacity-90"
+                              className="px-3 py-1 rounded-lg text-xs font-extrabold bg-slate-900 dark:bg-[#44D62C] text-white dark:text-[#041b0f] cursor-pointer hover:opacity-90"
                             >
                               Done
                             </button>
@@ -6911,13 +7179,13 @@ const DetailedAuditReportView: React.FC<{
                 })}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+            <tbody className="divide-y divide-slate-100 dark:divide-[#134426]">
               {loading && (!paginatedEmployees || paginatedEmployees.length === 0) ? (
                 Array.from({ length: 8 }).map((_, i) => (
                   <tr key={i}>
                     {Array.from({ length: 10 }).map((_, j) => (
                       <td key={j} className="px-4 py-3">
-                        <div className="h-3.5 bg-slate-100 dark:bg-slate-800 rounded animate-pulse" style={{ width: `${60 + Math.random() * 40}%` }} />
+                        <div className="h-3.5 bg-slate-100 dark:bg-[#0d3820] rounded animate-pulse" style={{ width: `${60 + Math.random() * 40}%` }} />
                       </td>
                     ))}
                   </tr>
@@ -6926,11 +7194,11 @@ const DetailedAuditReportView: React.FC<{
                 <tr>
                   <td colSpan={10} className="py-16 text-center text-slate-400">
                     <Database size={36} className="mx-auto mb-2 opacity-40" />
-                    <p className="font-medium text-slate-500 dark:text-slate-400">
+                    <p className="font-medium text-slate-500 dark:text-emerald-300/80">
                       {data?.connectionStatus === 'error' ? 'Database unavailable — check connection.' : 'No records found.'}
                     </p>
                     {search && (
-                      <button onClick={() => setSearch('')} className="mt-2 text-xs text-emerald-600 hover:underline">
+                      <button onClick={() => setSearch('')} className="mt-2 text-xs text-emerald-600 dark:text-[#44D62C] hover:underline">
                         Clear search
                       </button>
                     )}
@@ -6942,7 +7210,7 @@ const DetailedAuditReportView: React.FC<{
                     ? 'bg-red-500/15 dark:bg-red-950/50 border-l-4 border-red-600 font-medium'
                     : emp.shiftType === 'double'
                       ? 'bg-amber-500/15 dark:bg-amber-950/40 border-l-4 border-amber-500 font-medium'
-                      : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors';
+                      : 'hover:bg-slate-50/80 dark:hover:bg-[#0d3820] transition-colors';
 
                   const override = empOverrides[emp.empCode] || {};
                   const displayEmpName = override.empName ?? emp.empName;
@@ -6957,17 +7225,17 @@ const DetailedAuditReportView: React.FC<{
                       key={`${emp.empCode}-${idx}`}
                       className={`${rowBg}${isBeingEdited ? ' ring-2 ring-inset ring-emerald-400 dark:ring-emerald-600' : ''}`}
                     >
-                      <td className="px-4 py-3 font-mono text-slate-500 dark:text-slate-400">{emp.empCode || '—'}</td>
+                      <td className="px-4 py-3 font-mono text-slate-500 dark:text-emerald-300/80">{emp.empCode || '—'}</td>
                       
                       {/* EMPLOYEE NAME column — editable */}
                       <td className="px-4 py-3 font-semibold text-slate-900 dark:text-white max-w-[180px]">
                         <div className="flex items-center gap-1.5 group/empname">
                           <div className="flex flex-col gap-0.5 min-w-0">
-                            <span className={`truncate ${override.empName ? 'text-emerald-700 dark:text-emerald-400 font-extrabold' : ''}`}>
+                            <span className={`truncate ${override.empName ? 'text-emerald-700 dark:text-[#44D62C] font-extrabold' : ''}`}>
                               {displayEmpName}
                             </span>
                             {override.empName && (
-                              <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-wide">✏ Corrected</span>
+                              <span className="text-[9px] text-emerald-600 dark:text-[#44D62C] font-bold uppercase tracking-wide">✏ Corrected</span>
                             )}
                             {emp.lifecycleStatus === 'New Joinee' && (
                               <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-700 bg-emerald-100 dark:bg-emerald-950/60 dark:text-emerald-300 px-1.5 py-0.2 rounded w-max">
@@ -6988,14 +7256,14 @@ const DetailedAuditReportView: React.FC<{
                       </td>
 
                       {/* SITE (AUTO-MAPPED) column — editable */}
-                      <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
+                      <td className="px-4 py-3 text-slate-600 dark:text-emerald-100">
                         <div className="flex items-center gap-1.5 group/site">
                           <div className="flex flex-col gap-0.5">
-                            <span className={override.site ? 'text-emerald-700 dark:text-emerald-400 font-semibold' : ''}>
+                            <span className={override.site ? 'text-emerald-700 dark:text-[#44D62C] font-semibold' : ''}>
                               {displaySite}
                             </span>
                             {override.site && (
-                              <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-wide">✏ Corrected</span>
+                              <span className="text-[9px] text-emerald-600 dark:text-[#44D62C] font-bold uppercase tracking-wide">✏ Corrected</span>
                             )}
                           </div>
                           {emp.isSmartSite && !override.site && (
@@ -7022,7 +7290,7 @@ const DetailedAuditReportView: React.FC<{
                           <div className="flex flex-col gap-0.5">
                             <ShiftBadge shiftName={displayShift} shiftTiming={override.shiftName ? undefined : emp.shiftTiming} />
                             {override.shiftName && (
-                              <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-wide">✏ Corrected</span>
+                              <span className="text-[9px] text-emerald-600 dark:text-[#44D62C] font-bold uppercase tracking-wide">✏ Corrected</span>
                             )}
                           </div>
                           {isEditable && (
@@ -7038,9 +7306,9 @@ const DetailedAuditReportView: React.FC<{
                       </td>
 
                       {/* DESIGNATION column — editable */}
-                      <td className="px-4 py-3 text-slate-500 dark:text-slate-400 max-w-[120px]">
+                      <td className="px-4 py-3 text-slate-500 dark:text-emerald-300/80 max-w-[120px]">
                         <div className="flex items-center gap-1 group/desig">
-                          <span className={`truncate ${override.designation ? 'text-emerald-700 dark:text-emerald-400 font-semibold' : ''}`}>
+                          <span className={`truncate ${override.designation ? 'text-emerald-700 dark:text-[#44D62C] font-semibold' : ''}`}>
                             {displayDesignation}
                           </span>
                           {override.designation && (
@@ -7060,27 +7328,27 @@ const DetailedAuditReportView: React.FC<{
                       <td className="px-4 py-3 font-mono">
                         {emp.inTime ? (
                           <div className="flex flex-col">
-                            <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{emp.inTime}</span>
-                            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
+                            <span className="text-emerald-600 dark:text-[#44D62C] font-semibold">{emp.inTime}</span>
+                            <span className="text-[10px] text-slate-400 dark:text-emerald-400/60 font-medium">
                               {new Date(selectedDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
                             </span>
                           </div>
                         ) : emp.isMissedPunchIn ? (
                           <div className="flex flex-col">
                             <span className="text-amber-600 dark:text-amber-400 font-bold text-xs">Missed IN</span>
-                            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
+                            <span className="text-[10px] text-slate-400 dark:text-emerald-400/60 font-medium">
                               {new Date(selectedDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
                             </span>
                           </div>
                         ) : (
-                          <span className="text-slate-300 dark:text-slate-600">—</span>
+                          <span className="text-slate-300 dark:text-[#1a5532]">—</span>
                         )}
                       </td>
                       <td className="px-4 py-3 font-mono">
                         {emp.outTime ? (
                           <div className="flex flex-col">
-                            <span className="text-slate-700 dark:text-slate-300 font-semibold">{emp.outTime}</span>
-                            <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">
+                            <span className="text-slate-700 dark:text-emerald-100 font-semibold">{emp.outTime}</span>
+                            <span className="text-[10px] text-emerald-600 dark:text-emerald-300/80 font-medium">
                               {(() => {
                                 const isNextDay = emp.isNextDayOut ?? ((emp.shiftName || '').toLowerCase().includes('night') && (emp.inTime || '').toLowerCase().includes('pm') && (emp.outTime || '').toLowerCase().includes('am'));
                                 if (isNextDay) {
@@ -7095,15 +7363,15 @@ const DetailedAuditReportView: React.FC<{
                         ) : emp.isMissedPunchOut ? (
                           <div className="flex flex-col">
                             <span className="text-amber-600 dark:text-amber-400 font-bold text-xs">Missed OUT</span>
-                            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
+                            <span className="text-[10px] text-slate-400 dark:text-emerald-400/60 font-medium">
                               {new Date(selectedDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
                             </span>
                           </div>
                         ) : (
-                          <span className="text-slate-300 dark:text-slate-600">—</span>
+                          <span className="text-slate-300 dark:text-[#1a5532]">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 font-mono text-slate-600 dark:text-slate-400 font-semibold">{formatLiveWorkingHours(emp, selectedDate)}</td>
+                      <td className="px-4 py-3 font-mono text-slate-800 dark:text-white font-semibold">{formatLiveWorkingHours(emp, selectedDate)}</td>
                       <td className="px-4 py-3 font-mono text-amber-600 dark:text-amber-400 font-semibold">
                         {emp.otHours || '0h 00m'}
                       </td>
@@ -7132,8 +7400,10 @@ const DetailedAuditReportView: React.FC<{
                 })
               )}
             </tbody>
-          </table>
-        </div>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* Pagination Bar (50 items per page) */}
         {!loading && filteredEmployees.length > 0 && (
@@ -7176,17 +7446,17 @@ const DetailedAuditReportView: React.FC<{
         if (!editingEmp) return null;
         return createPortal(
           <div className="fixed inset-0 z-[999999] bg-slate-950/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
-            <div ref={editModalRef} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl max-w-md w-full p-6 space-y-5">
+            <div ref={editModalRef} className="bg-white dark:bg-[#072415] rounded-2xl border border-slate-200 dark:border-[#134426] shadow-2xl max-w-md w-full p-6 space-y-5">
               {/* Header */}
-              <div className="flex items-start justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+              <div className="flex items-start justify-between border-b border-slate-100 dark:border-[#134426] pb-4">
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200/60 dark:border-emerald-800/60 flex items-center justify-center">
-                    <Pencil size={16} className="text-emerald-600 dark:text-emerald-400" />
+                    <Pencil size={16} className="text-emerald-600 dark:text-[#44D62C]" />
                   </div>
                   <div>
                     <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">Correct Auto-Assigned Details</h3>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 font-medium">
-                      {editingEmp.empName} <span className="font-mono text-slate-400">({editingEmp.empCode})</span>
+                    <p className="text-[11px] text-slate-500 dark:text-emerald-300/80 mt-0.5 font-medium">
+                      {editingEmp.empName} <span className="font-mono text-slate-400 dark:text-emerald-400/60">({editingEmp.empCode})</span>
                     </p>
                     {!isAdminUser && (
                       <p className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold mt-0.5">
@@ -7194,7 +7464,7 @@ const DetailedAuditReportView: React.FC<{
                       </p>
                     )}
                     {isAdminUser && (
-                      <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold mt-0.5">
+                      <p className="text-[10px] text-emerald-600 dark:text-[#44D62C] font-semibold mt-0.5">
                         🛡 Admin — can edit all sites
                       </p>
                     )}
@@ -7202,7 +7472,7 @@ const DetailedAuditReportView: React.FC<{
                 </div>
                 <button
                   onClick={() => setEditingEmpCode(null)}
-                  className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                  className="text-slate-400 hover:text-slate-600 dark:hover:text-white p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-[#0d3820] transition-colors cursor-pointer"
                 >
                   <X size={16} />
                 </button>
@@ -7210,7 +7480,7 @@ const DetailedAuditReportView: React.FC<{
 
               {/* Employee Name Field */}
               <div className="space-y-1.5">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-emerald-300">
                   👤 Employee Name
                 </label>
                 <input
@@ -7218,23 +7488,23 @@ const DetailedAuditReportView: React.FC<{
                   value={editEmpName}
                   onChange={e => setEditEmpName(e.target.value)}
                   placeholder="e.g. Employee Full Name..."
-                  className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500 transition-all"
+                  className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl border border-slate-200 dark:border-[#1a5532] bg-white dark:bg-[#041b0f] text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-[#44D62C] transition-all"
                 />
               </div>
 
               {/* Site Field */}
               <div className="space-y-1.5">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-emerald-300">
                   🏢 Site (Auto-Mapped)
                 </label>
                 <select
                   value={editSite}
                   onChange={e => setEditSite(e.target.value)}
-                  className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500 transition-all cursor-pointer"
+                  className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl border border-slate-200 dark:border-[#1a5532] bg-white dark:bg-[#041b0f] text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-[#44D62C] transition-all cursor-pointer"
                 >
-                  <option value="">— Select Correct Site —</option>
+                  <option value="" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">— Select Correct Site —</option>
                   {(isAdminUser ? departmentList : (currentUserPermission?.allowedSites || [])).map(site => (
-                    <option key={site} value={site}>{site}</option>
+                    <option key={site} value={site} className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">{site}</option>
                   ))}
                 </select>
                 {editingEmp.isSmartSite && (
@@ -7246,30 +7516,30 @@ const DetailedAuditReportView: React.FC<{
 
               {/* Shift Field */}
               <div className="space-y-1.5">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-emerald-300">
                   🕐 Shift
                 </label>
                 <select
                   value={editShiftName}
                   onChange={e => setEditShiftName(e.target.value)}
-                  className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500 transition-all cursor-pointer"
+                  className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl border border-slate-200 dark:border-[#1a5532] bg-white dark:bg-[#041b0f] text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-[#44D62C] transition-all cursor-pointer"
                 >
-                  <option value="">— Select Correct Shift —</option>
-                  <option value="General Shift">General Shift (09:00 AM – 06:00 PM)</option>
-                  <option value="A Shift">A Shift (07:00 AM – 02:00 PM)</option>
-                  <option value="B Shift">B Shift (02:00 PM – 09:00 PM)</option>
-                  <option value="C Shift">C Shift (09:00 PM – 07:00 AM)</option>
-                  <option value="Security Day Duty (12h)">Security Day Duty (08:00 AM – 08:00 PM)</option>
-                  <option value="Night Duty (12h)">Night Duty (08:00 PM – 08:00 AM)</option>
+                  <option value="" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">— Select Correct Shift —</option>
+                  <option value="General Shift" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">General Shift (09:00 AM – 06:00 PM)</option>
+                  <option value="A Shift" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">A Shift (07:00 AM – 02:00 PM)</option>
+                  <option value="B Shift" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">B Shift (02:00 PM – 09:00 PM)</option>
+                  <option value="C Shift" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">C Shift (09:00 PM – 07:00 AM)</option>
+                  <option value="Security Day Duty (12h)" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">Security Day Duty (08:00 AM – 08:00 PM)</option>
+                  <option value="Night Duty (12h)" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">Night Duty (08:00 PM – 08:00 AM)</option>
                   {shiftRules.filter(r => !['General Shift Group', 'A Shift Group', 'B Shift Group', 'C Shift Group', 'Security Day Duty (12h)', 'Night Duty (12h)'].includes(r.groupName)).map(r => (
-                    <option key={r.id} value={r.groupName}>{r.groupName} ({r.displayTiming})</option>
+                    <option key={r.id} value={r.groupName} className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">{r.groupName} ({r.displayTiming})</option>
                   ))}
                 </select>
               </div>
 
               {/* Designation Field */}
               <div className="space-y-1.5">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-emerald-300">
                   🏷 Designation
                 </label>
                 <input
@@ -7278,7 +7548,7 @@ const DetailedAuditReportView: React.FC<{
                   onChange={e => setEditDesignation(e.target.value)}
                   list="designation-suggestions"
                   placeholder="e.g. Staff, Security, Supervisor..."
-                  className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-emerald-500 transition-all"
+                  className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl border border-slate-200 dark:border-[#1a5532] bg-white dark:bg-[#041b0f] text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-[#44D62C] transition-all"
                 />
                 <datalist id="designation-suggestions">
                   {roleList.map(r => <option key={r} value={r} />)}
@@ -7292,7 +7562,7 @@ const DetailedAuditReportView: React.FC<{
               </div>
 
               {/* Info note */}
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700 text-[11px] text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-[#041b0f] border border-slate-100 dark:border-[#134426] text-[11px] text-slate-500 dark:text-emerald-300/80 font-medium leading-relaxed">
                 💾 Corrections are saved to the database and persist across sessions. They override the auto-assigned biometric mapping for this attendance date.
               </div>
 
@@ -7301,7 +7571,7 @@ const DetailedAuditReportView: React.FC<{
                 <button
                   onClick={() => setEditingEmpCode(null)}
                   disabled={isSavingCorrection}
-                  className="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition-colors disabled:opacity-50"
+                  className="px-4 py-2 text-xs font-bold text-slate-600 dark:text-emerald-300 rounded-xl hover:bg-slate-100 dark:hover:bg-[#0d3820] cursor-pointer transition-colors disabled:opacity-50"
                 >
                   Cancel
                 </button>
@@ -7382,14 +7652,14 @@ MSSQL_PORT=1433`}
         <div
           className="fixed inset-0 bg-slate-950/75 backdrop-blur-md flex items-center justify-center p-4 z-[999999] animate-in fade-in duration-200"
         >
-          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 p-6 sm:p-7 max-w-lg w-full shadow-2xl space-y-5 relative overflow-hidden text-slate-900 dark:text-white">
+          <div className="bg-white dark:bg-[#072415] rounded-3xl border border-slate-200/80 dark:border-[#134426] p-6 sm:p-7 max-w-lg w-full shadow-2xl space-y-5 relative overflow-hidden text-slate-900 dark:text-white">
             {/* Top Decorative Subtle Glow */}
-            <div className="absolute -top-12 -right-12 w-36 h-36 bg-purple-500/10 dark:bg-purple-500/20 rounded-full blur-2xl pointer-events-none" />
+            <div className="absolute -top-12 -right-12 w-36 h-36 bg-emerald-500/10 dark:bg-[#44D62C]/10 rounded-full blur-2xl pointer-events-none" />
 
             {/* Modal Header */}
-            <div className="flex items-start justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+            <div className="flex items-start justify-between border-b border-slate-100 dark:border-[#134426] pb-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-purple-50 dark:bg-purple-950/60 border border-purple-200/60 dark:border-purple-800/60 text-purple-600 dark:text-purple-400 flex items-center justify-center shadow-xs shrink-0">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200/60 dark:border-emerald-800/60 text-emerald-600 dark:text-[#44D62C] flex items-center justify-center shadow-xs shrink-0">
                   {captureType === 'screen_recording' ? (
                     <Video size={20} />
                   ) : (
@@ -7400,14 +7670,14 @@ MSSQL_PORT=1433`}
                   <h3 className="text-base font-extrabold text-slate-900 dark:text-white tracking-tight">
                     Security Audit: {captureType === 'screen_recording' ? 'Screen Recording' : 'Screen Capture'}
                   </h3>
-                  <p className="text-xs font-semibold text-purple-600 dark:text-purple-400 mt-0.5">
+                  <p className="text-xs font-semibold text-emerald-600 dark:text-[#44D62C] mt-0.5">
                     Documentation Required
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setShowScreenshotModal(false)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-white p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-[#0d3820] transition-colors cursor-pointer"
                 aria-label="Close modal"
               >
                 <X size={18} />
@@ -7415,8 +7685,8 @@ MSSQL_PORT=1433`}
             </div>
 
             {/* Policy Info Box */}
-            <div className="p-3.5 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800/80">
-              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+            <div className="p-3.5 bg-slate-50 dark:bg-[#041b0f] rounded-2xl border border-slate-100 dark:border-[#134426]">
+              <p className="text-xs text-slate-600 dark:text-emerald-200/90 leading-relaxed">
                 Per company data security policy, capturing or recording site attendance data requires a logged audit reason. An automated log will be generated for administrative compliance.
               </p>
             </div>
@@ -7424,25 +7694,25 @@ MSSQL_PORT=1433`}
             {/* Form Input Section */}
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-emerald-300 mb-1.5">
                   Select Primary Reason <span className="text-rose-500">*</span>
                 </label>
                 <select
                   value={screenshotReasonInput}
                   onChange={e => setScreenshotReasonInput(e.target.value)}
-                  className="w-full text-xs sm:text-sm px-3.5 py-2.5 sm:py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-semibold outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all cursor-pointer shadow-xs"
+                  className="w-full text-xs sm:text-sm px-3.5 py-2.5 sm:py-3 rounded-2xl border border-slate-200 dark:border-[#1a5532] bg-white dark:bg-[#041b0f] text-slate-900 dark:text-white font-semibold outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-[#44D62C] transition-all cursor-pointer shadow-xs"
                 >
-                  <option value="Live Training & Operations Demo">📹 Live Training & Operations Demo</option>
-                  <option value="Client Compliance Audit">📋 Client Compliance Audit</option>
-                  <option value="Discrepancy & Shift Audit">🔍 Discrepancy & Shift Audit</option>
-                  <option value="Executive Management Review">📊 Executive Management Review</option>
-                  <option value="Technical / System Issue Report">🛠️ Technical / System Issue Report</option>
-                  <option value="Custom Internal Notes">✍️ Custom Internal Audit Notes</option>
+                  <option value="Live Training & Operations Demo" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">📹 Live Training & Operations Demo</option>
+                  <option value="Client Compliance Audit" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">📋 Client Compliance Audit</option>
+                  <option value="Discrepancy & Shift Audit" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">🔍 Discrepancy & Shift Audit</option>
+                  <option value="Executive Management Review" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">📊 Executive Management Review</option>
+                  <option value="Technical / System Issue Report" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">🛠️ Technical / System Issue Report</option>
+                  <option value="Custom Internal Notes" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">✍️ Custom Internal Audit Notes</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-emerald-300 mb-1.5">
                   Additional Context / Remarks <span className="text-slate-400 font-normal lowercase">(optional)</span>
                 </label>
                 <textarea
@@ -7450,7 +7720,7 @@ MSSQL_PORT=1433`}
                   placeholder="State detailed reason for capturing screen..."
                   value={screenshotNotesInput}
                   onChange={e => setScreenshotNotesInput(e.target.value)}
-                  className="w-full text-xs sm:text-sm p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all placeholder:text-slate-400 shadow-xs"
+                  className="w-full text-xs sm:text-sm p-3.5 rounded-2xl border border-slate-200 dark:border-[#1a5532] bg-white dark:bg-[#041b0f] text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-[#44D62C] transition-all placeholder:text-slate-400 dark:placeholder:text-emerald-400/50 shadow-xs"
                 />
               </div>
             </div>
@@ -7459,13 +7729,13 @@ MSSQL_PORT=1433`}
             <div className="flex items-center justify-end gap-3 pt-2">
               <button
                 onClick={() => setShowScreenshotModal(false)}
-                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-2xl transition-colors cursor-pointer"
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-[#0d3820] dark:hover:bg-[#134e2c] text-slate-700 dark:text-emerald-200 text-xs font-bold rounded-2xl transition-colors cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSubmitScreenshotReason}
-                className="flex items-center gap-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-500 active:scale-98 text-white text-xs sm:text-sm font-extrabold rounded-2xl shadow-lg shadow-purple-600/20 transition-all cursor-pointer"
+                className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:scale-98 text-white text-xs sm:text-sm font-extrabold rounded-2xl shadow-lg shadow-emerald-600/20 transition-all cursor-pointer"
               >
                 <Save size={15} />
                 Submit Reason & Notify Admin
@@ -7481,42 +7751,42 @@ MSSQL_PORT=1433`}
         <div
           className="fixed inset-0 bg-slate-950/75 backdrop-blur-md flex items-center justify-center p-4 z-[999999] animate-in fade-in duration-200"
         >
-          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 sm:p-7 max-w-2xl w-full shadow-2xl space-y-4 text-slate-900 dark:text-white relative overflow-hidden">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+          <div className="bg-white dark:bg-[#072415] rounded-3xl border border-slate-200 dark:border-[#134426] p-6 sm:p-7 max-w-2xl w-full shadow-2xl space-y-4 text-slate-900 dark:text-white relative overflow-hidden">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-[#134426] pb-3">
               <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-                <Database size={20} className="text-purple-600 dark:text-purple-400" />
+                <Database size={20} className="text-emerald-600 dark:text-[#44D62C]" />
                 Supabase SQL Database Migration Query
               </h3>
               <button
                 onClick={() => setShowSqlSchemaModal(false)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-white p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-[#0d3820] transition-colors cursor-pointer"
               >
                 <X size={18} />
               </button>
             </div>
 
-            <p className="text-xs text-slate-600 dark:text-slate-400">
-              Run this SQL script in your <strong>Supabase SQL Editor</strong> to create the <code className="font-mono text-purple-600">user_site_permissions</code> and <code className="font-mono text-purple-600">screenshot_audit_logs</code> tables:
+            <p className="text-xs text-slate-600 dark:text-emerald-300/80">
+              Run this SQL script in your <strong>Supabase SQL Editor</strong> to create the <code className="font-mono text-emerald-600 dark:text-[#44D62C]">user_site_permissions</code> and <code className="font-mono text-emerald-600 dark:text-[#44D62C]">screenshot_audit_logs</code> tables:
             </p>
 
-            <pre className="bg-slate-900 text-slate-100 p-4 rounded-2xl font-mono text-[11px] leading-relaxed overflow-x-auto max-h-72 border border-slate-800">
+            <pre className="bg-slate-900 dark:bg-[#041b0f] text-slate-100 dark:text-emerald-100 p-4 rounded-2xl font-mono text-[11px] leading-relaxed overflow-x-auto max-h-72 border border-slate-800 dark:border-[#134426]">
 {SUPABASE_ACCESS_CONTROL_SQL_MIGRATION}
             </pre>
 
             <div className="flex items-center justify-end gap-3 pt-2">
               <button
                 onClick={() => {
-                  navigator.clipboard.writeText(SUPABASE_ACCESS_CONTROL_SQL_MIGRATION);
+                  safeCopyToClipboard(SUPABASE_ACCESS_CONTROL_SQL_MIGRATION);
                   alert('Supabase SQL Migration script copied to clipboard!');
                 }}
-                className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-2xl cursor-pointer"
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-2xl cursor-pointer"
               >
                 <Save size={14} />
                 Copy SQL Script
               </button>
               <button
                 onClick={() => setShowSqlSchemaModal(false)}
-                className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-2xl cursor-pointer"
+                className="px-4 py-2 bg-slate-100 dark:bg-[#0d3820] text-slate-700 dark:text-emerald-200 text-xs font-bold rounded-2xl cursor-pointer"
               >
                 Close
               </button>

@@ -12,6 +12,7 @@ import { supabase } from '../../services/supabase';
 import Button from '../../components/ui/Button';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 interface MetricRow {
   metric: string;
@@ -397,6 +398,7 @@ const BdDailyReport: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-page pb-24">
+      <MobileTopBar title="BD DAILY REPORT" parentPath="/crm" />
       {/* Sticky Header */}
       <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b border-border shadow-sm">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">

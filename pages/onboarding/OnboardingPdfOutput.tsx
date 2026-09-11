@@ -13,6 +13,8 @@ import { getProxyUrl } from '../../utils/fileUrl';
 import { generatePifsCompliancePdf, savePifsCompliancePdfToServer } from '../../services/pifsCompliancePdfService';
 import { downloadOnboardingAckSlipPdf } from '../../services/pifsAckSlipPdfService';
 import { formatDisplayDate } from '../../utils/date';
+import { triggerPrint } from '../../utils/printHelper';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 const OnboardingPdfOutput: React.FC = () => {
     const { id } = useParams<{ id: string }>();
@@ -122,6 +124,7 @@ const OnboardingPdfOutput: React.FC = () => {
     if (!employeeData) {
         return (
             <div className="text-center p-12 bg-card rounded-2xl m-6">
+      <MobileTopBar title="ENROLLMENT PDF" parentPath="/verification/dashboard" />
                 <p className="text-rose-500 font-bold mb-4">Could not find employee onboarding records.</p>
                 <Button onClick={() => navigate('/onboarding/add/review')}>Return to Review</Button>
             </div>
@@ -167,7 +170,7 @@ const OnboardingPdfOutput: React.FC = () => {
                     <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
                         <Button 
                             type="button" 
-                            onClick={() => window.print()} 
+                            onClick={() => triggerPrint('onboarding-dossier-booklet', `Onboarding_Dossier_${d.personal.employeeId || 'Staff'}`)} 
                             variant="outline" 
                             size="sm"
                             title="Print Booklet"
@@ -212,7 +215,7 @@ const OnboardingPdfOutput: React.FC = () => {
                 </div>
 
                 {/* ── Official Employee Onboarding Booklet ── */}
-                <div className="space-y-6">
+                <div id="onboarding-dossier-booklet" className="space-y-6">
                     {/* PAGE 1: Personal Dossier & Identity Record */}
                     <div className="bg-white rounded-2xl border border-slate-300 shadow-xl p-6 sm:p-10 text-slate-800 text-xs sm:text-sm">
                         {/* Company Header */}

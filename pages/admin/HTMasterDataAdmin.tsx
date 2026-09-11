@@ -9,6 +9,7 @@ import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
 import { supabase } from '../../services/supabase';
 import toast from 'react-hot-toast';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 const INITIAL_FIELD_TARGETS_MAP: Record<HTMasterCategory, HTFieldTarget[]> = {
   'RMUMD': [
@@ -920,7 +921,7 @@ export const HTMasterDataAdmin: React.FC = () => {
     try {
       const [ExcelJSModule, { saveAs }] = await Promise.all([
         import('exceljs'),
-        import('file-saver')
+        import('../../utils/fileDownloader')
       ]);
       const ExcelJS = ExcelJSModule.default || ExcelJSModule;
       const workbook = new ExcelJS.Workbook();
@@ -1425,7 +1426,7 @@ export const HTMasterDataAdmin: React.FC = () => {
     try {
       const [ExcelJSModule, { saveAs }] = await Promise.all([
         import('exceljs'),
-        import('file-saver')
+        import('../../utils/fileDownloader')
       ]);
       const ExcelJS = ExcelJSModule.default || ExcelJSModule;
       const workbook = new ExcelJS.Workbook();
@@ -2712,6 +2713,7 @@ export const HTMasterDataAdmin: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-white dark:bg-slate-950 p-6 lg:p-10 font-sans">
+      <MobileTopBar title="MASTER DATA" parentPath="/mobile-home" />
       
       {/* Page Header (Executive Command Center Redesign) */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-3xl p-6 shadow-sm mb-6 transition-all">

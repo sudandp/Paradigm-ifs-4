@@ -7,6 +7,7 @@ import Input from '../../components/ui/Input';
 import SearchableSelect from '../../components/ui/SearchableSelect';
 import { useSettingsStore } from '../../store/settingsStore';
 import type { User, VoipMapping } from '../../types';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 export const VoipSettings: React.FC = () => {
   const store = useSettingsStore();
@@ -175,6 +176,7 @@ export const VoipSettings: React.FC = () => {
 
   return (
     <div className="space-y-8 p-4 md:p-0">
+      <MobileTopBar title="VOIP CONFIGURATION" parentPath="/mobile-home" />
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
       <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">

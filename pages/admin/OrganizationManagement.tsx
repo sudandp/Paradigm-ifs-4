@@ -20,6 +20,7 @@ import Input from '../../components/ui/Input';
 import Pagination from '../../components/ui/Pagination';
 import { Search } from 'lucide-react';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 import { useAuthStore } from '../../store/authStore';
 import type { SiteResponsibilityMatrix } from '../../types/siteRouting';
 import { getUserRoutingScope } from '../../services/siteRoutingScope';
@@ -338,6 +339,7 @@ export const SiteManagement: React.FC = () => {
 
     return (
         <div className="p-4 md:p-6 flex-1 flex flex-col">
+            <MobileTopBar title="SITE MANAGEMENT" parentPath="/mobile-home" />
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
             <input type="file" ref={importRef} className="hidden" accept=".csv" onChange={handleImport} />

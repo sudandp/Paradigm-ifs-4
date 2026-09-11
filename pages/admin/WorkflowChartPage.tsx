@@ -16,6 +16,7 @@ import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import OrgWorkflowCard from '../../components/admin/OrgWorkflowCard';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 type UserWithManager = User & { managerName?: string; manager2Name?: string; manager3Name?: string };
 
@@ -109,6 +110,7 @@ const WorkflowChartPage: React.FC = () => {
 
     return (
         <div className="flex flex-col flex-1 h-[calc(100vh-100px)] min-h-[640px] space-y-2.5">
+            <MobileTopBar title="WORKFLOW CHART" parentPath="/admin/approval-workflow" />
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
             {/* Top Bar: Title, Stats & Actions */}

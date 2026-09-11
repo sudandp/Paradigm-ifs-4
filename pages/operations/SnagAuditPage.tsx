@@ -44,6 +44,7 @@ import type { SnagEntry, Criticality, PurposeOfVisit, Department } from '../../t
 import { syncEngine } from '../../services/offline/syncEngine';
 import * as outbox from '../../services/offline/outbox';
 import { getDb } from '../../services/offline/db';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -423,6 +424,7 @@ const SnagDetailView: React.FC<{ entry: SnagEntry; onBack: () => void; onStatusC
 
   return (
     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
+      <MobileTopBar title="SNAG AUDIT" parentPath="/mobile-home" />
       <button 
         onClick={onBack}
         className="flex items-center text-sm text-gray-500 hover:text-teal-600 transition-colors bg-white px-4 py-2 rounded-xl shadow-sm border border-gray-100 w-fit"
@@ -1277,6 +1279,7 @@ const SnagAuditPage: React.FC = () => {
               <ClipboardCheck size={40} className="mb-3 opacity-30" />
               <p className="font-medium">No snag entries found</p>
               <p className="text-sm mt-1">Add a new snag or import from Excel</p>
+import MobileTopBar from '../../components/navigation/MobileTopBar';
             </div>
           ) : (
             <div className="overflow-x-auto">

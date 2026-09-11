@@ -18,6 +18,7 @@ import {
   Smartphone
 } from 'lucide-react';
 import { useGateStore } from '../../store/gateStore';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 const KioskProvision: React.FC = () => {
   const [pin, setPin] = useState('');
@@ -89,6 +90,7 @@ const KioskProvision: React.FC = () => {
 
   return (
     <div className="fixed inset-0 z-[99999] flex flex-col items-center justify-between bg-gradient-to-b from-[#02130a] via-[#041b0f] to-[#010c06] text-white p-6 overflow-y-auto">
+      <MobileTopBar title="KIOSK PROVISION" parentPath="/gate" />
       {/* Ambient background glow */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[340px] h-[340px] bg-emerald-500/10 rounded-full blur-[100px] pointer-events-none" />
 

@@ -69,33 +69,32 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ adminHolidays, userSe
 
 
     return (
-        <div className={`p-4 rounded-xl shadow-card w-full flex flex-col h-full ${isMobile ? 'bg-[#092c19] border border-[#134426]' : 'bg-card border-border border'}`}>
+        <div className="bg-card p-4 rounded-xl shadow-card border border-border w-full flex flex-col h-full">
             <div className="flex items-center justify-between mb-4 flex-shrink-0">
-                {isMobile ? (
-                    <div className="flex items-center gap-1.5">
-                        <button 
-                            onClick={() => onDateChange(subMonths(viewingDate, 1))}
-                            className="h-7 w-7 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] flex items-center justify-center shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
-                            aria-label="Previous month"
-                        >
-                            <ChevronLeft className="h-4 w-4 stroke-[2.5]" />
-                        </button>
-                        <span className="font-bold min-w-[80px] text-center text-xs text-white">{format(viewingDate, 'MMMM yyyy')}</span>
-                        <button 
-                            onClick={() => onDateChange(addMonths(viewingDate, 1))}
-                            className="h-7 w-7 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] flex items-center justify-center shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
-                            aria-label="Next month"
-                        >
-                            <ChevronRight className="h-4 w-4 stroke-[2.5]" />
-                        </button>
-                    </div>
-                ) : (
-                    <div className="flex items-center gap-1">
-                        <Button variant="secondary" size="sm" className="btn-icon !p-1 h-6 w-6" onClick={() => onDateChange(subMonths(viewingDate, 1))}><ChevronLeft className="h-4 w-4" /></Button>
-                        <span className="font-medium min-w-[80px] text-center text-xs">{format(viewingDate, 'MMMM yyyy')}</span>
-                        <Button variant="secondary" size="sm" className="btn-icon !p-1 h-6 w-6" onClick={() => onDateChange(addMonths(viewingDate, 1))}><ChevronRight className="h-4 w-4" /></Button>
-                    </div>
-                )}
+                <h3 className="text-sm font-semibold text-primary-text">Holiday Calendar</h3>
+                <div className="flex items-center gap-1">
+                    <Button 
+                        variant="secondary" 
+                        size="sm" 
+                        className="btn-icon !p-1 h-6 w-6 cursor-pointer" 
+                        onClick={() => onDateChange(subMonths(viewingDate, 1))}
+                        aria-label="Previous month"
+                    >
+                        <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className="font-medium min-w-[80px] text-center text-xs text-primary-text">
+                        {format(viewingDate, 'MMMM yyyy')}
+                    </span>
+                    <Button 
+                        variant="secondary" 
+                        size="sm" 
+                        className="btn-icon !p-1 h-6 w-6 cursor-pointer" 
+                        onClick={() => onDateChange(addMonths(viewingDate, 1))}
+                        aria-label="Next month"
+                    >
+                        <ChevronRight className="h-4 w-4" />
+                    </Button>
+                </div>
             </div>
 
             {isLoading ? (
@@ -103,7 +102,7 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ adminHolidays, userSe
             ) : (
                 <div className="grid grid-cols-7 gap-1 flex-1">
                     {weekDays.map(d => (
-                        <div key={d} className={`text-center text-[10px] font-bold uppercase tracking-wider py-1 ${isMobile ? 'text-white/40' : 'text-muted'}`}>{d}</div>
+                        <div key={d} className="text-center text-[10px] font-bold text-muted uppercase tracking-wider py-1">{d}</div>
                     ))}
                     {Array.from({ length: startDay }).map((_, i) => (
                         <div key={`empty-${i}`} className="h-9" />
@@ -112,7 +111,7 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ adminHolidays, userSe
                         const holidayInfo = getDayStatus(date);
                         const colorClass = getStatusColor(holidayInfo.status);
                         return (
-                            <div key={date.toISOString()} className={`h-9 rounded flex flex-col items-center justify-center ${colorClass} transition-colors group relative cursor-help border border-transparent ${isMobile ? 'hover:border-[#2a4536]' : 'hover:border-border/50'}`}>
+                            <div key={date.toISOString()} className={`h-9 rounded flex flex-col items-center justify-center ${colorClass} transition-colors group relative cursor-help border border-transparent hover:border-border/50`}>
                                 <span className="text-xs font-bold">{format(date, 'd')}</span>
                                 {holidayInfo.status !== 'neutral' && (
                                     <div className="absolute bottom-[-30px] left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[9px] py-0.5 px-1.5 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-20 pointer-events-none transition-opacity shadow-lg">
@@ -125,7 +124,7 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ adminHolidays, userSe
                 </div>
             )}
             
-            <div className={`mt-auto pt-3 border-t grid grid-cols-3 gap-x-2 gap-y-2 text-[10px] uppercase font-bold tracking-tight leading-tight ${isMobile ? 'border-[#2a4536] text-white/40' : 'border-border/50 text-muted-foreground'}`}>
+            <div className="mt-auto pt-3 border-t border-border/50 grid grid-cols-3 gap-x-2 gap-y-2 text-[10px] uppercase font-bold tracking-tight leading-tight text-muted-foreground">
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-emerald-500 rounded-full flex-shrink-0"></div> Gov</div>
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-amber-500 rounded-full flex-shrink-0"></div> Admin</div>
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-violet-600 rounded-full flex-shrink-0"></div> User</div>

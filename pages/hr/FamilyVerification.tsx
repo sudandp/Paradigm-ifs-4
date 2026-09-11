@@ -8,6 +8,7 @@ import { format } from 'date-fns';
 import { useAuthStore } from '../../store/authStore';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 import { exportGenericReportToExcel, GenericReportColumn } from '../../utils/excelExport';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 const FamilyVerification: React.FC = () => {
     const { user } = useAuthStore();
@@ -96,6 +97,7 @@ const FamilyVerification: React.FC = () => {
 
     return (
         <div className="p-4 border-0 shadow-none md:bg-card md:p-6 md:rounded-xl md:shadow-card">
+            <MobileTopBar title="FAMILY VERIFICATION" parentPath="/mobile-home" />
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
             <div className="flex justify-between items-center mb-6">

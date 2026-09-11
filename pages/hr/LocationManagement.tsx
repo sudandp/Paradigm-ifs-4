@@ -12,6 +12,7 @@ import { reverseGeocode, getPrecisePosition } from '../../utils/locationUtils';
 import { useAuthStore } from '../../store/authStore';
 import Pagination from '../../components/ui/Pagination';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 /**
  * LocationManagement component
@@ -502,6 +503,7 @@ const LocationManagement: React.FC = () => {
 
   return (
     <div className="p-4 md:p-6 w-full">
+      <MobileTopBar title="GEO LOCATIONS" parentPath="/mobile-home" />
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
       <div className="border-0 shadow-none md:bg-card md:p-6 md:rounded-xl md:shadow-card">
         <AdminPageHeader title="Location Management" />

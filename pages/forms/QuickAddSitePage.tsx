@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Zap } from 'lucide-react';
 import { api } from '../../services/api';
 import type { Organization } from '../../types';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import Input from '../../components/ui/Input';
-import { Building, Zap } from 'lucide-react';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 
 const QuickAddSitePage: React.FC = () => {
@@ -45,9 +46,7 @@ const QuickAddSitePage: React.FC = () => {
     if (isMobile) {
         return (
             <div className="h-full flex flex-col">
-                <header className="p-4 flex-shrink-0 fo-mobile-header">
-                    <h1>Quick Add Site</h1>
-                </header>
+                <MobileTopBar title="QUICK ADD SITE" parentPath="/admin/sites" />
                 <main className="flex-1 overflow-y-auto p-4">
                     <div className="bg-card rounded-2xl p-6 space-y-6">
                         <div className="text-center">

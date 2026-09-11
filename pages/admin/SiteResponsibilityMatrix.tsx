@@ -33,6 +33,7 @@ import { api } from '../../services/api';
 import type { SiteResponsibilityMatrix } from '../../types/siteRouting';
 import type { Location, User as AppUser, OrganizationGroup } from '../../types';
 import AdminPageHeader from '../../components/admin/AdminPageHeader';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';

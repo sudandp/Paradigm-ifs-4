@@ -51,14 +51,24 @@ const Modal: React.FC<ModalProps> = ({
     return createPortal(
         <div className={`fixed inset-0 z-[999] flex items-center justify-center ${backdropClassName || 'bg-black bg-opacity-50'}`} aria-modal="true" role="dialog">
             {/* Full screen on mobile, centered modal on desktop */}
-            <div className={`shadow-card flex flex-col overflow-hidden w-full h-full ${maxWidth} md:w-auto md:h-auto md:max-h-[90vh] md:rounded-xl md:animate-fade-in-scale ${containerClassName || 'bg-card'}`}>
+            <div className={`shadow-card flex flex-col overflow-hidden w-full h-full ${maxWidth} md:w-full md:h-auto md:max-h-[90vh] md:rounded-xl md:animate-fade-in-scale ${containerClassName || 'bg-card'}`}>
                 {/* Header */}
-                <div className={`flex-shrink-0 p-6 ${headerClassName || 'border-b border-border'}`}>
+                <div className={`flex-shrink-0 px-5 py-4 md:px-6 md:py-4 flex items-center justify-between ${headerClassName || 'border-b border-border'}`}>
                     <h3 className={`text-lg font-bold ${titleClassName || 'text-primary-text'}`}>{title}</h3>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ml-3"
+                        aria-label="Close"
+                    >
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
                 </div>
 
                 {/* Scrollable Content */}
-                <div className="flex-1 overflow-y-auto p-6">
+                <div className="flex-1 overflow-y-auto p-4 md:p-6">
                     <div className={`text-sm ${contentClassName || 'text-muted'}`}>
                         {children}
                     </div>
@@ -66,7 +76,7 @@ const Modal: React.FC<ModalProps> = ({
 
                 {/* Footer with Buttons */}
                 {!hideFooter && (
-                <div className="flex-shrink-0 p-6 border-t border-border bg-card">
+                <div className="flex-shrink-0 px-5 py-4 md:px-6 md:py-4 border-t border-border bg-card">
                     {footer ? footer : (
                         <div className="flex justify-end space-x-3">
                             {extraActions}

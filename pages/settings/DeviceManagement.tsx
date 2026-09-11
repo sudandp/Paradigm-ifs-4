@@ -12,6 +12,7 @@ import {
 } from '../../services/deviceService';
 import { DeviceType } from '../../types';
 import UserDeviceList from '../../components/devices/UserDeviceList';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 
 const DeviceManagement: React.FC = () => {
@@ -75,6 +76,7 @@ const DeviceManagement: React.FC = () => {
 
   return (
     <div className="p-4 md:p-6 pb-24">
+      <MobileTopBar title="LINKED DEVICES" parentPath="/mobile-home" />
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
       
       <div className="mb-6">

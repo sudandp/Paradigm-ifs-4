@@ -11,6 +11,7 @@ import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import { AadhaarData, formatNameToTitleCase, formatGender, parseAadhaarQR, decodeSecureQR, parseAadhaarSecureText, isAgeAbove18 } from '../../utils/aadhaarUtils';
 import { captureRecruiterGPS, runAntiFraudGate, type AntiFraudGateResult } from '../../services/antiFraudEngine';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 const AadhaarScannerPage: React.FC = () => {
     const navigate = useNavigate();
@@ -189,7 +190,9 @@ const AadhaarScannerPage: React.FC = () => {
                             if (window.navigator && window.navigator.vibrate) {
                                 window.navigator.vibrate(100);
                             }
-                        } catch (e) {}
+                        } catch {
+                            // Vibration not supported or not allowed
+                        }
                         handleScanSuccess(parsedData);
                     }
                 },
@@ -400,6 +403,7 @@ const AadhaarScannerPage: React.FC = () => {
     if (isReviewOpen && scannedData) {
         return (
             <div className="fixed inset-0 z-[300] flex flex-col bg-gray-100 text-gray-900 animate-fade-in">
+      <MobileTopBar title="AADHAAR SCANNER" parentPath="/onboarding" />
                 <header className="p-6 bg-white border-b border-gray-200 flex items-center gap-4">
                     <Button 
                         variant="icon" 

@@ -544,6 +544,26 @@ export interface LocationErrorWithFlags extends Error {
   isUnsupported?: boolean;
   isPreciseError?: boolean;
   isLowAccuracy?: boolean;
+  isMockLocation?: boolean;
+  mockReason?: string;
+}
+
+/**
+ * Verify location integrity to detect mock GPS / location spoofing apps.
+ * Native Android only (evaluates Location.isMock() and Location.isFromMockProvider()).
+ */
+export async function verifyLocationIntegrity(): Promise<{ isMock: boolean; reason?: string }> {
+  if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') {
+    return { isMock: false };
+  }
+  try {
+    const { Tracking } = await import('../services/routeTrackingService');
+    const res = await Tracking.checkLocationIntegrity();
+    return { isMock: Boolean(res?.isMock), reason: res?.mockReason };
+  } catch (err) {
+    console.warn('[LocationIntegrity] Check warning:', err);
+    return { isMock: false };
+  }
 }
 
 /**
@@ -580,6 +600,21 @@ export async function getPrecisePosition(accuracyThreshold: number = 50, timeout
         } catch (err: any) {
           if (err?.isPermissionError) throw err;
           console.warn('[Location] Capacitor checkPermissions warning:', err);
+        }
+
+        // Mock-location / GPS spoofing check on Android native
+        if (Capacitor.getPlatform() === 'android') {
+          const integrity = await verifyLocationIntegrity();
+          if (integrity.isMock) {
+            const mockErr = Object.assign(
+              new Error('Mock location / fake GPS detected. Spoofing location is prohibited for attendance check-in.'),
+              {
+                isMockLocation: true,
+                mockReason: integrity.reason,
+              }
+            ) as LocationErrorWithFlags;
+            throw mockErr;
+          }
         }
       }
 

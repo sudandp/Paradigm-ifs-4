@@ -12,6 +12,7 @@ import Toast from '../../components/ui/Toast';
 import { useDevice } from '../../hooks/useDevice';
 import { isAdmin } from '../../utils/auth';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 import ToggleSwitch from '../../components/ui/ToggleSwitch';
 import Input from '../../components/ui/Input';
 
@@ -422,6 +423,7 @@ const RoleManagement: React.FC = () => {
 
     return (
         <div className="p-4 border-0 shadow-none lg:bg-card lg:p-6 lg:rounded-xl lg:shadow-card flex-1 flex flex-col">
+            <MobileTopBar title="ROLE MANAGEMENT" parentPath="/mobile-home" />
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
             <RoleNameModal
                 isOpen={isNameModalOpen}

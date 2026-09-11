@@ -15,6 +15,7 @@ import { supabase } from '../../services/supabase';
 import { exportGenericReportToExcel } from '../../utils/excelExport';
 import { Navigate } from 'react-router-dom';
 import { isAdmin } from '../../utils/auth';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 // Import and register chart.js components
 import {
@@ -702,6 +703,7 @@ const ApprovalsInbox: React.FC = () => {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      <MobileTopBar title="APPROVALS INBOX" parentPath="/mobile-home" />
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
       
       {/* Title Bar Panel */}

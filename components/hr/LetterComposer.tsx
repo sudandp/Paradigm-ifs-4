@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { hrmApi } from '../../services/hrm.api';
 import Button from '../ui/Button';
 import toast from 'react-hot-toast';
+import { safeCopyToClipboard } from '../../utils/clipboardHelper';
 import { FileText, Download, Send, Copy, AlertCircle, Edit, Eye, ArrowLeft, RefreshCw } from 'lucide-react';
 
 interface LetterComposerProps {
@@ -75,7 +76,7 @@ const LetterComposer: React.FC<LetterComposerProps> = ({ letterId, onClose, onLe
   }, [letterId]);
 
   const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
+    safeCopyToClipboard(text);
     toast.success(`Copied: ${text}`);
   };
 

@@ -7,6 +7,7 @@ import Toast from '../../components/ui/Toast';
 import Input from '../../components/ui/Input';
 import { Package } from 'lucide-react';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 
 const AddModulePage: React.FC = () => {
@@ -54,9 +55,10 @@ const AddModulePage: React.FC = () => {
 
     if (isMobile) {
         return (
-            <div className="h-full flex flex-col">
-                <header className="p-4 flex-shrink-0 fo-mobile-header">
-                    <h1>Add Access Task</h1>
+            <div className="h-full flex flex-col p-4 bg-[#041b0f] min-h-screen text-white">
+                <MobileTopBar title="ADD TASK GROUP" parentPath="/admin/modules" />
+                <header className="py-2 flex-shrink-0 fo-mobile-header">
+                    <h1 className="text-xl font-bold">Add Access Task</h1>
                 </header>
                 <main className="flex-1 overflow-y-auto p-4">
                     <div className="bg-card rounded-2xl p-6 space-y-6">

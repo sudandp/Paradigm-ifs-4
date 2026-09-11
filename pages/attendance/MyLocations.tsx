@@ -9,6 +9,7 @@ import { Pin, MapPin, Trash2, Edit, Search } from 'lucide-react';
 import { reverseGeocode, getPrecisePosition } from '../../utils/locationUtils';
 import Pagination from '../../components/ui/Pagination';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 
 // Helper function to convert text to Title Case
@@ -325,6 +326,7 @@ const MyLocations: React.FC = () => {
 
   return (
     <div className="p-4 md:p-6 w-full">
+      <MobileTopBar title="MY LOCATIONS" parentPath="/mobile-home" />
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
       <div className="border-0 shadow-none md:bg-card md:p-6 md:rounded-xl md:shadow-card">

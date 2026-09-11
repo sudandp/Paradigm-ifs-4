@@ -9,7 +9,7 @@ import { format, startOfMonth, startOfDay, parseISO } from 'date-fns';
 const getExcelJS = async () => {
     const [ExcelJSModule, { saveAs }] = await Promise.all([
         import('exceljs'),
-        import('file-saver')
+        import('../../utils/fileDownloader')
     ]);
     const ExcelJS = ExcelJSModule.default || ExcelJSModule;
     return { ExcelJS, saveAs };
@@ -22,6 +22,7 @@ import Toast from '../../components/ui/Toast';
 import RevisionHistoryModal from '../../components/modals/RevisionHistoryModal';
 import SubmitSiteChangeRequestModal from '../../components/modals/SubmitSiteChangeRequestModal';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 import { getUserRoutingScope, validateImportRows, normalizeCompanyShortName, getSiteMetadataFromMatrix, isHistoricalLockedPeriod, type UserRoutingScope } from '../../services/siteRoutingScope';
 import type { SiteResponsibilityMatrix } from '../../types/siteRouting';
 
@@ -1021,6 +1022,7 @@ const SiteFinanceTracker: React.FC = () => {
     if (isDirector) {
         return (
             <div className="p-8 text-center bg-[#06251c] md:bg-white rounded-xl border border-white/5 md:border-gray-200 shadow-sm">
+      <MobileTopBar title="SITE FINANCE TRACKER" parentPath="/finance" />
                 <p className="text-sm font-medium text-emerald-400/80 md:text-gray-600">
                     Monthly Invoice Tracker is restricted for Director accounts.
                 </p>
@@ -1233,6 +1235,7 @@ const SiteFinanceTracker: React.FC = () => {
                                         <div>
                                             <p className="text-xs font-bold text-gray-800 dark:text-white">Export as Re-upload Template</p>
                                             <p className="text-[10px] text-gray-500 dark:text-emerald-400/40 mt-0.5">Editable yellow columns — import back after corrections</p>
+import MobileTopBar from '../../components/navigation/MobileTopBar';
                                         </div>
                                     </button>
                                 </div>

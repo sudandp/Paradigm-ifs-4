@@ -25,6 +25,7 @@ interface TrackingPlugin {
   isBatteryOptimizationIgnored(): Promise<{ isIgnored: boolean }>;
   requestIgnoreBatteryOptimization(): Promise<void>;
   openAppSettings(): Promise<void>;
+  checkLocationIntegrity(): Promise<{ isMock: boolean; mockReason?: string; error?: string }>;
 }
 
 export const Tracking = registerPlugin<TrackingPlugin>('Tracking');

@@ -86,4 +86,19 @@ public class BreakAlarmPlugin extends Plugin {
 
         call.resolve();
     }
+
+    @PluginMethod
+    public void canScheduleExactAlarms(PluginCall call) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            AlarmManager alarmManager = (AlarmManager) getContext().getSystemService(Context.ALARM_SERVICE);
+            boolean canSchedule = alarmManager != null && alarmManager.canScheduleExactAlarms();
+            JSObject ret = new JSObject();
+            ret.put("canSchedule", canSchedule);
+            call.resolve(ret);
+        } else {
+            JSObject ret = new JSObject();
+            ret.put("canSchedule", true);
+            call.resolve(ret);
+        }
+    }
 }

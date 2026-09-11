@@ -7,6 +7,7 @@ import { dispatchNotificationFromRules } from '../../services/notificationServic
 import { isThirdSaturday } from '../../utils/date';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 
 const RequestUnlockPage: React.FC = () => {
@@ -81,6 +82,7 @@ const RequestUnlockPage: React.FC = () => {
 
     return (
         <div className="md:pt-8 animate-in fade-in duration-500">
+      <MobileTopBar title="REQUEST UNLOCK" parentPath="/attendance/dashboard" />
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
             
             <div className="w-full">

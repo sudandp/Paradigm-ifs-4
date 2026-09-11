@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import type { OnboardingData } from '../../types/onboarding';
 import { format, formatDistanceToNow, isToday, isYesterday, parseISO } from 'date-fns';
+import { safeCopyToClipboard } from '../../utils/clipboardHelper';
 import type { Notification, NotificationType, AttendanceUnlockRequest, LeaveRequest, ExtraWorkLog, SiteFinanceRecord, SiteInvoiceRecord } from '../../types';
 import Button from '../ui/Button';
 import { api } from '../../services/api';
@@ -570,7 +571,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
         const passcode = extractPasscode(req.comments) || generateDeterministicPasscode(req.id);
         const message = `Your access passcode for report is: ${passcode}`;
         try {
-            await navigator.clipboard.writeText(passcode);
+            await safeCopyToClipboard(passcode);
         } catch (clipErr) {
             console.warn('Failed to copy to clipboard:', clipErr);
         }

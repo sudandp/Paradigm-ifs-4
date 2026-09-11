@@ -24,6 +24,7 @@ import { useAuthStore } from '../../store/authStore';
 import Input from '../../components/ui/Input';
 import Logo from '../../components/ui/Logo';
 import NotificationBell from '../../components/notifications/NotificationBell';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 // Per-field mandatory state determined by Admin Enrollment Rules
 interface MandatoryFieldState {
@@ -956,6 +957,7 @@ const PreUpload = () => {
         <>
             {isProcessing && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex flex-col items-center justify-center animate-fade-in">
+      <MobileTopBar title="PRE-UPLOAD" parentPath="/onboarding" />
                     <div className="bg-[#0a2518] md:bg-white border border-white/10 md:border-border p-8 rounded-2xl shadow-xl">
                         <Loader2 className="h-12 w-12 animate-spin text-accent mx-auto" />
                         <p className="mt-4 text-lg font-semibold text-white md:text-primary-text">Processing Documents...</p>

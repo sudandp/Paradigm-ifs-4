@@ -31,6 +31,7 @@ import LoadingScreen from '../../components/ui/LoadingScreen';
 
 import { getUserRoutingScope, getSiteMetadataFromMatrix, getUserFormPermissions, normalizeHrInchargeName, normalizeOpsInchargeName, normalizeAccountsInchargeName } from '../../services/siteRoutingScope';
 import type { SiteResponsibilityMatrix } from '../../types/siteRouting';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 const AddSiteAttendanceRecord: React.FC = () => {
     const navigate = useNavigate();
@@ -372,6 +373,7 @@ const AddSiteAttendanceRecord: React.FC = () => {
     if (isLoading) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+      <MobileTopBar title="ADD ATTENDANCE" parentPath="/finance" />
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
                 <p className="text-muted italic">Loading form...</p>
             </div>

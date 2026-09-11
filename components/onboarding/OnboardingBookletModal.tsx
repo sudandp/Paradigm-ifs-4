@@ -11,6 +11,7 @@ import { generatePifsCompliancePdf, savePifsCompliancePdfToServer } from '../../
 import { downloadOnboardingAckSlipPdf } from '../../services/pifsAckSlipPdfService';
 import { FileCheck } from 'lucide-react';
 import { formatDisplayDate } from '../../utils/date';
+import { triggerPrint } from '../../utils/printHelper';
 
 interface OnboardingBookletModalProps {
     isOpen: boolean;
@@ -121,7 +122,7 @@ export const OnboardingBookletModal: React.FC<OnboardingBookletModalProps> = ({
                 <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
                     <Button 
                         type="button" 
-                        onClick={() => window.print()} 
+                        onClick={() => triggerPrint('onboarding-modal-booklet', `Onboarding_Dossier_${d.personal.employeeId || 'Staff'}`)} 
                         variant="outline" 
                         size="sm"
                         className="hidden md:flex"
@@ -175,7 +176,7 @@ export const OnboardingBookletModal: React.FC<OnboardingBookletModalProps> = ({
 
             {/* Scrollable Booklet Content */}
             <main className="flex-1 overflow-y-auto p-3 sm:p-6 lg:p-8 bg-slate-100">
-                <div className="max-w-4xl mx-auto space-y-6">
+                <div id="onboarding-modal-booklet" className="max-w-4xl mx-auto space-y-6">
                     <div className="bg-white rounded-2xl border border-slate-300 shadow-xl p-6 sm:p-10 text-slate-800 text-xs sm:text-sm">
                         {/* Company Header */}
                         <div className="border-b-2 border-emerald-700 pb-4 mb-6 flex flex-col sm:flex-row items-center justify-between gap-4">

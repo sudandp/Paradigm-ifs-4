@@ -10,6 +10,7 @@ import Button from '../../components/ui/Button';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 import Toast from '../../components/ui/Toast';
 import Modal from '../../components/ui/Modal';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 type ToastState = { message: string; type: 'success' | 'error' | 'info' | 'warning' } | null;
 import { useMediaQuery } from '../../hooks/useMediaQuery';
@@ -474,6 +475,7 @@ export default function UserVehiclesManagement() {
 
     return (
         <div className="p-4 md:p-8 max-w-[1600px] mx-auto w-full pb-32 lg:pb-8">
+            <MobileTopBar title="USER VEHICLES" parentPath="/mobile-home" />
             <AdminPageHeader title="Vehicle & Fuel Intelligence">
                 <span className="text-sm text-slate-500 font-normal hidden sm:inline">
                     Fleet insights, fuel consumption analytics and expense trends

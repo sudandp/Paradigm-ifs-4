@@ -38,7 +38,10 @@ import Select from '../../components/ui/Select';
 import { opsApi } from '../../services/opsApi';
 import { htYardExporter } from '../../services/htYardExporter';
 import { api } from '../../services/api';
+import { triggerPrint } from '../../utils/printHelper';
+import { downloadFile } from '../../utils/fileDownloader';
 import type { SnagEntry, Criticality, Department } from '../../types';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -109,6 +112,7 @@ const MiniBarChart: React.FC<{ data: { label: string; value: number; color: stri
   const max = Math.max(...data.map(d => d.value), 1);
   return (
     <div className="space-y-2">
+      <MobileTopBar title="SNAG REPORT" parentPath="/mobile-home" />
       {data.map(d => (
         <div key={d.label} className="flex items-center gap-3">
           <div className="w-24 text-xs text-gray-600 text-right shrink-0">{d.label}</div>
@@ -310,7 +314,7 @@ const SnagReportPage: React.FC = () => {
   const exportSnagToExcel = async (entry: SnagEntry) => {
     const [ExcelJSModule, { saveAs }] = await Promise.all([
       import('exceljs'),
-      import('file-saver')
+      import('../../utils/fileDownloader')
     ]);
     const ExcelJS = ExcelJSModule.default || ExcelJSModule;
     const workbook = new ExcelJS.Workbook();
@@ -380,7 +384,7 @@ const SnagReportPage: React.FC = () => {
   const exportPPMToExcel = async (ppm: any) => {
     const [ExcelJSModule, { saveAs }] = await Promise.all([
       import('exceljs'),
-      import('file-saver')
+      import('../../utils/fileDownloader')
     ]);
     const ExcelJS = ExcelJSModule.default || ExcelJSModule;
     const workbook = new ExcelJS.Workbook();
@@ -633,7 +637,9 @@ const SnagReportPage: React.FC = () => {
     }
     try {
       await api.deleteHTYardAudit(auditId);
-    } catch (err) {}
+    } catch {
+      // Best-effort remote deletion
+    }
     toast.success('Permanently deleted site audit report.');
   };
 
@@ -815,7 +821,7 @@ const SnagReportPage: React.FC = () => {
     e.target.value = '';
   }, [fetchEntries]);
 
-  const exportCSV = () => {
+  const exportCSV = async () => {
     const headers = [
       'Timestamp', 'Email', 'Site Name', 'Purpose of Visit', 'Department',
       'Snag Picture', 'Criticality', 'Snag Description', 'Action To Be Taken',
@@ -839,17 +845,13 @@ const SnagReportPage: React.FC = () => {
       .map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(','))
       .join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `SnagReport_${format(new Date(), 'yyyyMMdd_HHmm')}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const fileName = `SnagReport_${format(new Date(), 'yyyyMMdd_HHmm')}.csv`;
+    await downloadFile(blob, fileName, 'text/csv');
     toast.success('Report exported as CSV');
   };
 
   const handlePrint = () => {
-    window.print();
+    triggerPrint(undefined, 'Snag_Report');
   };
 
   const clearFilters = () => {
@@ -1155,6 +1157,7 @@ const SnagReportPage: React.FC = () => {
                 <ClipboardCheck size={40} className="mb-3 opacity-30" />
                 <p className="font-medium">No report data</p>
                 <p className="text-sm mt-1">Adjust filters or import data</p>
+import MobileTopBar from '../../components/navigation/MobileTopBar';
               </div>
             ) : (
               <table className="w-full text-sm min-w-[900px]">

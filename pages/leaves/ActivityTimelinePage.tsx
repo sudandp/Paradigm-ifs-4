@@ -9,12 +9,13 @@ import { formatDistance, stepsToDistanceKm } from '../../utils/distanceUtils';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
-// @ts-ignore
+// @ts-expect-error - leaflet asset imports
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
-// @ts-ignore
+// @ts-expect-error - leaflet asset imports
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
-// @ts-ignore
+// @ts-expect-error - leaflet asset imports
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 // Fix Leaflet default icon path issues in React bundles
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -82,12 +83,14 @@ export const ActivityTimelinePage: React.FC = () => {
                 return;
             }
 
+            const dayStartIso = new Date(dateStr + 'T00:00:00').toISOString();
+            const dayEndIso = new Date(dateStr + 'T23:59:59.999').toISOString();
             const { data, error } = await supabase
                 .from('route_history')
                 .select('latitude, longitude, timestamp')
                 .eq('user_id', targetUserId)
-                .gte('timestamp', dateStr + 'T00:00:00Z')
-                .lte('timestamp', dateStr + 'T23:59:59Z')
+                .gte('timestamp', dayStartIso)
+                .lte('timestamp', dayEndIso)
                 .order('timestamp', { ascending: true });
 
             if (error) throw error;
@@ -157,7 +160,9 @@ export const ActivityTimelinePage: React.FC = () => {
             if (leafletMapRef.current) {
                 try {
                     leafletMapRef.current.remove();
-                } catch (ignored) {}
+                } catch {
+                    // Ignore error during map destruction
+                }
                 leafletMapRef.current = null;
             }
         };
@@ -166,6 +171,7 @@ export const ActivityTimelinePage: React.FC = () => {
 
     return (
         <div className="min-h-screen bg-page p-4 md:p-6 pb-32">
+      <MobileTopBar title="ACTIVITY TIMELINE" parentPath="/leaves/dashboard" />
             <header className="mb-6">
                 <button onClick={() => navigate(-1)} className="flex items-center text-sm font-medium mb-4 text-muted-foreground hover:text-primary-text transition-colors">
                     <ArrowLeft className="w-4 h-4 mr-2" />

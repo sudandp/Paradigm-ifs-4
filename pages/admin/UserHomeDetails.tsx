@@ -13,6 +13,8 @@ import LoadingScreen from '../../components/ui/LoadingScreen';
 import Toast from '../../components/ui/Toast';
 import Modal from '../../components/ui/Modal';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
+import { safeCopyToClipboard } from '../../utils/clipboardHelper';
 
 interface UserAddressInfo {
   user: User;
@@ -626,7 +628,7 @@ export default function UserHomeDetails() {
   // Copy address to clipboard
   const handleCopyAddress = (id: string, address: string) => {
     if (!address || address === 'Address Not Provided') return;
-    navigator.clipboard.writeText(address);
+    safeCopyToClipboard(address);
     setCopiedId(id);
     setToast({ message: 'Full address copied to clipboard!', type: 'success' });
     setTimeout(() => setCopiedId(null), 2500);
@@ -813,7 +815,8 @@ export default function UserHomeDetails() {
   }
 
   return (
-    <div className="space-y-6 pb-12 animate-fade-in">
+    <div className="space-y-6 pb-12 animate-fade-in p-4 md:p-0">
+      <MobileTopBar title="HOME DETAILS" parentPath="/mobile-home" />
       {/* Page Header */}
       <AdminPageHeader title="User Home Details & Location Directory">
         <div className="flex items-center gap-2 flex-wrap">

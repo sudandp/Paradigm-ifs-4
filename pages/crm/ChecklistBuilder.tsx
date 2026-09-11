@@ -5,6 +5,7 @@ import { crmApi } from '../../services/crmApi';
 import type { CrmChecklistTemplate, ChecklistSectionDef, ChecklistFieldDef, ChecklistFieldType } from '../../types/crm';
 import Toast from '../../components/ui/Toast';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 import {
   ArrowLeft, Plus, Save, Loader2, Trash2, GripVertical,
   ChevronDown, ChevronUp, Copy, Eye, EyeOff, Settings2,
@@ -172,6 +173,7 @@ const ChecklistBuilder: React.FC = () => {
   if (mode === 'list') {
     return (
       <div className={`space-y-6 ${isMobile ? 'bg-[#041b0f] min-h-screen text-white pb-20' : ''}`}>
+      <MobileTopBar title="CHECKLIST TEMPLATES" parentPath="/crm" />
         {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
         <div className={`flex items-center justify-between ${isMobile ? 'p-4' : ''}`}>

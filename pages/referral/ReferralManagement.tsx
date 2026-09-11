@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { api } from '../../services/api';
 import StageBadge from '../../components/hr/StageBadge';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 // ─── Stat Card ───────────────────────────────────────────────────────────────
 interface StatCardProps {
@@ -114,13 +115,14 @@ const ReferralManagement: React.FC = () => {
 
   return (
     <div className="space-y-8 animate-fade-in pb-32 md:pb-8 min-w-0 overflow-x-hidden">
+      <MobileTopBar title="REFERRALS" parentPath="/mobile-home" />
 
       {/* ── Page Header ───────────────────────────────────────────────── */}
       <div className="flex flex-col gap-1 w-full mb-4">
-        {/* Back Navigation Link */}
+        {/* Back Navigation Link (Desktop Only) */}
         <button 
           onClick={() => navigate('/crm')} 
-          className="flex items-center gap-1.5 text-xs text-white/50 md:text-muted hover:text-emerald-400 md:hover:text-accent transition-colors mb-1.5 w-fit group"
+          className="hidden md:flex items-center gap-1.5 text-xs text-white/50 md:text-muted hover:text-emerald-400 md:hover:text-accent transition-colors mb-1.5 w-fit group"
         >
           <ArrowLeft className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-0.5" />
           <span>Back to CRM Pipeline</span>

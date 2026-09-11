@@ -1,4 +1,4 @@
-import { saveAs } from 'file-saver';
+import { saveAsHybrid as saveAs } from './fileDownloader';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay } from 'date-fns';
 import { type EmployeeMonthlyData } from '../components/attendance/MonthlyHoursReport';
 import { calculateStatsForDateRange, resolveMonthlyDayHeaders, parseStatusDetails } from './attendanceCalculations';

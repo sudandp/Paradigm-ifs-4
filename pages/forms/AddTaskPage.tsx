@@ -17,6 +17,7 @@ import { useNotificationStore } from '../../store/notificationStore';
 import { useThemeStore } from '../../store/themeStore';
 import { CheckSquare } from 'lucide-react';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 
 const validationSchema = yup.object({
@@ -172,6 +173,7 @@ const AddTaskPage: React.FC = () => {
     if (isMobile) {
         return (
             <div className={`h-full flex flex-col ${isDark ? 'bg-[#041b0f] text-white' : ''}`}>
+      <MobileTopBar title="ADD TASK" parentPath="/tasks" />
                 <header className="p-4 flex-shrink-0 fo-mobile-header">
                     <h1>{isEditing ? 'Edit Task' : 'Add Task'}</h1>
                 </header>

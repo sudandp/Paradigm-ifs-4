@@ -24,6 +24,7 @@ import BillingSummaryPanel from '../../components/dashboard/BillingSummaryPanel'
 import PendingLeavesPanel from '../../components/dashboard/PendingLeavesPanel';
 import SiteTrendPanel from '../../components/dashboard/SiteTrendPanel';
 import { BarChart3 } from 'lucide-react';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 
 const formatCreatedDate = (dateStr?: string) => {
@@ -122,6 +123,7 @@ const SiteDashboard: React.FC = () => {
 
     return (
         <div className="p-4 md:p-6 bg-slate-50 min-h-screen space-y-6">
+      <MobileTopBar title="SITE DASHBOARD" parentPath="/mobile-home" />
             {dashboard.toast && (
                 <Toast
                     message={dashboard.toast.message}

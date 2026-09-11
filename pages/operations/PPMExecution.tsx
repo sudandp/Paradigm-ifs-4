@@ -8,6 +8,7 @@ import { PPMObservation } from '../../types/ppm';
 import { cachePpmExecution } from '../../services/offline/cache';
 import { enqueue } from '../../services/offline/outbox';
 import toast from 'react-hot-toast';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 export const PPMExecution: React.FC = () => {
   const { categoryId } = useParams<{ categoryId: string }>();
@@ -35,6 +36,7 @@ export const PPMExecution: React.FC = () => {
   if (!template) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+      <MobileTopBar title="PPM EXECUTION" parentPath="/operations/ppm-audits" />
         <div className="text-center space-y-4">
           <h2 className="text-xl font-bold text-slate-800">Invalid Category</h2>
           <button onClick={() => navigate('/operations/ppm-audits')} className="text-emerald-600 font-medium">Go back to dashboard</button>

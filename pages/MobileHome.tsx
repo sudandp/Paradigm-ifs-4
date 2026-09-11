@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence, Variants } from 'framer-motion';
 import { useAuthStore } from '../store/authStore';
 import { usePermissionsStore } from '../store/permissionsStore';
@@ -202,7 +202,24 @@ const MobileHome: React.FC = () => {
     const { permissions } = usePermissionsStore();
     const navigate = useNavigate();
     const { isMobile } = useDevice();
-    const [activeCategory, setActiveCategory] = useState<string | null>(null);
+    const [searchParams, setSearchParams] = useSearchParams();
+    const categoryFromUrl = searchParams.get('category');
+    const [activeCategory, setActiveCategoryState] = useState<string | null>(categoryFromUrl || null);
+
+    // Keep activeCategory in sync with URL ?category= query param
+    useEffect(() => {
+        const cat = searchParams.get('category');
+        setActiveCategoryState(cat || null);
+    }, [searchParams]);
+
+    const setActiveCategory = (cat: string | null) => {
+        setActiveCategoryState(cat);
+        if (cat) {
+            setSearchParams({ category: cat });
+        } else {
+            setSearchParams({});
+        }
+    };
 
     useEffect(() => {
         if (!isMobile) navigate('/profile');

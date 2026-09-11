@@ -10,6 +10,8 @@ import { supabase } from '../../services/supabase';
 import { isOfflineEnabled } from '../../services/offline/featureFlag';
 import { isOnline } from '../../services/offline/networkStatus';
 import toast from 'react-hot-toast';
+import { safeCopyToClipboard } from '../../utils/clipboardHelper';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 export const AssetQRCenterPage: React.FC = () => {
   const navigate = useNavigate();
@@ -125,7 +127,7 @@ export const AssetQRCenterPage: React.FC = () => {
   });
 
   const handleCopyLink = (asset: AssetQrTagData) => {
-    navigator.clipboard.writeText(asset.qrUrl);
+    safeCopyToClipboard(asset.qrUrl);
     setCopiedId(asset.assetId);
     toast.success(`Public URL for ${asset.assetId} copied!`);
     setTimeout(() => setCopiedId(null), 2000);
@@ -144,6 +146,7 @@ export const AssetQRCenterPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50/60 dark:bg-slate-950 p-4 sm:p-6 lg:p-8 pb-32 md:pb-8 space-y-6">
+      <MobileTopBar title="ASSET QR TAGS" parentPath="/mobile-home" />
       {/* Top Header Card */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs">
         <div>

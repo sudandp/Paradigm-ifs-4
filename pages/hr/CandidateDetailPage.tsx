@@ -18,6 +18,7 @@ import {
 import toast from 'react-hot-toast';
 import { CandidateStage } from '../../types';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 // Legal transition states mapping
 const LEGAL_TRANSITIONS: Record<CandidateStage, CandidateStage[]> = {
@@ -131,18 +132,21 @@ const CandidateDetailPage: React.FC = () => {
   ];
 
   return (
-    <div className={`w-full animate-fade-in min-w-0 ${isMobile ? 'bg-[#041b0f] text-white p-4 pt-6 space-y-6 pb-24 min-h-screen' : 'space-y-8 pb-32'}`}>
+    <div className={`w-full animate-fade-in min-w-0 ${isMobile ? 'bg-[#041b0f] text-white p-4 pt-3 space-y-6 pb-24 min-h-screen' : 'space-y-8 pb-32'}`}>
+      <MobileTopBar title="CANDIDATE DETAIL" parentPath="/hrm/calls/queue" />
       {/* Modern Header - Sticky on Mobile */}
       <div className={`flex flex-col md:flex-row justify-between items-start md:items-center gap-4 md:gap-6 ${isMobile ? '' : ''}`}>
         <div className="flex flex-col gap-1 w-full">
-          {/* Back Nav */}
-          <button
-            onClick={() => navigate('/hrm/calls/queue')}
-            className={`flex items-center gap-1.5 text-xs hover:text-emerald-400 transition-colors mb-1.5 w-fit group ${isMobile ? 'text-white/50' : 'text-muted hover:text-accent'}`}
-          >
-            <ArrowLeft className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-0.5" />
-            <span>Back to Queue</span>
-          </button>
+          {/* Back Nav (Desktop Only) */}
+          {!isMobile && (
+            <button
+              onClick={() => navigate('/hrm/calls/queue')}
+              className="flex items-center gap-1.5 text-xs hover:text-emerald-400 transition-colors mb-1.5 w-fit group text-muted hover:text-accent"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-0.5" />
+              <span>Back to Queue</span>
+            </button>
+          )}
 
           <div className="min-w-0">
             <div className="flex items-center gap-3 flex-wrap">

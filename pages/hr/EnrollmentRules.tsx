@@ -39,6 +39,7 @@ import {
 import { api } from '../../services/api';
 
 import { useSettingsStore } from '../../store/settingsStore';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 type TabType = 'documents' | 'verifications' | 'statutory' | 'family' | 'site' | 'attestation';
 type StaffCategory = 'all' | 'office' | 'field' | 'site';
@@ -421,6 +422,7 @@ const EnrollmentRules: React.FC = () => {
 
     return (
         <form onSubmit={handleSubmit(onSubmit)} className="p-4 md:p-6 lg:p-8 space-y-6 w-full animate-fade-in">
+            <MobileTopBar title="ENROLLMENT RULES" parentPath="/mobile-home" />
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
             {/* Page Header */}

@@ -1,16 +1,23 @@
 package com.paradigm.ifs;
 
+import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.location.Location;
+import android.location.LocationManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.PowerManager;
 import android.provider.Settings;
+import androidx.core.content.ContextCompat;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.LocationServices;
 
 @CapacitorPlugin(name = "Tracking")
 public class TrackingPlugin extends Plugin {
@@ -130,6 +137,82 @@ public class TrackingPlugin extends Plugin {
             call.resolve();
         } catch (Exception e) {
             call.reject("Failed to open app settings: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void checkLocationIntegrity(PluginCall call) {
+        Context context = getContext();
+        boolean isMock = false;
+        String mockReason = "";
+
+        try {
+            LocationManager lm = (LocationManager) context.getSystemService(Context.LOCATION_SERVICE);
+            if (lm != null) {
+                boolean hasPerm = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+                                  ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+                if (hasPerm) {
+                    Location gpsLoc = null;
+                    Location netLoc = null;
+                    try { gpsLoc = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER); } catch (SecurityException ignored) {}
+                    try { netLoc = lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER); } catch (SecurityException ignored) {}
+                    Location bestLoc = gpsLoc != null ? gpsLoc : netLoc;
+
+                    if (bestLoc != null) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            if (bestLoc.isMock()) {
+                                isMock = true;
+                                mockReason = "Location.isMock() true (" + bestLoc.getProvider() + ")";
+                            }
+                        } else {
+                            if (bestLoc.isFromMockProvider()) {
+                                isMock = true;
+                                mockReason = "Location.isFromMockProvider() true (" + bestLoc.getProvider() + ")";
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (!isMock && ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                try {
+                    FusedLocationProviderClient fusedClient = LocationServices.getFusedLocationProviderClient(context);
+                    fusedClient.getLastLocation().addOnSuccessListener(loc -> {
+                        boolean fusedMock = false;
+                        String reason = "";
+                        if (loc != null) {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                fusedMock = loc.isMock();
+                            } else {
+                                fusedMock = loc.isFromMockProvider();
+                            }
+                            if (fusedMock) {
+                                reason = "FusedLocation.isMock() true";
+                            }
+                        }
+                        JSObject res = new JSObject();
+                        res.put("isMock", fusedMock);
+                        res.put("mockReason", reason);
+                        call.resolve(res);
+                    }).addOnFailureListener(e -> {
+                        JSObject res = new JSObject();
+                        res.put("isMock", false);
+                        res.put("mockReason", "");
+                        call.resolve(res);
+                    });
+                    return;
+                } catch (Exception ignored) {}
+            }
+
+            JSObject res = new JSObject();
+            res.put("isMock", isMock);
+            res.put("mockReason", mockReason);
+            call.resolve(res);
+        } catch (Exception e) {
+            JSObject res = new JSObject();
+            res.put("isMock", false);
+            res.put("error", e.getMessage());
+            call.resolve(res);
         }
     }
 }

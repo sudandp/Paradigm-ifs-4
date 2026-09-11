@@ -10,6 +10,7 @@ import { Loader2, Building, ArrowRight, ArrowLeft, MapPin, Plus, X } from 'lucid
 import { format } from 'date-fns';
 import { useAuthStore } from '../../store/authStore';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 const SelectOrganization = () => {
     const navigate = useNavigate();
@@ -348,6 +349,7 @@ const SelectOrganization = () => {
     if (isLoading) {
         return (
             <div className="flex justify-center items-center h-96">
+      <MobileTopBar title="SELECT ORGANIZATION" parentPath="/onboarding" />
                 <Loader2 className="h-8 w-8 animate-spin text-accent" />
             </div>
         );

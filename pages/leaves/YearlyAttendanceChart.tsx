@@ -506,30 +506,22 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({
                     <Button 
                         variant="secondary" 
                         size="sm" 
-                        className={`btn-icon !p-1 h-6 w-6 ${
-                            isMobileEffective 
-                                ? '!bg-[#091c13] !border-[#2a4536] text-white hover:bg-[#1a3225]' 
-                                : ''
-                        }`} 
+                        className="btn-icon !p-1 h-6 w-6 cursor-pointer" 
                         onClick={() => changeYear(-1)}
+                        aria-label="Previous year"
                     >
                         <ChevronLeft className="h-4 w-4" />
                     </Button>
-                    <span className={`text-xs font-bold min-w-[40px] text-center ${
-                        isMobileEffective ? 'text-white' : 'text-gray-700'
-                    }`}>
+                    <span className="text-xs font-bold min-w-[40px] text-center text-primary-text dark:text-white">
                         {currentYear}
                     </span>
                     <Button 
                         variant="secondary" 
                         size="sm" 
-                        className={`btn-icon !p-1 h-6 w-6 ${
-                            isMobileEffective 
-                                ? '!bg-[#091c13] !border-[#2a4536] text-white hover:bg-[#1a3225]' 
-                                : ''
-                        }`} 
+                        className="btn-icon !p-1 h-6 w-6 cursor-pointer" 
                         onClick={() => changeYear(1)} 
                         disabled={currentYear >= new Date().getFullYear()}
+                        aria-label="Next year"
                     >
                         <ChevronRight className="h-4 w-4" />
                     </Button>

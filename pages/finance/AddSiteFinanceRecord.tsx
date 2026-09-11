@@ -16,6 +16,7 @@ import LoadingScreen from '../../components/ui/LoadingScreen';
 
 import { getUserRoutingScope, getSiteMetadataFromMatrix } from '../../services/siteRoutingScope';
 import type { SiteResponsibilityMatrix } from '../../types/siteRouting';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 
 const AddSiteFinanceRecord: React.FC = () => {
@@ -345,6 +346,7 @@ const AddSiteFinanceRecord: React.FC = () => {
 
     return (
         <div className="w-full p-4 md:p-8 space-y-6">
+      <MobileTopBar title="ADD FINANCE RECORD" parentPath="/finance/site-tracker" />
             <button 
                 onClick={() => navigate('/finance?tab=site')}
                 className="flex items-center text-xs font-bold text-gray-400 hover:text-primary transition-all group"

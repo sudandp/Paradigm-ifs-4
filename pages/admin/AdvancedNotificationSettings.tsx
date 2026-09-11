@@ -27,6 +27,7 @@ import Checkbox from '../../components/ui/Checkbox';
 import { api } from '../../services/api';
 import type { AutomatedNotificationRule } from '../../types';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 import { PROACTIVE_TRIGGER_TYPES, APP_EVENT_TYPES } from '../../utils/notificationTypes';
 
 interface AdvancedNotificationSettingsProps {
@@ -147,6 +148,7 @@ const AdvancedNotificationSettings: React.FC<AdvancedNotificationSettingsProps> 
 
     return (
         <div className="space-y-6 pb-20">
+            <MobileTopBar title="NOTIFICATION RULES" parentPath="/mobile-home" />
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
             {!hideHeader && (

@@ -2,6 +2,7 @@ import React, { useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { HTPpmCalendarView, HTPpmCalendarViewHandle } from '../../components/ht-yard/HTPpmCalendarView';
 import { Calendar, ArrowLeft, Sparkles } from 'lucide-react';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 export const PPMCalendarPage: React.FC = () => {
   const navigate = useNavigate();
@@ -9,6 +10,7 @@ export const PPMCalendarPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50/60 dark:bg-slate-950 p-4 sm:p-6 lg:p-8 pb-32 md:pb-8 space-y-6">
+      <MobileTopBar title="PPM CALENDAR" parentPath="/mobile-home" />
       {/* Top Header Card — Styled identical to Audit Change Log */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs">
         <div>

@@ -5,6 +5,7 @@ import type { User } from '../../types';
 import WorkflowChart2D from '../../components/admin/WorkflowChart2D';
 import { X, Loader2 } from 'lucide-react';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 
 type UserWithManager = User & { managerName?: string };
@@ -46,6 +47,7 @@ const WorkflowChartFullScreen: React.FC = () => {
 
     return (
         <div className="w-screen h-screen relative bg-slate-50 overflow-hidden">
+            <MobileTopBar title="WORKFLOW CHART" parentPath="/admin/approval-workflow" />
             {/* Close Button */}
             <button
                 onClick={handleClose}

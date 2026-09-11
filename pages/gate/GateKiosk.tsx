@@ -21,6 +21,8 @@ import { playFeedbackSound, initAudioContext } from '../../utils/audioFeedback';
 import { useAuthStore } from '../../store/authStore';
 import { isAdmin as checkIsAdmin } from '../../utils/auth';
 import { ScanLine, User, QrCode, Camera, Shield, Lock, Unlock, ChevronDown, CheckCircle2, XCircle, AlertTriangle, Loader2, Search, Settings, LogIn, LogOut, Coffee, MapPin, ArrowLeft, Copy, Hash, Delete, Eye } from 'lucide-react';
+import { safeCopyToClipboard } from '../../utils/clipboardHelper';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 // ─── Constants ──────────────────────────────────────────────────────
 const SCAN_INTERVAL_MS = 500; // Snappier detection as per requirements
@@ -487,6 +489,7 @@ const GateKiosk: React.FC = () => {
     return (
       <div className="fixed inset-0 z-[99999] flex flex-col items-center justify-center"
         style={{ background: 'linear-gradient(135deg, #041b0f 0%, #0a3d1f 50%, #041b0f 100%)' }}>
+      <MobileTopBar title="GATE KIOSK" parentPath="/mobile-home" />
         <div className="flex flex-col items-center gap-6 max-w-xs w-full px-6">
           <div className="w-20 h-20 rounded-full bg-emerald-500/10 flex items-center justify-center mb-2">
             <Lock className="w-10 h-10 text-emerald-400" />
@@ -771,7 +774,7 @@ const GateKiosk: React.FC = () => {
                   <button 
                     onClick={() => {
                       if (deviceId) {
-                        navigator.clipboard.writeText(deviceId);
+                        safeCopyToClipboard(deviceId);
                         alert('Device ID copied to clipboard');
                       }
                     }}

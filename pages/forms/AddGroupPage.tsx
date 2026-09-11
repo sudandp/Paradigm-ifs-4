@@ -5,6 +5,7 @@ import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import { Building } from 'lucide-react';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 
 const AddGroupPage: React.FC = () => {
@@ -39,6 +40,7 @@ const AddGroupPage: React.FC = () => {
     if (isMobile) {
         return (
             <div className="h-full flex flex-col">
+      <MobileTopBar title="ADD GROUP" parentPath="/hr/entity-management" />
                 <header className="p-4 flex-shrink-0 fo-mobile-header">
                     <h1>Add Group</h1>
                 </header>

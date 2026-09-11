@@ -7,6 +7,7 @@ import Toast from '../../components/ui/Toast';
 import type { OpsTicket, TicketPriority, TicketCategory, TicketStatus, InventoryItem, OpsTicketMaterial } from '../../types/operations';
 import { Plus, Search, AlertCircle, Clock, CheckCircle2, MessageSquare, Loader2, Package, Wrench, Trash2 } from 'lucide-react';
 import { inventoryApi } from '../../services/inventoryApi';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 const PRIORITY_COLORS: Record<TicketPriority, string> = {
   P1: 'bg-red-100 text-red-800 border-red-200',
@@ -163,6 +164,7 @@ const HelpdeskTickets: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <MobileTopBar title="HELPDESK TICKETS" parentPath="/mobile-home" />
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
       
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">

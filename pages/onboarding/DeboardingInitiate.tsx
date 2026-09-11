@@ -7,6 +7,7 @@ import Input from '../../components/ui/Input';
 import Button from '../../components/ui/Button';
 import Checkbox from '../../components/ui/Checkbox';
 import toast from 'react-hot-toast';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 interface DeboardingFormData {
     employeeId: string;
@@ -66,6 +67,7 @@ const DeboardingInitiate = () => {
 
     return (
         <div className="max-w-4xl mx-auto py-8 px-4">
+      <MobileTopBar title="DEBOARDING" parentPath="/onboarding" />
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-8 bg-white p-8 rounded-xl shadow-sm border border-border">
                 <FormHeader 
                     title="Initiate Deboarding & NDC Engine" 

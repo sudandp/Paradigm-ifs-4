@@ -21,6 +21,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ProfilePlaceholder } from '../../components/ui/ProfilePlaceholder';
 import { useAuthStore } from '../../store/authStore';
 import { isAdmin } from '../../utils/auth';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 // --- Constants & Helpers ---
 
@@ -195,6 +196,7 @@ const TrackingLogsView: React.FC<{
     if (loading && refreshKey === 0) {
         return (
             <div className="flex flex-col items-center py-20">
+      <MobileTopBar title="USER ACTIVITY TRACKING" parentPath="/mobile-home" />
                 <Loader2 className="h-8 w-8 animate-spin text-slate-300" />
             </div>
         );

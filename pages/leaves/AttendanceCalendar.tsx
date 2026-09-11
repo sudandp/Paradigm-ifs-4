@@ -530,31 +530,29 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                         </span>
                     )}
                 </div>
-                {isMobile ? (
-                    <div className="flex items-center gap-1.5">
-                        <button 
-                            onClick={() => setCurrentDate(subMonths(currentDate, 1))}
-                            className="h-7 w-7 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] flex items-center justify-center shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
-                            aria-label="Previous month"
-                        >
-                            <ChevronLeft className="h-4 w-4 stroke-[2.5]" />
-                        </button>
-                        <span className="font-bold min-w-[80px] text-center text-xs text-white">{format(currentDate, 'MMMM yyyy')}</span>
-                        <button 
-                            onClick={() => setCurrentDate(addMonths(currentDate, 1))}
-                            className="h-7 w-7 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] flex items-center justify-center shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
-                            aria-label="Next month"
-                        >
-                            <ChevronRight className="h-4 w-4 stroke-[2.5]" />
-                        </button>
-                    </div>
-                ) : (
-                    <div className="flex items-center gap-1">
-                        <Button variant="secondary" size="sm" className="btn-icon !p-1 h-6 w-6" onClick={() => setCurrentDate(subMonths(currentDate, 1))}><ChevronLeft className="h-4 w-4" /></Button>
-                        <span className="font-medium min-w-[80px] text-center text-xs">{format(currentDate, 'MMMM yyyy')}</span>
-                        <Button variant="secondary" size="sm" className="btn-icon !p-1 h-6 w-6" onClick={() => setCurrentDate(addMonths(currentDate, 1))}><ChevronRight className="h-4 w-4" /></Button>
-                    </div>
-                )}
+                <div className="flex items-center gap-1">
+                    <Button 
+                        variant="secondary" 
+                        size="sm" 
+                        className="btn-icon !p-1 h-6 w-6 cursor-pointer" 
+                        onClick={() => setCurrentDate(subMonths(currentDate, 1))}
+                        aria-label="Previous month"
+                    >
+                        <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className="font-medium min-w-[80px] text-center text-xs text-primary-text">
+                        {format(currentDate, 'MMMM yyyy')}
+                    </span>
+                    <Button 
+                        variant="secondary" 
+                        size="sm" 
+                        className="btn-icon !p-1 h-6 w-6 cursor-pointer" 
+                        onClick={() => setCurrentDate(addMonths(currentDate, 1))}
+                        aria-label="Next month"
+                    >
+                        <ChevronRight className="h-4 w-4" />
+                    </Button>
+                </div>
             </div>
 
             {isLoading || !isEventsRelevant ? (

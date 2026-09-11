@@ -5,6 +5,7 @@ import type { Task, Notification, TaskStatus } from '../../types';
 import { Loader2, ListTodo, Bell } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 const TaskStatusChip: React.FC<{ status: TaskStatus }> = ({ status }) => {
     const styles: Record<TaskStatus, string> = {
@@ -53,6 +54,7 @@ const Tasks: React.FC = () => {
 
     return (
         <div>
+      <MobileTopBar title="MY TASKS" parentPath="/onboarding" />
             <header className="p-4 flex-shrink-0 text-center fo-mobile-header sticky top-0 bg-[#041b0f]/80 backdrop-blur-sm z-10 border-b border-[#374151]">
                 <h1>Tasks</h1>
             </header>

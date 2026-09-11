@@ -11,6 +11,7 @@ import LoadingScreen from '../../components/ui/LoadingScreen';
 import { getUserRoutingScope, validateImportRows, getSiteMetadataFromMatrix, normalizeCompanyShortName, isHistoricalLockedPeriod, getCanonicalUserName, getCleanRoot, normalizeHrInchargeName, normalizeOpsInchargeName, type UserRoutingScope } from '../../services/siteRoutingScope';
 import SubmitSiteChangeRequestModal from '../../components/modals/SubmitSiteChangeRequestModal';
 import type { SiteResponsibilityMatrix } from '../../types/siteRouting';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 
 const SiteAttendanceTracker: React.FC = () => {
@@ -329,7 +330,7 @@ const SiteAttendanceTracker: React.FC = () => {
         try {
             const [ExcelJSModule, { saveAs }] = await Promise.all([
                 import('exceljs'),
-                import('file-saver')
+                import('../../utils/fileDownloader')
             ]);
             const ExcelJS = ExcelJSModule.default || ExcelJSModule;
             const workbook = new ExcelJS.Workbook();
@@ -379,7 +380,7 @@ const SiteAttendanceTracker: React.FC = () => {
         try {
             const [ExcelJSModule, { saveAs }] = await Promise.all([
                 import('exceljs'),
-                import('file-saver')
+                import('../../utils/fileDownloader')
             ]);
             const ExcelJS = ExcelJSModule.default || ExcelJSModule;
 
@@ -877,6 +878,7 @@ const SiteAttendanceTracker: React.FC = () => {
 
     return (
         <div className="space-y-6 w-full px-4">
+      <MobileTopBar title="ATTENDANCE TRACKER" parentPath="/finance" />
             {/* ── Action Bar ── */}
             <div className="bg-[#06251c] md:bg-white rounded-xl border border-white/5 md:border-gray-200 shadow-sm p-4 md:p-5 space-y-4">
                 {/* Row 1: All Filtering Options */}

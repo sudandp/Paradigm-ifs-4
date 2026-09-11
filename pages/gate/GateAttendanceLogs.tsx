@@ -13,6 +13,7 @@ import {
 import { format } from 'date-fns';
 import { useAuthStore } from '../../store/authStore';
 import { isAdmin as checkIsAdmin } from '../../utils/auth';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 const formatAction = (action?: string) => {
   if (!action) return '—';
@@ -109,6 +110,7 @@ const GateAttendanceLogs: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-page">
+      <MobileTopBar title="GATE LOGS" parentPath="/mobile-home" />
       {/* Header */}
       <div className="sticky top-0 z-10 bg-card border-b border-border px-4 md:px-6 py-4">
         <div className="flex items-center gap-3">

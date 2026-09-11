@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
+import { openExternal } from '../utils/urlHandler';
 
 /**
  * Compares two semver strings (e.g. "6.0.0" vs "7.0.0").
@@ -51,18 +52,14 @@ const UpdateRequiredBanner: React.FC = () => {
     const fallbackUrl = 'https://play.google.com/store/apps/details?id=com.paradigm.ifs';
 
     if (Capacitor.isNativePlatform()) {
-      window.open(playStoreUrl, '_system');
+      openExternal(playStoreUrl);
     } else {
       window.open(fallbackUrl, '_blank');
     }
   };
 
   const handleSupport = () => {
-    if (Capacitor.isNativePlatform()) {
-      window.open(downloadUrl, '_system');
-    } else {
-      window.open(downloadUrl, '_blank');
-    }
+    openExternal(downloadUrl);
   };
 
   const isWhatsApp = false; // Disable WhatsApp styling for the main button

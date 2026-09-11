@@ -9,6 +9,7 @@ import { htEquipmentCatalogService } from '../../services/htEquipmentCatalogServ
 import { supabase } from '../../services/supabase';
 import { isOfflineEnabled } from '../../services/offline/featureFlag';
 import { isOnline } from '../../services/offline/networkStatus';
+import { triggerPrint } from '../../utils/printHelper';
 import toast from 'react-hot-toast';
 
 interface AuditHistoryRecord {
@@ -257,7 +258,7 @@ export const HTAssetPublicPassport: React.FC = () => {
   const handleDownloadPdf = () => {
     toast.success('Generating official verified PDF certificate...', { icon: '📄' });
     setTimeout(() => {
-      window.print();
+      triggerPrint(undefined, `Asset_Passport_${assetDetails.assetId || 'Certificate'}`);
     }, 500);
   };
 

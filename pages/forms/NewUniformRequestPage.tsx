@@ -9,6 +9,7 @@ import Select from '../../components/ui/Select';
 import Toast from '../../components/ui/Toast';
 import { Loader2, Save, Shirt, X } from 'lucide-react';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 
 type UniformFormData = {
@@ -57,6 +58,7 @@ const UniformSizeTable: React.FC<UniformSizeTableProps> = ({
 
     return (
         <div className="border rounded-xl flex flex-col overflow-hidden bg-card shadow-sm">
+      <MobileTopBar title="NEW UNIFORM REQUEST" parentPath="/uniforms" />
             <div className="p-4 bg-accent/5 border-b flex items-center justify-between">
                 <h4 className="font-bold text-primary-text">{title}</h4>
                 <div className="flex gap-4 text-[10px] font-bold text-muted uppercase tracking-wider">

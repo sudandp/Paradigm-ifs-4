@@ -10,6 +10,7 @@ import Toast from '../../components/ui/Toast';
 import { Monitor, Battery, Wifi, Shield, Plus, RefreshCw, AlertCircle, CheckCircle, Smartphone, MapPin, Search, Edit, UserCheck, Trash2 } from 'lucide-react';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 import Pagination from '../../components/ui/Pagination';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 const KioskManagement: React.FC = () => {
   const [kiosks, setKiosks] = useState<KioskDevice[]>([]);
@@ -145,6 +146,7 @@ const KioskManagement: React.FC = () => {
 
   return (
     <div className="p-4 md:p-6 w-full">
+      <MobileTopBar title="KIOSK MONITORING" parentPath="/mobile-home" />
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
       <div className="border-0 shadow-none md:bg-card md:p-6 md:rounded-xl md:shadow-card mb-6">

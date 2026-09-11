@@ -5,6 +5,7 @@ import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Toast from '../ui/Toast';
 import { RotateCw, Copy, Check, AlertTriangle, KeyRound } from 'lucide-react';
+import { safeCopyToClipboard } from '../../utils/clipboardHelper';
 
 interface BulkPasscodeResetModalProps {
   isOpen: boolean;
@@ -68,14 +69,14 @@ export const BulkPasscodeResetModal: React.FC<BulkPasscodeResetModalProps> = ({
       .join('\n');
 
     const content = `🔐 Generated Temporary Passcodes (${results.length} Users):\n\n${lines}\n\nNote: Please ask employees to log in and change their passcode.`;
-    navigator.clipboard.writeText(content);
+    safeCopyToClipboard(content);
     setCopiedAll(true);
     setTimeout(() => setCopiedAll(false), 2500);
     setToast({ message: 'All passcodes copied to clipboard!', type: 'success' });
   };
 
   const handleCopySingle = (code: string, index: number) => {
-    navigator.clipboard.writeText(code);
+    safeCopyToClipboard(code);
     setCopiedIndex(index);
     setTimeout(() => setCopiedIndex(null), 2000);
   };

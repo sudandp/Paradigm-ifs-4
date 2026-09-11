@@ -4,7 +4,7 @@
  * using the ExcelJS library.
  */
 import * as ExcelJS from 'exceljs';
-import { saveAs } from 'file-saver';
+import { saveAsHybrid as saveAs } from './fileDownloader';
 import { TEMPLATE_DEFINITIONS, type TemplateDefinition, type TemplateColumn } from './templateDefinitions';
 
 export interface ValidationError {

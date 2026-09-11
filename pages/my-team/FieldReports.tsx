@@ -12,6 +12,7 @@ import Select from '../../components/ui/Select';
 import { useDevice } from '../../hooks/useDevice';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 import BlurhashImage from '../../components/ui/BlurhashImage';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 
 // --- PDF Preview Component ---
@@ -178,6 +179,7 @@ const PdfPreviewModal: React.FC<{
 
                                         return (
                                             <React.Fragment key={item.id}>
+      <MobileTopBar title="FIELD REPORTS" parentPath="/mobile-home" />
                                                 <tr>
                                                     <td style={{ padding: '10pt 0', borderBottom: '1px solid #E5E7EB', fontSize: '11pt', color: '#4B5563', verticalAlign: 'top' }}>{item.label}</td>
                                                     <td style={{ padding: '10pt 0', borderBottom: '1px solid #E5E7EB', textAlign: 'right', width: '80px', verticalAlign: 'top' }}>

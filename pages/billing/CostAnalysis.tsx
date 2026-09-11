@@ -11,6 +11,7 @@ import { useSettingsStore } from '../../store/settingsStore';
 import Input from '../../components/ui/Input';
 import Toast from '../../components/ui/Toast';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 
 
@@ -20,6 +21,7 @@ const CostReportCard: React.FC<{ item: SubmissionCostBreakdown }> = ({ item }) =
 
     return (
         <div className="bg-card rounded-xl border border-border p-4">
+      <MobileTopBar title="VERIFICATION COSTING" parentPath="/mobile-home" />
             <div className="flex justify-between items-start">
                 <div>
                     <p className="font-semibold text-primary-text">{item.employeeName}</p>

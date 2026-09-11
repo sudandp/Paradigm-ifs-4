@@ -422,6 +422,7 @@ export interface LeaveBalance {
   userId: string;
   [key: string]: any; // Broadened to allow debug and other dynamic fields
   earnedTotal: number;
+  qualifyingDaysTotal?: number;
   earnedUsed: number;
   earnedPending: number;
   sickTotal: number;
@@ -455,6 +456,7 @@ export interface LeaveBalance {
   debug?: {
     staffType?: string;
     countableDays?: number;
+    qualifyingDaysTotal?: number;
     hasEarnedRule?: boolean;
     day17IsFloating?: boolean;
     hasSettings?: boolean;

@@ -1,5 +1,6 @@
 import { createClient, PostgrestResponse } from '@supabase/supabase-js';
 import { Capacitor } from '@capacitor/core';
+import { getApiUrl } from '../utils/apiClient';
 import { supabase } from './supabase';
 import { dispatchNotificationFromRules } from './notificationService';
 import type {
@@ -5733,7 +5734,7 @@ export const api = {
     }
 
     const { data: { session } } = await supabase.auth.getSession();
-    const response = await fetch('/api/send-email', {
+    const response = await fetch(getApiUrl('/api/send-email'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -5808,7 +5809,7 @@ export const api = {
     }
 
     const { data: { session } } = await supabase.auth.getSession();
-    const response = await fetch('/api/send-email', {
+    const response = await fetch(getApiUrl('/api/send-email'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -5923,7 +5924,7 @@ export const api = {
     const { data: { session } } = await supabase.auth.getSession();
     
     // Call the Vercel API runner (server-side generation)
-    const response = await fetch('/api/send-email', {
+    const response = await fetch(getApiUrl('/api/send-email'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -5952,7 +5953,7 @@ export const api = {
 
   // ═══ Unified Job Runner APIs ═══════════════════════════════════════════════
   runJobNow: async (jobType: 'broadcast' | 'automated' | 'email', jobId: string | number): Promise<any> => {
-    const res = await fetch('/api/jobs/run-now', {
+    const res = await fetch(getApiUrl('/api/jobs/run-now'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ jobType, jobId: String(jobId) })
@@ -5963,7 +5964,7 @@ export const api = {
   },
 
   toggleJobActive: async (jobType: 'automated' | 'email', jobId: string | number, isActive: boolean): Promise<any> => {
-    const res = await fetch('/api/jobs/toggle-active', {
+    const res = await fetch(getApiUrl('/api/jobs/toggle-active'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ jobType, jobId: String(jobId), isActive })
@@ -6053,7 +6054,7 @@ export const api = {
     if (error || !data) throw new Error('SMTP account not found');
 
     const { data: { session } } = await supabase.auth.getSession();
-    const response = await fetch('/api/send-email', {
+    const response = await fetch(getApiUrl('/api/send-email'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -6097,7 +6098,7 @@ export const api = {
     const config = await api.getEmailConfig();
 
     const { data: { session } } = await supabase.auth.getSession();
-    const response = await fetch('/api/send-email', {
+    const response = await fetch(getApiUrl('/api/send-email'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -6508,12 +6509,15 @@ export const api = {
     // PRIORITY 1: If floatingHolidayMonths is configured, it is the SOLE gate (validFrom/validTill ignored).
     // PRIORITY 2 (fallback): No month array → use validFrom/validTill dates.
     const isFloatingHolidayValid = (dateToCheck: string) => {
-        if (rules.floatingHolidayMonths && rules.floatingHolidayMonths.length > 0) {
+        const fMonths = rules.floatingHolidayMonths || (rules as any).floating_holiday_months;
+        if (fMonths && fMonths.length > 0) {
             const monthIdx = new Date(dateToCheck.replace(/-/g, '/')).getMonth();
-            return rules.floatingHolidayMonths.includes(monthIdx);
+            return fMonths.includes(monthIdx);
         }
-        if (rules.floatingLeavesValidFrom && dateToCheck < rules.floatingLeavesValidFrom) return false;
-        if (rules.floatingLeavesExpiryDate && dateToCheck > rules.floatingLeavesExpiryDate) return false;
+        const vFrom = rules.floatingLeavesValidFrom || (rules as any).floating_leaves_valid_from;
+        const vTill = rules.floatingLeavesExpiryDate || (rules as any).floating_leaves_expiry_date;
+        if (vFrom && dateToCheck < vFrom) return false;
+        if (vTill && dateToCheck > vTill) return false;
         return true;
     };
 
@@ -6531,81 +6535,9 @@ export const api = {
     let earnedTotal = rules.annualEarnedLeaves || 0;
     let earnedThisMonth = 0;
     let earnedPreviousMonth = 0;
+    let qualifyingDaysTotal = 0;
 
-    if (rules.earnedLeaveAccrual) {
-      const openingBalance = userData.earned_leave_opening_balance || 0;
-      const openingDate = userData.earned_leave_opening_date || `${currentYear}-01-01`;
-      const openingDateObj = new Date(openingDate.replace(/-/g, '/')); 
-      
-      const accrualRate = rules.earnedLeaveAccrual?.amountEarned || 1.5;
-      const daysRequired = rules.earnedLeaveAccrual?.daysRequired || 30;
-      const useWorkedDays = rules.useWorkedDaysForEarnedLeave || false;
 
-      if (useWorkedDays) {
-        if (accrualEndDate < openingDateObj) {
-          earnedTotal = 0;
-          earnedThisMonth = 0;
-          earnedPreviousMonth = 0;
-        } else {
-          // Count actual worked days (dates with attendance events) within the accrual window
-          const workedDays = Array.from(attendedDates).filter(dateStr => {
-              return dateStr >= openingDate && dateStr <= format(accrualEndDate, 'yyyy-MM-dd');
-          }).length;
-          earnedTotal = openingBalance + Math.floor(workedDays / daysRequired) * accrualRate;
-
-          // Previous month worked days balance
-          const prevMonthEnd = endOfMonth(subMonths(accrualEndDate, 1));
-          if (prevMonthEnd >= openingDateObj) {
-              const workedDaysPrev = Array.from(attendedDates).filter(dateStr => {
-                  return dateStr >= openingDate && dateStr <= format(prevMonthEnd, 'yyyy-MM-dd');
-              }).length;
-              earnedPreviousMonth = openingBalance + Math.floor(workedDaysPrev / daysRequired) * accrualRate;
-          } else {
-              earnedPreviousMonth = 0;
-          }
-          
-          earnedThisMonth = Math.max(0, earnedTotal - earnedPreviousMonth);
-        }
-      } else {
-        if (accrualEndDate < openingDateObj) {
-          earnedTotal = 0;
-          earnedThisMonth = 0;
-          earnedPreviousMonth = 0;
-        } else {
-          // 1. Total Cumulative Accrual
-          // Policy: EL is LIFETIME (carry-forward enabled).
-          // ALL users: Use CALENDAR DAYS for EL accrual.
-          const calendarDaysTotal = differenceInCalendarDays(accrualEndDate, openingDateObj) + 1;
-          earnedTotal = openingBalance + (calendarDaysTotal / daysRequired) * accrualRate;
-          
-          // 2. Accrual for the CURRENT viewed month
-          const monthStart = startOfMonth(accrualEndDate);
-          const effectiveMonthStart = monthStart < openingDateObj ? openingDateObj : monthStart;
-          if (accrualEndDate >= effectiveMonthStart) {
-            // ALL users: use calendar days for consistency with total accrual
-            const calendarDaysThisMonth = differenceInCalendarDays(accrualEndDate, effectiveMonthStart) + 1;
-            earnedThisMonth = (calendarDaysThisMonth / daysRequired) * accrualRate;
-          }
-
-          // 3. Starting Balance (Month end of previous month)
-          const prevMonthEnd = endOfMonth(subMonths(accrualEndDate, 1));
-          if (prevMonthEnd >= openingDateObj) {
-              // ALL users: use calendar days for consistency with total accrual
-              const calendarDaysPrev = differenceInCalendarDays(prevMonthEnd, openingDateObj) + 1;
-              earnedPreviousMonth = openingBalance + (calendarDaysPrev / daysRequired) * accrualRate;
-          } else {
-              earnedPreviousMonth = 0;
-          }
-        }
-      }
-
-      // Validity check for Earned Leave
-      if (isNotValid(rules.earnedLeavesValidFrom, rules.earnedLeavesExpiryDate)) {
-          earnedTotal = 0;
-          earnedThisMonth = 0;
-          earnedPreviousMonth = 0;
-      }
-    }
 
     const holidayDates = new Set(holidays.map(h => {
         const dStr = String(h.date);
@@ -6656,6 +6588,7 @@ export const api = {
              if (is3rdSat) {
                  if (!isBangaloreStaff) return false;
                  if (!isMale) return false;
+                 if (!isFloatingHolidayValid(dateStr)) return false;
              }
              
              if (rhN === 0) return true; 
@@ -6739,6 +6672,93 @@ export const api = {
             }
         }
     });
+
+    // --- Earned Leave Accrual (Qualifying Days based: 0.5 EL per 10 qualifying days) ---
+    // Policy rule: Every 10 days of work/qualifying attendance = 0.5 EL (so 30 days = 1.5 EL).
+    // Qualifying days include:
+    //   1. Worked / Present days (punches or approved WFH)
+    //   2. Approved Holidays (Gazetted, admin, or user-selected)
+    //   3. Approved Compensatory Offs (CO)
+    //   4. Qualified Weekly Offs (Sundays where employee worked during the week, e.g. 6 days worked = 7 qualifying)
+    //   5. Approved paid leaves
+    if (rules.earnedLeaveAccrual) {
+      const openingBalance = Number(userData.earned_leave_opening_balance || 0);
+      const openingDate = userData.earned_leave_opening_date || `${currentYear}-01-01`;
+      const openingDateObj = new Date(openingDate.replace(/-/g, '/')); 
+
+      const getQualifyingDaysCount = (cutoffDate: Date): number => {
+        if (cutoffDate < openingDateObj) return 0;
+        const cur = new Date(openingDateObj);
+        let count = 0;
+        let weekWorkDays = 0;
+
+        while (cur <= cutoffDate) {
+          const dStr = format(cur, 'yyyy-MM-dd');
+          const dow = cur.getDay(); // 0 = Sunday
+          const hasPunch = attendedDates.has(dStr) || workDatesSet.has(dStr);
+
+          // Check approved leaves for this day
+          const dayLeave = approvedLeaves.find(l => {
+            const lStatus = String(l.status || '').toLowerCase();
+            if (lStatus !== 'approved' && lStatus !== 'correction_made') return false;
+            return dStr >= l.start_date && dStr <= l.end_date;
+          });
+          const leaveType = dayLeave ? String(dayLeave.leave_type || (dayLeave as any).type || '').toLowerCase() : '';
+          const isHoliday = holidayDates.has(dStr);
+
+          let isQualifying = false;
+          if (hasPunch || leaveType.includes('wfh')) {
+            isQualifying = true;
+            weekWorkDays++;
+          } else if (isHoliday || leaveType.includes('comp') || leaveType.includes('earned') || leaveType.includes('sick')) {
+            isQualifying = true;
+            weekWorkDays++;
+          } else if (weeklyOffDays.includes(dow)) {
+            // Weekly Off / Sunday: 6 days worked in 1 week = 7 days qualifying (or at least 4 workdays)
+            if (weekWorkDays >= 4) {
+              isQualifying = true;
+            }
+          }
+
+          if (isQualifying) {
+            count++;
+          }
+
+          if (dow === 0) {
+            weekWorkDays = 0;
+          }
+
+          cur.setDate(cur.getDate() + 1);
+        }
+        return count;
+      };
+
+      qualifyingDaysTotal = getQualifyingDaysCount(accrualEndDate);
+      const daysRequired = Number(rules.earnedLeaveAccrual?.daysRequired || 30);
+      const amountEarned = Number(rules.earnedLeaveAccrual?.amountEarned || 1.5);
+      const accrualRatePerDay = amountEarned / daysRequired; // 0.05 per day (10 days = 0.5d, 30 days = 1.5d)
+
+      // Daily decimal accrual: exact credit for every qualifying day rounded to 1 decimal place
+      earnedTotal = Math.round((openingBalance + (qualifyingDaysTotal * accrualRatePerDay)) * 10) / 10;
+
+      // Starting Balance (Month end of previous month)
+      const prevMonthEnd = endOfMonth(subMonths(accrualEndDate, 1));
+      if (prevMonthEnd >= openingDateObj) {
+        const qualifyingDaysPrev = getQualifyingDaysCount(prevMonthEnd);
+        earnedPreviousMonth = Math.round((openingBalance + (qualifyingDaysPrev * accrualRatePerDay)) * 10) / 10;
+      } else {
+        earnedPreviousMonth = 0;
+      }
+
+      earnedThisMonth = Math.max(0, Math.round((earnedTotal - earnedPreviousMonth) * 10) / 10);
+
+      // Validity check for Earned Leave
+      if (isNotValid(rules.earnedLeavesValidFrom, rules.earnedLeavesExpiryDate)) {
+        earnedTotal = 0;
+        earnedThisMonth = 0;
+        earnedPreviousMonth = 0;
+      }
+    }
 
     let sickTotal = 0;
     const sickOpeningBalance = Number(userData.sick_leave_opening_balance || userData.sickLeaveOpeningBalance || 0);
@@ -6921,6 +6941,7 @@ export const api = {
     const balance: LeaveBalance = {
       userId,
       earnedTotal,
+      qualifyingDaysTotal,
       earnedUsed: 0,
       earnedPending: 0,
       sickTotal,
@@ -7051,7 +7072,25 @@ export const api = {
       }
     }
 
+    // Deduplicate any overlapping or identical submissions for the same leave type and dates
+    const seenLeaves = new Set<string>();
+    const deduplicatedLeaves: any[] = [];
+    for (const l of approvedLeaves) {
+      const lType = (l.leave_type || '').toLowerCase().trim();
+      const lStart = l.start_date || '';
+      const lEnd = l.end_date || '';
+      const lOption = l.day_option || 'full';
+      const key = `${lType}_${lStart}_${lEnd}_${lOption}`;
+      if (!seenLeaves.has(key)) {
+        seenLeaves.add(key);
+        deduplicatedLeaves.push(l);
+      }
+    }
+    approvedLeaves = deduplicatedLeaves;
+
     const processedLeaves: any[] = [];
+    const effectiveAccrualCutoffStr = format(accrualEndDate, 'yyyy-MM-dd');
+
     approvedLeaves.forEach(leave => {
       const leaveStart = leave.start_date;
       const leaveEndDate = leave.end_date;
@@ -7060,8 +7099,8 @@ export const api = {
       
       const leaveStartDateObj = new Date(leaveStart.replace(/-/g, '/'));
 
-      // Only count leaves that have already started (up to today).
-      if (leaveStartDateObj > new Date(todayStr.replace(/-/g, '/'))) return;
+      // Only count leaves that have already started up to the effective accrual end date
+      if (leaveStart > effectiveAccrualCutoffStr) return;
       
       // Only count leaves from the CURRENT YEAR for non-carry-forward types.
       const leaveYear = leaveStartDateObj.getFullYear();
@@ -7278,6 +7317,7 @@ export const api = {
 
     balance.debug = {
         staffType,
+        qualifyingDaysTotal,
         hasEarnedRule: !!rules.earnedLeaveAccrual,
         earnedRule: rules.earnedLeaveAccrual,
         earnedThisMonth,
@@ -7826,10 +7866,14 @@ export const api = {
       
       let mappedApprovalHistory = camelItem.approvalHistory || [];
       if (Array.isArray(mappedApprovalHistory)) {
-          mappedApprovalHistory = mappedApprovalHistory.map((record: any) => ({
-              ...record,
-              approverPhotoUrl: record.approverId ? (approverPhotoMap[record.approverId] || null) : null
-          }));
+          mappedApprovalHistory = mappedApprovalHistory.map((record: any) => {
+              const aId = record.approverId || record.approver_id;
+              return {
+                  ...record,
+                  approverName: record.approverName || record.approver_name || (aId ? (approverMap[aId] || null) : null),
+                  approverPhotoUrl: aId ? (approverPhotoMap[aId] || null) : null
+              };
+          });
       }
 
       return {

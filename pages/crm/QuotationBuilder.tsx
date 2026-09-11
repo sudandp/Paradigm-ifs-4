@@ -6,6 +6,7 @@ import { useAuthStore } from '../../store/authStore';
 import type { CrmQuotation, ManpowerLineItem, CrmStatutoryMaster, ManpowerSuggestionInput } from '../../types/crm';
 import { MANPOWER_ROLES } from '../../types/crm';
 import Toast from '../../components/ui/Toast';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 import {
   ArrowLeft, Save, Loader2, Plus, Trash2, Calculator, Zap,
   DollarSign, TrendingUp, FileText, Download, ChevronDown, ChevronUp
@@ -136,6 +137,7 @@ const QuotationBuilder: React.FC = () => {
 
   return (
     <div className="space-y-5">
+      <MobileTopBar title="QUOTATION BUILDER" parentPath="/crm" />
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
       {/* Header */}

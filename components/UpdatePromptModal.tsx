@@ -3,6 +3,8 @@ import { Download, AlertCircle, Clock } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import type { AppVersionInfo } from '../hooks/useAppUpdate';
 
+import { openExternal } from '../utils/urlHandler';
+
 interface UpdatePromptModalProps {
   updateInfo: AppVersionInfo | null;
   onLater: () => void;
@@ -19,7 +21,7 @@ export const UpdatePromptModal: React.FC<UpdatePromptModalProps> = ({ updateInfo
       } catch (err) {
         console.warn('Failed to open app store natively, using fallback URL:', err);
         const playStoreUrl = 'market://details?id=com.paradigm.ifs';
-        window.open(playStoreUrl, '_system');
+        await openExternal(playStoreUrl);
       }
     } else {
       const fallbackUrl = 'https://play.google.com/store/apps/details?id=com.paradigm.ifs';
@@ -27,13 +29,9 @@ export const UpdatePromptModal: React.FC<UpdatePromptModalProps> = ({ updateInfo
     }
   };
 
-  const handleSupport = () => {
+  const handleSupport = async () => {
     const supportUrl = updateInfo.whatsappGroupUrl || 'https://wa.me/';
-    if (Capacitor.isNativePlatform()) {
-      window.open(supportUrl, '_system');
-    } else {
-      window.open(supportUrl, '_blank');
-    }
+    await openExternal(supportUrl);
   };
 
   return (

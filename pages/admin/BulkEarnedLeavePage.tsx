@@ -6,6 +6,7 @@ import { Download, Upload, AlertCircle, CheckCircle2, Loader2, FileSpreadsheet, 
 import { format } from 'date-fns';
 import AdminPageHeader from '../../components/admin/AdminPageHeader';
 import Toast from '../../components/ui/Toast';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 const BulkEarnedLeavePage: React.FC = () => {
     const navigate = useNavigate();
@@ -21,7 +22,7 @@ const BulkEarnedLeavePage: React.FC = () => {
         try {
             const [ExcelJSModule, { saveAs }, users] = await Promise.all([
                 import('exceljs'),
-                import('file-saver'),
+                import('../../utils/fileDownloader'),
                 api.getUsers()
             ]);
             const ExcelJS = ExcelJSModule.default || ExcelJSModule;
@@ -144,9 +145,10 @@ const BulkEarnedLeavePage: React.FC = () => {
 
     return (
         <div className="p-4 md:p-6 lg:p-8">
+            <MobileTopBar title="BULK LEAVES" parentPath="/admin/users" />
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
             
-            <div className="mb-6 flex items-center gap-4">
+            <div className="mb-6 hidden md:flex items-center gap-4">
                 <Button variant="outline" size="sm" onClick={() => navigate('/admin/users')}>
                     <ArrowLeft className="h-4 w-4 mr-2" />
                     Back to Users

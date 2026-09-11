@@ -7,12 +7,16 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.BroadcastReceiver;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.WindowManager;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebView;
 
 import com.getcapacitor.BridgeActivity;
+import com.getcapacitor.BridgeWebViewClient;
 
 public class MainActivity extends BridgeActivity {
 
@@ -53,7 +57,69 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(KioskPlugin.class);
         registerPlugin(StepCounterPlugin.class);
         super.onCreate(savedInstanceState);
+        setupWebViewListeners();
         createNotificationChannel();
+    }
+
+    private void setupWebViewListeners() {
+        if (bridge != null && bridge.getWebView() != null) {
+            bridge.getWebView().setDownloadListener((url, userAgent, contentDisposition, mimetype, contentLength) -> {
+                try {
+                    Intent intent = new Intent(Intent.ACTION_VIEW);
+                    intent.setData(Uri.parse(url));
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(intent);
+                } catch (Exception e) {
+                    Log.e(TAG, "Download intent failed: " + e.getMessage());
+                }
+            });
+
+            bridge.getWebView().setWebViewClient(new BridgeWebViewClient(bridge) {
+                @Override
+                public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                    Uri uri = request.getUrl();
+                    return handleCustomUri(uri) || super.shouldOverrideUrlLoading(view, request);
+                }
+
+                @Override
+                public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                    Uri uri = Uri.parse(url);
+                    return handleCustomUri(uri) || super.shouldOverrideUrlLoading(view, url);
+                }
+
+                private boolean handleCustomUri(Uri uri) {
+                    if (uri == null) return false;
+                    String scheme = uri.getScheme();
+                    if (scheme != null) {
+                        String lower = scheme.toLowerCase();
+                        if (lower.equals("tel") || lower.equals("mailto") || lower.equals("sms") || lower.equals("whatsapp")) {
+                            try {
+                                Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+                                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                                startActivity(intent);
+                                return true;
+                            } catch (Exception e) {
+                                Log.w(TAG, "Failed to launch custom scheme intent for " + uri + ": " + e.getMessage());
+                                return false;
+                            }
+                        }
+                    }
+                    String host = uri.getHost();
+                    if (host != null && (host.equalsIgnoreCase("wa.me") || host.equalsIgnoreCase("api.whatsapp.com"))) {
+                        try {
+                            Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            startActivity(intent);
+                            return true;
+                        } catch (Exception e) {
+                            Log.w(TAG, "Failed to launch WhatsApp URL intent for " + uri + ": " + e.getMessage());
+                            return false;
+                        }
+                    }
+                    return false;
+                }
+            });
+        }
     }
 
     /**

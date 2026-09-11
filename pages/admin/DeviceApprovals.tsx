@@ -23,6 +23,7 @@ import { formatDate } from '../../utils/date';
 
 import { useAuthStore } from '../../store/authStore';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 
 const DeviceApprovals: React.FC = () => {
@@ -111,6 +112,7 @@ const DeviceApprovals: React.FC = () => {
 
   return (
     <div className="p-4 md:p-8 pb-20">
+      <MobileTopBar title="DEVICE APPROVALS" parentPath="/mobile-home" />
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
       <AdminPageHeader title="Device Approvals" />

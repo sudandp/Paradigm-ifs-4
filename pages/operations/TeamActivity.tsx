@@ -14,6 +14,7 @@ import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { isAdmin } from '../../utils/auth';
 import Pagination from '../../components/ui/Pagination';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 
 interface TeamMember extends User {
@@ -162,6 +163,7 @@ const TeamActivity: React.FC = () => {
     if (isLoading) {
         return (
             <div className="flex items-center justify-center min-h-screen">
+      <MobileTopBar title="TEAM ACTIVITY" parentPath="/mobile-home" />
                 <Loader2 className="h-8 w-8 animate-spin text-accent" />
             </div>
         );

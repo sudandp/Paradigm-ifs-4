@@ -24,6 +24,7 @@ import { supabase } from '../../services/supabase';
 import StaffBillingConfig from '../billing/StaffBillingConfig';
 import SiteHolidayAllocator from '../../components/billing/SiteHolidayAllocator';
 import { TravelRulesConfigPanel } from '../../components/hr/TravelRulesConfigPanel';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 
 /** Normalize role display names to Title Case regardless of DB storage format */
@@ -604,6 +605,7 @@ const AttendanceSettings: React.FC = () => {
 
     return (
         <div className="p-4 md:p-6 space-y-6 pb-40">
+            <MobileTopBar title="ATTENDANCE RULES" parentPath="/mobile-home" />
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
             {/* ── Rule Version Impact Modal ───────────────────────────────────────── */}

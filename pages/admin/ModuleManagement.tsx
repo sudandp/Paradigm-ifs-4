@@ -10,6 +10,7 @@ import Toast from '../../components/ui/Toast';
 import ModuleFormModal from '../../components/admin/ModuleFormModal';
 import GridSkeleton from '../../components/skeletons/GridSkeleton';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 
 const ModuleManagement: React.FC = () => {
@@ -75,6 +76,7 @@ const ModuleManagement: React.FC = () => {
 
   return (
     <div className="p-4 border-0 shadow-none lg:bg-card lg:p-6 lg:rounded-xl lg:shadow-card">
+      <MobileTopBar title="TASK GROUPS" parentPath="/mobile-home" />
       {toast && <Toast {...toast} onDismiss={() => setToast(null)} />}
       <ModuleFormModal isOpen={isFormOpen} onClose={() => setIsFormOpen(false)} onSave={handleSave} initialData={currentTaskGroup} />
       <Modal isOpen={isDeleteModalOpen} onClose={() => setIsDeleteModalOpen(false)} onConfirm={handleDelete} title="Confirm Deletion">

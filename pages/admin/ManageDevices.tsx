@@ -8,6 +8,7 @@ import Select from '../../components/ui/Select';
 import Toast from '../../components/ui/Toast';
 import { Cpu, Plus, Trash2, Wifi, WifiOff, MapPin, RefreshCw, Settings } from 'lucide-react';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 
 const ManageDevices: React.FC = () => {
@@ -105,6 +106,7 @@ const ManageDevices: React.FC = () => {
 
   return (
     <div className="p-4 md:p-8">
+      <MobileTopBar title="BIOMETRIC DEVICES" parentPath="/mobile-home" />
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
       <div className="">

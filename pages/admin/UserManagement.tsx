@@ -23,7 +23,9 @@ import BulkApprovalModal from '../../components/admin/BulkApprovalModal';
 import MarkAsLeftModal from '../../components/admin/MarkAsLeftModal';
 import Pagination from '../../components/ui/Pagination';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 import { CheckSquare, Square } from 'lucide-react';
+import { safeCopyToClipboard } from '../../utils/clipboardHelper';
 
 
 // Helper for role names
@@ -1132,6 +1134,7 @@ const UserManagement: React.FC = () => {
 
     return (
         <div className="p-4 border-0 shadow-none lg:bg-card lg:p-6 lg:rounded-xl lg:shadow-card flex-1 flex flex-col">
+            <MobileTopBar title="USER MANAGEMENT" parentPath="/mobile-home" />
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
             <ApprovalModal
@@ -1223,7 +1226,7 @@ const UserManagement: React.FC = () => {
                         </div>
                         <button 
                             onClick={() => {
-                                navigator.clipboard.writeText(recoveryPasscode);
+                                safeCopyToClipboard(recoveryPasscode);
                                 setIsCopied(true);
                                 setTimeout(() => setIsCopied(false), 2000);
                             }}

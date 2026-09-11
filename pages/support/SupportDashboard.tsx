@@ -14,6 +14,7 @@ import Select from '../../components/ui/Select';
 import Modal from '../../components/ui/Modal';
 import { getAllPreComputedScores, calculateAllEmployeeScores, type EmployeeScoreWithUser } from '../../services/employeeScoring';
 import { isAdmin } from '../../utils/auth';
+import { openWhatsApp } from '../../utils/urlHandler';
 
 
 const PriorityIndicator: React.FC<{ priority: SupportTicket['priority'] }> = ({ priority }) => {
@@ -359,7 +360,7 @@ const SupportDashboard: React.FC = () => {
         }
 
         if (type === 'whatsapp') {
-            window.open(`https://wa.me/91${numberToCall}`, '_blank');
+            openWhatsApp(`91${numberToCall}`);
         } else if (type === 'call') {
             window.location.href = `tel:+91${numberToCall}`;
         } else if (type === 'sms') {

@@ -107,7 +107,8 @@ const HybridAuthStorage = {
         try {
           const parsed = JSON.parse(value);
           if (parsed?.refresh_token) {
-            await Preferences.set({ key: 'supabase.auth.rememberMe', value: parsed.refresh_token });
+            // Clean up any legacy plaintext key and store exclusively via AES-256 secureStorage
+            await Preferences.remove({ key: 'supabase.auth.rememberMe' });
             const { secureSet } = await import('../utils/secureStorage');
             await secureSet('supabase.auth.rememberMe', parsed.refresh_token);
           }
@@ -140,14 +141,26 @@ const HybridAuthStorage = {
 
 const isNativePlatform = isBrowser && (Capacitor.isNativePlatform() || !!(window as any).Capacitor?.isNativePlatform());
 
-// Custom fetch wrapper with a 15-second timeout to prevent dead socket hangs on mobile
+// Custom fetch wrapper with adaptive 30-second timeout to prevent dead socket hangs on mobile
 const customFetch = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   const controller = new AbortController();
-  const timeoutDuration = 15000; // 15s hard timeout for REST queries
-  const timer = setTimeout(() => controller.abort(), timeoutDuration);
+  const timeoutDuration = 30000; // 30s timeout for mobile network resilience
+  const timer = setTimeout(() => {
+    try {
+      controller.abort(new DOMException('Supabase request timed out after 30s', 'TimeoutError'));
+    } catch {
+      controller.abort();
+    }
+  }, timeoutDuration);
 
   if (init?.signal) {
-    init.signal.addEventListener('abort', () => controller.abort(), { once: true });
+    if (init.signal.aborted) {
+      try { controller.abort(init.signal.reason); } catch { controller.abort(); }
+    } else {
+      init.signal.addEventListener('abort', () => {
+        try { controller.abort(init.signal?.reason); } catch { controller.abort(); }
+      }, { once: true });
+    }
   }
 
   return fetch(input, {

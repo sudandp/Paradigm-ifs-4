@@ -13,6 +13,7 @@ import DesignationBreakdownChart from '../../components/dashboard/DesignationBre
 import BillingSummaryPanel from '../../components/dashboard/BillingSummaryPanel';
 import PendingLeavesPanel from '../../components/dashboard/PendingLeavesPanel';
 import { BarChart3, Building, Search, MapPin, CheckCircle, XCircle, Compass } from 'lucide-react';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 const formatRoleName = (role: string) => {
     if (!role) return 'N/A';
@@ -108,6 +109,7 @@ const ManagementDashboard: React.FC = () => {
 
     return (
         <div className="p-4 md:p-6 bg-slate-50 min-h-screen space-y-6">
+      <MobileTopBar title="MANAGEMENT DASHBOARD" parentPath="/mobile-home" />
             {dashboard.toast && (
                 <Toast
                     message={dashboard.toast.message}

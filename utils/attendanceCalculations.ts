@@ -1515,6 +1515,7 @@ export interface EarlyDepartureDeduction {
   dateStr: string;
   workedMins: number;
   targetMins: number;
+  shortfallMins: number;
   earlyMins: number;
   formattedWorked: string;
   correctedWorkedMins: number;
@@ -1522,13 +1523,14 @@ export interface EarlyDepartureDeduction {
   punchOutTime: string;
   permissionEndTime: string;
   permissionTimeRange: string;
+  poolExhausted?: boolean;
 }
 
 /**
  * Calculates early departure permission deductions for a list of attendance events.
- * If an employee punches out early (e.g. required shift 8h/480m, worked 7h 50m/470m = 10m early),
- * the early departure duration (10m) is automatically deducted from their monthly permission pool.
- * The permission log records the exact duration (e.g., 17:50 – 18:00) and corrects total effective work hours to 8h 0m.
+ * Policy enforces a strict maximum 3-hour (180 mins) monthly pool limit.
+ * Early departure duration is deducted from the remaining monthly permission pool up to 3h max.
+ * Does NOT artificially inflate or auto-correct physical work hours to 8h: actual worked hours are reflected.
  */
 export function getEarlyDepartureDeductions(
   events: AttendanceEvent[],
@@ -1539,7 +1541,7 @@ export function getEarlyDepartureDeductions(
 ): EarlyDepartureDeduction[] {
   const earlyDeductions: EarlyDepartureDeduction[] = [];
 
-  // Group events by date (yyyy-MM-dd)
+  // 1. Group events by date (yyyy-MM-dd)
   const eventsByDate: Record<string, AttendanceEvent[]> = {};
   events.forEach(e => {
     try {
@@ -1552,7 +1554,32 @@ export function getEarlyDepartureDeductions(
     }
   });
 
-  Object.entries(eventsByDate).forEach(([dateStr, dayEvents]) => {
+  // 2. Calculate explicit approved permission minutes already used in this month
+  let explicitApprovedMins = 0;
+  approvedPermissionRequests.forEach(r => {
+    if (monthPrefix && r.startDate && !r.startDate.startsWith(monthPrefix)) return;
+    const status = String(r.status || '').toLowerCase();
+    if (status === 'approved' || status === 'correction_made' || status.includes('approved')) {
+      const toMins = (t: string) => { if (!t) return 0; const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+      if (r.correctionDetails?.punchIn && r.correctionDetails?.punchOut) {
+        let p1 = toMins(r.correctionDetails.punchOut) - toMins(r.correctionDetails.punchIn);
+        if (p1 < 0) p1 += 24 * 60;
+        explicitApprovedMins += Math.max(0, p1);
+      } else if (r.correctionDetails?.permissionMinutes) {
+        explicitApprovedMins += Number(r.correctionDetails.permissionMinutes);
+      }
+    }
+  });
+
+  // 3. Monthly pool limit is strictly 3 hours (180 minutes)
+  const monthlyPoolLimitMins = 180;
+  let remainingPoolMins = Math.max(0, monthlyPoolLimitMins - explicitApprovedMins);
+
+  // 4. Sort dates chronologically so deductions apply in true calendar sequence
+  const sortedDates = Object.keys(eventsByDate).sort();
+
+  sortedDates.forEach(dateStr => {
+    const dayEvents = eventsByDate[dateStr];
     // Check if there is a punch-out / check-out event for this day
     const hasPunchOut = dayEvents.some(e => {
       const t = (e.type || '').toLowerCase();
@@ -1591,9 +1618,9 @@ export function getEarlyDepartureDeductions(
           }
         });
 
-        // Net early departure minutes not covered by an explicit permission request
-        const netEarlyMins = Math.max(0, grossShortage - approvedMinsOnDate);
-        if (netEarlyMins > 0) {
+        // Net early departure shortfall not covered by an explicit permission request
+        const netShortfall = Math.max(0, grossShortage - approvedMinsOnDate);
+        if (netShortfall > 0) {
           // Find latest punch-out event timestamp to get exact departure time
           const punchOutEvents = dayEvents.filter(e => {
             const t = (e.type || '').toLowerCase();
@@ -1611,28 +1638,33 @@ export function getEarlyDepartureDeductions(
             const outDate = new Date(latestOut.timestamp);
             punchOutStr = format(outDate, 'HH:mm');
 
-            const endDateObj = new Date(outDate.getTime() + netEarlyMins * 60 * 1000);
+            const endDateObj = new Date(outDate.getTime() + netShortfall * 60 * 1000);
             endStr = format(endDateObj, 'HH:mm');
             timeRangeStr = `${punchOutStr} – ${endStr}`;
           }
 
+          // STRICT 3H (180m) LIMIT ENFORCEMENT:
+          // Only deduct what remains of the 3h pool. Once 180m is used, do NOT deduct or auto-correct!
+          const deductibleMins = Math.min(netShortfall, remainingPoolMins);
+          const poolExhausted = remainingPoolMins <= 0;
+          remainingPoolMins -= deductibleMins;
+
           const wH = Math.floor(workedMins / 60);
           const wM = workedMins % 60;
-          const correctedTotalMins = workedMins + netEarlyMins;
-          const cH = Math.floor(correctedTotalMins / 60);
-          const cM = correctedTotalMins % 60;
 
           earlyDeductions.push({
             dateStr,
             workedMins,
             targetMins: targetShiftMins,
-            earlyMins: netEarlyMins,
+            shortfallMins: netShortfall,
+            earlyMins: deductibleMins,
             formattedWorked: `${wH}h ${wM}m`,
-            correctedWorkedMins: correctedTotalMins,
-            formattedCorrectedWorked: `${cH}h ${cM}m`,
+            correctedWorkedMins: workedMins, // Reflect actual worked hours without auto-correction to 8h
+            formattedCorrectedWorked: `${wH}h ${wM}m`,
             punchOutTime: punchOutStr,
             permissionEndTime: endStr,
-            permissionTimeRange: timeRangeStr
+            permissionTimeRange: timeRangeStr,
+            poolExhausted
           });
         }
       }

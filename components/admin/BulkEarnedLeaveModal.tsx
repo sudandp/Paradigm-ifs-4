@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import ExcelJS from 'exceljs';
-import { saveAs } from 'file-saver';
+import { saveAs } from '../../utils/fileDownloader';
 import { api } from '../../services/api';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';

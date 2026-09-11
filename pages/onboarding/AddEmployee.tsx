@@ -15,6 +15,7 @@ import { useMediaQuery } from '../../hooks/useMediaQuery';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 import DraftSaveIndicator, { type DraftSaveStatus } from '../../components/onboarding/DraftSaveIndicator';
 import ConsentGate from '../../components/onboarding/ConsentGate';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 
 const stepDefinitions: Omit<Step, 'status'>[] = [
@@ -375,6 +376,7 @@ const AddEmployee: React.FC = () => {
     if (isLoadingData) {
         return (
             <div className="flex justify-center items-center h-full text-muted">
+      <MobileTopBar title="ADD EMPLOYEE" parentPath="/onboarding" />
                 <Loader2 className="h-8 w-8 animate-spin mr-4" />
                 <p>Loading application data...</p>
             </div>

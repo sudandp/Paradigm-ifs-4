@@ -18,6 +18,8 @@ import { useMediaQuery } from '../../hooks/useMediaQuery';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 import { getProxyUrl } from '../../utils/fileUrl';
 import BlurhashImage from '../../components/ui/BlurhashImage';
+import { openWhatsApp } from '../../utils/urlHandler';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 
 const PriorityIndicator: React.FC<{ priority: SupportTicket['priority'] }> = ({ priority }) => {
@@ -181,7 +183,7 @@ const TicketDetail: React.FC = () => {
         }
 
         if (type === 'whatsapp') {
-            window.open(`https://wa.me/91${numberToCall}`, '_blank');
+            openWhatsApp(`91${numberToCall}`);
         } else if (type === 'call') {
             window.location.href = `tel:+91${numberToCall}`;
         } else if (type === 'sms') {
@@ -233,6 +235,7 @@ const TicketDetail: React.FC = () => {
 
         return (
             <div className="flex flex-wrap items-center gap-2">
+      <MobileTopBar title="TICKET DETAIL" parentPath="/support" />
                 {/* Status dropdown — visible to assignee or admin */}
                 {canChangeStatus && (
                     <div className="relative" ref={statusDropdownRef}>

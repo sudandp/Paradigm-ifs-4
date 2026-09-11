@@ -20,6 +20,7 @@ import Modal from '../../components/ui/Modal';
 import Toast from '../../components/ui/Toast';
 import { ProfilePlaceholder } from '../../components/ui/ProfilePlaceholder';
 import { isAdmin as checkIsAdmin } from '../../utils/auth';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 const ReportingStructure: React.FC = () => {
   const navigate = useNavigate();
@@ -111,6 +112,7 @@ const ReportingStructure: React.FC = () => {
   if (loading && users.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px]">
+      <MobileTopBar title="REPORTING STRUCTURE" parentPath="/my-team" />
         <Loader2 className="w-10 h-10 text-emerald-500 animate-spin mb-4" />
         <p className="text-muted font-medium">Loading user directory...</p>
       </div>

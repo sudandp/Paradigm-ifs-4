@@ -5,6 +5,7 @@ import { ClipboardList, IndianRupee } from 'lucide-react';
 import SiteAttendanceTracker from '../billing/SiteAttendanceTracker';
 import SiteFinanceTracker from './SiteFinanceTracker';
 import { useAuthStore } from '../../store/authStore';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 const FinanceModule: React.FC = () => {
     const location = useLocation();
@@ -40,6 +41,7 @@ const FinanceModule: React.FC = () => {
 
     return (
         <div className="flex flex-col min-h-full">
+      <MobileTopBar title="FINANCE TRACKER" parentPath="/mobile-home" />
             <div className="p-4 md:p-6 space-y-4 md:space-y-6 flex-1">
                 <AdminPageHeader title={isDirector ? "Attendance Tracker" : "Tracker"} />
                 

@@ -7,6 +7,7 @@ import { inventoryApi } from '../../services/inventoryApi';
 import { api } from '../../services/api';
 import type { InventoryItem, InventoryCategory } from '../../types/operations';
 import toast from 'react-hot-toast';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 const CATEGORIES: InventoryCategory[] = [
   'Electrical', 'Plumbing', 'HVAC', 'Cleaning', 'Civil', 'Security', 'General'
@@ -158,6 +159,7 @@ export const InventoryManagement: React.FC = () => {
 
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6">
+      <MobileTopBar title="INVENTORY" parentPath="/mobile-home" />
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>

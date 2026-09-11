@@ -20,6 +20,7 @@ import {
 } from '../../services/gateApi';
 import type { GateUser } from '../../types/gate';
 import { useLogoStore } from '../../store/logoStore';
+import { triggerPrint } from '../../utils/printHelper';
 import {
   ArrowLeft, QrCode, User, UserPlus, Trash2, CheckCircle2,
   Loader2, Search, Printer, X, Clock, Hash, Shield,
@@ -32,6 +33,7 @@ import { useAuthStore } from '../../store/authStore';
 import { isAdmin as checkIsAdmin } from '../../utils/auth';
 import { api } from '../../services/api';
 import type { Role } from '../../types';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 const RegisterGateUser: React.FC = () => {
   const navigate = useNavigate();
@@ -351,6 +353,7 @@ const RegisterGateUser: React.FC = () => {
       // Ultimate fallback: Generic User Icon
       return (
         <div className={`${className} bg-white/5 md:bg-slate-100 flex items-center justify-center border border-white/10 md:border-slate-200`}>
+      <MobileTopBar title="GATE REGISTRATION" parentPath="/mobile-home" />
           <User className="w-1/2 h-1/2 text-white/20 md:text-slate-300" />
         </div>
       );
@@ -999,7 +1002,7 @@ const RegisterGateUser: React.FC = () => {
                         <span className="text-[10px] font-black uppercase tracking-widest text-[#10b981]">Card Parameters</span>
                       </div>
                       <button 
-                        onClick={() => window.print()} 
+                        onClick={() => triggerPrint('gate-user-id-card', `ID_Card_${printUser.userName || 'GateUser'}`)} 
                         className="flex items-center gap-2 px-6 py-3 bg-[#10b981] hover:bg-[#059669] text-white rounded-xl font-black uppercase tracking-widest text-[10px] shadow-lg shadow-emerald-500/20 transition-all active:scale-95"
                       >
                         <Printer className="w-4 h-4" /> Print ID
@@ -1054,7 +1057,7 @@ const RegisterGateUser: React.FC = () => {
                   </div>
 
                   {/* Bottom: Side-by-Side Live Card Preview */}
-                  <div className="flex flex-col lg:flex-row items-center justify-center gap-12 py-10 scale-[0.8] lg:scale-95 xl:scale-100 origin-top">
+                  <div id="gate-user-id-card" className="flex flex-col lg:flex-row items-center justify-center gap-12 py-10 scale-[0.8] lg:scale-95 xl:scale-100 origin-top">
                            {/* Front Perspective */}
                     <div className="group relative">
                       <div className="absolute -inset-4 bg-emerald-500/5 rounded-[50px] blur-2xl opacity-0 group-hover:opacity-100 transition-opacity" />

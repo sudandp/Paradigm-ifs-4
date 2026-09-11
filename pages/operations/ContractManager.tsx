@@ -5,6 +5,7 @@ import Input from '../../components/ui/Input';
 import Toast from '../../components/ui/Toast';
 import type { OpsContract, ContractType, ContractStatus } from '../../types/operations';
 import { Plus, Search, FileText, AlertCircle, Building2, Calendar, IndianRupee, ExternalLink, Loader2 } from 'lucide-react';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 const STATUS_COLORS: Record<ContractStatus, string> = {
   'Active': 'bg-green-100 text-green-800 border-green-200',
@@ -102,6 +103,7 @@ const ContractManager: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <MobileTopBar title="CONTRACTS" parentPath="/mobile-home" />
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
       
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">

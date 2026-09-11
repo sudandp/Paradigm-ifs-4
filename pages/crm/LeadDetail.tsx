@@ -11,8 +11,11 @@ import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
+import { Capacitor } from '@capacitor/core';
+import { downloadFile } from '../../utils/fileDownloader';
 import QuotationBuilder from './QuotationBuilder';
 import { LostLeadModal } from '../../components/crm/LostLeadModal';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 import {
   ArrowLeft, Save, Plus, Phone, Mail, MapPin, Building2,
   Calendar, MessageSquare, Clock, User, ChevronDown, ChevronUp,
@@ -72,6 +75,19 @@ const LeadDetail: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isConverting, setIsConverting] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const handlePrintProposal = async (quotation: any) => {
+    const html = generateProposalHtml(form as CrmLead, quotation);
+    if (Capacitor.isNativePlatform()) {
+      const blob = new Blob([html], { type: 'text/html' });
+      const filename = `Proposal_${quotation.quotationNumber || 'Document'}.html`;
+      await downloadFile(blob, filename, 'text/html');
+    } else {
+      const win = window.open('', '_blank');
+      if (win) { win.document.write(html); win.document.close(); win.print(); }
+    }
+  };
+
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [activeTab, setActiveTab] = useState<'details' | 'timeline' | 'quotations'>('details');
   const [usersList, setUsersList] = useState<any[]>([]);
@@ -275,6 +291,7 @@ const LeadDetail: React.FC = () => {
   if (!isNew && isLoading && !existingLead) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px]">
+      <MobileTopBar title="LEAD DETAIL" parentPath="/crm" />
         <Loader2 className="w-12 h-12 text-emerald-500 animate-spin" />
         <p className="text-sm text-white/50 md:text-muted mt-4">Loading lead details...</p>
       </div>
@@ -876,11 +893,7 @@ const LeadDetail: React.FC = () => {
                             Edit
                           </button>
                           <button
-                            onClick={async () => {
-                              const html = generateProposalHtml(form as CrmLead, q);
-                              const win = window.open('', '_blank');
-                              if (win) { win.document.write(html); win.document.close(); win.print(); }
-                            }}
+                            onClick={() => handlePrintProposal(q)}
                             className="flex-1 sm:flex-none px-4 py-2 text-xs font-bold bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-all text-center"
                           >
                             View / Print
@@ -1003,9 +1016,7 @@ const LeadDetail: React.FC = () => {
                     try {
                       const quotations = await crmApi.getQuotations(id);
                       if (quotations.length === 0) { setToast({ message: 'Create a quotation first', type: 'error' }); return; }
-                      const html = generateProposalHtml(form as CrmLead, quotations[0]);
-                      const win = window.open('', '_blank');
-                      if (win) { win.document.write(html); win.document.close(); win.print(); }
+                      await handlePrintProposal(quotations[0]);
                     } catch (err: any) { setToast({ message: err.message, type: 'error' }); }
                   }}
                   className="w-full flex items-center gap-4 p-5 rounded-2xl bg-white/5 md:bg-page hover:bg-white/10 md:hover:bg-accent/5 border border-white/10 md:border-border transition-all text-left"

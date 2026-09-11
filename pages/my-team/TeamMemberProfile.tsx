@@ -18,6 +18,7 @@ import { calculateDistanceMeters, reverseGeocode } from '../../utils/locationUti
 import { formatDistance, stepsToDistanceKm } from '../../utils/distanceUtils';
 import UserDeviceList from '../../components/devices/UserDeviceList';
 import { ProfilePlaceholder } from '../../components/ui/ProfilePlaceholder';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 // Helper to safely format ISO strings and prevent RangeErrors
 const safeFormatISO = (dateStr: string | undefined | null, formatStr: string, fallback = 'N/A') => {
@@ -282,7 +283,7 @@ const TeamMemberProfile: React.FC = () => {
              vDist = vDist - 3;
         }
         if (vDist && vDist > 0) {
-             const fakeSteps = Math.floor((vDist * 1000) / 0.75);
+             const fakeSteps = Math.floor(vDist * 100);
              actualSteps = Math.max(0, actualSteps - fakeSteps);
         }
         totalSteps += actualSteps;
@@ -325,6 +326,7 @@ const TeamMemberProfile: React.FC = () => {
 
   return (
     <div className="flex flex-col min-h-screen bg-background text-primary-text">
+      <MobileTopBar title="TEAM MEMBER PROFILE" parentPath="/my-team" />
       {/* Premium Header */}
       <div className="bg-card border-b border-border shadow-soft sticky top-0 z-30">
         <div className="px-4 py-4 sm:px-6 lg:px-8">
@@ -495,7 +497,7 @@ const TeamMemberProfile: React.FC = () => {
                               <div className="flex gap-4 mt-2 text-xs font-medium text-muted bg-accent/5 p-2 rounded-lg border border-accent/10 w-fit">
                                 <span className="flex items-center gap-1">
                                   <Footprints className="w-3.5 h-3.5 text-accent" />
-                                  {Math.max(0, s.steps - (s.travelDistance && s.travelDistance > 3 ? Math.floor(((s.travelDistance - 3) * 1000) / 0.75) : 0)).toLocaleString()} steps
+                                  {Math.max(0, s.steps - (s.travelDistance && s.travelDistance > 3 ? Math.floor((s.travelDistance - 3) * 100) : 0)).toLocaleString()} steps
                                 </span>
                                 {/* Show GPS distance if available, else derive from steps */}
                                 <span className="flex items-center gap-1">

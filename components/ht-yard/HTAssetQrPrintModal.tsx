@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { QrCode, Printer, Download, X, Copy, ExternalLink, Sparkles, Check, Layers, ShieldCheck, Tag } from 'lucide-react';
 import { htAssetQrService, AssetQrTagData } from '../../services/htAssetQrService';
+import { triggerPrint } from '../../utils/printHelper';
+import { copyToClipboard } from '../../utils/clipboardHelper';
 import toast from 'react-hot-toast';
 
 interface HTAssetQrPrintModalProps {
@@ -24,15 +26,15 @@ export const HTAssetQrPrintModal: React.FC<HTAssetQrPrintModalProps> = ({
 
   const itemsToPrint = printLayout === 'A4_SHEET' && allAssetTags.length > 0 ? allAssetTags : [assetTag];
 
-  const handleCopyLink = () => {
-    navigator.clipboard.writeText(assetTag.qrUrl);
+  const handleCopyLink = async () => {
+    await copyToClipboard(assetTag.qrUrl);
     setCopied(true);
     toast.success('Public Passport URL copied to clipboard!');
     setTimeout(() => setCopied(false), 2000);
   };
 
   const handleTriggerPrint = () => {
-    window.print();
+    triggerPrint('printable-asset-qr-section', `Asset_QR_${assetTag.assetId || 'Tag'}`);
   };
 
   return (

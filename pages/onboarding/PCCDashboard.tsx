@@ -3,6 +3,7 @@ import FormHeader from '../../components/onboarding/FormHeader';
 import Button from '../../components/ui/Button';
 import { Search, Filter, ShieldCheck, ShieldAlert, Clock, CheckCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 interface PCCRecord {
     id: string;
@@ -56,6 +57,7 @@ const PCCDashboard = () => {
 
     return (
         <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+      <MobileTopBar title="PCC DASHBOARD" parentPath="/onboarding" />
             <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900 flex items-center">

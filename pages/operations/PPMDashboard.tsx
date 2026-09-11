@@ -8,6 +8,7 @@ import * as outbox from '../../services/offline/outbox';
 import { getDb } from '../../services/offline/db';
 import Button from '../../components/ui/Button';
 import toast from 'react-hot-toast';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 // ─── Sync Debug Modal ─────────────────────────────────────────────────────────
 
@@ -85,6 +86,7 @@ const SyncDebugModal: React.FC<SyncDebugModalProps> = ({ isOpen, onClose, onRefr
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
+      <MobileTopBar title="PPM AUDITS" parentPath="/mobile-home" />
       <div className="bg-white rounded-2xl shadow-xl border border-gray-200 w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden">
         <div className="p-5 bg-gradient-to-r from-gray-900 to-gray-800 text-white flex items-center justify-between">
           <div className="flex items-center gap-2.5">

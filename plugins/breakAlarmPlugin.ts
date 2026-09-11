@@ -10,6 +10,7 @@ export interface BreakAlarmPlugin {
     }): Promise<void>;
     
     cancel(options: { id: number }): Promise<void>;
+    canScheduleExactAlarms(): Promise<{ canSchedule: boolean }>;
 }
 
 const BreakAlarmNative = registerPlugin<BreakAlarmPlugin>('BreakAlarm');
@@ -43,5 +44,15 @@ export const cancelBreakAlarm = async (id: number): Promise<void> => {
         await BreakAlarmNative.cancel({ id });
     } catch (e) {
         console.warn('[BreakAlarmPlugin] cancel failed:', e);
+    }
+};
+
+export const checkCanScheduleExactAlarms = async (): Promise<boolean> => {
+    if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') return true;
+    try {
+        const res = await BreakAlarmNative.canScheduleExactAlarms();
+        return Boolean(res?.canSchedule);
+    } catch {
+        return false;
     }
 };

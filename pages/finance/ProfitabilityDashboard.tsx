@@ -3,6 +3,7 @@ import { useFinanceStore } from '../../store/financeStore';
 import { exportToCSV } from '../../utils/exportEngine';
 import Button from '../../components/ui/Button';
 import { Download, TrendingUp, IndianRupee, PieChart, ShieldAlert, Loader2 } from 'lucide-react';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 const ProfitabilityDashboard: React.FC = () => {
   const { profitabilityMetrics, fetchProfitabilityStats, isLoading } = useFinanceStore();
@@ -36,6 +37,7 @@ const ProfitabilityDashboard: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <MobileTopBar title="PROFITABILITY" parentPath="/mobile-home" />
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-primary-text">Profitability Dashboard</h1>

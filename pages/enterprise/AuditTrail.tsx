@@ -7,14 +7,10 @@ import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useAuthStore } from '../../store/authStore';
 import { isAdmin } from '../../utils/auth';
 import { Navigate } from 'react-router-dom';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 const AuditTrail: React.FC = () => {
   const { user } = useAuthStore();
-
-  if (!user || !isAdmin(user.role)) {
-    return <Navigate to="/" replace />;
-  }
-
   const { auditLogs, fetchAuditLogs, isLoading } = useEnterpriseStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [moduleFilter, setModuleFilter] = useState<string>('All');
@@ -22,9 +18,17 @@ const AuditTrail: React.FC = () => {
 
   const isMobile = useMediaQuery('(max-width: 767px)');
 
+  const userIsAdmin = user && isAdmin(user.role);
+
   useEffect(() => {
-    fetchAuditLogs();
-  }, []);
+    if (userIsAdmin) {
+      fetchAuditLogs();
+    }
+  }, [userIsAdmin, fetchAuditLogs]);
+
+  if (!userIsAdmin) {
+    return <Navigate to="/" replace />;
+  }
 
   const filteredLogs = auditLogs.filter(log => 
     (moduleFilter === 'All' || log.moduleName === moduleFilter) &&
@@ -56,6 +60,7 @@ const AuditTrail: React.FC = () => {
     
     return (
       <div className={`grid grid-cols-1 lg:grid-cols-2 gap-4 mt-3 p-4 rounded-lg border ${isMobile ? 'bg-[#041b0f] border-[#1d422f]' : 'bg-accent/5 border-accent/10'}`}>
+      <MobileTopBar title="AUDIT TRAIL" parentPath="/mobile-home" />
         <div>
           <h4 className="text-xs font-bold text-red-500 uppercase tracking-wider mb-2 flex items-center gap-1">Old State <ArrowRight className="w-3 h-3"/></h4>
           <pre className={`text-[10px] p-3 rounded-md overflow-x-auto ${isMobile ? 'bg-black/50 border border-red-900/50 text-gray-300' : 'bg-page border border-border text-muted'}`}>

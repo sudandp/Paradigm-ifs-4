@@ -16,6 +16,7 @@ import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import Pagination from '../../components/ui/Pagination';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 type UserWithManager = User & { managerName?: string; manager2Name?: string; manager3Name?: string };
 
@@ -252,6 +253,7 @@ const ApprovalWorkflow: React.FC = () => {
 
     return (
         <div className="border-0 shadow-none md:bg-card md:rounded-xl md:shadow-card flex flex-col flex-1 p-4 md:p-6 space-y-4">
+            <MobileTopBar title="LEAVE APPROVALS" parentPath="/mobile-home" />
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
             {/* UNIFIED COMPACT EXECUTIVE HEADER (Saves 250px vertical space) */}

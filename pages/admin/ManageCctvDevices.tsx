@@ -9,6 +9,7 @@ import Select from '../../components/ui/Select';
 import Toast from '../../components/ui/Toast';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 import AdminPageHeader from '../../components/admin/AdminPageHeader';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 import {
   Camera, Plus, Trash2, Wifi, WifiOff, RefreshCw,
   Activity, Shield, AlertCircle, MapPin, UserPlus, Upload, X, CheckCircle,
@@ -16,6 +17,7 @@ import {
   SwitchCamera, Image as ImageIcon, RotateCw, Users, Loader2, Crosshair
 } from 'lucide-react';
 import { CctvActionZoneModal, ActionZonePoint } from '../../components/cctv/CctvActionZoneModal';
+import { safeCopyToClipboard } from '../../utils/clipboardHelper';
 
 interface CctvDevice {
   id: string;
@@ -187,39 +189,40 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
         <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-black/70 via-transparent to-black/60 z-20" />
 
         {/* Top OSD */}
-        <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none z-30">
-          <div className="flex items-center gap-2">
-            <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-neutral-900/80 border border-white/10 text-[10px] font-semibold text-white backdrop-blur-md shadow-xs">
-              <span className={`h-2 w-2 rounded-full bg-rose-500 ${isConnected ? 'animate-pulse' : ''}`} />
+        <div className="absolute top-2 left-2 right-2 flex items-center justify-between pointer-events-none z-30 gap-1.5">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/80 border border-white/10 text-[9px] sm:text-[10px] font-bold text-white backdrop-blur-md shadow-xs shrink-0">
+              <span className={`h-1.5 w-1.5 rounded-full bg-rose-500 ${isConnected ? 'animate-pulse' : ''}`} />
               LIVE
             </span>
-            <span className="text-[11px] font-semibold text-neutral-200 bg-neutral-900/80 border border-white/10 px-2.5 py-1 rounded-full backdrop-blur-md">
+            <span className="text-[10px] sm:text-[11px] font-semibold text-neutral-200 bg-black/80 border border-white/10 px-2.5 py-0.5 rounded-full backdrop-blur-md truncate max-w-[140px] sm:max-w-none whitespace-nowrap">
               CAM-01 • {camName.replace(/_/g, ' ').toUpperCase()}
             </span>
           </div>
-          <span className="text-[11px] font-mono text-neutral-300 bg-neutral-900/80 border border-white/10 px-2.5 py-1 rounded-full backdrop-blur-md">
-            {currentTime}
+          <span className="text-[9px] sm:text-[10px] font-mono text-neutral-300 bg-black/80 border border-white/10 px-2 py-0.5 rounded-full backdrop-blur-md shrink-0 whitespace-nowrap">
+            <span className="hidden sm:inline">{currentTime.split(' ')[0]} </span>
+            {currentTime.split(' ')[1] || currentTime}
           </span>
         </div>
 
         {/* Bottom OSD */}
-        <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between pointer-events-none z-30">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] font-medium text-emerald-300 font-mono bg-neutral-900/80 border border-emerald-500/30 px-2.5 py-1 rounded-full backdrop-blur-md flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> AI ACTIVE
+        <div className="absolute bottom-2.5 left-2.5 right-2.5 flex items-center justify-between pointer-events-none z-30 gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[9px] sm:text-[10px] font-medium text-[#44D62C] font-mono bg-black/80 border border-[#44D62C]/30 px-2 py-0.5 rounded-full backdrop-blur-md flex items-center gap-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#44D62C]" /> AI ACTIVE
             </span>
-            <span className="text-[10px] font-mono text-neutral-300 bg-neutral-900/80 border border-white/10 px-2.5 py-1 rounded-full backdrop-blur-md">
+            <span className="text-[9px] sm:text-[10px] font-mono text-neutral-300 bg-black/80 border border-white/10 px-2 py-0.5 rounded-full backdrop-blur-md">
               {isConnected ? `${fps} FPS` : 'CONNECTING...'}
             </span>
             {/* Live object detection legend chips */}
             {(trackSummary['HUMAN'] ?? 0) > 0 && (
-              <span className="text-[10px] font-mono px-2.5 py-1 rounded-full bg-neutral-900/80 border border-sky-500/30 text-sky-300 backdrop-blur-md flex items-center gap-1.5">
+              <span className="text-[9px] sm:text-[10px] font-mono px-2 py-0.5 rounded-full bg-black/80 border border-sky-500/30 text-sky-300 backdrop-blur-md flex items-center gap-1">
                 <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
                 👤 {trackSummary['HUMAN']} Human{trackSummary['HUMAN'] > 1 ? 's' : ''}
               </span>
             )}
             {((trackSummary['CAR'] ?? 0) + (trackSummary['TRUCK'] ?? 0) + (trackSummary['BUS'] ?? 0)) > 0 && (
-              <span className="text-[10px] font-mono px-2.5 py-1 rounded-full bg-neutral-900/80 border border-amber-500/30 text-amber-300 backdrop-blur-md flex items-center gap-1.5">
+              <span className="text-[9px] sm:text-[10px] font-mono px-2 py-0.5 rounded-full bg-black/80 border border-amber-500/30 text-amber-300 backdrop-blur-md flex items-center gap-1">
                 <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
                 🚗 {(trackSummary['CAR'] ?? 0) + (trackSummary['TRUCK'] ?? 0) + (trackSummary['BUS'] ?? 0)} Vehicle{((trackSummary['CAR'] ?? 0) + (trackSummary['TRUCK'] ?? 0) + (trackSummary['BUS'] ?? 0)) > 1 ? 's' : ''}
               </span>
@@ -229,7 +232,7 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
             <button
               onClick={handleDownloadSnapshot}
               title="Capture Snapshot"
-              className="p-2 bg-neutral-900/85 hover:bg-neutral-800 text-white rounded-xl border border-white/15 backdrop-blur-md transition-all shadow-sm"
+              className="p-1.5 sm:p-2 bg-neutral-900/85 hover:bg-neutral-800 text-white rounded-xl border border-white/15 backdrop-blur-md transition-all shadow-sm"
             >
               <Download className="h-3.5 w-3.5" />
             </button>
@@ -766,7 +769,7 @@ const ManageCctvDevices: React.FC = () => {
   };
 
   const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
+    safeCopyToClipboard(text);
     setCopiedKey(true);
     setTimeout(() => setCopiedKey(false), 2000);
   };
@@ -777,7 +780,8 @@ const ManageCctvDevices: React.FC = () => {
   const totalCameras = devices.reduce((a, d) => a + d.cameras.length, 0);
 
   return (
-    <div className="p-4 md:p-6 w-full">
+    <div className="p-4 md:p-6 w-full pb-28 md:pb-6">
+      <MobileTopBar title="CCTV DEVICES" parentPath="/mobile-home" />
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
       {/* ── Page Header ── */}
@@ -800,57 +804,57 @@ const ManageCctvDevices: React.FC = () => {
         </div>
       </div>
 
-      {/* ── Metrics Summary Grid (Horizontal Left-to-Right KPI Cards) ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div className="bg-card border border-border rounded-xl p-5 shadow-sm flex items-center gap-4">
-          <div className="p-3 rounded-lg bg-emerald-500/10 text-emerald-500">
-            <Server className="h-6 w-6" />
+      {/* ── Metrics Summary Grid (2x2 on Mobile, 4x1 on Desktop) ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 mb-5">
+        <div className="bg-card border border-border rounded-xl p-3 sm:p-5 shadow-sm flex items-center gap-2.5 sm:gap-4">
+          <div className="p-2 sm:p-3 rounded-lg bg-emerald-500/10 text-emerald-500 shrink-0">
+            <Server className="h-5 w-5 sm:h-6 sm:w-6" />
           </div>
-          <div>
-            <p className="text-sm text-muted">Total Devices</p>
-            <h4 className="text-2xl font-bold text-primary-text">{devices.length}</h4>
-          </div>
-        </div>
-
-        <div className="bg-card border border-border rounded-xl p-5 shadow-sm flex items-center gap-4">
-          <div className="p-3 rounded-lg bg-green-500/10 text-green-500">
-            <CheckCircle className="h-6 w-6" />
-          </div>
-          <div>
-            <p className="text-sm text-muted">Active (Online)</p>
-            <h4 className="text-2xl font-bold text-primary-text">{onlineCount}</h4>
+          <div className="min-w-0">
+            <p className="text-xs sm:text-sm text-muted truncate">Total Devices</p>
+            <h4 className="text-lg sm:text-2xl font-bold text-primary-text">{devices.length}</h4>
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-xl p-5 shadow-sm flex items-center gap-4">
-          <div className="p-3 rounded-lg bg-blue-500/10 text-blue-500">
-            <Camera className="h-6 w-6" />
+        <div className="bg-card border border-border rounded-xl p-3 sm:p-5 shadow-sm flex items-center gap-2.5 sm:gap-4">
+          <div className="p-2 sm:p-3 rounded-lg bg-emerald-500/10 text-[#44D62C] shrink-0">
+            <CheckCircle className="h-5 w-5 sm:h-6 sm:w-6" />
           </div>
-          <div>
-            <p className="text-sm text-muted">Total Cameras</p>
-            <h4 className="text-2xl font-bold text-primary-text">{totalCameras}</h4>
+          <div className="min-w-0">
+            <p className="text-xs sm:text-sm text-muted truncate">Active (Online)</p>
+            <h4 className="text-lg sm:text-2xl font-bold text-primary-text">{onlineCount}</h4>
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-xl p-5 shadow-sm flex items-center gap-4">
-          <div className="p-3 rounded-lg bg-amber-500/10 text-amber-500">
-            <Shield className="h-6 w-6" />
+        <div className="bg-card border border-border rounded-xl p-3 sm:p-5 shadow-sm flex items-center gap-2.5 sm:gap-4">
+          <div className="p-2 sm:p-3 rounded-lg bg-blue-500/10 text-blue-500 shrink-0">
+            <Camera className="h-5 w-5 sm:h-6 sm:w-6" />
           </div>
-          <div>
-            <p className="text-sm text-muted">Active Protection</p>
-            <h4 className="text-2xl font-bold text-primary-text">{devices.filter(d => d.isActive).length}</h4>
+          <div className="min-w-0">
+            <p className="text-xs sm:text-sm text-muted truncate">Total Cameras</p>
+            <h4 className="text-lg sm:text-2xl font-bold text-primary-text">{totalCameras}</h4>
+          </div>
+        </div>
+
+        <div className="bg-card border border-border rounded-xl p-3 sm:p-5 shadow-sm flex items-center gap-2.5 sm:gap-4">
+          <div className="p-2 sm:p-3 rounded-lg bg-amber-500/10 text-amber-500 shrink-0">
+            <Shield className="h-5 w-5 sm:h-6 sm:w-6" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs sm:text-sm text-muted truncate">Active Protection</p>
+            <h4 className="text-lg sm:text-2xl font-bold text-primary-text">{devices.filter(d => d.isActive).length}</h4>
           </div>
         </div>
       </div>
 
-      {/* ── Tab Navigation (Crisp Green & White) ── */}
-      <div className="flex items-center gap-2 p-1 bg-gray-100/80 rounded-xl w-fit mb-6 border border-border/80 shadow-2xs">
+      {/* ── Tab Navigation (Forest Dark & Mobile Optimized) ── */}
+      <div className="w-full overflow-x-auto no-scrollbar flex items-center gap-1.5 p-1.5 bg-[#041d0f] rounded-xl mb-6 border border-[#134426] shadow-inner">
         <button
           onClick={() => setActiveTab('devices')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all shrink-0 ${
             activeTab === 'devices'
-              ? 'bg-emerald-600 text-white shadow-sm'
-              : 'text-gray-600 hover:text-emerald-700 hover:bg-white/80'
+              ? 'bg-[#134426] text-[#44D62C] border border-[#44D62C]/40 shadow-sm'
+              : 'text-emerald-300/70 hover:text-[#44D62C] hover:bg-[#072916]'
           }`}
         >
           <Camera className="h-4 w-4" /> Live Surveillance & Devices
@@ -858,10 +862,10 @@ const ManageCctvDevices: React.FC = () => {
 
         <button
           onClick={() => setActiveTab('enroll')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all shrink-0 ${
             activeTab === 'enroll'
-              ? 'bg-emerald-600 text-white shadow-sm'
-              : 'text-gray-600 hover:text-emerald-700 hover:bg-white/80'
+              ? 'bg-[#134426] text-[#44D62C] border border-[#44D62C]/40 shadow-sm'
+              : 'text-emerald-300/70 hover:text-[#44D62C] hover:bg-[#072916]'
           }`}
         >
           <UserPlus className="h-4 w-4" /> Face Enrollment Studio
@@ -869,10 +873,10 @@ const ManageCctvDevices: React.FC = () => {
 
         <button
           onClick={() => setActiveTab('setup')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all shrink-0 ${
             activeTab === 'setup'
-              ? 'bg-emerald-600 text-white shadow-sm'
-              : 'text-gray-600 hover:text-emerald-700 hover:bg-white/80'
+              ? 'bg-[#134426] text-[#44D62C] border border-[#44D62C]/40 shadow-sm'
+              : 'text-emerald-300/70 hover:text-[#44D62C] hover:bg-[#072916]'
           }`}
         >
           <Sliders className="h-4 w-4" /> Edge Hardware Config
@@ -912,30 +916,30 @@ const ManageCctvDevices: React.FC = () => {
                             <div className="flex items-center gap-3.5">
                               <div className={`h-12 w-12 rounded-2xl flex items-center justify-center flex-shrink-0 ${
                                 device.status === 'online' 
-                                  ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 shadow-sm' 
-                                  : 'bg-gray-100 text-gray-400 border border-gray-200'
+                                  ? 'bg-[#0a381f] text-[#44D62C] border border-[#134426] shadow-sm' 
+                                  : 'bg-neutral-900 text-neutral-500 border border-neutral-800'
                               }`}>
                                 {device.status === 'online' ? <Wifi className="h-6 w-6" /> : <WifiOff className="h-6 w-6" />}
                               </div>
                               <div>
-                                <div className="flex items-center gap-2">
-                                  <h3 className="text-xl font-extrabold text-primary-text tracking-tight">{device.siteName}</h3>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <h3 className="text-lg sm:text-xl font-extrabold text-primary-text tracking-tight">{device.siteName}</h3>
                                   <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider ${
                                     device.status === 'online'
-                                      ? 'bg-emerald-100/80 text-emerald-800 border border-emerald-300/60'
-                                      : 'bg-gray-100 text-gray-600 border border-gray-200'
+                                      ? 'bg-[#0a381f] text-[#44D62C] border border-[#134426]'
+                                      : 'bg-neutral-900 text-neutral-400 border border-neutral-800'
                                   }`}>
-                                    <span className={`h-1.5 w-1.5 rounded-full ${device.status === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`} />
+                                    <span className={`h-1.5 w-1.5 rounded-full ${device.status === 'online' ? 'bg-[#44D62C] animate-pulse' : 'bg-gray-400'}`} />
                                     {device.status === 'online' ? 'Live & Synced' : 'Offline'}
                                   </span>
                                 </div>
                                 <div className="flex flex-wrap items-center gap-2 mt-1">
-                                  <span className="text-xs font-mono text-muted bg-background px-2 py-0.5 rounded-md border border-border">
+                                  <span className="text-xs font-mono text-emerald-300 bg-[#041d0f] px-2 py-0.5 rounded-md border border-[#134426]">
                                     {device.edgeDeviceId}
                                   </span>
                                   {device.locationName && (
-                                    <span className="text-xs font-semibold text-emerald-800 flex items-center gap-1 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
-                                      <MapPin className="h-3 w-3 text-emerald-600" /> {device.locationName}
+                                    <span className="text-xs font-semibold text-[#44D62C] flex items-center gap-1 bg-[#0a2e1a] border border-[#134426] px-2 py-0.5 rounded-md">
+                                      <MapPin className="h-3 w-3 text-[#44D62C]" /> {device.locationName}
                                     </span>
                                   )}
                                 </div>
@@ -944,7 +948,7 @@ const ManageCctvDevices: React.FC = () => {
 
                             <button
                               onClick={() => handleDelete(device.id)}
-                              className="p-2 text-muted hover:text-red-500 hover:bg-red-50 rounded-xl transition-all border border-transparent hover:border-red-100"
+                              className="p-2 text-muted hover:text-red-400 hover:bg-red-950/40 rounded-xl transition-all border border-transparent hover:border-red-900/50"
                               title="Delete edge device"
                             >
                               <Trash2 className="h-4 w-4" />
@@ -952,59 +956,59 @@ const ManageCctvDevices: React.FC = () => {
                           </div>
 
                           {/* Channel Details Card */}
-                          <div className="p-4 rounded-xl bg-background border border-border shadow-xs space-y-3">
-                            <div className="flex items-center justify-between text-xs">
+                          <div className="p-3.5 rounded-xl bg-[#041d0f]/80 border border-[#134426] shadow-xs space-y-2.5">
+                            <div className="flex items-center justify-between text-xs flex-wrap gap-1">
                               <span className="font-bold text-primary-text uppercase tracking-wider flex items-center gap-1.5">
-                                <Camera className="h-3.5 w-3.5 text-accent" /> Camera Channel 01
+                                <Camera className="h-3.5 w-3.5 text-[#44D62C]" /> Camera Channel 01
                               </span>
-                              <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold uppercase font-mono">
+                              <span className="px-2 py-0.5 rounded bg-[#0a2e1a] text-[#44D62C] border border-[#134426] text-[10px] font-bold uppercase font-mono">
                                 Entry Gate (Punch-IN)
                               </span>
                             </div>
 
                             <div className="flex flex-wrap items-center gap-2 text-xs">
-                              <span className="px-2.5 py-1 rounded-lg bg-card border border-border text-primary-text font-medium flex items-center gap-1">
-                                <Cpu className="h-3 w-3 text-blue-500" /> InsightFace 512D AI
+                              <span className="px-2.5 py-1 rounded-lg bg-[#062414] border border-[#134426] text-emerald-200 font-medium flex items-center gap-1">
+                                <Cpu className="h-3 w-3 text-sky-400" /> InsightFace 512D AI
                               </span>
-                              <span className="px-2.5 py-1 rounded-lg bg-card border border-border text-primary-text font-medium flex items-center gap-1 font-mono">
+                              <span className="px-2.5 py-1 rounded-lg bg-[#062414] border border-[#134426] text-emerald-200 font-medium flex items-center gap-1 font-mono">
                                 RTSP TCP • 25 FPS
                               </span>
-                              <span className="px-2.5 py-1 rounded-lg bg-card border border-border text-primary-text font-medium flex items-center gap-1 font-mono">
+                              <span className="px-2.5 py-1 rounded-lg bg-[#062414] border border-[#134426] text-emerald-200 font-medium flex items-center gap-1 font-mono">
                                 352x288 Resolution
                               </span>
                             </div>
                           </div>
 
                           {/* Edge Server Telemetry 4-Grid */}
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="p-3 rounded-xl bg-background border border-border/80">
-                              <span className="text-[11px] text-muted font-medium block">Match Sensitivity</span>
-                              <div className="text-sm font-bold text-primary-text mt-0.5 flex items-center gap-1">
-                                <Shield className="h-3.5 w-3.5 text-emerald-600" />
+                          <div className="grid grid-cols-2 gap-2.5">
+                            <div className="p-3 rounded-xl bg-[#041d0f]/80 border border-[#134426]">
+                              <span className="text-[11px] text-emerald-300/70 font-medium block">Match Sensitivity</span>
+                              <div className="text-xs sm:text-sm font-bold text-primary-text mt-0.5 flex items-center gap-1">
+                                <Shield className="h-3.5 w-3.5 text-[#44D62C]" />
                                 {Math.round(device.matchThreshold * 100)}% Cosine Threshold
                               </div>
                             </div>
 
-                            <div className="p-3 rounded-xl bg-background border border-border/80">
-                              <span className="text-[11px] text-muted font-medium block">Anti-Spam Cooldown</span>
-                              <div className="text-sm font-bold text-primary-text mt-0.5 flex items-center gap-1">
-                                <Activity className="h-3.5 w-3.5 text-amber-600" />
+                            <div className="p-3 rounded-xl bg-[#041d0f]/80 border border-[#134426]">
+                              <span className="text-[11px] text-emerald-300/70 font-medium block">Anti-Spam Cooldown</span>
+                              <div className="text-xs sm:text-sm font-bold text-primary-text mt-0.5 flex items-center gap-1">
+                                <Activity className="h-3.5 w-3.5 text-amber-400" />
                                 {device.cooldownSeconds}s (5 Minutes)
                               </div>
                             </div>
 
-                            <div className="p-3 rounded-xl bg-background border border-border/80">
-                              <span className="text-[11px] text-muted font-medium block">Host Edge Node</span>
-                              <div className="text-sm font-bold text-primary-text mt-0.5 font-mono flex items-center gap-1">
-                                <Server className="h-3.5 w-3.5 text-blue-600" />
+                            <div className="p-3 rounded-xl bg-[#041d0f]/80 border border-[#134426]">
+                              <span className="text-[11px] text-emerald-300/70 font-medium block">Host Edge Node</span>
+                              <div className="text-xs sm:text-sm font-bold text-primary-text mt-0.5 font-mono flex items-center gap-1">
+                                <Server className="h-3.5 w-3.5 text-sky-400" />
                                 Port {device.adminPort || 4100}
                               </div>
                             </div>
 
-                            <div className="p-3 rounded-xl bg-background border border-border/80">
-                              <span className="text-[11px] text-muted font-medium block">Database Tunnel</span>
-                              <div className="text-sm font-bold text-emerald-700 mt-0.5 flex items-center gap-1 font-mono text-xs">
-                                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                            <div className="p-3 rounded-xl bg-[#041d0f]/80 border border-[#134426]">
+                              <span className="text-[11px] text-emerald-300/70 font-medium block">Database Tunnel</span>
+                              <div className="text-xs sm:text-sm font-bold text-[#44D62C] mt-0.5 flex items-center gap-1 font-mono">
+                                <span className="h-2 w-2 rounded-full bg-[#44D62C]" />
                                 MSSQL Connected
                               </div>
                             </div>
@@ -1021,27 +1025,27 @@ const ManageCctvDevices: React.FC = () => {
                                 setSelectedActionZoneLocation(device.locationName || device.siteName || 'Paradigm Office');
                                 setShowActionZoneModal(true);
                               }}
-                              className="px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 font-semibold text-xs transition-colors flex items-center gap-1.5"
+                              className="px-3 py-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-900/60 text-rose-300 border border-rose-800/60 font-semibold text-xs transition-colors flex items-center gap-1.5"
                               title="Configure polygon area for face capture"
                             >
-                              <Crosshair className="h-3.5 w-3.5 text-rose-600" /> Action Zone (ROI)
+                              <Crosshair className="h-3.5 w-3.5 text-rose-400" /> Action Zone (ROI)
                             </button>
                             <button
                               onClick={() => setActiveTab('enroll')}
-                              className="px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-semibold text-xs transition-colors flex items-center gap-1.5"
+                              className="px-3 py-1.5 rounded-lg bg-[#0a381f] hover:bg-[#134426] text-[#44D62C] border border-[#134426] font-semibold text-xs transition-colors flex items-center gap-1.5"
                             >
-                              <UserPlus className="h-3.5 w-3.5" /> Enroll Staff Face
+                              <UserPlus className="h-3.5 w-3.5 text-[#44D62C]" /> Enroll Staff Face
                             </button>
                             <a
                               href="#/admin/cctv-dashboard"
-                              className="px-3 py-1.5 rounded-lg bg-background hover:bg-muted text-primary-text border border-border font-semibold text-xs transition-colors flex items-center gap-1.5"
+                              className="px-3 py-1.5 rounded-lg bg-[#041d0f] hover:bg-[#072916] text-emerald-200 border border-[#134426] font-semibold text-xs transition-colors flex items-center gap-1.5"
                             >
-                              <Activity className="h-3.5 w-3.5 text-muted" /> View Live Logs
+                              <Activity className="h-3.5 w-3.5 text-emerald-400" /> View Live Logs
                             </a>
                           </div>
 
                           <span className="text-xs text-muted font-medium flex items-center gap-1">
-                            <Activity className="h-3.5 w-3.5 text-emerald-500" /> Heartbeat: {getLastSeenText(device.lastSeen)}
+                            <Activity className="h-3.5 w-3.5 text-[#44D62C]" /> Heartbeat: {getLastSeenText(device.lastSeen)}
                           </span>
                         </div>
                       </div>

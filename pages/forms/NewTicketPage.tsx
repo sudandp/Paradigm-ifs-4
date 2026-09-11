@@ -14,6 +14,7 @@ import UploadDocument from '../../components/UploadDocument';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { MessageSquarePlus, LifeBuoy } from 'lucide-react';
 import { isAdmin } from '../../utils/auth';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 
 const schema = yup.object({
@@ -59,9 +60,10 @@ const NewTicketPage: React.FC = () => {
                 return users.filter(u => u.role === 'hr');
             case 'Operational':
                 return users.filter(u => ['operation_manager', 'site_manager'].includes(u.role));
-            default:
+            default: {
                 const allAssignableRoles = ['hr', 'developer', 'operation_manager', 'site_manager'];
                 return users.filter(u => isAdmin(u.role) || allAssignableRoles.includes(u.role));
+            }
         }
     }, [users, watchedCategory]);
 
@@ -97,9 +99,7 @@ const NewTicketPage: React.FC = () => {
     if (isMobile) {
         return (
             <div className="h-full flex flex-col bg-[#041b0f] min-h-screen">
-                <header className="p-4 flex-shrink-0 pt-6">
-                    <h1 className="text-sm font-bold text-white">New Support Ticket</h1>
-                </header>
+                <MobileTopBar title="NEW TICKET" parentPath={fromPath} />
                 <main className="flex-1 overflow-y-auto p-4 pt-2 pb-20">
                     <div className="bg-[#0a1c13] border border-[#1d422f] rounded-[2rem] p-6 space-y-6 flex flex-col min-h-full relative overflow-hidden shadow-2xl">
                         <div className="text-center relative z-10">

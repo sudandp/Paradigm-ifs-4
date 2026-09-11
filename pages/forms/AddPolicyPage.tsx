@@ -5,6 +5,7 @@ import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import { FileText } from 'lucide-react';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 
 const AddPolicyPage: React.FC = () => {
@@ -35,6 +36,7 @@ const AddPolicyPage: React.FC = () => {
     if (isMobile) {
         return (
             <div className="h-full flex flex-col">
+      <MobileTopBar title="ADD POLICY" parentPath="/hr/policies-and-insurance" />
                 <header className="p-4 flex-shrink-0 fo-mobile-header">
                     <h1>Add Policy</h1>
                 </header>

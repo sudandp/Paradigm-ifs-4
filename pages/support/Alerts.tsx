@@ -7,6 +7,7 @@ import Toast from '../../components/ui/Toast';
 import Modal from '../../components/ui/Modal';
 import SearchableSelect from '../../components/ui/SearchableSelect';
 import type { User, Role } from '../../types';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 const Alerts: React.FC = () => {
     const { user } = useAuthStore();
@@ -127,6 +128,7 @@ const Alerts: React.FC = () => {
 
     return (
         <div className="p-4 md:p-6 space-y-6">
+      <MobileTopBar title="SYSTEM ALERTS" parentPath="/support" />
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
             <div className={`flex items-center gap-3 mb-6 ${isMobile ? 'mt-2' : ''}`}>

@@ -8,6 +8,7 @@ import type {
   ChecklistFieldDef, ChecklistFieldResponse
 } from '../../types/crm';
 import Toast from '../../components/ui/Toast';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 import {
   ArrowLeft, Save, Send, Loader2, ChevronRight, CheckCircle,
   Circle, Camera, Mic, MicOff, Star, AlertTriangle, Wifi, WifiOff
@@ -72,7 +73,9 @@ const SiteSurveyForm: React.FC = () => {
           const parsed = JSON.parse(draft);
           setResponses(parsed);
           setToast({ message: 'Offline draft restored', type: 'info' });
-        } catch {}
+        } catch {
+          // Ignore invalid offline draft
+        }
       }
     }
   }, [leadId, selectedTemplate, existingSubmission]);
@@ -186,6 +189,7 @@ const SiteSurveyForm: React.FC = () => {
       case 'yes_no':
         return (
           <div className="flex items-center gap-2">
+      <MobileTopBar title="SITE SURVEY" parentPath="/crm" />
             {['Yes', 'No', 'NA'].map(opt => (
               <button
                 key={opt}
