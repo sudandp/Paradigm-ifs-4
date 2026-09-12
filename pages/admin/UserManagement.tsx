@@ -34,19 +34,32 @@ const getRoleName = (role: string) => {
 }
 
 const getRoleBadgeClass = (role: string) => {
-    switch (role) {
-        case 'admin': return 'bg-purple-100 text-purple-700';
-        case 'hr': return 'bg-blue-100 text-blue-700';
-        case 'management': return 'bg-emerald-100 text-emerald-700';
-        case 'site_manager': return 'bg-orange-100 text-orange-800';
-        case 'field_staff': return 'bg-sky-100 text-sky-800';
-        case 'finance': return 'bg-teal-100 text-teal-700';
-        case 'developer': return 'bg-indigo-100 text-indigo-700';
-        case 'operation_manager': return 'bg-rose-100 text-rose-700';
-        case 'unverified': return 'bg-yellow-100 text-yellow-800';
-        case 'kiosk': return 'bg-cyan-100 text-cyan-700';
-        case 'gate_only': return 'bg-blue-100 text-blue-700';
-        default: return 'bg-slate-100 text-slate-700';
+    const r = (role || '').toLowerCase();
+    switch (r) {
+        case 'admin': 
+            return 'bg-emerald-50 text-emerald-800 border border-emerald-300 dark:bg-[#062413] dark:text-[#44D62C] dark:border-[#1a5532]';
+        case 'hr': 
+            return 'bg-cyan-50 text-cyan-800 border border-cyan-200 dark:bg-cyan-950/70 dark:text-cyan-300 dark:border-cyan-800';
+        case 'management': 
+            return 'bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-[#062413] dark:text-emerald-300 dark:border-emerald-800';
+        case 'site_manager': 
+            return 'bg-orange-50 text-orange-800 border border-orange-200 dark:bg-orange-950/70 dark:text-orange-300 dark:border-orange-800';
+        case 'field_staff': 
+            return 'bg-sky-50 text-sky-800 border border-sky-200 dark:bg-sky-950/70 dark:text-sky-300 dark:border-sky-800';
+        case 'finance': 
+            return 'bg-teal-50 text-teal-800 border border-teal-200 dark:bg-teal-950/70 dark:text-teal-300 dark:border-teal-800';
+        case 'developer': 
+            return 'bg-blue-50 text-blue-800 border border-blue-200 dark:bg-blue-950/70 dark:text-blue-300 dark:border-blue-800';
+        case 'operation_manager': 
+            return 'bg-rose-50 text-rose-800 border border-rose-200 dark:bg-rose-950/70 dark:text-rose-300 dark:border-rose-800';
+        case 'unverified': 
+            return 'bg-yellow-50 text-yellow-800 border border-yellow-300 dark:bg-yellow-950/70 dark:text-yellow-300 dark:border-yellow-800';
+        case 'kiosk': 
+            return 'bg-cyan-50 text-cyan-800 border border-cyan-200 dark:bg-cyan-950/70 dark:text-cyan-300 dark:border-cyan-800';
+        case 'gate_only': 
+            return 'bg-blue-50 text-blue-800 border border-blue-200 dark:bg-blue-950/70 dark:text-blue-300 dark:border-blue-800';
+        default: 
+            return 'bg-slate-100 text-slate-800 border border-slate-300 dark:bg-[#062413] dark:text-emerald-200 dark:border-[#1a5532]';
     }
 };
 
@@ -264,7 +277,7 @@ const UserCard = React.memo(({
                         <p className="text-sm text-muted">{user.email}</p>
                     </div>
                 </div>
-                <span className={`text-xs px-2 py-1 rounded-full font-medium ${getRoleBadgeClass(user.role)}`}>
+                <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-semibold uppercase tracking-wider whitespace-nowrap shadow-sm ${getRoleBadgeClass(user.role)}`}>
                     {getRoleName(user.role)}
                 </span>
             </div>

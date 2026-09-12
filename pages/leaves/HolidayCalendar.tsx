@@ -56,9 +56,9 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ adminHolidays, userSe
 
     const getStatusColor = (status: string) => {
         switch (status) {
-            case 'fixed': return 'bg-emerald-500 text-white border-emerald-600 shadow-sm'; // Green for Common
+            case 'fixed': return 'bg-emerald-500 text-white border-emerald-600 shadow-sm'; // Green for Gov/Common
             case 'admin': return 'bg-amber-500 text-white border-amber-600 shadow-sm'; // Amber for Admin
-            case 'user': return 'bg-violet-600 text-white border-violet-700 shadow-sm'; // Purple for User
+            case 'user': return 'bg-[#44D62C] text-[#0A1809] font-black border-[#39E722] shadow-sm'; // Neon emerald for User
             default: return isMobile ? 'bg-white/[0.02] text-white/40 border-white/5' : 'bg-transparent text-muted/40 border-transparent'; // Neutral
         }
     };
@@ -69,26 +69,26 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ adminHolidays, userSe
 
 
     return (
-        <div className="bg-card p-4 rounded-xl shadow-card border border-border w-full flex flex-col h-full">
+        <div className={`p-4 rounded-2xl shadow-card border w-full flex flex-col h-full ${isMobile ? 'bg-[#092c19] border-[#134426] text-white' : 'bg-card border-border'}`}>
             <div className="flex items-center justify-between mb-4 flex-shrink-0">
-                <h3 className="text-sm font-semibold text-primary-text">Holiday Calendar</h3>
+                <h3 className={`text-sm font-semibold ${isMobile ? 'text-white' : 'text-primary-text'}`}>Holiday Calendar</h3>
                 <div className="flex items-center gap-1">
                     <Button 
                         variant="secondary" 
                         size="sm" 
-                        className="btn-icon !p-1 h-6 w-6 cursor-pointer" 
+                        className={`btn-icon !p-1 h-6 w-6 cursor-pointer ${isMobile ? 'bg-[#041b0f] border border-[#134426] text-white hover:bg-white/10' : ''}`}
                         onClick={() => onDateChange(subMonths(viewingDate, 1))}
                         aria-label="Previous month"
                     >
                         <ChevronLeft className="h-4 w-4" />
                     </Button>
-                    <span className="font-medium min-w-[80px] text-center text-xs text-primary-text">
+                    <span className={`font-medium min-w-[80px] text-center text-xs ${isMobile ? 'text-white' : 'text-primary-text'}`}>
                         {format(viewingDate, 'MMMM yyyy')}
                     </span>
                     <Button 
                         variant="secondary" 
                         size="sm" 
-                        className="btn-icon !p-1 h-6 w-6 cursor-pointer" 
+                        className={`btn-icon !p-1 h-6 w-6 cursor-pointer ${isMobile ? 'bg-[#041b0f] border border-[#134426] text-white hover:bg-white/10' : ''}`}
                         onClick={() => onDateChange(addMonths(viewingDate, 1))}
                         aria-label="Next month"
                     >
@@ -102,7 +102,7 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ adminHolidays, userSe
             ) : (
                 <div className="grid grid-cols-7 gap-1 flex-1">
                     {weekDays.map(d => (
-                        <div key={d} className="text-center text-[10px] font-bold text-muted uppercase tracking-wider py-1">{d}</div>
+                        <div key={d} className={`text-center text-[10px] font-bold uppercase tracking-wider py-1 ${isMobile ? 'text-white/50' : 'text-muted'}`}>{d}</div>
                     ))}
                     {Array.from({ length: startDay }).map((_, i) => (
                         <div key={`empty-${i}`} className="h-9" />
@@ -124,10 +124,15 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ adminHolidays, userSe
                 </div>
             )}
             
-            <div className="mt-auto pt-3 border-t border-border/50 grid grid-cols-3 gap-x-2 gap-y-2 text-[10px] uppercase font-bold tracking-tight leading-tight text-muted-foreground">
-                <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-emerald-500 rounded-full flex-shrink-0"></div> Gov</div>
-                <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-amber-500 rounded-full flex-shrink-0"></div> Admin</div>
-                <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-violet-600 rounded-full flex-shrink-0"></div> User</div>
+            <div className={`mt-auto pt-3 border-t flex items-center justify-center gap-6 text-[10px] uppercase font-bold tracking-tight leading-tight ${isMobile ? 'border-white/10 text-white/70' : 'border-border/50 text-muted-foreground'}`}>
+                <div className="flex items-center gap-1.5">
+                    <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full flex-shrink-0"></div> 
+                    <span>Gov Holiday</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                    <div className="w-2.5 h-2.5 bg-[#44D62C] rounded-full flex-shrink-0"></div> 
+                    <span>Your Selection</span>
+                </div>
             </div>
         </div>
     );

@@ -301,28 +301,41 @@ const StatusBadge: React.FC<{
 };
 
 const ShiftBadge: React.FC<{ shiftName?: string; shiftTiming?: string }> = ({ shiftName, shiftTiming }) => {
-  if (!shiftName) return <span className="text-slate-300 dark:text-emerald-300/40">—</span>;
+  if (!shiftName) return <span className="text-slate-400 dark:text-emerald-300/40">—</span>;
 
-  const colorMap: Record<string, string> = {
-    'A Shift': 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-800',
-    'B Shift': 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800',
-    'C Shift': 'bg-teal-50 text-teal-800 border-teal-200 dark:bg-teal-950/50 dark:text-teal-300 dark:border-teal-800',
-    'General Shift': 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-[#0d3820] dark:text-emerald-200 dark:border-[#1a5532]',
-    'Day Shift (12h)': 'bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-950/50 dark:text-cyan-300 dark:border-cyan-800',
-    'Night Shift (12h)': 'bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/50 dark:text-sky-300 dark:border-sky-800',
-    'Security Day': 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800',
-    'Security Night': 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-[#0d3820] dark:text-[#44D62C] dark:border-[#1a5532]',
+  // Normalized matching & styles with high-contrast text and dark mode backgrounds
+  const getBadgeStyle = (name: string): string => {
+    const lower = name.toLowerCase();
+    if (lower.includes('gen')) {
+      return 'bg-emerald-50 text-emerald-800 border-emerald-300/60 dark:bg-[#062413] dark:text-[#44D62C] dark:border-[#1a5532] shadow-sm';
+    }
+    if (lower.includes('a shift')) {
+      return 'bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-950/70 dark:text-blue-300 dark:border-blue-800 shadow-sm';
+    }
+    if (lower.includes('b shift')) {
+      return 'bg-amber-50 text-amber-900 border-amber-300 dark:bg-amber-950/70 dark:text-amber-300 dark:border-amber-800 shadow-sm';
+    }
+    if (lower.includes('c shift')) {
+      return 'bg-teal-50 text-teal-900 border-teal-200 dark:bg-teal-950/70 dark:text-teal-300 dark:border-teal-800 shadow-sm';
+    }
+    if (lower.includes('security day') || lower.includes('day shift') || lower.includes('day duty')) {
+      return 'bg-cyan-50 text-cyan-800 border-cyan-300 dark:bg-cyan-950/70 dark:text-cyan-300 dark:border-cyan-800 shadow-sm';
+    }
+    if (lower.includes('security night') || lower.includes('night shift') || lower.includes('night duty')) {
+      return 'bg-sky-50 text-sky-900 border-sky-300 dark:bg-sky-950/70 dark:text-sky-300 dark:border-sky-800 shadow-sm';
+    }
+    return 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-[#062413] dark:text-emerald-300 dark:border-[#1a5532] shadow-sm';
   };
 
-  const style = colorMap[shiftName] || 'bg-slate-100 text-slate-700 border-slate-200';
+  const badgeStyle = getBadgeStyle(shiftName);
 
   return (
     <div className="flex flex-col gap-0.5">
-      <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold border ${style} w-max`}>
+      <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold border ${badgeStyle} w-max`}>
         {shiftName}
       </span>
       {shiftTiming && (
-        <span className="text-[9px] text-slate-400 font-mono">{shiftTiming}</span>
+        <span className="text-[9px] text-slate-500 dark:text-emerald-400/80 font-mono font-medium">{shiftTiming}</span>
       )}
     </div>
   );

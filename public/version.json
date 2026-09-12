@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 121,
-  "latestVersionName": "21.1.0",
+  "latestVersionCode": 122,
+  "latestVersionName": "21.2.0",
   "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
   "apkDownloadUrl": "https://play.google.com/store/apps/details?id=com.paradigm.ifs",
-  "releaseNotes": "feat: initialize comprehensive enterprise management modules, Android configuration, and utility services\nfeat: add attendance dashboard and support for MS SQL data integration via new controllers and services\nfeat: implement AttendanceCalendar and LeaveDashboard pages for leave management tracking\nfeat: implement leave management dashboard with attendance tracking, calendar views, and state management integration\nfeat: implement automated daily email reporting system with scheduling and attendance tracking modules",
+  "releaseNotes": "feat: add client attendance dashboard, API service layer, attendance calculation utilities, and user deletion support\nfeat: add attendance PDF reports, leave application, mail modal, and client attendance dashboard\nfeat: add MobileBottomSheetSelect component, automate HR email scheduling, and implement HR queue and dashboard pages\nchore: bump version to 21.1.0 (code 121) for Google Play release\nfeat: initialize comprehensive enterprise management modules, Android configuration, and utility services",
   "isMandatory": false
 }

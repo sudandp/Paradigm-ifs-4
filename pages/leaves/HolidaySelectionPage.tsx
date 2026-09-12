@@ -14,6 +14,7 @@ import Toast from '../../components/ui/Toast';
 import HolidayCalendar from './HolidayCalendar';
 import type { UserHoliday, Holiday, StaffAttendanceRules } from '../../types';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 
 const HolidaySelectionPage: React.FC = () => {
@@ -170,22 +171,11 @@ const HolidaySelectionPage: React.FC = () => {
                 {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
                 {/* Standardized Mobile Top Navigation Bar */}
-                {isMobile ? (
-                    <div className="flex items-center gap-3 pt-2 pb-2 -mx-4 px-4 bg-[#041b0f] border-b border-[#134426]/60 sticky top-0 z-30 mb-6">
-                        <button
-                            type="button"
-                            onClick={() => setView('selection')}
-                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
-                        >
-                            <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
-                            <span>Back</span>
-                        </button>
-                        <div className="h-[1px] flex-1 bg-[#134426]" />
-                        <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#44D62C] bg-[#092c19] px-2.5 py-1 rounded-lg border border-[#134426]">
-                            CONFIRM SELECTION
-                        </span>
-                    </div>
-                ) : (
+                <MobileTopBar 
+                    title="CONFIRM SELECTION" 
+                    onBack={() => setView('selection')} 
+                />
+                {!isMobile && (
                     <div className="flex items-center gap-4 mb-8">
                         <button
                             onClick={() => setView('selection')}
@@ -295,22 +285,11 @@ const HolidaySelectionPage: React.FC = () => {
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
             {/* Standardized Mobile Top Navigation Bar */}
-            {isMobile ? (
-                <div className="flex items-center gap-3 pt-2 pb-2 -mx-4 px-4 bg-[#041b0f] border-b border-[#134426]/60 sticky top-0 z-30 mb-5">
-                    <button
-                        type="button"
-                        onClick={() => window.history.state?.idx > 0 ? navigate(-1) : navigate('/leaves/dashboard')}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
-                    >
-                        <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
-                        <span>Back</span>
-                    </button>
-                    <div className="h-[1px] flex-1 bg-[#134426]" />
-                    <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#44D62C] bg-[#092c19] px-2.5 py-1 rounded-lg border border-[#134426]">
-                        HOLIDAY SELECTION
-                    </span>
-                </div>
-            ) : (
+            <MobileTopBar 
+                title="HOLIDAY SELECTION" 
+                parentPath="/leaves/dashboard" 
+            />
+            {!isMobile && (
                 <div className="flex items-center gap-4 mb-6">
                     <div>
                         <h1 className="text-2xl font-bold text-primary-text">Holiday Selection</h1>
@@ -460,7 +439,7 @@ const HolidaySelectionPage: React.FC = () => {
 
                 {/* ── Right: Calendar Preview ── */}
                 <div className="space-y-4">
-                    <div className="sticky top-6">
+                    <div className="lg:sticky lg:top-6">
                         <h3 className={`text-base font-semibold mb-3 px-1 ${isMobile ? 'text-white' : 'text-primary-text'}`}>Calendar Preview</h3>
                         <HolidayCalendar
                             adminHolidays={adminHolidays}
@@ -470,26 +449,19 @@ const HolidaySelectionPage: React.FC = () => {
                             isMobile={isMobile}
                         />
 
-                        {/* Legend */}
-                        <div className={`mt-4 p-4 space-y-2.5 ${isMobile ? 'bg-[#092c19] border border-[#134426] rounded-3xl shadow-2xl' : 'bg-card rounded-xl border border-border'}`}>
-                            <h4 className={`text-xs font-bold uppercase tracking-wider ${isMobile ? 'text-white/60' : 'text-muted'}`}>Legend</h4>
-                            {[
-                                { color: 'bg-emerald-600', label: 'Gov Holiday' },
-                                { color: 'bg-amber-500', label: 'Admin Allocated' },
-                                { color: 'bg-[#44D62C]', label: 'Your Selection' },
-                            ].map(({ color, label }) => (
-                                <div key={label} className="flex items-center gap-2.5 text-sm">
-                                    <div className={`h-2.5 w-2.5 rounded-full ${color}`} />
-                                    <span className={isMobile ? 'text-white/80' : 'text-muted'}>{label}</span>
-                                </div>
-                            ))}
-                        </div>
-
                         {/* Selected Holidays Mini-List */}
                         {selectedHolidays.length > 0 && (
-                            <div className={`mt-4 p-4 ${isMobile ? 'bg-[#092c19] border border-[#134426] rounded-3xl shadow-2xl' : 'bg-card rounded-xl border border-border'}`}>
-                                <h4 className={`text-xs font-bold uppercase tracking-wider mb-3 ${isMobile ? 'text-white/60' : 'text-muted'}`}>Your Picks</h4>
-                                <div className="space-y-2">
+                            <div className={`mt-4 p-4 ${isMobile ? 'bg-[#092c19] border border-[#134426] rounded-2xl shadow-xl' : 'bg-card rounded-2xl border border-border shadow-sm'}`}>
+                                <div className="flex items-center justify-between mb-3 pb-2 border-b border-white/5">
+                                    <div className="flex items-center gap-2">
+                                        <Sparkles className="h-4 w-4 text-[#44D62C]" />
+                                        <h4 className={`text-xs font-black uppercase tracking-wider ${isMobile ? 'text-white' : 'text-primary-text'}`}>Your Chosen Holidays</h4>
+                                    </div>
+                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#041b0f] text-[#44D62C] border border-[#134426]">
+                                        {selectedHolidays.length} / 6
+                                    </span>
+                                </div>
+                                <div className="divide-y divide-white/5 space-y-0.5">
                                     {[...selectedHolidays]
                                         .sort((a, b) => a.date.localeCompare(b.date))
                                         .map((h, i) => {
@@ -498,24 +470,33 @@ const HolidaySelectionPage: React.FC = () => {
                                             const { isPast, isToday } = getHolidayStatus(h.date);
                                             const canRemove = !isPast && !isToday;
                                             return (
-                                                <div key={i} className="flex items-center gap-2.5 group">
-                                                    <div className={`h-8 w-8 rounded-lg flex flex-col items-center justify-center flex-shrink-0 ${isMobile ? 'bg-[#041b0f] border border-[#134426] text-[#44D62C]' : 'bg-accent-light'}`}>
-                                                        <span className={`text-[7px] font-black uppercase leading-none ${isMobile ? 'text-[#44D62C]' : 'text-accent-dark'}`}>
+                                                <div key={i} className="flex items-center gap-3 py-2 px-1 rounded-xl transition-colors hover:bg-white/[0.02]">
+                                                    <div className={`h-9 w-9 rounded-xl flex flex-col items-center justify-center flex-shrink-0 ${isMobile ? 'bg-[#041b0f] border border-[#134426] text-[#44D62C]' : 'bg-accent-light'}`}>
+                                                        <span className={`text-[8px] font-black uppercase leading-none ${isMobile ? 'text-[#44D62C]' : 'text-accent-dark'}`}>
                                                             {d.toLocaleDateString('en-IN', { month: 'short' })}
                                                         </span>
-                                                        <span className={`text-xs font-black leading-none ${isMobile ? 'text-[#44D62C]' : 'text-accent-dark'}`}>{d.getDate()}</span>
+                                                        <span className={`text-sm font-black leading-none mt-0.5 ${isMobile ? 'text-[#44D62C]' : 'text-accent-dark'}`}>{d.getDate()}</span>
                                                     </div>
-                                                    <span className={`text-xs font-medium flex-1 leading-tight line-clamp-1 ${isMobile ? 'text-white/80' : 'text-primary-text'}`}>{h.name}</span>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className={`text-xs font-bold truncate ${isMobile ? 'text-white' : 'text-primary-text'}`}>{h.name}</p>
+                                                        <p className={`text-[10px] font-medium ${isMobile ? 'text-white/40' : 'text-muted'}`}>
+                                                            {d.toLocaleDateString('en-IN', { weekday: 'short' })}
+                                                        </p>
+                                                    </div>
                                                     {canRemove ? (
                                                         <button
+                                                            type="button"
                                                             onClick={() => toggleHoliday(h.name, h.date)}
-                                                            className={`opacity-0 group-hover:opacity-100 p-1 rounded-full transition-all ${isMobile ? 'hover:bg-red-950/40 text-red-400' : 'hover:bg-red-100 text-red-500'}`}
-                                                            title="Remove"
+                                                            className={`p-1.5 rounded-lg transition-all active:scale-90 cursor-pointer ${isMobile ? 'bg-[#041b0f] border border-red-900/40 text-red-400 hover:bg-red-950/50 hover:text-red-300' : 'hover:bg-red-50 text-red-500'}`}
+                                                            title="Remove from selection"
+                                                            aria-label={`Remove ${h.name}`}
                                                         >
-                                                            <X className="h-3 w-3" />
+                                                            <X className="h-3.5 w-3.5" />
                                                         </button>
                                                     ) : (
-                                                        <Lock className={`h-3 w-3 opacity-50 ${isMobile ? 'text-white/40' : 'text-muted'}`} />
+                                                        <span title="Past holiday cannot be changed" className="p-1 rounded bg-black/20 text-white/30">
+                                                            <Lock className="h-3 w-3" />
+                                                        </span>
                                                     )}
                                                 </div>
                                             );
