@@ -3535,6 +3535,20 @@ export const api = {
   },
 
   deleteUser: async (id: string) => {
+    // 0. Pre-clean support tickets raised by this user to avoid NOT NULL constraint violation
+    try {
+      const { data: userTickets } = await supabase.from('support_tickets').select('id').eq('raised_by_id', id);
+      if (userTickets && userTickets.length > 0) {
+        const ticketIds = userTickets.map((t: any) => t.id);
+        await supabase.from('ticket_comments').delete().in('ticket_id', ticketIds);
+        await supabase.from('ticket_posts').delete().in('ticket_id', ticketIds);
+        await supabase.from('support_tickets').delete().eq('raised_by_id', id);
+      }
+      await supabase.from('support_tickets').update({ assigned_to_id: null }).eq('assigned_to_id', id);
+    } catch (tErr) {
+      console.warn('[deleteUser] Pre-cleanup support tickets warning:', tErr);
+    }
+
     // 1. Try calling the security-definer RPC directly
     const { error } = await supabase.rpc('delete_user', { target_user_id: id });
     
@@ -3542,6 +3556,15 @@ export const api = {
     if (error) {
       console.warn('[deleteUser] Initial RPC failed, performing pre-cleanup:', error.message);
       try {
+        // Double check support tickets removal if still present
+        const { data: remainingTickets } = await supabase.from('support_tickets').select('id').eq('raised_by_id', id);
+        if (remainingTickets && remainingTickets.length > 0) {
+          const tIds = remainingTickets.map((t: any) => t.id);
+          await supabase.from('ticket_comments').delete().in('ticket_id', tIds);
+          await supabase.from('ticket_posts').delete().in('ticket_id', tIds);
+          await supabase.from('support_tickets').delete().eq('raised_by_id', id);
+        }
+
         await Promise.allSettled([
           supabase.from('security_audit_logs').update({ user_id: null }).eq('user_id', id),
           supabase.from('audit_logs').update({ user_id: null }).eq('user_id', id),
@@ -3551,7 +3574,6 @@ export const api = {
           supabase.from('tracking_audit_logs').update({ target_user_id: null }).eq('target_user_id', id),
           supabase.from('users').update({ reporting_manager_id: null }).eq('reporting_manager_id', id),
           supabase.from('support_tickets').update({ assigned_to_id: null }).eq('assigned_to_id', id),
-          supabase.from('support_tickets').update({ raised_by_id: null }).eq('raised_by_id', id),
           supabase.from('ticket_comments').update({ author_id: null }).eq('author_id', id),
           supabase.from('user_locations').delete().eq('user_id', id),
           supabase.from('user_devices').delete().eq('user_id', id),

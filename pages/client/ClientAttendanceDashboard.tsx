@@ -3395,6 +3395,7 @@ const DetailedAuditReportView: React.FC<{
   const multiDayAttendanceList = useMemo(() => {
     if (!filteredEmployees.length) return [];
     const totalDaysCount = daysInRange.length || 1;
+    const today = format(new Date(), 'yyyy-MM-dd');
 
     const parseTimeToMins = (timeStr: string | null | undefined): number | null => {
       if (!timeStr || timeStr === '—' || timeStr === '-') return null;
@@ -3414,9 +3415,10 @@ const DetailedAuditReportView: React.FC<{
     return filteredEmployees.map((emp, idx) => {
       const empCodeKey = (emp.empCode || '').toLowerCase().trim();
       const empNameKey = (emp.empName || '').toLowerCase().trim();
+      // Look up Supabase punch events by empCode or empName
       const empEvents = rangeEventsMap[empCodeKey] || rangeEventsMap[empNameKey] || {};
 
-      const isEmpAbsent = emp.status === 'Absent' || emp.status === 'Discontinued / Left' || emp.status === 'Not Joined Yet' || emp.isActiveEmployee === false;
+      const isEmpInactive = emp.status === 'Discontinued / Left' || emp.status === 'Not Joined Yet' || emp.isActiveEmployee === false;
       const empShift = emp.shiftCode || emp.shiftName || 'GEN';
       const shiftExpectedHours = empShift.includes('12') ? 12 : 8;
 
@@ -3433,27 +3435,33 @@ const DetailedAuditReportView: React.FC<{
         const dayOfWeek = dayDate.getDay(); // 0 = Sunday
         const dayFormatted = format(dayDate, 'dd MMM (EEE)');
         const isWO = dayOfWeek === 0;
-
-        const dbDayRec = empEvents[dateStr];
+        // This is the date for which MSSQL single-day data was fetched
+        const isMssqlDate = dateStr === selectedDate;
+        // Future dates (beyond today) are pending — don't mark as absent
+        const isFutureDate = dateStr > today;
 
         if (isWO) {
           totalWeeklyOffs++;
           return {
-            dateStr,
-            dayNum,
-            dayFormatted,
-            inTime: '—',
-            outTime: '—',
-            hours: '—',
-            netMins: 0,
-            otMins: 0,
-            lateMinutes: 0,
-            status: 'W/O',
-            shift: 'NS',
-            isWeeklyOff: true,
+            dateStr, dayNum, dayFormatted,
+            inTime: '—', outTime: '—', hours: '—',
+            netMins: 0, otMins: 0, lateMinutes: 0,
+            status: 'W/O', shift: 'NS', isWeeklyOff: true,
           };
         }
 
+        if (isFutureDate) {
+          // Future working day — not yet due, show as pending
+          return {
+            dateStr, dayNum, dayFormatted,
+            inTime: '—', outTime: '—', hours: '—',
+            netMins: 0, otMins: 0, lateMinutes: 0,
+            status: 'Pending', shift: empShift, isWeeklyOff: false,
+          };
+        }
+
+        // PRIORITY 1: Supabase punch event data (authoritative for multi-day)
+        const dbDayRec = empEvents[dateStr];
         if (dbDayRec && (dbDayRec.inTime || dbDayRec.outTime)) {
           const inT = dbDayRec.inTime || '09:00 am';
           const outT = dbDayRec.outTime || '06:00 pm';
@@ -3461,93 +3469,68 @@ const DetailedAuditReportView: React.FC<{
           const outMins = parseTimeToMins(outT) || (18 * 60);
           let grossMins = outMins - inMins;
           if (grossMins < 0) grossMins += 24 * 60;
-          const breakMins = 30;
-          const netMins = Math.max(0, grossMins - breakMins);
+          const netMins = Math.max(0, grossMins - 30);
           const otMins = Math.max(0, netMins - shiftExpectedHours * 60);
           const lateMins = (inMins > (9 * 60 + 15)) ? (inMins - 9 * 60) : 0;
-          const dayStatus = lateMins > 0 ? 'Late' : 'P';
 
           totalPresentDays++;
           if (lateMins > 0) totalLateDays++;
           totalNetMinsSum += netMins;
           totalOtMinsSum += otMins;
 
-          const netH = Math.floor(netMins / 60);
-          const netM = netMins % 60;
-
           return {
-            dateStr,
-            dayNum,
-            dayFormatted,
-            inTime: inT,
-            outTime: outT,
-            hours: `${netH}h ${String(netM).padStart(2, '0')}m`,
-            netMins,
-            otMins,
-            lateMinutes: lateMins,
-            status: dayStatus,
-            shift: empShift,
-            isWeeklyOff: false,
+            dateStr, dayNum, dayFormatted,
+            inTime: inT, outTime: outT,
+            hours: `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m`,
+            netMins, otMins, lateMinutes: lateMins,
+            status: lateMins > 0 ? 'Late' : 'P',
+            shift: empShift, isWeeklyOff: false,
           };
         }
 
-        if (isEmpAbsent) {
-          totalAbsentDays++;
+        // PRIORITY 2: MSSQL single-day data — ONLY for the exact selectedDate
+        if (isMssqlDate && !isEmpInactive && emp.inTime && emp.inTime !== '—') {
+          const inT = emp.inTime;
+          const outT = emp.outTime && emp.outTime !== '—' ? emp.outTime : (shiftExpectedHours === 12 ? '08:00 pm' : '06:00 pm');
+          const inMins = parseTimeToMins(inT) || (9 * 60);
+          const outMins = parseTimeToMins(outT) || (18 * 60);
+          let grossMins = outMins - inMins;
+          if (grossMins < 0) grossMins += 24 * 60;
+          const netMins = Math.max(0, grossMins - 30);
+          const otMins = Math.max(0, netMins - shiftExpectedHours * 60);
+          const lateMins = emp.lateMinutes > 0 ? emp.lateMinutes : 0;
+
+          totalPresentDays++;
+          if (lateMins > 0) totalLateDays++;
+          totalNetMinsSum += netMins;
+          totalOtMinsSum += otMins;
+
           return {
-            dateStr,
-            dayNum,
-            dayFormatted,
-            inTime: '—',
-            outTime: '—',
-            hours: '—',
-            netMins: 0,
-            otMins: 0,
-            lateMinutes: 0,
-            status: 'A',
-            shift: empShift,
-            isWeeklyOff: false,
+            dateStr, dayNum, dayFormatted,
+            inTime: inT, outTime: outT,
+            hours: `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m`,
+            netMins, otMins, lateMinutes: lateMins,
+            status: (lateMins > 0 || emp.status === 'Late') ? 'Late' : 'P',
+            shift: empShift, isWeeklyOff: false,
           };
         }
 
-        // Active regular working day fallback
-        const dayInTime = emp.inTime && emp.inTime !== '—' ? emp.inTime : '09:00 am';
-        const dayOutTime = emp.outTime && emp.outTime !== '—' ? emp.outTime : (shiftExpectedHours === 12 ? '08:00 pm' : '06:00 pm');
-        const inMins = parseTimeToMins(dayInTime) || (9 * 60);
-        const outMins = parseTimeToMins(dayOutTime) || (18 * 60);
-        let grossMins = outMins - inMins;
-        if (grossMins < 0) grossMins += 24 * 60;
-        const breakMins = 30;
-        const netMins = Math.max(0, grossMins - breakMins);
-        const otMins = Math.max(0, netMins - shiftExpectedHours * 60);
-        const lateMins = (emp.lateMinutes > 0) ? emp.lateMinutes : 0;
-        const dayStatus = (lateMins > 0 || emp.status === 'Late') ? 'Late' : 'P';
-
-        totalPresentDays++;
-        if (lateMins > 0) totalLateDays++;
-        totalNetMinsSum += netMins;
-        totalOtMinsSum += otMins;
-
-        const netH = Math.floor(netMins / 60);
-        const netM = netMins % 60;
-
+        // PRIORITY 3: No punch record found for this past date → Absent
+        // NOTE: Do NOT fall back to emp.inTime/outTime for non-selectedDate days.
+        // That was the original bug — cloning single-day punch data across all range days.
+        totalAbsentDays++;
         return {
-          dateStr,
-          dayNum,
-          dayFormatted,
-          inTime: dayInTime,
-          outTime: dayOutTime,
-          hours: `${netH}h ${String(netM).padStart(2, '0')}m`,
-          netMins,
-          otMins,
-          lateMinutes: lateMins,
-          status: dayStatus,
-          shift: empShift,
-          isWeeklyOff: false,
+          dateStr, dayNum, dayFormatted,
+          inTime: '—', outTime: '—', hours: '—',
+          netMins: 0, otMins: 0, lateMinutes: 0,
+          status: 'A', shift: empShift, isWeeklyOff: false,
         };
       });
 
       const workingDays = Math.max(1, totalDaysCount - totalWeeklyOffs);
-      const attendanceRate = isEmpAbsent ? 0 : Math.min(100, Math.round((totalPresentDays / workingDays) * 100));
+      const futurePendingDays = dailyPunches.filter(dp => dp.status === 'Pending').length;
+      const effectiveWorkingDays = Math.max(1, workingDays - futurePendingDays);
+      const attendanceRate = Math.min(100, Math.round((totalPresentDays / effectiveWorkingDays) * 100));
       const payableDays = (totalPresentDays + totalWeeklyOffs).toFixed(1);
       const overallStatus = attendanceRate >= 80 ? 'Present' : (attendanceRate > 0 ? 'Partial' : 'Absent');
 
@@ -3575,7 +3558,8 @@ const DetailedAuditReportView: React.FC<{
         dailyPunches,
       };
     });
-  }, [filteredEmployees, daysInRange, rangeEventsMap]);
+  }, [filteredEmployees, daysInRange, rangeEventsMap, selectedDate]);
+
 
   // Aggregate KPI summary metrics for the multi-day date range
   const multiDaySummaryTotals = useMemo(() => {

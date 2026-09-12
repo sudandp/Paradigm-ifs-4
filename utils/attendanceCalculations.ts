@@ -1578,7 +1578,13 @@ export function getEarlyDepartureDeductions(
   // 4. Sort dates chronologically so deductions apply in true calendar sequence
   const sortedDates = Object.keys(eventsByDate).sort();
 
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
+
   sortedDates.forEach(dateStr => {
+    // POLICY RULE: Early departure shortage strictly evaluates ONLY after midnight (past completed calendar days).
+    // Today's active sessions must NEVER trigger early departure auto-deductions during the day.
+    if (dateStr >= todayStr) return;
+
     const dayEvents = eventsByDate[dateStr];
     // Check if there is a punch-out / check-out event for this day
     const hasPunchOut = dayEvents.some(e => {
