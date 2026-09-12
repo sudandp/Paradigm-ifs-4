@@ -881,26 +881,36 @@ const ApplyLeave: React.FC = () => {
             }
 
             // --- DUPLICATE CHECK ---
-            // Fetch any existing requests for this user that overlap with the selected dates
+            // Fetch existing requests of the SAME leave type that overlap with selected dates only
+            const newStart = formData.startDate;
+            const newEnd = formData.leaveType === 'Correction' ? formData.startDate : formData.endDate;
+
             const { data: existingRequests } = await api.getLeaveRequests({ 
                 userId: user.id,
-                startDate: formData.startDate,
-                endDate: formData.leaveType === 'Correction' ? formData.startDate : formData.endDate
+                leaveType: formData.leaveType,
+                startDate: newStart,
+                endDate: newEnd
             });
 
-            // Filter out rejected, cancelled, and withdrawn requests, and the current request if in Edit Mode
-            const conflictingRequests = existingRequests.filter(req => 
-                req.status !== 'rejected' && 
-                req.status !== 'cancelled' &&
-                req.status !== 'withdrawn' &&
-                (!isEditMode || req.id !== editId)
-            );
+            // Filter: exclude rejected/cancelled/withdrawn, exclude current request in edit mode,
+            // and verify actual date overlap (guards against DB records with bad end_date values)
+            const conflictingRequests = existingRequests.filter(req => {
+                if (req.status === 'rejected' || req.status === 'cancelled' || req.status === 'withdrawn') return false;
+                if (isEditMode && req.id === editId) return false;
+                // True overlap: existing.start <= newEnd AND existing.end >= newStart
+                const existingStart = req.startDate;
+                const existingEnd = req.endDate || req.startDate;
+                return existingStart <= newEnd && existingEnd >= newStart;
+            });
 
             if (conflictingRequests.length > 0) {
                 const conflict = conflictingRequests[0];
                 const typeName = getLeaveTypeDisplay(conflict.leaveType);
+                const conflictDates = conflict.startDate === conflict.endDate
+                    ? conflict.startDate
+                    : `${conflict.startDate} to ${conflict.endDate}`;
                 setToast({ 
-                    message: `Conflict Detected: You already have a ${typeName} request (${conflict.status.replace(/_/g, ' ')}) for these dates. Duplicate requests are not allowed.`, 
+                    message: `Conflict Detected: You already have a ${typeName} request (${conflict.status.replace(/_/g, ' ')}) for ${conflictDates}. Please withdraw or cancel it first.`, 
                     type: 'error' 
                 });
                 setIsSubmitting(false);

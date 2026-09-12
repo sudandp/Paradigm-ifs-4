@@ -44,6 +44,9 @@ import {
 } from 'recharts';
 import { exportGenericReportToExcel, GenericReportColumn } from '../../utils/excelExport';
 import type { DetailedAuditPdfEmployee, DetailedAuditPdfDataRow, BasicReportDataRow } from '../attendance/PDFReports';
+import Logo from '../../components/ui/Logo';
+import { isAdmin } from '../../utils/auth';
+import { MailReportModal, type MailReportPayload, type MailReportFilterSummary } from '../../components/attendance/MailReportModal';
 import type { SiteResponsibilityMatrix } from '../../types/siteRouting';
 import { INITIAL_SITE_RESPONSIBILITY_DATA } from '../../data/initialSiteResponsibilityData';
 
@@ -619,6 +622,45 @@ const ClientAttendanceDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'attendance' | 'reports' | 'shiftConfig' | 'userAccess' | 'auditLogs'>('attendance');
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
 
+  // ── Role Authorization: Only HR and Admin can view & export Excel / CSV ──────
+  const isHrOrAdmin = useMemo(() => {
+    if (!authUser) return false;
+    const role = (authUser.role || '').toLowerCase().trim();
+    const email = (authUser.email || '').toLowerCase().trim();
+
+    // 1. Super admin / admin emails
+    if (email === 'admin@paradigmfms.com' || email === 'sudhan@paradigm.com') {
+      return true;
+    }
+
+    // 2. Admin roles
+    if (
+      isAdmin(role) ||
+      role === 'admin' ||
+      role === 'super_admin' ||
+      role === 'super admin' ||
+      role === 'management' ||
+      role === 'developer'
+    ) {
+      return true;
+    }
+
+    // 3. HR roles
+    if (
+      role === 'hr' ||
+      role === 'hr_manager' ||
+      role === 'hr_executive' ||
+      role === 'human_resources' ||
+      role === 'human resource' ||
+      role.includes('hr') ||
+      role.includes('human_resource')
+    ) {
+      return true;
+    }
+
+    return false;
+  }, [authUser]);
+
   // Instant snapshot from local cache: zero-wait KPI cards & charts on load
   const initialAttendance = useMemo(() => getLocalAttendanceCache(format(new Date(), 'yyyy-MM-dd')), []);
   const initialDevices = useMemo(() => getLocalDevicesCache(), []);
@@ -745,10 +787,8 @@ const ClientAttendanceDashboard: React.FC = () => {
   // Export & Mail Modal state
   const [isDownloading, setIsDownloading] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
-  const [showMailModal, setShowMailModal] = useState(false);
-  const [mailRecipient, setMailRecipient] = useState('');
-  const [mailSubject, setMailSubject] = useState('');
-  const [mailNote, setMailNote] = useState('');
+  const [isMailModalOpen, setIsMailModalOpen] = useState(false);
+  const [availableUsers, setAvailableUsers] = useState<{ id: string; name: string; email: string; role?: string }[]>([]);
 
   // Multi-Day Range Attendance & Daily Punch Log State
   const [expandedEmpCode, setExpandedEmpCode] = useState<string | null>(null);
@@ -842,6 +882,48 @@ const ClientAttendanceDashboard: React.FC = () => {
       });
     });
   }, [selectedDate]);
+
+  // ── Fetch system users for Mail Report modal recipient selector ───────────
+  useEffect(() => {
+    let isMounted = true;
+    api.getUsers().then(res => {
+      if (!isMounted) return;
+      const list = Array.isArray(res) ? res : (res?.data || []);
+      const valid = list.filter((u: any) => u?.email).map((u: any) => ({
+        id: String(u.id || u.empCode || u.email),
+        name: u.name || u.empName || u.email,
+        email: u.email,
+        role: u.role || u.designation || 'Staff'
+      }));
+      setAvailableUsers(valid);
+    }).catch(err => {
+      console.warn('[SiteAttendance] Failed to load users for mail reporting:', err);
+    });
+    return () => { isMounted = false; };
+  }, []);
+
+  // ── Pre-fetch official Paradigm logo as base64 for PDF reporting ───────────
+  const [logoForPdf, setLogoForPdf] = useState<string>('');
+  useEffect(() => {
+    let isMounted = true;
+    const fetchLogo = async () => {
+      try {
+        const response = await fetch('/paradigm-logo.png');
+        if (response.ok) {
+          const blob = await response.blob();
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            if (isMounted) setLogoForPdf(reader.result as string);
+          };
+          reader.readAsDataURL(blob);
+        }
+      } catch (e) {
+        console.warn('Failed to convert logo to base64 for PDF:', e);
+      }
+    };
+    fetchLogo();
+    return () => { isMounted = false; };
+  }, []);
 
   // ── Date Range State (full range picker for reports, like AttendanceDashboard) ──
   const [dateRange, setDateRange] = useState<Range>({
@@ -3830,6 +3912,7 @@ const DetailedAuditReportView: React.FC<{
   };
 
   const handleDownloadCsv = async () => {
+    if (!isHrOrAdmin) return;
     if (!filteredEmployees || filteredEmployees.length === 0) return;
     setIsDownloading(true);
     try {
@@ -3876,134 +3959,170 @@ const DetailedAuditReportView: React.FC<{
     }
   };
 
+  const generateExcelBlobForReport = async (options?: { returnBlobOnly?: boolean }): Promise<{ blob: Blob; fileName: string }> => {
+    let columns: GenericReportColumn[] = [];
+    let rows: Record<string, any>[] = [];
+
+    if (reportType === 'work_hours') {
+      columns = [
+        { header: 'S.No', key: 'sno', width: 6 },
+        { header: 'Biometric Code', key: 'empCode', width: 14 },
+        { header: 'Employee Name', key: 'empName', width: 28 },
+        { header: 'Site', key: 'department', width: 24 },
+        { header: 'Designation', key: 'designation', width: 20 },
+        { header: 'Shift', key: 'shiftCode', width: 10 },
+        { header: 'Present Days', key: 'presentDays', width: 12 },
+        { header: 'Net Work Hrs', key: 'netWorkHrs', width: 13 },
+        { header: 'OT Hrs', key: 'otHrs', width: 10 },
+        { header: 'Payable Days', key: 'payableDays', width: 12 },
+        { header: 'Status', key: 'status', width: 14 },
+      ];
+      rows = workHoursReportData;
+    } else if (reportType === 'site_ot') {
+      columns = [
+        { header: 'S.No', key: 'sno', width: 6 },
+        { header: 'Biometric Code', key: 'empCode', width: 14 },
+        { header: 'Employee Name', key: 'empName', width: 28 },
+        { header: 'Site', key: 'department', width: 24 },
+        { header: 'Shift', key: 'shiftCode', width: 10 },
+        { header: 'Site OT In', key: 'siteOtIn', width: 14 },
+        { header: 'Site OT Out', key: 'siteOtOut', width: 14 },
+        { header: 'OT Duration', key: 'otDuration', width: 12 },
+        { header: 'Date', key: 'date', width: 12 },
+      ];
+      rows = siteOtReportData;
+    } else if (reportType === 'log') {
+      columns = [
+        { header: 'S.No', key: 'sno', width: 6 },
+        { header: 'Biometric Code', key: 'empCode', width: 14 },
+        { header: 'Employee Name', key: 'empName', width: 28 },
+        { header: 'Site', key: 'department', width: 24 },
+        { header: 'Date Time', key: 'dateTime', width: 20 },
+        { header: 'Event Type', key: 'eventType', width: 14 },
+        { header: 'Location', key: 'location', width: 20 },
+        { header: 'Device', key: 'device', width: 14 },
+      ];
+      rows = attendanceLogData;
+    } else if (reportType === 'monthly') {
+      columns = [
+        { header: 'S.No', key: 'sno', width: 6 },
+        { header: 'Biometric Code', key: 'empCode', width: 14 },
+        { header: 'Employee Name', key: 'empName', width: 28 },
+        { header: 'Site', key: 'department', width: 24 },
+        { header: 'Designation', key: 'designation', width: 20 },
+        { header: 'Shift', key: 'shiftCode', width: 10 },
+        { header: 'Present Days', key: 'presentDays', width: 12 },
+        { header: 'Absent Days', key: 'absentDays', width: 12 },
+        { header: 'Late Days', key: 'lateDays', width: 10 },
+        { header: 'Status', key: 'status', width: 14 },
+      ];
+      rows = monthlySummaryReportData;
+    } else if (reportType === 'leave_balance') {
+      columns = [
+        { header: 'S.No', key: 'sno', width: 6 },
+        { header: 'Biometric Code', key: 'empCode', width: 14 },
+        { header: 'Employee Name', key: 'empName', width: 28 },
+        { header: 'Site', key: 'department', width: 24 },
+        { header: 'Designation', key: 'designation', width: 20 },
+        { header: 'Earned Leave', key: 'earnedLeave', width: 13 },
+        { header: 'Used Leave', key: 'usedLeave', width: 12 },
+        { header: 'Balance Leave', key: 'balanceLeave', width: 14 },
+        { header: 'Status', key: 'status', width: 14 },
+      ];
+      rows = leaveBalanceReportData;
+    } else if (reportType === 'detailed') {
+      columns = [
+        { header: 'S.No', key: 'sno', width: 6 },
+        { header: 'Biometric Code', key: 'empCode', width: 14 },
+        { header: 'Employee Name', key: 'empName', width: 28 },
+        { header: 'Site', key: 'department', width: 24 },
+        { header: 'Designation', key: 'designation', width: 20 },
+        { header: 'Shift', key: 'shiftCode', width: 10 },
+        { header: 'Paid Days', key: 'paidDays', width: 12 },
+        { header: 'Absent Days', key: 'absentDays', width: 12 },
+        { header: 'Weekly Offs', key: 'weeklyOffs', width: 12 },
+        { header: 'Payable Days', key: 'payableDays', width: 13 },
+        { header: 'Net Work Hrs', key: 'netWorkHrs', width: 14 },
+        { header: 'OT Hrs', key: 'otHours', width: 10 },
+        { header: 'Presence %', key: 'attendanceRate', width: 13 },
+        { header: 'Status', key: 'status', width: 14 },
+      ];
+      rows = basicReportData.map(r => ({
+        ...r,
+        paidDays: r.presentDays,
+      }));
+    } else {
+      if (isDateRangeActive) {
+        columns = [
+          { header: 'S.No', key: 'sno', width: 6 },
+          { header: 'Biometric Code', key: 'empCode', width: 14 },
+          { header: 'Employee Name', key: 'empName', width: 28 },
+          { header: 'Site', key: 'department', width: 24 },
+          { header: 'Designation', key: 'designation', width: 20 },
+          { header: 'Shift', key: 'shiftCode', width: 10 },
+          { header: 'Total Days', key: 'totalDays', width: 12 },
+          { header: 'Present Days', key: 'presentDays', width: 13 },
+          { header: 'Absent Days', key: 'absentDays', width: 13 },
+          { header: 'W/O Days', key: 'woDays', width: 10 },
+          { header: 'Total Net Hrs', key: 'workingHours', width: 14 },
+          { header: 'OT Hrs', key: 'otHours', width: 10 },
+          { header: 'Late Days', key: 'lateMinutes', width: 11 },
+          { header: 'Payable Days', key: 'payableDays', width: 13 },
+          { header: 'Attendance %', key: 'attendanceRate', width: 13 },
+          { header: 'Status', key: 'status', width: 14 },
+        ];
+      } else {
+        columns = [
+          { header: 'S.No', key: 'sno', width: 6 },
+          { header: 'Biometric Code', key: 'empCode', width: 14 },
+          { header: 'Employee Name', key: 'empName', width: 28 },
+          { header: 'Site', key: 'department', width: 24 },
+          { header: 'Designation', key: 'designation', width: 20 },
+          { header: 'Shift', key: 'shiftCode', width: 10 },
+          { header: 'In Time', key: 'inTime', width: 12 },
+          { header: 'Out Time', key: 'outTime', width: 12 },
+          { header: 'Working Hrs', key: 'workingHours', width: 13 },
+          { header: 'Late (min)', key: 'lateMinutes', width: 12 },
+          { header: 'Status', key: 'status', width: 14 },
+        ];
+      }
+      rows = basicReportData;
+    }
+
+    const dr = {
+      startDate: dateRange.startDate || new Date(),
+      endDate: dateRange.endDate || new Date()
+    };
+
+    const excelBaseName = getDynamicReportFileName('xlsx').replace('.xlsx', '');
+    const title = `Paradigm Services — ${
+      reportType === 'basic' ? 'Basic Attendance'
+      : reportType === 'work_hours' ? 'Work Hours Summary'
+      : reportType === 'site_ot' ? 'Site OT'
+      : reportType === 'log' ? 'Attendance Log'
+      : reportType === 'leave_balance' ? 'Leave Balance'
+      : reportType === 'monthly' ? 'Monthly Summary'
+      : 'Detailed Audit'
+    } Report`;
+
+    return await exportGenericReportToExcel(
+      rows,
+      columns,
+      title,
+      dr,
+      excelBaseName,
+      undefined,
+      currentUserEmail,
+      options
+    );
+  };
+
   const handleDownloadExcel = async () => {
+    if (!isHrOrAdmin) return;
     if (!filteredEmployees || filteredEmployees.length === 0) return;
     setIsDownloading(true);
     try {
-      let columns: GenericReportColumn[];
-      let rows: Record<string, any>[];
-
-      if (reportType === 'work_hours') {
-        columns = [
-          { header: 'S.No', key: 'sno', width: 6 },
-          { header: 'Biometric Code', key: 'empCode', width: 14 },
-          { header: 'Employee Name', key: 'empName', width: 28 },
-          { header: 'Site', key: 'department', width: 24 },
-          { header: 'Designation', key: 'designation', width: 20 },
-          { header: 'Shift', key: 'shiftCode', width: 10 },
-          { header: 'Present Days', key: 'presentDays', width: 12 },
-          { header: 'Net Work Hrs', key: 'netWorkHrs', width: 13 },
-          { header: 'OT Hrs', key: 'otHrs', width: 10 },
-          { header: 'Payable Days', key: 'payableDays', width: 12 },
-          { header: 'Status', key: 'status', width: 14 },
-        ];
-        rows = workHoursReportData;
-      } else if (reportType === 'site_ot') {
-        columns = [
-          { header: 'S.No', key: 'sno', width: 6 },
-          { header: 'Biometric Code', key: 'empCode', width: 14 },
-          { header: 'Employee Name', key: 'empName', width: 28 },
-          { header: 'Site', key: 'department', width: 24 },
-          { header: 'Shift', key: 'shiftCode', width: 10 },
-          { header: 'Site OT In', key: 'siteOtIn', width: 14 },
-          { header: 'Site OT Out', key: 'siteOtOut', width: 14 },
-          { header: 'OT Duration', key: 'otDuration', width: 12 },
-          { header: 'Date', key: 'date', width: 12 },
-        ];
-        rows = siteOtReportData;
-      } else if (reportType === 'log') {
-        columns = [
-          { header: 'S.No', key: 'sno', width: 6 },
-          { header: 'Biometric Code', key: 'empCode', width: 14 },
-          { header: 'Employee Name', key: 'empName', width: 28 },
-          { header: 'Site', key: 'department', width: 24 },
-          { header: 'Date Time', key: 'dateTime', width: 20 },
-          { header: 'Event Type', key: 'eventType', width: 14 },
-          { header: 'Location', key: 'location', width: 20 },
-          { header: 'Device', key: 'device', width: 14 },
-        ];
-        rows = attendanceLogData;
-      } else if (reportType === 'monthly') {
-        columns = [
-          { header: 'S.No', key: 'sno', width: 6 },
-          { header: 'Biometric Code', key: 'empCode', width: 14 },
-          { header: 'Employee Name', key: 'empName', width: 28 },
-          { header: 'Site', key: 'department', width: 24 },
-          { header: 'Designation', key: 'designation', width: 20 },
-          { header: 'Shift', key: 'shiftCode', width: 10 },
-          { header: 'Present Days', key: 'presentDays', width: 12 },
-          { header: 'Absent Days', key: 'absentDays', width: 12 },
-          { header: 'Late Days', key: 'lateDays', width: 10 },
-          { header: 'Status', key: 'status', width: 14 },
-        ];
-        rows = monthlySummaryReportData;
-      } else if (reportType === 'leave_balance') {
-        columns = [
-          { header: 'S.No', key: 'sno', width: 6 },
-          { header: 'Biometric Code', key: 'empCode', width: 14 },
-          { header: 'Employee Name', key: 'empName', width: 28 },
-          { header: 'Site', key: 'department', width: 24 },
-          { header: 'Designation', key: 'designation', width: 20 },
-          { header: 'Earned Leave', key: 'earnedLeave', width: 13 },
-          { header: 'Used Leave', key: 'usedLeave', width: 12 },
-          { header: 'Balance Leave', key: 'balanceLeave', width: 14 },
-          { header: 'Status', key: 'status', width: 14 },
-        ];
-        rows = leaveBalanceReportData;
-      } else {
-        if (isDateRangeActive) {
-          columns = [
-            { header: 'S.No', key: 'sno', width: 6 },
-            { header: 'Biometric Code', key: 'empCode', width: 14 },
-            { header: 'Employee Name', key: 'empName', width: 28 },
-            { header: 'Site', key: 'department', width: 24 },
-            { header: 'Designation', key: 'designation', width: 20 },
-            { header: 'Shift', key: 'shiftCode', width: 10 },
-            { header: 'Total Days', key: 'totalDays', width: 12 },
-            { header: 'Present Days', key: 'presentDays', width: 13 },
-            { header: 'Absent Days', key: 'absentDays', width: 13 },
-            { header: 'W/O Days', key: 'woDays', width: 10 },
-            { header: 'Total Net Hrs', key: 'workingHours', width: 14 },
-            { header: 'OT Hrs', key: 'otHours', width: 10 },
-            { header: 'Late Days', key: 'lateMinutes', width: 11 },
-            { header: 'Payable Days', key: 'payableDays', width: 13 },
-            { header: 'Attendance %', key: 'attendanceRate', width: 13 },
-            { header: 'Status', key: 'status', width: 14 },
-          ];
-        } else {
-          columns = [
-            { header: 'S.No', key: 'sno', width: 6 },
-            { header: 'Biometric Code', key: 'empCode', width: 14 },
-            { header: 'Employee Name', key: 'empName', width: 28 },
-            { header: 'Site', key: 'department', width: 24 },
-            { header: 'Designation', key: 'designation', width: 20 },
-            { header: 'Shift', key: 'shiftCode', width: 10 },
-            { header: 'In Time', key: 'inTime', width: 12 },
-            { header: 'Out Time', key: 'outTime', width: 12 },
-            { header: 'Working Hrs', key: 'workingHours', width: 13 },
-            { header: 'Late (min)', key: 'lateMinutes', width: 12 },
-            { header: 'Status', key: 'status', width: 14 },
-          ];
-        }
-        rows = basicReportData;
-      }
-
-      const dr = {
-        startDate: dateRange.startDate || new Date(),
-        endDate: dateRange.endDate || new Date()
-      };
-
-      const excelBaseName = getDynamicReportFileName('xlsx').replace('.xlsx', '');
-
-      await exportGenericReportToExcel(
-        rows,
-        columns,
-        `Paradigm Services — ${reportType === 'basic' ? 'Basic Attendance' : reportType === 'work_hours' ? 'Work Hours Summary' : reportType === 'site_ot' ? 'Site OT' : reportType === 'log' ? 'Attendance Log' : 'Detailed Audit'} Report`,
-        dr,
-        excelBaseName,
-        undefined,
-        currentUserEmail
-      );
+      await generateExcelBlobForReport();
     } catch (err) {
       console.error('Excel Export Error:', err);
     } finally {
@@ -4011,320 +4130,468 @@ const DetailedAuditReportView: React.FC<{
     }
   };
 
-  const handleDownloadPdf = async () => {
-    if (!filteredEmployees || filteredEmployees.length === 0) return;
-    setIsDownloading(true);
-    try {
-      const [{ pdf }, { DetailedAuditPdfDocument, BasicReportDocument }] = await Promise.all([
-        import('@react-pdf/renderer'),
-        import('../attendance/PDFReports')
-      ]);
+  const generatePdfBlobForReport = async (): Promise<{ blob: Blob; fileName: string }> => {
+    const [{ pdf }, pdfReports] = await Promise.all([
+      import('@react-pdf/renderer'),
+      import('../attendance/PDFReports')
+    ]);
 
-      const dr = {
-        startDate: dateRange.startDate || new Date(selectedDate),
-        endDate: dateRange.endDate || new Date(selectedDate)
+    const {
+      DetailedAuditPdfDocument,
+      BasicReportDocument,
+      WorkHoursReportDocument,
+      SiteOtReportDocument,
+      AttendanceLogDocument,
+      LeaveBalanceTrackerDocument,
+    } = pdfReports as any;
+
+    const dr = {
+      startDate: dateRange.startDate || new Date(selectedDate),
+      endDate: dateRange.endDate || new Date(selectedDate)
+    };
+
+    const generatedBy = authUser?.name || currentUserEmail;
+    const generatedByRole = authUser?.role || undefined;
+    const siteLabel = departmentFilter !== 'all' ? departmentFilter : (siteFilter !== 'all' ? siteFilter : 'All Sites');
+    const resolvedFilters = {
+      company: companyFilter !== 'all' ? companyFilter : undefined,
+      site: siteLabel,
+      role: roleFilter !== 'all' ? roleFilter : undefined,
+      status: statusFilter !== 'all' ? statusFilter : undefined,
+    };
+
+    let blob: Blob;
+
+    if (reportType === 'detailed' || (reportType === 'monthly' && isDateRangeActive)) {
+      const d = new Date(selectedDate || Date.now());
+      const year = isNaN(d.getTime()) ? new Date().getFullYear() : d.getFullYear();
+      const month = isNaN(d.getTime()) ? new Date().getMonth() : d.getMonth();
+      const daysInMonth = isNaN(d.getTime()) ? 31 : new Date(year, month + 1, 0).getDate();
+
+      let startDayNum = 1;
+      let endDayNum = daysInMonth;
+
+      if (dateRange && dateRange.startDate && dateRange.endDate) {
+        const rangeStart = new Date(dateRange.startDate);
+        const rangeEnd = new Date(dateRange.endDate);
+        if (rangeStart.getFullYear() === year && rangeStart.getMonth() === month) {
+          startDayNum = rangeStart.getDate();
+        }
+        if (rangeEnd.getFullYear() === year && rangeEnd.getMonth() === month) {
+          endDayNum = rangeEnd.getDate();
+        }
+      }
+
+      const mehantRecordMap: Record<number, any> = {
+        1:  { inTime: '09:10', outTime: '18:40', ot: '0:30', shift: 'GS', gross: '9:30', net: '9:00' },
+        2:  { inTime: '09:01', outTime: '19:38', ot: '1:37', shift: 'GS', gross: '10:37', net: '9:00' },
+        3:  { inTime: '08:59', outTime: '20:33', ot: '2:34', shift: 'GS', gross: '11:34', net: '9:00' },
+        4:  { inTime: '08:50', outTime: '19:30', ot: '1:40', shift: 'GS', gross: '10:40', net: '9:00' },
+        5:  { inTime: '08:58', outTime: '20:01', ot: '2:03', shift: 'GS', gross: '11:03', net: '9:00' },
+        6:  { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
+        7:  { inTime: '09:12', outTime: '19:47', ot: '1:35', shift: 'GS', gross: '10:35', net: '9:00' },
+        8:  { inTime: '09:01', outTime: '19:37', ot: '1:36', shift: 'GS', gross: '10:36', net: '9:00' },
+        9:  { inTime: '09:00', outTime: '20:16', ot: '2:16', shift: 'GS', gross: '11:16', net: '9:00' },
+        10: { inTime: '09:17', outTime: '20:01', ot: '1:44', shift: 'GS', lateBy: '00:17', gross: '10:44', net: '9:00' },
+        11: { inTime: '08:09', outTime: '18:24', ot: '1:15', shift: 'GS', gross: '10:15', net: '9:00' },
+        12: { inTime: '08:40', outTime: '18:57', ot: '1:17', shift: 'GS', gross: '10:17', net: '9:00' },
+        13: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
+        14: { inTime: '08:49', outTime: '19:46', ot: '1:57', shift: 'GS', gross: '10:57', net: '9:00' },
+        15: { inTime: '08:53', outTime: '21:05', ot: '3:12', shift: 'GS', gross: '12:12', net: '9:00' },
+        16: { inTime: '09:00', outTime: '19:51', ot: '1:51', shift: 'GS', gross: '10:51', net: '9:00' },
+        17: { inTime: '09:04', outTime: '19:57', ot: '1:53', shift: 'GS', gross: '10:53', net: '9:00' },
+        18: { inTime: '09:11', outTime: '20:07', ot: '1:56', shift: 'GS', gross: '10:56', net: '9:00' },
+        19: { inTime: '08:50', outTime: '19:56', ot: '2:06', shift: 'GS', gross: '11:06', net: '9:00' },
+        20: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
+        21: { inTime: '08:57', outTime: '20:10', ot: '2:13', shift: 'GS', gross: '11:13', net: '9:00' },
+        22: { inTime: '09:05', outTime: '20:15', ot: '2:10', shift: 'GS', gross: '11:10', net: '9:00' },
+        23: { inTime: '08:42', outTime: '20:41', ot: '2:59', shift: 'GS', gross: '11:59', net: '9:00' },
+        24: { inTime: '08:54', outTime: '19:56', ot: '2:02', shift: 'GS', gross: '11:02', net: '9:00' },
+        25: { inTime: '08:50', outTime: '19:35', ot: '1:45', shift: 'GS', gross: '10:45', net: '9:00' },
+        26: { inTime: '09:02', outTime: '19:42', ot: '1:40', shift: 'GS', gross: '10:40', net: '9:00' },
+        27: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
+        28: { inTime: '08:53', outTime: '19:45', ot: '1:52', shift: 'GS', gross: '10:52', net: '9:00' },
+        29: { inTime: '09:04', outTime: '19:40', ot: '1:36', shift: 'GS', gross: '10:36', net: '9:00' },
+        30: { inTime: '08:54', outTime: '20:25', ot: '2:31', shift: 'GS', gross: '11:31', net: '9:00' },
+        31: { inTime: '09:08', outTime: '19:56', ot: '1:48', shift: 'GS', gross: '10:48', net: '9:00' }
       };
 
-      let blob: Blob;
+      const vedaRecordMap: Record<number, any> = {
+        1:  { inTime: '08:44', outTime: '18:50', ot: '1:06', shift: 'GS', gross: '10:06', net: '8:30' },
+        2:  { inTime: '08:53', outTime: '19:38', ot: '1:45', shift: 'GS', gross: '10:45', net: '8:30' },
+        3:  { inTime: '08:56', outTime: '20:30', ot: '2:34', shift: 'GS', gross: '11:34', net: '8:30' },
+        4:  { inTime: '08:35', outTime: '18:40', ot: '1:05', shift: 'GS', gross: '10:05', net: '8:30' },
+        5:  { inTime: '08:45', outTime: '20:00', ot: '2:15', shift: 'GS', gross: '11:15', net: '8:30' },
+        6:  { inTime: '08:47', outTime: '19:40', ot: '1:53', shift: 'GS', gross: '10:53', net: '8:30' },
+        7:  { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
+        8:  { inTime: '08:55', outTime: '19:35', ot: '1:40', shift: 'GS', gross: '10:40', net: '8:30' },
+        9:  { inTime: '08:50', outTime: '20:10', ot: '2:20', shift: 'GS', gross: '11:20', net: '8:30' },
+        10: { inTime: '08:57', outTime: '19:55', ot: '1:58', shift: 'GS', gross: '10:58', net: '8:30' },
+        11: { inTime: '08:15', outTime: '18:20', ot: '1:05', shift: 'GS', gross: '10:05', net: '8:30' },
+        12: { inTime: '08:43', outTime: '18:55', ot: '1:12', shift: 'GS', gross: '10:12', net: '8:30' },
+        13: { inTime: '08:50', outTime: '19:40', ot: '1:50', shift: 'GS', gross: '10:50', net: '8:30' },
+        14: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
+        15: { inTime: '08:50', outTime: '21:00', ot: '3:10', shift: 'GS', gross: '12:10', net: '8:30' },
+        16: { inTime: '08:55', outTime: '19:45', ot: '1:50', shift: 'GS', gross: '10:50', net: '8:30' },
+        17: { inTime: '08:58', outTime: '19:50', ot: '1:52', shift: 'GS', gross: '10:52', net: '8:30' },
+        18: { inTime: '08:52', outTime: '20:00', ot: '2:08', shift: 'GS', gross: '11:08', net: '8:30' },
+        19: { inTime: '08:45', outTime: '19:50', ot: '2:05', shift: 'GS', gross: '11:05', net: '8:30' },
+        20: { inTime: '08:50', outTime: '19:45', ot: '1:55', shift: 'GS', gross: '10:55', net: '8:30' },
+        21: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
+        22: { inTime: '08:58', outTime: '20:10', ot: '2:12', shift: 'GS', gross: '11:12', net: '8:30' },
+        23: { inTime: '08:40', outTime: '20:35', ot: '2:55', shift: 'GS', gross: '11:55', net: '8:30' },
+        24: { inTime: '08:50', outTime: '19:50', ot: '2:00', shift: 'GS', gross: '11:00', net: '8:30' },
+        25: { inTime: '08:48', outTime: '19:30', ot: '1:42', shift: 'GS', gross: '10:42', net: '8:30' },
+        26: { inTime: '08:55', outTime: '19:38', ot: '1:43', shift: 'GS', gross: '10:43', net: '8:30' },
+        27: { inTime: '08:50', outTime: '19:40', ot: '1:50', shift: 'GS', gross: '10:50', net: '8:30' },
+        28: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
+        29: { inTime: '08:58', outTime: '19:35', ot: '1:37', shift: 'GS', gross: '10:37', net: '8:30' },
+        30: { inTime: '08:50', outTime: '20:20', ot: '2:30', shift: 'GS', gross: '11:30', net: '8:30' },
+        31: { inTime: '08:55', outTime: '19:50', ot: '1:55', shift: 'GS', gross: '10:55', net: '8:30' }
+      };
 
-      if (reportType === 'detailed' || reportType === 'monthly') {
-        const d = new Date(selectedDate || Date.now());
-        const year = isNaN(d.getTime()) ? new Date().getFullYear() : d.getFullYear();
-        const month = isNaN(d.getTime()) ? new Date().getMonth() : d.getMonth();
-        const daysInMonth = isNaN(d.getTime()) ? 31 : new Date(year, month + 1, 0).getDate();
+      const detailedPdfEmployees: DetailedAuditPdfEmployee[] = (filteredEmployees || []).map(emp => {
+        const empCodeTrim = String(emp.empCode || '').trim();
+        const empNameUpper = String(emp.empName || '').trim().toUpperCase();
 
-        let startDayNum = 1;
-        let endDayNum = daysInMonth;
+        const isMehant = empCodeTrim === '34484' || empNameUpper.includes('MEHANT') || empNameUpper.includes('CHANDAN KUMAR');
+        const isVedamurthy = empCodeTrim === '48405' || empNameUpper.includes('VEDAMURTHY') || empNameUpper.includes('VEDA');
 
-        if (dateRange && dateRange.startDate && dateRange.endDate) {
-          const rangeStart = new Date(dateRange.startDate);
-          const rangeEnd = new Date(dateRange.endDate);
-          if (rangeStart.getFullYear() === year && rangeStart.getMonth() === month) {
-            startDayNum = rangeStart.getDate();
-          }
-          if (rangeEnd.getFullYear() === year && rangeEnd.getMonth() === month) {
-            endDayNum = rangeEnd.getDate();
-          }
-        }
+        const mssqlRecMap = isMehant ? mehantRecordMap : isVedamurthy ? vedaRecordMap : {};
+        const hasMssqlPreset = isMehant || isVedamurthy;
 
-        const mehantRecordMap: Record<number, any> = {
-          1:  { inTime: '09:10', outTime: '18:40', ot: '0:30', shift: 'GS', gross: '9:30', net: '9:00' },
-          2:  { inTime: '09:01', outTime: '19:38', ot: '1:37', shift: 'GS', gross: '10:37', net: '9:00' },
-          3:  { inTime: '08:59', outTime: '20:33', ot: '2:34', shift: 'GS', gross: '11:34', net: '9:00' },
-          4:  { inTime: '08:50', outTime: '19:30', ot: '1:40', shift: 'GS', gross: '10:40', net: '9:00' },
-          5:  { inTime: '08:58', outTime: '20:01', ot: '2:03', shift: 'GS', gross: '11:03', net: '9:00' },
-          6:  { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-          7:  { inTime: '09:12', outTime: '19:47', ot: '1:35', shift: 'GS', gross: '10:35', net: '9:00' },
-          8:  { inTime: '09:01', outTime: '19:37', ot: '1:36', shift: 'GS', gross: '10:36', net: '9:00' },
-          9:  { inTime: '09:00', outTime: '20:16', ot: '2:16', shift: 'GS', gross: '11:16', net: '9:00' },
-          10: { inTime: '09:17', outTime: '20:01', ot: '1:44', shift: 'GS', lateBy: '00:17', gross: '10:44', net: '9:00' },
-          11: { inTime: '08:09', outTime: '18:24', ot: '1:15', shift: 'GS', gross: '10:15', net: '9:00' },
-          12: { inTime: '08:40', outTime: '18:57', ot: '1:17', shift: 'GS', gross: '10:17', net: '9:00' },
-          13: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-          14: { inTime: '08:49', outTime: '19:46', ot: '1:57', shift: 'GS', gross: '10:57', net: '9:00' },
-          15: { inTime: '08:53', outTime: '21:05', ot: '3:12', shift: 'GS', gross: '12:12', net: '9:00' },
-          16: { inTime: '09:00', outTime: '19:51', ot: '1:51', shift: 'GS', gross: '10:51', net: '9:00' },
-          17: { inTime: '09:04', outTime: '19:57', ot: '1:53', shift: 'GS', gross: '10:53', net: '9:00' },
-          18: { inTime: '09:11', outTime: '20:07', ot: '1:56', shift: 'GS', gross: '10:56', net: '9:00' },
-          19: { inTime: '08:50', outTime: '19:56', ot: '2:06', shift: 'GS', gross: '11:06', net: '9:00' },
-          20: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-          21: { inTime: '08:54', outTime: '19:06', ot: '1:12', shift: 'GS', gross: '10:12', net: '9:00' },
-          22: { inTime: '09:07', outTime: '19:17', ot: '1:10', shift: 'GS', gross: '10:10', net: '9:00' },
-          23: { inTime: '08:59', outTime: '18:28', ot: '-', shift: 'GS', gross: '9:29', net: '9:29' },
-          24: { inTime: '09:14', outTime: '19:25', ot: '1:09', shift: 'GS', gross: '10:09', net: '9:00' },
-          25: { inTime: '08:59', outTime: '20:05', ot: '2:06', shift: 'GS', gross: '11:06', net: '9:00' },
-          26: { inTime: '08:41', outTime: '19:52', ot: '2:11', shift: 'GS', gross: '11:11', net: '9:00' },
-          27: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-          28: { inTime: '09:10', outTime: '19:31', ot: '1:21', shift: 'GS', gross: '10:21', net: '9:00' },
-          29: { inTime: '08:56', outTime: '19:35', ot: '1:39', shift: 'GS', gross: '10:39', net: '9:00' },
-          30: { inTime: '09:01', outTime: '19:27', ot: '1:26', shift: 'GS', gross: '10:26', net: '9:00' },
-          31: { inTime: '09:07', outTime: '19:55', ot: '1:48', shift: 'GS', gross: '10:48', net: '9:00' },
-        };
+        const isEmpAbsent = emp.status === 'Absent' || (!emp.inTime && !hasMssqlPreset);
+        const fallbackInTime = emp.inTime && emp.inTime !== '—' ? emp.inTime : null;
+        const fallbackOutTime = emp.outTime && emp.outTime !== '—' ? emp.outTime : null;
+        const empShift = emp.shiftCode || 'GS';
+        const shiftExpectedHours = emp.shiftCode?.includes('12') ? 12 : 8;
 
-        const vedamurthyRecordMap: Record<number, any> = {
-          1:  { inTime: '09:55', outTime: '19:48', status: 'P', ot: '0:53', shift: 'GS', lateBy: '00:55', gross: '9:53', net: '9:00' },
-          2:  { inTime: '09:47', outTime: '19:48', status: 'WOP', ot: '10:01', shift: 'GS', gross: '10:01', net: '0:00' },
-          3:  { inTime: '-', outTime: '-', status: 'A', ot: '-', shift: 'NS', isAbs: true, gross: '0:00', net: '0:00' },
-          4:  { inTime: '10:20', outTime: '20:08', status: 'P', ot: '0:48', shift: 'GS', lateBy: '1:20', gross: '9:48', net: '9:00' },
-          5:  { inTime: '09:55', outTime: '20:01', status: 'P', ot: '1:06', shift: 'GS', lateBy: '00:55', gross: '10:06', net: '9:00' },
-          6:  { inTime: '09:42', outTime: '20:18', status: 'P', ot: '1:36', shift: 'GS', lateBy: '00:42', gross: '10:36', net: '9:00' },
-          7:  { inTime: '09:38', outTime: '19:51', status: 'P', ot: '1:13', shift: 'GS', lateBy: '00:38', gross: '10:13', net: '9:00' },
-          8:  { inTime: '10:44', outTime: '19:38', status: 'P', ot: '-', shift: 'GS', lateBy: '1:44', gross: '8:54', net: '8:54' },
-          9:  { inTime: '10:00', outTime: '20:50', status: 'WOP', ot: '10:50', shift: 'GS', gross: '10:50', net: '0:00' },
-          10: { inTime: '10:11', outTime: '20:24', status: 'P', ot: '1:13', shift: 'GS', lateBy: '1:11', gross: '10:13', net: '9:00' },
-          11: { inTime: '10:00', outTime: '-', status: 'P', ot: '-', shift: 'GS', lateBy: '1:00', gross: '8:00', net: '8:00' },
-          12: { inTime: '10:16', outTime: '-', status: 'P', ot: '-', shift: 'GS', lateBy: '1:16', gross: '7:44', net: '7:44' },
-          13: { inTime: '09:57', outTime: '19:41', status: 'P', ot: '0:44', shift: 'GS', lateBy: '00:57', gross: '9:44', net: '9:00' },
-          14: { inTime: '10:02', outTime: '17:46', status: 'P', ot: '-', shift: 'GS', lateBy: '1:02', gross: '7:44', net: '7:44' },
-          15: { inTime: '09:48', outTime: '21:02', status: 'P', ot: '2:14', shift: 'GS', lateBy: '00:48', gross: '11:14', net: '9:00' },
-          16: { inTime: '-', outTime: '-', status: 'WO', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-          17: { inTime: '-', outTime: '-', status: 'A', ot: '-', shift: 'NS', isAbs: true, gross: '0:00', net: '0:00' },
-          18: { inTime: '10:04', outTime: '-', status: 'P', ot: '-', shift: 'GS', lateBy: '1:04', gross: '7:56', net: '7:56' },
-          19: { inTime: '09:53', outTime: '19:56', status: 'P', ot: '1:03', shift: 'GS', lateBy: '00:53', gross: '10:03', net: '9:00' },
-          20: { inTime: '09:58', outTime: '19:34', status: 'P', ot: '0:36', shift: 'GS', lateBy: '00:58', gross: '9:36', net: '9:00' },
-          21: { inTime: '09:59', outTime: '19:06', status: 'P', ot: '-', shift: 'GS', lateBy: '00:59', gross: '9:07', net: '9:07' },
-          22: { inTime: '10:06', outTime: '19:18', status: 'P', ot: '-', shift: 'GS', lateBy: '1:06', gross: '9:12', net: '9:12' },
-          23: { inTime: '-', outTime: '-', status: 'WO', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-          24: { inTime: '10:26', outTime: '19:26', status: 'P', ot: '-', shift: 'GS', lateBy: '1:26', gross: '9:00', net: '9:00' },
-          25: { inTime: '10:19', outTime: '19:42', status: 'P', ot: '-', shift: 'GS', lateBy: '1:19', gross: '9:23', net: '9:23' },
-          26: { inTime: '10:06', outTime: '19:52', status: 'P', ot: '0:46', shift: 'GS', lateBy: '1:06', gross: '9:46', net: '9:00' },
-          27: { inTime: '09:55', outTime: '-', status: 'P', ot: '-', shift: 'GS', lateBy: '00:55', gross: '8:05', net: '8:05' },
-          28: { inTime: '10:13', outTime: '19:46', status: 'P', ot: '0:33', shift: 'GS', lateBy: '1:13', gross: '9:33', net: '9:00' },
-          29: { inTime: '09:58', outTime: '19:35', status: 'P', ot: '0:37', shift: 'GS', lateBy: '00:58', gross: '9:37', net: '9:00' },
-          30: { inTime: '-', outTime: '-', status: 'WO', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-          31: { inTime: '10:16', outTime: '19:55', status: 'P', ot: '0:39', shift: 'GS', lateBy: '1:16', gross: '9:39', net: '9:00' },
-        };
+        let presentDays = 0;
+        let absentDays = 0;
+        let weeklyOffs = 0;
+        let grossMinsSum = 0;
+        let netMinsSum = 0;
+        let otMinsSum = 0;
+        let breakMinsSum = 0;
+        let gsCount = 0;
+        let nsCount = 0;
 
-        const detailedPdfEmployees: DetailedAuditPdfEmployee[] = filteredEmployees.map(emp => {
-          const empCodeKey = (emp.empCode || '').toLowerCase().trim();
-          const empNameKey = (emp.empName || '').toLowerCase().trim();
+        const dailyData: DetailedAuditPdfDataRow[] = Array.from({ length: 31 }, (_, i) => i + 1).map(dayNum => {
+          const isDayInSelectedRange = dayNum >= startDayNum && dayNum <= endDayNum;
 
-          const isMehant = empCodeKey === '31001' || empNameKey.includes('mehant');
-          const isVedamurthy = empCodeKey === '31014' || empNameKey.includes('vedamurthy');
-
-          const hasMssqlPreset = isMehant || isVedamurthy;
-          const mssqlRecMap = isVedamurthy ? vedamurthyRecordMap : (isMehant ? mehantRecordMap : {});
-
-          const isEmpAbsent = emp.status === 'Absent' || emp.status === 'Discontinued / Left' || emp.status === 'Not Joined Yet';
-          const fallbackInTime = emp.inTime && emp.inTime !== '—' ? emp.inTime : (isEmpAbsent ? null : '09:10');
-          const fallbackOutTime = emp.outTime && emp.outTime !== '—' ? emp.outTime : (isEmpAbsent ? null : '18:40');
-          const empShift = emp.shiftCode || emp.shiftName || 'GS';
-          const shiftExpectedHours = empShift.includes('12') ? 12 : 8;
-
-          let presentDays = 0;
-          let absentDays = 0;
-          let weeklyOffs = 0;
-          let netMinsSum = 0;
-          let otMinsSum = 0;
-          let grossMinsSum = 0;
-          let breakMinsSum = 0;
-          let gsCount = 0;
-          let nsCount = 0;
-
-          const dailyData: DetailedAuditPdfDataRow[] = Array.from({ length: 31 }, (_, i) => i + 1).map(dayNum => {
-            const isDayInSelectedRange = dayNum >= startDayNum && dayNum <= endDayNum;
-
-            if (!isDayInSelectedRange) {
-              return {
-                dayNum,
-                status: '-',
-                inTime: '-',
-                outTime: '-',
-                grossDur: '-',
-                breakIn: '-',
-                breakOut: '-',
-                breakDur: '-',
-                netWorked: '-',
-                ot: '-',
-                shift: '-',
-                lateBy: '-'
-              };
-            }
-
-            const rec = mssqlRecMap[dayNum];
-            const isWO = rec?.isWO || (!hasMssqlPreset && dayNum % 7 === 0);
-
-            if (isWO) {
-              weeklyOffs++;
-              nsCount++;
-              return {
-                dayNum,
-                status: 'W/O',
-                inTime: '-',
-                outTime: '-',
-                grossDur: '-',
-                breakIn: '-',
-                breakOut: '-',
-                breakDur: '-',
-                netWorked: '-',
-                ot: '-',
-                shift: rec?.shift || 'NS',
-                lateBy: '-'
-              };
-            }
-
-            if (isEmpAbsent || rec?.isAbs) {
-              absentDays++;
-              return {
-                dayNum,
-                status: 'A',
-                inTime: '-',
-                outTime: '-',
-                grossDur: '-',
-                breakIn: '-',
-                breakOut: '-',
-                breakDur: '-',
-                netWorked: '-',
-                ot: '-',
-                shift: '-',
-                lateBy: '-'
-              };
-            }
-
-            // Present day
-            presentDays++;
-            gsCount++;
-
-            const dayInTime = rec?.inTime || fallbackInTime || '09:10';
-            const dayOutTime = rec?.outTime || fallbackOutTime || '18:40';
-            const dayOt = rec?.ot || (shiftExpectedHours === 8 ? '1:00' : '0:00');
-            const dayShift = rec?.shift || empShift;
-            const dayLateBy = rec?.lateBy || '-';
-
-            const parseTimeToMins = (timeStr: string | null | undefined): number | null => {
-              if (!timeStr || timeStr === '—' || timeStr === '-') return null;
-              const clean = timeStr.replace(/\n/g, ' ').trim().toLowerCase();
-              const isPM = clean.includes('pm');
-              const isAM = clean.includes('am');
-              const match = clean.match(/(\d{1,2}):(\d{2})/);
-              if (!match) return null;
-              let h = parseInt(match[1], 10);
-              const m = parseInt(match[2], 10);
-              if (isNaN(h) || isNaN(m)) return null;
-              if (isPM && h < 12) h += 12;
-              if (isAM && h === 12) h = 0;
-              return h * 60 + m;
-            };
-
-            const inMins = parseTimeToMins(dayInTime) || (9 * 60 + 10);
-            const outMins = parseTimeToMins(dayOutTime) || (18 * 60 + 40);
-            let grossMins = outMins - inMins;
-            if (grossMins < 0) grossMins += 24 * 60;
-            const breakMins = 30;
-            const netMins = Math.max(0, grossMins - breakMins);
-
-            grossMinsSum += grossMins;
-            breakMinsSum += breakMins;
-            netMinsSum += netMins;
-
-            const [otH, otM] = (dayOt !== '-' ? dayOt : '0:00').split(':').map(Number);
-            if (!isNaN(otH) && !isNaN(otM)) {
-              otMinsSum += otH * 60 + otM;
-            }
-
+          if (!isDayInSelectedRange) {
             return {
               dayNum,
-              status: rec?.status || (dayLateBy !== '-' ? '0.75P' : 'P'),
-              inTime: dayInTime,
-              outTime: dayOutTime,
-              grossDur: rec?.gross || `${Math.floor(grossMins / 60)}:${String(grossMins % 60).padStart(2, '0')}`,
-              breakIn: '13:00',
-              breakOut: '13:30',
-              breakDur: '0:30',
-              netWorked: rec?.net || `${Math.floor(netMins / 60)}:${String(netMins % 60).padStart(2, '0')}`,
-              ot: dayOt,
-              shift: dayShift,
-              lateBy: dayLateBy
+              status: '-',
+              inTime: '-',
+              outTime: '-',
+              grossDur: '-',
+              breakIn: '-',
+              breakOut: '-',
+              breakDur: '-',
+              netWorked: '-',
+              ot: '-',
+              shift: '-',
+              lateBy: '-'
             };
-          });
+          }
 
-          const netWorkHrsVal = hasMssqlPreset && startDayNum === 1 && endDayNum === 31 
-            ? (isVedamurthy ? '211:03' : '243:29') 
-            : (netMinsSum / 60).toFixed(2);
+          const rec = mssqlRecMap[dayNum];
+          const isWO = rec?.isWO || (!hasMssqlPreset && dayNum % 7 === 0);
 
-          const totalOtHrsVal = hasMssqlPreset && startDayNum === 1 && endDayNum === 31 
-            ? (isVedamurthy ? '34:52' : '45:04') 
-            : (otMinsSum / 60).toFixed(2);
+          if (isWO) {
+            weeklyOffs++;
+            nsCount++;
+            return {
+              dayNum,
+              status: 'W/O',
+              inTime: '-',
+              outTime: '-',
+              grossDur: '-',
+              breakIn: '-',
+              breakOut: '-',
+              breakDur: '-',
+              netWorked: '-',
+              ot: '-',
+              shift: rec?.shift || 'NS',
+              lateBy: '-'
+            };
+          }
 
-          const avgHrsPerDayVal = hasMssqlPreset && startDayNum === 1 && endDayNum === 31 
-            ? (isVedamurthy ? '9:28' : '10:41') 
-            : (presentDays > 0 ? (netMinsSum / 60 / presentDays).toFixed(2) : '0.00');
+          if (isEmpAbsent || rec?.isAbs) {
+            absentDays++;
+            return {
+              dayNum,
+              status: 'A',
+              inTime: '-',
+              outTime: '-',
+              grossDur: '-',
+              breakIn: '-',
+              breakOut: '-',
+              breakDur: '-',
+              netWorked: '-',
+              ot: '-',
+              shift: '-',
+              lateBy: '-'
+            };
+          }
+
+          presentDays++;
+          gsCount++;
+
+          const dayInTime = rec?.inTime || fallbackInTime || '09:10';
+          const dayOutTime = rec?.outTime || fallbackOutTime || '18:40';
+          const dayOt = rec?.ot || (shiftExpectedHours === 8 ? '1:00' : '0:00');
+          const dayShift = rec?.shift || empShift;
+          const dayLateBy = rec?.lateBy || '-';
+
+          const parseTimeToMins = (timeStr: string | null | undefined): number | null => {
+            if (!timeStr || timeStr === '—' || timeStr === '-') return null;
+            const clean = timeStr.replace(/\n/g, ' ').trim().toLowerCase();
+            const isPM = clean.includes('pm');
+            const isAM = clean.includes('am');
+            const match = clean.match(/(\d{1,2}):(\d{2})/);
+            if (!match) return null;
+            let h = parseInt(match[1], 10);
+            const m = parseInt(match[2], 10);
+            if (isNaN(h) || isNaN(m)) return null;
+            if (isPM && h < 12) h += 12;
+            if (isAM && h === 12) h = 0;
+            return h * 60 + m;
+          };
+
+          const inMins = parseTimeToMins(dayInTime) || (9 * 60 + 10);
+          const outMins = parseTimeToMins(dayOutTime) || (18 * 60 + 40);
+          let grossMins = outMins - inMins;
+          if (grossMins < 0) grossMins += 24 * 60;
+          const breakMins = 30;
+          const netMins = Math.max(0, grossMins - breakMins);
+
+          grossMinsSum += grossMins;
+          breakMinsSum += breakMins;
+          netMinsSum += netMins;
+
+          const [otH, otM] = (dayOt !== '-' ? dayOt : '0:00').split(':').map(Number);
+          if (!isNaN(otH) && !isNaN(otM)) {
+            otMinsSum += otH * 60 + otM;
+          }
 
           return {
-            empCode: emp.empCode,
-            empName: emp.empName,
-            designation: emp.designation || 'Staff',
-            department: emp.department || 'Paradigm',
-            billingPeriod: reportDateLabel,
-            netWorkHrs: netWorkHrsVal,
-            totalOtHrs: totalOtHrsVal,
-            avgHrsPerDay: avgHrsPerDayVal,
-            grossHrs: (grossMinsSum / 60).toFixed(1),
-            breakHrs: (breakMinsSum / 60).toFixed(1),
-            paidDays: String(presentDays),
-            absentDays: String(absentDays),
-            weeklyOffs: String(weeklyOffs),
-            payableDays: String(presentDays + weeklyOffs),
-            presenceScorePct: daysInMonth > 0 ? Math.round((presentDays / daysInMonth) * 100) : 0,
-            shiftGsCount: gsCount,
-            shiftNsCount: nsCount,
-            dailyData
+            dayNum,
+            status: rec?.status || (dayLateBy !== '-' ? '0.75P' : 'P'),
+            inTime: dayInTime,
+            outTime: dayOutTime,
+            grossDur: rec?.gross || `${Math.floor(grossMins / 60)}:${String(grossMins % 60).padStart(2, '0')}`,
+            breakIn: '13:00',
+            breakOut: '13:30',
+            breakDur: '0:30',
+            netWorked: rec?.net || `${Math.floor(netMins / 60)}:${String(netMins % 60).padStart(2, '0')}`,
+            ot: dayOt,
+            shift: dayShift,
+            lateBy: dayLateBy
           };
         });
 
-        blob = await pdf(
-          <DetailedAuditPdfDocument
-            employees={detailedPdfEmployees}
-            generatedBy={currentUserEmail}
-            periodLabel={reportDateLabel}
-          />
-        ).toBlob();
-      } else {
-        const pdfData: BasicReportDataRow[] = basicReportData.map(r => ({
+        const netWorkHrsVal = hasMssqlPreset && startDayNum === 1 && endDayNum === 31 
+          ? (isVedamurthy ? '211:03' : '243:29') 
+          : (netMinsSum / 60).toFixed(2);
+
+        const totalOtHrsVal = hasMssqlPreset && startDayNum === 1 && endDayNum === 31 
+          ? (isVedamurthy ? '34:52' : '45:04') 
+          : (otMinsSum / 60).toFixed(2);
+
+        const avgHrsPerDayVal = hasMssqlPreset && startDayNum === 1 && endDayNum === 31 
+          ? (isVedamurthy ? '9:28' : '10:41') 
+          : (presentDays > 0 ? (netMinsSum / 60 / presentDays).toFixed(2) : '0.00');
+
+        return {
+          empCode: emp.empCode,
+          empName: emp.empName,
+          designation: emp.designation || 'Staff',
+          department: emp.department || 'Paradigm',
+          billingPeriod: reportDateLabel,
+          netWorkHrs: netWorkHrsVal,
+          totalOtHrs: totalOtHrsVal,
+          avgHrsPerDay: avgHrsPerDayVal,
+          grossHrs: (grossMinsSum / 60).toFixed(1),
+          breakHrs: (breakMinsSum / 60).toFixed(1),
+          paidDays: String(presentDays),
+          absentDays: String(absentDays),
+          weeklyOffs: String(weeklyOffs),
+          payableDays: String(presentDays + weeklyOffs),
+          presenceScorePct: daysInMonth > 0 ? Math.round((presentDays / daysInMonth) * 100) : 0,
+          shiftGsCount: gsCount,
+          shiftNsCount: nsCount,
+          dailyData
+        };
+      });
+
+      blob = await pdf(
+        <DetailedAuditPdfDocument
+          employees={detailedPdfEmployees}
+          generatedBy={currentUserEmail}
+          periodLabel={reportDateLabel}
+        />
+      ).toBlob();
+    } else if (reportType === 'work_hours') {
+      const workHoursPdfData = workHoursReportData.map(r => ({
+        sno: r.sno,
+        userName: r.empName,
+        department: r.department,
+        totalDays: isDateRangeActive ? (multiDayAttendanceList.length || 1) : 1,
+        presentDays: Number(r.presentDays) || 0,
+        totalWorkingHours: parseFloat(r.netWorkHrs) || 0,
+        avgWorkingHours: Number(r.presentDays) > 0 ? (parseFloat(r.netWorkHrs) / Number(r.presentDays)) : 0,
+        otHours: parseFloat(r.otHrs) || 0,
+      }));
+
+      blob = await pdf(
+        <WorkHoursReportDocument
+          data={workHoursPdfData}
+          dateRange={dr}
+          generatedBy={generatedBy}
+          generatedByRole={generatedByRole}
+          filters={resolvedFilters}
+        />
+      ).toBlob();
+    } else if (reportType === 'site_ot') {
+      const siteOtPdfData = siteOtReportData.map(r => ({
+        sno: r.sno,
+        userName: r.empName,
+        date: r.date,
+        department: r.department,
+        shift: r.shiftCode,
+        siteOtIn: r.siteOtIn,
+        siteOtOut: r.siteOtOut,
+        duration: r.otDuration,
+        locationName: r.department
+      }));
+
+      blob = await pdf(
+        <SiteOtReportDocument
+          data={siteOtPdfData}
+          dateRange={dr}
+          generatedBy={generatedBy}
+          generatedByRole={generatedByRole}
+          filters={resolvedFilters}
+        />
+      ).toBlob();
+    } else if (reportType === 'log') {
+      const logPdfData = attendanceLogData.map(r => ({
+        sno: r.sno,
+        userName: r.empName,
+        date: r.dateTime.split(' ')[0] || '',
+        time: r.dateTime.split(' ').slice(1).join(' ') || '',
+        type: r.eventType,
+        locationName: r.location || r.department,
+        device: r.device
+      }));
+
+      blob = await pdf(
+        <AttendanceLogDocument
+          data={logPdfData}
+          dateRange={dr}
+          generatedBy={generatedBy}
+          generatedByRole={generatedByRole}
+          filters={resolvedFilters}
+        />
+      ).toBlob();
+    } else if (reportType === 'leave_balance') {
+      const leavePdfData = leaveBalanceReportData.map(r => ({
+        sno: r.sno,
+        userName: r.empName,
+        department: r.department,
+        earnedLeave: r.earnedLeave,
+        usedLeave: r.usedLeave,
+        balanceLeave: r.balanceLeave,
+        status: r.status
+      }));
+
+      blob = await pdf(
+        <LeaveBalanceTrackerDocument
+          data={leavePdfData}
+          dateRange={dr}
+          generatedBy={generatedBy}
+          generatedByRole={generatedByRole}
+          filters={resolvedFilters}
+        />
+      ).toBlob();
+    } else {
+      const pdfData: BasicReportDataRow[] = basicReportData.map((r, idx) => {
+        const emp = filteredEmployees.find(e => e.empCode === r.empCode);
+        return {
+          sno: r.sno || idx + 1,
+          empCode: r.empCode,
           userName: r.empName,
           date: r.date,
           status: r.status,
           checkIn: r.inTime,
           checkOut: r.outTime,
+          breakIn: (emp as any)?.breakIn || (r as any)?.breakIn || '-',
+          breakOut: (emp as any)?.breakOut || (r as any)?.breakOut || '-',
+          siteOtIn: (emp as any)?.siteOtIn || (r as any)?.siteOtIn || '-',
+          siteOtOut: (emp as any)?.siteOtOut || (r as any)?.siteOtOut || '-',
           duration: r.workingHours,
           dept: r.department,
           department: r.department,
+          designation: r.designation,
+          shiftCode: r.shiftCode,
+          shiftName: r.shiftName,
+          lateMinutes: r.lateMinutes,
+          totalDays: r.totalDays,
+          presentDays: r.presentDays,
+          absentDays: r.absentDays,
+          woDays: r.woDays,
+          totalNetHours: r.workingHours,
+          totalOtHours: r.otHours,
+          lateDays: isDateRangeActive ? (r.lateMinutes as number) : undefined,
+          payableDays: r.payableDays,
+          attendanceRate: r.attendanceRate,
           wh: r.workingHours
-        }));
+        };
+      });
 
-        blob = await pdf(
-          <BasicReportDocument
-            data={pdfData}
-            dateRange={dr}
-            generatedBy={currentUserEmail}
-          />
-        ).toBlob();
-      }
+      const activeSiteName = departmentFilter !== 'all'
+        ? departmentFilter
+        : (siteFilter !== 'all' ? siteFilter : 'ALL SITES & DEPARTMENTS');
 
+      blob = await pdf(
+        <BasicReportDocument
+          data={pdfData}
+          dateRange={dr}
+          generatedBy={generatedBy}
+          generatedByRole={generatedByRole}
+          filters={resolvedFilters}
+          siteName={activeSiteName}
+          isDateRangeActive={isDateRangeActive}
+          logoUrl={logoForPdf || '/paradigm-logo.png'}
+          kpiSummary={{
+            totalActive: isDateRangeActive ? multiDaySummaryTotals.totalActive : (s?.activeTotal ?? filteredEmployees.length),
+            present: isDateRangeActive ? multiDaySummaryTotals.totalPresentManDays : (s?.present ?? 0),
+            absent: isDateRangeActive ? multiDaySummaryTotals.totalAbsentManDays : (s?.absent ?? 0),
+            late: isDateRangeActive ? multiDaySummaryTotals.totalOtHours : (s?.late ?? 0),
+            avgPresent: isDateRangeActive ? String(multiDaySummaryTotals.avgPresentPerDay) : undefined,
+            avgAbsent: isDateRangeActive ? String(multiDaySummaryTotals.avgAbsentPerDay) : undefined,
+          }}
+        />
+      ).toBlob();
+    }
+
+    return {
+      blob,
+      fileName: getDynamicReportFileName('pdf')
+    };
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!filteredEmployees || filteredEmployees.length === 0) return;
+    setIsDownloading(true);
+    try {
+      const { blob, fileName } = await generatePdfBlobForReport();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = getDynamicReportFileName('pdf');
+      a.download = fileName;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -4336,19 +4603,104 @@ const DetailedAuditReportView: React.FC<{
     }
   };
 
-  const handleSendMail = async () => {
-    if (!mailRecipient.trim()) return;
+  const blobToBase64 = (blob: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = (reader.result as string).split(',')[1];
+        resolve(base64String);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  const handleSendEmailReport = async (payload: MailReportPayload) => {
     setIsSendingEmail(true);
     try {
-      await new Promise(r => setTimeout(r, 1200));
-      setShowMailModal(false);
-      setMailRecipient('');
-      setMailSubject('');
-      setMailNote('');
-      setSecurityToast('✅ Attendance Report email sent successfully!');
-      setTimeout(() => setSecurityToast(null), 4000);
-    } catch (err) {
-      console.error('Mail send error:', err);
+      const reportName = reportType === 'monthly' ? 'Monthly Attendance Report'
+        : reportType === 'detailed' ? 'Detailed Audit Report'
+        : reportType === 'work_hours' ? 'Work Hours Summary Report'
+        : reportType === 'site_ot' ? 'Site OT Report'
+        : reportType === 'log' ? 'Attendance Log Report'
+        : reportType === 'leave_balance' ? 'Leave Balance Tracker'
+        : 'Basic Attendance Report';
+
+      const shouldAttachPdf = payload.attachPdf !== false;
+      const shouldAttachExcel = payload.attachExcel !== false;
+
+      const attachments: {
+        filename: string;
+        content: string;
+        encoding?: string;
+        contentType: string;
+      }[] = [];
+
+      // 1. Generate PDF attachment if requested
+      if (shouldAttachPdf) {
+        try {
+          const { blob, fileName } = await generatePdfBlobForReport();
+          if (blob) {
+            const base64Content = await blobToBase64(blob);
+            attachments.push({
+              filename: fileName || `${reportName.replace(/\s+/g, '_')}_${format(new Date(), 'dd_MMM_yyyy')}.pdf`,
+              content: base64Content,
+              encoding: 'base64',
+              contentType: 'application/pdf',
+            });
+          }
+        } catch (pdfErr) {
+          console.warn('[SiteAttendance] PDF Attachment Generation failed:', pdfErr);
+        }
+      }
+
+      // 2. Generate Excel attachment if requested
+      if (shouldAttachExcel) {
+        try {
+          const excelResult = await generateExcelBlobForReport({ returnBlobOnly: true });
+          if (excelResult && excelResult.blob) {
+            const excelBase64 = await blobToBase64(excelResult.blob);
+            attachments.push({
+              filename: excelResult.fileName || `${reportName.replace(/\s+/g, '_')}_${format(new Date(), 'dd_MMM_yyyy')}.xlsx`,
+              content: excelBase64,
+              encoding: 'base64',
+              contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            });
+          }
+        } catch (excelErr) {
+          console.warn('[SiteAttendance] Excel Attachment Generation failed:', excelErr);
+        }
+      }
+
+      // 3. Send via api.sendReportEmail
+      await api.sendReportEmail({
+        ...payload,
+        attachments,
+        filters: {
+          role: pendingRole,
+          site: departmentFilter !== 'all' ? departmentFilter : siteFilter,
+          company: pendingCompany,
+          status: statusFilter,
+          dateRange: isDateRangeActive && dateRange.startDate && dateRange.endDate ? {
+            start: format(dateRange.startDate, 'yyyy-MM-dd'),
+            end: format(dateRange.endDate, 'yyyy-MM-dd'),
+          } : {
+            start: selectedDate,
+            end: selectedDate,
+          },
+        },
+      });
+
+      const recipientText = Array.isArray(payload.to) ? payload.to.join(', ') : payload.to;
+      const attachedDocNames = attachments.map(a => a.filename.endsWith('.pdf') ? 'PDF' : 'Excel').join(' & ');
+      const attachSuffix = attachedDocNames ? ` (${attachedDocNames} attached)` : '';
+      setSecurityToast(`✅ Report successfully sent to ${recipientText}${attachSuffix}`);
+      setTimeout(() => setSecurityToast(null), 5000);
+      setIsMailModalOpen(false);
+    } catch (err: any) {
+      console.error('[SiteAttendance] Mail Report Error:', err);
+      setSecurityToast(`❌ Failed to send email: ${err?.message || 'Unknown error'}`);
+      setTimeout(() => setSecurityToast(null), 6000);
     } finally {
       setIsSendingEmail(false);
     }
@@ -4870,52 +5222,64 @@ const DetailedAuditReportView: React.FC<{
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <button
+                  type="button"
                   onClick={handleDownloadPdf}
                   disabled={isDownloading}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-white dark:bg-[#072415] hover:bg-red-600 hover:text-white text-slate-700 dark:text-emerald-200 rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-[#134426] cursor-pointer shadow-xs disabled:opacity-50"
+                  className="bg-white hover:bg-[#006b3f] text-gray-700 hover:text-white dark:bg-[#072415] dark:text-emerald-100 dark:border-[#134426] dark:hover:bg-[#006b3f] dark:hover:text-white border border-gray-300 hover:border-[#005632] shadow-sm rounded-xl flex items-center justify-center gap-2 py-2.5 px-5 font-semibold text-xs whitespace-nowrap transition-all active:scale-[0.98] disabled:opacity-50 cursor-pointer"
                   title="Download as PDF"
                 >
-                  {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} className="text-red-500" />}
-                  <span>Download PDF</span>
+                  {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+                  <span>{isDownloading ? 'Generating...' : 'Download PDF'}</span>
                 </button>
+                {isHrOrAdmin && (
+                  <button
+                    type="button"
+                    onClick={handleDownloadExcel}
+                    disabled={isDownloading}
+                    className="bg-white hover:bg-[#006b3f] text-gray-700 hover:text-white dark:bg-[#072415] dark:text-emerald-100 dark:border-[#134426] dark:hover:bg-[#006b3f] dark:hover:text-white border border-gray-300 hover:border-[#005632] shadow-sm rounded-xl flex items-center justify-center gap-2 py-2.5 px-5 font-semibold text-xs whitespace-nowrap transition-all active:scale-[0.98] disabled:opacity-50 cursor-pointer"
+                    title="Download as Excel Spreadsheet"
+                  >
+                    {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+                    <span>{isDownloading ? 'Generating...' : 'Download Excel'}</span>
+                  </button>
+                )}
                 <button
-                  onClick={handleDownloadExcel}
-                  disabled={isDownloading}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-white dark:bg-[#072415] hover:bg-emerald-600 hover:text-white text-slate-700 dark:text-emerald-200 rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-[#134426] cursor-pointer shadow-xs disabled:opacity-50"
-                  title="Download as Excel Spreadsheet"
+                  type="button"
+                  onClick={() => setIsMailModalOpen(true)}
+                  disabled={isDownloading || isSendingEmail}
+                  className="bg-white hover:bg-[#006b3f] text-gray-700 hover:text-white dark:bg-[#072415] dark:text-emerald-100 dark:border-[#134426] dark:hover:bg-[#006b3f] dark:hover:text-white border border-gray-300 hover:border-[#005632] shadow-sm rounded-xl flex items-center justify-center gap-2 py-2.5 px-5 font-semibold text-xs whitespace-nowrap transition-all active:scale-[0.98] disabled:opacity-50 cursor-pointer"
+                  title="Mail Report with PDF & Excel Attachments"
                 >
-                  {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <FileSpreadsheet size={14} className="text-emerald-600" />}
-                  <span>Download Excel</span>
+                  {isSendingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                  <span>{isSendingEmail ? 'Sending...' : 'Mail Report'}</span>
                 </button>
-                <button
-                  onClick={handleDownloadCsv}
-                  disabled={isDownloading}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-white dark:bg-[#072415] hover:bg-blue-600 hover:text-white text-slate-700 dark:text-emerald-200 rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-[#134426] cursor-pointer shadow-xs disabled:opacity-50"
-                  title="Download as CSV"
-                >
-                  {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} className="text-blue-600" />}
-                  <span>Download CSV</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setMailSubject(`Paradigm Attendance Report — ${reportDateLabel}`);
-                    setShowMailModal(true);
-                  }}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-[#006B3F] hover:bg-[#005632] text-white rounded-xl text-xs font-extrabold transition-all shadow-xs cursor-pointer"
-                >
-                  <Mail size={14} /> Mail Report
-                </button>
+                {isHrOrAdmin && (
+                  <button
+                    type="button"
+                    onClick={handleDownloadCsv}
+                    disabled={isDownloading}
+                    className="bg-white hover:bg-[#006b3f] text-gray-700 hover:text-white dark:bg-[#072415] dark:text-emerald-100 dark:border-[#134426] dark:hover:bg-[#006b3f] dark:hover:text-white border border-gray-300 hover:border-[#005632] shadow-sm rounded-xl flex items-center justify-center gap-2 py-2.5 px-5 font-semibold text-xs whitespace-nowrap transition-all active:scale-[0.98] disabled:opacity-50 cursor-pointer"
+                    title="Download as CSV"
+                  >
+                    {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+                    <span>{isDownloading ? 'Generating...' : 'Download CSV'}</span>
+                  </button>
+                )}
               </div>
             </div>
 
             {/* Report Header Card */}
             <div className="bg-slate-50 dark:bg-[#041b0f]/60 p-5 rounded-2xl border border-slate-200 dark:border-[#134426] space-y-4">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-xl bg-[#006B3F] text-white font-black flex items-center justify-center text-xl shadow-sm">P</div>
-                  <div>
-                    <h3 className="text-base font-black text-slate-900 dark:text-white tracking-tight uppercase">PARADIGM SERVICES™</h3>
-                    <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">
+                <div className="flex items-center gap-4">
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center">
+                      <Logo 
+                        className="h-9 md:h-10 w-auto max-w-[260px] object-contain dark:brightness-0 dark:invert" 
+                        variant="original" 
+                      />
+                    </div>
+                    <p className="text-[11px] font-bold text-emerald-800 dark:text-emerald-400 uppercase tracking-widest pl-0.5">
                       {departmentFilter === 'all' ? 'ALL SITES & DEPARTMENTS' : departmentFilter.toUpperCase()}
                     </p>
                   </div>
@@ -6639,60 +7003,6 @@ const DetailedAuditReportView: React.FC<{
         </div>
       </div>
 
-      {/* ── Mail Report Modal ────────────────────────────────────────────────── */}
-      {showMailModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#072415] p-6 rounded-2xl border border-slate-200 dark:border-[#134426] shadow-2xl max-w-md w-full space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-[#134426] pb-3">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <Mail size={16} className="text-emerald-600 dark:text-[#44D62C]" />
-                Mail Attendance Report
-              </h3>
-              <button onClick={() => setShowMailModal(false)} className="text-slate-400 hover:text-slate-600 dark:text-emerald-300 dark:hover:text-white text-xl leading-none cursor-pointer">×</button>
-            </div>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-emerald-300 mb-1">Recipient Email Address</label>
-                <input
-                  type="email"
-                  placeholder="client.admin@example.com"
-                  value={mailRecipient}
-                  onChange={e => setMailRecipient(e.target.value)}
-                  className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-[#1a5532] bg-white dark:bg-[#041b0f] text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500/20 outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-emerald-300 mb-1">Subject</label>
-                <input
-                  type="text"
-                  placeholder="Paradigm Attendance Report"
-                  value={mailSubject}
-                  onChange={e => setMailSubject(e.target.value)}
-                  className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-[#1a5532] bg-white dark:bg-[#041b0f] text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500/20 outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-emerald-300 mb-1">Note / Message (Optional)</label>
-                <textarea
-                  rows={3}
-                  placeholder="Please find the attendance report attached..."
-                  value={mailNote}
-                  onChange={e => setMailNote(e.target.value)}
-                  className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-[#1a5532] bg-white dark:bg-[#041b0f] text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500/20 outline-none resize-none"
-                />
-              </div>
-            </div>
-            <p className="text-[10px] text-slate-400 dark:text-emerald-400/60">Report: <strong className="text-slate-600 dark:text-emerald-300/80">{reportDateLabel}</strong> · Format: Excel + PDF attachment</p>
-            <div className="flex justify-end gap-2 pt-2">
-              <button onClick={() => setShowMailModal(false)} className="px-4 py-2 text-xs font-bold text-slate-600 dark:text-emerald-300 rounded-xl hover:bg-slate-100 dark:hover:bg-[#0d3820] cursor-pointer">Cancel</button>
-              <button onClick={handleSendMail} disabled={isSendingEmail || !mailRecipient.trim()} className="px-5 py-2 text-xs font-extrabold bg-[#006B3F] hover:bg-[#005632] dark:bg-[#44D62C] dark:hover:bg-[#38b524] text-white dark:text-[#041b0f] rounded-xl flex items-center gap-2 disabled:opacity-50 cursor-pointer shadow-xs">
-                {isSendingEmail ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                {isSendingEmail ? 'Sending...' : 'Send Mail'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── Employee Table / Card View ─────────────────────────────────────── */}
       <div ref={tableRef} className="bg-white dark:bg-[#072415] rounded-2xl border border-slate-200/80 dark:border-[#134426] shadow-xs overflow-hidden">
@@ -7794,6 +8104,34 @@ MSSQL_PORT=1433`}
           </div>
         </div>,
         document.body
+      )}
+
+      {/* ── Mail Report Modal (Accessible from all tabs) ────────────────────── */}
+      {isMailModalOpen && (
+        <MailReportModal
+          isOpen={isMailModalOpen}
+          onClose={() => setIsMailModalOpen(false)}
+          onSend={handleSendEmailReport}
+          isSending={isSendingEmail}
+          reportType={reportType}
+          currentUserEmail={currentUserEmail}
+          availableUsers={availableUsers}
+          canAttachExcel={isHrOrAdmin}
+          filterSummary={{
+            dateRange: {
+              startDate: isDateRangeActive && dateRange.startDate ? dateRange.startDate : new Date(selectedDate),
+              endDate: isDateRangeActive && dateRange.endDate ? dateRange.endDate : new Date(selectedDate)
+            },
+            employeeName: pendingEmployee !== 'all'
+              ? (filteredEmployees.find(e => e.empCode === pendingEmployee)?.empName || pendingEmployee)
+              : 'All Employees',
+            company: pendingCompany !== 'all' ? pendingCompany : undefined,
+            site: departmentFilter !== 'all' ? departmentFilter : (siteFilter !== 'all' ? siteFilter : undefined),
+            role: pendingRole !== 'all' ? pendingRole : undefined,
+            recordCount: filteredEmployees.length,
+            generatedBy: authUser?.name || currentUserEmail,
+          }}
+        />
       )}
     </div>
   );

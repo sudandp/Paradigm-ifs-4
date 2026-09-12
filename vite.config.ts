@@ -187,15 +187,20 @@ export default defineConfig({
 
 
 
+  define: {
+    'global': 'window',
+  },
   optimizeDeps: {
     include: [
       '@react-pdf/renderer',
       '@react-pdf/pdfkit',
       'pako',
+      'buffer',
     ],
   },
   resolve: {
     alias: {
+      buffer: 'buffer',
       '@/services': path.resolve(__dirname, './services'),
       '@/components': path.resolve(__dirname, './components'),
       '@/hooks': path.resolve(__dirname, './hooks'),

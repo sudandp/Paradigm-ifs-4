@@ -1,3 +1,16 @@
+import { Buffer } from 'buffer';
+
+// Polyfill Buffer & Node globals for browser PDF generation (@react-pdf/renderer)
+if (typeof window !== 'undefined') {
+  (window as any).Buffer = (window as any).Buffer || Buffer;
+  (window as any).global = (window as any).global || window;
+  (window as any).process = (window as any).process || { env: {} };
+}
+if (typeof globalThis !== 'undefined') {
+  (globalThis as any).Buffer = (globalThis as any).Buffer || Buffer;
+  (globalThis as any).global = (globalThis as any).global || globalThis;
+}
+
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { HashRouter } from 'react-router-dom';

@@ -1,3 +1,13 @@
+import { Buffer } from 'buffer';
+
+// Ensure Buffer is globally defined for browser @react-pdf/renderer image processing
+if (typeof window !== 'undefined' && !(window as any).Buffer) {
+  (window as any).Buffer = Buffer;
+}
+if (typeof globalThis !== 'undefined' && !(globalThis as any).Buffer) {
+  (globalThis as any).Buffer = Buffer;
+}
+
 import React from 'react';
 import { Document, Page, View, Text, StyleSheet, Image, Font } from '@react-pdf/renderer';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
@@ -1145,6 +1155,8 @@ export const CostAnalysisDocument: React.FC<{ data: any[]; stats: any; range: st
 };
 
 export interface BasicReportDataRow {
+  sno?: number;
+  empCode?: string;
   userName: string;
   date: string;
   status: string;
@@ -1159,10 +1171,242 @@ export interface BasicReportDataRow {
   isAutoCheckout?: boolean;
   department?: string;
   dept?: string;
+  designation?: string;
+  shiftCode?: string;
+  shiftName?: string;
+  lateMinutes?: number | string;
+  // Multi-day fields
+  totalDays?: number;
+  presentDays?: number;
+  absentDays?: number;
+  woDays?: number;
+  totalNetHours?: string;
+  totalOtHours?: string;
+  lateDays?: number;
+  payableDays?: string | number;
+  attendanceRate?: number | string;
+  shiftCompleted?: boolean;
   pin?: string;
   pout?: string;
   wh?: string;
 }
+
+const basicReportStyles = StyleSheet.create({
+  page: {
+    paddingTop: 16,
+    paddingBottom: 24,
+    paddingLeft: 20,
+    paddingRight: 20,
+    fontFamily: 'Helvetica',
+    fontSize: 7,
+    color: '#0F172A',
+    backgroundColor: '#FFFFFF',
+    flexDirection: 'column',
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    borderBottomWidth: 1.5,
+    borderBottomColor: '#006B3F',
+    paddingBottom: 5,
+    marginBottom: 6,
+  },
+  headerLeft: {
+    width: '34%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  brandBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 6,
+    backgroundColor: '#006B3F',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  brandBadgeText: {
+    color: '#FFFFFF',
+    fontWeight: 'black',
+    fontSize: 14,
+  },
+  brandTitle: {
+    fontSize: 10.5,
+    fontWeight: 'black',
+    color: '#0F172A',
+    letterSpacing: 0.5,
+  },
+  brandSubtitle: {
+    fontSize: 7,
+    fontWeight: 'bold',
+    color: '#006B3F',
+    marginTop: 1,
+  },
+  headerRight: {
+    width: '34%',
+    textAlign: 'right',
+    alignItems: 'flex-end',
+  },
+  title: {
+    fontSize: 11,
+    fontWeight: 'black',
+    color: '#0F172A',
+    textTransform: 'uppercase',
+  },
+  subtitle: {
+    fontSize: 7.5,
+    color: '#334155',
+    marginTop: 1,
+    fontWeight: 'bold',
+  },
+  metaText: {
+    fontSize: 6.5,
+    color: '#64748B',
+    marginTop: 1,
+  },
+  // KPI Summary
+  kpiRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 6,
+  },
+  kpiCard: {
+    flex: 1,
+    paddingTop: 3.5,
+    paddingBottom: 3.5,
+    paddingLeft: 6,
+    paddingRight: 6,
+    borderRadius: 5,
+    borderWidth: 0.8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  kpiLabel: {
+    fontSize: 5.8,
+    fontWeight: 'black',
+    letterSpacing: 0.2,
+    textTransform: 'uppercase',
+    marginBottom: 1,
+  },
+  kpiValue: {
+    fontSize: 10.5,
+    fontWeight: 'black',
+  },
+  kpiSub: {
+    fontSize: 5.5,
+    color: '#64748B',
+    marginTop: 0.5,
+  },
+  // Table
+  table: {
+    width: '100%',
+    borderStyle: 'solid',
+    borderWidth: 0.6,
+    borderColor: '#CBD5E1',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  tableRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 15,
+  },
+  tableHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#006B3F',
+    height: 17,
+  },
+  tableColHeader: {
+    borderRightWidth: 0.5,
+    borderRightColor: '#005632',
+    paddingTop: 2,
+    paddingBottom: 2,
+    paddingLeft: 2,
+    paddingRight: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+    height: '100%',
+  },
+  tableCellHeader: {
+    fontSize: 6.2,
+    fontWeight: 'black',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    textTransform: 'uppercase',
+  },
+  tableCol: {
+    borderRightWidth: 0.5,
+    borderRightColor: '#E2E8F0',
+    paddingTop: 1.5,
+    paddingBottom: 1.5,
+    paddingLeft: 2,
+    paddingRight: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: 15,
+  },
+  tableCell: {
+    fontSize: 6,
+    color: '#334155',
+    textAlign: 'center',
+  },
+  tableCellLeft: {
+    fontSize: 6,
+    color: '#0F172A',
+    textAlign: 'left',
+  },
+  badge: {
+    paddingVertical: 1,
+    paddingHorizontal: 3.5,
+    borderRadius: 2.5,
+    borderWidth: 0.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: {
+    fontSize: 5.2,
+    fontWeight: 'bold',
+  },
+  footer: {
+    position: 'absolute',
+    bottom: 8,
+    left: 20,
+    right: 20,
+    borderTopWidth: 0.5,
+    borderTopColor: '#CBD5E1',
+    paddingTop: 2,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  footerText: {
+    fontSize: 6.5,
+    color: '#64748B',
+    fontWeight: 'bold',
+  },
+});
+
+const getBasicReportBadgeStyle = (status: string) => {
+  const s = (status || '').toUpperCase();
+  if (s.includes('ON DUTY') || s.includes('COMPLETED') || s === 'P' || s === 'PRESENT') {
+    return { bg: '#DCFCE7', text: '#15803D', border: '#86EFAC' };
+  }
+  if (s.includes('A') || s.includes('ABSENT')) {
+    return { bg: '#FEE2E2', text: '#B91C1C', border: '#FCA5A5' };
+  }
+  if (s.includes('LATE')) {
+    return { bg: '#FEF3C7', text: '#B45309', border: '#FCD34D' };
+  }
+  if (s.includes('W/O') || s.includes('WEEKLY OFF')) {
+    return { bg: '#F1F5F9', text: '#475569', border: '#CBD5E1' };
+  }
+  if (s.includes('HALF')) {
+    return { bg: '#FEF9C3', text: '#A16207', border: '#FDE047' };
+  }
+  return { bg: '#F3F4F6', text: '#374151', border: '#E5E7EB' };
+};
 
 export const BasicReportDocument: React.FC<{ 
   data: BasicReportDataRow[]; 
@@ -1173,71 +1417,188 @@ export const BasicReportDocument: React.FC<{
   targetUserRole?: string;
   logoUrl?: string;
   filters?: AppliedFilters;
-}> = ({ data, dateRange, generatedBy, generatedByRole, targetUserName, targetUserRole, logoUrl, filters }) => {
+  kpiSummary?: {
+    totalActive: number | string;
+    present: number | string;
+    absent: number | string;
+    late: number | string;
+    avgPresent?: string;
+    avgAbsent?: string;
+  };
+  siteName?: string;
+  isDateRangeActive?: boolean;
+}> = ({ data, dateRange, generatedBy, generatedByRole, targetUserName, targetUserRole, logoUrl, filters, kpiSummary, siteName, isDateRangeActive }) => {
+  const isMultiDay = !!isDateRangeActive;
+
   return (
     <Document>
-      <Page size="A4" orientation="portrait" style={styles.portraitPage}>
-        <View style={styles.portraitHeader} fixed>
-          <View style={styles.portraitHeaderLeft}>
-            {logoUrl && <Image src={logoUrl} style={styles.logo} />}
+      <Page size="A4" orientation="landscape" style={basicReportStyles.page}>
+        {/* Header */}
+        <View style={basicReportStyles.headerRow} fixed>
+          <View style={basicReportStyles.headerLeft}>
+            <View>
+              <Image 
+                src={logoUrl || '/paradigm-logo.png'} 
+                style={{ height: 26, width: 140, objectFit: 'contain' }} 
+              />
+              <Text style={[basicReportStyles.brandSubtitle, { marginTop: 3 }]}>
+                {(siteName || filters?.site || filters?.company || 'ALL SITES & DEPARTMENTS').toUpperCase()}
+              </Text>
+            </View>
             {targetUserName && (
-              <View style={{ marginTop: 4 }}>
-                <Text style={{ fontSize: 9, fontWeight: 'bold', color: '#111827' }}>{targetUserName}</Text>
+              <View style={{ marginTop: 2, marginLeft: 4 }}>
+                <Text style={{ fontSize: 8, fontWeight: 'bold', color: '#111827' }}>{targetUserName}</Text>
                 {targetUserRole && (
-                  <Text style={{ fontSize: 7, color: '#6B7280', textTransform: 'uppercase', fontWeight: 'bold' }}>{targetUserRole.replace(/_/g, ' ')}</Text>
+                  <Text style={{ fontSize: 6.5, color: '#6B7280', textTransform: 'uppercase', fontWeight: 'bold' }}>{targetUserRole.replace(/_/g, ' ')}</Text>
                 )}
               </View>
             )}
           </View>
-          <View style={styles.portraitHeaderCenter}>
-            {renderPDFHeaderCenter(filters)}
-          </View>
-          <View style={styles.portraitHeaderRight}>
-            <Text style={styles.portraitTitle}>Basic Attendance Report</Text>
-            <Text style={styles.portraitSubtitle}>
-              {(dateRange?.startDate && dateRange?.endDate) ? `Billing Cycle: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}` : 'Billing Cycle: Not Specified'}
+          {renderPDFHeaderCenter(filters)}
+          <View style={basicReportStyles.headerRight}>
+            <Text style={basicReportStyles.title}>Basic Attendance Report</Text>
+            <Text style={basicReportStyles.subtitle}>
+              {(dateRange?.startDate && dateRange?.endDate)
+                ? `Period: ${format(dateRange.startDate, 'dd MMM yyyy')}${format(dateRange.startDate, 'yyyy-MM-dd') !== format(dateRange.endDate, 'yyyy-MM-dd') ? ` - ${format(dateRange.endDate, 'dd MMM yyyy')}` : ''}`
+                : 'Period: Current'}
             </Text>
-            <Text style={styles.portraitMetaText}>
+            <Text style={basicReportStyles.metaText}>
               Generated: {format(new Date(), 'dd MMM yyyy HH:mm')}
             </Text>
             {generatedBy && (
-              <Text style={styles.portraitMetaText}>Generated by: {generatedBy}{generatedByRole ? ` (${generatedByRole.toUpperCase()})` : ''}</Text>
+              <Text style={basicReportStyles.metaText}>Generated by: {generatedBy}{generatedByRole ? ` (${generatedByRole.toUpperCase()})` : ''}</Text>
             )}
           </View>
         </View>
 
-        <View style={styles.portraitTable}>
-          <View fixed style={[styles.portraitTableRow, { backgroundColor: '#F3F4F6', height: 20 }]}>
-            <View style={[styles.portraitTableColHeader, { width: '23%', alignItems: 'flex-start', paddingLeft: 4 }]}><Text style={styles.portraitTableCellHeader}>Employee Name</Text></View>
-            <View style={[styles.portraitTableColHeader, { width: '6.5%' }]}><Text style={styles.portraitTableCellHeader}>Status</Text></View>
-            <View style={[styles.portraitTableColHeader, { width: '5.5%' }]}><Text style={styles.portraitTableCellHeader}>In</Text></View>
-            <View style={[styles.portraitTableColHeader, { width: '5.5%' }]}><Text style={styles.portraitTableCellHeader}>Out</Text></View>
-            <View style={[styles.portraitTableColHeader, { width: '5.5%' }]}><Text style={styles.portraitTableCellHeader}>B.In</Text></View>
-            <View style={[styles.portraitTableColHeader, { width: '5.5%' }]}><Text style={styles.portraitTableCellHeader}>B.Out</Text></View>
-            <View style={[styles.portraitTableColHeader, { width: '5.5%' }]}><Text style={styles.portraitTableCellHeader}>OT.In</Text></View>
-            <View style={[styles.portraitTableColHeader, { width: '5.5%' }]}><Text style={styles.portraitTableCellHeader}>OT.Out</Text></View>
-            <View style={[styles.portraitTableColHeader, { width: '12.5%' }]}><Text style={styles.portraitTableCellHeader}>Hours</Text></View>
-            <View style={[styles.portraitTableColHeader, { width: '25%', alignItems: 'flex-start', paddingLeft: 4 }]}><Text style={styles.portraitTableCellHeader}>Dept</Text></View>
-          </View>
-          {data.map((row, idx) => (
-            <View key={idx} wrap={false} style={[styles.portraitTableRow, { backgroundColor: idx % 2 === 0 ? '#FFFFFF' : '#F9FAFB' }]}>
-              <View style={[styles.portraitTableCol, { width: '23%', alignItems: 'flex-start', paddingLeft: 4 }]}><Text style={styles.portraitTableCellLeft}>{row.userName}</Text></View>
-              <View style={[styles.portraitTableCol, { width: '6.5%' }]}><Text style={[styles.portraitTableCell, { fontWeight: 'bold' }]}>{row.status}</Text></View>
-              <View style={[styles.portraitTableCol, { width: '5.5%' }]}><Text style={styles.portraitTableCell}>{row.checkIn || row.pin || '-'}</Text></View>
-              <View style={[styles.portraitTableCol, { width: '5.5%' }]}><Text style={styles.portraitTableCell}>{row.checkOut || row.pout || '-'}</Text></View>
-              <View style={[styles.portraitTableCol, { width: '5.5%' }]}><Text style={styles.portraitTableCell}>{row.breakIn || '-'}</Text></View>
-              <View style={[styles.portraitTableCol, { width: '5.5%' }]}><Text style={styles.portraitTableCell}>{row.breakOut || '-'}</Text></View>
-              <View style={[styles.portraitTableCol, { width: '5.5%' }]}><Text style={styles.portraitTableCell}>{row.siteOtIn || '-'}</Text></View>
-              <View style={[styles.portraitTableCol, { width: '5.5%' }]}><Text style={styles.portraitTableCell}>{row.siteOtOut || '-'}</Text></View>
-              <View style={[styles.portraitTableCol, { width: '12.5%' }]}><Text style={styles.portraitTableCellHours}>{row.duration || row.wh || '-'}</Text></View>
-              <View style={[styles.portraitTableCol, { width: '25%', alignItems: 'flex-start', paddingLeft: 4 }]}><Text style={styles.portraitTableCellLeft}>{formatDepartment(row.department || row.dept)}</Text></View>
+        {/* KPI Summary Banner (if provided) */}
+        {kpiSummary && (
+          <View style={basicReportStyles.kpiRow} fixed>
+            <View style={[basicReportStyles.kpiCard, { backgroundColor: '#F8FAFC', borderColor: '#E2E8F0' }]}>
+              <Text style={[basicReportStyles.kpiLabel, { color: '#64748B' }]}>TOTAL ACTIVE</Text>
+              <Text style={[basicReportStyles.kpiValue, { color: '#0F172A' }]}>{kpiSummary.totalActive}</Text>
             </View>
-          ))}
+            <View style={[basicReportStyles.kpiCard, { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0' }]}>
+              <Text style={[basicReportStyles.kpiLabel, { color: '#166534' }]}>{isMultiDay ? 'TOTAL PRESENT MAN-DAYS' : 'PRESENT'}</Text>
+              <Text style={[basicReportStyles.kpiValue, { color: '#15803D' }]}>{kpiSummary.present}</Text>
+              {kpiSummary.avgPresent ? <Text style={basicReportStyles.kpiSub}>Avg. {kpiSummary.avgPresent}/day</Text> : null}
+            </View>
+            <View style={[basicReportStyles.kpiCard, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]}>
+              <Text style={[basicReportStyles.kpiLabel, { color: '#991B1B' }]}>{isMultiDay ? 'TOTAL ABSENT DAYS' : 'ABSENT'}</Text>
+              <Text style={[basicReportStyles.kpiValue, { color: '#DC2626' }]}>{kpiSummary.absent}</Text>
+              {kpiSummary.avgAbsent ? <Text style={basicReportStyles.kpiSub}>Avg. {kpiSummary.avgAbsent}/day</Text> : null}
+            </View>
+            <View style={[basicReportStyles.kpiCard, { backgroundColor: '#FFFBEB', borderColor: '#FDE68A' }]}>
+              <Text style={[basicReportStyles.kpiLabel, { color: '#92400E' }]}>{isMultiDay ? 'TOTAL OT / LATE' : 'LATE'}</Text>
+              <Text style={[basicReportStyles.kpiValue, { color: '#D97706' }]}>{kpiSummary.late}</Text>
+            </View>
+          </View>
+        )}
+
+        {/* Employee Attendance Table */}
+        <View style={basicReportStyles.table}>
+          {isMultiDay ? (
+            /* ── MULTI-DAY DATE RANGE TABLE HEADERS ── */
+            <View fixed style={basicReportStyles.tableHeaderRow}>
+              <View style={[basicReportStyles.tableColHeader, { width: '3%' }]}><Text style={basicReportStyles.tableCellHeader}>#</Text></View>
+              <View style={[basicReportStyles.tableColHeader, { width: '6%' }]}><Text style={basicReportStyles.tableCellHeader}>Code</Text></View>
+              <View style={[basicReportStyles.tableColHeader, { width: '14%', alignItems: 'flex-start', paddingLeft: 4 }]}><Text style={basicReportStyles.tableCellHeader}>Employee Name</Text></View>
+              <View style={[basicReportStyles.tableColHeader, { width: '12%', alignItems: 'flex-start', paddingLeft: 4 }]}><Text style={basicReportStyles.tableCellHeader}>Dept / Site</Text></View>
+              <View style={[basicReportStyles.tableColHeader, { width: '10%', alignItems: 'flex-start', paddingLeft: 4 }]}><Text style={basicReportStyles.tableCellHeader}>Designation</Text></View>
+              <View style={[basicReportStyles.tableColHeader, { width: '7%' }]}><Text style={basicReportStyles.tableCellHeader}>Shift</Text></View>
+              <View style={[basicReportStyles.tableColHeader, { width: '6%' }]}><Text style={basicReportStyles.tableCellHeader}>Present</Text></View>
+              <View style={[basicReportStyles.tableColHeader, { width: '6%' }]}><Text style={basicReportStyles.tableCellHeader}>Absent</Text></View>
+              <View style={[basicReportStyles.tableColHeader, { width: '5%' }]}><Text style={basicReportStyles.tableCellHeader}>W/O</Text></View>
+              <View style={[basicReportStyles.tableColHeader, { width: '6.5%' }]}><Text style={basicReportStyles.tableCellHeader}>Net Hrs</Text></View>
+              <View style={[basicReportStyles.tableColHeader, { width: '5.5%' }]}><Text style={basicReportStyles.tableCellHeader}>OT Hrs</Text></View>
+              <View style={[basicReportStyles.tableColHeader, { width: '4.5%' }]}><Text style={basicReportStyles.tableCellHeader}>Late</Text></View>
+              <View style={[basicReportStyles.tableColHeader, { width: '5%' }]}><Text style={basicReportStyles.tableCellHeader}>Payable</Text></View>
+              <View style={[basicReportStyles.tableColHeader, { width: '4.5%' }]}><Text style={basicReportStyles.tableCellHeader}>Att %</Text></View>
+              <View style={[basicReportStyles.tableColHeader, { width: '5%', borderRightWidth: 0 }]}><Text style={basicReportStyles.tableCellHeader}>Status</Text></View>
+            </View>
+          ) : (
+            /* ── SINGLE-DAY TABLE HEADERS ── */
+            <View fixed style={basicReportStyles.tableHeaderRow}>
+              <View style={[basicReportStyles.tableColHeader, { width: '3%' }]}><Text style={basicReportStyles.tableCellHeader}>#</Text></View>
+              <View style={[basicReportStyles.tableColHeader, { width: '6%' }]}><Text style={basicReportStyles.tableCellHeader}>Code</Text></View>
+              <View style={[basicReportStyles.tableColHeader, { width: '14%', alignItems: 'flex-start', paddingLeft: 4 }]}><Text style={basicReportStyles.tableCellHeader}>Employee Name</Text></View>
+              <View style={[basicReportStyles.tableColHeader, { width: '12%', alignItems: 'flex-start', paddingLeft: 4 }]}><Text style={basicReportStyles.tableCellHeader}>Dept / Site</Text></View>
+              <View style={[basicReportStyles.tableColHeader, { width: '10%', alignItems: 'flex-start', paddingLeft: 4 }]}><Text style={basicReportStyles.tableCellHeader}>Designation</Text></View>
+              <View style={[basicReportStyles.tableColHeader, { width: '7.5%' }]}><Text style={basicReportStyles.tableCellHeader}>Shift</Text></View>
+              <View style={[basicReportStyles.tableColHeader, { width: '5%' }]}><Text style={basicReportStyles.tableCellHeader}>In</Text></View>
+              <View style={[basicReportStyles.tableColHeader, { width: '5%' }]}><Text style={basicReportStyles.tableCellHeader}>Out</Text></View>
+              <View style={[basicReportStyles.tableColHeader, { width: '4.5%' }]}><Text style={basicReportStyles.tableCellHeader}>B.In</Text></View>
+              <View style={[basicReportStyles.tableColHeader, { width: '4.5%' }]}><Text style={basicReportStyles.tableCellHeader}>B.Out</Text></View>
+              <View style={[basicReportStyles.tableColHeader, { width: '4.5%' }]}><Text style={basicReportStyles.tableCellHeader}>OT.In</Text></View>
+              <View style={[basicReportStyles.tableColHeader, { width: '4.5%' }]}><Text style={basicReportStyles.tableCellHeader}>OT.Out</Text></View>
+              <View style={[basicReportStyles.tableColHeader, { width: '6%' }]}><Text style={basicReportStyles.tableCellHeader}>Hours</Text></View>
+              <View style={[basicReportStyles.tableColHeader, { width: '4.5%' }]}><Text style={basicReportStyles.tableCellHeader}>Late</Text></View>
+              <View style={[basicReportStyles.tableColHeader, { width: '9%', borderRightWidth: 0 }]}><Text style={basicReportStyles.tableCellHeader}>Status</Text></View>
+            </View>
+          )}
+
+          {/* Rows */}
+          {data.map((row, idx) => {
+            const badgeStyle = getBasicReportBadgeStyle(row.status);
+            const isEven = idx % 2 === 0;
+            const rowBg = isEven ? '#FFFFFF' : '#F8FAFC';
+
+            if (isMultiDay) {
+              return (
+                <View key={idx} wrap={false} style={[basicReportStyles.tableRow, { backgroundColor: rowBg }]}>
+                  <View style={[basicReportStyles.tableCol, { width: '3%' }]}><Text style={basicReportStyles.tableCell}>{row.sno || idx + 1}</Text></View>
+                  <View style={[basicReportStyles.tableCol, { width: '6%' }]}><Text style={[basicReportStyles.tableCell, { fontWeight: 'bold' }]}>{row.empCode || '-'}</Text></View>
+                  <View style={[basicReportStyles.tableCol, { width: '14%', alignItems: 'flex-start', paddingLeft: 4 }]}><Text style={[basicReportStyles.tableCellLeft, { fontWeight: 'bold' }]}>{row.userName}</Text></View>
+                  <View style={[basicReportStyles.tableCol, { width: '12%', alignItems: 'flex-start', paddingLeft: 4 }]}><Text style={basicReportStyles.tableCellLeft}>{formatDepartment(row.department || row.dept)}</Text></View>
+                  <View style={[basicReportStyles.tableCol, { width: '10%', alignItems: 'flex-start', paddingLeft: 4 }]}><Text style={basicReportStyles.tableCellLeft}>{row.designation || '-'}</Text></View>
+                  <View style={[basicReportStyles.tableCol, { width: '7%' }]}><Text style={basicReportStyles.tableCell}>{row.shiftCode || row.shiftName || '-'}</Text></View>
+                  <View style={[basicReportStyles.tableCol, { width: '6%', backgroundColor: '#F0FDF4' }]}><Text style={[basicReportStyles.tableCell, { fontWeight: 'bold', color: '#15803D' }]}>{row.presentDays ?? '-'}</Text></View>
+                  <View style={[basicReportStyles.tableCol, { width: '6%', backgroundColor: '#FEF2F2' }]}><Text style={[basicReportStyles.tableCell, { fontWeight: 'bold', color: '#DC2626' }]}>{row.absentDays ?? '-'}</Text></View>
+                  <View style={[basicReportStyles.tableCol, { width: '5%' }]}><Text style={basicReportStyles.tableCell}>{row.woDays ?? '-'}</Text></View>
+                  <View style={[basicReportStyles.tableCol, { width: '6.5%' }]}><Text style={[basicReportStyles.tableCell, { fontWeight: 'bold', color: '#0369A1' }]}>{row.totalNetHours || row.duration || '-'}</Text></View>
+                  <View style={[basicReportStyles.tableCol, { width: '5.5%' }]}><Text style={[basicReportStyles.tableCell, { color: '#B45309' }]}>{row.totalOtHours || '-'}</Text></View>
+                  <View style={[basicReportStyles.tableCol, { width: '4.5%' }]}><Text style={[basicReportStyles.tableCell, { color: '#D97706' }]}>{row.lateDays ? `${row.lateDays}d` : (row.lateMinutes ? `${row.lateMinutes}m` : '-')}</Text></View>
+                  <View style={[basicReportStyles.tableCol, { width: '5%' }]}><Text style={[basicReportStyles.tableCell, { fontWeight: 'bold' }]}>{row.payableDays ?? '-'}</Text></View>
+                  <View style={[basicReportStyles.tableCol, { width: '4.5%' }]}><Text style={[basicReportStyles.tableCell, { fontWeight: 'bold' }]}>{row.attendanceRate != null ? `${row.attendanceRate}%` : '-'}</Text></View>
+                  <View style={[basicReportStyles.tableCol, { width: '5%', borderRightWidth: 0 }]}>
+                    <View style={[basicReportStyles.badge, { backgroundColor: badgeStyle.bg, borderColor: badgeStyle.border }]}>
+                      <Text style={[basicReportStyles.badgeText, { color: badgeStyle.text }]}>{row.status}</Text>
+                    </View>
+                  </View>
+                </View>
+              );
+            }
+
+            return (
+              <View key={idx} wrap={false} style={[basicReportStyles.tableRow, { backgroundColor: rowBg }]}>
+                <View style={[basicReportStyles.tableCol, { width: '3%' }]}><Text style={basicReportStyles.tableCell}>{row.sno || idx + 1}</Text></View>
+                <View style={[basicReportStyles.tableCol, { width: '6%' }]}><Text style={[basicReportStyles.tableCell, { fontWeight: 'bold' }]}>{row.empCode || '-'}</Text></View>
+                <View style={[basicReportStyles.tableCol, { width: '14%', alignItems: 'flex-start', paddingLeft: 4 }]}><Text style={[basicReportStyles.tableCellLeft, { fontWeight: 'bold' }]}>{row.userName}</Text></View>
+                <View style={[basicReportStyles.tableCol, { width: '12%', alignItems: 'flex-start', paddingLeft: 4 }]}><Text style={basicReportStyles.tableCellLeft}>{formatDepartment(row.department || row.dept)}</Text></View>
+                <View style={[basicReportStyles.tableCol, { width: '10%', alignItems: 'flex-start', paddingLeft: 4 }]}><Text style={basicReportStyles.tableCellLeft}>{row.designation || '-'}</Text></View>
+                <View style={[basicReportStyles.tableCol, { width: '7.5%' }]}><Text style={basicReportStyles.tableCell}>{row.shiftCode || row.shiftName || '-'}</Text></View>
+                <View style={[basicReportStyles.tableCol, { width: '5%' }]}><Text style={[basicReportStyles.tableCell, { color: row.checkIn && row.checkIn !== '-' && row.checkIn !== '—' ? '#15803D' : '#64748B', fontWeight: 'bold' }]}>{row.checkIn || row.pin || '-'}</Text></View>
+                <View style={[basicReportStyles.tableCol, { width: '5%' }]}><Text style={basicReportStyles.tableCell}>{row.checkOut || row.pout || '-'}</Text></View>
+                <View style={[basicReportStyles.tableCol, { width: '4.5%' }]}><Text style={basicReportStyles.tableCell}>{row.breakIn || '-'}</Text></View>
+                <View style={[basicReportStyles.tableCol, { width: '4.5%' }]}><Text style={basicReportStyles.tableCell}>{row.breakOut || '-'}</Text></View>
+                <View style={[basicReportStyles.tableCol, { width: '4.5%' }]}><Text style={basicReportStyles.tableCell}>{row.siteOtIn || '-'}</Text></View>
+                <View style={[basicReportStyles.tableCol, { width: '4.5%' }]}><Text style={basicReportStyles.tableCell}>{row.siteOtOut || '-'}</Text></View>
+                <View style={[basicReportStyles.tableCol, { width: '6%' }]}><Text style={[basicReportStyles.tableCell, { fontWeight: 'bold', color: '#0F172A' }]}>{row.duration || row.wh || '-'}</Text></View>
+                <View style={[basicReportStyles.tableCol, { width: '4.5%' }]}><Text style={[basicReportStyles.tableCell, { color: '#D97706', fontWeight: 'bold' }]}>{row.lateMinutes && row.lateMinutes !== 0 && row.lateMinutes !== '0' ? `+${row.lateMinutes}m` : '-'}</Text></View>
+                <View style={[basicReportStyles.tableCol, { width: '9%', borderRightWidth: 0 }]}>
+                  <View style={[basicReportStyles.badge, { backgroundColor: badgeStyle.bg, borderColor: badgeStyle.border }]}>
+                    <Text style={[basicReportStyles.badgeText, { color: badgeStyle.text }]}>{row.status}</Text>
+                  </View>
+                </View>
+              </View>
+            );
+          })}
         </View>
 
-        <View style={styles.portraitFooterContainer} fixed>
-          <Text style={styles.portraitFooterText}>Paradigm Services - Confidential</Text>
-          <Text style={styles.portraitFooterPageText} render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`} />
+        {/* Footer */}
+        <View style={basicReportStyles.footer} fixed>
+          <Text style={basicReportStyles.footerText}>Paradigm Services - Confidential Attendance Report</Text>
+          <Text style={basicReportStyles.footerText} render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`} />
         </View>
       </Page>
     </Document>
@@ -1302,33 +1663,47 @@ export const MonthlyReportDocument: React.FC<{
     <Document>
       {data.map((employee, empIdx) => (
         <Page key={empIdx} size="A3" orientation="landscape" style={[styles.page, { padding: '30 20' }]}>
-          {/* Header */}
-          <View style={[styles.header, { borderBottomWidth: 2, borderBottomColor: '#0F172A', paddingBottom: 10, marginBottom: 15 }]}>
-            <View style={styles.headerLeft}>
-              {logoUrl && <Image src={logoUrl} style={{ height: 40, width: 'auto', marginBottom: 4 }} />}
+          {/* Header — Premium Paradigm Green Theme */}
+          <View style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            borderBottomWidth: 2,
+            borderBottomColor: '#006B3F',
+            paddingBottom: 10,
+            marginBottom: 15
+          }}>
+            {/* Left — Logo + Branding */}
+            <View style={{ width: '30%' }}>
+              {logoUrl && <Image src={logoUrl} style={{ height: 34, width: 'auto', marginBottom: 4 }} />}
+              <Text style={{ fontSize: 10, fontWeight: 'bold', color: '#006B3F', letterSpacing: 0.5 }}>PARADIGM SERVICES™</Text>
               {targetUserName && (
-                <View style={{ marginTop: 6 }}>
-                  <Text style={{ fontSize: 10, fontWeight: 'bold', color: '#0F172A' }}>{targetUserName}</Text>
+                <View style={{ marginTop: 3 }}>
+                  <Text style={{ fontSize: 9, fontWeight: 'bold', color: '#0F172A' }}>{targetUserName}</Text>
                   {targetUserRole && (
-                    <Text style={{ fontSize: 8, color: '#64748B', textTransform: 'uppercase', fontWeight: 'bold', marginTop: 2 }}>{targetUserRole.replace(/_/g, ' ')}</Text>
+                    <Text style={{ fontSize: 7, color: '#64748B', textTransform: 'uppercase', fontWeight: 'bold', marginTop: 2 }}>{targetUserRole.replace(/_/g, ' ')}</Text>
                   )}
                 </View>
               )}
             </View>
-            {renderPDFHeaderCenter(filters)}
-            <View style={styles.headerRight}>
-              <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#0F172A', textAlign: 'right' }}>ATTENDANCE REPORT</Text>
-              <Text style={{ fontSize: 10, color: '#64748B', textAlign: 'right' }}>
-                Billing Cycle: {format(dateRange.startDate, 'dd MMM yyyy')} - {format(dateRange.endDate, 'dd MMM yyyy')}
-              </Text>
-              {generatedBy && (
-                <View style={{ marginTop: 4, textAlign: 'right' }}>
-                  <Text style={{ fontSize: 8, color: '#666' }}>Generated by: {generatedBy}</Text>
-                  {generatedByRole && (
-                    <Text style={{ fontSize: 8, color: '#666', textTransform: 'uppercase' }}>{generatedByRole.replace(/_/g, ' ')}</Text>
-                  )}
-                </View>
-              )}
+            {/* Center — Filter / Site badge */}
+            <View style={{ width: '34%', alignItems: 'center', justifyContent: 'center' }}>
+              {renderPDFHeaderCenter(filters)}
+            </View>
+            {/* Right — Title + Dates + Meta */}
+            <View style={{ width: '36%', alignItems: 'flex-end' }}>
+              <Text style={{ fontSize: 15, fontWeight: 'bold', color: '#0F172A', textAlign: 'right', textTransform: 'uppercase' }}>Work Hours</Text>
+              <Text style={{ fontSize: 8.5, fontWeight: 'bold', color: '#006B3F', textAlign: 'right' }}>Attendance Report</Text>
+              <View style={{ marginTop: 3, paddingTop: 3, borderTopWidth: 0.5, borderTopColor: '#E2E8F0', width: '100%', alignItems: 'flex-end' }}>
+                <Text style={{ fontSize: 7.5, color: '#374151', fontWeight: 'bold', textAlign: 'right' }}>
+                  Billing Cycle: {format(dateRange.startDate, 'dd MMM yyyy')} – {format(dateRange.endDate, 'dd MMM yyyy')}
+                </Text>
+                {generatedBy && (
+                  <Text style={{ fontSize: 6.5, color: '#94A3B8', marginTop: 2, textAlign: 'right' }}>
+                    By: {generatedBy}{generatedByRole ? ` (${generatedByRole.toUpperCase()})` : ''}  ·  {format(new Date(), 'dd MMM yyyy')}
+                  </Text>
+                )}
+              </View>
             </View>
           </View>
 
@@ -2111,8 +2486,28 @@ export const MonthlyMatrixReportDocument: React.FC<{
     return '#FFFFFF';
   };
 
-  const rowsPerPage = 16;
+  const rowsPerPage = 18;
   const sortedMonthKeys = Object.keys(monthlyData).sort();
+
+  // Mathematical column layout on A3 Landscape (1150 pt printable width)
+  const snoWidth = 24;
+  const empColWidth = 196;
+  const summaryCols = [
+    { key: 'P', label: 'P', sub: 'DAYS', prop: 'presentDays', width: 24, color: '#059669', bg: '#ECFDF5', cellBg: '#F0FDF4' },
+    { key: '0.5P', label: '0.5P', sub: 'HALF', prop: 'halfDays', width: 26, color: '#2563EB', bg: '#EFF6FF', cellBg: 'transparent' },
+    { key: 'WH', label: 'WH', sub: 'WFH', prop: 'workFromHomeDays', width: 22, color: '#0D9488', bg: '#F0FDFA', cellBg: 'transparent' },
+    { key: 'OT', label: 'OT', sub: 'HRS', prop: 'overtimeDays', width: 22, color: '#0D9488', bg: '#F0FDFA', cellBg: 'transparent' },
+    { key: 'C/O', label: 'C/O', sub: 'OFF', prop: 'compOffs', width: 24, color: '#0891B2', bg: '#ECFEFF', cellBg: 'transparent' },
+    { key: 'E/L', label: 'E/L', sub: 'EARN', prop: 'earnedLeaves', width: 22, color: '#4F46E5', bg: '#EEF2FF', cellBg: 'transparent' },
+    { key: 'S/L', label: 'S/L', sub: 'SICK', prop: 'sickLeaves', width: 22, color: '#9333EA', bg: '#FAF5FF', cellBg: 'transparent' },
+    { key: 'A', label: 'A', sub: 'ABS', prop: 'absentDays', width: 22, color: '#DC2626', bg: '#FEF2F2', cellBg: '#FEF2F2' },
+    { key: 'W/O', label: 'W/O', sub: 'OFF', prop: 'weekOffs', width: 24, color: '#64748B', bg: '#F8FAFC', cellBg: 'transparent' },
+    { key: 'H', label: 'H', sub: 'HOL', prop: 'holidays', width: 22, color: '#EA580C', bg: '#FFF7ED', cellBg: 'transparent' },
+    { key: 'Pay', label: 'Pay', sub: 'TOT', prop: 'totalPayableDays', width: 28, color: '#065F46', bg: '#D1FAE5', cellBg: '#ECFDF5' },
+  ];
+  const totalSummaryWidth = summaryCols.reduce((sum, c) => sum + c.width, 0); // 258 pt
+  const totalAvailableWidth = 1150; // A3 width 1190.55 - 40 padding
+  const remainingForDays = totalAvailableWidth - snoWidth - empColWidth - totalSummaryWidth; // 672 pt
 
   return (
     <Document>
@@ -2125,7 +2520,12 @@ export const MonthlyMatrixReportDocument: React.FC<{
         const monthEnd = endOfMonth(monthDate);
         const displayStart = monthStart > globalDateRange.startDate ? monthStart : globalDateRange.startDate;
         const displayEnd = monthEnd < globalDateRange.endDate ? monthEnd : globalDateRange.endDate;
+        if (displayStart > displayEnd) {
+          return null;
+        }
         const monthDays = eachDayOfInterval({ start: displayStart, end: displayEnd });
+        const numDays = monthDays.length || 1;
+        const dayColWidth = Number((remainingForDays / numDays).toFixed(2));
 
         const recalculatedMonthData = monthData.map((emp: any) => ({
           ...emp,
@@ -2150,49 +2550,74 @@ export const MonthlyMatrixReportDocument: React.FC<{
         if (pages.length === 0) pages.push([]);
 
         return pages.map((pageData, pageIdx) => (
-          <Page key={`${monthKey}-${pageIdx}`} size="A3" orientation="landscape" style={[styles.page, { padding: '24 20' }]}>
-            {/* Header */}
-            <View style={[styles.header, { borderBottomWidth: 2, borderBottomColor: '#0F172A', paddingBottom: 8, marginBottom: 10 }]}>
-              <View style={styles.headerLeft}>
-                {logoUrl && <Image src={logoUrl} style={{ height: 35, width: 'auto', marginBottom: 3 }} />}
-                <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#006B3F' }}>PARADIGM SERVICES</Text>
-                {targetUserName ? (
-                  <View style={{ marginTop: 2 }}>
-                    <Text style={{ fontSize: 9, fontWeight: 'bold', color: '#0F172A' }}>{targetUserName}</Text>
-                    {targetUserRole && (
-                      <Text style={{ fontSize: 7, color: '#64748B', textTransform: 'uppercase', fontWeight: 'bold' }}>{targetUserRole.replace(/_/g, ' ')}</Text>
-                    )}
-                  </View>
+          <Page key={`${monthKey}-${pageIdx}`} size="A3" orientation="landscape" style={[styles.page, { padding: '20 20' }]}>
+            {/* Header — Premium Paradigm Green Theme */}
+            <View style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              borderBottomWidth: 2,
+              borderBottomColor: '#006B3F',
+              paddingBottom: 8,
+              marginBottom: 8
+            }}>
+              {/* Left — Logo + Company + Employee Filter */}
+              <View style={{ width: '30%' }}>
+                {logoUrl ? (
+                  <Image src={logoUrl} style={{ height: 32, width: 'auto', marginBottom: 2 }} />
                 ) : (
-                  <Text style={{ fontSize: 8, color: '#64748B', textTransform: 'uppercase', fontWeight: 'bold' }}>ALL EMPLOYEES</Text>
+                  <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#006B3F', letterSpacing: 0.5 }}>PARADIGM SERVICES™</Text>
+                )}
+                <Text style={{ fontSize: 7.5, color: '#006B3F', fontWeight: 'bold', letterSpacing: 0.5, marginTop: 2 }}>
+                  {targetUserName ? targetUserName.toUpperCase() : 'ALL EMPLOYEES'}
+                </Text>
+                {targetUserRole && (
+                  <Text style={{ fontSize: 6.5, color: '#64748B', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                    {targetUserRole.replace(/_/g, ' ')}
+                  </Text>
                 )}
               </View>
-              {renderPDFHeaderCenter(filters)}
-              <View style={styles.headerRight}>
-                <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#0F172A' }}>MONTHLY ATTENDANCE REPORT</Text>
-                <Text style={{ fontSize: 9, color: '#475569', fontWeight: 'bold' }}>
-                  Billing Cycle: {format(displayStart, 'dd MMM yyyy')} - {format(displayEnd, 'dd MMM yyyy')}
+
+              {/* Center — Month label & Office Staff badge */}
+              <View style={{ width: '40%', alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 8, fontWeight: 'bold', color: '#64748B', letterSpacing: 1.5, marginBottom: 3, textTransform: 'uppercase' }}>
+                  {format(monthDate, 'MMMM yyyy')}
                 </Text>
-                <Text style={{ fontSize: 8, color: '#94A3B8', marginTop: 2 }}>
-                  Generated: {format(new Date(), 'dd MMM yyyy HH:mm')} {generatedBy && `| By: ${generatedBy}${generatedByRole ? ` (${generatedByRole.toUpperCase()})` : ''}`}
+                <View style={{ backgroundColor: '#ECFDF5', borderWidth: 1, borderColor: '#A7F3D0', padding: '3 12', borderRadius: 12 }}>
+                  <Text style={{ fontSize: 8, fontWeight: 'bold', color: '#006B3F', letterSpacing: 0.8 }}>
+                    {filters?.site ? filters.site.toUpperCase() : 'OFFICE STAFF'}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Right — Report title + billing cycle + metadata */}
+              <View style={{ width: '30%', alignItems: 'flex-end' }}>
+                <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#0F172A', textAlign: 'right', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  MONTHLY ATTENDANCE REPORT
+                </Text>
+                <Text style={{ fontSize: 7.5, color: '#374151', fontWeight: 'bold', textAlign: 'right', marginTop: 2 }}>
+                  Billing Cycle: {format(displayStart, 'dd MMM yyyy')} – {format(displayEnd, 'dd MMM yyyy')}
+                </Text>
+                <Text style={{ fontSize: 6.5, color: '#64748B', textAlign: 'right', marginTop: 2 }}>
+                  Generated: {format(new Date(), 'dd MMM yyyy HH:mm')}{generatedBy ? ` · By: ${generatedBy}${generatedByRole ? ` (${generatedByRole.toUpperCase()})` : ''}` : ''}
                 </Text>
               </View>
             </View>
 
             {/* Stats Summary Cards (Page 1 only) */}
             {pageIdx === 0 && (
-              <View style={{ flexDirection: 'row', gap: 10, marginBottom: 8 }}>
-                <View style={{ flex: 1, padding: 6, backgroundColor: '#F0FDF4', borderRadius: 6, borderWidth: 1, borderColor: '#BBF7D0' }}>
-                  <Text style={{ fontSize: 7, fontWeight: 'bold', color: '#065F46', textTransform: 'uppercase' }}>Monthly Presence</Text>
-                  <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#059669', marginTop: 1 }}>{monthlyPresencePct}%</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                <View style={{ width: '32%', padding: '6 12', backgroundColor: '#F0FDF4', borderRadius: 6, borderWidth: 1, borderColor: '#BBF7D0' }}>
+                  <Text style={{ fontSize: 7, fontWeight: 'bold', color: '#065F46', textTransform: 'uppercase', letterSpacing: 0.5 }}>Monthly Presence</Text>
+                  <Text style={{ fontSize: 15, fontWeight: 'bold', color: '#059669', marginTop: 2 }}>{monthlyPresencePct}%</Text>
                 </View>
-                <View style={{ flex: 1, padding: 6, backgroundColor: '#EFF6FF', borderRadius: 6, borderWidth: 1, borderColor: '#BFDBFE' }}>
-                  <Text style={{ fontSize: 7, fontWeight: 'bold', color: '#1E40AF', textTransform: 'uppercase' }}>Total Punches</Text>
-                  <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#2563EB', marginTop: 1 }}>{totalPunches}</Text>
+                <View style={{ width: '32%', padding: '6 12', backgroundColor: '#EFF6FF', borderRadius: 6, borderWidth: 1, borderColor: '#BFDBFE' }}>
+                  <Text style={{ fontSize: 7, fontWeight: 'bold', color: '#1E40AF', textTransform: 'uppercase', letterSpacing: 0.5 }}>Total Punches</Text>
+                  <Text style={{ fontSize: 15, fontWeight: 'bold', color: '#2563EB', marginTop: 2 }}>{totalPunches}</Text>
                 </View>
-                <View style={{ flex: 1, padding: 6, backgroundColor: '#F8FAFC', borderRadius: 6, borderWidth: 1, borderColor: '#E2E8F0' }}>
-                  <Text style={{ fontSize: 7, fontWeight: 'bold', color: '#374151', textTransform: 'uppercase' }}>Active Staff</Text>
-                  <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#111827', marginTop: 1 }}>{activeStaff}</Text>
+                <View style={{ width: '32%', padding: '6 12', backgroundColor: '#F8FAFC', borderRadius: 6, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                  <Text style={{ fontSize: 7, fontWeight: 'bold', color: '#374151', textTransform: 'uppercase', letterSpacing: 0.5 }}>Active Staff</Text>
+                  <Text style={{ fontSize: 15, fontWeight: 'bold', color: '#111827', marginTop: 2 }}>{activeStaff}</Text>
                 </View>
               </View>
             )}
@@ -2201,7 +2626,7 @@ export const MonthlyMatrixReportDocument: React.FC<{
             {pageIdx === 0 && holidaysInPeriod.length > 0 && (
               <View style={{ backgroundColor: '#FFF1F2', borderWidth: 1, borderColor: '#FECDD3', borderRadius: 6, padding: 5, marginBottom: 8 }}>
                 <Text style={{ fontSize: 8, fontWeight: 'bold', color: '#881337', marginBottom: 2 }}>
-                  📅 COMPANY & FIXED HOLIDAYS ({holidaysInPeriod.length}):
+                  COMPANY & FIXED HOLIDAYS ({holidaysInPeriod.length}):
                 </Text>
                 <Text style={{ fontSize: 7, color: '#9F1239' }}>
                   {holidaysInPeriod.map(h => `• ${h.dayNumber} ${format(h.dateObj, 'MMM')} (${h.dayOfWeek}): ${h.holidayName}${h.isFixed ? ' [FIXED]' : ''}`).join('    ')}
@@ -2209,107 +2634,164 @@ export const MonthlyMatrixReportDocument: React.FC<{
               </View>
             )}
 
-            <View style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 4, overflow: 'hidden', flex: 1 }}>
-              {/* Row 1: Date Numbers */}
-              <View style={{ flexDirection: 'row', backgroundColor: '#F8FAFC', borderBottomWidth: 1, borderBottomColor: '#E2E8F0' }}>
-                <View style={[styles.matrixRowLabel, { width: 140, textAlign: 'left', paddingLeft: 5, paddingVertical: 3 }]}><Text>Employee</Text></View>
+            {/* Table with Crisp Borders and 100% Mathematical Alignment */}
+            <View style={{
+              borderWidth: 1,
+              borderColor: '#CBD5E1',
+              borderRadius: 4,
+              overflow: 'hidden',
+              marginBottom: 6,
+              backgroundColor: '#FFFFFF'
+            }}>
+              {/* Header Row 1: Date Numbers */}
+              <View style={{
+                flexDirection: 'row',
+                backgroundColor: '#F1F5F9',
+                borderBottomWidth: 1,
+                borderBottomColor: '#CBD5E1',
+                alignItems: 'stretch',
+                minHeight: 18
+              }}>
+                <View style={{ width: snoWidth, justifyContent: 'center', alignItems: 'center', borderRightWidth: 1, borderRightColor: '#CBD5E1', paddingVertical: 2.5 }}>
+                  <Text style={{ fontSize: 7, fontWeight: 'bold', color: '#475569' }}>#</Text>
+                </View>
+                <View style={{ width: empColWidth, justifyContent: 'center', alignItems: 'flex-start', borderRightWidth: 1, borderRightColor: '#CBD5E1', paddingLeft: 6, paddingVertical: 2.5 }}>
+                  <Text style={{ fontSize: 7.5, fontWeight: 'bold', color: '#0F172A', textTransform: 'uppercase' }}>Employee</Text>
+                </View>
                 {dayHeaders.map((dh, i) => {
-                  let bg = 'transparent';
-                  let textColor = '#0F172A';
-                  if (dh.isHoliday) {
-                    bg = '#FFE4E6';
-                    textColor = '#881337';
-                  } else if (dh.isSunday) {
-                    bg = '#FFF1F2';
-                    textColor = '#E11D48';
-                  }
-
+                  const bg = dh.isHoliday ? '#FFE4E6' : dh.isSunday ? '#FFF1F2' : 'transparent';
+                  const textColor = dh.isHoliday ? '#881337' : dh.isSunday ? '#E11D48' : '#0F172A';
                   return (
-                    <View key={i} style={[styles.matrixCell, { paddingVertical: 3, backgroundColor: bg }]}>
-                      <Text style={{ fontWeight: 'bold', color: textColor }}>{dh.dayNumber}</Text>
+                    <View key={i} style={{ width: dayColWidth, justifyContent: 'center', alignItems: 'center', backgroundColor: bg, borderRightWidth: 1, borderRightColor: '#CBD5E1', paddingVertical: 2.5 }}>
+                      <Text style={{ fontSize: 7.5, fontWeight: 'bold', color: textColor }}>{dh.dayNumber}</Text>
                     </View>
                   );
                 })}
-                <View style={[styles.matrixCell, { width: 23, paddingVertical: 3 }]}><Text style={{ fontWeight: 'bold', color: '#059669' }}>P</Text></View>
-                <View style={[styles.matrixCell, { width: 23, paddingVertical: 3 }]}><Text style={{ fontWeight: 'bold', color: '#2563EB' }}>0.5P</Text></View>
-                <View style={[styles.matrixCell, { width: 23, paddingVertical: 3 }]}><Text style={{ fontWeight: 'bold', color: '#0D9488' }}>WH</Text></View>
-                <View style={[styles.matrixCell, { width: 23, paddingVertical: 3 }]}><Text style={{ fontWeight: 'bold', color: '#0D9488' }}>OT</Text></View>
-                <View style={[styles.matrixCell, { width: 23, paddingVertical: 3 }]}><Text style={{ fontWeight: 'bold', color: '#0891B2' }}>C/O</Text></View>
-                <View style={[styles.matrixCell, { width: 23, paddingVertical: 3 }]}><Text style={{ fontWeight: 'bold', color: '#4F46E5' }}>E/L</Text></View>
-                <View style={[styles.matrixCell, { width: 23, paddingVertical: 3 }]}><Text style={{ fontWeight: 'bold', color: '#9333EA' }}>S/L</Text></View>
-                <View style={[styles.matrixCell, { width: 23, paddingVertical: 3, backgroundColor: '#FEF2F2' }]}><Text style={{ fontWeight: 'bold', color: '#DC2626' }}>A</Text></View>
-                <View style={[styles.matrixCell, { width: 23, paddingVertical: 3 }]}><Text style={{ fontWeight: 'bold', color: '#6B7280' }}>W/O</Text></View>
-                <View style={[styles.matrixCell, { width: 23, paddingVertical: 3 }]}><Text style={{ fontWeight: 'bold', color: '#EA580C' }}>H</Text></View>
-                <View style={[styles.matrixCell, { width: 26, paddingVertical: 3, backgroundColor: '#D1FAE5' }]}><Text style={{ fontWeight: 'bold', color: '#065F46' }}>Pay</Text></View>
+                {summaryCols.map((c, i) => (
+                  <View key={i} style={{ width: c.width, justifyContent: 'center', alignItems: 'center', backgroundColor: c.bg, borderRightWidth: i === summaryCols.length - 1 ? 0 : 1, borderRightColor: '#CBD5E1', paddingVertical: 2.5 }}>
+                    <Text style={{ fontSize: 7, fontWeight: 'bold', color: c.color }}>{c.label}</Text>
+                  </View>
+                ))}
               </View>
 
-              {/* Row 2: Day of Week (Sun, Mon, Tue...) */}
-              <View style={{ flexDirection: 'row', backgroundColor: '#F1F5F9', borderBottomWidth: 1, borderBottomColor: '#E2E8F0' }}>
-                <View style={[styles.matrixRowLabel, { width: 140, textAlign: 'left', paddingLeft: 5, paddingVertical: 2, backgroundColor: 'transparent' }]}><Text style={{ fontSize: 6, color: '#94A3B8' }}>Day</Text></View>
+              {/* Header Row 2: Day of Week (Sun, Mon, Tue...) */}
+              <View style={{
+                flexDirection: 'row',
+                backgroundColor: '#F8FAFC',
+                borderBottomWidth: 1.5,
+                borderBottomColor: '#94A3B8',
+                alignItems: 'stretch',
+                minHeight: 14
+              }}>
+                <View style={{ width: snoWidth, justifyContent: 'center', alignItems: 'center', borderRightWidth: 1, borderRightColor: '#CBD5E1' }} />
+                <View style={{ width: empColWidth, justifyContent: 'center', alignItems: 'flex-start', borderRightWidth: 1, borderRightColor: '#CBD5E1', paddingLeft: 6 }}>
+                  <Text style={{ fontSize: 5.5, color: '#64748B', fontWeight: 'bold' }}>ROLE / DESIGNATION</Text>
+                </View>
                 {dayHeaders.map((dh, i) => {
-                  let bg = 'transparent';
-                  let textColor = '#64748B';
-                  if (dh.isHoliday) {
-                    bg = '#FECDD3';
-                    textColor = '#9F1239';
-                  } else if (dh.isSunday) {
-                    bg = '#FFE4E6';
-                    textColor = '#E11D48';
-                  }
-
+                  const bg = dh.isHoliday ? '#FECDD3' : dh.isSunday ? '#FFE4E6' : 'transparent';
+                  const textColor = dh.isHoliday ? '#9F1239' : dh.isSunday ? '#E11D48' : '#64748B';
                   return (
-                    <View key={i} style={[styles.matrixCell, { paddingVertical: 2, backgroundColor: bg }]}>
-                      <Text style={{ fontSize: 6, color: textColor, fontWeight: (dh.isHoliday || dh.isSunday) ? 'bold' : 'normal' }}>
+                    <View key={i} style={{ width: dayColWidth, justifyContent: 'center', alignItems: 'center', backgroundColor: bg, borderRightWidth: 1, borderRightColor: '#CBD5E1', paddingVertical: 1.5 }}>
+                      <Text style={{ fontSize: 6, fontWeight: (dh.isHoliday || dh.isSunday) ? 'bold' : 'normal', color: textColor }}>
                         {dh.dayOfWeek}
                       </Text>
                     </View>
                   );
                 })}
-                <View style={[styles.matrixCell, { width: 23, paddingVertical: 2 }]} />
-                <View style={[styles.matrixCell, { width: 23, paddingVertical: 2 }]} />
-                <View style={[styles.matrixCell, { width: 23, paddingVertical: 2 }]} />
-                <View style={[styles.matrixCell, { width: 23, paddingVertical: 2 }]} />
-                <View style={[styles.matrixCell, { width: 23, paddingVertical: 2 }]} />
-                <View style={[styles.matrixCell, { width: 23, paddingVertical: 2 }]} />
-                <View style={[styles.matrixCell, { width: 23, paddingVertical: 2 }]} />
-                <View style={[styles.matrixCell, { width: 23, paddingVertical: 2, backgroundColor: '#FEF2F2' }]} />
-                <View style={[styles.matrixCell, { width: 23, paddingVertical: 2 }]} />
-                <View style={[styles.matrixCell, { width: 23, paddingVertical: 2 }]} />
-                <View style={[styles.matrixCell, { width: 26, paddingVertical: 2, backgroundColor: '#D1FAE5' }]} />
+                {summaryCols.map((c, i) => (
+                  <View key={i} style={{ width: c.width, justifyContent: 'center', alignItems: 'center', backgroundColor: c.bg, borderRightWidth: i === summaryCols.length - 1 ? 0 : 1, borderRightColor: '#CBD5E1', paddingVertical: 1.5 }}>
+                    <Text style={{ fontSize: 5, color: c.color, fontWeight: 'bold' }}>{c.sub}</Text>
+                  </View>
+                ))}
               </View>
 
+              {/* Body Data Rows */}
               {pageData.map((emp: any, empIdx: number) => {
                 const statuses = emp.statuses || [];
+                const isEven = empIdx % 2 === 0;
+                const rowBg = isEven ? '#FFFFFF' : '#F8FAFC';
+                const globalIdx = (pageIdx * rowsPerPage) + empIdx + 1;
+
                 return (
-                  <View key={empIdx} style={{ flexDirection: 'row', backgroundColor: empIdx % 2 === 0 ? '#FFFFFF' : '#F8FAFC' }}>
-                    <View style={[styles.matrixRowLabel, { width: 140, textAlign: 'left', paddingLeft: 5, backgroundColor: 'transparent', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }]}>
-                      <Text style={{ fontSize: 8, fontWeight: 'bold' }}>{emp.userName || emp.employeeName}</Text>
+                  <View key={empIdx} style={{
+                    flexDirection: 'row',
+                    backgroundColor: rowBg,
+                    borderBottomWidth: 1,
+                    borderBottomColor: '#E2E8F0',
+                    alignItems: 'stretch',
+                    minHeight: 18
+                  }}>
+                    {/* S.No */}
+                    <View style={{ width: snoWidth, justifyContent: 'center', alignItems: 'center', borderRightWidth: 1, borderRightColor: '#E2E8F0', paddingVertical: 2 }}>
+                      <Text style={{ fontSize: 6.5, color: '#64748B' }}>{globalIdx}</Text>
                     </View>
+                    {/* Employee Name & Role */}
+                    <View style={{ width: empColWidth, justifyContent: 'center', alignItems: 'flex-start', borderRightWidth: 1, borderRightColor: '#CBD5E1', paddingLeft: 6, paddingRight: 4, paddingVertical: 2 }}>
+                      <Text style={{ fontSize: 7.5, fontWeight: 'bold', color: '#0F172A' }}>{emp.userName || emp.employeeName}</Text>
+                      {emp.role && (
+                        <Text style={{ fontSize: 5.8, color: '#64748B', marginTop: 1, textTransform: 'uppercase' }}>
+                          {emp.role.replace(/_/g, ' ')}
+                        </Text>
+                      )}
+                    </View>
+                    {/* Days */}
                     {monthDays.map((d, i) => {
                       const status = statuses[d.getDate() - 1] || '-';
                       const dh = dayHeaders[i];
                       const isHol = dh?.isHoliday;
+                      const isSun = dh?.isSunday;
 
                       const defaultBg = getStatusBg(status);
-                      const cellBg = isHol ? '#FFF1F2' : (defaultBg === '#FFFFFF' || defaultBg === '#F8FAFC' || !defaultBg) && dh?.isSunday ? '#F8FAFC' : defaultBg;
+                      const cellBg = isHol ? '#FFF1F2' : (defaultBg === '#FFFFFF' || defaultBg === '#F8FAFC' || !defaultBg) && isSun ? '#FFF5F5' : defaultBg;
+                      const textColor = getStatusColor(status);
+                      const isLong = status.length > 4;
 
                       return (
-                        <View key={i} style={[styles.matrixCell, { backgroundColor: cellBg }]}>
-                          <Text style={{ color: getStatusColor(status), fontWeight: 'bold', fontSize: 7 }}>{status}</Text>
+                        <View key={i} style={{
+                          width: dayColWidth,
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          backgroundColor: cellBg,
+                          borderRightWidth: 1,
+                          borderRightColor: '#E2E8F0',
+                          paddingHorizontal: 1,
+                          paddingVertical: 2
+                        }}>
+                          <Text style={{
+                            color: textColor,
+                            fontWeight: 'bold',
+                            fontSize: isLong ? 5.5 : 7,
+                            textAlign: 'center'
+                          }}>
+                            {status}
+                          </Text>
                         </View>
                       );
                     })}
-                    <View style={[styles.matrixCell, { width: 23 }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#059669' }}>{emp.presentDays || 0}</Text></View>
-                    <View style={[styles.matrixCell, { width: 23 }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#2563EB' }}>{emp.halfDays || 0}</Text></View>
-                    <View style={[styles.matrixCell, { width: 23 }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#0D9488' }}>{emp.workFromHomeDays || 0}</Text></View>
-                    <View style={[styles.matrixCell, { width: 23 }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#0D9488' }}>{emp.overtimeDays || 0}</Text></View>
-                    <View style={[styles.matrixCell, { width: 23 }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#0891B2' }}>{emp.compOffs || 0}</Text></View>
-                    <View style={[styles.matrixCell, { width: 23 }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#4F46E5' }}>{emp.earnedLeaves || 0}</Text></View>
-                    <View style={[styles.matrixCell, { width: 23 }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#9333EA' }}>{emp.sickLeaves || 0}</Text></View>
-                    <View style={[styles.matrixCell, { width: 23, backgroundColor: '#FEF2F2' }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#DC2626' }}>{emp.absentDays || 0}</Text></View>
-                    <View style={[styles.matrixCell, { width: 23 }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#6B7280' }}>{emp.weekOffs || 0}</Text></View>
-                    <View style={[styles.matrixCell, { width: 23 }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#EA580C' }}>{emp.holidays || 0}</Text></View>
-                    <View style={[styles.matrixCell, { width: 26, backgroundColor: '#ECFDF5' }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#065F46' }}>{emp.totalPayableDays || 0}</Text></View>
+                    {/* Summary Columns */}
+                    {summaryCols.map((c, i) => {
+                      const val = emp[c.prop] ?? 0;
+                      return (
+                        <View key={i} style={{
+                          width: c.width,
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          backgroundColor: c.cellBg,
+                          borderRightWidth: i === summaryCols.length - 1 ? 0 : 1,
+                          borderRightColor: '#E2E8F0',
+                          paddingVertical: 2
+                        }}>
+                          <Text style={{
+                            fontWeight: 'bold',
+                            fontSize: 7,
+                            color: c.color,
+                            textAlign: 'center'
+                          }}>
+                            {val}
+                          </Text>
+                        </View>
+                      );
+                    })}
                   </View>
                 );
               })}
