@@ -206,7 +206,6 @@ const MobileLayout: React.FC = () => {
 
             {/* Mobile Header - Auto-hide on scroll & pull-down reveal */}
              {!isFullScreenLoading && !isOffline &&
-              !location.pathname.startsWith('/leaves/apply') && 
               !location.pathname.startsWith('/onboarding/aadhaar-scan') && 
               !location.pathname.startsWith('/finance/attendance/add') && 
               !location.pathname.startsWith('/finance/attendance/edit') && 

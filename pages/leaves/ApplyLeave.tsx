@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { getStaffCategory, isTechnicalRole, calculateWorkingHours, getEarlyDepartureDeductions } from '../../utils/attendanceCalculations';
+import { getStaffCategory, isTechnicalRole, calculateWorkingHours, getEarlyDepartureDeductions, formatMinutesToHoursOrMins } from '../../utils/attendanceCalculations';
 
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
@@ -19,6 +19,7 @@ import DateRangePicker from '../../components/ui/DateRangePicker';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useSettingsStore } from '../../store/settingsStore';
 import UploadDocument from '../../components/UploadDocument';
+import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 type LeaveRequestFormData = {
     leaveType: LeaveType;
@@ -1502,22 +1503,17 @@ const ApplyLeave: React.FC = () => {
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
             
             {/* Standardized Mobile Top Navigation Bar */}
-            {isMobile && (
-                <div className="flex items-center gap-3 px-4 pt-4 pb-2 bg-[#041b0f] border-b border-[#134426]/60 sticky top-0 z-30">
-                    <button
-                        type="button"
-                        onClick={() => window.history.state?.idx > 0 ? navigate(-1) : navigate('/mobile-home')}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
-                    >
-                        <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
-                        <span>Back</span>
-                    </button>
-                    <div className="h-[1px] flex-1 bg-[#134426]" />
-                    <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#44D62C] bg-[#092c19] px-2.5 py-1 rounded-lg border border-[#134426]">
-                        {watchLeaveType === 'Correction' ? 'Correction' : watchLeaveType === 'Permission' ? 'Permission' : 'Leave Application'}
-                    </span>
-                </div>
-            )}
+            <MobileTopBar 
+                className="px-4 pt-2"
+                title={
+                    watchLeaveType === 'Correction' 
+                        ? 'CORRECTION' 
+                        : watchLeaveType === 'Permission' 
+                            ? 'PERMISSION' 
+                            : 'LEAVE APPLICATION'
+                } 
+                parentPath="/leaves/dashboard" 
+            />
 
             <div className={`w-full ${isMobile ? '' : 'md:bg-card md:p-8 md:rounded-2xl md:shadow-card md:border md:border-border'}`}>
                 {/* Desktop Header */}
@@ -1851,7 +1847,7 @@ const ApplyLeave: React.FC = () => {
                                                         ? format(new Date(r.startDate.replace(/-/g, '/')), 'dd MMM yyyy')
                                                         : '—';
                                                     const timeRange = isEarlyDep
-                                                        ? `${r.permissionTimeRange || 'Permission'} • Left early at ${r.punchOutTime || 'punch-out'} (${r.formattedWorked} worked • ${durMins > 0 ? `-${durMins}m deducted` : '0m (3h Limit Reached)'})`
+                                                        ? `${r.permissionTimeRange || 'Permission'} • Left early at ${r.punchOutTime || 'punch-out'} (${r.formattedWorked} worked • ${durMins > 0 ? `-${formatMinutesToHoursOrMins(durMins)} deducted` : '0m (3h Limit Reached)'})`
                                                         : (r.correctionDetails?.punchIn && r.correctionDetails?.punchOut
                                                             ? `${r.correctionDetails.punchIn} – ${r.correctionDetails.punchOut}${
                                                                 r.correctionDetails.punchIn2 && r.correctionDetails.punchOut2

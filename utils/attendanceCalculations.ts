@@ -1517,6 +1517,7 @@ export interface EarlyDepartureDeduction {
   targetMins: number;
   shortfallMins: number;
   earlyMins: number;
+  formattedEarlyDeduction?: string;
   formattedWorked: string;
   correctedWorkedMins: number;
   formattedCorrectedWorked: string;
@@ -1524,6 +1525,19 @@ export interface EarlyDepartureDeduction {
   permissionEndTime: string;
   permissionTimeRange: string;
   poolExhausted?: boolean;
+}
+
+/**
+ * Formats minutes into human-readable duration:
+ * Shows in minutes up to 60 minutes (e.g. 45m, 60m),
+ * and in hours/hours+mins after 60 minutes (e.g. 1h 15m, 2h, 2h 20m).
+ */
+export function formatMinutesToHoursOrMins(mins: number): string {
+  const mVal = Math.round(mins);
+  if (mVal <= 60) return `${mVal}m`;
+  const h = Math.floor(mVal / 60);
+  const remM = mVal % 60;
+  return remM > 0 ? `${h}h ${remM}m` : `${h}h`;
 }
 
 /**
@@ -1664,6 +1678,7 @@ export function getEarlyDepartureDeductions(
             targetMins: targetShiftMins,
             shortfallMins: netShortfall,
             earlyMins: deductibleMins,
+            formattedEarlyDeduction: formatMinutesToHoursOrMins(deductibleMins),
             formattedWorked: `${wH}h ${wM}m`,
             correctedWorkedMins: workedMins, // Reflect actual worked hours without auto-correction to 8h
             formattedCorrectedWorked: `${wH}h ${wM}m`,

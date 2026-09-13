@@ -15,7 +15,7 @@ import { useForm, Controller, SubmitHandler, Resolver } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import { format, differenceInCalendarDays, isSameDay, startOfMonth, endOfMonth, differenceInMinutes, getDay, startOfYear, endOfYear, startOfWeek, subDays, eachDayOfInterval, startOfDay, subMonths, addMonths } from 'date-fns';
-import { calculateWorkingHours, getStaffCategory, isTechnicalRole, calculateDailyTravelKm, calculateDailyPathTravelKm, getEarlyDepartureDeductions } from '../../utils/attendanceCalculations';
+import { calculateWorkingHours, getStaffCategory, isTechnicalRole, calculateDailyTravelKm, calculateDailyPathTravelKm, getEarlyDepartureDeductions, formatMinutesToHoursOrMins } from '../../utils/attendanceCalculations';
 import { parsePermissionDurationFromReason } from '../../utils/monthlyReportCalculations';
 
 const formatDuration = (mins: number): string => {
@@ -2115,7 +2115,7 @@ const LeaveDashboard: React.FC = () => {
                     startDate: ed.dateStr,
                     endDate: ed.dateStr,
                     dayOption: 'full',
-                    reason: `Early Departure Deduction (${ed.formattedWorked} worked • -${ed.earlyMins}m from 3h pool)`,
+                    reason: `Early Departure Deduction (${ed.formattedWorked} worked • -${formatMinutesToHoursOrMins(ed.earlyMins)} from 3h pool)`,
                     status: 'approved',
                     createdAt: `${ed.dateStr}T${ed.punchOutTime || '17:00'}:00.000Z`,
                     correctionDetails: {
@@ -2387,7 +2387,7 @@ const LeaveDashboard: React.FC = () => {
         {
             title: 'Permission Pool',
             value: `${Math.floor(totalPermissionMinsUsed / 60)}h ${String(totalPermissionMinsUsed % 60).padStart(2, '0')}m / 3h`,
-            description: `Used: ${Math.floor(totalPermissionMinsUsed / 60)}h ${String(totalPermissionMinsUsed % 60).padStart(2, '0')}m. Remaining: ${Math.max(0, Math.floor((180 - totalPermissionMinsUsed) / 60))}h ${String(Math.max(0, (180 - totalPermissionMinsUsed) % 60)).padStart(2, '0')}m.${totalEarlyDepartureMins > 0 ? ` (Includes ${totalEarlyDepartureMins}m early departure auto-deductions)` : ''}`,
+            description: `Used: ${Math.floor(totalPermissionMinsUsed / 60)}h ${String(totalPermissionMinsUsed % 60).padStart(2, '0')}m. Remaining: ${Math.max(0, Math.floor((180 - totalPermissionMinsUsed) / 60))}h ${String(Math.max(0, (180 - totalPermissionMinsUsed) % 60)).padStart(2, '0')}m.${totalEarlyDepartureMins > 0 ? ` (Includes ${formatMinutesToHoursOrMins(totalEarlyDepartureMins)} early departure auto-deductions)` : ''}`,
             icon: Clock,
             isExpired: false,
             onViewDetails: () => setShowPermissionModal(true),
@@ -2545,7 +2545,7 @@ const LeaveDashboard: React.FC = () => {
                                     <span>Worked {ed.formattedWorked}</span>
                                     <span className="opacity-60">•</span>
                                     {ed.earlyMins > 0 ? (
-                                        <span className="font-black text-amber-700 dark:text-amber-300">-{ed.earlyMins}m permission deducted</span>
+                                        <span className="font-black text-amber-700 dark:text-amber-300">-{formatMinutesToHoursOrMins(ed.earlyMins)} permission deducted</span>
                                     ) : (
                                         <span className="font-bold text-slate-500 dark:text-slate-400 italic">0m deducted (3h Pool Limit Reached)</span>
                                     )}
@@ -4648,7 +4648,7 @@ const LeaveDashboard: React.FC = () => {
                                                     </td>
                                                     <td className="py-2.5 px-3 text-center font-bold whitespace-nowrap">
                                                         {ed.earlyMins > 0 ? (
-                                                            <span className="text-amber-600 dark:text-amber-400">-{ed.earlyMins}m</span>
+                                                            <span className="text-amber-600 dark:text-amber-400">-{formatMinutesToHoursOrMins(ed.earlyMins)}</span>
                                                         ) : (
                                                             <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-semibold">0m (3h Limit Reached)</span>
                                                         )}
@@ -4673,7 +4673,7 @@ const LeaveDashboard: React.FC = () => {
                                                 </div>
                                                 {ed.earlyMins > 0 ? (
                                                     <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 flex-shrink-0">
-                                                        -{ed.earlyMins}m
+                                                        -{formatMinutesToHoursOrMins(ed.earlyMins)}
                                                     </span>
                                                 ) : (
                                                     <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 flex-shrink-0">

@@ -17,7 +17,7 @@ import Toast from '../../components/ui/Toast';
 import { api } from '../../services/api';
 import { registerGateUser, uploadGatePhoto } from '../../services/gateApi';
 import { dispatchNotificationFromRules } from '../../services/notificationService';
-import { User as UserIcon, Loader2, ClipboardList, LogOut, LogIn, Crosshair, CheckCircle, Info, MapPin, AlertTriangle, Clock, Lock, Edit, Camera, Mail, Baby, PlusCircle, Trash2, FileCheck, FileX, Zap, Volume2, Coffee, FileText, Shield, Settings, ArrowLeft, Sparkles, QrCode, Footprints, Maximize, Navigation, HelpCircle, RefreshCw, Home, Bike, Car, Bus, Building2, Building, ShieldCheck, BarChart3, CheckCircle2, IndianRupee, Users, ArrowUpRight } from 'lucide-react';
+import { User as UserIcon, Loader2, ClipboardList, LogOut, LogIn, Crosshair, CheckCircle, Info, MapPin, AlertTriangle, Clock, Lock, Edit, Camera, Mail, Baby, PlusCircle, Trash2, FileCheck, FileX, Volume2, Coffee, FileText, Shield, Settings, ArrowLeft, Sparkles, QrCode, Footprints, Maximize, Navigation, HelpCircle, RefreshCw, Home, Bike, Car, Bus, Building2, Building, ShieldCheck, BarChart3, CheckCircle2, IndianRupee, Users, ArrowUpRight } from 'lucide-react';
 import { AvatarUpload } from '../../components/onboarding/AvatarUpload';
 import AlertTonePicker from '../../components/attendance/AlertTonePicker';
 import { format, startOfDay, endOfDay, startOfMonth, endOfMonth } from 'date-fns';
@@ -1498,32 +1498,6 @@ const ProfilePage: React.FC = () => {
                                             <p className="text-[10px] font-black text-amber-500/70 uppercase tracking-widest">Last B-Out</p>
                                             <p className="text-xl font-black text-white/90 tracking-tighter tabular-nums">{formatTime(lastBreakOutTime)}</p>
                                         </div>
-                                    </div>
-
-                                    {/* Accumulation Stats */}
-                                    <div className="grid grid-cols-2 gap-3">
-                                         <div className="bg-white/5 border border-white/5 p-4 rounded-2xl backdrop-blur-md">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <Zap className="h-3 w-3 text-emerald-400" />
-                                                <span className="text-[9px] font-bold text-gray-400 uppercase">Work Vol.</span>
-                                            </div>
-                                            <p className="text-xl font-bold text-white tabular-nums">
-                                                {totalWorkingDurationToday > 0 
-                                                    ? `${Math.floor(totalWorkingDurationToday)}h ${Math.round((totalWorkingDurationToday % 1) * 60)}m` 
-                                                    : '0.0h'}
-                                            </p>
-                                         </div>
-                                         <div className="bg-white/5 border border-white/5 p-4 rounded-2xl backdrop-blur-md">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <Zap className="h-3 w-3 text-rose-400" />
-                                                <span className="text-[9px] font-bold text-gray-400 uppercase">Break Vol.</span>
-                                            </div>
-                                            <p className="text-xl font-bold text-white tabular-nums">
-                                                {totalBreakDurationToday > 0 
-                                                    ? `${Math.floor(totalBreakDurationToday)}h ${Math.round((totalBreakDurationToday % 1) * 60)}m` 
-                                                    : '0.0h'}
-                                            </p>
-                                         </div>
                                     </div>
 
                                     {/* Daily Activity Stats — role-aware */}
