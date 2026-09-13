@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 123,
-  "latestVersionName": "21.3.0",
+  "latestVersionCode": 125,
+  "latestVersionName": "21.5.0",
   "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
   "apkDownloadUrl": "https://play.google.com/store/apps/details?id=com.paradigm.ifs",
-  "releaseNotes": "chore: update project dependencies in package-lock.json\nfeat: add new management and holiday pages and bump version to 21.2.0\nfeat: add client attendance dashboard, API service layer, attendance calculation utilities, and user deletion support\nfeat: add attendance PDF reports, leave application, mail modal, and client attendance dashboard\nfeat: add MobileBottomSheetSelect component, automate HR email scheduling, and implement HR queue and dashboard pages",
+  "releaseNotes": "feat: add mobile navigation components, HR reporting dashboards, and desktop productivity agent infrastructure\nfeat: add comprehensive office management application structure with dashboards, tracking services, and desktop agent\nchore: update project dependencies in package-lock.json\nfeat: add new management and holiday pages and bump version to 21.2.0\nfeat: add client attendance dashboard, API service layer, attendance calculation utilities, and user deletion support",
   "isMandatory": false
 }

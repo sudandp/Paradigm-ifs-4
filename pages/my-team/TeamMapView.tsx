@@ -1,4 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
+
+// ── Pre-warm Leaflet import so mobile doesn't pay dynamic-import cost on init ──
+const leafletPromise = import('leaflet');
 import {
   Layers,
   Maximize2,
@@ -29,15 +32,219 @@ const mapPopupStyles = `
     box-shadow: 0 10px 25px -5px rgba(0,0,0,.2), 0 8px 10px -6px rgba(0,0,0,.1);
   }
   .marker-popup-content { padding: 8px; }
+
+  /* ── Team Map Popup - Premium UI & Dark Theme Protection ────── */
+  .team-map-popup .leaflet-popup-content-wrapper {
+    background: #082214 !important;
+    color: #ffffff !important;
+    border: 1px solid #1a5c34 !important;
+    border-radius: 18px !important;
+    box-shadow: 0 20px 35px -5px rgba(0,0,0,0.65), 0 0 0 1px rgba(68,214,44,0.15) !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+  }
+  .team-map-popup .leaflet-popup-content {
+    margin: 0 !important;
+    padding: 14px 14px 12px 14px !important;
+    line-height: 1.4 !important;
+    color: #ffffff !important;
+    min-width: 220px !important;
+    max-width: 280px !important;
+  }
+  .team-map-popup .leaflet-popup-tip-container {
+    width: 30px !important;
+    height: 14px !important;
+  }
+  .team-map-popup .leaflet-popup-tip {
+    background: #082214 !important;
+    border: 1px solid #1a5c34 !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4) !important;
+  }
+  .team-map-popup .leaflet-popup-close-button {
+    top: 10px !important;
+    right: 10px !important;
+    width: 24px !important;
+    height: 24px !important;
+    border-radius: 50% !important;
+    background: rgba(255, 255, 255, 0.1) !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    color: #94a3b8 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 15px !important;
+    font-weight: 700 !important;
+    padding: 0 !important;
+    transition: all 0.2s ease !important;
+    text-decoration: none !important;
+    z-index: 10 !important;
+  }
+  .team-map-popup .leaflet-popup-close-button:hover {
+    background: rgba(255, 255, 255, 0.22) !important;
+    color: #ffffff !important;
+  }
+  .team-map-popup * {
+    box-sizing: border-box;
+  }
+  .team-map-popup .popup-title {
+    color: #ffffff !important;
+    font-size: 13px !important;
+    font-weight: 800 !important;
+    line-height: 1.25 !important;
+    margin: 0 !important;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+  }
+  .team-map-popup .popup-role {
+    color: #a7f3d0 !important;
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    background: rgba(6, 95, 70, 0.5) !important;
+    border: 1px solid rgba(16, 185, 129, 0.35) !important;
+    border-radius: 6px !important;
+    padding: 1px 7px !important;
+    display: inline-block !important;
+    text-transform: capitalize !important;
+    letter-spacing: 0.02em !important;
+  }
+  .team-map-popup .popup-time {
+    color: #94a3b8 !important;
+    font-size: 10px !important;
+    font-weight: 500 !important;
+    margin: 6px 0 10px 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+  }
+  .team-map-popup .popup-section-site {
+    background: rgba(4, 27, 15, 0.85) !important;
+    border: 1px solid #144827 !important;
+    border-radius: 12px !important;
+    padding: 8px 10px !important;
+    margin-bottom: 8px !important;
+  }
+  .team-map-popup .popup-section-site-tag {
+    font-size: 9px !important;
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.12em !important;
+    color: #44D62C !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+  }
+  .team-map-popup .popup-section-site-name {
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    color: #f8fafc !important;
+    margin-top: 2px !important;
+    line-height: 1.3 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+  .team-map-popup .popup-section-loc {
+    background: rgba(4, 27, 15, 0.85) !important;
+    border: 1px solid #144827 !important;
+    border-radius: 12px !important;
+    padding: 8px 10px !important;
+    margin-bottom: 12px !important;
+  }
+  .team-map-popup .popup-landmark {
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    color: #f8fafc !important;
+    line-height: 1.3 !important;
+  }
+  .team-map-popup .popup-road {
+    font-size: 10px !important;
+    font-weight: 500 !important;
+    color: #94a3b8 !important;
+    line-height: 1.3 !important;
+    margin-top: 3px !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+  .team-map-popup a.popup-btn {
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    text-decoration: none !important;
+    padding: 8px 12px !important;
+    border-radius: 12px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    transition: all 0.18s ease !important;
+    cursor: pointer !important;
+    line-height: 1 !important;
+    outline: none !important;
+    border: none !important;
+  }
+  .team-map-popup a.popup-btn * {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+  }
+  .team-map-popup a.popup-btn span {
+    color: #ffffff !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    line-height: 1 !important;
+  }
+  .team-map-popup a.popup-btn-wa {
+    background: #16a34a !important;
+    color: #ffffff !important;
+    border: 1px solid #22c55e !important;
+    box-shadow: 0 2px 8px rgba(22,163,74,0.35) !important;
+  }
+  .team-map-popup a.popup-btn-wa:hover {
+    background: #15803d !important;
+    border-color: #16a34a !important;
+  }
+  .team-map-popup a.popup-btn-wa:active {
+    transform: scale(0.96) !important;
+  }
+  .team-map-popup a.popup-btn-wa svg {
+    fill: #ffffff !important;
+  }
+  .team-map-popup a.popup-btn-nav {
+    background: #2563eb !important;
+    color: #ffffff !important;
+    border: 1px solid #3b82f6 !important;
+    box-shadow: 0 2px 8px rgba(37,99,235,0.35) !important;
+  }
+  .team-map-popup a.popup-btn-nav:hover {
+    background: #1d4ed8 !important;
+    border-color: #2563eb !important;
+  }
+  .team-map-popup a.popup-btn-nav:active {
+    transform: scale(0.96) !important;
+  }
+  .team-map-popup a.popup-btn-nav svg {
+    stroke: #ffffff !important;
+  }
   .leaflet-container {
     width: 100% !important;
     height: 100% !important;
     z-index: 1 !important;
     background: #aadaff !important;
     outline: none !important;
+    /* GPU-composite the entire map layer — critical for mobile WebView rendering */
+    will-change: transform;
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    /* Allow Leaflet touch handlers to work without conflicting with scroll */
+    touch-action: none;
+    -webkit-touch-action: none;
   }
   .leaflet-tile-pane {
     background: transparent !important;
+    /* Promote tile pane to its own compositor layer for 60fps tile rendering */
+    will-change: transform;
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
   }
   /* Fix sub-pixel tile border lines / seams on Windows high-DPI scaling (Leaflet issue #3575) */
   .leaflet-tile {
@@ -48,6 +255,10 @@ const mapPopupStyles = `
     transform-origin: 50% 50% !important;
     -webkit-backface-visibility: hidden;
     backface-visibility: hidden;
+    /* Each tile on its own GPU layer for smooth panning */
+    will-change: transform;
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
   }
 
   /* Ultra-crisp Dark Mode for Google Roadmap — retains all apartments, malls, POIs, building footprints & road names */
@@ -250,8 +461,8 @@ const MAP_STYLES: Record<MapStyleKey, MapStyleOption> = {
   streets: {
     id: 'streets',
     name: 'Roadmap (POIs)',
-    // Google Maps detailed roadmap with apartments, malls, tech parks, hospitals, hotels, road names & building footprints
-    url: 'https://mt1.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}',
+    // Google Maps detailed roadmap — use {s} subdomain rotation (mt0–mt3) to match actual Google Maps CDN usage
+    url: 'https://mt{s}.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}',
     maxNativeZoom: 21,
     attribution: '&copy; Google Maps',
     previewBg: 'from-emerald-100 to-amber-100 dark:from-emerald-950 dark:to-stone-900',
@@ -261,8 +472,8 @@ const MAP_STYLES: Record<MapStyleKey, MapStyleOption> = {
     id: 'satellite',
     name: 'Satellite',
     // Google Maps satellite + roads/labels/POIs overlay
-    url: 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
-    overlayUrl: 'https://mt1.google.com/vt/lyrs=h&hl=en&x={x}&y={y}&z={z}',
+    url: 'https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+    overlayUrl: 'https://mt{s}.google.com/vt/lyrs=h&hl=en&x={x}&y={y}&z={z}',
     maxNativeZoom: 21,
     attribution: '&copy; Google Maps',
     previewBg: 'from-blue-900 to-emerald-900',
@@ -272,7 +483,7 @@ const MAP_STYLES: Record<MapStyleKey, MapStyleOption> = {
     id: 'terrain',
     name: 'Terrain',
     // Google Maps Terrain with roads & POIs
-    url: 'https://mt1.google.com/vt/lyrs=p&hl=en&x={x}&y={y}&z={z}',
+    url: 'https://mt{s}.google.com/vt/lyrs=p&hl=en&x={x}&y={y}&z={z}',
     maxNativeZoom: 20,
     attribution: '&copy; Google Maps',
     previewBg: 'from-stone-300 to-amber-200 dark:from-stone-800 dark:to-stone-900',
@@ -281,8 +492,8 @@ const MAP_STYLES: Record<MapStyleKey, MapStyleOption> = {
   dark: {
     id: 'dark',
     name: 'Dark',
-    // Google Maps detailed roadmap with dark theme styling — retains all apartments, malls, tech parks, hospitals, roads & building footprints
-    url: 'https://mt1.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}',
+    // Google Maps roadmap with dark CSS filter
+    url: 'https://mt{s}.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}',
     maxNativeZoom: 21,
     attribution: '&copy; Google Maps',
     previewBg: 'from-slate-900 to-black',
@@ -378,6 +589,7 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
   // ── Initialize Leaflet map once ─────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
+    let cleanupRO: (() => void) | undefined;
 
     const initMap = async () => {
       if (!mapContainerRef.current) return;
@@ -391,7 +603,8 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
         mapRef.current = null;
       }
 
-      const L = await import('leaflet');
+      // Use pre-warmed promise — zero extra cost on mobile (already loading at module eval)
+      const L = await leafletPromise;
       if (cancelled) return;
       LRef.current = L;
 
@@ -468,31 +681,36 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
 
       mapRef.current = map;
 
-      // Base tile layer
+      // Base tile layer — subdomains rotate across mt0–mt3 to distribute CDN load
+      // crossOrigin: anonymous is required for Android WebView CORS negotiation
       const baseTiles = L.tileLayer(cfg.url, {
+        subdomains: ['0', '1', '2', '3'],
         maxZoom: 22,
         maxNativeZoom: cfg.maxNativeZoom,
         zIndex: 1,
         detectRetina: false,
         attribution: cfg.attribution,
-        keepBuffer: 8,
-        updateWhenIdle: false, // Ensures tiles load immediately during movement, zoom, and switching
+        keepBuffer: 4,
+        updateWhenIdle: false,
         updateWhenZooming: true,
         updateInterval: 50,
+        crossOrigin: 'anonymous',
       }).addTo(map);
       tileLayerRef.current = baseTiles;
 
-      // Overlay layer for roads & labels (Google roads for satellite, Esri reference for dark)
+      // Overlay layer for roads & labels (Google roads for satellite)
       const overlayUrl = cfg.overlayUrl || '';
       const labelTiles = L.tileLayer(overlayUrl, {
+        subdomains: ['0', '1', '2', '3'],
         zIndex: 500,
         maxZoom: 22,
         maxNativeZoom: cfg.maxNativeZoom || 18,
         detectRetina: false,
-        keepBuffer: 8,
+        keepBuffer: 4,
         updateWhenIdle: false,
         updateWhenZooming: true,
         updateInterval: 50,
+        crossOrigin: 'anonymous',
       });
       labelLayerRef.current = labelTiles;
       if (showLabels && cfg.overlayUrl) {
@@ -502,8 +720,13 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
       markersRef.current = L.layerGroup().addTo(map);
       L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-      // Multi-stage invalidateSize — prevents gray-tile edges after layout settle
-      [80, 250, 500, 900, 1500].forEach(ms =>
+      // Multi-stage invalidateSize — tuned for mobile WebView layout settle timing:
+      // Mobile layout transitions (tab slide, drawer open) take 300–600ms.
+      // We fire at 0ms (immediate), then cover post-animation windows.
+      const invalidateStagedMs = isMobile
+        ? [0, 100, 300, 600, 1000, 1600]
+        : [80, 250, 500, 900, 1500];
+      const invalidateTimers = invalidateStagedMs.map(ms =>
         setTimeout(() => mapRef.current?.invalidateSize({ animate: false }), ms)
       );
 
@@ -511,14 +734,16 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
       let ro: ResizeObserver | null = null;
       if (typeof ResizeObserver !== 'undefined') {
         ro = new ResizeObserver(() => {
-          mapRef.current?.invalidateSize({ animate: false });
+          // Debounce: don't fire more than once per frame
+          requestAnimationFrame(() => mapRef.current?.invalidateSize({ animate: false }));
         });
         if (mapContainerRef.current) ro.observe(mapContainerRef.current);
         if (wrapperRef.current) ro.observe(wrapperRef.current);
       }
 
-      return () => {
+      cleanupRO = () => {
         ro?.disconnect();
+        invalidateTimers.forEach(t => clearTimeout(t));
       };
     };
 
@@ -526,13 +751,14 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
 
     return () => {
       cancelled = true;
+      cleanupRO?.();
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isMobile]);
 
   // ── Swap tile URL when map style / labels toggle ─────────────────────────
   useEffect(() => {
@@ -564,14 +790,13 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
   // ── Ensure map recalibrates instantly on device switch / location filter ──
   useEffect(() => {
     if (!mapRef.current) return;
+    // Immediate + post-animation cascade for mobile WebView
     mapRef.current.invalidateSize({ animate: false });
-    const t1 = setTimeout(() => mapRef.current?.invalidateSize({ animate: false }), 80);
-    const t2 = setTimeout(() => mapRef.current?.invalidateSize({ animate: false }), 300);
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-    };
-  }, [isMobile, isTablet, selectedLocation]);
+    const ts = [80, 300, 700].map(ms =>
+      setTimeout(() => mapRef.current?.invalidateSize({ animate: false }), ms)
+    );
+    return () => ts.forEach(clearTimeout);
+  }, [isTablet, selectedLocation]);
 
   // ── Enable scroll wheel zoom only when in full screen mode, so normal page scroll is natural ──
   useEffect(() => {
@@ -618,9 +843,12 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
 
       // Initials fallback colors — cycle through a set of vivid palette colors
       const initialsColors = ['#6366f1','#f59e0b','#3b82f6','#ec4899','#14b8a6','#f97316','#8b5cf6','#06b6d4'];
-      const colorIdx = member.name.charCodeAt(0) % initialsColors.length;
+      const rawName = (member.name || '').trim();
+      const displayName = rawName || (member.email ? member.email.split('@')[0] : 'Team Member');
+      const formattedRole = (member.role || 'Staff').replace(/_/g, ' ');
+      const initials = (rawName || displayName).split(' ').map((w: string) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || 'TM';
+      const colorIdx = (rawName || displayName).charCodeAt(0) % initialsColors.length;
       const initialsColor = initialsColors[colorIdx];
-      const initials = member.name.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase();
 
       // Build inner content: real photo if available, otherwise styled initials
       const innerHtml = photo
@@ -650,36 +878,37 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
       const initialRoad = cached?.road || `${loc.latitude.toFixed(5)}, ${loc.longitude.toFixed(5)}`;
 
       const popup = `
-        <div class="marker-popup-content min-w-[210px] max-w-[270px]">
+        <div class="team-map-popup-inner">
           <!-- User header -->
-          <div class="flex items-center gap-2 mb-1">
-            <span class="w-2.5 h-2.5 rounded-full shrink-0 ${active ? 'bg-emerald-500' : 'bg-red-500'}"></span>
-            <div class="overflow-hidden flex-1">
-              <p class="marker-popup-name text-xs font-bold text-gray-900 truncate">${member.name}</p>
-              <p class="text-[10px] text-gray-500 capitalize leading-none truncate mt-0.5">${member.role || 'Staff'}</p>
+          <div style="display: flex; align-items: center; gap: 8px; padding-right: 18px; margin-bottom: 3px;">
+            <span style="width: 9px; height: 9px; border-radius: 50%; background: ${active ? '#44D62C' : '#ef4444'}; box-shadow: 0 0 8px ${active ? 'rgba(68,214,44,0.7)' : 'rgba(239,68,68,0.7)'}; flex-shrink: 0;"></span>
+            <div style="overflow: hidden; flex: 1;">
+              <p class="popup-title" title="${displayName}">${displayName}</p>
+              <span class="popup-role">${formattedRole}</span>
             </div>
           </div>
-          <p class="marker-popup-status text-[10px] text-gray-500 mb-2">
-            ${active ? 'Active today' : 'Last active'}: ${formatDistanceToNow(new Date(loc.timestamp))} ago
+          <p class="popup-time">
+            <span>⏱</span>
+            <span>${active ? 'Active today' : 'Last active'}: ${formatDistanceToNow(new Date(loc.timestamp))} ago</span>
           </p>
 
           <!-- Assigned Facility / Site -->
           ${assignedFacility ? `
-            <div class="mb-2 p-1.5 bg-emerald-50 rounded-lg border border-emerald-200">
-              <div class="text-[9px] font-bold uppercase tracking-wider text-emerald-700">🏢 Assigned Site</div>
-              <div class="text-[11px] font-bold text-gray-900 truncate mt-0.5" title="${assignedFacility}">${assignedFacility}</div>
+            <div class="popup-section-site">
+              <div class="popup-section-site-tag"><span>🏢</span> <span>ASSIGNED SITE</span></div>
+              <div class="popup-section-site-name" title="${assignedFacility}">${assignedFacility}</div>
             </div>
           ` : ''}
 
           <!-- Live Landmark & Road Details -->
-          <div class="mb-2.5 p-2 bg-gray-50 rounded-lg border border-gray-200">
-            <div class="flex items-start gap-1.5">
-              <span class="text-xs shrink-0 mt-0.5">📍</span>
-              <div class="overflow-hidden flex-1">
-                <div id="popup-landmark-${member.id}" class="text-[11px] font-bold text-gray-900 leading-tight">
+          <div class="popup-section-loc">
+            <div style="display: flex; align-items: flex-start; gap: 6px;">
+              <span style="font-size: 12px; flex-shrink: 0; margin-top: 1px;">📍</span>
+              <div style="overflow: hidden; flex: 1;">
+                <div id="popup-landmark-${member.id}" class="popup-landmark">
                   ${initialLandmark}
                 </div>
-                <div id="popup-road-${member.id}" class="text-[10px] text-gray-500 leading-tight mt-1 truncate" title="${initialRoad}">
+                <div id="popup-road-${member.id}" class="popup-road" title="${initialRoad}">
                   ${initialRoad}
                 </div>
               </div>
@@ -687,23 +916,27 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
           </div>
 
           <!-- Action Buttons -->
-          <div class="flex items-center gap-1.5 mt-1">
+          <div style="display: flex; align-items: center; gap: 8px; margin-top: 6px;">
             ${phone ? `
               <a href="https://wa.me/91${phone}" target="_blank"
-                 class="flex-1 flex items-center justify-center gap-1 bg-emerald-500 hover:bg-emerald-600 text-white py-1.5 px-2 rounded-lg text-[10px] font-bold transition-all no-underline shadow-sm">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-                WhatsApp
+                 class="btn popup-btn popup-btn-wa" style="flex: 1;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="#ffffff" style="flex-shrink: 0;"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                <span>WhatsApp</span>
               </a>` : ''}
             <a href="${gmapsUrl}" target="_blank"
-               class="flex-1 flex items-center justify-center gap-1 bg-blue-600 hover:bg-blue-700 text-white py-1.5 px-2 rounded-lg text-[10px] font-bold transition-all no-underline shadow-sm">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z"/><circle cx="12" cy="10" r="3"/></svg>
-              Directions
+               class="btn popup-btn popup-btn-nav" style="flex: 1;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" style="flex-shrink: 0;"><path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z"/><circle cx="12" cy="10" r="3"/></svg>
+              <span>Directions</span>
             </a>
           </div>
         </div>`;
 
       const marker = L.marker([loc.latitude, loc.longitude], { icon });
-      marker.bindPopup(popup);
+      marker.bindPopup(popup, {
+        className: 'team-map-popup',
+        closeButton: true,
+        offset: [0, -10],
+      });
 
       marker.on('popupopen', async () => {
         const res = await fetchLandmarkForCoords(loc.latitude, loc.longitude);
@@ -1100,7 +1333,14 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
         style={{
           height: '100%',
           width: '100%',
+          minHeight: isMobile ? '280px' : undefined,
           backgroundColor: mapStyle === 'dark' ? '#121212' : (mapStyle === 'satellite' ? '#061018' : '#aadaff'),
+          /* GPU compositing — eliminates gray-tile flash on mobile WebView */
+          willChange: 'transform',
+          WebkitTransform: 'translateZ(0)',
+          transform: 'translateZ(0)',
+          /* Critical: allows Leaflet touch events without browser scroll hijacking */
+          touchAction: 'none',
         }}
       />
     </div>

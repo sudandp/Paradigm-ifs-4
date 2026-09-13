@@ -6,7 +6,7 @@ import { usePermissionsStore } from '../store/permissionsStore';
 import { allNavLinks } from '../components/layouts/MainLayout';
 import { useDevice } from '../hooks/useDevice';
 import {
-    LogOut, ArrowLeft, Sparkles,
+    ArrowLeft, Sparkles,
     ListTodo, ClipboardList, Settings, CheckCircle2,
     Calendar, History, Cpu, Smartphone, Users, LifeBuoy,
     FileText, Folder, Target, Briefcase, Home, Navigation,
@@ -274,7 +274,7 @@ const MobileHome: React.FC = () => {
     const orderedSections = SUPER_CATEGORY_ORDER.filter(s => superGroups[s]);
     const otherSections = Object.keys(superGroups).filter(s => !SUPER_CATEGORY_ORDER.includes(s));
 
-    const handleLogout = () => navigate('/auth/logout');
+
 
     const containerVariants: Variants = {
         hidden: { opacity: 0 },
@@ -443,26 +443,7 @@ const MobileHome: React.FC = () => {
                                 );
                             })}
 
-                            {/* Exit Card */}
-                            <div className="bg-[#1f0a0e]/80 border border-rose-950/60 rounded-[20px] p-3 shadow-md">
-                                <button
-                                    onClick={handleLogout}
-                                    className="w-full flex items-center justify-between px-2 py-1 cursor-pointer active:scale-[0.98] transition-transform"
-                                >
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400 shadow-sm">
-                                            <LogOut className="w-5 h-5" strokeWidth={2.2} />
-                                        </div>
-                                        <div className="text-left">
-                                            <p className="text-xs font-black text-rose-300">Sign Out</p>
-                                            <p className="text-[10px] font-semibold text-rose-400/60">End current session securely</p>
-                                        </div>
-                                    </div>
-                                    <span className="text-[10px] font-bold text-rose-400 bg-rose-500/10 px-2.5 py-1 rounded-full border border-rose-500/20">
-                                        Exit
-                                    </span>
-                                </button>
-                            </div>
+
                         </motion.div>
 
                     ) : (
