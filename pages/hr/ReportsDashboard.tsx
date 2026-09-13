@@ -138,11 +138,11 @@ const ReportsDashboard: React.FC = () => {
     <div id="report-container" className={`animate-fade-in min-w-0 overflow-x-hidden min-h-screen ${isMobile ? 'bg-[#041b0f] text-white p-4 pt-3 space-y-6 pb-36' : 'space-y-8 pb-32 md:pb-8'}`}>
       {/* Standardized Mobile Top Navigation Bar */}
       {isMobile && (
-        <div className="flex items-center gap-3 pt-1 pb-2 -mx-4 -mt-3 px-4 bg-[#041b0f] border-b border-[#134426]/60 sticky top-0 z-30 mb-2">
+        <div className="flex items-center gap-3 pt-1 pb-2 -mx-4 -mt-3 px-4 bg-[#041b0f] border-b border-[#134426]/60 mb-2">
           <button
             type="button"
             onClick={() => window.history.state?.idx > 0 ? navigate(-1) : navigate('/mobile-home')}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#065f46] hover:bg-[#044e3b] text-white border border-emerald-500/40 font-bold text-xs shadow-[0_2px_8px_rgba(6,95,70,0.4)] active:scale-95 transition-all cursor-pointer"
           >
             <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
             <span>Back</span>
@@ -183,7 +183,7 @@ const ReportsDashboard: React.FC = () => {
             <button
               onClick={handleRefresh}
               disabled={refreshing}
-              className={`flex-1 sm:flex-none flex items-center justify-center gap-2 transition-all active:scale-95 ${isMobile ? 'bg-[#44D62C] text-[#0A1809] px-5 py-2.5 rounded-full font-bold shadow-lg shadow-[#44D62C]/25 hover:bg-[#3bc125]' : 'btn btn-primary btn-md shadow-xl shadow-accent/20 hover:shadow-accent/40'}`}
+              className={`flex-1 sm:flex-none flex items-center justify-center gap-2 transition-all active:scale-95 ${isMobile ? 'bg-[#065f46] text-white px-5 py-2.5 rounded-full font-bold shadow-lg shadow-[#065f46]/30 hover:bg-[#044e39] border border-white/10' : 'btn btn-primary btn-md shadow-xl shadow-accent/20 hover:shadow-accent/40'}`}
             >
               <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
               <span className="hidden sm:inline">Refresh</span>

@@ -314,13 +314,13 @@ const TaskManagement: React.FC = () => {
                                 navigate('/mobile-home');
                             }
                         }}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#065f46] hover:bg-[#044e3b] text-white border border-emerald-500/40 font-bold text-xs shadow-[0_2px_8px_rgba(6,95,70,0.4)] active:scale-95 transition-all cursor-pointer"
                     >
                         <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
                         <span>Back</span>
                     </button>
                     <div className="h-[1px] flex-1 bg-[#134426]" />
-                    <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#44D62C] bg-[#092c19] px-2.5 py-1 rounded-lg border border-[#134426]">
+                    <span className="text-[11px] font-black uppercase tracking-[0.16em] text-white bg-[#065f46] px-2.5 py-1 rounded-lg border border-emerald-500/40 shadow-[0_2px_8px_rgba(6,95,70,0.35)]">
                         Task Center
                     </span>
                 </div>
@@ -338,7 +338,7 @@ const TaskManagement: React.FC = () => {
                         onClick={() => setViewMode('kanban')}
                         className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
                             viewMode === 'kanban' 
-                                ? (isMobile ? 'bg-[#44D62C] text-[#0A1809] shadow-[0_2px_10px_rgba(68,214,44,0.35)]' : 'bg-emerald-600 text-white shadow') 
+                                ? (isMobile ? 'bg-[#065f46] text-white shadow-[0_2px_10px_rgba(6,95,70,0.35)] border border-white/10' : 'bg-emerald-600 text-white shadow') 
                                 : (isMobile ? 'text-[#7D967B] hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:text-gray-900')
                         }`}
                     >
@@ -348,7 +348,7 @@ const TaskManagement: React.FC = () => {
                         onClick={() => setViewMode('table')}
                         className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
                             viewMode === 'table' 
-                                ? (isMobile ? 'bg-[#44D62C] text-[#0A1809] shadow-[0_2px_10px_rgba(68,214,44,0.35)]' : 'bg-emerald-600 text-white shadow') 
+                                ? (isMobile ? 'bg-[#065f46] text-white shadow-[0_2px_10px_rgba(6,95,70,0.35)] border border-white/10' : 'bg-emerald-600 text-white shadow') 
                                 : (isMobile ? 'text-[#7D967B] hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:text-gray-900')
                         }`}
                     >
@@ -412,7 +412,7 @@ const TaskManagement: React.FC = () => {
                     )}
                     <button
                         onClick={handleAdd}
-                        className={`flex items-center justify-center transition-colors ${isMobile ? 'bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-bold border-none shadow-[0_2px_10px_rgba(68,214,44,0.35)] text-[13px] py-2 px-5 rounded-xl active:scale-95' : 'bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg px-6 py-2.5 font-medium'}`}
+                        className={`flex items-center justify-center transition-colors ${isMobile ? 'bg-[#065f46] hover:bg-[#044e39] text-white font-bold border border-white/10 shadow-[0_2px_10px_rgba(6,95,70,0.35)] text-[13px] py-2 px-5 rounded-xl active:scale-95' : 'bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg px-6 py-2.5 font-medium'}`}
                     >
                         <Plus className="mr-2 h-4 w-4" /> Add Task
                     </button>
@@ -451,7 +451,7 @@ const TaskManagement: React.FC = () => {
                             >
                                 <div className={`flex items-center justify-between px-3 py-2 rounded-xl mb-4 font-bold text-xs ${headerColor}`}>
                                     <span>{colStatus}</span>
-                                    <span className={isMobile ? "px-2.5 py-0.5 rounded-full bg-[#44D62C] text-[#0A1809] font-black text-xs shadow-[0_2px_6px_rgba(68,214,44,0.3)]" : "px-2 py-0.5 rounded-full bg-white/60 dark:bg-black/40 text-[11px]"}>
+                                    <span className={isMobile ? "px-2.5 py-0.5 rounded-full bg-[#065f46] text-white font-bold text-xs shadow-[0_2px_6px_rgba(6,95,70,0.3)] border border-white/10" : "px-2 py-0.5 rounded-full bg-white/60 dark:bg-black/40 text-[11px]"}>
                                         {colTasks.length}
                                     </span>
                                 </div>
@@ -567,7 +567,7 @@ const TaskManagement: React.FC = () => {
                                             <button onClick={() => handleEdit(task)} className="p-2 text-white/60 hover:text-white bg-[#041b0f] border border-[#134426] rounded-xl"><Edit className="h-3.5 w-3.5" /></button>
                                             <button onClick={() => handleDelete(task)} className="p-2 text-rose-400 hover:text-rose-300 bg-[#041b0f] border border-[#134426] rounded-xl"><Trash2 className="h-3.5 w-3.5" /></button>
                                             {task.assignedToId === user?.id && task.status !== 'Done' && (
-                                                <button onClick={() => handleComplete(task)} className="flex items-center gap-1.5 px-3 py-1.5 bg-[#44D62C] text-[#0A1809] rounded-xl text-xs font-black shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all">
+                                                <button onClick={() => handleComplete(task)} className="flex items-center gap-1.5 px-3 py-1.5 bg-[#065f46] hover:bg-[#044e39] text-white rounded-xl text-xs font-bold shadow-[0_2px_8px_rgba(6,95,70,0.3)] border border-white/10 active:scale-95 transition-all">
                                                     <CheckCircle className="h-3.5 w-3.5" /> Complete
                                                 </button>
                                             )}

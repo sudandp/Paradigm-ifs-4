@@ -807,6 +807,7 @@ const App: React.FC = () => {
             const authState = useAuthStore.getState();
             if (authState.user) {
               authState.checkAttendanceStatus(true).catch(err => console.warn('[AppState] checkAttendanceStatus err:', err));
+              authState.syncRouteTracking().catch(err => console.warn('[AppState] syncRouteTracking err:', err));
               if (authState.isCheckedIn || authState.isFieldCheckedIn || authState.isSiteOtCheckedIn) {
                 import('./services/stepCounterService').then(async ({ stepCounterService }) => {
                   const steps = await stepCounterService.getStepCountFromNative();
@@ -855,6 +856,7 @@ const App: React.FC = () => {
           const authState = useAuthStore.getState();
           if (authState.user) {
             authState.checkAttendanceStatus(true).catch(() => {});
+            authState.syncRouteTracking().catch(() => {});
           }
           window.dispatchEvent(new CustomEvent('app-resumed-refresh', { detail: { timestamp: Date.now() } }));
         } else {

@@ -1595,7 +1595,7 @@ const ApplyLeave: React.FC = () => {
                                     type="button"
                                     onClick={() => setPermissionSession('morning')}
                                     className={`px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider rounded transition-all ${
-                                        permissionSession === 'morning' ? 'bg-[#44D62C] text-[#0A1809] shadow-sm' : 'text-[#44D62C] hover:bg-[#44D62C]/10'
+                                        permissionSession === 'morning' ? 'bg-[#065f46] text-white shadow-sm border border-white/10' : 'text-emerald-400 hover:bg-[#065f46]/20'
                                     }`}
                                 >
                                     1st Half
@@ -1604,7 +1604,7 @@ const ApplyLeave: React.FC = () => {
                                     type="button"
                                     onClick={() => setPermissionSession('evening')}
                                     className={`px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider rounded transition-all ${
-                                        permissionSession === 'evening' ? 'bg-[#44D62C] text-[#0A1809] shadow-sm' : 'text-[#44D62C] hover:bg-[#44D62C]/10'
+                                        permissionSession === 'evening' ? 'bg-[#065f46] text-white shadow-sm border border-white/10' : 'text-emerald-400 hover:bg-[#065f46]/20'
                                     }`}
                                 >
                                     2nd Half
@@ -1613,7 +1613,7 @@ const ApplyLeave: React.FC = () => {
                                     type="button"
                                     onClick={() => setPermissionSession('both')}
                                     className={`px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider rounded transition-all ${
-                                        permissionSession === 'both' ? 'bg-[#44D62C] text-[#0A1809] shadow-sm' : 'text-[#44D62C] hover:bg-[#44D62C]/10'
+                                        permissionSession === 'both' ? 'bg-[#065f46] text-white shadow-sm border border-white/10' : 'text-emerald-400 hover:bg-[#065f46]/20'
                                     }`}
                                 >
                                     Both
@@ -2606,7 +2606,7 @@ const ApplyLeave: React.FC = () => {
                                     (watchLeaveType === 'Correction' && correctionUsage.enabled && correctionUsage.used >= correctionUsage.limit) || 
                                     (watchLeaveType === 'Permission' && permissionUsage.enabled && permissionUsage.usedMins >= (permissionUsage.limitHrs || 3) * 60)
                                 }
-                                className={`flex-1 md:flex-none md:w-36 ${isMobile ? 'bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black rounded-xl py-3.5 shadow-lg shadow-[#44D62C]/20 border-0' : ''}`}
+                                className={`flex-1 md:flex-none md:w-36 ${isMobile ? 'bg-[#065f46] hover:bg-[#044e39] text-white font-bold rounded-xl py-3.5 shadow-lg shadow-[#065f46]/30 border border-white/10' : ''}`}
                             >
                                 {isEditMode ? 'Update' : 'Submit'}
                             </Button>

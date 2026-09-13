@@ -248,11 +248,11 @@ const NotificationsControl: React.FC = () => {
         return (
             <div className="flex flex-col h-full bg-[#041b0f] overflow-y-auto pb-36 px-4 pt-3 space-y-5 min-h-screen">
                 {/* Standardized Mobile Top Navigation Bar */}
-                <div className="flex items-center gap-3 pt-1 pb-2 -mx-4 px-4 bg-[#041b0f] border-b border-[#134426]/60 sticky top-0 z-30">
+                <div className="flex items-center gap-3 pt-1 pb-2 -mx-4 px-4 bg-[#041b0f] border-b border-[#134426]/60">
                     <button
                         type="button"
                         onClick={() => window.history.state?.idx > 0 ? navigate(-1) : navigate('/mobile-home')}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#065f46] hover:bg-[#044e3b] text-white border border-emerald-500/40 font-bold text-xs shadow-[0_2px_8px_rgba(6,95,70,0.4)] active:scale-95 transition-all cursor-pointer"
                     >
                         <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
                         <span>Back</span>
@@ -283,7 +283,7 @@ const NotificationsControl: React.FC = () => {
                                 onClick={() => setActiveTab(tab.id as any)}
                                 className={`flex items-center whitespace-nowrap px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
                                     isActive 
-                                        ? 'bg-[#44D62C] text-[#0A1809] shadow-md shadow-[#44D62C]/20' 
+                                        ? 'bg-[#065f46] text-white shadow-md shadow-[#065f46]/30 border border-white/10' 
                                         : 'bg-[#092c19] text-gray-300 border border-[#134426]'
                                 }`}
                             >
@@ -417,7 +417,7 @@ const NotificationsControl: React.FC = () => {
                                     />
                                 </div>
                                 <Button 
-                                    className="w-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black py-3.5 rounded-xl border-none shadow-[0_0_15px_rgba(68,214,44,0.3)] mt-2 active:scale-98 transition-all"
+                                    className="w-full bg-[#065f46] hover:bg-[#044e39] text-white font-bold py-3.5 rounded-xl border border-white/10 shadow-[0_4px_16px_rgba(6,95,70,0.3)] mt-2 active:scale-98 transition-all"
                                     onClick={handleBroadcast}
                                     isLoading={isSaving}
                                     disabled={!broadcastData.message}

@@ -58,7 +58,7 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ adminHolidays, userSe
         switch (status) {
             case 'fixed': return 'bg-emerald-500 text-white border-emerald-600 shadow-sm'; // Green for Gov/Common
             case 'admin': return 'bg-amber-500 text-white border-amber-600 shadow-sm'; // Amber for Admin
-            case 'user': return 'bg-[#44D62C] text-[#0A1809] font-black border-[#39E722] shadow-sm'; // Neon emerald for User
+            case 'user': return 'bg-[#065f46] text-white font-bold border-white/20 shadow-sm'; // Bottle green for User
             default: return isMobile ? 'bg-white/[0.02] text-white/40 border-white/5' : 'bg-transparent text-muted/40 border-transparent'; // Neutral
         }
     };
@@ -130,7 +130,7 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ adminHolidays, userSe
                     <span>Gov Holiday</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                    <div className="w-2.5 h-2.5 bg-[#44D62C] rounded-full flex-shrink-0"></div> 
+                    <div className="w-2.5 h-2.5 bg-[#065f46] rounded-full flex-shrink-0 border border-white/20"></div> 
                     <span>Your Selection</span>
                 </div>
             </div>

@@ -277,7 +277,7 @@ const HelpTicketModal: React.FC<HelpTicketModalProps> = ({ isOpen, onClose }) =>
                                     <Button
                                         type="submit"
                                         isLoading={isSubmitting}
-                                        className="flex-1 !h-[48px] text-xs font-bold uppercase tracking-wider !bg-amber-600 hover:!bg-amber-700 text-white !rounded-2xl"
+                                        className="flex-1 !h-[48px] text-xs font-bold uppercase tracking-wider !bg-[#065f46] hover:!bg-[#044e39] !text-white !rounded-2xl shadow-lg shadow-[#065f46]/30 border border-white/10 active:scale-95 transition-all"
                                     >
                                         Submit Ticket
                                     </Button>

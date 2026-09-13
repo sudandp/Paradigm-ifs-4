@@ -439,6 +439,14 @@ export const useAuthStore = create<AuthState>()(
             } else {
                 set({ user, lastCompany: companyToSave, error: null, loading: false });
             }
+
+            if (user) {
+                setTimeout(() => {
+                    get().syncRouteTracking().catch(() => {});
+                }, 300);
+            } else {
+                routeTrackingService.stopTracking();
+            }
         },
         setInitialized: (initialized) => set({ isInitialized: initialized }),
         setLoading: (loading) => set({ loading }),
@@ -479,31 +487,30 @@ export const useAuthStore = create<AuthState>()(
 
         syncRouteTracking: async () => {
             const { user, isCheckedIn, isFieldCheckedIn, isSiteOtCheckedIn } = get();
+            if (!user) {
+                routeTrackingService.stopTracking();
+                return;
+            }
+
             // Leadership and exempt roles (Director, Management, Superadmin) are never tracked via GPS
             if (isAttendanceExemptRole(user?.role)) {
                 routeTrackingService.stopTracking();
                 return;
             }
 
-            // Track any employee who is actively checked in (field, site, or office with GPS)
-            const isAnyCheckedIn = isCheckedIn || isFieldCheckedIn || isSiteOtCheckedIn;
-            if (!user || !isAnyCheckedIn) {
-                routeTrackingService.stopTracking();
-                return;
-            }
-
-            if (routeTrackingService.isActive()) return;
+            // Track any active employee while app is open / active; elevate to Android background service if checked in
+            const isAnyCheckedIn = Boolean(isCheckedIn || isFieldCheckedIn || isSiteOtCheckedIn);
 
             try {
                 const settings = await api.getAttendanceSettings();
                 // trackingIntervalMinutes is a TOP-LEVEL key on AttendanceSettings,
                 // NOT nested under .field / .office / .site sub-objects.
                 const interval = (settings as any).trackingIntervalMinutes || settings.field?.trackingIntervalMinutes || 15;
-                console.log(`[authStore] Starting route tracking: every ${interval} min(s) for user ${user.id}`);
-                routeTrackingService.startTracking(user.id, interval);
+                console.log(`[authStore] Syncing route tracking: every ${interval} min(s) for user ${user.id} (checkedIn: ${isAnyCheckedIn})`);
+                await routeTrackingService.startTracking(user.id, interval, isAnyCheckedIn);
             } catch (e) {
                 console.warn('[authStore] Failed to fetch tracking interval, defaulting to 15m', e);
-                routeTrackingService.startTracking(user.id, 15);
+                await routeTrackingService.startTracking(user.id, 15, isAnyCheckedIn);
             }
         },
 

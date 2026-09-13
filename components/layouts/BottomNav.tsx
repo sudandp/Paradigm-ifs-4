@@ -87,7 +87,7 @@ const BottomNav: React.FC = () => {
                     {active && (
                         <motion.div
                             layoutId="activePill"
-                            className="absolute inset-0 bg-[#44D62C] rounded-full z-0"
+                            className="absolute inset-0 bg-[#065f46] border border-emerald-500/40 rounded-full z-0 shadow-[0_2px_8px_rgba(6,95,70,0.4)]"
                             style={{ padding: '0 12px' }}
                             transition={{ type: "spring", stiffness: 350, damping: 30 }}
                         />
@@ -96,7 +96,7 @@ const BottomNav: React.FC = () => {
                     <div className="relative z-10 flex items-center gap-1.5 px-3 py-2">
                         <item.icon
                             className={`transition-colors duration-300 ${
-                                active ? 'text-[#0A1809]' : 'text-[#7D967B]'
+                                active ? 'text-emerald-50' : 'text-[#7D967B]'
                             }`}
                             style={{ width: 'clamp(20px, 5vw, 24px)', height: 'clamp(20px, 5vw, 24px)' }}
                         />
@@ -106,7 +106,7 @@ const BottomNav: React.FC = () => {
                                     initial={{ opacity: 0, width: 0 }}
                                     animate={{ opacity: 1, width: 'auto' }}
                                     exit={{ opacity: 0, width: 0 }}
-                                    className="text-[11px] font-bold text-[#0A1809] tracking-tight whitespace-nowrap overflow-hidden"
+                                    className="text-[11px] font-bold text-white tracking-tight whitespace-nowrap overflow-hidden"
                                 >
                                     {item.label}
                                 </motion.span>
@@ -186,14 +186,14 @@ const BottomNav: React.FC = () => {
                                 {/* Inner green circle — 52px */}
                                 <motion.button
                                      onClick={() => setReferralModalOpen(true)}
-                                     className="w-[52px] h-[52px] rounded-full flex items-center justify-center active:scale-90 transition-all duration-200 group relative overflow-hidden"
+                                     className="w-[52px] h-[52px] rounded-full flex items-center justify-center active:scale-90 transition-all duration-200 group relative overflow-hidden border border-emerald-500/40"
                                      style={{
-                                         background: 'radial-gradient(circle at 40% 35%, #5af140, #44d62c 60%, #2fb81b)',
-                                         boxShadow: 'inset 0 2px 6px rgba(255,255,255,0.25), 0 4px 14px rgba(68,214,44,0.4)',
+                                         background: 'radial-gradient(circle at 40% 35%, #059669, #065f46 60%, #064e3b)',
+                                         boxShadow: 'inset 0 2px 6px rgba(255,255,255,0.25), 0 4px 14px rgba(6,95,70,0.5)',
                                      }}
                                      aria-label="Referral Program"
                                  >
-                                     <Plus className="text-[#0A1809] w-7 h-7 group-hover:rotate-90 transition-transform duration-300" strokeWidth={2.5} />
+                                     <Plus className="text-white w-7 h-7 group-hover:rotate-90 transition-transform duration-300" strokeWidth={2.5} />
                                  </motion.button>
                             </div>
                         </div>

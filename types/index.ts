@@ -98,8 +98,55 @@ export interface UserDevice {
   approvedById?: string | null;
   approvedByName?: string; // Derived on client
   approvedAt?: string | null;
+  hardwareUuid?: string | null; // Unique hardware UUID (Motherboard / Machine GUID) for 1:1 laptop lock
+  isExclusiveLaptop?: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface LaptopAppUsageLog {
+  id?: string;
+  userId: string;
+  deviceId?: string | null;
+  hardwareUuid?: string | null;
+  attendanceEventId?: string | null;
+  appName: string;
+  processName?: string;
+  windowTitle?: string;
+  appTitle?: string;
+  category: string;
+  durationSeconds: number;
+  isIdle?: boolean;
+  sessionDate?: string;
+  shiftDate?: string;
+  recordedAt?: string;
+  startTime?: string;
+  endTime?: string;
+  createdAt?: string;
+}
+
+export interface ProductivityAppStat {
+  name?: string;
+  appName?: string;
+  processName?: string;
+  title?: string;
+  windowTitle?: string;
+  durationSeconds: number;
+  percentage?: number;
+  category: string;
+}
+
+export interface DailyLaptopProductivitySummary {
+  id?: string;
+  userId: string;
+  sessionDate?: string;
+  shiftDate?: string;
+  totalActiveSeconds: number;
+  totalIdleSeconds: number;
+  topApps: ProductivityAppStat[];
+  categoriesBreakdown: Record<string, number>;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface DeviceChangeRequest {

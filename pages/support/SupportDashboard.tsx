@@ -417,7 +417,7 @@ const SupportDashboard: React.FC = () => {
                                 navigate('/mobile-home');
                             }
                         }}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#065f46] hover:bg-[#044e3b] text-white border border-emerald-500/40 font-bold text-xs shadow-[0_2px_8px_rgba(6,95,70,0.4)] active:scale-95 transition-all cursor-pointer"
                     >
                         <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
                         <span>Back</span>

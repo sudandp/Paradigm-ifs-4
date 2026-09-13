@@ -1,0 +1,15 @@
+{
+  "name": "paradigm-laptop-agent",
+  "version": "1.0.0",
+  "description": "Paradigm Office Work Laptop Application Usage & Hardware Binding Companion",
+  "main": "agent.mjs",
+  "type": "module",
+  "scripts": {
+    "start": "node agent.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.48.0"
+  },
+  "author": "Paradigm Office Engineering",
+  "license": "UNLICENSED"
+}

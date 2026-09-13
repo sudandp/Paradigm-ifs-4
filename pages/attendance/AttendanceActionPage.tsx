@@ -643,13 +643,13 @@ const AttendanceActionPage: React.FC = () => {
                 <button
                     type="button"
                     onClick={() => window.history.state?.idx > 0 ? navigate(-1) : navigate('/mobile-home')}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#065f46] hover:bg-[#044e3b] text-white border border-emerald-500/40 font-bold text-xs shadow-[0_2px_8px_rgba(6,95,70,0.4)] active:scale-95 transition-all cursor-pointer"
                 >
                     <MoveLeft className="w-3.5 h-3.5 stroke-[2.5]" />
                     <span>Back</span>
                 </button>
                 <div className="h-[1px] flex-1 bg-[#134426]" />
-                <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#44D62C] bg-[#092c19] px-2.5 py-1 rounded-lg border border-[#134426]">
+                <span className="text-[11px] font-black uppercase tracking-[0.16em] text-white bg-[#065f46] px-2.5 py-1 rounded-lg border border-emerald-500/40 shadow-[0_2px_8px_rgba(6,95,70,0.35)]">
                     {action}
                 </span>
             </div>
@@ -871,10 +871,10 @@ const AttendanceActionPage: React.FC = () => {
                         onClick={() => handleConfirm()}
                         variant={isCheckIn || isBreakIn || isBreakOut || actionParam === 'site-ot-in' ? "primary" : "danger"}
                         className={`w-full !rounded-2xl !py-5 !text-sm font-black tracking-widest uppercase italic shadow-2xl active:scale-[0.98] transition-transform ${
-                            isBreakIn ? '!bg-[#44D62C] hover:!bg-[#39E722] !text-[#0A1809] !border-none shadow-[0_4px_16px_rgba(68,214,44,0.3)]' :
+                            isBreakIn ? '!bg-[#065f46] hover:!bg-[#044e39] !text-white !border-white/10 shadow-[0_4px_16px_rgba(6,95,70,0.3)]' :
                             isBreakOut ? '!bg-amber-600 !border-amber-700 shadow-amber-900/40' :
                             actionParam?.includes('site-ot') ? '!bg-indigo-600 !border-indigo-700 shadow-indigo-900/40' :
-                            (isCheckIn ? '!bg-[#44D62C] hover:!bg-[#39E722] !text-[#0A1809] !border-none shadow-[0_4px_16px_rgba(68,214,44,0.3)]' : '')
+                            (isCheckIn ? '!bg-[#065f46] hover:!bg-[#044e39] !text-white !border-white/10 shadow-[0_4px_16px_rgba(6,95,70,0.3)]' : '')
                         }`}
                         isLoading={isSubmitting}
                     >

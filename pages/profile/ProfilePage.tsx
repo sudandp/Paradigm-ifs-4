@@ -17,7 +17,7 @@ import Toast from '../../components/ui/Toast';
 import { api } from '../../services/api';
 import { registerGateUser, uploadGatePhoto } from '../../services/gateApi';
 import { dispatchNotificationFromRules } from '../../services/notificationService';
-import { User as UserIcon, Loader2, ClipboardList, LogOut, LogIn, Crosshair, CheckCircle, Info, MapPin, AlertTriangle, Clock, Lock, Edit, Camera, Mail, Baby, PlusCircle, Trash2, FileCheck, FileX, Volume2, Coffee, FileText, Shield, Settings, ArrowLeft, Sparkles, QrCode, Footprints, Maximize, Navigation, HelpCircle, RefreshCw, Home, Bike, Car, Bus, Building2, Building, ShieldCheck, BarChart3, CheckCircle2, IndianRupee, Users, ArrowUpRight } from 'lucide-react';
+import { User as UserIcon, Loader2, ClipboardList, LogOut, LogIn, Crosshair, CheckCircle, Info, MapPin, AlertTriangle, Clock, Lock, Edit, Camera, Mail, Baby, PlusCircle, Trash2, FileCheck, FileX, Volume2, Coffee, FileText, Shield, Settings, ArrowLeft, Sparkles, QrCode, Footprints, Maximize, Navigation, HelpCircle, RefreshCw, Home, Bike, Car, Bus, Building2, Building, ShieldCheck, BarChart3, CheckCircle2, IndianRupee, Users, ArrowUpRight, Laptop } from 'lucide-react';
 import { AvatarUpload } from '../../components/onboarding/AvatarUpload';
 import AlertTonePicker from '../../components/attendance/AlertTonePicker';
 import { format, startOfDay, endOfDay, startOfMonth, endOfMonth } from 'date-fns';
@@ -1314,13 +1314,13 @@ const ProfilePage: React.FC = () => {
                                 navigate('/mobile-home');
                             }
                         }}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#065f46] hover:bg-[#044e3b] text-white border border-emerald-500/40 font-bold text-xs shadow-[0_2px_8px_rgba(6,95,70,0.4)] active:scale-95 transition-all cursor-pointer"
                     >
                         <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
                         <span>Back</span>
                     </button>
                     <div className="h-[1px] flex-1 bg-[#134426]" />
-                    <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#44D62C] bg-[#092c19] px-2.5 py-1 rounded-lg border border-[#134426]">
+                    <span className="text-[11px] font-black uppercase tracking-[0.16em] text-white bg-[#065f46] px-2.5 py-1 rounded-lg border border-emerald-500/40 shadow-[0_2px_8px_rgba(6,95,70,0.35)]">
                         User Profile
                     </span>
                 </div>
@@ -1583,6 +1583,32 @@ const ProfilePage: React.FC = () => {
                                             </>
                                         )}
                                     </div>
+
+                                    {/* Work Laptop Productivity Quick Access (Under development - hidden for all users for now) */}
+                                    {false && (
+                                        <div className="mt-3 bg-emerald-500/10 border border-emerald-500/20 p-3.5 rounded-2xl backdrop-blur-md flex items-center justify-between gap-3">
+                                            <div className="flex items-center gap-2.5 min-w-0">
+                                                <div className="p-2 bg-emerald-500/20 rounded-xl text-emerald-400">
+                                                    <Laptop className="h-4 w-4" />
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Work Laptop Tracking</span>
+                                                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">1:1 Locked</span>
+                                                    </div>
+                                                    <p className="text-xs font-semibold text-white truncate">
+                                                        Active App History & Productivity Stats
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={() => navigate('/settings/devices')}
+                                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold whitespace-nowrap transition-all shadow-sm active:scale-95 flex items-center gap-1"
+                                            >
+                                                View Stats <ArrowUpRight className="w-3.5 h-3.5" />
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </section>

@@ -268,7 +268,7 @@ const HolidaySelectionPage: React.FC = () => {
                             isLoading={isSaving}
                             className={!isMobile 
                                 ? "px-10 py-3 rounded-xl shadow-xl shadow-accent/20 font-black uppercase tracking-widest text-xs" 
-                                : "flex-1 h-12 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-bold shadow-lg shadow-[#44D62C]/20"}
+                                : "flex-1 h-12 rounded-full bg-[#065f46] hover:bg-[#044e39] text-white font-bold shadow-lg shadow-[#065f46]/30 border border-white/10"}
                         >
                             Confirm & Save
                         </Button>
@@ -547,7 +547,7 @@ const HolidaySelectionPage: React.FC = () => {
                             <Button
                                 onClick={handleSave}
                                 disabled={selectedHolidays.length === 0}
-                                className="flex-1 h-14 text-base font-bold bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] shadow-lg shadow-[#44D62C]/25 rounded-full transition-all active:scale-[0.98]"
+                                className="flex-1 h-14 text-base font-bold bg-[#065f46] hover:bg-[#044e39] text-white shadow-lg shadow-[#065f46]/30 rounded-full transition-all active:scale-[0.98] border border-white/10"
                             >
                                 Save Selection
                             </Button>

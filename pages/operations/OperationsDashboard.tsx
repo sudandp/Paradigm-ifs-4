@@ -109,11 +109,11 @@ const OperationsDashboard: React.FC = () => {
             )}
 
             {/* Standardized Mobile Top Navigation Bar */}
-            <div className="md:hidden flex items-center gap-3 pt-1 pb-2 -mx-4 -mt-4 px-4 bg-[#041b0f] border-b border-[#134426]/60 sticky top-0 z-30 mb-2">
+            <div className="md:hidden flex items-center gap-3 pt-1 pb-2 -mx-4 -mt-4 px-4 bg-[#041b0f] border-b border-[#134426]/60 mb-2">
                 <button
                     type="button"
                     onClick={() => window.history.state?.idx > 0 ? navigate(-1) : navigate('/mobile-home')}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#065f46] hover:bg-[#044e3b] text-white border border-emerald-500/40 font-bold text-xs shadow-[0_2px_8px_rgba(6,95,70,0.4)] active:scale-95 transition-all cursor-pointer"
                 >
                     <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
                     <span>Back</span>
@@ -181,7 +181,7 @@ const OperationsDashboard: React.FC = () => {
                                 e.stopPropagation();
                                 navigate('/operations/team-activity');
                             }}
-                            className="bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black"
+                            className="bg-[#065f46] hover:bg-[#044e39] text-white font-bold border border-white/10"
                         >
                             View Team Activity →
                         </Button>
@@ -249,7 +249,7 @@ const OperationsDashboard: React.FC = () => {
                         <DatePicker label="Assignment Date" id="assignmentDate" value={assignmentDate} onChange={setAssignmentDate} />
                     </div>
                     <div className="md:col-span-1">
-                        <Button type="submit" className="w-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black py-3 rounded-xl shadow-lg shadow-[#44D62C]/20 border-0">
+                        <Button type="submit" className="w-full bg-[#065f46] hover:bg-[#044e39] text-white font-bold py-3 rounded-xl shadow-lg shadow-[#065f46]/20 border border-white/10">
                             <Send className="mr-2 h-4 w-4" />Assign
                         </Button>
                     </div>

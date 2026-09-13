@@ -308,18 +308,48 @@ const CITY_TO_STATE_MAP: Record<string, string> = {
   'Warangal': 'Telangana',
   'Nizamabad': 'Telangana',
   'Bengaluru': 'Karnataka',
+  'Bangalore': 'Karnataka',      // common alternate spelling
   'Hubballi': 'Karnataka',
+  'Hubli': 'Karnataka',
   'Dharwad': 'Karnataka',
   'Mysuru': 'Karnataka',
+  'Mysore': 'Karnataka',
   'Mangaluru': 'Karnataka',
+  'Mangalore': 'Karnataka',
+  'Belagavi': 'Karnataka',
+  'Bellary': 'Karnataka',
   'Mumbai': 'Maharashtra',
+  'Bombay': 'Maharashtra',
   'Pune': 'Maharashtra',
+  'Poona': 'Maharashtra',
+  'Nagpur': 'Maharashtra',
   'Chennai': 'Tamil Nadu',
+  'Madras': 'Tamil Nadu',
+  'Coimbatore': 'Tamil Nadu',
+  'Kolkata': 'West Bengal',
+  'Calcutta': 'West Bengal',
   'Delhi': 'Delhi',
   'New Delhi': 'Delhi',
   'Kochi': 'Kerala',
+  'Cochin': 'Kerala',
+  'Thiruvananthapuram': 'Kerala',
+  'Trivandrum': 'Kerala',
   'Visakhapatnam': 'Andhra Pradesh',
-  'Vijayawada': 'Andhra Pradesh'
+  'Vizag': 'Andhra Pradesh',
+  'Vijayawada': 'Andhra Pradesh',
+  'Ahmedabad': 'Gujarat',
+  'Surat': 'Gujarat',
+  'Jaipur': 'Rajasthan',
+  'Lucknow': 'Uttar Pradesh',
+  'Kanpur': 'Uttar Pradesh',
+  'Bhopal': 'Madhya Pradesh',
+  'Indore': 'Madhya Pradesh',
+  'Patna': 'Bihar',
+  'Bhubaneswar': 'Odisha',
+  'Ghaziabad': 'Odisha',
+  'Raipur': 'Chhattisgarh',
+  'Chandigarh': 'Chandigarh',
+  'Guwahati': 'Assam',
 };
 
 const normalizeStateName = (str: string) => {
@@ -738,27 +768,77 @@ export const api = {
   getUserActivePlatforms: async (userIds: string[]): Promise<Record<string, string[]>> => {
     if (userIds.length === 0) return {};
 
-    const { data, error } = await supabase
-      .from('fcm_tokens')
-      .select('user_id, platform')
-      .in('user_id', userIds);
+    try {
+      const now = Date.now();
+      const RECENT_CUTOFF_MS = 14 * 24 * 60 * 60 * 1000; // 14 days active login window
 
-    if (error) {
-      console.error('Failed to fetch user platforms:', error);
+      // Fetch active devices from user_devices and registered FCM tokens in parallel
+      const [devicesRes, fcmRes] = await Promise.all([
+        supabase
+          .from('user_devices')
+          .select('user_id, device_type, last_used_at, status')
+          .in('user_id', userIds)
+          .eq('status', 'active')
+          .order('last_used_at', { ascending: false }),
+        supabase
+          .from('fcm_tokens')
+          .select('user_id, platform, last_seen')
+          .in('user_id', userIds)
+          .order('last_seen', { ascending: false })
+      ]);
+
+      const devices = devicesRes.data || [];
+      const fcmTokens = fcmRes.data || [];
+
+      // Group devices by user
+      const devByUser: Record<string, typeof devices> = {};
+      devices.forEach(d => {
+        if (!devByUser[d.user_id]) devByUser[d.user_id] = [];
+        devByUser[d.user_id].push(d);
+      });
+
+      // Group FCM tokens by user
+      const fcmByUser: Record<string, typeof fcmTokens> = {};
+      fcmTokens.forEach(f => {
+        if (!fcmByUser[f.user_id]) fcmByUser[f.user_id] = [];
+        fcmByUser[f.user_id].push(f);
+      });
+
+      const mapping: Record<string, string[]> = {};
+
+      userIds.forEach(uid => {
+        const userDevs = devByUser[uid] || [];
+        // 1. Check devices used recently (within 14 days)
+        const recentDevs = userDevs.filter(d => 
+          d.last_used_at && (now - new Date(d.last_used_at).getTime()) <= RECENT_CUTOFF_MS
+        );
+
+        const sortPlatforms = (list: string[]) => {
+          const order: Record<string, number> = { android: 1, ios: 2, web: 3 };
+          return list.sort((a, b) => (order[a] || 99) - (order[b] || 99));
+        };
+
+        if (recentDevs.length > 0) {
+          mapping[uid] = sortPlatforms(Array.from(new Set(recentDevs.map(d => d.device_type))));
+        } else if (userDevs.length > 0) {
+          // 2. Fallback: take their latest active device(s)
+          mapping[uid] = [userDevs[0].device_type];
+        } else {
+          // 3. Fallback to fcm tokens if user_devices has no records
+          const uFcm = fcmByUser[uid] || [];
+          if (uFcm.length > 0) {
+            mapping[uid] = sortPlatforms(Array.from(new Set(uFcm.map(f => f.platform))));
+          } else {
+            mapping[uid] = [];
+          }
+        }
+      });
+
+      return mapping;
+    } catch (err) {
+      console.error('Failed to fetch user active platforms:', err);
       return {};
     }
-
-    const mapping: Record<string, string[]> = {};
-    (data || []).forEach(row => {
-      if (!mapping[row.user_id]) {
-        mapping[row.user_id] = [];
-      }
-      if (!mapping[row.user_id].includes(row.platform)) {
-        mapping[row.user_id].push(row.platform);
-      }
-    });
-
-    return mapping;
   },
 
   getTrackingAuditLogs: async (startDate: string, endDate: string): Promise<any[]> => {
@@ -3209,8 +3289,8 @@ export const api = {
 
     // 1. Fetch data in parallel
     const [subResults, userResults, orgResults] = await Promise.all([
-      supabase.from('onboarding_submissions').select('user_id, address').in('user_id', userIds).not('address', 'is', null),
-      supabase.from('users').select('id, organization_id, organization_name, location').in('id', userIds),
+      supabase.from('onboarding_submissions').select('user_id, address, status, created_user_id').in('user_id', userIds).neq('status', 'draft').not('address', 'is', null),
+      supabase.from('users').select('id, organization_id, organization_name, home_address').in('id', userIds),
       supabase.from('organizations').select('id, address')
     ]);
 
@@ -3218,36 +3298,44 @@ export const api = {
     const orgMap = new Map((orgResults.data || []).map(o => [o.id, o.address]));
     const userToOrg = new Map((userResults.data || []).map(u => [u.id, u.organization_id]));
     const userToOrgName = new Map((userResults.data || []).map(u => [u.id, u.organization_name]));
-    const userToLocation = new Map((userResults.data || []).map(u => [u.id, u.location]));
+    const userToHome = new Map((userResults.data || []).map(u => [u.id, u.home_address]));
 
-    // 2. Fallback: Use Organization/Site address or user's direct location
+    // 2. Primary: User's explicit home address, or Organization/Site address
     userIds.forEach(uid => {
+      const userHome = userToHome.get(uid);
       const orgId = userToOrg.get(uid);
       const orgName = userToOrgName.get(uid);
       const orgAddr = orgId ? orgMap.get(orgId) : null;
-      const userLoc = userToLocation.get(uid);
       
-      const combinedText = `${orgName || ''} ${orgAddr || ''} ${userLoc || ''}`;
-      if (combinedText.trim()) {
-        let state = inferState('', combinedText);
-        let city = inferCity(combinedText);
-        
-        // If city still not found, use userLoc if present
-        if (!city && userLoc) {
-           city = normalize(userLoc);
+      // If user has an explicit home address in their profile, use it as primary
+      if (userHome && userHome.trim()) {
+        const city = inferCity(userHome) || normalize(userHome);
+        const state = inferState(city, userHome);
+        if (state || city) {
+          locations[uid] = { state: state || 'Other', city: city || 'Other' };
+          return;
         }
-        if (!state && city) {
-           state = inferState(city, '');
-        }
+      }
 
+      // Fallback to Org / Site address
+      const combinedText = `${orgName || ''} ${orgAddr || ''}`;
+      if (combinedText.trim()) {
+        const state = inferState('', combinedText);
+        const city = inferCity(combinedText);
         if (state || city) {
           locations[uid] = { state: state || 'Other', city: city || 'Other' };
         }
       }
     });
 
-    // 3. Primary: Use Onboarding Submission address (Overwrite with more specific data)
+    // 3. Fallback: Use completed candidate onboarding submission only if user has no home_address
     (subResults.data || []).forEach(sub => {
+      if (!sub.user_id) return;
+      // Do not overwrite authoritative profile address with candidate data
+      if (locations[sub.user_id] && userToHome.get(sub.user_id)) return;
+      // If candidate draft or self-created submission, skip
+      if (sub.status === 'draft') return;
+
       const addr = sub.address as any;
       // Handle various address formats (nested vs flat)
       const stateRaw = addr?.present?.state || addr?.permanent?.state || addr?.state;
@@ -3264,9 +3352,9 @@ export const api = {
         city = inferCity(addr);
       }
 
-      if (state && sub.user_id) {
+      if (state || city) {
         locations[sub.user_id] = { 
-          state, 
+          state: state || 'Other', 
           city: city || 'Other'
         };
       }
@@ -12811,6 +12899,24 @@ export const api = {
       console.warn('[API] Error in syncMatrixWithSystemEntitiesAndUsers:', err);
       return { updatedUsersCount: 0 };
     }
+  },
+
+  // 1-Laptop : 1-User Hardware Binding & Productivity
+  checkLaptopHardwareBinding: async (hardwareUuid: string, userId: string) => {
+    const { checkLaptopHardwareBinding } = await import('./deviceService');
+    return checkLaptopHardwareBinding(hardwareUuid, userId);
+  },
+  registerLaptopExclusiveBinding: async (userId: string, hardwareUuid: string, deviceName: string, deviceInfo?: any) => {
+    const { registerLaptopExclusiveBinding } = await import('./deviceService');
+    return registerLaptopExclusiveBinding(userId, hardwareUuid, deviceName, deviceInfo);
+  },
+  recordLaptopAppUsage: async (logs: any[]) => {
+    const { recordLaptopAppUsage } = await import('./deviceService');
+    return recordLaptopAppUsage(logs);
+  },
+  getDailyProductivitySummary: async (userId: string, date?: string) => {
+    const { getDailyProductivitySummary } = await import('./deviceService');
+    return getDailyProductivitySummary(userId, date);
   }
 };
 

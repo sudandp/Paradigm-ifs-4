@@ -323,15 +323,17 @@ const MapView: React.FC<{
         if (!mapRef.current) return;
         const isDark = theme === 'dark';
         const tileUrl = isDark 
-            ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' 
+            ? 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}' 
             : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
             
         if (tileLayerRef.current) tileLayerRef.current.setUrl(tileUrl);
         else {
             tileLayerRef.current = L.tileLayer(tileUrl, {
                 maxZoom: 22,
-                maxNativeZoom: 19,
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+                maxNativeZoom: isDark ? 16 : 19,
+                attribution: isDark 
+                    ? '&copy; Esri &mdash; Esri, DeLorme, NAVTEQ' 
+                    : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             }).addTo(mapRef.current);
         }
         
@@ -1162,15 +1164,17 @@ const RouteView: React.FC<{
         if (!mapRef.current) return;
         const isDark = theme === 'dark';
         const tileUrl = isDark 
-            ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' 
+            ? 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}' 
             : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
             
         if (tileLayerRef.current) tileLayerRef.current.setUrl(tileUrl);
         else {
             tileLayerRef.current = L.tileLayer(tileUrl, {
                 maxZoom: 22,
-                maxNativeZoom: 19,
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+                maxNativeZoom: isDark ? 16 : 19,
+                attribution: isDark 
+                    ? '&copy; Esri &mdash; Esri, DeLorme, NAVTEQ' 
+                    : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             }).addTo(mapRef.current);
         }
         
@@ -1722,22 +1726,21 @@ const ActivityItem: React.FC<{
     const badgeStyles = getEventColor(displayType);
     const [isPinging, setIsPinging] = useState(false);
 
-    // Default selection: prefer mobile (android/ios) over web/laptop.
-    // If the user has both 'web' and 'android', pre-select android only.
+    // Default selection: all active logged-in platforms are active and selected.
     const getDefaultPlatforms = (platforms: string[]) => {
-        const mobilePlatforms = platforms.filter(p => p !== 'web');
-        return mobilePlatforms.length > 0 ? mobilePlatforms : platforms;
+        return platforms;
     };
 
     const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(() => getDefaultPlatforms(userPlatforms));
     const initializedRef = useRef(false);
 
     useEffect(() => {
-        // Only set defaults on first load (when platforms data arrives from API).
-        // Do NOT reset user's manual node selection on subsequent renders.
+        // Automatically sync with detected platforms from API
         if (!initializedRef.current && userPlatforms.length > 0) {
             setSelectedPlatforms(getDefaultPlatforms(userPlatforms));
             initializedRef.current = true;
+        } else if (selectedPlatforms.length === 0 && userPlatforms.length > 0) {
+            setSelectedPlatforms(getDefaultPlatforms(userPlatforms));
         }
     }, [userPlatforms]);
 
@@ -1752,64 +1755,64 @@ const ActivityItem: React.FC<{
             initial={{ opacity: 0, x: -20 }}
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true }}
-            className="group relative flex gap-4 md:gap-6 pb-8 last:pb-0"
+            className="group relative flex gap-2 sm:gap-4 md:gap-6 pb-6 md:pb-8 last:pb-0"
         >
-            <div className="flex-shrink-0 pt-[14px] z-20">
+            <div className="flex-shrink-0 pt-[10px] sm:pt-[14px] z-20">
                 <input 
                     type="checkbox"
                     checked={isSelected}
                     onChange={() => onToggle(event.userId)}
-                    className="h-5 w-5 rounded-sm border-slate-300 text-slate-900 focus:ring-slate-500 cursor-pointer transition-all hover:border-slate-400"
+                    className="h-4 w-4 sm:h-5 sm:w-5 rounded-sm border-slate-300 text-slate-900 focus:ring-slate-500 cursor-pointer transition-all hover:border-slate-400"
                 />
             </div>
 
-            <div className="absolute left-[155px] top-[52px] bottom-[-4px] w-[2px] bg-slate-200 group-last:hidden flex flex-col items-center justify-center z-0">
+            <div className="absolute left-[110px] sm:left-[135px] md:left-[155px] top-[46px] sm:top-[52px] bottom-[-4px] w-[2px] bg-slate-200 group-last:hidden flex flex-col items-center justify-center z-0">
                 <div className="text-slate-300 transform -translate-y-2">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
                 </div>
             </div>
 
-            <div className="w-20 pt-2 flex flex-col items-end flex-shrink-0">
-                <span className="text-[14px] font-mono font-bold text-primary-text tracking-tighter">
+            <div className="w-14 sm:w-16 md:w-20 pt-1.5 sm:pt-2 flex flex-col items-end flex-shrink-0">
+                <span className="text-[12px] sm:text-[13px] md:text-[14px] font-mono font-bold text-primary-text tracking-tighter">
                     {format(new Date(event.timestamp), 'HH:mm')}
                 </span>
-                <span className="text-[10px] font-bold text-muted tracking-widest uppercase">
+                <span className="text-[8.5px] sm:text-[9px] md:text-[10px] font-bold text-muted tracking-widest uppercase">
                     {format(new Date(event.timestamp), 'dd MMM')}
                 </span>
             </div>
 
-            <div className="relative z-10 pt-1">
-                <div className="h-[48px] w-[48px] rounded-full border-2 border-page bg-card shadow-lg p-0.5 transition-transform group-hover:scale-110">
+            <div className="relative z-10 pt-1 flex-shrink-0">
+                <div className="h-[38px] w-[38px] sm:h-[44px] sm:w-[44px] md:h-[48px] md:w-[48px] rounded-full border-2 border-page bg-card shadow-lg p-0.5 transition-transform group-hover:scale-110">
                     <ProfilePlaceholder 
                         photoUrl={event.userPhoto || undefined} 
                         seed={event.userName}
                         className="h-full w-full rounded-full object-cover shadow-inner"
                     />
                 </div>
-                {isFirst && <div className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-emerald-500 border-2 border-page" title="Current Session" />}
+                {isFirst && <div className="absolute -top-1 -right-1 h-2.5 w-2.5 sm:h-3 sm:w-3 rounded-full bg-emerald-500 border-2 border-page" title="Current Session" />}
             </div>
 
-            <div className="flex-1 bg-card border border-border shadow-sm group-hover:shadow-md transition-all duration-300 p-4 relative overflow-hidden">
+            <div className="flex-1 min-w-0 bg-card border border-border shadow-sm group-hover:shadow-md transition-all duration-300 p-3 sm:p-4 relative overflow-hidden rounded-xl md:rounded-none">
                 <div className={`absolute top-0 left-0 bottom-0 w-1 ${badgeStyles.split(' ')[0].replace('text-', 'bg-')}`} />
                 
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <div className="space-y-1">
+                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3 sm:gap-4">
+                    <div className="space-y-1 min-w-0 flex-1 w-full lg:w-auto">
                         <div className="flex flex-col">
-                            <div className="flex items-center gap-3">
-                                <h4 className="text-sm font-black text-primary-text uppercase tracking-tight">{event.userName}</h4>
-                                <span className={`px-2 py-0.5 rounded-sm text-[10px] font-black uppercase tracking-widest border ${badgeStyles}`}>
+                            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                                <h4 className="text-sm font-black text-primary-text uppercase tracking-tight truncate max-w-[180px] sm:max-w-none">{event.userName}</h4>
+                                <span className={`px-2 py-0.5 rounded-sm text-[9px] sm:text-[10px] font-black uppercase tracking-widest border ${badgeStyles}`}>
                                     {getEventLabel(displayType, event.workType)}
                                 </span>
                             </div>
                             {event.userRole && (
-                                <span className="text-[10px] font-bold text-muted uppercase tracking-wider mt-0.5">
+                                <span className="text-[9px] sm:text-[10px] font-bold text-muted uppercase tracking-wider mt-0.5">
                                     {event.userRole}
                                 </span>
                             )}
                         </div>
-                        <div className="flex items-start gap-1.5">
-                            <MapPin className="h-3.5 w-3.5 text-muted mt-0.5" />
-                            <div className="text-xs text-primary-text max-w-md">
+                        <div className="flex items-start gap-1.5 pt-0.5">
+                            <MapPin className="h-3.5 w-3.5 text-muted mt-0.5 flex-shrink-0" />
+                            <div className="text-xs text-primary-text max-w-md line-clamp-2 lg:line-clamp-none">
                                 <ResolveAddress 
                                     lat={event.latitude || 0} 
                                     lng={event.longitude || 0} 
@@ -1820,10 +1823,10 @@ const ActivityItem: React.FC<{
                         </div>
                     </div>
 
-                    {/* Platform Targeting (Mission Control Aesthetics) */}
-                    <div className="flex-1 flex items-center justify-center border-t md:border-t-0 md:border-x border-slate-100/60 px-4 py-3 md:py-1 bg-slate-50/40 rounded-xl md:rounded-none my-2 md:my-0">
+                    {/* Platform Targeting (Mission Control Aesthetics - Responsive Web & Mobile) */}
+                    <div className="w-full lg:w-auto flex items-center justify-center border-t lg:border-t-0 lg:border-x border-slate-100/80 px-3 sm:px-5 py-2.5 lg:py-1 bg-slate-50/50 rounded-xl lg:rounded-none my-1 lg:my-0 min-w-fit">
                         {userPlatforms.length > 0 ? (
-                            <div className="flex items-center gap-5 justify-center">
+                            <div className="flex items-center gap-3 sm:gap-4 md:gap-5 justify-center flex-wrap">
                                 <AnimatePresence mode="popLayout">
                                     {userPlatforms.map((platform, pIdx) => {
                                         const isSelectedNode = selectedPlatforms.includes(platform);
@@ -1837,18 +1840,18 @@ const ActivityItem: React.FC<{
                                                 animate={{ opacity: 1, scale: 1 }}
                                                 transition={{ delay: pIdx * 0.05 }}
                                                 onClick={() => togglePlatform(platform)}
-                                                className="group/node relative flex flex-col items-center justify-center min-w-[56px]"
+                                                className="group/node relative flex flex-col items-center justify-center min-w-[50px] sm:min-w-[56px]"
                                             >
                                                 {/* Node Box */}
                                                 <div className={`
-                                                    relative h-11 w-11 rounded-xl flex items-center justify-center transition-all duration-300
+                                                    relative h-10 w-10 sm:h-11 sm:w-11 rounded-xl flex items-center justify-center transition-all duration-300
                                                     ${isSelectedNode 
                                                         ? 'bg-slate-900 border-emerald-500 shadow-md shadow-emerald-500/20' 
                                                         : 'bg-white border-slate-200 hover:border-slate-300 shadow-sm opacity-60 hover:opacity-100'}
                                                     border-[1.5px]
                                                 `}>
                                                     <Icon className={`
-                                                        h-5 w-5 transition-all duration-300
+                                                        h-4.5 w-4.5 sm:h-5 sm:w-5 transition-all duration-300
                                                         ${isSelectedNode ? 'text-emerald-400' : 'text-slate-500 group-hover/node:text-slate-700'}
                                                     `} />
                                                     
@@ -1863,7 +1866,7 @@ const ActivityItem: React.FC<{
 
                                                 {/* High-Precision Label */}
                                                 <span className={`
-                                                    mt-1.5 text-[8px] font-black uppercase tracking-wider transition-colors text-center
+                                                    mt-1 text-[8px] sm:text-[8.5px] font-black uppercase tracking-wider transition-colors text-center
                                                     ${isSelectedNode ? 'text-slate-900 font-bold' : 'text-slate-400 group-hover/node:text-slate-600'}
                                                 `}>
                                                     {label}
@@ -1884,7 +1887,7 @@ const ActivityItem: React.FC<{
                         )}
                     </div>
 
-                    <div className="flex items-center gap-3 self-end md:self-center pr-2">
+                    <div className="w-full lg:w-auto flex items-center justify-between lg:justify-end gap-2 sm:gap-3 self-stretch lg:self-center pr-0 lg:pr-2 border-t lg:border-t-0 pt-2.5 lg:pt-0 border-slate-100">
                         <motion.button
                             whileHover={{ scale: 1.02 }}
                             whileTap={{ scale: 0.98 }}
@@ -1898,7 +1901,7 @@ const ActivityItem: React.FC<{
                             }}
                             disabled={isPinging || (userPlatforms.length > 0 && selectedPlatforms.length === 0)}
                             className={`
-                                relative h-10 px-6 rounded-xl flex items-center gap-3 transition-all duration-300
+                                relative h-9 sm:h-10 px-4 sm:px-6 rounded-xl flex items-center justify-center gap-2 sm:gap-3 transition-all duration-300 flex-1 lg:flex-initial
                                 ${isPinging || (userPlatforms.length > 0 && selectedPlatforms.length === 0)
                                     ? 'bg-slate-100 text-slate-400 grayscale cursor-not-allowed'
                                     : 'bg-indigo-600 text-white shadow-[0_4px_12px_rgba(79,70,229,0.3)] hover:bg-indigo-700 hover:shadow-[0_6px_20px_rgba(79,70,229,0.4)]'}
@@ -1922,15 +1925,17 @@ const ActivityItem: React.FC<{
                                 href={`https://www.google.com/maps/search/?api=1&query=${event.latitude},${event.longitude}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="h-8 px-3 rounded-sm border border-border bg-page hover:bg-slate-50 flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-primary-text transition-colors"
+                                className="h-9 sm:h-10 px-3 rounded-xl border border-border bg-page hover:bg-slate-50 flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-primary-text transition-colors flex-shrink-0"
+                                title="Open in Google Maps"
                             >
-                                <ExternalLink className="h-3 w-3" />
-                                Inspect
+                                <ExternalLink className="h-3.5 w-3.5" />
+                                <span>Inspect</span>
                             </a>
                         )}
                         <button 
                             onClick={() => onSelect(event.userId)}
-                            className="h-8 w-8 rounded-sm border border-border flex items-center justify-center text-muted hover:text-primary-text hover:bg-page transition-colors"
+                            className="h-9 sm:h-10 w-9 sm:w-10 rounded-xl border border-border flex items-center justify-center text-muted hover:text-primary-text hover:bg-page transition-colors flex-shrink-0"
+                            title="View Agent Path"
                         >
                             <ChevronRight className="h-4 w-4" />
                         </button>
@@ -2113,18 +2118,22 @@ const FieldStaffTracking: React.FC = () => {
             end.setHours(23, 59, 59, 999);
 
             // 1. Fetch static data if not already present
+            let currentUsers = users;
             if (users.length === 0 || availableRoles.length === 0) {
                 const [usersData, locationsData, rolesData] = await Promise.all([
                     api.getUsers(),
                     api.getLocations(),
                     api.getRoles()
                 ]);
+                currentUsers = usersData;
                 setUsers(usersData);
                 setKnownLocations(locationsData);
                 setAvailableRoles(rolesData);
-                
-                // Fetch platforms for all users
-                const allUserIds = usersData.map((u: any) => u.id);
+            }
+
+            // Always fetch and refresh active platforms for all users
+            if (currentUsers.length > 0) {
+                const allUserIds = currentUsers.map((u: any) => u.id);
                 api.getUserActivePlatforms(allUserIds).then(setUserPlatformsMap);
             }
 
@@ -2592,25 +2601,37 @@ const FieldStaffTracking: React.FC = () => {
                                             </div>
                                             <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Select All Agents on this page</span>
                                         </div>
-                                        {paginatedEvents.map((event, idx) => (
-                                            <ActivityItem 
-                                                key={event.id} 
-                                                event={event} 
-                                                isFirst={currentPage === 1 && idx === 0}
-                                                isLast={idx === paginatedEvents.length - 1}
-                                                knownLocations={knownLocations}
-                                                isSelected={selectedUserIds.includes(event.userId)}
-                                                onToggle={toggleUserSelection}
-                                                onFind={(userId, platforms) => handleFindUsers([userId], platforms)}
-                                                onSelect={(userId) => {
-                                                    setSelectedUser(userId);
-                                                    setTempUser(userId);
-                                                    setViewMode('list');
-                                                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                                                }}
-                                                userPlatforms={userPlatformsMap[event.userId]}
-                                            />
-                                        ))}
+                                        {paginatedEvents.map((event, idx) => {
+                                            const resolvedPlatforms = (() => {
+                                                const fromMap = userPlatformsMap[event.userId];
+                                                if (fromMap && fromMap.length > 0) return fromMap;
+                                                const src = (event as any).source || '';
+                                                if (src.includes('android') || src === 'background_fcm') return ['android'];
+                                                if (src === 'web') return ['web'];
+                                                if (src.includes('ios')) return ['ios'];
+                                                return [];
+                                            })();
+
+                                            return (
+                                                <ActivityItem 
+                                                    key={event.id} 
+                                                    event={event} 
+                                                    isFirst={currentPage === 1 && idx === 0}
+                                                    isLast={idx === paginatedEvents.length - 1}
+                                                    knownLocations={knownLocations}
+                                                    isSelected={selectedUserIds.includes(event.userId)}
+                                                    onToggle={toggleUserSelection}
+                                                    onFind={(userId, platforms) => handleFindUsers([userId], platforms)}
+                                                    onSelect={(userId) => {
+                                                        setSelectedUser(userId);
+                                                        setTempUser(userId);
+                                                        setViewMode('list');
+                                                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                                                    }}
+                                                    userPlatforms={resolvedPlatforms}
+                                                />
+                                            );
+                                        })}
                                     </div>
                                 )}
 

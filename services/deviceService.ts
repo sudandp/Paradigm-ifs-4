@@ -1053,3 +1053,276 @@ async function notifyDeviceRejected(
     console.error('Error notifying device rejected:', error);
   }
 }
+
+// =============================================
+// 1-Laptop : 1-User Hardware Binding & Productivity
+// =============================================
+
+/**
+ * Check if a laptop hardware UUID is strictly bound to a single user.
+ * Prevents multiple users from sharing or logging into the same registered laptop.
+ */
+export async function checkLaptopHardwareBinding(hardwareUuid: string, userId: string): Promise<{
+  allowed: boolean;
+  isBound: boolean;
+  boundUser?: { id: string; name: string; email: string };
+  device?: UserDevice;
+  message?: string;
+}> {
+  if (!hardwareUuid) {
+    return { allowed: true, isBound: false };
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('user_devices')
+      .select('*, user:user_id(id, name, email)')
+      .eq('hardware_uuid', hardwareUuid)
+      .eq('status', 'active')
+      .maybeSingle();
+
+    if (error && error.code !== 'PGRST116') {
+      console.warn('[DeviceBinding] Error checking hardware UUID:', error.message);
+      return { allowed: true, isBound: false };
+    }
+
+    if (!data) {
+      // Laptop is not yet registered to any user
+      return { allowed: true, isBound: false };
+    }
+
+    if (data.user_id !== userId) {
+      // Laptop is bound to a DIFFERENT user! Strict 1:1 enforcement violation.
+      const boundName = data.user?.name || 'another employee';
+      return {
+        allowed: false,
+        isBound: true,
+        boundUser: {
+          id: data.user_id,
+          name: boundName,
+          email: data.user?.email || '',
+        },
+        message: `This laptop is bound exclusively to ${boundName}. Only 1 user is permitted per registered work laptop.`,
+      };
+    }
+
+    // Laptop is bound to this exact user
+    return {
+      allowed: true,
+      isBound: true,
+      device: {
+        ...data,
+        userId: data.user_id,
+        deviceType: data.device_type,
+        deviceIdentifier: data.device_identifier,
+        deviceName: data.device_name,
+        deviceInfo: data.device_info || {},
+        hardwareUuid: data.hardware_uuid,
+        isExclusiveLaptop: data.is_exclusive_laptop,
+        registeredAt: data.registered_at,
+        lastUsedAt: data.last_used_at,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+      },
+    };
+  } catch (err: any) {
+    console.warn('[DeviceBinding] Error verifying laptop binding:', err.message || err);
+    return { allowed: true, isBound: false };
+  }
+}
+
+/**
+ * Register or bind a laptop exclusively to a user (1-laptop-1-user policy)
+ */
+export async function registerLaptopExclusiveBinding(
+  userId: string,
+  hardwareUuid: string,
+  deviceName: string,
+  deviceInfo: any
+): Promise<{ success: boolean; device?: UserDevice; error?: string }> {
+  try {
+    // 1. Verify no other user already owns this hardware UUID
+    const check = await checkLaptopHardwareBinding(hardwareUuid, userId);
+    if (!check.allowed) {
+      return { success: false, error: check.message };
+    }
+
+    // 2. Register/update in user_devices
+    const identifier = `laptop-${hardwareUuid.toLowerCase()}`;
+    const payload = {
+      user_id: userId,
+      device_type: 'web',
+      device_identifier: identifier,
+      device_name: deviceName || 'Work Laptop',
+      device_info: deviceInfo || {},
+      hardware_uuid: hardwareUuid,
+      is_exclusive_laptop: true,
+      status: 'active',
+      last_used_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await supabase
+      .from('user_devices')
+      .upsert(payload, { onConflict: 'device_identifier' })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return {
+      success: true,
+      device: {
+        ...data,
+        userId: data.user_id,
+        deviceType: data.device_type,
+        deviceIdentifier: data.device_identifier,
+        deviceName: data.device_name,
+        deviceInfo: data.device_info || {},
+        hardwareUuid: data.hardware_uuid,
+        isExclusiveLaptop: data.is_exclusive_laptop,
+        registeredAt: data.registered_at,
+        lastUsedAt: data.last_used_at,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+      },
+    };
+  } catch (err: any) {
+    console.error('[DeviceBinding] Failed to bind laptop exclusively:', err);
+    return { success: false, error: err.message || 'Failed to bind laptop.' };
+  }
+}
+
+/**
+ * Record a batch of active application usage logs from the desktop agent
+ */
+export async function recordLaptopAppUsage(logs: any[]): Promise<boolean> {
+  if (!logs || logs.length === 0) return true;
+
+  try {
+    const formatted = logs.map(l => ({
+      user_id: l.userId,
+      device_id: l.deviceId || null,
+      attendance_event_id: l.attendanceEventId || null,
+      app_name: l.appName,
+      app_title: l.appTitle || null,
+      category: l.category || 'other',
+      duration_seconds: l.durationSeconds || 10,
+      is_idle: Boolean(l.isIdle),
+      session_date: l.sessionDate || new Date().toISOString().split('T')[0],
+      start_time: l.startTime || new Date().toISOString(),
+      end_time: l.endTime || new Date().toISOString(),
+    }));
+
+    const { error } = await supabase.from('laptop_app_usage_logs').insert(formatted);
+    if (error) {
+      console.warn('[Productivity] Failed to insert laptop app usage logs:', error.message);
+      return false;
+    }
+    return true;
+  } catch (e: any) {
+    console.warn('[Productivity] Error recording app usage:', e.message || e);
+    return false;
+  }
+}
+
+/**
+ * Fetch daily productivity summary (top apps, active vs idle time) for an employee
+ */
+export async function getDailyProductivitySummary(
+  userId: string,
+  date?: string
+): Promise<any> {
+  const targetDate = date || new Date().toISOString().split('T')[0];
+
+  try {
+    // 1. Try fetching pre-aggregated daily summary
+    const { data: summary, error: sumErr } = await supabase
+      .from('daily_laptop_productivity_summary')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('session_date', targetDate)
+      .maybeSingle();
+
+    if (summary && !sumErr) {
+      return {
+        userId,
+        sessionDate: targetDate,
+        totalActiveSeconds: summary.total_active_seconds || 0,
+        totalIdleSeconds: summary.total_idle_seconds || 0,
+        topApps: summary.top_apps || [],
+        categoriesBreakdown: summary.categories_breakdown || {},
+      };
+    }
+
+    // 2. If not aggregated yet, aggregate live from laptop_app_usage_logs
+    const { data: logs, error: logErr } = await supabase
+      .from('laptop_app_usage_logs')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('session_date', targetDate);
+
+    if (!logs || logs.length === 0 || logErr) {
+      // Default fallback when no logs exist yet
+      return {
+        userId,
+        sessionDate: targetDate,
+        totalActiveSeconds: 0,
+        totalIdleSeconds: 0,
+        topApps: [],
+        categoriesBreakdown: {},
+      };
+    }
+
+    let totalActive = 0;
+    let totalIdle = 0;
+    const appDurations: Record<string, { duration: number; category: string; title?: string }> = {};
+    const catDurations: Record<string, number> = {};
+
+    logs.forEach(l => {
+      const dur = l.duration_seconds || 0;
+      if (l.is_idle) {
+        totalIdle += dur;
+      } else {
+        totalActive += dur;
+        const appKey = l.app_name || 'Unknown App';
+        if (!appDurations[appKey]) {
+          appDurations[appKey] = { duration: 0, category: l.category || 'other', title: l.app_title };
+        }
+        appDurations[appKey].duration += dur;
+
+        const cat = l.category || 'other';
+        catDurations[cat] = (catDurations[cat] || 0) + dur;
+      }
+    });
+
+    const totalTracked = totalActive > 0 ? totalActive : 1;
+    const topApps = Object.entries(appDurations)
+      .map(([name, info]) => ({
+        name,
+        title: info.title,
+        durationSeconds: info.duration,
+        percentage: Math.round((info.duration / totalTracked) * 100),
+        category: info.category,
+      }))
+      .sort((a, b) => b.durationSeconds - a.durationSeconds);
+
+    return {
+      userId,
+      sessionDate: targetDate,
+      totalActiveSeconds: totalActive,
+      totalIdleSeconds: totalIdle,
+      topApps,
+      categoriesBreakdown: catDurations,
+    };
+  } catch (err: any) {
+    console.warn('[Productivity] Failed to fetch productivity summary:', err);
+    return {
+      userId,
+      sessionDate: targetDate,
+      totalActiveSeconds: 0,
+      totalIdleSeconds: 0,
+      topApps: [],
+      categoriesBreakdown: {},
+    };
+  }
+}

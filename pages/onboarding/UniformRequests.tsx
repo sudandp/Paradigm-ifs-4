@@ -350,7 +350,7 @@ const UniformRequests: React.FC = () => {
                     <button
                         type="button"
                         onClick={handleCancel}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#065f46] hover:bg-[#044e3b] text-white border border-emerald-500/40 font-bold text-xs shadow-[0_2px_8px_rgba(6,95,70,0.4)] active:scale-95 transition-all cursor-pointer"
                     >
                         <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
                         <span>Back</span>
@@ -386,7 +386,7 @@ const UniformRequests: React.FC = () => {
                 <button
                     type="button"
                     onClick={() => window.history.state?.idx > 0 ? navigate(-1) : navigate('/mobile-home')}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#065f46] hover:bg-[#044e3b] text-white border border-emerald-500/40 font-bold text-xs shadow-[0_2px_8px_rgba(6,95,70,0.4)] active:scale-95 transition-all cursor-pointer"
                 >
                     <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
                     <span>Back</span>
@@ -445,7 +445,7 @@ const UniformRequests: React.FC = () => {
                         <p className="text-sm font-bold text-white/60">No uniform requests found.</p>
                         <button
                             onClick={handleNewRequest}
-                            className="mt-4 inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-[#44D62C] text-[#0A1809] font-black text-xs shadow-md active:scale-95 transition-all cursor-pointer"
+                            className="mt-4 inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-[#065f46] hover:bg-[#044e39] text-white font-bold text-xs shadow-md border border-white/10 active:scale-95 transition-all cursor-pointer"
                         >
                             <Plus className="h-4 w-4 stroke-[2.5]" /> Create First Request
                         </button>

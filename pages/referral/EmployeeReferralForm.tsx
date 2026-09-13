@@ -98,11 +98,11 @@ const EmployeeReferralForm: React.FC = () => {
         <div className={`flex flex-col h-full ${isMobile ? 'min-h-screen bg-[#041b0f]' : 'bg-page'}`}>
             {/* Standard Mobile Top Back Bar */}
             {isMobile ? (
-                <div className="flex items-center gap-3 px-6 pt-4 pb-2 bg-[#041b0f] border-b border-[#134426]/60 sticky top-0 z-30">
+                <div className="flex items-center gap-3 px-6 pt-4 pb-2 bg-[#041b0f] border-b border-[#134426]/60">
                     <button
                         type="button"
                         onClick={() => window.history.state?.idx > 0 ? navigate(-1) : navigate('/mobile-home')}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#065f46] hover:bg-[#044e3b] text-white border border-emerald-500/40 font-bold text-xs shadow-[0_2px_8px_rgba(6,95,70,0.4)] active:scale-95 transition-all cursor-pointer"
                     >
                         <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
                         <span>Back</span>
@@ -151,7 +151,7 @@ const EmployeeReferralForm: React.FC = () => {
                                     onClick={() => setIsParadigmEmployee(true)}
                                     className={`flex-1 py-4 rounded-2xl font-bold transition-all ${
                                         isParadigmEmployee === true
-                                            ? 'bg-[#44D62C] text-[#0A1809] shadow-lg shadow-[#44D62C]/20'
+                                            ? 'bg-[#065f46] text-white shadow-lg shadow-[#065f46]/30 border border-white/10'
                                             : isMobile ? 'bg-[#041b0f] text-white/50 border border-[#134426]' : 'bg-gray-100 text-gray-500'
                                     }`}
                                 >
@@ -162,7 +162,7 @@ const EmployeeReferralForm: React.FC = () => {
                                     onClick={() => setIsParadigmEmployee(false)}
                                     className={`flex-1 py-4 rounded-2xl font-bold transition-all ${
                                         isParadigmEmployee === false
-                                            ? 'bg-[#44D62C] text-[#0A1809] shadow-lg shadow-[#44D62C]/20'
+                                            ? 'bg-[#065f46] text-white shadow-lg shadow-[#065f46]/30 border border-white/10'
                                             : isMobile ? 'bg-[#041b0f] text-white/50 border border-[#134426]' : 'bg-gray-100 text-gray-500'
                                     }`}
                                 >
@@ -401,7 +401,7 @@ const EmployeeReferralForm: React.FC = () => {
 
                     <Button 
                         type="submit" 
-                        className="w-full h-14 text-base font-black tracking-widest uppercase shadow-2xl active:scale-[0.99] transition-all bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] border-none shadow-[0_4px_16px_rgba(68,214,44,0.3)] cursor-pointer"
+                        className="w-full h-14 text-base font-bold tracking-widest uppercase shadow-2xl active:scale-[0.99] transition-all bg-[#065f46] hover:bg-[#044e39] text-white border border-white/10 shadow-[0_4px_16px_rgba(6,95,70,0.3)] cursor-pointer"
                         isLoading={isSubmitting}
                     >
                         Submit Referral

@@ -390,7 +390,7 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [], isMobile:
                     <button
                         onClick={() => handleRangeChange('day')}
                         className={`flex-1 px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${selectedRange === 'day'
-                            ? (isMobile ? 'bg-[#44D62C] text-[#0A1809] shadow-[0_2px_10px_rgba(68,214,44,0.35)]' : 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20')
+                            ? (isMobile ? 'bg-[#065f46] text-white shadow-[0_2px_10px_rgba(6,95,70,0.35)] border border-white/10' : 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20')
                             : (isMobile ? 'text-[#7D967B] hover:text-white' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white')
                             }`}
                     >
@@ -399,7 +399,7 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [], isMobile:
                     <button
                         onClick={() => handleRangeChange('week')}
                         className={`flex-1 px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${selectedRange === 'week'
-                            ? (isMobile ? 'bg-[#44D62C] text-[#0A1809] shadow-[0_2px_10px_rgba(68,214,44,0.35)]' : 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20')
+                            ? (isMobile ? 'bg-[#065f46] text-white shadow-[0_2px_10px_rgba(6,95,70,0.35)] border border-white/10' : 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20')
                             : (isMobile ? 'text-[#7D967B] hover:text-white' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white')
                             }`}
                     >
@@ -408,7 +408,7 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [], isMobile:
                     <button
                         onClick={() => handleRangeChange('month')}
                         className={`flex-1 px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${selectedRange === 'month'
-                            ? (isMobile ? 'bg-[#44D62C] text-[#0A1809] shadow-[0_2px_10px_rgba(68,214,44,0.35)]' : 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20')
+                            ? (isMobile ? 'bg-[#065f46] text-white shadow-[0_2px_10px_rgba(6,95,70,0.35)] border border-white/10' : 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20')
                             : (isMobile ? 'text-[#7D967B] hover:text-white' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white')
                             }`}
                     >
@@ -421,7 +421,7 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [], isMobile:
                     <button
                         onClick={() => handleDateChange('prev')}
                         className={isMobile 
-                            ? "h-8 w-8 rounded-xl bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] flex items-center justify-center font-bold shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                            ? "h-8 w-8 rounded-xl bg-[#065f46] hover:bg-[#044e39] text-white flex items-center justify-center font-bold shadow-[0_2px_8px_rgba(6,95,70,0.3)] border border-white/10 active:scale-95 transition-all cursor-pointer"
                             : "p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-xl transition-colors flex items-center justify-center text-slate-700 dark:text-slate-300 cursor-pointer"
                         }
                         title="Previous"
@@ -435,7 +435,7 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [], isMobile:
                     <button
                         onClick={() => handleDateChange('next')}
                         className={isMobile 
-                            ? "h-8 w-8 rounded-xl bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] flex items-center justify-center font-bold shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                            ? "h-8 w-8 rounded-xl bg-[#065f46] hover:bg-[#044e39] text-white flex items-center justify-center font-bold shadow-[0_2px_8px_rgba(6,95,70,0.3)] border border-white/10 active:scale-95 transition-all cursor-pointer"
                             : "p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-xl transition-colors flex items-center justify-center text-slate-700 dark:text-slate-300 cursor-pointer"
                         }
                         title="Next"

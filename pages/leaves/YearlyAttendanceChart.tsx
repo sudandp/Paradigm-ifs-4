@@ -298,19 +298,19 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({
             chartInstance.current.data.datasets.forEach((ds, i) => {
                 ds.data = newData[i];
                 if (isMobileEffective) {
-                    const mobileColors = ['#44D62C', '#38bdf8', '#10b981', '#f59e0b', '#f97316'];
+                    const mobileColors = ['#065f46', '#38bdf8', '#10b981', '#f59e0b', '#f97316'];
                     ds.backgroundColor = mobileColors[i];
                 } else {
                     const webColors = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ea580c'];
                     ds.backgroundColor = webColors[i];
                 }
                 (ds as any).borderWidth = (c: any) => c.dataIndex === activeMonthIdx ? 2 : 0;
-                (ds as any).borderColor = (c: any) => c.dataIndex === activeMonthIdx ? (isMobileEffective ? '#44D62C' : '#312e81') : 'transparent';
+                (ds as any).borderColor = (c: any) => c.dataIndex === activeMonthIdx ? (isMobileEffective ? '#34d399' : '#312e81') : 'transparent';
             });
             if (chartInstance.current.options.scales?.x?.ticks) {
                 (chartInstance.current.options.scales.x.ticks as any).color = (c: any) => 
                     c.index === activeMonthIdx 
-                        ? (isMobileEffective ? '#44D62C' : '#4f46e5') 
+                        ? (isMobileEffective ? '#34d399' : '#4f46e5') 
                         : (isMobileEffective ? '#7D967B' : '#64748b');
                 (chartInstance.current.options.scales.x.ticks as any).font = (c: any) => ({
                     size: c.index === activeMonthIdx ? 11 : 10,
@@ -330,8 +330,8 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({
                     {
                         label: 'WORKED',
                         data: stats.monthlyWorked,
-                        backgroundColor: isMobileEffective ? '#44D62C' : '#6366f1',
-                        borderColor: ((c: any) => c.dataIndex === activeMonthIdx ? (isMobileEffective ? '#44D62C' : '#312e81') : 'transparent') as any,
+                        backgroundColor: isMobileEffective ? '#065f46' : '#6366f1',
+                        borderColor: ((c: any) => c.dataIndex === activeMonthIdx ? (isMobileEffective ? '#34d399' : '#312e81') : 'transparent') as any,
                         borderWidth: ((c: any) => c.dataIndex === activeMonthIdx ? 2 : 0) as any,
                         stack: 'payable',
                         borderRadius: 4,
@@ -340,7 +340,7 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({
                         label: 'WH',
                         data: stats.monthlyLeaves,
                         backgroundColor: isMobileEffective ? '#38bdf8' : '#8b5cf6',
-                        borderColor: ((c: any) => c.dataIndex === activeMonthIdx ? (isMobileEffective ? '#44D62C' : '#312e81') : 'transparent') as any,
+                        borderColor: ((c: any) => c.dataIndex === activeMonthIdx ? (isMobileEffective ? '#34d399' : '#312e81') : 'transparent') as any,
                         borderWidth: ((c: any) => c.dataIndex === activeMonthIdx ? 2 : 0) as any,
                         stack: 'payable',
                         borderRadius: 4,
@@ -349,7 +349,7 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({
                         label: 'HOLIDAYS',
                         data: stats.monthlyHolidays,
                         backgroundColor: '#10b981',
-                        borderColor: ((c: any) => c.dataIndex === activeMonthIdx ? (isMobileEffective ? '#44D62C' : '#312e81') : 'transparent') as any,
+                        borderColor: ((c: any) => c.dataIndex === activeMonthIdx ? (isMobileEffective ? '#34d399' : '#312e81') : 'transparent') as any,
                         borderWidth: ((c: any) => c.dataIndex === activeMonthIdx ? 2 : 0) as any,
                         stack: 'payable',
                         borderRadius: 4,
@@ -358,7 +358,7 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({
                         label: 'WEEK OFFS',
                         data: stats.monthlySundays,
                         backgroundColor: '#f59e0b',
-                        borderColor: ((c: any) => c.dataIndex === activeMonthIdx ? (isMobileEffective ? '#44D62C' : '#312e81') : 'transparent') as any,
+                        borderColor: ((c: any) => c.dataIndex === activeMonthIdx ? (isMobileEffective ? '#34d399' : '#312e81') : 'transparent') as any,
                         borderWidth: ((c: any) => c.dataIndex === activeMonthIdx ? 2 : 0) as any,
                         stack: 'payable',
                         borderRadius: 4,
@@ -367,7 +367,7 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({
                         label: 'SITE OT',
                         data: stats.monthlySiteOt,
                         backgroundColor: isMobileEffective ? '#f97316' : '#ea580c',
-                        borderColor: ((c: any) => c.dataIndex === activeMonthIdx ? (isMobileEffective ? '#44D62C' : '#312e81') : 'transparent') as any,
+                        borderColor: ((c: any) => c.dataIndex === activeMonthIdx ? (isMobileEffective ? '#34d399' : '#312e81') : 'transparent') as any,
                         borderWidth: ((c: any) => c.dataIndex === activeMonthIdx ? 2 : 0) as any,
                         stack: 'siteot',
                         borderRadius: 4,
@@ -437,7 +437,7 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({
                                 weight: c.index === activeMonthIdx ? 700 : 500
                             })) as any, 
                             color: ((c: any) => c.index === activeMonthIdx 
-                                ? (isMobileEffective ? '#44D62C' : '#4f46e5') 
+                                ? (isMobileEffective ? '#34d399' : '#4f46e5') 
                                 : (isMobileEffective ? '#7D967B' : '#64748b')) as any
                         }
                     }
@@ -483,18 +483,18 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({
             <div className="flex items-center justify-between mb-4 flex-shrink-0">
                 <div className="flex items-center gap-2.5">
                     <div className={`p-1.5 rounded-xl flex items-center justify-center ${
-                        isMobileEffective ? 'bg-[#091c13] border border-[#2a4536]' : 'bg-indigo-50 rounded-lg'
+                        isMobileEffective ? 'bg-[#065f46]/20 border border-[#065f46]/40' : 'bg-indigo-50 rounded-lg'
                     }`}>
-                        <BarChart2 className={`h-4 w-4 ${isMobileEffective ? 'text-[#22c55e]' : 'text-indigo-600'}`} />
+                        <BarChart2 className={`h-4 w-4 ${isMobileEffective ? 'text-emerald-400' : 'text-indigo-600'}`} />
                     </div>
                     <div className="flex items-center gap-1.5">
                         <h3 className={`text-sm font-bold ${isMobileEffective ? 'text-white' : 'text-primary-text'}`}>
                             Yearly Attendance
                         </h3>
                         {activeMonthIdx >= 0 && (
-                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
                                 isMobileEffective 
-                                    ? 'bg-[#134426] text-[#44D62C] border border-[#2a4536]' 
+                                    ? 'bg-[#065f46] text-white border border-white/10 shadow-xs' 
                                     : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
                             }`}>
                                 {MONTHS[activeMonthIdx]}
@@ -533,7 +533,7 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({
                     <div className={`absolute inset-0 flex items-center justify-center z-10 ${
                         isMobileEffective ? 'bg-[#092c19]/70 backdrop-blur-xs' : 'bg-white/50'
                     }`}>
-                        <Loader2 className={`h-5 w-5 animate-spin ${isMobileEffective ? 'text-[#22c55e]' : 'text-indigo-600'}`} />
+                        <Loader2 className={`h-5 w-5 animate-spin ${isMobileEffective ? 'text-emerald-400' : 'text-indigo-600'}`} />
                     </div>
                 ) : null}
                 <canvas ref={chartRef}></canvas>
@@ -545,7 +545,7 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({
                     <div className="flex justify-between items-center py-2.5 border-t border-[#134426]">
                         <span className="font-semibold text-white/90 text-xs">Total Paydays:</span>
                         <div className="flex items-center gap-2">
-                            <span className="font-bold text-xs px-2.5 py-1 rounded-full bg-[#0d2c18] border border-[#1b5e32] text-[#22c55e]">
+                            <span className="font-bold text-xs px-2.5 py-1 rounded-full bg-[#065f46] border border-white/10 text-white shadow-sm">
                                 {totalPayable} days
                             </span>
                         </div>

@@ -33,56 +33,84 @@ export const Tracking = registerPlugin<TrackingPlugin>('Tracking');
 class RouteTrackingService {
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private isTracking: boolean = false;
+  private isBackgroundServiceRunning: boolean = false;
   private isRecording: boolean = false;
+  private lastRecordedAt: number = 0;
+  private currentUserId: string | null = null;
+  private currentIntervalMinutes: number = 15;
 
-  public async startTracking(userId: string, intervalMinutes: number = 15) {
-    if (this.isTracking) return;
-    
-    console.log(`[RouteTracking] Starting tracking for user ${userId} every ${intervalMinutes} minutes`);
-    this.isTracking = true;
+  public async startTracking(userId: string, intervalMinutes: number = 15, runBackgroundService: boolean = false) {
+    this.currentUserId = userId;
+    this.currentIntervalMinutes = intervalMinutes;
 
-    // Launch foreground service on Android.
-    // The native service handles GPS collection + Supabase upload DIRECTLY,
-    // so it keeps running even when the WebView JS runtime is paused in background.
+    console.log(`[RouteTracking] Starting/syncing tracking for user ${userId}: interval=${intervalMinutes}m, bgService=${runBackgroundService}`);
+
+    // 1. Manage Android Native Background Foreground Service
+    // Only run native background persistent notification if employee is actively checked in
     if (Capacitor.getPlatform() === 'android') {
-      try {
-        // [AUTH FIX] Read the live JWT access token and refresh token from the current session.
-        const { data: { session } } = await supabase.auth.getSession();
-        const accessToken  = session?.access_token || supabaseAnonKey || '';
-        const refreshToken = session?.refresh_token || '';
+      if (runBackgroundService) {
+        if (!this.isBackgroundServiceRunning) {
+          try {
+            // [AUTH FIX] Read the live JWT access token and refresh token from the current session.
+            const { data: { session } } = await supabase.auth.getSession();
+            const accessToken  = session?.access_token || supabaseAnonKey || '';
+            const refreshToken = session?.refresh_token || '';
 
-        await Tracking.startForegroundService({
-          title: 'Paradigm Field Ops',
-          text:  'Location tracking is active',
-          userId,
-          supabaseUrl:          supabaseUrl  || '',
-          supabaseKey:          supabaseAnonKey || '',  // still needed as apikey header
-          supabaseToken:        accessToken,             // JWT for Authorization header
-          supabaseRefreshToken: refreshToken,            // Refresh token for native auto-renewal
-          intervalMinutes,
-        });
-        console.log('[RouteTracking] Native Android foreground service started — GPS handled natively');
-      } catch (err) {
-        console.error('[RouteTracking] Failed to start foreground service:', err);
+            await Tracking.startForegroundService({
+              title: 'Paradigm Field Ops',
+              text:  'Location tracking is active',
+              userId,
+              supabaseUrl:          supabaseUrl  || '',
+              supabaseKey:          supabaseAnonKey || '',  // still needed as apikey header
+              supabaseToken:        accessToken,             // JWT for Authorization header
+              supabaseRefreshToken: refreshToken,            // Refresh token for native auto-renewal
+              intervalMinutes,
+            });
+            this.isBackgroundServiceRunning = true;
+            console.log('[RouteTracking] Native Android foreground service started — GPS handled natively in background');
+          } catch (err) {
+            console.error('[RouteTracking] Failed to start foreground service:', err);
+          }
+        }
+      } else if (this.isBackgroundServiceRunning) {
+        // User not checked in — stop the sticky notification service
+        try {
+          await Tracking.stopForegroundService();
+          this.isBackgroundServiceRunning = false;
+          console.log('[RouteTracking] Stopped native Android background service (user is not checked in)');
+        } catch (err) {
+          console.warn('[RouteTracking] Failed to stop foreground service:', err);
+        }
       }
-      this.recordPosition(userId);
-      return;
     }
 
-
-    // ── Web / iOS fallback: JS-based interval ─────────────────────────────
-    // Immediate first ping
-    this.recordPosition(userId);
-
-    // Set up JS interval (works fine when app is in foreground / iOS with background modes)
+    // 2. Active In-App Interval Tracking (Runs while app is active / open across Web, iOS, & Android)
     const intervalMs = intervalMinutes * 60 * 1000;
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+    }
     this.intervalId = setInterval(() => {
-      this.recordPosition(userId);
+      if (this.currentUserId) {
+        console.log(`[RouteTracking] Running periodic active interval location ping for user ${this.currentUserId}...`);
+        this.recordPosition(this.currentUserId);
+      }
     }, intervalMs);
+
+    // 3. Trigger immediate app-open location record if not recently recorded (<10s)
+    const now = Date.now();
+    if (!this.isTracking || (now - this.lastRecordedAt > 10000)) {
+      this.isTracking = true;
+      this.recordPosition(userId);
+    }
+  }
+
+  public async recordAppOpenPosition(userId: string) {
+    console.log(`[RouteTracking] Capturing location on app open/resume for user ${userId}...`);
+    return this.recordPosition(userId);
   }
 
   public async stopTracking() {
-    if (!this.isTracking) return;
+    if (!this.isTracking && !this.isBackgroundServiceRunning) return;
     
     console.log('[RouteTracking] Stopping tracking');
     if (this.intervalId) {
@@ -90,7 +118,7 @@ class RouteTrackingService {
       this.intervalId = null;
     }
 
-    if (Capacitor.getPlatform() === 'android') {
+    if (Capacitor.getPlatform() === 'android' && this.isBackgroundServiceRunning) {
       try {
         await Tracking.stopForegroundService();
       } catch (err) {
@@ -99,7 +127,9 @@ class RouteTrackingService {
     }
 
     this.isTracking = false;
+    this.isBackgroundServiceRunning = false;
     this.isRecording = false;
+    this.currentUserId = null;
   }
 
   public async updateTokens(supabaseToken: string, supabaseRefreshToken?: string) {
@@ -114,6 +144,13 @@ class RouteTrackingService {
   }
 
   public async recordPosition(userId: string, requestId?: string) {
+    const now = Date.now();
+    // Allow admin-triggered request pings through immediately, but throttle routine pings to a 10s minimum cooldown
+    if (!requestId && now - this.lastRecordedAt < 10000 && this.lastRecordedAt !== 0) {
+      console.log('[RouteTracking] Skip routine ping: throttled within 10s cooldown window');
+      return;
+    }
+
     if (this.isRecording) {
       // If we're already recording a routine ping, we still need to respond to
       // admin-triggered requests so they don't stay in PENDING forever.
@@ -143,8 +180,8 @@ class RouteTrackingService {
 
     try {
       this.isRecording = true;
-      // Use a slightly more lenient accuracy for periodic pings to save battery/time
-      const pos = await getPrecisePosition(150, 15000); 
+      // Target high-precision fix (30m threshold with active GPS warmup lock)
+      const pos = await getPrecisePosition(30, 15000); 
       
       // Fetch Device Telemetry
       let batteryLevel: number | undefined;
@@ -198,6 +235,7 @@ class RouteTrackingService {
       };
 
       await api.addRoutePoint(routePoint);
+      this.lastRecordedAt = Date.now();
       console.log(`[RouteTracking] Position recorded for request ${requestId || 'no-id'}:`, routePoint.latitude, routePoint.longitude);
       
       // If this was triggered by a specific admin request, update the status to successful

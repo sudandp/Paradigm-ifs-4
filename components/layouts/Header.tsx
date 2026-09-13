@@ -71,14 +71,14 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
             <div className={isMobile ? "w-full" : "px-4 w-full"}>
                 <div className={`flex items-center w-full ${isMobile ? 'relative' : 'h-14 justify-between'}`}>
                     {isMobile ? (
-                        <div className="w-full h-12 flex items-center justify-between px-1 relative pointer-events-none">
+                        <div className="w-full h-[52px] flex items-center justify-between px-1 relative pointer-events-none">
                             {/* Left spacer to keep logo mathematically centered */}
                             <div className="w-10 h-10 flex-shrink-0" />
 
-                            {/* Centered logo — floating, natural intrinsic aspect ratio, no stretching */}
+                            {/* Centered logo — increased by 30% (from 32px to 42px height, 210px to 273px max-width) */}
                             <div className="flex-1 flex items-center justify-center pointer-events-none">
                                 <Logo 
-                                    className="border-0 h-8 max-h-8 w-auto max-w-[210px] object-contain drop-shadow-sm transition-all duration-300 select-none pointer-events-none" 
+                                    className="border-0 h-[42px] max-h-[42px] w-auto max-w-[273px] object-contain drop-shadow-sm transition-all duration-300 select-none pointer-events-none" 
                                     variant="original" 
                                 />
                             </div>

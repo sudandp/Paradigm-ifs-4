@@ -241,7 +241,7 @@ const HRCallQueue: React.FC = () => {
         <button
           onClick={handleRefresh}
           disabled={refreshing}
-          className={`flex items-center gap-2 transition-all active:scale-95 ${isMobile ? 'bg-[#44D62C] text-[#0A1809] px-6 py-2.5 rounded-full font-bold shadow-lg shadow-[#44D62C]/25 hover:bg-[#3bc125] self-start' : 'btn btn-primary btn-md shadow-xl shadow-accent/20 hover:shadow-accent/40'}`}
+          className={`flex items-center gap-2 transition-all active:scale-95 ${isMobile ? 'bg-[#065f46] text-white px-6 py-2.5 rounded-full font-bold shadow-lg shadow-[#065f46]/30 hover:bg-[#044e39] border border-white/10 self-start' : 'btn btn-primary btn-md shadow-xl shadow-accent/20 hover:shadow-accent/40'}`}
         >
           <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
           <span>Refresh Queue</span>
@@ -283,7 +283,7 @@ const HRCallQueue: React.FC = () => {
                     Due: {new Date(cand.lastCall!.nextCallAt!).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                   </p>
                 </div>
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition-colors ${isMobile ? 'bg-white/5 group-hover:bg-[#44D62C] text-white/40 group-hover:text-[#0A1809]' : 'bg-slate-50 group-hover:bg-emerald-500 text-slate-400 group-hover:text-white'}`}>
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition-colors ${isMobile ? 'bg-white/5 group-hover:bg-[#065f46] text-white/40 group-hover:text-white' : 'bg-slate-50 group-hover:bg-emerald-500 text-slate-400 group-hover:text-white'}`}>
                   <ChevronRight className="w-4 h-4" />
                 </div>
               </div>
@@ -319,7 +319,7 @@ const HRCallQueue: React.FC = () => {
                 onClick={() => setFilterType(tab.id as any)}
                 className={`whitespace-nowrap px-4 py-2.5 rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all ${
                   filterType === tab.id
-                    ? (isMobile ? 'bg-[#44D62C] text-[#0A1809] font-bold shadow-md shadow-[#44D62C]/20' : 'bg-emerald-500 text-white md:bg-accent md:text-white shadow-lg shadow-emerald-500/20')
+                    ? (isMobile ? 'bg-[#065f46] text-white font-bold shadow-md shadow-[#065f46]/30 border border-white/10' : 'bg-emerald-500 text-white md:bg-accent md:text-white shadow-lg shadow-emerald-500/20')
                     : (isMobile ? 'text-[#7D967B] hover:text-white' : 'text-muted md:text-muted hover:text-primary-text md:hover:text-primary-text max-md:text-white/40')
                 }`}
               >

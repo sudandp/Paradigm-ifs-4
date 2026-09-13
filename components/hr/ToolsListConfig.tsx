@@ -132,7 +132,7 @@ const ToolDetailView: React.FC<{
                         type="button" 
                         onClick={onBack} 
                         className={isMobile 
-                            ? "inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer mb-3"
+                            ? "inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#065f46] hover:bg-[#044e3b] text-white border border-emerald-500/40 font-bold text-xs shadow-[0_2px_8px_rgba(6,95,70,0.4)] active:scale-95 transition-all cursor-pointer mb-3"
                             : "btn btn-outline btn-sm mb-2"
                         }
                     >
@@ -157,7 +157,7 @@ const ToolDetailView: React.FC<{
                             <button
                                 type="submit"
                                 disabled={isSaving}
-                                className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3.5 rounded-xl bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+                                className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3.5 rounded-xl bg-[#065f46] hover:bg-[#044e39] text-white font-bold text-xs shadow-[0_2px_8px_rgba(6,95,70,0.3)] border border-white/10 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
                             >
                                 {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5 stroke-[2.5]" />}
                                 <span>Save</span>

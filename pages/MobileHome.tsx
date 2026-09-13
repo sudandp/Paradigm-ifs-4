@@ -325,12 +325,12 @@ const MobileHome: React.FC = () => {
                     className={`w-[54px] h-[54px] flex items-center justify-center rounded-[18px] transition-all duration-150 group-active:scale-90 border shadow-sm ${
                         isExit 
                             ? 'bg-[#220a0f] border-rose-900/40 text-rose-400 group-hover:border-rose-500/50' 
-                            : 'bg-[#041b0f] border-[#134426] group-hover:border-[#44D62C]/50 group-active:bg-[#072414] text-[#44D62C]'
+                            : 'bg-gradient-to-br from-[#065f46] to-[#044e3b] border-emerald-500/40 group-hover:border-emerald-400/60 group-active:bg-[#033b2b] text-white shadow-[0_2px_8px_rgba(6,95,70,0.35)]'
                     }`}
                 >
                     <Icon
-                        className="w-[23px] h-[23px] drop-shadow-[0_2px_6px_rgba(68,214,44,0.25)]"
-                        style={{ color: isExit ? '#f43f5e' : '#44D62C' }}
+                        className="w-[23px] h-[23px] drop-shadow-[0_1px_3px_rgba(0,0,0,0.4)]"
+                        style={{ color: isExit ? '#f43f5e' : '#ffffff' }}
                         strokeWidth={2.2}
                     />
                 </div>
@@ -478,24 +478,24 @@ const MobileHome: React.FC = () => {
                             <div className="flex items-center gap-3 mb-4">
                                 <button
                                     onClick={() => setActiveCategory(null)}
-                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#065f46] hover:bg-[#044e3b] text-white border border-emerald-500/40 font-bold text-xs shadow-[0_2px_8px_rgba(6,95,70,0.4)] active:scale-95 transition-all cursor-pointer"
                                 >
                                     <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
                                     <span>Back</span>
                                 </button>
                                 <div className="h-[1px] flex-1 bg-[#134426]" />
-                                <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#44D62C] bg-[#092c19] px-2.5 py-1 rounded-lg border border-[#134426]">
+                                <span className="text-[11px] font-black uppercase tracking-[0.16em] text-white bg-[#065f46] px-2.5 py-1 rounded-lg border border-emerald-500/40 shadow-[0_2px_8px_rgba(6,95,70,0.35)]">
                                     {activeCategory}
                                 </span>
                             </div>
 
                             {/* Sub-item Section Card */}
                             <div className="bg-[#092c19] border border-[#134426] rounded-[24px] p-4 shadow-[0_4px_16px_rgba(0,0,0,0.35)] relative overflow-hidden">
-                                <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-[#44D62C]/25 to-transparent pointer-events-none" />
+                                <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-emerald-500/25 to-transparent pointer-events-none" />
 
                                 <div className="flex items-center justify-between mb-3.5 pb-2.5 border-b border-[#134426]">
                                     <div className="flex items-center gap-2">
-                                        <span className="w-2 h-2 rounded-full bg-[#44D62C] shadow-[0_0_8px_rgba(68,214,44,0.6)]" />
+                                        <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]" />
                                         <h3 className="text-xs font-black uppercase tracking-[0.16em] text-white">
                                             {activeCategory} Features
                                         </h3>

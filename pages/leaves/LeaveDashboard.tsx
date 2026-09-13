@@ -2495,13 +2495,13 @@ const LeaveDashboard: React.FC = () => {
                                 navigate('/mobile-home');
                             }
                         }}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#065f46] hover:bg-[#044e3b] text-white border border-emerald-500/40 font-bold text-xs shadow-[0_2px_8px_rgba(6,95,70,0.4)] active:scale-95 transition-all cursor-pointer"
                     >
                         <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
                         <span>Back</span>
                     </button>
                     <div className="h-[1px] flex-1 bg-[#134426]" />
-                    <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#44D62C] bg-[#092c19] px-2.5 py-1 rounded-lg border border-[#134426]">
+                    <span className="text-[11px] font-black uppercase tracking-[0.16em] text-white bg-[#065f46] px-2.5 py-1 rounded-lg border border-emerald-500/40 shadow-[0_2px_8px_rgba(6,95,70,0.35)]">
                         Leaves & Attendance
                     </span>
                 </div>
@@ -2565,9 +2565,9 @@ const LeaveDashboard: React.FC = () => {
                         isMobile ? (
                             <button 
                                 onClick={() => navigate('/leaves/holiday-selection')}
-                                className="bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-bold text-[11px] h-8 rounded-full flex items-center gap-1.5 px-3.5 shadow-[0_2px_10px_rgba(68,214,44,0.35)] active:scale-95 transition-all"
+                                className="bg-[#065f46] hover:bg-[#044e39] text-white font-bold text-[11px] h-8 rounded-full flex items-center gap-1.5 px-3.5 shadow-[0_2px_10px_rgba(6,95,70,0.35)] border border-white/10 active:scale-95 transition-all"
                             >
-                                <Calendar className="w-3.5 h-3.5 text-[#0A1809]" strokeWidth={2.5} />
+                                <Calendar className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
                                 <span>Holiday</span>
                             </button>
                         ) : (
@@ -2579,9 +2579,9 @@ const LeaveDashboard: React.FC = () => {
                     {isMobile ? (
                         <button 
                             onClick={handleNewRequest}
-                            className="bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-bold text-[11px] h-8 rounded-full flex items-center gap-1.5 px-3.5 shadow-[0_2px_10px_rgba(68,214,44,0.35)] active:scale-95 transition-all"
+                            className="bg-[#065f46] hover:bg-[#044e39] text-white font-bold text-[11px] h-8 rounded-full flex items-center gap-1.5 px-3.5 shadow-[0_2px_10px_rgba(6,95,70,0.35)] border border-white/10 active:scale-95 transition-all"
                         >
-                            <Plus className="w-3.5 h-3.5 text-[#0A1809]" strokeWidth={2.5} />
+                            <Plus className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
                             <span>Request</span>
                         </button>
                     ) : (
@@ -2910,38 +2910,42 @@ const LeaveDashboard: React.FC = () => {
                                                 </div>
                                             </td>
                                             <td data-label="Reason" className="px-6 py-4">
-                                                <p className="text-sm text-muted-foreground max-w-[200px] truncate group-hover:whitespace-normal group-hover:overflow-visible transition-all duration-300" title={req.reason}>
+                                                <p className="text-sm text-muted-foreground text-right md:text-left max-w-[220px] md:max-w-[200px] truncate group-hover:whitespace-normal group-hover:overflow-visible transition-all duration-300" title={req.reason}>
                                                     {req.reason}
                                                 </p>
                                             </td>
                                             <td data-label="Status" className="px-6 py-4">
-                                                <LeaveStatusChip status={req.status} />
-                                                {lType.includes('correction') && req.status === 'correction_made' && (
-                                                    <div className="text-[10px] text-emerald-600 font-semibold mt-1.5 leading-tight">
-                                                        Auto-approved by Paradigm AI<br/>
-                                                        (Used {
-                                                            requests.filter(r => 
-                                                                String(r.leaveType).toLowerCase().includes('correction') &&
-                                                                new Date(r.startDate.replace(/-/g, '/')).getMonth() === new Date(req.startDate.replace(/-/g, '/')).getMonth() &&
-                                                                new Date(r.startDate.replace(/-/g, '/')).getFullYear() === new Date(req.startDate.replace(/-/g, '/')).getFullYear() &&
-                                                                ['approved', 'correction_made', 'pending_manager_approval'].includes(r.status)
-                                                            ).length
-                                                        } / {userRulesForDisplay?.maxCorrectionsPerMonth || 3} this month)
-                                                    </div>
-                                                )}
-                                                {lType.includes('permission') && (() => {
-                                                    const summary = getMonthlyPermissionSummary(req.startDate);
-                                                    return (
-                                                        <div className="text-[10px] text-emerald-700 font-bold mt-1.5 leading-tight bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100 inline-block">
-                                                            Available: {summary.formattedRemaining}
+                                                <div className="flex flex-col items-end text-right md:items-start md:text-left gap-1 max-w-[72%] md:max-w-none">
+                                                    <LeaveStatusChip status={req.status} />
+                                                    {lType.includes('correction') && req.status === 'correction_made' && (
+                                                        <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold mt-0.5 leading-tight text-right md:text-left">
+                                                            Auto-approved by Paradigm AI<br/>
+                                                            <span className="opacity-80 text-[9px]">
+                                                                (Used {
+                                                                    requests.filter(r => 
+                                                                        String(r.leaveType).toLowerCase().includes('correction') &&
+                                                                        new Date(r.startDate.replace(/-/g, '/')).getMonth() === new Date(req.startDate.replace(/-/g, '/')).getMonth() &&
+                                                                        new Date(r.startDate.replace(/-/g, '/')).getFullYear() === new Date(req.startDate.replace(/-/g, '/')).getFullYear() &&
+                                                                        ['approved', 'correction_made', 'pending_manager_approval'].includes(r.status)
+                                                                    ).length
+                                                                } / {userRulesForDisplay?.maxCorrectionsPerMonth || 3} this month)
+                                                            </span>
                                                         </div>
-                                                    );
-                                                })()}
-                                                {(req as any).isAutoDeducted && (
-                                                    <div className="text-[10px] text-emerald-600 font-semibold mt-1 leading-tight">
-                                                        Auto-adjusted from Early Departure
-                                                    </div>
-                                                )}
+                                                    )}
+                                                    {lType.includes('permission') && (() => {
+                                                        const summary = getMonthlyPermissionSummary(req.startDate);
+                                                        return (
+                                                            <div className="text-[10px] text-emerald-700 dark:text-emerald-300 font-bold leading-tight bg-emerald-50 dark:bg-[#065f46]/30 px-2 py-0.5 rounded border border-emerald-200 dark:border-[#065f46]/50 inline-block text-right md:text-left mt-0.5 shadow-2xs">
+                                                                Available: {summary.formattedRemaining}
+                                                            </div>
+                                                        );
+                                                    })()}
+                                                    {(req as any).isAutoDeducted && (
+                                                        <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium leading-tight text-right md:text-left mt-0.5">
+                                                            (Auto-adjusted from Early Departure)
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </td>
                                             <td data-label="Actions" className="px-6 py-4 text-right">
                                                 <div className="flex justify-end gap-1 flex-wrap items-center">

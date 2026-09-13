@@ -1163,13 +1163,13 @@ const VerificationDashboard: React.FC = () => {
                     <button
                         type="button"
                         onClick={() => window.history.state?.idx > 0 ? navigate(-1) : navigate('/mobile-home')}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#065f46] hover:bg-[#044e3b] text-white border border-emerald-500/40 font-bold text-xs shadow-[0_2px_8px_rgba(6,95,70,0.4)] active:scale-95 transition-all cursor-pointer"
                     >
                         <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
                         <span>Back</span>
                     </button>
                     <div className="h-[1px] flex-1 bg-[#134426]" />
-                    <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#44D62C] bg-[#092c19] px-2.5 py-1 rounded-lg border border-[#134426]">
+                    <span className="text-[11px] font-black uppercase tracking-[0.16em] text-white bg-[#065f46] px-2.5 py-1 rounded-lg border border-emerald-500/40 shadow-[0_2px_8px_rgba(6,95,70,0.35)]">
                         ONBOARDING
                     </span>
                 </div>
@@ -1207,7 +1207,7 @@ const VerificationDashboard: React.FC = () => {
                             onClick={() => setCompanyFilter('all')}
                             className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
                                 companyFilter === 'all'
-                                    ? 'bg-emerald-600 dark:bg-[#44D62C] text-white dark:text-[#0A1809] shadow-xs'
+                                    ? 'bg-emerald-600 dark:bg-[#065f46] text-white shadow-xs border border-transparent dark:border-white/10'
                                     : 'text-slate-600 dark:text-white/70 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#134426]/50'
                             }`}
                         >
@@ -1377,7 +1377,7 @@ const VerificationDashboard: React.FC = () => {
                                         key={tab}
                                         onClick={() => setStatusFilter(tab)}
                                         className={`${statusFilter === tab
-                                            ? 'bg-white dark:bg-[#44D62C] text-emerald-800 dark:text-[#0A1809] shadow-xs font-black'
+                                            ? 'bg-white dark:bg-[#065f46] text-emerald-800 dark:text-white shadow-xs font-bold border border-transparent dark:border-white/10'
                                             : 'text-slate-600 dark:text-white/70 hover:text-slate-900 dark:hover:text-white hover:bg-slate-300/40 dark:hover:bg-[#134426]/50'
                                             } whitespace-nowrap py-1.5 px-3.5 rounded-lg text-xs capitalize transition-all duration-200 flex items-center gap-2`}
                                     >
@@ -1678,7 +1678,7 @@ const VerificationDashboard: React.FC = () => {
                                             <>
                                                 <button 
                                                     onClick={() => handleApprove(s.id!)}
-                                                    className="px-3.5 py-1.5 text-[#0A1809] bg-[#44D62C] hover:bg-[#39E722] rounded-xl text-xs font-black transition-all duration-200 shadow-xs flex items-center gap-1 cursor-pointer"
+                                                    className="px-3.5 py-1.5 text-white bg-[#065f46] hover:bg-[#044e39] rounded-xl text-xs font-bold transition-all duration-200 shadow-xs flex items-center gap-1 border border-white/10 cursor-pointer"
                                                 >
                                                     <CheckSquare className="h-3.5 w-3.5 stroke-[2.5]" /> Approve
                                                 </button>
@@ -1701,7 +1701,7 @@ const VerificationDashboard: React.FC = () => {
                                                 </button>
                                                 <button 
                                                     onClick={() => handleApprove(s.id!)}
-                                                    className="px-3.5 py-1.5 text-[#0A1809] bg-[#44D62C] hover:bg-[#39E722] rounded-xl text-xs font-black transition-all duration-200 shadow-xs flex items-center gap-1 cursor-pointer"
+                                                    className="px-3.5 py-1.5 text-white bg-[#065f46] hover:bg-[#044e39] rounded-xl text-xs font-bold transition-all duration-200 shadow-xs flex items-center gap-1 border border-white/10 cursor-pointer"
                                                     title="Approve Submission"
                                                 >
                                                     <CheckSquare className="h-3.5 w-3.5 stroke-[2.5]" /> Approve

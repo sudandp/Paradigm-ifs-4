@@ -578,9 +578,8 @@ export async function getPrecisePosition(accuracyThreshold: number = 50, timeout
   }
 
   const isNative = Capacitor.isNativePlatform();
-  // Desktop web browsers use Wi-Fi/IP triangulation where accuracy is typically 40m - 200m
-  // On mobile native, we accept up to 150m (or custom threshold)
-  const effectiveThreshold = isNative ? Math.max(accuracyThreshold, 150) : Math.max(accuracyThreshold, 250);
+  // Use requested accuracyThreshold without artificially inflating to 250m
+  const effectiveThreshold = accuracyThreshold || (isNative ? 100 : 80);
 
   activeLocationPromise = (async () => {
     try {
@@ -618,13 +617,13 @@ export async function getPrecisePosition(accuracyThreshold: number = 50, timeout
         }
       }
 
-      // Stage 1: Fast direct acquisition with cached position allowance (20s)
+      // Stage 1: Fast direct acquisition (force fresh fix, zero maximumAge)
       try {
         const directPromise = isNative
           ? Geolocation.getCurrentPosition({
               enableHighAccuracy: true,
-              timeout: Math.min(timeoutMs, 5000),
-              maximumAge: 20000 // Accept recent 20s fix for instant response
+              timeout: Math.min(timeoutMs, 6000),
+              maximumAge: 0
             })
           : new Promise<GeolocationPosition>((resolve, reject) => {
               if (typeof navigator === 'undefined' || !navigator.geolocation) {
@@ -635,8 +634,8 @@ export async function getPrecisePosition(accuracyThreshold: number = 50, timeout
               }
               navigator.geolocation.getCurrentPosition(resolve, reject, {
                 enableHighAccuracy: true,
-                timeout: Math.min(timeoutMs, 5000),
-                maximumAge: 20000
+                timeout: Math.min(timeoutMs, 6000),
+                maximumAge: 0
               });
             });
 

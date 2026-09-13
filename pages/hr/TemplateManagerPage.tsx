@@ -172,7 +172,7 @@ const TemplateManagerPage: React.FC = () => {
                 onClick={() => setMode('edit')}
                 className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
                   mode === 'edit'
-                    ? (isMobile ? 'bg-[#44D62C] text-[#0A1809] font-bold shadow-md shadow-[#44D62C]/20' : 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20')
+                    ? (isMobile ? 'bg-[#065f46] text-white font-bold shadow-md shadow-[#065f46]/30 border border-white/10' : 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20')
                     : (isMobile ? 'text-[#7D967B] hover:text-white' : 'text-muted')
                 }`}
               >
@@ -183,7 +183,7 @@ const TemplateManagerPage: React.FC = () => {
                 onClick={() => setMode('preview')}
                 className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
                   mode === 'preview'
-                    ? (isMobile ? 'bg-[#44D62C] text-[#0A1809] font-bold shadow-md shadow-[#44D62C]/20' : 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20')
+                    ? (isMobile ? 'bg-[#065f46] text-white font-bold shadow-md shadow-[#065f46]/30 border border-white/10' : 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20')
                     : (isMobile ? 'text-[#7D967B] hover:text-white' : 'text-muted')
                 }`}
               >

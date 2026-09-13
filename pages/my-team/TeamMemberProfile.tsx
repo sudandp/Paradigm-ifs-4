@@ -328,7 +328,7 @@ const TeamMemberProfile: React.FC = () => {
     <div className="flex flex-col min-h-screen bg-background text-primary-text">
       <MobileTopBar title="TEAM MEMBER PROFILE" parentPath="/my-team" />
       {/* Premium Header */}
-      <div className="bg-card border-b border-border shadow-soft sticky top-0 z-30">
+      <div className="bg-card border-b border-border shadow-soft">
         <div className="px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex flex-col gap-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">

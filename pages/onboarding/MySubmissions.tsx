@@ -532,7 +532,7 @@ export const MySubmissions: React.FC = () => {
                                     navigate('/mobile-home');
                                 }
                             }}
-                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#065f46] hover:bg-[#044e3b] text-white border border-emerald-500/40 font-bold text-xs shadow-[0_2px_8px_rgba(6,95,70,0.4)] active:scale-95 transition-all cursor-pointer"
                         >
                             <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
                             <span>Back</span>
@@ -568,7 +568,7 @@ export const MySubmissions: React.FC = () => {
                             </button>
                             <button
                                 onClick={handleStartNew}
-                                className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] rounded-xl font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                                className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-[#065f46] hover:bg-[#044e39] text-white rounded-xl font-bold text-xs shadow-[0_2px_8px_rgba(6,95,70,0.3)] border border-white/10 active:scale-95 transition-all cursor-pointer"
                             >
                                 <UserPlus className="h-4 w-4 stroke-[2.5]" />
                                 <span>New</span>
@@ -751,7 +751,7 @@ export const MySubmissions: React.FC = () => {
                                     onClick={() => setStatusFilter(tab.key as any)}
                                     className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
                                         statusFilter === tab.key
-                                            ? (isMobile ? 'bg-[#44D62C] text-[#0A1809] shadow-[0_2px_8px_rgba(68,214,44,0.3)]' : 'bg-slate-900 dark:bg-emerald-600 text-white shadow-xs')
+                                            ? (isMobile ? 'bg-[#065f46] text-white shadow-[0_2px_8px_rgba(6,95,70,0.3)] border border-white/10' : 'bg-slate-900 dark:bg-emerald-600 text-white shadow-xs')
                                             : (isMobile ? 'bg-[#041b0f] border border-[#134426] text-white/70 hover:text-white' : 'bg-white dark:bg-[#122e1e] border border-slate-200 dark:border-white/5 text-slate-600 dark:text-slate-400')
                                     }`}
                                 >
@@ -851,7 +851,7 @@ export const MySubmissions: React.FC = () => {
                                                     ) : isDraft ? (
                                                         <button 
                                                             onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)}
-                                                            className="px-3.5 py-1.5 bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] rounded-xl text-xs font-black shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                                                            className="px-3.5 py-1.5 bg-[#065f46] hover:bg-[#044e39] text-white rounded-xl text-xs font-bold shadow-[0_2px_8px_rgba(6,95,70,0.3)] border border-white/10 active:scale-95 transition-all cursor-pointer"
                                                         >
                                                             Resume
                                                         </button>

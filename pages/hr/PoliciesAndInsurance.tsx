@@ -25,11 +25,11 @@ const PoliciesAndInsurance: React.FC = () => {
         <div className={`p-4 space-y-6 ${isMobile ? 'bg-[#041b0f] text-white min-h-screen pb-36' : ''}`}>
             {/* Standardized Mobile Top Navigation Bar */}
             {isMobile && (
-                <div className="flex items-center gap-3 pt-1 pb-2 -mx-4 -mt-4 px-4 bg-[#041b0f] border-b border-[#134426]/60 sticky top-0 z-30 mb-2">
+                <div className="flex items-center gap-3 pt-1 pb-2 -mx-4 -mt-4 px-4 bg-[#041b0f] border-b border-[#134426]/60 mb-2">
                     <button
                         type="button"
                         onClick={() => window.history.state?.idx > 0 ? navigate(-1) : navigate('/mobile-home')}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#44D62C] hover:bg-[#39E722] text-[#0A1809] font-black text-xs shadow-[0_2px_8px_rgba(68,214,44,0.3)] active:scale-95 transition-all cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#065f46] hover:bg-[#044e3b] text-white border border-emerald-500/40 font-bold text-xs shadow-[0_2px_8px_rgba(6,95,70,0.4)] active:scale-95 transition-all cursor-pointer"
                     >
                         <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
                         <span>Back</span>
@@ -59,7 +59,7 @@ const PoliciesAndInsurance: React.FC = () => {
                                 onClick={() => setActiveTab(tab.id)}
                                 className={`flex items-center whitespace-nowrap px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
                                     isActive 
-                                        ? 'bg-[#44D62C] text-[#0A1809] shadow-md shadow-[#44D62C]/20' 
+                                        ? 'bg-[#065f46] text-white shadow-md shadow-[#065f46]/30 border border-white/10' 
                                         : 'bg-[#092c19] text-gray-300 border border-[#134426]'
                                 }`}
                             >
