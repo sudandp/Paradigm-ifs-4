@@ -1,7 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-
-// ── Pre-warm Leaflet import so mobile doesn't pay dynamic-import cost on init ──
-const leafletPromise = import('leaflet');
+import L from 'leaflet';
 import {
   Layers,
   Maximize2,
@@ -18,6 +16,8 @@ import {
   MapPin,
   ChevronDown,
   ArrowDown,
+  Phone,
+  MessageCircle,
 } from 'lucide-react';
 import { formatDistanceToNow, isToday } from 'date-fns';
 import { supabase } from '../../services/supabase';
@@ -231,34 +231,20 @@ const mapPopupStyles = `
     z-index: 1 !important;
     background: #aadaff !important;
     outline: none !important;
-    /* GPU-composite the entire map layer — critical for mobile WebView rendering */
-    will-change: transform;
-    -webkit-transform: translateZ(0);
-    transform: translateZ(0);
-    /* Allow Leaflet touch handlers to work without conflicting with scroll */
     touch-action: none;
     -webkit-touch-action: none;
   }
   .leaflet-tile-pane {
     background: transparent !important;
-    /* Promote tile pane to its own compositor layer for 60fps tile rendering */
-    will-change: transform;
-    -webkit-transform: translateZ(0);
-    transform: translateZ(0);
   }
-  /* Fix sub-pixel tile border lines / seams on Windows high-DPI scaling (Leaflet issue #3575) */
+  /* Fix sub-pixel tile border lines / seams without crashing mobile GPU memory */
   .leaflet-tile {
     border: none !important;
-    outline: none !important;
+    outline: 1px solid transparent !important;
     box-shadow: none !important;
-    scale: 1.006 !important;
-    transform-origin: 50% 50% !important;
     -webkit-backface-visibility: hidden;
     backface-visibility: hidden;
-    /* Each tile on its own GPU layer for smooth panning */
-    will-change: transform;
     image-rendering: -webkit-optimize-contrast;
-    image-rendering: crisp-edges;
   }
 
   /* Ultra-crisp Dark Mode for Google Roadmap — retains all apartments, malls, POIs, building footprints & road names */
@@ -359,6 +345,117 @@ const mapPopupStyles = `
     border-top: 8px solid var(--ring-color, #10b981);
     margin-top: -1px;
     filter: drop-shadow(0 2px 2px rgba(0,0,0,0.2));
+  }
+
+  /* Top HUD Controls - high specificity to prevent index.css mobile overrides */
+  .paradigm-map-wrapper .team-map-hud-btn {
+    background: #041b0f !important;
+    background-color: #041b0f !important;
+    color: #ffffff !important;
+    border: 1px solid #1a5c34 !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45) !important;
+    border-radius: 12px !important;
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    min-height: 36px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 0 !important;
+    cursor: pointer !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    transition: all 0.2s ease !important;
+  }
+  .paradigm-map-wrapper .team-map-hud-btn:hover {
+    background: #09381c !important;
+    border-color: #22c55e !important;
+  }
+  .paradigm-map-wrapper .team-map-hud-btn:active {
+    transform: scale(0.95) !important;
+  }
+  .paradigm-map-wrapper .team-map-hud-btn svg {
+    color: #ffffff !important;
+    stroke: #ffffff !important;
+    width: 17px !important;
+    height: 17px !important;
+    display: block !important;
+  }
+  .paradigm-map-wrapper .team-map-live-pill {
+    background: #041b0f !important;
+    background-color: #041b0f !important;
+    color: #ffffff !important;
+    border: 1px solid #1a5c34 !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45) !important;
+    border-radius: 14px !important;
+    height: 36px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    padding: 0 10px !important;
+  }
+  .paradigm-map-wrapper .team-map-live-pill span {
+    color: #ffffff !important;
+    font-weight: 800 !important;
+    font-size: 11px !important;
+  }
+
+  /* Bottom Card Action Buttons (WhatsApp, Call, Directions) */
+  .paradigm-map-wrapper a.team-action-btn,
+  .paradigm-map-wrapper button.team-action-btn {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    height: 40px !important;
+    min-height: 40px !important;
+    padding: 0 10px !important;
+    border-radius: 12px !important;
+    font-size: 12px !important;
+    font-weight: 800 !important;
+    text-decoration: none !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35) !important;
+    cursor: pointer !important;
+    transition: all 0.18s ease !important;
+  }
+  .paradigm-map-wrapper a.team-action-btn:active,
+  .paradigm-map-wrapper button.team-action-btn:active {
+    transform: scale(0.96) !important;
+  }
+  .paradigm-map-wrapper a.team-action-btn *,
+  .paradigm-map-wrapper button.team-action-btn * {
+    color: #ffffff !important;
+    stroke: #ffffff !important;
+  }
+  .paradigm-map-wrapper a.team-action-btn span,
+  .paradigm-map-wrapper button.team-action-btn span {
+    color: #ffffff !important;
+    font-size: 12px !important;
+    font-weight: 800 !important;
+    line-height: 1 !important;
+    letter-spacing: 0.02em !important;
+  }
+  .paradigm-map-wrapper a.team-action-btn-wa {
+    background-color: #16a34a !important;
+    border: 1px solid #22c55e !important;
+  }
+  .paradigm-map-wrapper a.team-action-btn-wa:hover {
+    background-color: #15803d !important;
+  }
+  .paradigm-map-wrapper a.team-action-btn-call {
+    background-color: #2563eb !important;
+    border: 1px solid #3b82f6 !important;
+  }
+  .paradigm-map-wrapper a.team-action-btn-call:hover {
+    background-color: #1d4ed8 !important;
+  }
+  .paradigm-map-wrapper a.team-action-btn-nav {
+    background-color: #0d9488 !important;
+    border: 1px solid #14b8a6 !important;
+  }
+  .paradigm-map-wrapper a.team-action-btn-nav:hover {
+    background-color: #0f766e !important;
   }
 
   /* Native fullscreen: make the map wrapper fill the screen cleanly */
@@ -521,6 +618,11 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
   // Tracks whether the browser is currently in native fullscreen
   const [isFullscreen, setIsFullscreen]     = useState(false);
 
+  // Mobile Bottom Sheet state
+  const [selectedMember, setSelectedMember] = useState<User | null>(null);
+  const [selectedMemberLocation, setSelectedMemberLocation] = useState<{ landmark: string; road: string; fullAddress: string } | null>(null);
+  const [isLoadingLocation, setIsLoadingLocation] = useState(false);
+
   // DOM refs — wrapperRef is the element we call requestFullscreen() on
   const wrapperRef      = useRef<HTMLDivElement>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -531,6 +633,31 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
   const LRef            = useRef<any>(null);
   const hasInitiallyFitted = useRef(false);
   const panelRef        = useRef<HTMLDivElement>(null);
+
+  // ── Mobile Member Selection Handler ─────────────────────────────────────
+  const handleSelectMember = useCallback(async (member: User) => {
+    setSelectedMember(member);
+    const loc = latestLocations[member.id];
+    if (!loc?.latitude || !loc?.longitude) return;
+
+    if (mapRef.current) {
+      mapRef.current.flyTo([loc.latitude, loc.longitude], 17, {
+        animate: true,
+        duration: 1.0,
+        easeLinearity: 0.25,
+      });
+    }
+
+    setIsLoadingLocation(true);
+    try {
+      const res = await fetchLandmarkForCoords(loc.latitude, loc.longitude);
+      setSelectedMemberLocation(res);
+    } catch {
+      setSelectedMemberLocation(null);
+    } finally {
+      setIsLoadingLocation(false);
+    }
+  }, [latestLocations]);
 
   // ── Inject popup / fullscreen CSS once ──────────────────────────────────
   useEffect(() => {
@@ -603,113 +730,121 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
         mapRef.current = null;
       }
 
-      // Use pre-warmed promise — zero extra cost on mobile (already loading at module eval)
-      const L = await leafletPromise;
-      if (cancelled) return;
+      // ─── UNIVERSAL MOBILE FIX #1: waitForSize ────────────────────────────
+      // Never call L.map() until the container has real pixel dimensions.
+      // We poll (via rAF) until clientWidth AND clientHeight are > 0.
+      await new Promise<void>(resolve => {
+        const check = () => {
+          const el = mapContainerRef.current;
+          if (el && el.clientWidth > 0 && el.clientHeight > 0) {
+            resolve();
+          } else {
+            requestAnimationFrame(check);
+          }
+        };
+        requestAnimationFrame(check);
+      });
+      if (cancelled || !mapContainerRef.current) return;
+
       LRef.current = L;
-
-      // ── Eliminate tile lines & seams via 4-sided GPU scale overlap (Leaflet issue #3575) ──
-      // Scales each tile 0.6% from its center, overlapping all 4 edges seamlessly with the tile's own pixels
-      if (!(L.GridLayer as any)._scaleOverlapPatched) {
-        const originalInitTile = (L.GridLayer.prototype as any)._initTile;
-        (L.GridLayer.prototype as any)._initTile = function (tile: HTMLElement) {
-          originalInitTile.call(this, tile);
-          if (tile && tile.style) {
-            tile.style.scale = '1.006';
-            tile.style.transformOrigin = '50% 50%';
-          }
-        };
-
-        const originalAddTile = (L.GridLayer.prototype as any)._addTile;
-        (L.GridLayer.prototype as any)._addTile = function (coords: any, container: HTMLElement) {
-          originalAddTile.call(this, coords, container);
-          const key = this._tileCoordsToKey(coords);
-          const tileEntry = this._tiles[key];
-          if (tileEntry && tileEntry.el && tileEntry.el.style) {
-            tileEntry.el.style.scale = '1.006';
-            tileEntry.el.style.transformOrigin = '50% 50%';
-          }
-        };
-        (L.GridLayer as any)._scaleOverlapPatched = true;
-      }
 
       const cfg = MAP_STYLES[mapStyle] || MAP_STYLES.streets;
 
-      // Calculate initial focus bounds from members immediately to load directly in team view (Image 3)
+      // Pre-calculate member bounds for initial view
       const validPoints: [number, number][] = [];
       members.forEach(m => {
         const loc = latestLocations[m.id];
         if (
-          loc?.latitude &&
-          loc?.longitude &&
-          !isNaN(loc.latitude) &&
-          !isNaN(loc.longitude) &&
-          loc.latitude !== 0 &&
-          loc.longitude !== 0 &&
-          Math.abs(loc.latitude) <= 90 &&
-          Math.abs(loc.longitude) <= 180
+          loc?.latitude && loc?.longitude &&
+          !isNaN(loc.latitude) && !isNaN(loc.longitude) &&
+          loc.latitude !== 0 && loc.longitude !== 0 &&
+          Math.abs(loc.latitude) <= 90 && Math.abs(loc.longitude) <= 180
         ) {
           validPoints.push([loc.latitude, loc.longitude]);
         }
       });
 
+      // ─── UNIVERSAL MOBILE FIX #2: Crisp Map Configuration ─────────────────
+      // 1. zoomSnap: 1 & zoomDelta: 1 -> Guarantees integer zoom alignment for raster tiles
+      //    (prevents fractional sub-pixel matrix distortion and tile corner-bunching).
+      // 2. preferCanvas: true -> Hardware accelerated vector marker layers.
+      // 3. tapHold: false -> Modern Android WebView uses native pointer events.
       const map = L.map(mapContainerRef.current, {
         zoomControl: false,
         attributionControl: false,
         fadeAnimation: true,
         markerZoomAnimation: true,
+        zoomAnimation: true,
         zoomSnap: 1,
         zoomDelta: 1,
-        scrollWheelZoom: false, // Prevents hijacking page scroll on web app
-        minZoom: 10, // Prevents zooming out to the entire planet
-        maxZoom: 22,
+        wheelPxPerZoomLevel: 60,
+        scrollWheelZoom: false,
+        minZoom: 3,
+        maxZoom: 21,
+        preferCanvas: true,
+        bounceAtZoomLimits: false,
+        doubleClickZoom: true,
+        dragging: true,
+        touchZoom: true,
+        tapHold: false,
       });
 
-      if (validPoints.length > 0) {
-        const initialBounds = L.latLngBounds(validPoints);
-        const ne = initialBounds.getNorthEast();
-        const sw = initialBounds.getSouthWest();
-        if (Math.abs(ne.lat - sw.lat) < 0.0001 && Math.abs(ne.lng - sw.lng) < 0.0001) {
-          map.setView(initialBounds.getCenter(), 14);
+      map.invalidateSize({ animate: false });
+
+      // ─── UNIVERSAL MOBILE FIX #3: Initial fit inside whenReady ────────────
+      map.whenReady(() => {
+        if (cancelled) return;
+        map.invalidateSize({ animate: false });
+
+        if (validPoints.length > 0) {
+          const initialBounds = L.latLngBounds(validPoints);
+          const ne = initialBounds.getNorthEast();
+          const sw = initialBounds.getSouthWest();
+          if (Math.abs(ne.lat - sw.lat) < 0.0001 && Math.abs(ne.lng - sw.lng) < 0.0001) {
+            map.setView(initialBounds.getCenter(), 14, { animate: false });
+          } else {
+            map.fitBounds(initialBounds.pad(0.25), { maxZoom: 15, padding: [24, 24], animate: false });
+          }
+          hasInitiallyFitted.current = true;
         } else {
-          map.fitBounds(initialBounds.pad(0.25), { maxZoom: 15, padding: [24, 24], animate: false });
+          map.setView([12.9716, 77.5946], 12, { animate: false });
         }
-        hasInitiallyFitted.current = true;
-      } else {
-        map.setView([12.9716, 77.5946], 12);
-      }
+      });
 
       mapRef.current = map;
 
-      // Base tile layer — subdomains rotate across mt0–mt3 to distribute CDN load
-      // crossOrigin: anonymous is required for Android WebView CORS negotiation
+      // ─── UNIVERSAL MOBILE FIX #4: Continuous Tile Streaming ───────────────
+      // 1. keepBuffer: 8 -> Generous buffer so zooming in/out never exposes blue background
+      // 2. updateWhenIdle: false -> Continues loading tiles during panning/zooming gestures
+      // 3. updateWhenZooming: true -> Loads new zoom level tiles immediately during zoom
+      // 4. updateInterval: 100 -> Throttled to 100ms for high responsiveness
       const baseTiles = L.tileLayer(cfg.url, {
         subdomains: ['0', '1', '2', '3'],
-        maxZoom: 22,
+        maxZoom: 21,
         maxNativeZoom: cfg.maxNativeZoom,
         zIndex: 1,
         detectRetina: false,
         attribution: cfg.attribution,
-        keepBuffer: 4,
+        keepBuffer: 8,
         updateWhenIdle: false,
         updateWhenZooming: true,
-        updateInterval: 50,
+        updateInterval: 100,
         crossOrigin: 'anonymous',
       }).addTo(map);
       tileLayerRef.current = baseTiles;
 
-      // Overlay layer for roads & labels (Google roads for satellite)
+      // Overlay label layer
       const overlayUrl = cfg.overlayUrl || '';
       const labelTiles = L.tileLayer(overlayUrl, {
         subdomains: ['0', '1', '2', '3'],
         zIndex: 500,
-        maxZoom: 22,
+        maxZoom: 21,
         maxNativeZoom: cfg.maxNativeZoom || 18,
         detectRetina: false,
-        keepBuffer: 4,
+        keepBuffer: 8,
         updateWhenIdle: false,
         updateWhenZooming: true,
-        updateInterval: 50,
+        updateInterval: 100,
         crossOrigin: 'anonymous',
       });
       labelLayerRef.current = labelTiles;
@@ -720,30 +855,38 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
       markersRef.current = L.layerGroup().addTo(map);
       L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-      // Multi-stage invalidateSize — tuned for mobile WebView layout settle timing:
-      // Mobile layout transitions (tab slide, drawer open) take 300–600ms.
-      // We fire at 0ms (immediate), then cover post-animation windows.
-      const invalidateStagedMs = isMobile
-        ? [0, 100, 300, 600, 1000, 1600]
-        : [80, 250, 500, 900, 1500];
-      const invalidateTimers = invalidateStagedMs.map(ms =>
-        setTimeout(() => mapRef.current?.invalidateSize({ animate: false }), ms)
-      );
+      // ─── UNIVERSAL MOBILE FIX #5: Auto-invalidate on zoomend / moveend ─────
+      // Ensures the tile grid is 100% full after any pinch or button zoom gesture
+      map.on('zoomend moveend', () => {
+        map.invalidateSize({ debounceMoveend: true });
+      });
 
-      // Automatically recalculate tile grid whenever container size shifts (sidebar/zoom/layout/mobile)
+      // ─── UNIVERSAL MOBILE FIX #6: ResizeObserver sync ─────────────────────
+      let roTimer: ReturnType<typeof setTimeout> | null = null;
       let ro: ResizeObserver | null = null;
       if (typeof ResizeObserver !== 'undefined') {
-        ro = new ResizeObserver(() => {
-          // Debounce: don't fire more than once per frame
-          requestAnimationFrame(() => mapRef.current?.invalidateSize({ animate: false }));
+        ro = new ResizeObserver(entries => {
+          const entry = entries[0];
+          if (!entry) return;
+          const { width, height } = entry.contentRect;
+          if (width === 0 || height === 0) return;
+          if (roTimer) clearTimeout(roTimer);
+          roTimer = setTimeout(() => {
+            mapRef.current?.invalidateSize({ animate: false });
+          }, 60);
         });
         if (mapContainerRef.current) ro.observe(mapContainerRef.current);
         if (wrapperRef.current) ro.observe(wrapperRef.current);
       }
 
+      const backupTimers = [150, 400, 800, 1400].map(ms =>
+        setTimeout(() => mapRef.current?.invalidateSize({ animate: false }), ms)
+      );
+
       cleanupRO = () => {
         ro?.disconnect();
-        invalidateTimers.forEach(t => clearTimeout(t));
+        if (roTimer) clearTimeout(roTimer);
+        backupTimers.forEach(t => clearTimeout(t));
       };
     };
 
@@ -758,7 +901,7 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMobile]);
+  }, []);
 
   // ── Swap tile URL when map style / labels toggle ─────────────────────────
   useEffect(() => {
@@ -789,6 +932,7 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
 
   // ── Ensure map recalibrates instantly on device switch / location filter ──
   useEffect(() => {
+    hasInitiallyFitted.current = false;
     if (!mapRef.current) return;
     // Immediate + post-animation cascade for mobile WebView
     mapRef.current.invalidateSize({ animate: false });
@@ -938,6 +1082,12 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
         offset: [0, -10],
       });
 
+      marker.on('click', () => {
+        if (isMobile) {
+          handleSelectMember(member);
+        }
+      });
+
       marker.on('popupopen', async () => {
         const res = await fetchLandmarkForCoords(loc.latitude, loc.longitude);
         const titleEl = document.getElementById(`popup-landmark-${member.id}`);
@@ -960,22 +1110,21 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
       if (bounds.isValid()) {
         const ne = bounds.getNorthEast();
         const sw = bounds.getSouthWest();
-        if (Math.abs(ne.lat - sw.lat) < 0.0001 && Math.abs(ne.lng - sw.lng) < 0.0001) {
-          mapRef.current.setView(bounds.getCenter(), 14, { animate: hasInitiallyFitted.current });
-        } else {
-          mapRef.current.fitBounds(bounds.pad(0.25), {
-            minZoom: 10,
-            maxZoom: 15,
-            padding: [24, 24],
-            animate: hasInitiallyFitted.current,
-            duration: 0.6,
-            easeLinearity: 0.2,
-          });
+        if (!hasInitiallyFitted.current) {
+          if (Math.abs(ne.lat - sw.lat) < 0.0001 && Math.abs(ne.lng - sw.lng) < 0.0001) {
+            mapRef.current.setView(bounds.getCenter(), 14, { animate: false });
+          } else {
+            mapRef.current.fitBounds(bounds.pad(0.25), {
+              minZoom: 10,
+              maxZoom: 15,
+              padding: [24, 24],
+              animate: false,
+            });
+          }
+          hasInitiallyFitted.current = true;
         }
-        hasInitiallyFitted.current = true;
       }
       setTimeout(() => mapRef.current?.invalidateSize({ animate: false }), 150);
-      setTimeout(() => mapRef.current?.invalidateSize({ animate: false }), 650);
     } else if (selectedLocation !== 'All' && selectedLocation.startsWith('city:')) {
       const city = selectedLocation.split(':')[2];
       if (city) {
@@ -990,7 +1139,7 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
           .catch(() => {});
       }
     }
-  }, [membersToPlot, latestLocations, selectedLocation]);
+  }, [membersToPlot, latestLocations, selectedLocation, isMobile, handleSelectMember]);
 
   // ── Smoothly pan/zoom to a focused member when tapped from list ──────────
   useEffect(() => {
@@ -998,22 +1147,29 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
     const loc = latestLocations[focusedMemberId];
     if (!loc?.latitude || !loc?.longitude) return;
 
+    const found = members.find(m => m.id === focusedMemberId);
+    if (found && isMobile) {
+      handleSelectMember(found);
+    }
+
     mapRef.current.flyTo([loc.latitude, loc.longitude], 16, {
       animate: true,
       duration: 0.9,
       easeLinearity: 0.25,
     });
 
-    // Find and open marker popup
-    markersRef.current.eachLayer((layer: any) => {
-      if (layer.getLatLng) {
-        const p = layer.getLatLng();
-        if (Math.abs(p.lat - loc.latitude) < 0.0001 && Math.abs(p.lng - loc.longitude) < 0.0001) {
-          setTimeout(() => layer.openPopup(), 450);
+    // Find and open marker popup on desktop
+    if (!isMobile) {
+      markersRef.current.eachLayer((layer: any) => {
+        if (layer.getLatLng) {
+          const p = layer.getLatLng();
+          if (Math.abs(p.lat - loc.latitude) < 0.0001 && Math.abs(p.lng - loc.longitude) < 0.0001) {
+            setTimeout(() => layer.openPopup(), 450);
+          }
         }
-      }
-    });
-  }, [focusedMemberId, latestLocations]);
+      });
+    }
+  }, [focusedMemberId, latestLocations, isMobile, members, handleSelectMember]);
 
   // ── Recenter handler ─────────────────────────────────────────────────────
   const handleRecenter = () => {
@@ -1063,17 +1219,17 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
     // paradigm-map-wrapper is styled in mapPopupStyles for :fullscreen pseudo-class
     <div
       ref={wrapperRef}
-      className={`paradigm-map-wrapper relative rounded-2xl overflow-hidden border border-border shadow-sm transition-all duration-300 shrink-0 w-full ${
+      className={`paradigm-map-wrapper relative rounded-2xl overflow-hidden border border-border shadow-sm shrink-0 w-full ${
         mapStyle === 'dark' ? 'map-style-dark' : ''
       }`}
       style={{
-        height:    isMobile ? 'min(48vh, 440px)' : (isTablet ? '400px' : '480px'),
-        minHeight: isMobile ? '340px' : (isTablet ? '380px' : '480px'),
+        height:    isFullscreen ? '100%' : (isMobile ? 'min(58vh, 520px)' : (isTablet ? '400px' : '480px')),
+        minHeight: isFullscreen ? '100%' : (isMobile ? '380px' : (isTablet ? '380px' : '480px')),
         backgroundColor: mapStyle === 'dark' ? '#121212' : (mapStyle === 'satellite' ? '#061018' : '#aadaff'),
       }}
     >
-      {/* ── Fullscreen exit banner ─────────────────────────────────────── */}
-      {isFullscreen && (
+      {/* ── Fullscreen exit banner (Desktop only — Mobile uses floating ✕ button) ── */}
+      {isFullscreen && !isMobile && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] pointer-events-auto">
           <div className="flex items-center gap-2.5 px-4 py-2 bg-slate-900/90 backdrop-blur-md text-white text-xs rounded-xl shadow-2xl border border-white/10 font-medium">
             <span>To exit full screen, press</span>
@@ -1092,68 +1248,118 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
         </div>
       )}
 
-      {/* ── Top-Left Floating Location Pill ──────────────────────────────── */}
-      {availableLocations && onLocationChange && (
-        <div className="absolute top-3 left-3 z-[999] max-w-[140px] xs:max-w-[160px] sm:max-w-[240px]">
-          <div className="relative flex items-center bg-card/90 dark:bg-slate-900/90 backdrop-blur-md rounded-xl border border-border shadow-md px-2 sm:px-3 py-1.5 gap-1.5 text-xs font-semibold text-primary-text hover:border-emerald-500/40 transition-all">
-            <MapPin className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-            <select
-              value={selectedLocation}
-              onChange={e => onLocationChange(e.target.value)}
-              className="bg-transparent text-[11px] sm:text-xs font-bold text-primary-text outline-none cursor-pointer appearance-none pr-3 truncate w-full"
-            >
-              <option value="All">All Locations</option>
-              {Object.entries(availableLocations).flatMap(([state, cities]) => [
-                <option key={`state-${state}`} value={`state:${state}`} className="font-bold text-emerald-600">
-                  All {state}
-                </option>,
-                ...cities.map(city => (
-                  <option key={`${state}-${city}`} value={`city:${state}:${city}`}>
-                    {city} ({state})
-                  </option>
-                )),
-              ])}
-            </select>
-            <ChevronDown className="w-3 h-3 text-gray-400 absolute right-1.5 pointer-events-none" />
+      {/* ── Unified Top Control HUD (Non-colliding, thumb-friendly) ───────── */}
+      <div className="absolute top-2.5 left-2.5 right-2.5 z-[999] flex items-center justify-between gap-2 pointer-events-none">
+        {/* Left: Location Dropdown Pill */}
+        {availableLocations && Object.keys(availableLocations).length > 0 && onLocationChange && (
+          <div className="pointer-events-auto max-w-[55%] xs:max-w-[60%] sm:max-w-[240px]">
+            <div className="relative flex items-center bg-card/95 dark:bg-slate-900/95 backdrop-blur-md rounded-2xl border border-border shadow-lg px-2.5 py-1.5 gap-1.5 text-xs font-semibold text-primary-text hover:border-emerald-500/40 transition-all">
+              <MapPin className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+              <select
+                value={selectedLocation}
+                onChange={e => onLocationChange(e.target.value)}
+                className="bg-transparent text-[11px] sm:text-xs font-bold text-primary-text outline-none cursor-pointer appearance-none pr-3.5 truncate w-full"
+              >
+                <option value="All" className="bg-card dark:bg-slate-900 text-primary-text">All Locations</option>
+                {Object.entries(availableLocations).flatMap(([state, cities]) => [
+                  <option key={`state-${state}`} value={`state:${state}`} className="font-bold text-emerald-600 dark:text-emerald-400 bg-card dark:bg-slate-900">
+                    All {state}
+                  </option>,
+                  ...cities.map(city => (
+                    <option key={`${state}-${city}`} value={`city:${state}:${city}`} className="bg-card dark:bg-slate-900 text-primary-text">
+                      {city} ({state})
+                    </option>
+                  )),
+                ])}
+              </select>
+              <ChevronDown className="w-3 h-3 text-gray-400 absolute right-1.5 pointer-events-none" />
+            </div>
           </div>
+        )}
+
+        {/* Right: Status Pill & Action Buttons */}
+        <div className="pointer-events-auto flex items-center gap-1.5 shrink-0 ml-auto">
+          {/* Live badge */}
+          <div className="team-map-live-pill flex items-center gap-1 sm:gap-1.5 px-2.5 py-1.5 rounded-2xl bg-card/95 dark:bg-slate-900/95 backdrop-blur-md border border-border shadow-lg text-xs font-semibold text-primary-text">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+            <span className="text-[11px] sm:text-xs font-bold text-white">{membersToPlot.length}</span>
+            {activeCountToday > 0 && (
+              <span className="text-emerald-400 text-[10px] sm:text-[11px] font-bold">
+                ({activeCountToday}{isMobile ? '' : ' live'})
+              </span>
+            )}
+          </div>
+
+          {/* Recenter */}
+          <button
+            type="button"
+            onClick={handleRecenter}
+            title="Fit all markers"
+            className="team-map-hud-btn btn flex items-center justify-center cursor-pointer transition-all active:scale-95"
+            style={{
+              backgroundColor: '#041b0f',
+              background: '#041b0f',
+              color: '#ffffff',
+              border: '1px solid #1a5c34',
+              borderRadius: '12px',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.6)',
+              width: '36px',
+              height: '36px',
+              minWidth: '36px',
+              minHeight: '36px',
+              padding: 0,
+            }}
+            aria-label="Recenter map"
+          >
+            <Crosshair className="w-4 h-4 text-white stroke-[2.5]" style={{ color: '#ffffff', stroke: '#ffffff' }} />
+          </button>
+
+          {/* Fullscreen toggle */}
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            title={isFullscreen ? 'Exit Full Screen' : 'Full Screen'}
+            className="team-map-hud-btn btn flex items-center justify-center cursor-pointer transition-all active:scale-95"
+            style={{
+              backgroundColor: '#041b0f',
+              background: '#041b0f',
+              color: '#ffffff',
+              border: '1px solid #1a5c34',
+              borderRadius: '12px',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.6)',
+              width: '36px',
+              height: '36px',
+              minWidth: '36px',
+              minHeight: '36px',
+              padding: 0,
+            }}
+            aria-label="Toggle full screen"
+          >
+            {isFullscreen ? (
+              <Minimize2 className="w-4 h-4 text-white stroke-[2.5]" style={{ color: '#ffffff', stroke: '#ffffff' }} />
+            ) : (
+              <Maximize2 className="w-4 h-4 text-white stroke-[2.5]" style={{ color: '#ffffff', stroke: '#ffffff' }} />
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* ── Mobile Floating Layer FAB (Placed comfortably above bottom sheet) ── */}
+      {isMobile && (
+        <div className="absolute right-3 bottom-[185px] z-[998]">
+          <button
+            type="button"
+            onClick={() => setShowLayersPanel(p => !p)}
+            className="w-11 h-11 rounded-full bg-card/95 dark:bg-slate-900/95 backdrop-blur-md border border-border shadow-xl text-primary-text flex items-center justify-center active:scale-95 transition-all hover:border-emerald-500/50"
+            title="Change Map Layers"
+            aria-label="Map Layers"
+          >
+            <Layers className="w-5 h-5 text-emerald-500" />
+          </button>
         </div>
       )}
 
-      {/* ── Top-right controls ─────────────────────────────────────────── */}
-      <div className="absolute top-3 right-3 z-[999] flex items-center gap-1 sm:gap-2">
-        {/* Live badge - visible on mobile and web */}
-        <div className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-xl bg-card/90 dark:bg-slate-900/90 backdrop-blur-md border border-border shadow-md text-xs font-semibold text-primary-text">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-          <span className="text-[11px] sm:text-xs font-bold">{membersToPlot.length}</span>
-          {activeCountToday > 0 && (
-            <span className="text-emerald-600 dark:text-emerald-400 text-[10px] sm:text-[11px] font-bold">
-              ({activeCountToday}{isMobile ? '' : ' live'})
-            </span>
-          )}
-        </div>
-
-        {/* Recenter */}
-        <button
-          type="button"
-          onClick={handleRecenter}
-          title="Fit all markers"
-          className="p-2.5 rounded-xl bg-card/90 dark:bg-slate-900/90 backdrop-blur-md border border-border shadow-md text-primary-text hover:text-emerald-500 hover:border-emerald-500/40 active:scale-95 transition-all cursor-pointer"
-        >
-          <Crosshair className="w-4 h-4" />
-        </button>
-
-        {/* Fullscreen toggle */}
-        <button
-          type="button"
-          onClick={toggleFullscreen}
-          title={isFullscreen ? 'Exit Full Screen (Esc)' : 'Full Screen'}
-          className="p-2.5 rounded-xl bg-card/90 dark:bg-slate-900/90 backdrop-blur-md border border-border shadow-md text-primary-text hover:text-emerald-500 hover:border-emerald-500/40 active:scale-95 transition-all cursor-pointer"
-        >
-          {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-        </button>
-      </div>
-
-      {/* ── Web App Quick Jump to Team Members Below ── */}
+      {/* ── Web App Quick Jump to Team Members Below (Desktop only) ── */}
       {!isMobile && !isFullscreen && (
         <button
           type="button"
@@ -1168,24 +1374,26 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
         </button>
       )}
 
-      {/* ── Bottom-left layers / map-details panel ─────────────────────── */}
-      <div className="absolute bottom-4 left-4 z-[999]" ref={panelRef}>
+      {/* ── Desktop Bottom-left layers panel ────────────────────────────── */}
+      <div className={isMobile ? "fixed inset-x-3 bottom-4 z-[1002]" : "absolute bottom-4 left-4 z-[999]"} ref={panelRef}>
         {!showLayersPanel ? (
-          <button
-            type="button"
-            onClick={() => setShowLayersPanel(true)}
-            className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-gray-200 dark:border-slate-800 shadow-xl hover:border-emerald-500/60 hover:shadow-2xl text-xs font-bold text-gray-800 dark:text-gray-100 active:scale-95 transition-all cursor-pointer group"
-          >
-            <div className="w-6 h-6 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center group-hover:bg-emerald-500 group-hover:text-white transition-colors">
-              <Layers className="w-3.5 h-3.5" />
-            </div>
-            <div className="flex flex-col text-left">
-              <span className="text-[10px] uppercase font-bold text-gray-400 dark:text-gray-500 tracking-wider">Layers</span>
-              <span className="text-xs font-bold capitalize">{MAP_STYLES[mapStyle]?.name || 'Default'}</span>
-            </div>
-          </button>
+          !isMobile && (
+            <button
+              type="button"
+              onClick={() => setShowLayersPanel(true)}
+              className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-gray-200 dark:border-slate-800 shadow-xl hover:border-emerald-500/60 hover:shadow-2xl text-xs font-bold text-gray-800 dark:text-gray-100 active:scale-95 transition-all cursor-pointer group"
+            >
+              <div className="w-6 h-6 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center group-hover:bg-emerald-500 group-hover:text-white transition-colors">
+                <Layers className="w-3.5 h-3.5" />
+              </div>
+              <div className="flex flex-col text-left">
+                <span className="text-[10px] uppercase font-bold text-gray-400 dark:text-gray-500 tracking-wider">Layers</span>
+                <span className="text-xs font-bold capitalize">{MAP_STYLES[mapStyle]?.name || 'Default'}</span>
+              </div>
+            </button>
+          )
         ) : (
-          <div className="w-[300px] sm:w-[320px] bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-gray-200 dark:border-slate-800 rounded-3xl shadow-2xl p-4.5 space-y-4 animate-in fade-in zoom-in-95 duration-200 text-gray-800 dark:text-gray-100">
+          <div className="w-full max-w-[340px] mx-auto sm:w-[320px] bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-gray-200 dark:border-slate-800 rounded-3xl shadow-2xl p-4.5 space-y-4 animate-in fade-in zoom-in-95 duration-200 text-gray-800 dark:text-gray-100">
             {/* Header */}
             <div className="flex items-center justify-between border-b border-gray-100 dark:border-slate-800/80 pb-3">
               <div className="flex items-center gap-2">
@@ -1326,20 +1534,261 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
         )}
       </div>
 
-      {/* ── Leaflet map container — NEVER unmounts, always in same DOM spot ── */}
+      {/* ── MOBILE-FIRST FLOATING BOTTOM SHEET (Option A) ──────────────────── */}
+      {isMobile && (
+        <div className="absolute bottom-2.5 left-2.5 right-2.5 z-[999] pointer-events-auto">
+          {selectedMember ? (
+            /* Selected Member Detail Action Card */
+            (() => {
+              const loc = latestLocations[selectedMember.id];
+              const active = loc ? isToday(new Date(loc.timestamp)) : false;
+              const phone = (selectedMember.phone || '').replace(/\D/g, '');
+              const assignedFacility = selectedMember.societyName || selectedMember.organizationName || '';
+              const gmapsUrl = loc ? `https://www.google.com/maps/search/?api=1&query=${loc.latitude},${loc.longitude}` : '';
+
+              let photo = selectedMember.photoUrl;
+              if (photo && !photo.startsWith('http') && !photo.startsWith('data:') && !photo.startsWith('/')) {
+                const isAvatar = photo.startsWith('avatars/');
+                const bucket = isAvatar ? 'avatars' : 'onboarding-documents';
+                const path = isAvatar ? photo.replace('avatars/', '') : photo;
+                try {
+                  photo = supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl;
+                } catch {
+                  /* fallback gracefully */
+                }
+              }
+
+              const rawName = (selectedMember.name || '').trim();
+              const displayName = rawName || (selectedMember.email ? selectedMember.email.split('@')[0] : 'Team Member');
+              const formattedRole = (selectedMember.role || 'Staff').replace(/_/g, ' ');
+              const initials = (rawName || displayName).split(' ').map((w: string) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || 'TM';
+
+              return (
+                <div className="bg-[#082214]/95 backdrop-blur-xl border border-emerald-500/35 rounded-3xl p-3.5 shadow-2xl text-white animate-in slide-in-from-bottom-4 duration-200">
+                  {/* Drag pill handle */}
+                  <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mb-2.5" />
+
+                  {/* Member Header */}
+                  <div className="flex items-center justify-between gap-3 mb-2.5">
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <div className="relative shrink-0 w-11 h-11 rounded-full overflow-hidden border-2" style={{ borderColor: active ? '#10b981' : '#ef4444' }}>
+                        {photo ? (
+                          <img src={photo} alt={displayName} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full bg-emerald-700 flex items-center justify-center font-bold text-xs text-white">
+                            {initials}
+                          </div>
+                        )}
+                        <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[#082214] ${active ? 'bg-emerald-400' : 'bg-red-500'}`} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="font-extrabold text-sm text-white truncate">{displayName}</h4>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="text-[10px] font-bold uppercase text-emerald-300 bg-emerald-950/80 px-2 py-0.5 rounded-md border border-emerald-500/30">
+                            {formattedRole}
+                          </span>
+                          {assignedFacility && (
+                            <span className="text-[10px] text-gray-300 truncate max-w-[130px]">
+                              • {assignedFacility}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedMember(null)}
+                      className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white flex items-center justify-center transition-colors shrink-0 cursor-pointer"
+                      aria-label="Close details"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* Location info */}
+                  <div className="bg-black/35 rounded-2xl p-2.5 mb-3 border border-white/5 space-y-1">
+                    <div className="flex items-start gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-bold text-gray-100 truncate">
+                          {isLoadingLocation ? 'Finding building / landmark...' : (selectedMemberLocation?.landmark || 'Facility Area')}
+                        </p>
+                        <p className="text-[10px] text-gray-400 truncate">
+                          {selectedMemberLocation?.road || (loc ? `${loc.latitude.toFixed(5)}, ${loc.longitude.toFixed(5)}` : 'Coordinates unavailable')}
+                        </p>
+                      </div>
+                    </div>
+                    {loc && (
+                      <p className="text-[10px] text-emerald-400 font-medium pl-5">
+                        {active ? '🟢 Active today' : '🔴 Last active'}: {formatDistanceToNow(new Date(loc.timestamp))} ago
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Mobile Action Buttons */}
+                  <div className="grid grid-cols-3 gap-2">
+                    {phone ? (
+                      <a
+                        href={`https://wa.me/91${phone}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn team-action-btn team-action-btn-wa flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 transition-all text-xs font-bold text-white shadow-md shadow-emerald-900/40"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5 fill-white text-white shrink-0" />
+                        <span className="text-white font-bold">WhatsApp</span>
+                      </a>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled
+                        className="team-action-btn flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl bg-gray-800 text-gray-500 text-xs font-bold opacity-50 cursor-not-allowed"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5 shrink-0" />
+                        <span>WhatsApp</span>
+                      </button>
+                    )}
+
+                    {phone ? (
+                      <a
+                        href={`tel:${phone}`}
+                        className="btn team-action-btn team-action-btn-call flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 active:scale-95 transition-all text-xs font-bold text-white shadow-md shadow-blue-900/40"
+                      >
+                        <Phone className="w-3.5 h-3.5 fill-white text-white shrink-0" />
+                        <span className="text-white font-bold">Call</span>
+                      </a>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled
+                        className="team-action-btn flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl bg-gray-800 text-gray-500 text-xs font-bold opacity-50 cursor-not-allowed"
+                      >
+                        <Phone className="w-3.5 h-3.5 shrink-0" />
+                        <span>Call</span>
+                      </button>
+                    )}
+
+                    {gmapsUrl ? (
+                      <a
+                        href={gmapsUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn team-action-btn team-action-btn-nav flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 active:scale-95 transition-all text-xs font-bold text-white shadow-md shadow-teal-900/40"
+                      >
+                        <Navigation className="w-3.5 h-3.5 text-white shrink-0" />
+                        <span className="text-white font-bold">Directions</span>
+                      </a>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled
+                        className="team-action-btn flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl bg-gray-800 text-gray-500 text-xs font-bold opacity-50 cursor-not-allowed"
+                      >
+                        <Navigation className="w-3.5 h-3.5 shrink-0" />
+                        <span>Directions</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })()
+          ) : (
+            /* Carousel bottom drawer when no member is selected */
+            <div className="bg-slate-950/95 backdrop-blur-xl border border-white/15 rounded-3xl p-3 shadow-2xl text-white animate-in fade-in duration-200">
+              {/* Drag pill handle */}
+              <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mb-2" />
+
+              {/* Header with count and filter */}
+              <div className="flex items-center justify-between mb-2 px-1">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="text-xs font-extrabold text-white">Team on Map ({membersToPlot.length})</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setOnlyActiveToday(p => !p)}
+                  className={`text-[10px] font-bold px-2.5 py-1 rounded-full border transition-all cursor-pointer ${
+                    onlyActiveToday
+                      ? 'bg-emerald-500 text-white border-emerald-400 shadow-sm'
+                      : 'bg-white/5 text-gray-400 border-white/10 hover:text-white'
+                  }`}
+                >
+                  {onlyActiveToday ? '✓ Active Only' : 'Show Active Only'}
+                </button>
+              </div>
+
+              {/* Horizontal scroll list */}
+              <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
+                {membersToPlot.length === 0 ? (
+                  <div className="py-2 px-4 text-xs text-gray-400 italic text-center w-full">
+                    No team members with GPS coordinates found
+                  </div>
+                ) : (
+                  membersToPlot.map(member => {
+                    const loc = latestLocations[member.id];
+                    const active = loc ? isToday(new Date(loc.timestamp)) : false;
+                    const rawName = (member.name || '').trim();
+                    const displayName = rawName || (member.email ? member.email.split('@')[0] : 'Team Member');
+                    const formattedRole = (member.role || 'Staff').replace(/_/g, ' ');
+                    const initials = (rawName || displayName).split(' ').map((w: string) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || 'TM';
+
+                    let photo = member.photoUrl;
+                    if (photo && !photo.startsWith('http') && !photo.startsWith('data:') && !photo.startsWith('/')) {
+                      const isAvatar = photo.startsWith('avatars/');
+                      const bucket = isAvatar ? 'avatars' : 'onboarding-documents';
+                      const path = isAvatar ? photo.replace('avatars/', '') : photo;
+                      try {
+                        photo = supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl;
+                      } catch {
+                        /* fallback gracefully */
+                      }
+                    }
+
+                    return (
+                      <button
+                        key={member.id}
+                        type="button"
+                        onClick={() => handleSelectMember(member)}
+                        className="flex items-center gap-2 p-2 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 shrink-0 min-w-[140px] max-w-[180px] active:scale-95 transition-all text-left cursor-pointer"
+                      >
+                        <div className="relative shrink-0 w-8 h-8 rounded-full overflow-hidden border" style={{ borderColor: active ? '#10b981' : '#ef4444' }}>
+                          {photo ? (
+                            <img src={photo} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full bg-emerald-800 flex items-center justify-center font-bold text-[10px] text-white">
+                              {initials}
+                            </div>
+                          )}
+                          <span className={`absolute bottom-0 right-0 w-2 h-2 rounded-full border border-black ${active ? 'bg-emerald-400' : 'bg-red-500'}`} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[11px] font-bold text-white truncate leading-tight">{displayName}</p>
+                          <p className="text-[9px] text-emerald-400 font-medium truncate mt-0.5 capitalize">{formattedRole}</p>
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Leaflet map container ────────────────────────────────────────────
+           UNIVERSAL MOBILE FIX: position:absolute + inset:0
+           This is the industry-standard fix for Leaflet on mobile.
+           Unlike height:100% (which requires ALL ancestors to have explicit
+           heights set), absolute+inset:0 fills the nearest positioned parent
+           instantly — regardless of CSS layout phase, flex/grid, or vh units.
+           Result: clientWidth/clientHeight are ALWAYS correct when Leaflet reads them.
+      ── */}
       <div
         ref={mapContainerRef}
-        className="w-full h-full z-0"
         style={{
-          height: '100%',
-          width: '100%',
-          minHeight: isMobile ? '280px' : undefined,
+          position: 'absolute',
+          inset: 0,
+          zIndex: 0,
           backgroundColor: mapStyle === 'dark' ? '#121212' : (mapStyle === 'satellite' ? '#061018' : '#aadaff'),
-          /* GPU compositing — eliminates gray-tile flash on mobile WebView */
-          willChange: 'transform',
-          WebkitTransform: 'translateZ(0)',
-          transform: 'translateZ(0)',
-          /* Critical: allows Leaflet touch events without browser scroll hijacking */
           touchAction: 'none',
         }}
       />

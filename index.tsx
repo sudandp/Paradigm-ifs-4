@@ -26,13 +26,10 @@ if (!rootElement) {
 import { SpeedInsights } from "@vercel/speed-insights/react";
 import { defineCustomElements } from '@ionic/pwa-elements/loader';
 import { syncEngine } from './services/offline/syncEngine';
+import { checkAndHandleAppUpgrade } from './services/appUpgradeManager';
 
 // Initialize PWA elements for camera support in web browser
 defineCustomElements(window);
-
-// Start the offline sync engine — listens for reconnect and drains the outbox.
-// No-op when VITE_OFFLINE_ENABLED !== 'true'.
-syncEngine.start();
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -43,14 +40,29 @@ const queryClient = new QueryClient({
   },
 });
 
-const root = ReactDOM.createRoot(rootElement);
-root.render(
-  <React.StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <HashRouter {...{ future: { v7_startTransition: true, v7_relativeSplatPath: true } } as any}>
-        <App />
-        <SpeedInsights />
-      </HashRouter>
-    </QueryClientProvider>
-  </React.StrictMode>
-);
+async function bootstrap() {
+  try {
+    // Automatically detect app updates & safely purge stale caches before stores mount
+    await checkAndHandleAppUpgrade();
+  } catch (err) {
+    console.warn('[Bootstrap] Upgrade check warning:', err);
+  }
+
+  // Start the offline sync engine — listens for reconnect and drains the outbox.
+  // No-op when VITE_OFFLINE_ENABLED !== 'true'.
+  syncEngine.start();
+
+  const root = ReactDOM.createRoot(rootElement!);
+  root.render(
+    <React.StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <HashRouter {...{ future: { v7_startTransition: true, v7_relativeSplatPath: true } } as any}>
+          <App />
+          <SpeedInsights />
+        </HashRouter>
+      </QueryClientProvider>
+    </React.StrictMode>
+  );
+}
+
+bootstrap();
