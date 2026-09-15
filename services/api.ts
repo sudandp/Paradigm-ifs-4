@@ -3178,7 +3178,7 @@ export const api = {
         userIds.map(id =>
           supabase
             .from('attendance_events')
-            .select('user_id, latitude, longitude, timestamp, location_name')
+            .select('user_id, latitude, longitude, timestamp, location_name, device_name, source, battery_level, ip_address, network_type')
             .eq('user_id', id)
             .order('timestamp', { ascending: false })
             .limit(1)
@@ -3189,7 +3189,7 @@ export const api = {
         userIds.map(id =>
           supabase
             .from('route_history')
-            .select('user_id, latitude, longitude, timestamp')
+            .select('user_id, latitude, longitude, timestamp, device_name, source, battery_level, ip_address, network_type')
             .eq('user_id', id)
             .order('timestamp', { ascending: false })
             .limit(1)

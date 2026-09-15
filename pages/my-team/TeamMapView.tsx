@@ -22,6 +22,7 @@ import {
 import { formatDistanceToNow, isToday } from 'date-fns';
 import { supabase } from '../../services/supabase';
 import { User } from '../../types';
+import { detectDeviceConnectionStatus } from '../../utils/deviceConnection';
 import 'leaflet/dist/leaflet.css';
 
 // ─── Popup + marker styles injected once ───────────────────────────────────
@@ -473,7 +474,7 @@ const mapPopupStyles = `
 
 interface TeamMapViewProps {
   members: User[];
-  latestLocations: Record<string, { latitude: number; longitude: number; timestamp: string }>;
+  latestLocations: Record<string, { latitude: number; longitude: number; timestamp: string; source?: string; deviceName?: string }>;
   memberLocations?: Record<string, { state: string; city: string }>;
   selectedLocation: string;
   onLocationChange?: (location: string) => void;
@@ -1021,6 +1022,9 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
       const initialLandmark = cached?.landmark || 'Loading building / landmark...';
       const initialRoad = cached?.road || `${loc.latitude.toFixed(5)}, ${loc.longitude.toFixed(5)}`;
 
+      const connInfo = detectDeviceConnectionStatus(loc.source, loc.deviceName);
+      const connIconEmoji = connInfo.hasLaptop && connInfo.hasPhone ? '📱💻' : connInfo.hasLaptop ? '💻' : '📱';
+
       const popup = `
         <div class="team-map-popup-inner">
           <!-- User header -->
@@ -1028,7 +1032,13 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
             <span style="width: 9px; height: 9px; border-radius: 50%; background: ${active ? '#44D62C' : '#ef4444'}; box-shadow: 0 0 8px ${active ? 'rgba(68,214,44,0.7)' : 'rgba(239,68,68,0.7)'}; flex-shrink: 0;"></span>
             <div style="overflow: hidden; flex: 1;">
               <p class="popup-title" title="${displayName}">${displayName}</p>
-              <span class="popup-role">${formattedRole}</span>
+              <div style="display: flex; items-center: gap: 4px; flex-wrap: wrap; margin-top: 2px;">
+                <span class="popup-role">${formattedRole}</span>
+                <span style="font-size: 9px; font-weight: 800; color: #6ee7b7; background: rgba(6, 95, 70, 0.6); border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 6px; padding: 1px 6px; display: inline-flex; items-center: gap: 3px;">
+                  <span>${connIconEmoji}</span>
+                  <span>${connInfo.statusText}</span>
+                </span>
+              </div>
             </div>
           </div>
           <p class="popup-time">
@@ -1583,10 +1593,19 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
                       </div>
                       <div className="min-w-0 flex-1">
                         <h4 className="font-extrabold text-sm text-white truncate">{displayName}</h4>
-                        <div className="flex items-center gap-1.5 mt-0.5">
+                        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                           <span className="text-[10px] font-bold uppercase text-emerald-300 bg-emerald-950/80 px-2 py-0.5 rounded-md border border-emerald-500/30">
                             {formattedRole}
                           </span>
+                          {(() => {
+                            const mConnInfo = detectDeviceConnectionStatus(loc?.source, loc?.deviceName);
+                            return (
+                              <span className="text-[10px] font-bold text-emerald-200 bg-black/40 px-2 py-0.5 rounded-md border border-white/10 flex items-center gap-1">
+                                <span>{mConnInfo.hasLaptop && mConnInfo.hasPhone ? '📱💻' : mConnInfo.hasLaptop ? '💻' : '📱'}</span>
+                                <span>{mConnInfo.statusText}</span>
+                              </span>
+                            );
+                          })()}
                           {assignedFacility && (
                             <span className="text-[10px] text-gray-300 truncate max-w-[130px]">
                               • {assignedFacility}

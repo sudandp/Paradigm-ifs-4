@@ -18,6 +18,10 @@ import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.location.Location;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
+import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
@@ -366,17 +370,55 @@ public class TrackingService extends Service implements SensorEventListener {
                         ? supabaseUrl + "functions/v1/record-tracking-ping"
                         : supabaseUrl + "/functions/v1/record-tracking-ping";
 
+                // --- Device Telemetry ---
+                String deviceName = Build.MANUFACTURER + " " + Build.MODEL;
+                float batteryLevel = -1f;
+                try {
+                    BatteryManager bm = (BatteryManager) getSystemService(Context.BATTERY_SERVICE);
+                    if (bm != null) {
+                        int pct = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY);
+                        batteryLevel = pct / 100f;
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "Battery read failed: " + e.getMessage());
+                }
+
+                // --- Network Telemetry ---
+                String networkType = "cellular";
+                try {
+                    ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+                    if (cm != null) {
+                        Network activeNetwork = cm.getActiveNetwork();
+                        if (activeNetwork != null) {
+                            NetworkCapabilities caps = cm.getNetworkCapabilities(activeNetwork);
+                            if (caps != null) {
+                                if (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) networkType = "wifi";
+                                else if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) networkType = "cellular";
+                                else if (caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) networkType = "ethernet";
+                                else networkType = "active";
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "Network telemetry failed: " + e.getMessage());
+                }
+
                 String requestId = java.util.UUID.randomUUID().toString();
 
                 JSONObject body = new JSONObject();
-                body.put("requestId",  requestId);
-                body.put("userId",     userId);
-                body.put("latitude",   lat);
-                body.put("longitude",  lng);
-                body.put("accuracy",   acc);
-                body.put("timestamp",  ts);
-                body.put("status",     "successful");
-                body.put("source",     "android_foreground_service");
+                body.put("requestId",   requestId);
+                body.put("userId",      userId);
+                body.put("latitude",    lat);
+                body.put("longitude",   lng);
+                body.put("accuracy",    acc);
+                body.put("timestamp",   ts);
+                body.put("status",      "successful");
+                body.put("source",      "android_foreground_service");
+                body.put("deviceName",  deviceName);
+                if (batteryLevel >= 0) {
+                    body.put("batteryLevel", (double) batteryLevel);
+                }
+                body.put("networkType", networkType);
 
                 String bearer = supabaseAccessToken;
 

@@ -16,6 +16,7 @@ import { supabase } from '../../services/supabase';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useThemeStore } from '../../store/themeStore';
 import { reverseGeocode, calculateDistanceMeters } from '../../utils/locationUtils';
+import { detectDeviceConnectionStatus } from '../../utils/deviceConnection';
 import Pagination from '../../components/ui/Pagination';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ProfilePlaceholder } from '../../components/ui/ProfilePlaceholder';
@@ -295,15 +296,132 @@ const TrackingLogsView: React.FC<{
     );
 };
 
+interface EffectiveTelemetry {
+    batteryLevel: number | null;
+    batteryDisplay: string;
+    deviceName: string;
+    networkType: string;
+    ipAddress: string;
+    source: string;
+}
+
+const resolveEffectiveTelemetry = (
+    userId: string,
+    rawPoint: {
+        batteryLevel?: number | null;
+        deviceName?: string | null;
+        networkType?: string | null;
+        ipAddress?: string | null;
+        source?: string | null;
+        timestamp?: string;
+    } | null,
+    events: AttendanceEvent[],
+    userDevices: any[] = []
+): EffectiveTelemetry => {
+    // 1. Identify active registered device if any
+    const activeDevice = userDevices.find(d => d.status === 'active') || userDevices[0];
+    const devInfo = activeDevice?.deviceInfo || activeDevice?.device_info || {};
+
+    // 2. Scan user's attendance events for fallback telemetry (sorted newest first)
+    const userEventsSorted = events
+        .filter(e => e.userId === userId)
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    const eventWithBattery = userEventsSorted.find(e => e.batteryLevel != null && e.batteryLevel > 0);
+    const eventWithDevice = userEventsSorted.find(e => e.deviceName && e.deviceName.trim() !== '' && e.deviceName.toLowerCase() !== 'unknown');
+    const eventWithNet = userEventsSorted.find(e => e.networkType && e.networkType.trim() !== '' && e.networkType.toLowerCase() !== 'offline');
+    const eventWithIp = userEventsSorted.find(e => e.ipAddress && e.ipAddress.trim() !== '' && e.ipAddress !== '--' && e.ipAddress !== '---');
+
+    // 3. Resolve source platform
+    const rawSource = rawPoint?.source || (rawPoint as any)?.workType || '';
+    const devType = activeDevice?.deviceType || activeDevice?.device_type || '';
+    const isAndroid = rawSource.includes('android') || rawSource === 'background_fcm' || devType === 'android';
+    const isIos = rawSource.includes('ios') || devType === 'ios';
+    const isWeb = rawSource === 'web' || devType === 'web';
+
+    // 4. Resolve Battery Level
+    let batteryLevel: number | null = null;
+    if (rawPoint?.batteryLevel != null && rawPoint.batteryLevel > 0) {
+        batteryLevel = rawPoint.batteryLevel;
+    } else if (eventWithBattery?.batteryLevel != null && eventWithBattery.batteryLevel > 0) {
+        batteryLevel = eventWithBattery.batteryLevel;
+    } else if (devInfo.batteryLevel != null && devInfo.batteryLevel > 0) {
+        batteryLevel = devInfo.batteryLevel;
+    }
+
+    const batteryDisplay = batteryLevel != null && batteryLevel > 0
+        ? `${Math.round(batteryLevel <= 1 ? batteryLevel * 100 : batteryLevel)}%`
+        : 'N/A';
+
+    // 5. Resolve Device Name
+    let deviceName = '';
+    if (rawPoint?.deviceName && rawPoint.deviceName.trim() !== '' && rawPoint.deviceName.toLowerCase() !== 'unknown') {
+        deviceName = rawPoint.deviceName;
+    } else if (activeDevice?.deviceName || activeDevice?.device_name) {
+        deviceName = activeDevice.deviceName || activeDevice.device_name;
+    } else if (devInfo.hardwareModel || devInfo.deviceModel) {
+        deviceName = devInfo.hardwareModel || devInfo.deviceModel;
+    } else if (eventWithDevice?.deviceName) {
+        deviceName = eventWithDevice.deviceName;
+    } else if (isAndroid) {
+        deviceName = rawSource === 'background_fcm' ? 'Android (BG)' : 'Android Device';
+    } else if (isIos) {
+        deviceName = 'iPhone';
+    } else if (isWeb) {
+        deviceName = 'Web Browser';
+    } else {
+        deviceName = 'Unknown';
+    }
+
+    // 6. Resolve Network Type
+    let networkType = '';
+    if (rawPoint?.networkType && rawPoint.networkType.trim() !== '' && rawPoint.networkType.toLowerCase() !== 'offline') {
+        networkType = rawPoint.networkType;
+    } else if (devInfo.connectionType) {
+        networkType = devInfo.connectionType;
+    } else if (eventWithNet?.networkType) {
+        networkType = eventWithNet.networkType;
+    } else if (rawPoint?.timestamp) {
+        // If GPS ping was received recently (within 45 mins), internet was active
+        const ageMs = Date.now() - new Date(rawPoint.timestamp).getTime();
+        if (ageMs < 45 * 60 * 1000) {
+            networkType = 'Online (Active)';
+        }
+    }
+    if (!networkType) networkType = 'Offline';
+
+    // 7. Resolve IP Address
+    let ipAddress = '';
+    if (rawPoint?.ipAddress && rawPoint.ipAddress.trim() !== '' && rawPoint.ipAddress !== '--' && rawPoint.ipAddress !== '---') {
+        ipAddress = rawPoint.ipAddress;
+    } else if (devInfo.ipAddress) {
+        ipAddress = devInfo.ipAddress;
+    } else if (eventWithIp?.ipAddress) {
+        ipAddress = eventWithIp.ipAddress;
+    }
+    if (!ipAddress) ipAddress = '--';
+
+    return {
+        batteryLevel,
+        batteryDisplay,
+        deviceName,
+        networkType,
+        ipAddress,
+        source: rawSource || (isAndroid ? 'android' : isIos ? 'ios' : isWeb ? 'web' : '')
+    };
+};
+
 const MapView: React.FC<{ 
     events: (AttendanceEvent & { userName: string })[], 
     users: User[], 
-    selectedUser: string,
+    selectedUser: string, 
     knownLocations: Location[],
     liveRoutePoints: RoutePoint[], // Fresh GPS pings from parent state
     onSelectUser: (userId: string) => void,
-    onShowDevices: () => void
-}> = ({ events, users, selectedUser, knownLocations, liveRoutePoints, onSelectUser, onShowDevices }) => {
+    onShowDevices: () => void,
+    userPlatforms?: string[],
+    userDevices?: any[]
+}> = ({ events, users, selectedUser, knownLocations, liveRoutePoints, onSelectUser, onShowDevices, userPlatforms = [], userDevices = [] }) => {
     const mapRef = useRef<L.Map | null>(null);
     const mapContainerRef = useRef<HTMLDivElement>(null);
     const markersRef = useRef<L.LayerGroup>(L.layerGroup());
@@ -544,59 +662,67 @@ const MapView: React.FC<{
                                 
                             if (!lastEvent) return null;
                             
+                            const telemetry = resolveEffectiveTelemetry(selectedUser, lastEvent, events, userDevices);
+
                             return (
                                 <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 gap-4">
                                     <div className="flex items-center gap-2">
                                         <div className="h-8 w-8 rounded-sm bg-amber-50 flex items-center justify-center">
-                                            <Battery className={`h-4 w-4 ${lastEvent.batteryLevel && lastEvent.batteryLevel < 0.2 ? 'text-red-500 animate-pulse' : 'text-amber-600'}`} />
+                                            <Battery className={`h-4 w-4 ${telemetry.batteryLevel && telemetry.batteryLevel < 0.2 ? 'text-red-500 animate-pulse' : 'text-amber-600'}`} />
                                         </div>
                                         <div className="flex flex-col">
                                             <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider">Battery</span>
                                             <span className="text-[10px] font-bold text-slate-700">
-                                                {lastEvent.batteryLevel ? `${Math.round(lastEvent.batteryLevel * 100)}%` : 'N/A'}
+                                                {telemetry.batteryDisplay}
                                             </span>
                                         </div>
                                     </div>
 
                                     <div 
-                                        className="flex items-center gap-2 cursor-pointer hover:bg-slate-100/50 p-1 rounded-sm transition-colors pointer-events-auto"
+                                        className="col-span-2 p-2 bg-slate-50 border border-slate-200/80 rounded-sm flex items-center justify-between cursor-pointer hover:bg-slate-100/70 transition-colors pointer-events-auto shadow-xs"
                                         onClick={onShowDevices}
-                                        title="Click to view all registered devices"
+                                        title="Click to view all registered devices & status"
                                     >
                                         {(() => {
-                                            const src = (lastEvent as any).source || '';
-                                            const isAndroid = src.includes('android') || src === 'background_fcm';
-                                            const isWeb = src === 'web' || (!src && (lastEvent.deviceName?.toLowerCase().includes('chrome') || lastEvent.deviceName?.toLowerCase().includes('windows') || lastEvent.deviceName?.toLowerCase().includes('capacitor web')));
-                                            const isIos = src.includes('ios');
-
-                                            const bgColor = isAndroid ? 'bg-emerald-50' : isWeb ? 'bg-blue-50' : 'bg-slate-50';
-                                            const iconColor = isAndroid ? 'text-emerald-600' : isWeb ? 'text-blue-600' : 'text-slate-600';
-                                            const label = isAndroid
-                                                ? (src === 'background_fcm' ? 'Android (BG)' : 'Android (FG)')
-                                                : isWeb ? 'Web/Laptop'
-                                                : isIos ? 'iPhone'
-                                                : (lastEvent.deviceName || 'Unknown');
-                                            const dotColor = isAndroid ? 'bg-emerald-500' : isWeb ? 'bg-blue-500' : 'bg-slate-400';
+                                            const connInfo = detectDeviceConnectionStatus(
+                                                telemetry.source || (lastEvent as any).source,
+                                                telemetry.deviceName,
+                                                userPlatforms
+                                            );
 
                                             return (
-                                                <>
-                                                    <div className={`h-8 w-8 rounded-sm ${bgColor} flex items-center justify-center relative`}>
-                                                        {isAndroid ? <Smartphone className={`h-4 w-4 ${iconColor}`} /> : <Monitor className={`h-4 w-4 ${iconColor}`} />}
-                                                        <span className={`absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full ${dotColor} ring-1 ring-white`} />
+                                                <div className="flex items-center justify-between w-full gap-2">
+                                                    <div className="flex items-center gap-2 min-w-0">
+                                                        <div className="h-8 w-8 rounded-sm bg-white border border-slate-200 flex items-center justify-center relative shrink-0 shadow-2xs">
+                                                            {connInfo.hasLaptop && connInfo.hasPhone ? (
+                                                                <div className="flex items-center -space-x-1">
+                                                                    <Smartphone className="h-3.5 w-3.5 text-emerald-600" />
+                                                                    <Monitor className="h-3.5 w-3.5 text-blue-600" />
+                                                                </div>
+                                                            ) : connInfo.hasLaptop ? (
+                                                                <Monitor className="h-4 w-4 text-blue-600" />
+                                                            ) : (
+                                                                <Smartphone className="h-4 w-4 text-emerald-600" />
+                                                            )}
+                                                            <span className={`absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full ${connInfo.hasLaptop && connInfo.hasPhone ? 'bg-indigo-500' : connInfo.hasLaptop ? 'bg-blue-500' : 'bg-emerald-500'} ring-1 ring-white animate-pulse`} />
+                                                        </div>
+                                                        <div className="flex flex-col min-w-0">
+                                                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                                                                Device &amp; Login Status
+                                                                <span className="text-[7px] text-blue-500 font-bold lowercase">(view all)</span>
+                                                            </span>
+                                                            <span className="text-[10.5px] font-black text-slate-900 truncate">
+                                                                {connInfo.statusText}
+                                                            </span>
+                                                            {telemetry.deviceName && (
+                                                                <span className="text-[8px] text-slate-400 truncate max-w-[140px]">{telemetry.deviceName}</span>
+                                                            )}
+                                                        </div>
                                                     </div>
-                                                    <div className="flex flex-col min-w-0">
-                                                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                                                            Device Source
-                                                            <span className="text-[7px] text-blue-500 font-bold lowercase">(view all)</span>
-                                                        </span>
-                                                        <span className={`text-[10px] font-black truncate max-w-[90px] ${isAndroid ? 'text-emerald-700' : isWeb ? 'text-blue-700' : 'text-slate-700'} hover:text-blue-600 transition-colors`}>
-                                                            {label}
-                                                        </span>
-                                                        {isAndroid && lastEvent.deviceName && (
-                                                            <span className="text-[8px] text-slate-400 truncate max-w-[90px]">{lastEvent.deviceName}</span>
-                                                        )}
-                                                    </div>
-                                                </>
+                                                    <span className={`px-2 py-0.5 rounded-sm text-[8px] font-black uppercase tracking-wider border shrink-0 ${connInfo.badgeBg} ${connInfo.badgeText} ${connInfo.badgeBorder}`}>
+                                                        {connInfo.shortBadgeText}
+                                                    </span>
+                                                </div>
                                             );
                                         })()}
                                     </div>
@@ -608,7 +734,7 @@ const MapView: React.FC<{
                                         <div className="flex flex-col">
                                             <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider">Network</span>
                                             <span className="text-[10px] font-bold text-slate-700">
-                                                {lastEvent.networkType || 'Offline'}
+                                                {telemetry.networkType}
                                             </span>
                                         </div>
                                     </div>
@@ -620,7 +746,7 @@ const MapView: React.FC<{
                                         <div className="flex flex-col">
                                             <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider">IP Address</span>
                                             <span className="text-[10px] font-bold text-slate-700 truncate max-w-[80px]">
-                                                {lastEvent.ipAddress || '---'}
+                                                {telemetry.ipAddress}
                                             </span>
                                         </div>
                                     </div>
@@ -642,8 +768,10 @@ const RouteView: React.FC<{
     users: User[],
     knownLocations: Location[],
     onSelectUser: (userId: string) => void,
-    onShowDevices: () => void
-}> = ({ events, selectedUser, startDate, endDate, users, knownLocations, onSelectUser, onShowDevices }) => {
+    onShowDevices: () => void,
+    userPlatforms?: string[],
+    userDevices?: any[]
+}> = ({ events, selectedUser, startDate, endDate, users, knownLocations, onSelectUser, onShowDevices, userPlatforms = [], userDevices = [] }) => {
     const mapRef = useRef<L.Map | null>(null);
     const mapContainerRef = useRef<HTMLDivElement>(null);
     const polylineRef = useRef<L.FeatureGroup | L.Polyline | null>(null);
@@ -658,7 +786,7 @@ const RouteView: React.FC<{
     const userEvents = useMemo(() => {
         return events
             .filter(e => e.userId === selectedUser && e.latitude && e.longitude)
-            .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+            .sort((a, b) => new Date(a.timestamp).getTime() - new Date(a.timestamp).getTime());
     }, [events, selectedUser]);
 
     const combinedPathPoints = useMemo(() => {
@@ -669,10 +797,11 @@ const RouteView: React.FC<{
             timestamp: e.timestamp,
             isEvent: true,
             speed: undefined as number | undefined,
-            batteryLevel: undefined as number | undefined,
-            deviceName: undefined as string | undefined,
-            networkType: undefined as string | undefined,
-            ipAddress: undefined as string | undefined
+            batteryLevel: e.batteryLevel,
+            deviceName: e.deviceName,
+            networkType: e.networkType,
+            ipAddress: e.ipAddress,
+            source: e.source
         }));
 
         const routeCoords = routePoints.map(p => ({
@@ -1606,37 +1735,69 @@ const RouteView: React.FC<{
                                 
                             if (!lastPoint) return null;
                             
+                            const telemetry = resolveEffectiveTelemetry(selectedUser, lastPoint, events, userDevices);
+
                             return (
                                 <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 gap-4">
                                     <div className="flex items-center gap-2">
                                         <div className="h-8 w-8 rounded-sm bg-amber-50 flex items-center justify-center">
-                                            <Battery className={`h-4 w-4 ${lastPoint.batteryLevel && lastPoint.batteryLevel < 0.2 ? 'text-red-500 animate-pulse' : 'text-amber-600'}`} />
+                                            <Battery className={`h-4 w-4 ${telemetry.batteryLevel && telemetry.batteryLevel < 0.2 ? 'text-red-500 animate-pulse' : 'text-amber-600'}`} />
                                         </div>
                                         <div className="flex flex-col">
                                             <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider">Battery</span>
                                             <span className="text-[10px] font-bold text-slate-700">
-                                                {lastPoint.batteryLevel ? `${Math.round(lastPoint.batteryLevel * 100)}%` : 'N/A'}
+                                                {telemetry.batteryDisplay}
                                             </span>
                                         </div>
                                     </div>
 
                                     <div 
-                                        className="flex items-center gap-2 cursor-pointer hover:bg-slate-100/50 p-1 rounded-sm transition-colors pointer-events-auto"
+                                        className="col-span-2 p-2 bg-slate-50 border border-slate-200/80 rounded-sm flex items-center justify-between cursor-pointer hover:bg-slate-100/70 transition-colors pointer-events-auto shadow-xs"
                                         onClick={onShowDevices}
-                                        title="Click to view all registered devices"
+                                        title="Click to view all registered devices & status"
                                     >
-                                        <div className="h-8 w-8 rounded-sm bg-slate-50 flex items-center justify-center">
-                                            <Smartphone className="h-4 w-4 text-slate-600 animate-pulse" />
-                                        </div>
-                                        <div className="flex flex-col min-w-0">
-                                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                                                Device 
-                                                <span className="text-[7px] text-blue-500 font-bold lowercase">(view all)</span>
-                                            </span>
-                                            <span className="text-[10px] font-bold text-slate-700 truncate max-w-[80px] hover:text-blue-600 transition-colors">
-                                                {lastPoint.deviceName || 'Unknown'}
-                                            </span>
-                                        </div>
+                                        {(() => {
+                                            const connInfo = detectDeviceConnectionStatus(
+                                                telemetry.source || (lastPoint as any).source,
+                                                telemetry.deviceName,
+                                                userPlatforms
+                                            );
+
+                                            return (
+                                                <div className="flex items-center justify-between w-full gap-2">
+                                                    <div className="flex items-center gap-2 min-w-0">
+                                                        <div className="h-8 w-8 rounded-sm bg-white border border-slate-200 flex items-center justify-center relative shrink-0 shadow-2xs">
+                                                            {connInfo.hasLaptop && connInfo.hasPhone ? (
+                                                                <div className="flex items-center -space-x-1">
+                                                                    <Smartphone className="h-3.5 w-3.5 text-emerald-600" />
+                                                                    <Monitor className="h-3.5 w-3.5 text-blue-600" />
+                                                                </div>
+                                                            ) : connInfo.hasLaptop ? (
+                                                                <Monitor className="h-4 w-4 text-blue-600" />
+                                                            ) : (
+                                                                <Smartphone className="h-4 w-4 text-emerald-600" />
+                                                            )}
+                                                            <span className={`absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full ${connInfo.hasLaptop && connInfo.hasPhone ? 'bg-indigo-500' : connInfo.hasLaptop ? 'bg-blue-500' : 'bg-emerald-500'} ring-1 ring-white animate-pulse`} />
+                                                        </div>
+                                                        <div className="flex flex-col min-w-0">
+                                                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                                                                Device &amp; Login Status
+                                                                <span className="text-[7px] text-blue-500 font-bold lowercase">(view all)</span>
+                                                            </span>
+                                                            <span className="text-[10.5px] font-black text-slate-900 truncate">
+                                                                {connInfo.statusText}
+                                                            </span>
+                                                            {telemetry.deviceName && (
+                                                                <span className="text-[8px] text-slate-400 truncate max-w-[140px]">{telemetry.deviceName}</span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    <span className={`px-2 py-0.5 rounded-sm text-[8px] font-black uppercase tracking-wider border shrink-0 ${connInfo.badgeBg} ${connInfo.badgeText} ${connInfo.badgeBorder}`}>
+                                                        {connInfo.shortBadgeText}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })()}
                                     </div>
 
                                     <div className="flex items-center gap-2">
@@ -1646,7 +1807,7 @@ const RouteView: React.FC<{
                                         <div className="flex flex-col">
                                             <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider">Network</span>
                                             <span className="text-[10px] font-bold text-slate-700">
-                                                {lastPoint.networkType || 'Offline'}
+                                                {telemetry.networkType}
                                             </span>
                                         </div>
                                     </div>
@@ -1658,7 +1819,7 @@ const RouteView: React.FC<{
                                         <div className="flex flex-col">
                                             <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider">IP Address</span>
                                             <span className="text-[10px] font-bold text-slate-700 truncate max-w-[80px]">
-                                                {lastPoint.ipAddress || '---'}
+                                                {telemetry.ipAddress}
                                             </span>
                                         </div>
                                     </div>
@@ -1809,6 +1970,24 @@ const ActivityItem: React.FC<{
                                     {event.userRole}
                                 </span>
                             )}
+                            {(() => {
+                                const itemConnInfo = detectDeviceConnectionStatus((event as any).source, event.deviceName, userPlatforms);
+                                return (
+                                    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider border mt-1 w-fit ${itemConnInfo.badgeBg} ${itemConnInfo.badgeText} ${itemConnInfo.badgeBorder}`}>
+                                        {itemConnInfo.hasLaptop && itemConnInfo.hasPhone ? (
+                                            <span className="flex items-center -space-x-0.5">
+                                                <Smartphone className="h-3 w-3 text-emerald-600" />
+                                                <Monitor className="h-3 w-3 text-blue-600" />
+                                            </span>
+                                        ) : itemConnInfo.hasLaptop ? (
+                                            <Monitor className="h-3 w-3 text-blue-600" />
+                                        ) : (
+                                            <Smartphone className="h-3 w-3 text-emerald-600" />
+                                        )}
+                                        <span>{itemConnInfo.statusText}</span>
+                                    </span>
+                                );
+                            })()}
                         </div>
                         <div className="flex items-start gap-1.5 pt-0.5">
                             <MapPin className="h-3.5 w-3.5 text-muted mt-0.5 flex-shrink-0" />
@@ -2659,6 +2838,8 @@ const FieldStaffTracking: React.FC = () => {
                                 liveRoutePoints={liveRoutePoints}
                                 onSelectUser={setSelectedUser}
                                 onShowDevices={() => setShowDevicesModal(true)}
+                                userPlatforms={selectedUser !== 'all' ? (userPlatformsMap[selectedUser] || []) : []}
+                                userDevices={userDevices}
                             />
                         )}
 
@@ -2684,6 +2865,8 @@ const FieldStaffTracking: React.FC = () => {
                                         knownLocations={knownLocations}
                                         onSelectUser={setSelectedUser}
                                         onShowDevices={() => setShowDevicesModal(true)}
+                                        userPlatforms={selectedUser !== 'all' ? (userPlatformsMap[selectedUser] || []) : []}
+                                        userDevices={userDevices}
                                     />
                                 )}
                             </motion.div>
