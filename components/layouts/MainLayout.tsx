@@ -36,7 +36,7 @@ export const allNavLinks: NavLinkConfig[] = [
     { to: '/crm', label: 'CRM Pipeline', icon: Target, permission: 'view_crm_pipeline', category: 'CRM & Sales' },
     { to: '/crm/checklists', label: 'Checklist Templates', icon: ClipboardCheck, permission: 'view_crm_checklists', category: 'CRM & Sales' },
     { to: '/referral/management', label: 'Referral Management', icon: Users, permission: 'view_referrals', category: 'CRM & Sales' },
-    { to: '/hrm/my-referrals', label: 'My Referrals', icon: User, permission: 'view_profile', category: 'CRM & Sales' },
+    { to: '/hrm/my-referrals', label: 'My Referrals', icon: User, permission: 'view_my_referrals', category: 'CRM & Sales' },
 
     // HRM Portal
     { to: '/hrm/calls/queue', label: 'HR Call Queue', icon: Phone, permission: 'view_hr_call_queue', category: 'HRM Portal' },

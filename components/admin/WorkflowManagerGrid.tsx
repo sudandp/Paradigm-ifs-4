@@ -9,6 +9,7 @@ import {
     Layers 
 } from 'lucide-react';
 import Select from '../ui/Select';
+import { WorkflowUserAvatar } from './WorkflowChart2D';
 
 interface WorkflowManagerGridProps {
     users: (User & { managerName?: string; manager2Name?: string; manager3Name?: string })[];
@@ -165,6 +166,17 @@ const WorkflowManagerGrid: React.FC<WorkflowManagerGridProps> = ({
         });
     }, [unassignedUsers, searchQuery, selectedRoleFilter, allRoles]);
 
+    // Available reporting managers for assignment dropdown (showing only reporting managers)
+    const reportingManagers = useMemo(() => {
+        const mgrIds = new Set<string>();
+        users.forEach(u => {
+            if (u.reportingManagerId) mgrIds.add(u.reportingManagerId);
+        });
+        return users
+            .filter(u => mgrIds.has(u.id))
+            .sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
+    }, [users]);
+
     return (
         <div className="space-y-6">
             {/* Top Toolbar */}
@@ -229,13 +241,11 @@ const WorkflowManagerGrid: React.FC<WorkflowManagerGridProps> = ({
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {filteredUnassigned.slice(0, 12).map(user => (
+                        {filteredUnassigned.map(user => (
                             <div key={user.id} className="p-3 bg-card border border-amber-200/70 rounded-lg shadow-sm space-y-2">
                                 <div className="flex items-center justify-between gap-2">
                                     <div className="flex items-center gap-2 min-w-0">
-                                        <div className="w-7 h-7 rounded-full bg-amber-100 text-amber-800 font-bold text-xs flex items-center justify-center flex-shrink-0">
-                                            {(user.name || 'U').charAt(0).toUpperCase()}
-                                        </div>
+                                        <WorkflowUserAvatar user={user} size="w-7 h-7" rounded="rounded-full" />
                                         <div className="min-w-0">
                                             <p className="font-bold text-xs text-primary-text truncate">{user.name}</p>
                                             <p className="text-[10px] text-muted truncate">{getRoleDisplayName(user.role)}</p>
@@ -256,7 +266,7 @@ const WorkflowManagerGrid: React.FC<WorkflowManagerGridProps> = ({
                                             className="text-xs border-amber-300 bg-amber-50/50"
                                         >
                                             <option value="">⚡ Assign Manager...</option>
-                                            {users.filter(m => m.id !== user.id).map(m => (
+                                            {reportingManagers.filter(m => m.id !== user.id).map(m => (
                                                 <option key={m.id} value={m.id}>
                                                     {m.name} ({getRoleDisplayName(m.role)})
                                                 </option>
@@ -267,12 +277,6 @@ const WorkflowManagerGrid: React.FC<WorkflowManagerGridProps> = ({
                             </div>
                         ))}
                     </div>
-
-                    {filteredUnassigned.length > 12 && (
-                        <p className="text-xs text-amber-900 mt-3 text-center">
-                            + {filteredUnassigned.length - 12} more unassigned employees. Use search or Table View for full roster.
-                        </p>
-                    )}
                 </div>
             )}
 
@@ -305,9 +309,7 @@ const WorkflowManagerGrid: React.FC<WorkflowManagerGridProps> = ({
                                         className="p-4 bg-page/40 hover:bg-page/70 border-b border-border cursor-pointer flex items-center justify-between gap-3 select-none transition-colors"
                                     >
                                         <div className="flex items-center gap-3 min-w-0">
-                                            <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 text-primary font-bold text-sm flex items-center justify-center flex-shrink-0 shadow-inner">
-                                                {(manager.name || 'M').charAt(0).toUpperCase()}
-                                            </div>
+                                            <WorkflowUserAvatar user={manager} size="w-10 h-10" textSize="text-sm" rounded="rounded-xl" />
                                             <div className="min-w-0">
                                                 <div className="flex items-center gap-2">
                                                     <h4 className="font-bold text-primary-text text-sm truncate">{manager.name}</h4>
@@ -342,9 +344,7 @@ const WorkflowManagerGrid: React.FC<WorkflowManagerGridProps> = ({
                                                 team.map(member => (
                                                     <div key={member.id} className="py-2 px-1.5 flex items-center justify-between gap-2 hover:bg-page/50 rounded-lg transition-colors">
                                                         <div className="flex items-center gap-2.5 min-w-0">
-                                                            <div className="w-7 h-7 rounded-full bg-slate-100 text-slate-700 font-bold text-[11px] flex items-center justify-center flex-shrink-0 border border-slate-200">
-                                                                {(member.name || 'U').charAt(0).toUpperCase()}
-                                                            </div>
+                                                            <WorkflowUserAvatar user={member} size="w-7 h-7" textSize="text-[11px]" rounded="rounded-full" />
                                                             <div className="min-w-0">
                                                                 <p className="font-semibold text-xs text-primary-text truncate">{member.name}</p>
                                                                 <p className="text-[10px] text-muted truncate">{getRoleDisplayName(member.role)}</p>

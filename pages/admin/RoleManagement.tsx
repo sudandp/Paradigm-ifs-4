@@ -23,6 +23,7 @@ export const allPermissions: { key: Permission; name: string; description: strin
     { key: 'view_crm_pipeline', name: 'Access CRM Pipeline', description: 'View and manage the sales pipeline and leads.', category: 'CRM & Sales' },
     { key: 'view_crm_checklists', name: 'Access CRM Checklists', description: 'Create and manage checklist templates for property surveys.', category: 'CRM & Sales' },
     { key: 'view_referrals', name: 'Access Referral Management', description: 'View and manage employee and business referrals.', category: 'CRM & Sales' },
+    { key: 'view_my_referrals', name: 'Access My Referrals', description: 'View and track personal candidate and business referrals.', category: 'CRM & Sales' },
 
     // HRM Portal
     { key: 'view_hr_call_queue', name: 'HR Call Queue', description: 'Access and manage the HR call queue.', category: 'HRM Portal' },

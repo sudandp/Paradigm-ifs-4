@@ -2102,10 +2102,12 @@ const App: React.FC = () => {
           </Route>
           <Route path="mobile-home" element={<MobileHome />} />
 
-          {/* Referral Module — accessible to all authenticated users */}
+          {/* Referral Module */}
           <Route path="referral/employee" element={<EmployeeReferralForm />} />
           <Route path="referral/business" element={<BusinessReferralForm />} />
-          <Route path="hrm/my-referrals" element={<MyReferralsPage />} />
+          <Route element={<ProtectedRoute requiredPermission="view_my_referrals" />}>
+            <Route path="hrm/my-referrals" element={<MyReferralsPage />} />
+          </Route>
           <Route element={<ProtectedRoute requiredPermission="view_referrals" />}>
             <Route path="referral/management" element={<ReferralManagement />} />
             <Route path="hrm/calls/queue" element={<HRCallQueue />} />

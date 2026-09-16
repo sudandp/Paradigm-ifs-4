@@ -3142,7 +3142,7 @@ export const api = {
       };
     });
     const userMap = new Map(camelUsers.map(u => [u.id, u.name]));
-    return camelUsers.map(u => ({
+    return camelUsers.map(u => processUrlsForDisplay({
       ...u,
       managerName: u.reportingManagerId ? userMap.get(u.reportingManagerId) : undefined,
       manager2Name: u.reportingManager2Id ? userMap.get(u.reportingManager2Id) : undefined,
@@ -12138,34 +12138,52 @@ export const api = {
   },
 
   deleteBusinessReferral: async (id: string): Promise<void> => {
-    // Fetch the referral first so we know which CRM lead to delete
-    const { data: referral } = await supabase
-      .from('business_referrals')
-      .select('*')
-      .eq('id', id)
-      .single();
+    // Fetch referral first so we know which CRM lead to delete
+    let referral: any = null;
+    try {
+      const { data } = await supabase
+        .from('business_referrals')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+      referral = data;
+    } catch (e) {
+      console.warn('Could not pre-fetch referral for CRM lead cleanup:', e);
+    }
 
     const { error } = await supabase.from('business_referrals').delete().eq('id', id);
     if (error) throw error;
 
-    // Attempt to delete the corresponding CRM lead if we have the details
+    // Attempt to delete corresponding CRM lead if available
     if (referral) {
-      const clientName = referral.community_name || referral.company_name;
-      const phone = referral.client_phone || referral.contact_mobile;
-      
-      if (clientName) {
-        let query = supabase.from('crm_leads')
-          .delete()
-          .eq('client_name', clientName)
-          .eq('source', 'Referral');
-          
-        if (phone) {
-          query = query.eq('phone', phone);
-        }
+      try {
+        const clientName = referral.community_name || referral.company_name;
+        const phone = referral.client_phone || referral.contact_mobile;
         
-        await query;
+        if (clientName) {
+          let query = supabase.from('crm_leads')
+            .delete()
+            .eq('client_name', clientName)
+            .eq('source', 'Referral');
+            
+          if (phone) {
+            query = query.eq('phone', phone);
+          }
+          
+          await query;
+        }
+      } catch (crmErr) {
+        console.warn('Non-fatal: Failed to clean up associated CRM lead:', crmErr);
       }
     }
+  },
+
+  updateBusinessReferralStatus: async (id: string, status: string): Promise<void> => {
+    const { error } = await supabase
+      .from('business_referrals')
+      .update({ status })
+      .eq('id', id);
+    if (error) throw error;
   },
 
   getAllSiteStaffConfigs: async (): Promise<any[]> => {

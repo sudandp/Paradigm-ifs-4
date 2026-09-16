@@ -41,7 +41,7 @@ const defaultPermissions: Record<UserRole, Permission[]> = {
     'view_my_team', 'view_field_reports', 'manage_biometric_devices', 'manage_device_approvals', 'view_kiosk_monitoring', 'manage_linked_devices',
     'manage_gate_registration', 'view_gate_logs', 'manage_gate_kiosk',
     'manage_geo_locations', 'view_my_locations', 'view_profile',
-    'view_referrals',
+    'view_referrals', 'view_my_referrals',
     'view_client_dashboard',
     'view_site_attendance',
     'view_management_dashboard',
@@ -55,7 +55,7 @@ const defaultPermissions: Record<UserRole, Permission[]> = {
     'apply_for_leave', 'manage_leave_requests', 'download_attendance_report',
     'manage_policies', 'manage_insurance', 'manage_enrollment_rules',
     'manage_uniforms', 'view_invoice_summary', 'view_verification_costing', 'access_support_desk',
-    'view_profile', 'view_referrals', 'manage_device_approvals', 'manage_gate_registration', 'view_gate_logs', 'manage_gate_kiosk',
+    'view_profile', 'view_referrals', 'view_my_referrals', 'manage_device_approvals', 'manage_gate_registration', 'view_gate_logs', 'manage_gate_kiosk',
     'view_management_dashboard', 'view_site_attendance',
     'view_mobile_nav_home', 'view_mobile_nav_tasks', 'view_mobile_nav_profile'
   ],
@@ -84,7 +84,7 @@ const defaultPermissions: Record<UserRole, Permission[]> = {
     'view_my_team', 'view_field_reports', 'manage_biometric_devices', 'manage_device_approvals', 'view_kiosk_monitoring', 'manage_linked_devices',
     'manage_gate_registration', 'view_gate_logs', 'manage_gate_kiosk',
     'manage_geo_locations', 'view_my_locations', 'view_profile',
-    'view_referrals',
+    'view_referrals', 'view_my_referrals',
     'view_client_dashboard',
     'view_site_attendance',
     'view_management_dashboard',
@@ -124,7 +124,7 @@ const defaultPermissions: Record<UserRole, Permission[]> = {
     'view_my_team', 'view_field_reports', 'manage_biometric_devices', 'manage_device_approvals', 'view_kiosk_monitoring', 'manage_linked_devices',
     'manage_gate_registration', 'view_gate_logs', 'manage_gate_kiosk',
     'manage_geo_locations', 'view_my_locations', 'view_profile',
-    'view_referrals',
+    'view_referrals', 'view_my_referrals',
     'view_client_dashboard',
     'view_management_dashboard',
     'view_mobile_nav_home', 'view_mobile_nav_tasks', 'view_mobile_nav_profile'
@@ -153,7 +153,11 @@ const defaultPermissions: Record<UserRole, Permission[]> = {
     'view_mobile_nav_home', 'view_mobile_nav_tasks', 'view_mobile_nav_profile'
   ],
   bd: [
-    'access_support_desk', 'view_profile',
+    'view_crm_pipeline', 'view_my_referrals', 'access_support_desk', 'view_profile',
+    'view_mobile_nav_home', 'view_mobile_nav_tasks', 'view_mobile_nav_profile'
+  ],
+  business_developer: [
+    'view_crm_pipeline', 'view_my_referrals', 'access_support_desk', 'view_profile',
     'view_mobile_nav_home', 'view_mobile_nav_tasks', 'view_mobile_nav_profile'
   ],
   technician: [

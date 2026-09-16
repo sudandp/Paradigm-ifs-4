@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
-import type { User, UserRole, Role } from '../../types';
+import type { User, UserRole, Role, Organization } from '../../types';
 import { 
     Save, 
     Table, 
@@ -26,6 +26,7 @@ const WorkflowChartPage: React.FC = () => {
     const [allRoles, setAllRoles] = useState<Role[]>([]);
     const [approverRoles, setApproverRoles] = useState<Role[]>([]);
     const [finalConfirmationRole, setFinalConfirmationRole] = useState<UserRole>('hr');
+    const [organizations, setOrganizations] = useState<Organization[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -33,11 +34,13 @@ const WorkflowChartPage: React.FC = () => {
     const fetchData = useCallback(async () => {
         setIsLoading(true);
         try {
-            const [usersData, settingsData, rolesData] = await Promise.all([
+            const [usersData, settingsData, rolesData, orgsData] = await Promise.all([
                 api.getUsersWithManagers(),
                 api.getApprovalWorkflowSettings(),
-                api.getRoles()
+                api.getRoles(),
+                api.getOrganizations ? api.getOrganizations().catch(() => []) : Promise.resolve([])
             ]);
+            setOrganizations(Array.isArray(orgsData) ? orgsData : (orgsData?.data || []));
             
             // Sort users alphabetically by name
             const sortedUsers = [...usersData].sort((a, b) => 
@@ -204,6 +207,7 @@ const WorkflowChartPage: React.FC = () => {
                 <OrgWorkflowCard 
                     users={users}
                     allRoles={allRoles}
+                    organizations={organizations}
                     finalConfirmationRole={finalConfirmationRole}
                     onManagerChange={handleManagerChange}
                     onSave={handleSave}

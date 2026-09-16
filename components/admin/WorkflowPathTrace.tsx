@@ -109,6 +109,17 @@ const WorkflowPathTrace: React.FC<WorkflowPathTraceProps> = ({
 
     const hasManager = !!selectedUser?.reportingManagerId;
 
+    // Available reporting managers for assignment dropdowns (showing only reporting managers)
+    const reportingManagers = useMemo(() => {
+        const mgrIds = new Set<string>();
+        users.forEach(u => {
+            if (u.reportingManagerId) mgrIds.add(u.reportingManagerId);
+        });
+        return users
+            .filter(u => mgrIds.has(u.id))
+            .sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
+    }, [users]);
+
     return (
         <div className="space-y-6">
             {/* Top Selector Card */}
@@ -241,7 +252,7 @@ const WorkflowPathTrace: React.FC<WorkflowPathTraceProps> = ({
                                             className="text-xs"
                                         >
                                             <option value="">None (Unassigned)</option>
-                                            {users.filter(m => m.id !== selectedUser.id).map(m => (
+                                            {reportingManagers.filter(m => m.id !== selectedUser.id).map(m => (
                                                 <option key={m.id} value={m.id}>
                                                     {m.name} ({getRoleDisplayName(m.role)})
                                                 </option>
@@ -299,7 +310,7 @@ const WorkflowPathTrace: React.FC<WorkflowPathTraceProps> = ({
                                             className="text-xs"
                                         >
                                             <option value="">None (Skip L2)</option>
-                                            {users.filter(m => m.id !== selectedUser.id).map(m => (
+                                            {reportingManagers.filter(m => m.id !== selectedUser.id).map(m => (
                                                 <option key={m.id} value={m.id}>
                                                     {m.name} ({getRoleDisplayName(m.role)})
                                                 </option>
@@ -357,7 +368,7 @@ const WorkflowPathTrace: React.FC<WorkflowPathTraceProps> = ({
                                             className="text-xs"
                                         >
                                             <option value="">None (Skip L3)</option>
-                                            {users.filter(m => m.id !== selectedUser.id).map(m => (
+                                            {reportingManagers.filter(m => m.id !== selectedUser.id).map(m => (
                                                 <option key={m.id} value={m.id}>
                                                     {m.name} ({getRoleDisplayName(m.role)})
                                                 </option>
