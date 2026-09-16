@@ -7,7 +7,8 @@ import { LEAD_STATUS_ORDER, LEAD_STATUS_COLORS } from '../../types/crm';
 import {
   Plus, Search, Filter, BarChart3, Users, Target, TrendingUp,
   Building2, Phone, Mail, Calendar, ChevronRight, ChevronLeft, Loader2,
-  ArrowUpRight, ArrowDownRight, Eye, EyeOff, Layers, Clock, MapPin, Edit2, Trash2, ChevronDown, Send, Wand2
+  ArrowUpRight, ArrowDownRight, Eye, EyeOff, Layers, Clock, MapPin, Edit2, Trash2, ChevronDown, Send, Wand2,
+  ArrowUp, ArrowDown, X, Check, RotateCcw
 } from 'lucide-react';
 import { crmApi } from '../../services/crmApi';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
@@ -59,6 +60,33 @@ const CrmDashboard: React.FC = () => {
   const [isFiltering, setIsFiltering] = useState(false);
   const filterTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Table Column-specific filter & sort states
+  const [entitySort, setEntitySort] = useState<'none' | 'asc' | 'desc'>('none');
+  const [entitySearch, setEntitySearch] = useState<string>('');
+  const [propertyTypeFilters, setPropertyTypeFilters] = useState<string[]>([]);
+  const [cityFilters, setCityFilters] = useState<string[]>([]);
+  const [statusFilters, setStatusFilters] = useState<LeadStatus[]>([]);
+  const [openColumnMenu, setOpenColumnMenu] = useState<'entity' | 'details' | 'status' | null>(null);
+  const tableHeaderRef = useRef<HTMLTableRowElement>(null);
+
+  // Handle click outside and Escape key to close popovers
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (tableHeaderRef.current && !tableHeaderRef.current.contains(e.target as Node)) {
+        setOpenColumnMenu(null);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpenColumnMenu(null);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
   // Trigger skeleton shimmer whenever any filter changes
   const triggerFilter = useCallback((setter: () => void) => {
     setter();
@@ -66,6 +94,24 @@ const CrmDashboard: React.FC = () => {
     if (filterTimer.current) clearTimeout(filterTimer.current);
     filterTimer.current = setTimeout(() => setIsFiltering(false), 350);
   }, []);
+
+  const clearAllColumnFilters = useCallback(() => {
+    triggerFilter(() => {
+      setEntitySort('none');
+      setEntitySearch('');
+      setPropertyTypeFilters([]);
+      setCityFilters([]);
+      setStatusFilters([]);
+    });
+  }, [triggerFilter]);
+
+  const hasActiveColumnFilters = Boolean(
+    entitySort !== 'none' ||
+    entitySearch.trim() ||
+    propertyTypeFilters.length > 0 ||
+    cityFilters.length > 0 ||
+    statusFilters.length > 0
+  );
 
   useEffect(() => () => { if (filterTimer.current) clearTimeout(filterTimer.current); }, []);
 
@@ -91,6 +137,25 @@ const CrmDashboard: React.FC = () => {
   const locations = useMemo(() => {
     const cities = leads.map(l => l.city).filter(Boolean) as string[];
     return [...new Set(cities)].sort();
+  }, [leads]);
+
+  // Unique property types for table details column filter
+  const propertyTypes = useMemo(() => {
+    const set = new Set<string>();
+    ['Residential', 'Commercial', 'Mixed Use'].forEach(t => set.add(t));
+    leads.forEach(l => {
+      if (l.propertyType) set.add(l.propertyType);
+    });
+    return Array.from(set);
+  }, [leads]);
+
+  // Unique cities specifically for table details column filter
+  const detailCities = useMemo(() => {
+    const set = new Set<string>();
+    leads.forEach(l => {
+      if (l.city) set.add(l.city);
+    });
+    return Array.from(set).sort();
   }, [leads]);
 
   const handleAutoAssign = async () => {
@@ -151,6 +216,30 @@ const CrmDashboard: React.FC = () => {
       );
     }
 
+    // Column header filters: Lead Entity search
+    if (entitySearch.trim()) {
+      const q = entitySearch.toLowerCase().trim();
+      result = result.filter(l =>
+        l.clientName?.toLowerCase().includes(q) ||
+        l.associationName?.toLowerCase().includes(q)
+      );
+    }
+
+    // Column header filters: Details (Property Type)
+    if (propertyTypeFilters.length > 0) {
+      result = result.filter(l => l.propertyType && propertyTypeFilters.includes(l.propertyType));
+    }
+
+    // Column header filters: Details (City / Location)
+    if (cityFilters.length > 0) {
+      result = result.filter(l => l.city && cityFilters.includes(l.city));
+    }
+
+    // Column header filters: Status
+    if (statusFilters.length > 0) {
+      result = result.filter(l => statusFilters.includes(l.status));
+    }
+
     if (quickFilter === 'stagnant') {
       const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
       result = result.filter(l => !l.stageUpdatedAt || l.stageUpdatedAt < fourteenDaysAgo);
@@ -161,8 +250,11 @@ const CrmDashboard: React.FC = () => {
       );
     }
     
-    // Sorting
+    // Sorting (column entitySort takes priority if active)
     result = [...result].sort((a, b) => {
+      if (entitySort === 'asc') return (a.clientName || '').localeCompare(b.clientName || '');
+      if (entitySort === 'desc') return (b.clientName || '').localeCompare(a.clientName || '');
+
       if (sortBy === 'created_desc') return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
       if (sortBy === 'created_asc') return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
       if (sortBy === 'activity_desc') {
@@ -181,7 +273,7 @@ const CrmDashboard: React.FC = () => {
     });
 
     return result;
-  }, [leads, kanbanFilter, locationFilter, searchQuery, quickFilter, sortBy, user]);
+  }, [leads, kanbanFilter, locationFilter, searchQuery, quickFilter, sortBy, user, entitySearch, propertyTypeFilters, cityFilters, statusFilters, entitySort]);
 
   // Stats
   const stats = useMemo(() => {
@@ -539,15 +631,425 @@ const CrmDashboard: React.FC = () => {
 
       {/* Table View */}
       {!isLoading && viewMode === 'table' && (
-        <div className="bg-white md:bg-white rounded-[2.5rem] md:rounded-3xl border border-border md:border-border overflow-hidden shadow-sm md:shadow-sm max-md:bg-[#0d2c18]/40 max-md:border-white/5 max-md:shadow-2xl pb-4">
-          <div className="overflow-x-auto no-scrollbar">
+        <div className="bg-white md:bg-white rounded-[2.5rem] md:rounded-3xl border border-border md:border-border overflow-hidden shadow-sm md:shadow-sm max-md:bg-[#0d2c18]/40 max-md:border-white/5 max-md:shadow-2xl pb-4 min-h-[460px]">
+          {/* Active column filters bar */}
+          {hasActiveColumnFilters && (
+            <div className="px-4 md:px-6 py-2.5 bg-accent/[0.03] dark:bg-white/[0.02] border-b border-border dark:border-white/5 flex flex-wrap items-center gap-2 text-xs">
+              <span className="text-[10px] font-black uppercase tracking-wider text-muted dark:text-white/40 flex items-center gap-1 mr-1">
+                <Filter className="w-3 h-3 text-emerald-500" />
+                Active Column Filters:
+              </span>
+              {entitySort !== 'none' && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-[11px] font-semibold">
+                  Entity: {entitySort === 'asc' ? 'A → Z' : 'Z → A'}
+                  <button onClick={() => triggerFilter(() => setEntitySort('none'))} className="hover:text-red-500">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+              {entitySearch.trim() && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-[11px] font-semibold">
+                  Search: "{entitySearch}"
+                  <button onClick={() => triggerFilter(() => setEntitySearch(''))} className="hover:text-red-500">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+              {propertyTypeFilters.map(type => (
+                <span key={type} className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-[11px] font-semibold">
+                  Type: {type}
+                  <button onClick={() => triggerFilter(() => setPropertyTypeFilters(prev => prev.filter(t => t !== type)))} className="hover:text-red-500">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+              {cityFilters.map(city => (
+                <span key={city} className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-[11px] font-semibold">
+                  City: {city}
+                  <button onClick={() => triggerFilter(() => setCityFilters(prev => prev.filter(c => c !== city)))} className="hover:text-red-500">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+              {statusFilters.map(st => (
+                <span key={st} className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-[11px] font-semibold">
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: LEAD_STATUS_COLORS[st] }} />
+                  {st}
+                  <button onClick={() => triggerFilter(() => setStatusFilters(prev => prev.filter(s => s !== st)))} className="hover:text-red-500">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+              <button
+                type="button"
+                onClick={clearAllColumnFilters}
+                className="ml-auto text-[11px] font-bold text-muted hover:text-red-500 dark:text-white/40 dark:hover:text-red-400 flex items-center gap-1 transition-colors"
+              >
+                <RotateCcw className="w-3 h-3" />
+                Clear all
+              </button>
+            </div>
+          )}
+
+          <div className="overflow-x-auto no-scrollbar min-h-[400px]">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border md:border-border bg-page md:bg-page max-md:bg-white/5 max-md:border-white/5">
-                  <th className="text-left px-4 md:px-6 py-5 font-black text-muted md:text-muted uppercase tracking-widest text-[10px] max-md:text-white/40">Lead Entity</th>
-                  <th className="hidden md:table-cell text-left px-6 py-5 font-black text-muted md:text-muted uppercase tracking-widest text-[10px]">Details</th>
-                  <th className="text-left px-4 md:px-6 py-5 font-black text-muted md:text-muted uppercase tracking-widest text-[10px] max-md:text-white/40">Status</th>
-                  <th className="text-left px-4 md:px-6 py-5 font-black text-white/40 uppercase tracking-widest text-[10px]"></th>
+                <tr ref={tableHeaderRef} className="border-b border-border md:border-border bg-page md:bg-page max-md:bg-white/5 max-md:border-white/5">
+                  {/* Lead Entity Column Header */}
+                  <th className="relative text-left px-4 md:px-6 py-4 font-black text-muted md:text-muted uppercase tracking-widest text-[10px] max-md:text-white/40 select-none">
+                    <div className="flex items-center gap-2">
+                      <span>Lead Entity</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenColumnMenu(openColumnMenu === 'entity' ? null : 'entity');
+                        }}
+                        className={`p-1 rounded-lg transition-all flex items-center gap-1 ${
+                          entitySort !== 'none' || entitySearch.trim()
+                            ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold border border-emerald-500/40'
+                            : 'hover:bg-black/5 dark:hover:bg-white/10 text-muted/70 hover:text-primary-text'
+                        }`}
+                        title="Filter & Sort Lead Entity"
+                      >
+                        <Filter className="w-3 h-3" />
+                        {entitySort === 'asc' && <ArrowUp className="w-3 h-3 text-emerald-500" />}
+                        {entitySort === 'desc' && <ArrowDown className="w-3 h-3 text-emerald-500" />}
+                        {entitySearch.trim() && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
+                      </button>
+                    </div>
+
+                    {/* Lead Entity Popover */}
+                    {openColumnMenu === 'entity' && (
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        className="absolute left-0 sm:left-4 top-full mt-2 z-50 w-72 p-3.5 bg-white dark:bg-[#15251c] rounded-2xl shadow-2xl border border-border dark:border-white/10 text-primary-text dark:text-white normal-case font-normal text-xs animate-in fade-in zoom-in-95 duration-150 select-text"
+                      >
+                        {/* Search Input */}
+                        <div className="relative mb-3">
+                          <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted dark:text-white/40" />
+                          <input
+                            type="text"
+                            placeholder="Filter by entity name..."
+                            value={entitySearch}
+                            onChange={(e) => setEntitySearch(e.target.value)}
+                            className="w-full pl-8 pr-7 py-1.5 bg-page dark:bg-[#0a140f] rounded-xl border border-border dark:border-white/10 text-xs text-primary-text dark:text-white placeholder:text-muted/60 dark:placeholder:text-white/30 outline-none focus:ring-1 focus:ring-emerald-500"
+                            autoFocus
+                          />
+                          {entitySearch && (
+                            <button
+                              type="button"
+                              onClick={() => setEntitySearch('')}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-muted hover:text-primary-text"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Sort Actions */}
+                        <div className="space-y-1 border-t border-border dark:border-white/10 pt-2 mb-2">
+                          <div className="text-[10px] font-bold uppercase tracking-wider text-muted dark:text-white/40 px-1 mb-1">
+                            Sort Alphabetically
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => triggerFilter(() => setEntitySort(entitySort === 'asc' ? 'none' : 'asc'))}
+                            className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition-colors ${
+                              entitySort === 'asc'
+                                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-semibold'
+                                : 'hover:bg-black/5 dark:hover:bg-white/5 text-primary-text dark:text-white/80'
+                            }`}
+                          >
+                            <span className="flex items-center gap-2">
+                              <ArrowUp className="w-3.5 h-3.5 text-muted dark:text-white/40" />
+                              Sort A to Z
+                            </span>
+                            {entitySort === 'asc' && <Check className="w-3.5 h-3.5 text-emerald-500" />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => triggerFilter(() => setEntitySort(entitySort === 'desc' ? 'none' : 'desc'))}
+                            className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition-colors ${
+                              entitySort === 'desc'
+                                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-semibold'
+                                : 'hover:bg-black/5 dark:hover:bg-white/5 text-primary-text dark:text-white/80'
+                            }`}
+                          >
+                            <span className="flex items-center gap-2">
+                              <ArrowDown className="w-3.5 h-3.5 text-muted dark:text-white/40" />
+                              Sort Z to A
+                            </span>
+                            {entitySort === 'desc' && <Check className="w-3.5 h-3.5 text-emerald-500" />}
+                          </button>
+                        </div>
+
+                        {/* Reset Button */}
+                        {(entitySearch || entitySort !== 'none') && (
+                          <div className="border-t border-border dark:border-white/10 pt-2 flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEntitySearch('');
+                                setEntitySort('none');
+                              }}
+                              className="flex items-center gap-1 text-[11px] text-muted hover:text-red-500 transition-colors"
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                              Reset
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </th>
+
+                  {/* Details Column Header */}
+                  <th className="hidden md:table-cell relative text-left px-6 py-4 font-black text-muted md:text-muted uppercase tracking-widest text-[10px] select-none">
+                    <div className="flex items-center gap-2">
+                      <span>Details</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenColumnMenu(openColumnMenu === 'details' ? null : 'details');
+                        }}
+                        className={`p-1 rounded-lg transition-all flex items-center gap-1 ${
+                          propertyTypeFilters.length > 0 || cityFilters.length > 0
+                            ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold border border-emerald-500/40'
+                            : 'hover:bg-black/5 dark:hover:bg-white/10 text-muted/70 hover:text-primary-text'
+                        }`}
+                        title="Filter Details (Property Type & City)"
+                      >
+                        <Filter className="w-3 h-3" />
+                        {(propertyTypeFilters.length > 0 || cityFilters.length > 0) && (
+                          <span className="px-1.5 py-0.5 bg-emerald-500 text-white rounded-full text-[9px] font-black leading-none">
+                            {propertyTypeFilters.length + cityFilters.length}
+                          </span>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Details Popover */}
+                    {openColumnMenu === 'details' && (
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        className="absolute left-0 sm:left-6 top-full mt-2 z-50 w-72 p-3.5 bg-white dark:bg-[#15251c] rounded-2xl shadow-2xl border border-border dark:border-white/10 text-primary-text dark:text-white normal-case font-normal text-xs animate-in fade-in zoom-in-95 duration-150 select-text"
+                      >
+                        {/* Property Types */}
+                        <div className="mb-3">
+                          <div className="flex items-center justify-between mb-1.5 px-1">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-muted dark:text-white/40">
+                              Property Type
+                            </span>
+                            {propertyTypeFilters.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => triggerFilter(() => setPropertyTypeFilters([]))}
+                                className="text-[10px] text-muted hover:text-red-500"
+                              >
+                                Clear
+                              </button>
+                            )}
+                          </div>
+                          <div className="space-y-1">
+                            {propertyTypes.map((type) => {
+                              const isChecked = propertyTypeFilters.includes(type);
+                              return (
+                                <label
+                                  key={type}
+                                  className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer text-xs"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={() => {
+                                      triggerFilter(() => {
+                                        setPropertyTypeFilters(prev =>
+                                          isChecked ? prev.filter(t => t !== type) : [...prev, type]
+                                        );
+                                      });
+                                    }}
+                                    className="rounded border-border text-emerald-600 focus:ring-emerald-500 w-3.5 h-3.5"
+                                  />
+                                  <span>{type}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* City / Location */}
+                        {detailCities.length > 0 && (
+                          <div className="border-t border-border dark:border-white/10 pt-2.5 mb-2">
+                            <div className="flex items-center justify-between mb-1.5 px-1">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-muted dark:text-white/40">
+                                City / Location
+                              </span>
+                              {cityFilters.length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => triggerFilter(() => setCityFilters([]))}
+                                  className="text-[10px] text-muted hover:text-red-500"
+                                >
+                                  Clear
+                                </button>
+                              )}
+                            </div>
+                            <div className="max-h-36 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
+                              {detailCities.map((city) => {
+                                const isChecked = cityFilters.includes(city);
+                                return (
+                                  <label
+                                    key={city}
+                                    className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer text-xs"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={() => {
+                                        triggerFilter(() => {
+                                          setCityFilters(prev =>
+                                            isChecked ? prev.filter(c => c !== city) : [...prev, city]
+                                          );
+                                        });
+                                      }}
+                                      className="rounded border-border text-emerald-600 focus:ring-emerald-500 w-3.5 h-3.5"
+                                    />
+                                    <span>{city}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Reset Details */}
+                        {(propertyTypeFilters.length > 0 || cityFilters.length > 0) && (
+                          <div className="border-t border-border dark:border-white/10 pt-2 flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPropertyTypeFilters([]);
+                                setCityFilters([]);
+                              }}
+                              className="flex items-center gap-1 text-[11px] text-muted hover:text-red-500 transition-colors"
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                              Reset Details
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </th>
+
+                  {/* Status Column Header */}
+                  <th className="relative text-left px-4 md:px-6 py-4 font-black text-muted md:text-muted uppercase tracking-widest text-[10px] max-md:text-white/40 select-none">
+                    <div className="flex items-center gap-2">
+                      <span>Status</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenColumnMenu(openColumnMenu === 'status' ? null : 'status');
+                        }}
+                        className={`p-1 rounded-lg transition-all flex items-center gap-1 ${
+                          statusFilters.length > 0
+                            ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold border border-emerald-500/40'
+                            : 'hover:bg-black/5 dark:hover:bg-white/10 text-muted/70 hover:text-primary-text'
+                        }`}
+                        title="Filter by Status"
+                      >
+                        <Filter className="w-3 h-3" />
+                        {statusFilters.length > 0 && (
+                          <span className="px-1.5 py-0.5 bg-emerald-500 text-white rounded-full text-[9px] font-black leading-none">
+                            {statusFilters.length}
+                          </span>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Status Popover */}
+                    {openColumnMenu === 'status' && (
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        className="absolute left-0 sm:left-auto sm:right-0 top-full mt-2 z-50 w-72 p-3.5 bg-white dark:bg-[#15251c] rounded-2xl shadow-2xl border border-border dark:border-white/10 text-primary-text dark:text-white normal-case font-normal text-xs animate-in fade-in zoom-in-95 duration-150 select-text"
+                      >
+                        <div className="flex items-center justify-between mb-2 px-1">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-muted dark:text-white/40">
+                            Filter by Status
+                          </span>
+                          <div className="flex items-center gap-2 text-[10px]">
+                            <button
+                              type="button"
+                              onClick={() => triggerFilter(() => setStatusFilters([...LEAD_STATUS_ORDER]))}
+                              className="text-emerald-600 dark:text-emerald-400 font-bold hover:underline"
+                            >
+                              All
+                            </button>
+                            <span className="text-muted/40">•</span>
+                            <button
+                              type="button"
+                              onClick={() => triggerFilter(() => setStatusFilters([]))}
+                              className="text-muted hover:text-red-500"
+                            >
+                              Clear
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="max-h-56 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
+                          {LEAD_STATUS_ORDER.map((st) => {
+                            const isChecked = statusFilters.includes(st);
+                            const col = LEAD_STATUS_COLORS[st];
+                            return (
+                              <label
+                                key={st}
+                                className="flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer text-xs"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={() => {
+                                      triggerFilter(() => {
+                                        setStatusFilters(prev =>
+                                          isChecked ? prev.filter(s => s !== st) : [...prev, st]
+                                        );
+                                      });
+                                    }}
+                                    className="rounded border-border text-emerald-600 focus:ring-emerald-500 w-3.5 h-3.5"
+                                  />
+                                  <span className="text-primary-text dark:text-white/90 font-medium">{st}</span>
+                                </div>
+                                <span
+                                  className="w-2.5 h-2.5 rounded-full ring-2 ring-white/20"
+                                  style={{ backgroundColor: col }}
+                                />
+                              </label>
+                            );
+                          })}
+                        </div>
+
+                        {statusFilters.length > 0 && (
+                          <div className="border-t border-border dark:border-white/10 pt-2 mt-2 flex justify-between items-center text-[11px] text-muted">
+                            <span>{statusFilters.length} of {LEAD_STATUS_ORDER.length} selected</span>
+                            <button
+                              type="button"
+                              onClick={() => triggerFilter(() => setStatusFilters([]))}
+                              className="flex items-center gap-1 text-muted hover:text-red-500 transition-colors"
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                              Reset
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </th>
+
+                  <th className="text-left px-4 md:px-6 py-4 font-black text-white/40 uppercase tracking-widest text-[10px]"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border md:divide-border max-md:divide-white/5">
@@ -638,6 +1140,16 @@ const CrmDashboard: React.FC = () => {
                         </div>
                         <p className="text-lg font-black md:font-bold text-white md:text-primary-text">No leads found</p>
                         <p className="text-[10px] md:text-sm text-white/30 md:text-muted font-bold md:font-medium uppercase md:capitalize tracking-widest md:tracking-normal mt-2 md:mt-1">Try adjusting your filters</p>
+                        {hasActiveColumnFilters && (
+                          <button
+                            type="button"
+                            onClick={clearAllColumnFilters}
+                            className="mt-4 flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold text-xs transition-colors"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            Clear Column Filters
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

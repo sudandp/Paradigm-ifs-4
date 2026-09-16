@@ -71,7 +71,17 @@ const WorkflowChartPage: React.FC = () => {
         const unassigned = users.filter(u => !u.reportingManagerId).length;
         const assigned = users.filter(u => !!u.reportingManagerId).length;
         const multiLevel = users.filter(u => !!u.reportingManager2Id || !!u.reportingManager3Id).length;
-        return { total, unassigned, assigned, multiLevel };
+
+        // Count managers marked as left who still have active direct reports
+        const managerReportsCount = new Map<string, number>();
+        users.forEach(u => {
+            if (u.reportingManagerId) {
+                managerReportsCount.set(u.reportingManagerId, (managerReportsCount.get(u.reportingManagerId) || 0) + 1);
+            }
+        });
+        const leftWithReports = users.filter(u => (u.status === 'left' || !!u.leftDate) && (managerReportsCount.get(u.id) || 0) > 0).length;
+
+        return { total, unassigned, assigned, multiLevel, leftWithReports };
     }, [users]);
 
     // Hierarchy Slot updates
@@ -156,6 +166,12 @@ const WorkflowChartPage: React.FC = () => {
                                 Multi-Level: <strong>{stats.multiLevel}</strong>
                             </span>
                         )}
+                        {stats.leftWithReports > 0 && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-rose-50 border border-rose-300 text-xs font-semibold text-rose-800 animate-pulse">
+                                <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                                Left Mgr with Reports: <strong>{stats.leftWithReports}</strong>
+                            </span>
+                        )}
                     </div>
                 </div>
 
@@ -211,6 +227,7 @@ const WorkflowChartPage: React.FC = () => {
                     finalConfirmationRole={finalConfirmationRole}
                     onManagerChange={handleManagerChange}
                     onSave={handleSave}
+                    onRefresh={fetchData}
                 />
             </div>
         </div>

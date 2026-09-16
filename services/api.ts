@@ -3623,69 +3623,129 @@ export const api = {
   },
 
   deleteUser: async (id: string) => {
-    // 0. Pre-clean support tickets raised by this user to avoid NOT NULL constraint violation
+    // 0. Fetch user basic info first (e.g. email) for comprehensive cleanup across email-based tables
+    let userEmail: string | null = null;
     try {
-      const { data: userTickets } = await supabase.from('support_tickets').select('id').eq('raised_by_id', id);
-      if (userTickets && userTickets.length > 0) {
-        const ticketIds = userTickets.map((t: any) => t.id);
-        await supabase.from('ticket_comments').delete().in('ticket_id', ticketIds);
-        await supabase.from('ticket_posts').delete().in('ticket_id', ticketIds);
-        await supabase.from('support_tickets').delete().eq('raised_by_id', id);
-      }
-      await supabase.from('support_tickets').update({ assigned_to_id: null }).eq('assigned_to_id', id);
-    } catch (tErr) {
-      console.warn('[deleteUser] Pre-cleanup support tickets warning:', tErr);
-    }
+      const { data: u } = await supabase.from('users').select('email').eq('id', id).maybeSingle();
+      if (u?.email) userEmail = u.email;
+    } catch (_) {}
 
-    // 1. Try calling the security-definer RPC directly
-    const { error } = await supabase.rpc('delete_user', { target_user_id: id });
-    
-    // 2. If it fails due to FK constraints or outdated RPC, attempt client-side pre-cleanup & retry
-    if (error) {
-      console.warn('[deleteUser] Initial RPC failed, performing pre-cleanup:', error.message);
+    // Helper for safe multi-table cleanup before deletion
+    const runFullCleanup = async () => {
+      // Clean up support tickets raised by this user (first delete comments and posts)
       try {
-        // Double check support tickets removal if still present
-        const { data: remainingTickets } = await supabase.from('support_tickets').select('id').eq('raised_by_id', id);
-        if (remainingTickets && remainingTickets.length > 0) {
-          const tIds = remainingTickets.map((t: any) => t.id);
-          await supabase.from('ticket_comments').delete().in('ticket_id', tIds);
-          await supabase.from('ticket_posts').delete().in('ticket_id', tIds);
+        const { data: userTickets } = await supabase.from('support_tickets').select('id').eq('raised_by_id', id);
+        if (userTickets && userTickets.length > 0) {
+          const ticketIds = userTickets.map((t: any) => t.id);
+          await supabase.from('ticket_comments').delete().in('ticket_id', ticketIds);
+          await supabase.from('ticket_posts').delete().in('ticket_id', ticketIds);
           await supabase.from('support_tickets').delete().eq('raised_by_id', id);
         }
-
-        await Promise.allSettled([
-          supabase.from('security_audit_logs').update({ user_id: null }).eq('user_id', id),
-          supabase.from('audit_logs').update({ user_id: null }).eq('user_id', id),
-          supabase.from('audit_logs').update({ actor_id: null }).eq('actor_id', id),
-          supabase.from('system_audit_logs').update({ user_id: null }).eq('user_id', id),
-          supabase.from('tracking_audit_logs').update({ admin_id: null }).eq('admin_id', id),
-          supabase.from('tracking_audit_logs').update({ target_user_id: null }).eq('target_user_id', id),
-          supabase.from('users').update({ reporting_manager_id: null }).eq('reporting_manager_id', id),
-          supabase.from('support_tickets').update({ assigned_to_id: null }).eq('assigned_to_id', id),
-          supabase.from('ticket_comments').update({ author_id: null }).eq('author_id', id),
-          supabase.from('user_locations').delete().eq('user_id', id),
-          supabase.from('user_devices').delete().eq('user_id', id),
-          supabase.from('device_approvals').delete().eq('user_id', id),
-          supabase.from('notifications').delete().eq('user_id', id),
-          supabase.from('attendance_events').delete().eq('user_id', id),
-          supabase.from('leave_requests').delete().eq('user_id', id),
-          supabase.from('comp_off_logs').delete().eq('user_id', id),
-          supabase.from('extra_work_logs').delete().eq('user_id', id),
-          supabase.from('site_responsibility_matrix').update({ ops_manager_id: null }).eq('ops_manager_id', id),
-          supabase.from('site_responsibility_matrix').update({ hr_incharge_id: null }).eq('hr_incharge_id', id),
-          supabase.from('site_responsibility_matrix').update({ accounts_incharge_id: null }).eq('accounts_incharge_id', id),
-          supabase.from('site_responsibility_matrix').update({ site_supervisor_id: null }).eq('site_supervisor_id', id),
-        ]);
-      } catch (cleanupErr) {
-        console.warn('[deleteUser] Pre-cleanup warning:', cleanupErr);
+      } catch (tErr) {
+        console.warn('[deleteUser] Support tickets pre-cleanup warning:', tErr);
       }
 
-      // Retry RPC after cleanup
-      const retryResult = await supabase.rpc('delete_user', { target_user_id: id });
-      if (retryResult.error) {
-        // Direct public.users delete fallback
-        const directDel = await supabase.from('users').delete().eq('id', id);
-        if (directDel.error) throw new Error(directDel.error.message || retryResult.error.message);
+      await Promise.allSettled([
+        // 1. Backups & Audit Logs (Primary causes of FK violations)
+        supabase.from('system_backups').update({ created_by: null }).eq('created_by', id),
+        supabase.from('attendance_audit_logs').update({ target_user_id: null }).eq('target_user_id', id),
+        supabase.from('attendance_audit_logs').update({ performed_by: null }).eq('performed_by', id),
+        supabase.from('security_audit_logs').update({ user_id: null }).eq('user_id', id),
+        supabase.from('system_audit_logs').update({ user_id: null }).eq('user_id', id),
+        supabase.from('tracking_audit_logs').update({ admin_id: null }).eq('admin_id', id),
+        supabase.from('tracking_audit_logs').update({ target_user_id: null }).eq('target_user_id', id),
+
+        // 2. Reporting hierarchy (Self-referencing foreign keys)
+        supabase.from('users').update({ reporting_manager_id: null }).eq('reporting_manager_id', id),
+        supabase.from('users').update({ reporting_manager_2_id: null }).eq('reporting_manager_2_id', id),
+        supabase.from('users').update({ reporting_manager_3_id: null }).eq('reporting_manager_3_id', id),
+
+        // 3. Site Responsibility Matrix & Locations
+        supabase.from('site_responsibility_matrix').update({ ops_manager_id: null }).eq('ops_manager_id', id),
+        supabase.from('site_responsibility_matrix').update({ site_manager_id: null }).eq('site_manager_id', id),
+        supabase.from('site_responsibility_matrix').update({ hr_incharge_id: null }).eq('hr_incharge_id', id),
+        supabase.from('site_responsibility_matrix').update({ accounts_incharge_id: null }).eq('accounts_incharge_id', id),
+        supabase.from('site_responsibility_matrix').update({ site_supervisor_id: null }).eq('site_supervisor_id', id),
+        supabase.from('locations').update({ created_by: null }).eq('created_by', id),
+
+        // 4. Tasks & Tickets
+        supabase.from('tasks').update({ assigned_to_id: null }).eq('assigned_to_id', id),
+        supabase.from('tasks').update({ created_by_id: null }).eq('created_by_id', id),
+        supabase.from('support_tickets').update({ assigned_to_id: null }).eq('assigned_to_id', id),
+        supabase.from('ticket_comments').update({ author_id: null }).eq('author_id', id),
+        supabase.from('ticket_posts').update({ author_id: null }).eq('author_id', id),
+        supabase.from('ops_tickets').update({ created_by: null }).eq('created_by', id),
+        supabase.from('ops_tickets').update({ assigned_to: null }).eq('assigned_to', id),
+        supabase.from('ops_approval_requests').update({ requested_by: null }).eq('requested_by', id),
+        supabase.from('ops_approval_requests').update({ approver_id: null }).eq('approver_id', id),
+
+        // 5. Referrals & CRM
+        supabase.from('candidate_referrals').update({ created_by: null }).eq('created_by', id),
+        supabase.from('business_referrals').update({ created_by: null }).eq('created_by', id),
+        supabase.from('crm_leads').update({ assigned_to: null }).eq('assigned_to', id),
+        supabase.from('crm_leads').update({ created_by: null }).eq('created_by', id),
+
+        // 6. Finance & Invoicing
+        supabase.from('site_invoice_tracker').update({ created_by: null }).eq('created_by', id),
+        supabase.from('site_invoice_tracker').update({ deleted_by: null }).eq('deleted_by', id),
+        supabase.from('site_finance_tracker').update({ created_by: null }).eq('created_by', id),
+
+        // 7. Onboarding submissions (nullify verifier/creator, delete employee's own submission)
+        supabase.from('onboarding_submissions').delete().eq('user_id', id),
+        supabase.from('onboarding_submissions').update({ created_user_id: null }).eq('created_user_id', id),
+        supabase.from('onboarding_submissions').update({ verified_by: null }).eq('verified_by', id),
+        supabase.from('onboarding_submissions').update({ fcu_acknowledged_by: null }).eq('fcu_acknowledged_by', id),
+        supabase.from('onboarding_submissions').update({ fcu_verified_by: null }).eq('fcu_verified_by', id),
+
+        // 8. Approvals & Manager Logs
+        supabase.from('attendance_approvals').update({ manager_id: null }).eq('manager_id', id),
+        supabase.from('attendance_approvals').delete().eq('user_id', id),
+        supabase.from('comp_off_logs').update({ granted_by_id: null }).eq('granted_by_id', id),
+        supabase.from('extra_work_logs').update({ approver_id: null }).eq('approver_id', id),
+
+        // 9. Personal Employee Records (Delete user records)
+        supabase.from('user_documents').delete().eq('user_id', id),
+        supabase.from('user_locations').delete().eq('user_id', id),
+        supabase.from('user_devices').delete().eq('user_id', id),
+        supabase.from('device_activity_logs').delete().eq('user_id', id),
+        supabase.from('notifications').delete().eq('user_id', id),
+        supabase.from('attendance_events').delete().eq('user_id', id),
+        supabase.from('attendance_violations').delete().eq('user_id', id),
+        supabase.from('leave_requests').delete().eq('user_id', id),
+        supabase.from('comp_off_logs').delete().eq('user_id', id),
+        supabase.from('extra_work_logs').delete().eq('user_id', id),
+        supabase.from('user_holidays').delete().eq('user_id', id),
+        supabase.from('user_vehicles').delete().eq('user_id', id),
+        supabase.from('gate_users').delete().eq('user_id', id),
+        supabase.from('employee_scores').delete().eq('user_id', id),
+        supabase.from('fcm_tokens').delete().eq('user_id', id),
+        supabase.from('route_history').delete().eq('user_id', id),
+        supabase.from('communication_logs').delete().or(`sender_id.eq.${id},receiver_id.eq.${id}`),
+        ...(userEmail ? [supabase.from('user_site_permissions').delete().eq('user_email', userEmail)] : [])
+      ]);
+    };
+
+    // Run full cleanup proactively BEFORE delete RPC
+    try {
+      await runFullCleanup();
+    } catch (cleanupErr) {
+      console.warn('[deleteUser] Pre-cleanup non-fatal error:', cleanupErr);
+    }
+
+    // 10. Call the security-definer RPC directly
+    const { error } = await supabase.rpc('delete_user', { target_user_id: id });
+    
+    // 11. If RPC fails (e.g. older RPC definition in DB), perform direct delete fallback
+    if (error) {
+      console.warn('[deleteUser] RPC failed, retrying after second cleanup pass:', error.message);
+      try {
+        await runFullCleanup();
+      } catch (_) {}
+
+      // Direct public.users delete fallback
+      const directDel = await supabase.from('users').delete().eq('id', id);
+      if (directDel.error) {
+        throw new Error(directDel.error.message || error.message);
       }
     }
   },
@@ -4383,6 +4443,17 @@ export const api = {
   saveRoles: async (roles: Role[]): Promise<void> => {
     const { error } = await supabase.from('roles').upsert(toSnakeCase(roles));
     if (error) throw error;
+  },
+  deleteRole: async (roleId: string): Promise<void> => {
+    const { error } = await supabase.from('roles').delete().eq('id', roleId);
+    if (error) throw error;
+    try {
+      const cached = (await offlineDb.getCache('roles')) || [];
+      const updated = cached.filter((r: Role) => r.id !== roleId);
+      await offlineDb.setCache('roles', updated);
+    } catch {
+      // offlineDb cache update optional
+    }
   },
 
   saveHTYardAudit: async (auditData: { activeAudit: any; equipmentInstances: any[]; responses: any; snagItems: any[] }): Promise<void> => {

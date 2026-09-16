@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import type { User, OrganizationGroup, Role } from '../../types';
-import { ShieldCheck, Plus, Edit, Trash2, Info, UserCheck, MapPin, Search, Filter, FilterX, FileSpreadsheet, X, RotateCw, Copy, Check, Clock, Ban, LogIn, UserMinus } from 'lucide-react';
+import { ShieldCheck, Plus, Edit, Trash2, Info, UserCheck, MapPin, Search, Filter, FilterX, FileSpreadsheet, X, RotateCw, Copy, Check, Clock, Ban, LogIn, UserMinus, Users } from 'lucide-react';
 import { useImpersonationStore } from '../../store/impersonationStore';
 import { useAuthStore } from '../../store/authStore';
 import Button from '../../components/ui/Button';
@@ -583,9 +583,10 @@ const UserManagement: React.FC = () => {
             if (hasActiveFilters) {
                 // When filtering is active, use full user dataset
                 const allUsers = await api.getUsers();
-                setDbUsers(allUsers);
-                setUsers(allUsers);
-                setTotalUsers(allUsers.length);
+                const userList = Array.isArray(allUsers) ? allUsers : (allUsers?.data || []);
+                setDbUsers(userList);
+                setUsers(userList);
+                setTotalUsers(userList.length);
             } else {
                 const res = await api.getUsers({ 
                     page: currentPage, 
@@ -597,6 +598,9 @@ const UserManagement: React.FC = () => {
                 const total = Array.isArray(res) ? res.length : (res?.total ?? userList.length);
                 setUsers(userList);
                 setTotalUsers(total);
+                if (currentPage > 1 && userList.length === 0) {
+                    setCurrentPage(p => Math.max(1, p - 1));
+                }
             }
         } catch (error) {
             console.error('[UserManagement] fetchUsers error:', error);
@@ -812,12 +816,21 @@ const UserManagement: React.FC = () => {
                 setToast({ message: `User "${currentUser.name}" has been permanently deleted.`, type: 'success' });
                 setIsDeleteModalOpen(false);
                 
+                // If the user was selected in Employee filter, clear the filter immediately so the table doesn't show 0 results!
+                if (activeFilters.employee === userIdToDelete) {
+                    setActiveFilters(prev => ({ ...prev, employee: '' }));
+                }
+                if (pendingFilters.employee === userIdToDelete) {
+                    setPendingFilters(prev => ({ ...prev, employee: '' }));
+                }
+
                 // Instant UI Update: Remove from local state
                 setUsers(prevUsers => prevUsers.filter(u => u.id !== userIdToDelete));
+                setDbUsers(prevUsers => prevUsers.filter(u => u.id !== userIdToDelete));
                 
                 // Background fetch to sync
                 fetchUsers();
-            } catch (error) {
+            } catch (error: any) {
                 console.error('Delete error:', error); setToast({ message: 'Failed to delete user: ' + (error.message || 'Unknown error'), type: 'error' });
             } finally {
                 setIsSaving(false);
@@ -886,7 +899,17 @@ const UserManagement: React.FC = () => {
                 type: 'success'
             });
             setIsBulkDeleteModalOpen(false);
+
+            // If any deleted user was selected in Employee filter, clear the filter immediately!
+            if (selectedUserIds.includes(activeFilters.employee)) {
+                setActiveFilters(prev => ({ ...prev, employee: '' }));
+            }
+            if (selectedUserIds.includes(pendingFilters.employee)) {
+                setPendingFilters(prev => ({ ...prev, employee: '' }));
+            }
+
             setUsers(prev => prev.filter(u => !selectedUserIds.includes(u.id)));
+            setDbUsers(prev => prev.filter(u => !selectedUserIds.includes(u.id)));
             setSelectedUserIds([]);
             fetchUsers();
         } catch (err: any) {
@@ -1103,6 +1126,17 @@ const UserManagement: React.FC = () => {
             return updated ? next : prev;
         });
     }, [filteredCompanies, filteredSites, filteredRolesCascade, filteredStatusesCascade, filteredEmployeesCascade]);
+
+    // Auto-clean activeFilters if the selected employee filter no longer exists in users dataset
+    useEffect(() => {
+        if (activeFilters.employee && dbUsers.length > 0) {
+            const exists = dbUsers.some(u => u.id === activeFilters.employee);
+            if (!exists) {
+                setActiveFilters(prev => ({ ...prev, employee: '' }));
+                setPendingFilters(prev => ({ ...prev, employee: '' }));
+            }
+        }
+    }, [dbUsers, activeFilters.employee]);
 
     const filteredUsers = useMemo(() => {
         return users.filter(user => {
@@ -1575,6 +1609,27 @@ const UserManagement: React.FC = () => {
                                         activityStatus={activityMap[user.id]}
                                     />
                                 ))}
+                                {filteredUsers.length === 0 && (
+                                    <tr>
+                                        <td colSpan={8} className="p-8 text-center text-muted">
+                                            <div className="flex flex-col items-center justify-center py-8 gap-3">
+                                                <Users className="w-10 h-10 text-gray-300 stroke-[1.5]" />
+                                                <p className="font-medium text-gray-600 dark:text-gray-300">
+                                                    No users found{hasActiveFilters ? ' matching the current filters' : ''}.
+                                                </p>
+                                                {hasActiveFilters && (
+                                                    <button 
+                                                        onClick={clearAllFilters}
+                                                        className="mt-2 text-xs font-semibold text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-400 px-3.5 py-2 rounded-lg transition-colors inline-flex items-center gap-1.5 shadow-sm"
+                                                    >
+                                                        <FilterX className="w-3.5 h-3.5" />
+                                                        Clear all filters
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                )}
                             </tbody>
                         </table>
                     </div>

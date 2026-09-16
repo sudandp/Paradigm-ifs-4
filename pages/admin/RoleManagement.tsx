@@ -23,6 +23,8 @@ export const allPermissions: { key: Permission; name: string; description: strin
     { key: 'view_crm_pipeline', name: 'Access CRM Pipeline', description: 'View and manage the sales pipeline and leads.', category: 'CRM & Sales' },
     { key: 'view_crm_checklists', name: 'Access CRM Checklists', description: 'Create and manage checklist templates for property surveys.', category: 'CRM & Sales' },
     { key: 'view_referrals', name: 'Access Referral Management', description: 'View and manage employee and business referrals.', category: 'CRM & Sales' },
+    { key: 'view_candidate_referrals', name: 'Access Candidate Referrals', description: 'View and manage employee candidate referral submissions.', category: 'CRM & Sales' },
+    { key: 'view_business_referrals', name: 'Access Business Referrals', description: 'View and manage strategic business referral opportunities.', category: 'CRM & Sales' },
     { key: 'view_my_referrals', name: 'Access My Referrals', description: 'View and track personal candidate and business referrals.', category: 'CRM & Sales' },
 
     // HRM Portal
@@ -338,8 +340,14 @@ const RoleManagement: React.FC = () => {
             setIsDeleteModalOpen(false);
             return;
         }
+        try {
+            await api.deleteRole(currentRole.id);
+        } catch (err: any) {
+            console.error("Failed to delete role from backend:", err);
+            setToast({ message: "Failed to delete role from database.", type: 'error' });
+            return;
+        }
         const updatedRoles = sortRolesAtoZ(roles.filter(r => r.id !== currentRole.id));
-        await api.saveRoles(updatedRoles);
         setRoles(updatedRoles);
         removeRolePermissionEntry(currentRole.id);
         if (selectedRoleId === currentRole.id && updatedRoles.length > 0) {

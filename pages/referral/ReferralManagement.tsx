@@ -10,6 +10,9 @@ import toast from 'react-hot-toast';
 import { api } from '../../services/api';
 import StageBadge from '../../components/hr/StageBadge';
 import MobileTopBar from '../../components/navigation/MobileTopBar';
+import { useAuthStore } from '../../store/authStore';
+import { usePermissionsStore } from '../../store/permissionsStore';
+import { isAdmin } from '../../utils/auth';
 
 // ─── Stat Card ───────────────────────────────────────────────────────────────
 interface StatCardProps {
@@ -46,12 +49,62 @@ const StatCard: React.FC<StatCardProps> = ({ icon, label, value, color, sub }) =
 // ─── Main Page ────────────────────────────────────────────────────────────────
 const ReferralManagement: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuthStore();
+  const { permissions } = usePermissionsStore();
+
+  const userPermissions = React.useMemo(() => {
+    if (!user || !permissions) return [];
+    const roleId = user.roleId?.toLowerCase() || '';
+    const roleName = user.role?.toLowerCase() || '';
+    const roleNameUnderscore = roleName.replace(/\s+/g, '_');
+    const roleNameHyphen = roleName.replace(/\s+/g, '-');
+    const directPerms = (user as any).permissions || [];
+
+    const found = permissions[user.roleId] || 
+           permissions[roleId] || 
+           permissions[user.role] || 
+           permissions[roleName] || 
+           permissions[roleNameUnderscore] || 
+           permissions[roleNameHyphen] || 
+           [];
+
+    return [...new Set([...found, ...directPerms])];
+  }, [user, permissions]);
+
+  const isUserAdmin = user?.role ? isAdmin(user.role) : false;
+
+  // Determine permissions for Candidate and Business referral tabs
+  const canViewCandidates = isUserAdmin || 
+    userPermissions.includes('view_candidate_referrals') || 
+    (userPermissions.includes('view_referrals') && !userPermissions.includes('view_business_referrals'));
+
+  const canViewBusiness = isUserAdmin || 
+    userPermissions.includes('view_business_referrals') || 
+    (userPermissions.includes('view_referrals') && !userPermissions.includes('view_candidate_referrals'));
+
+  const availableTabs = React.useMemo(() => {
+    const tabs: { id: 'candidate' | 'business'; label: string }[] = [];
+    if (canViewCandidates) tabs.push({ id: 'candidate', label: 'Candidates' });
+    if (canViewBusiness) tabs.push({ id: 'business', label: 'Business' });
+    return tabs;
+  }, [canViewCandidates, canViewBusiness]);
+
   const [referrals, setReferrals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [refreshing, setRefreshing] = useState(false);
-  const [referralType, setReferralType] = useState<'candidate' | 'business'>('candidate');
+  const [referralType, setReferralType] = useState<'candidate' | 'business'>(() => {
+    if (!canViewCandidates && canViewBusiness) return 'business';
+    return 'candidate';
+  });
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+
+  // Keep referralType in sync with permitted tabs
+  useEffect(() => {
+    if (availableTabs.length > 0 && !availableTabs.some(t => t.id === referralType)) {
+      setReferralType(availableTabs[0].id);
+    }
+  }, [availableTabs, referralType]);
 
   // Modals & action states
   const [selectedBusiness, setSelectedBusiness] = useState<any | null>(null);
@@ -60,11 +113,16 @@ const ReferralManagement: React.FC = () => {
   const [statusUpdating, setStatusUpdating] = useState(false);
 
   const fetchReferrals = async () => {
+    if (availableTabs.length === 0) {
+      setLoading(false);
+      setReferrals([]);
+      return;
+    }
     setLoading(true);
     try {
       const data = referralType === 'candidate' 
-        ? await api.getCandidateReferrals() 
-        : await api.getBusinessReferrals();
+        ? (canViewCandidates ? await api.getCandidateReferrals() : []) 
+        : (canViewBusiness ? await api.getBusinessReferrals() : []);
       setReferrals(data || []);
     } catch (error) {
       console.error('Failed to fetch referrals:', error);
@@ -76,7 +134,7 @@ const ReferralManagement: React.FC = () => {
 
   useEffect(() => {
     fetchReferrals();
-  }, [referralType]);
+  }, [referralType, availableTabs]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -190,29 +248,38 @@ const ReferralManagement: React.FC = () => {
       </div>
 
       {/* Tabs Row */}
-      <div className="mb-6 border-b border-white/5 md:border-border">
-        <nav className="-mb-px flex space-x-6 overflow-x-auto no-scrollbar scroll-smooth snap-x" aria-label="Tabs">
-          {[
-            { id: 'candidate', label: 'Candidates' },
-            { id: 'business', label: 'Business' }
-          ].map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setReferralType(tab.id as any)}
-              className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors snap-start min-w-max ${
-                referralType === tab.id
-                  ? 'border-emerald-400 text-emerald-400 md:border-accent md:text-accent-dark'
-                  : 'border-transparent text-white/30 md:text-muted hover:text-white md:hover:text-accent-dark md:hover:border-accent'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
-      </div>
+      {availableTabs.length > 0 ? (
+        <div className="mb-6 border-b border-white/5 md:border-border">
+          <nav className="-mb-px flex space-x-6 overflow-x-auto no-scrollbar scroll-smooth snap-x" aria-label="Tabs">
+            {availableTabs.map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setReferralType(tab.id)}
+                className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors snap-start min-w-max ${
+                  referralType === tab.id
+                    ? 'border-emerald-400 text-emerald-400 md:border-accent md:text-accent-dark'
+                    : 'border-transparent text-white/30 md:text-muted hover:text-white md:hover:text-accent-dark md:hover:border-accent'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+        </div>
+      ) : (
+        <div className="mb-6 p-10 rounded-3xl bg-white dark:bg-white/[0.03] border border-border dark:border-white/5 text-center shadow-sm">
+          <ShieldCheck className="w-12 h-12 text-muted/30 mx-auto mb-3" />
+          <h3 className="text-base font-bold text-primary-text dark:text-white">Access Restricted</h3>
+          <p className="text-xs text-muted mt-1 max-w-sm mx-auto">
+            You do not currently have permission to access Candidate or Business referrals. Contact your administrator to enable access.
+          </p>
+        </div>
+      )}
 
-      {/* ── Stats Row ─────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-3 gap-3 md:gap-5">
+      {availableTabs.length > 0 && (
+        <>
+          {/* ── Stats Row ─────────────────────────────────────────────────── */}
+          <div className="grid grid-cols-3 gap-3 md:gap-5">
         <StatCard icon={<Users className="w-5 h-5" />} label="Total" value={totalCount} color="#006b3f" sub="All referrals" />
         <StatCard icon={<ShieldCheck className="w-5 h-5" />} label="Employees" value={employeeRefs} color="#3b82f6" sub="AP Group staff" />
         <StatCard icon={<CheckCircle2 className="w-5 h-5" />} label="Verified" value={verifiedCount} color="#10b981" sub="System approved" />
@@ -458,6 +525,8 @@ const ReferralManagement: React.FC = () => {
             </table>
           </div>
         </div>
+      )}
+      </>
       )}
 
       {/* ── Business Referral Detail Modal ── */}

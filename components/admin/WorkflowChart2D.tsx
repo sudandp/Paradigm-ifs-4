@@ -15,10 +15,23 @@ import {
     Search,
     RotateCcw,
     ZoomIn,
-    ZoomOut
+    ZoomOut,
+    AlertTriangle,
+    ArrowRightLeft,
+    Check,
+    CheckCircle2,
+    UserCheck,
+    UserX,
+    Users,
+    Edit2,
+    ArrowRight,
+    Loader2,
+    Trash2,
+    MapPin
 } from 'lucide-react';
 import { getProxyUrl } from '../../utils/fileUrl';
 import { supabase } from '../../services/supabase';
+import { api } from '../../services/api';
 
 export interface WorkflowNode extends User {
     managerName?: string;
@@ -45,6 +58,7 @@ interface WorkflowChart2DProps {
     onToggleFullscreen?: () => void;
     onSelectEmployeeForTrace?: (userId: string) => void;
     onManagerChange?: (userId: string, managerId: string, slot: 1 | 2 | 3) => void;
+    onRefresh?: () => void;
 }
 
 // Role color scheme (strictly compliant with no-purple rule)
@@ -120,8 +134,8 @@ const getRoleTheme = (role: string = '') => {
     };
 };
 
-const CARD_WIDTH = 224;
-const CARD_HEIGHT = 80;
+const CARD_WIDTH = 232;
+const CARD_HEIGHT = 86;
 const HORIZONTAL_GAP = 28;
 const VERTICAL_GAP = 60;
 const LEAF_COLS = 2; // Compact 2-3 column layout for leaves
@@ -195,7 +209,9 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
     showControls = true,
     isFullscreen = false,
     onToggleFullscreen,
-    onSelectEmployeeForTrace
+    onSelectEmployeeForTrace,
+    onManagerChange,
+    onRefresh
 }) => {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const chartAreaRef = useRef<HTMLDivElement | null>(null);
@@ -216,6 +232,119 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
     const hasDraggedRef = useRef(false);
 
     const searchQuery = externalSearchQuery !== undefined ? externalSearchQuery : '';
+
+    // Reassignment Modal State
+    const [reassignModalTarget, setReassignModalTarget] = useState<WorkflowNode | null>(null);
+    const [selectedNewManagerId, setSelectedNewManagerId] = useState<string>('');
+    const [reassignSlot, setReassignSlot] = useState<1 | 2 | 3>(1);
+    const [selectedDirectReportIds, setSelectedDirectReportIds] = useState<Set<string>>(new Set());
+    const [managerSearchQuery, setManagerSearchQuery] = useState<string>('');
+    const [isReassigning, setIsReassigning] = useState<boolean>(false);
+    const [toastNotification, setToastNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+    // Individual Manager Edit in Drawer
+    const [isEditingL1Manager, setIsEditingL1Manager] = useState<boolean>(false);
+    const [selectedL1ManagerId, setSelectedL1ManagerId] = useState<string>('');
+    const [isSavingL1Manager, setIsSavingL1Manager] = useState<boolean>(false);
+
+    // Auto-dismiss toast
+    useEffect(() => {
+        if (toastNotification) {
+            const timer = setTimeout(() => setToastNotification(null), 4000);
+            return () => clearTimeout(timer);
+        }
+    }, [toastNotification]);
+
+    // Delete Inactive User State
+    const [userToDelete, setUserToDelete] = useState<WorkflowNode | null>(null);
+    const [isDeletingUser, setIsDeletingUser] = useState<boolean>(false);
+    const [deletedUserIds, setDeletedUserIds] = useState<Set<string>>(new Set());
+
+    // 14-day activity status per user (active / inactive / unknown)
+    const [activityMap, setActivityMap] = useState<Record<string, 'active' | 'inactive' | 'unknown'>>({});
+
+    useEffect(() => {
+        if (!users || users.length === 0) return;
+        let isMounted = true;
+        api.getUsersActivityStatus(users.map(u => ({ id: u.id, role: u.role })))
+            .then(newMap => {
+                if (isMounted) {
+                    setActivityMap(prev => ({ ...prev, ...newMap }));
+                }
+            })
+            .catch(() => {});
+        return () => { isMounted = false; };
+    }, [users]);
+
+    // Check if a user has left the organization
+    const isUserLeft = useCallback((user: User | WorkflowNode | null | undefined): boolean => {
+        if (!user) return false;
+        return user.status === 'left' || !!user.leftDate || !!(user as any).left_date;
+    }, []);
+
+    // Get comprehensive active/inactive status
+    const getUserActivityStatus = useCallback((user: User | WorkflowNode | null | undefined): {
+        isActive: boolean;
+        label: string;
+        reason?: string;
+    } => {
+        if (!user) return { isActive: true, label: 'Active' };
+        if (isUserLeft(user)) {
+            return { isActive: false, label: 'Left', reason: user.leftDate ? `Exit: ${user.leftDate}` : 'Marked as left' };
+        }
+        if (user.isBlocked || user.status === 'blocked') {
+            return { isActive: false, label: 'Blocked', reason: 'Account is blocked' };
+        }
+        if (user.status === 'inactive') {
+            return { isActive: false, label: 'Inactive', reason: 'Account inactive' };
+        }
+        const act = activityMap[user.id];
+        if (act === 'inactive') {
+            return { isActive: false, label: 'Inactive', reason: 'No attendance / punches in 14+ days' };
+        }
+        return { isActive: true, label: 'Active' };
+    }, [activityMap, isUserLeft]);
+
+    // Resolve location cleanly from user profile or assigned organization
+    const resolveLocation = useCallback((user: User | WorkflowNode): string => {
+        if (user.location) return user.location;
+        if ((user as any).locationName) return (user as any).locationName;
+        const orgId = user.organizationId || user.societyId;
+        if (orgId && organizations.length > 0) {
+            const org = organizations.find(o => o.id === orgId || (user.organizationId && user.organizationId.split(',').map(s => s.trim()).includes(o.id)));
+            if (org?.location) return org.location;
+        }
+        return '';
+    }, [organizations]);
+
+    const handleConfirmDeleteUser = async () => {
+        if (!userToDelete) return;
+        const target = userToDelete;
+        setIsDeletingUser(true);
+        try {
+            await api.deleteUser(target.id);
+            setToastNotification({
+                message: `User "${target.name}" has been permanently deleted.`,
+                type: 'success'
+            });
+            // Optimistic instant local removal
+            setDeletedUserIds(prev => new Set([...prev, target.id]));
+            if (selectedNode?.id === target.id) {
+                setSelectedNode(null);
+            }
+            setUserToDelete(null);
+            // Sync server
+            onRefresh?.();
+        } catch (err: any) {
+            console.error('Delete user error:', err);
+            setToastNotification({
+                message: 'Failed to delete user: ' + (err.message || 'Unknown error'),
+                type: 'error'
+            });
+        } finally {
+            setIsDeletingUser(false);
+        }
+    };
 
     const branchScrollRef = useRef<HTMLDivElement | null>(null);
     const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -306,8 +435,9 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
 
     // Active users filtered by selected Organization
     const activeUsers = useMemo(() => {
-        if (selectedOrgId === 'all') return users;
-        return users.filter(user => {
+        const base = deletedUserIds.size > 0 ? users.filter(u => !deletedUserIds.has(u.id)) : users;
+        if (selectedOrgId === 'all') return base;
+        return base.filter(user => {
             if (user.organizationId) {
                 const ids = user.organizationId.split(',').map(s => s.trim().toLowerCase());
                 if (ids.includes(selectedOrgId.toLowerCase())) return true;
@@ -317,7 +447,7 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
             if (user.societyName && user.societyName.toLowerCase() === selectedOrgId.toLowerCase()) return true;
             return false;
         });
-    }, [users, selectedOrgId]);
+    }, [users, selectedOrgId, deletedUserIds]);
 
     // Filtered options for dropdown search
     const filteredOrgOptions = useMemo(() => {
@@ -471,6 +601,135 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
 
         return { roots: rootList, topBranches: reportingManagers, nodeMap: map };
     }, [activeUsers]);
+
+    // Keep selectedNode in sync when nodeMap changes
+    useEffect(() => {
+        if (selectedNode) {
+            const updated = nodeMap.get(selectedNode.id);
+            if (updated) setSelectedNode(updated);
+        }
+    }, [nodeMap]);
+
+    // Calculate reporting managers who have left the company but still have reports
+    const leftManagersWithReports = useMemo(() => {
+        return topBranches.filter(branch => {
+            const node = nodeMap.get(branch.id);
+            return isUserLeft(node) && (branch.totalMembers > 0 || (node?.children?.length || 0) > 0);
+        });
+    }, [topBranches, nodeMap, isUserLeft]);
+
+    // Open reassign modal for a manager
+    const openReassignModal = useCallback((managerNode: WorkflowNode) => {
+        setReassignModalTarget(managerNode);
+        setSelectedNewManagerId('');
+        setReassignSlot(1);
+        setManagerSearchQuery('');
+        const reportIds = new Set((managerNode.children || []).map(c => c.id));
+        setSelectedDirectReportIds(reportIds);
+    }, []);
+
+    // Eligible new managers (exclude current manager, left employees, and direct reports being transferred)
+    const eligibleNewManagers = useMemo(() => {
+        if (!reassignModalTarget) return [];
+        const reportIds = new Set((reassignModalTarget.children || []).map(c => c.id));
+        return users.filter(u => {
+            if (u.id === reassignModalTarget.id) return false;
+            if (isUserLeft(u)) return false;
+            if (reportIds.has(u.id)) return false;
+            if (managerSearchQuery.trim()) {
+                const q = managerSearchQuery.toLowerCase();
+                return (u.name || '').toLowerCase().includes(q) || (u.role || '').toLowerCase().includes(q);
+            }
+            return true;
+        }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    }, [users, reassignModalTarget, isUserLeft, managerSearchQuery]);
+
+    // Eligible managers for individual user L1 change in drawer
+    const eligibleL1ManagersForSelectedNode = useMemo(() => {
+        if (!selectedNode) return [];
+        return users.filter(u => {
+            if (u.id === selectedNode.id) return false;
+            if (isUserLeft(u)) return false;
+            return true;
+        }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    }, [users, selectedNode, isUserLeft]);
+
+    // Reassign Direct Reports Action
+    const handleConfirmReassignment = async () => {
+        if (!reassignModalTarget || !selectedNewManagerId) {
+            setToastNotification({ message: 'Please select a new reporting manager.', type: 'error' });
+            return;
+        }
+        if (selectedDirectReportIds.size === 0) {
+            setToastNotification({ message: 'Please select at least one direct report to reassign.', type: 'error' });
+            return;
+        }
+
+        setIsReassigning(true);
+        try {
+            const reportIds = Array.from(selectedDirectReportIds);
+            await Promise.all(
+                reportIds.map(reportId =>
+                    api.updateUserReportingManager(reportId, selectedNewManagerId, reassignSlot)
+                )
+            );
+
+            // Optimistic update callback for each report
+            reportIds.forEach(reportId => {
+                onManagerChange?.(reportId, selectedNewManagerId, reassignSlot);
+            });
+
+            const newMgr = users.find(u => u.id === selectedNewManagerId);
+            setToastNotification({
+                message: `Successfully reassigned ${reportIds.length} direct report(s) to ${newMgr?.name || 'new manager'}!`,
+                type: 'success'
+            });
+
+            setReassignModalTarget(null);
+
+            if (onRefresh) {
+                onRefresh();
+            }
+        } catch (err: any) {
+            console.error('Failed to reassign direct reports:', err);
+            setToastNotification({
+                message: 'Failed to reassign direct reports: ' + (err.message || 'Unknown error'),
+                type: 'error'
+            });
+        } finally {
+            setIsReassigning(false);
+        }
+    };
+
+    // Change Individual Manager Action
+    const handleSaveIndividualL1Manager = async () => {
+        if (!selectedNode) return;
+        setIsSavingL1Manager(true);
+        try {
+            const mgrIdToSave = selectedL1ManagerId || null;
+            await api.updateUserReportingManager(selectedNode.id, mgrIdToSave, 1);
+            onManagerChange?.(selectedNode.id, mgrIdToSave || '', 1);
+            setIsEditingL1Manager(false);
+            const newMgr = users.find(u => u.id === selectedL1ManagerId);
+            setToastNotification({
+                message: mgrIdToSave
+                    ? `Reporting manager for ${selectedNode.name} updated to ${newMgr?.name || 'new manager'}.`
+                    : `Reporting manager for ${selectedNode.name} cleared.`,
+                type: 'success'
+            });
+            if (onRefresh) {
+                onRefresh();
+            }
+        } catch (err: any) {
+            console.error('Failed to update reporting manager:', err);
+            setToastNotification({
+                message: 'Failed to update manager: ' + (err.message || 'Unknown error'),
+                type: 'error'
+            });
+        } finally {
+            setIsSavingL1Manager(false);
+        }
+    };
 
     // Filter roots if a specific branch / manager is selected
     const activeRoots = useMemo(() => {
@@ -993,26 +1252,52 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
                             >
                                 All ({activeUsers.length})
                             </button>
-                            {topBranches.map(branch => (
+                            {leftManagersWithReports.length > 0 && (
                                 <button
-                                    key={branch.id}
                                     type="button"
-                                    onClick={() => setSelectedBranchRoot(branch.id)}
-                                    title={`Manager: ${branch.name} (${branch.totalMembers} reportees) - Click to focus team`}
-                                    className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-colors flex items-center gap-1.5 flex-shrink-0 border cursor-pointer ${
-                                        selectedBranchRoot === branch.id
-                                            ? 'bg-emerald-700 text-white border-emerald-800 shadow-xs'
-                                            : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-100'
-                                    }`}
+                                    onClick={() => {
+                                        const firstLeft = leftManagersWithReports[0];
+                                        setSelectedBranchRoot(firstLeft.id);
+                                        const node = nodeMap.get(firstLeft.id);
+                                        if (node) setSelectedNode(node);
+                                    }}
+                                    title="Managers who have left the company but still have active direct reports assigned - Click to view and reassign"
+                                    className="px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-colors flex items-center gap-1.5 flex-shrink-0 border bg-rose-100 text-rose-900 border-rose-300 hover:bg-rose-200 cursor-pointer shadow-xs animate-pulse"
                                 >
-                                    <span>{branch.name}</span>
-                                    <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
-                                        selectedBranchRoot === branch.id ? 'bg-emerald-900/60 text-emerald-100' : 'bg-slate-100 text-slate-700'
-                                    }`}>
-                                        {branch.totalMembers}
-                                    </span>
+                                    <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                                    <span>Left Mgrs with Reports ({leftManagersWithReports.length})</span>
                                 </button>
-                            ))}
+                            )}
+                            {topBranches.map(branch => {
+                                const branchUser = nodeMap.get(branch.id);
+                                const isBranchLeft = isUserLeft(branchUser);
+                                return (
+                                    <button
+                                        key={branch.id}
+                                        type="button"
+                                        onClick={() => setSelectedBranchRoot(branch.id)}
+                                        title={`Manager: ${branch.name}${isBranchLeft ? ' (LEFT COMPANY)' : ''} (${branch.totalMembers} reportees) - Click to focus team`}
+                                        className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-colors flex items-center gap-1.5 flex-shrink-0 border cursor-pointer ${
+                                            isBranchLeft
+                                                ? selectedBranchRoot === branch.id
+                                                    ? 'bg-rose-700 text-white border-rose-800 shadow-xs'
+                                                    : 'bg-rose-50 text-rose-900 border-rose-300 hover:bg-rose-100'
+                                                : selectedBranchRoot === branch.id
+                                                    ? 'bg-emerald-700 text-white border-emerald-800 shadow-xs'
+                                                    : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-100'
+                                        }`}
+                                    >
+                                        {isBranchLeft && <AlertTriangle className="w-3 h-3 text-rose-600 flex-shrink-0" />}
+                                        <span>{branch.name}</span>
+                                        {isBranchLeft && <span className="text-[9px] uppercase font-black text-rose-700 bg-rose-200/80 px-1 py-0.2 rounded">Left</span>}
+                                        <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
+                                            selectedBranchRoot === branch.id ? 'bg-black/30 text-white' : 'bg-slate-100 text-slate-700'
+                                        }`}>
+                                            {branch.totalMembers}
+                                        </span>
+                                    </button>
+                                );
+                            })}
                         </div>
 
                         {/* Right Slide Button */}
@@ -1181,12 +1466,17 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
                             (node.role || '').toLowerCase().includes(searchQuery.toLowerCase())
                         );
                         const isUnassigned = !node.reportingManagerId;
+                        const statusInfo = getUserActivityStatus(node);
+                        const userLoc = resolveLocation(node);
+                        const isInactive = !statusInfo.isActive;
 
                         return (
                             <div
                                 key={node.id}
                                 onClick={() => setSelectedNode(isSelected ? null : node)}
-                                className={`org-card absolute rounded-xl bg-white border cursor-pointer transition-all duration-150 select-none shadow-sm hover:shadow-md ${theme.border} ${
+                                className={`org-card absolute rounded-xl bg-white border cursor-pointer transition-all duration-150 select-none shadow-sm hover:shadow-md ${
+                                    isInactive ? 'border-rose-300 ring-1 ring-rose-200/80 bg-rose-50/10' : theme.border
+                                } ${
                                     isSelected || isMatch
                                         ? 'ring-3 ring-emerald-500/30 border-emerald-500 shadow-md'
                                         : 'hover:border-slate-400'
@@ -1199,53 +1489,116 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
                                 }}
                             >
                                 {/* Left Color Accent Strip */}
-                                <div className={`absolute left-0 top-0 bottom-0 w-1.5 rounded-l-xl ${isUnassigned ? 'bg-amber-500' : theme.accent}`} />
+                                <div className={`absolute left-0 top-0 bottom-0 w-1.5 rounded-l-xl ${
+                                    isInactive ? 'bg-rose-500' : isUnassigned ? 'bg-amber-500' : theme.accent
+                                }`} />
 
                                 <div className="p-2.5 pl-3.5 h-full flex flex-col justify-between">
-                                    {/* Top Row: Avatar + Name + Level */}
+                                    {/* Top Row: Avatar + Name + Role */}
                                     <div className="flex items-center gap-2 min-w-0">
                                         <WorkflowUserAvatar user={node} theme={theme} size="w-8 h-8" />
                                         <div className="min-w-0 flex-1">
                                             <p className="font-bold text-xs text-slate-900 truncate leading-snug" title={node.name}>
                                                 {node.name}
                                             </p>
-                                            <div className="flex items-center gap-1.5 mt-0.5">
+                                            <div className="flex items-center gap-1 mt-0.5 flex-wrap">
                                                 <span className={`inline-block px-1.5 py-0.2 rounded text-[10px] font-semibold border ${theme.badgeBg}`}>
                                                     {getRoleDisplayName(node.role)}
                                                 </span>
+                                                {isInactive && (
+                                                    <span className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-[9px] font-bold bg-rose-100 text-rose-800 border border-rose-300 uppercase tracking-tight" title={statusInfo.reason || statusInfo.label}>
+                                                        <AlertTriangle className="w-2.5 h-2.5 text-rose-600" />
+                                                        {statusInfo.label}
+                                                    </span>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
 
-                                    {/* Bottom Row: Location & Expand/Collapse */}
-                                    <div className="flex items-center justify-between text-[10px] text-slate-500 pt-1">
-                                        <span className="truncate max-w-[90px]">
-                                            {node.location ? `📍 ${node.location}` : (isUnassigned ? '⚠️ Needs Mgr' : 'Active')}
-                                        </span>
+                                    {/* Bottom Row: Location / Status & Actions */}
+                                    <div className="flex items-center justify-between text-[10px] text-slate-500 pt-1 border-t border-slate-100">
+                                        <div className="flex items-center gap-1 min-w-0 truncate">
+                                            {/* Explicit Active or Inactive Badge */}
+                                            {statusInfo.isActive ? (
+                                                <span className="inline-flex items-center gap-1 text-[9px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded flex-shrink-0">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                                    Active
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center gap-1 text-[9px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded flex-shrink-0" title={statusInfo.reason || 'Inactive user'}>
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
+                                                    Inactive
+                                                </span>
+                                            )}
 
-                                        {hasChildren && (
-                                            <button
-                                                type="button"
-                                                onClick={(e) => toggleNodeCollapse(node.id, e)}
-                                                className={`org-card-button px-2 py-0.5 rounded-full font-bold flex items-center gap-0.5 border transition-colors ${
-                                                    isCollapsed
-                                                        ? 'bg-amber-100 text-amber-900 border-amber-300 hover:bg-amber-200'
-                                                        : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
-                                                }`}
-                                            >
-                                                {isCollapsed ? (
-                                                    <>
-                                                        <ChevronRight className="w-3 h-3 text-amber-700" />
-                                                        <span>+{node.children!.length} Reports</span>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <ChevronDown className="w-3 h-3 text-slate-600" />
-                                                        <span>{node.children!.length} Reports</span>
-                                                    </>
-                                                )}
-                                            </button>
-                                        )}
+                                            {userLoc ? (
+                                                <span className="truncate max-w-[70px] text-slate-500 font-medium" title={userLoc}>
+                                                    📍 {userLoc}
+                                                </span>
+                                            ) : isUnassigned ? (
+                                                <span className="truncate max-w-[65px] text-amber-600 font-bold" title="Needs Reporting Manager">
+                                                    ⚠️ Needs Mgr
+                                                </span>
+                                            ) : null}
+                                        </div>
+
+                                        <div className="flex items-center gap-1 flex-shrink-0">
+                                            {/* Delete Option for Inactive Users */}
+                                            {isInactive && (
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setUserToDelete(node);
+                                                    }}
+                                                    title={`Delete inactive user "${node.name}"`}
+                                                    className="px-1.5 py-0.5 rounded font-bold text-[9px] bg-rose-600 hover:bg-rose-700 text-white shadow-xs flex items-center gap-0.5 cursor-pointer transition-colors"
+                                                >
+                                                    <Trash2 className="w-2.5 h-2.5" />
+                                                    Delete
+                                                </button>
+                                            )}
+
+                                            {hasChildren && (
+                                                <>
+                                                    {statusInfo.label === 'Left' && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                openReassignModal(node);
+                                                            }}
+                                                            title="Manager has left! Click to reassign direct reports to a new manager"
+                                                            className="px-1.5 py-0.5 rounded font-bold text-[9px] bg-amber-600 hover:bg-amber-700 text-white shadow-xs flex items-center gap-0.5 cursor-pointer transition-colors"
+                                                        >
+                                                            <ArrowRightLeft className="w-2.5 h-2.5" />
+                                                            Reassign
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => toggleNodeCollapse(node.id, e)}
+                                                        className={`org-card-button px-1.5 py-0.5 rounded-full font-bold flex items-center gap-0.5 border transition-colors ${
+                                                            isCollapsed
+                                                                ? 'bg-amber-100 text-amber-900 border-amber-300 hover:bg-amber-200'
+                                                                : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
+                                                        }`}
+                                                    >
+                                                        {isCollapsed ? (
+                                                            <>
+                                                                <ChevronRight className="w-3 h-3 text-amber-700" />
+                                                                <span>+{node.children!.length}</span>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <ChevronDown className="w-3 h-3 text-slate-600" />
+                                                                <span>{node.children!.length}</span>
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                </>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -1256,27 +1609,104 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
 
             {/* Selected Node Inspector Drawer */}
             {selectedNode && (
-                <div className="absolute top-14 right-4 z-30 w-80 bg-white/95 backdrop-blur-xl border border-slate-200 rounded-2xl shadow-2xl p-5 animate-fade-in-scale">
+                <div className="absolute top-14 right-4 z-30 w-84 bg-white/95 backdrop-blur-xl border border-slate-200 rounded-2xl shadow-2xl p-5 animate-fade-in-scale max-h-[85vh] overflow-y-auto">
                     <div className="flex items-start justify-between pb-3 border-b border-slate-100 mb-3">
                         <div className="flex items-center gap-3">
                             <WorkflowUserAvatar user={selectedNode} theme={getRoleTheme(selectedNode.role)} size="w-10 h-10" textSize="text-sm" rounded="rounded-xl" />
                             <div>
                                 <h4 className="font-bold text-slate-900 text-sm">{selectedNode.name}</h4>
-                                <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold border ${getRoleTheme(selectedNode.role).badgeBg}`}>
-                                    {getRoleDisplayName(selectedNode.role)}
-                                </span>
+                                <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                                    <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold border ${getRoleTheme(selectedNode.role).badgeBg}`}>
+                                        {getRoleDisplayName(selectedNode.role)}
+                                    </span>
+                                    {(() => {
+                                        const sInfo = getUserActivityStatus(selectedNode);
+                                        return sInfo.isActive ? (
+                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                                Active
+                                            </span>
+                                        ) : (
+                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-100 text-rose-800 border border-rose-300 uppercase tracking-tight">
+                                                <AlertTriangle className="w-2.5 h-2.5 text-rose-600" />
+                                                {sInfo.label}
+                                            </span>
+                                        );
+                                    })()}
+                                </div>
                             </div>
                         </div>
                         <button
                             type="button"
-                            onClick={() => setSelectedNode(null)}
-                            className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100"
+                            onClick={() => {
+                                setSelectedNode(null);
+                                setIsEditingL1Manager(false);
+                            }}
+                            className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 cursor-pointer"
                         >
                             <X className="w-4 h-4" />
                         </button>
                     </div>
 
-                    <div className="space-y-2.5 text-xs text-slate-700">
+                    <div className="space-y-3 text-xs text-slate-700">
+                        {/* Delete Inactive User Callout Button in Drawer */}
+                        {!getUserActivityStatus(selectedNode).isActive && (
+                            <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between gap-2">
+                                <div className="min-w-0">
+                                    <p className="font-bold text-xs text-rose-900">User is Inactive</p>
+                                    <p className="text-[10px] text-rose-700 truncate">
+                                        {getUserActivityStatus(selectedNode).reason || 'Can be permanently deleted'}
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setUserToDelete(selectedNode)}
+                                    className="px-2.5 py-1.5 rounded-lg font-bold text-xs bg-rose-600 hover:bg-rose-700 text-white shadow-xs flex items-center gap-1.5 cursor-pointer transition-colors flex-shrink-0"
+                                >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    <span>Delete</span>
+                                </button>
+                            </div>
+                        )}
+                        {/* Manager Left Alert Banner */}
+                        {isUserLeft(selectedNode) && (
+                            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl space-y-1">
+                                <div className="flex items-center gap-1.5 text-rose-900 font-bold text-xs">
+                                    <AlertTriangle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+                                    <span>Employee Has Left / Relieved</span>
+                                </div>
+                                {selectedNode.leftDate && (
+                                    <p className="text-[11px] text-rose-700 pl-5">
+                                        Exit Date: <strong>{selectedNode.leftDate}</strong>
+                                        {selectedNode.exitReason ? ` • ${selectedNode.exitReason}` : ''}
+                                    </p>
+                                )}
+                                {selectedNode.children && selectedNode.children.length > 0 && (
+                                    <p className="text-[11px] text-rose-800 font-semibold pl-5 pt-0.5">
+                                        ⚠️ Still has <strong>{selectedNode.children.length} direct report(s)</strong> assigned. Reassign them below to prevent workflow bottlenecks!
+                                    </p>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Direct Reports Reassignment Callout Button */}
+                        {selectedNode.children && selectedNode.children.length > 0 && (
+                            <div>
+                                <button
+                                    type="button"
+                                    onClick={() => openReassignModal(selectedNode)}
+                                    className={`w-full py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer ${
+                                        isUserLeft(selectedNode)
+                                            ? 'bg-rose-600 hover:bg-rose-700 text-white'
+                                            : 'bg-emerald-700 hover:bg-emerald-800 text-white'
+                                    }`}
+                                >
+                                    <ArrowRightLeft className="w-4 h-4" />
+                                    <span>Reassign {selectedNode.children.length} Direct Report{selectedNode.children.length > 1 ? 's' : ''}</span>
+                                </button>
+                            </div>
+                        )}
+
                         {selectedNode.location && (
                             <div className="flex items-center gap-2">
                                 <Building2 className="w-4 h-4 text-slate-400 flex-shrink-0" />
@@ -1296,18 +1726,87 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
                             </div>
                         )}
 
-                        <div className="pt-2 border-t border-slate-100 space-y-1">
-                            <p className="text-[11px] font-bold text-slate-500 uppercase">Approval Escalation</p>
-                            <p className="text-slate-800">
-                                L1 Manager: <strong>{selectedNode.managerName || '⚠️ Unassigned'}</strong>
-                            </p>
+                        {/* Approval Escalation & Reporting Manager */}
+                        <div className="pt-2 border-t border-slate-100 space-y-2">
+                            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Approval Escalation</p>
+                            
+                            {/* L1 Reporting Manager */}
+                            <div className="space-y-1">
+                                {isEditingL1Manager ? (
+                                    <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                                        <label className="text-[11px] font-bold text-slate-700 block">
+                                            Select New L1 Manager for {selectedNode.name}:
+                                        </label>
+                                        <select
+                                            value={selectedL1ManagerId}
+                                            onChange={e => setSelectedL1ManagerId(e.target.value)}
+                                            className="w-full text-xs p-1.5 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                        >
+                                            <option value="">-- No Manager (None) --</option>
+                                            {eligibleL1ManagersForSelectedNode.map(u => (
+                                                <option key={u.id} value={u.id}>
+                                                    {u.name} ({getRoleDisplayName(u.role)})
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <div className="flex items-center justify-end gap-1.5 pt-1">
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsEditingL1Manager(false)}
+                                                disabled={isSavingL1Manager}
+                                                className="px-2.5 py-1 rounded text-xs font-semibold text-slate-600 hover:bg-slate-200 cursor-pointer"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={handleSaveIndividualL1Manager}
+                                                disabled={isSavingL1Manager}
+                                                className="px-3 py-1 rounded bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer"
+                                            >
+                                                {isSavingL1Manager ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                                                Save
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-slate-800">
+                                            L1 Manager: <strong>{selectedNode.managerName || '⚠️ Unassigned'}</strong>
+                                        </p>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setSelectedL1ManagerId(selectedNode.reportingManagerId || '');
+                                                setIsEditingL1Manager(true);
+                                            }}
+                                            className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 hover:underline flex items-center gap-0.5 cursor-pointer"
+                                        >
+                                            <Edit2 className="w-3 h-3" /> Change
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
                             {selectedNode.manager2Name && (
                                 <p className="text-slate-800">L2 Manager: <strong>{selectedNode.manager2Name}</strong></p>
                             )}
+                            
+                            {/* Direct Reports Mini List */}
                             {selectedNode.children && selectedNode.children.length > 0 && (
-                                <p className="text-emerald-700 font-semibold pt-1">
-                                    Direct Reports: {selectedNode.children.length} team members
-                                </p>
+                                <div className="pt-1">
+                                    <p className="text-emerald-800 font-bold text-[11px] mb-1">
+                                        Direct Reports ({selectedNode.children.length}):
+                                    </p>
+                                    <div className="space-y-1 max-h-36 overflow-y-auto pr-1">
+                                        {selectedNode.children.map(child => (
+                                            <div key={child.id} className="flex items-center justify-between p-1.5 px-2 rounded-lg bg-slate-50 border border-slate-200 text-[11px]">
+                                                <span className="font-semibold text-slate-800 truncate">{child.name}</span>
+                                                <span className="text-[10px] text-slate-500 flex-shrink-0">{getRoleDisplayName(child.role)}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
                             )}
                         </div>
 
@@ -1316,13 +1815,360 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
                                 <button
                                     type="button"
                                     onClick={() => onSelectEmployeeForTrace(selectedNode.id)}
-                                    className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-colors"
+                                    className="w-full py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg font-semibold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer"
                                 >
-                                    <Sparkles className="w-3.5 h-3.5" />
+                                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
                                     Trace Approval Chain
                                 </button>
                             </div>
                         )}
+                    </div>
+                </div>
+            )}
+
+            {/* Reassign Direct Reports Modal */}
+            {reassignModalTarget && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+                    <div 
+                        className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] animate-fade-in-scale"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {/* Modal Header */}
+                        <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
+                            <div className="flex items-center gap-2.5">
+                                <div className="p-2 rounded-xl bg-rose-100 text-rose-700 border border-rose-200">
+                                    <ArrowRightLeft className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-slate-900 text-sm sm:text-base leading-tight">
+                                        Reassign Direct Reports
+                                    </h3>
+                                    <p className="text-xs text-slate-500 mt-0.5">
+                                        Current Manager: <strong>{reassignModalTarget.name}</strong> ({getRoleDisplayName(reassignModalTarget.role)})
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setReassignModalTarget(null)}
+                                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-200/60 cursor-pointer"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Modal Content */}
+                        <div className="p-5 overflow-y-auto space-y-4 text-xs">
+                            {/* Warning Banner if Manager has left */}
+                            {isUserLeft(reassignModalTarget) && (
+                                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2 text-rose-900">
+                                    <AlertTriangle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
+                                    <div>
+                                        <p className="font-bold text-xs">
+                                            {reassignModalTarget.name} has left the company {reassignModalTarget.leftDate ? `(${reassignModalTarget.leftDate})` : ''}
+                                        </p>
+                                        <p className="text-[11px] text-rose-800 mt-0.5">
+                                            Reassigning direct reports ensures leave applications, task escalations, and attendance approvals are not orphaned.
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Select New Manager */}
+                            <div className="space-y-1.5">
+                                <label className="font-bold text-slate-800 block text-xs">
+                                    1. Choose New Reporting Manager: <span className="text-rose-500">*</span>
+                                </label>
+                                
+                                {/* Search input */}
+                                <div className="relative">
+                                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                                    <input
+                                        type="text"
+                                        placeholder="Search active employee by name or role..."
+                                        value={managerSearchQuery}
+                                        onChange={e => setManagerSearchQuery(e.target.value)}
+                                        className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white"
+                                    />
+                                </div>
+
+                                {/* Manager Selection Box */}
+                                <div className="border border-slate-200 rounded-xl max-h-40 overflow-y-auto divide-y divide-slate-100 bg-white">
+                                    {eligibleNewManagers.length === 0 ? (
+                                        <p className="p-3 text-center text-slate-400 text-xs">
+                                            No eligible active managers found matching "{managerSearchQuery}"
+                                        </p>
+                                    ) : (
+                                        eligibleNewManagers.map(mgr => {
+                                            const isSelected = selectedNewManagerId === mgr.id;
+                                            return (
+                                                <div
+                                                    key={mgr.id}
+                                                    onClick={() => setSelectedNewManagerId(mgr.id)}
+                                                    className={`p-2 px-3 flex items-center justify-between cursor-pointer transition-colors ${
+                                                        isSelected ? 'bg-emerald-50 text-emerald-950 font-semibold' : 'hover:bg-slate-50'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center gap-2 min-w-0">
+                                                        <WorkflowUserAvatar user={mgr} theme={getRoleTheme(mgr.role)} size="w-7 h-7" textSize="text-xs" />
+                                                        <div className="min-w-0">
+                                                            <p className="text-xs font-bold text-slate-900 truncate">{mgr.name}</p>
+                                                            <p className="text-[10px] text-slate-500 truncate">{getRoleDisplayName(mgr.role)} {mgr.location ? `• ${mgr.location}` : ''}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        {isSelected ? (
+                                                            <span className="p-1 rounded-full bg-emerald-700 text-white">
+                                                                <Check className="w-3 h-3" />
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-[10px] font-semibold text-slate-400">Select</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Direct Reports Checkbox List */}
+                            <div className="space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                    <label className="font-bold text-slate-800 text-xs">
+                                        2. Select Direct Reports to Transfer ({selectedDirectReportIds.size}/{(reassignModalTarget.children || []).length}):
+                                    </label>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const allIds = new Set((reassignModalTarget.children || []).map(c => c.id));
+                                                setSelectedDirectReportIds(allIds);
+                                            }}
+                                            className="text-[11px] font-bold text-emerald-700 hover:underline cursor-pointer"
+                                        >
+                                            Select All
+                                        </button>
+                                        <span className="text-slate-300">|</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => setSelectedDirectReportIds(new Set())}
+                                            className="text-[11px] font-bold text-slate-500 hover:underline cursor-pointer"
+                                        >
+                                            Clear All
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="border border-slate-200 rounded-xl max-h-40 overflow-y-auto divide-y divide-slate-100 bg-white">
+                                    {(reassignModalTarget.children || []).map(child => {
+                                        const isChecked = selectedDirectReportIds.has(child.id);
+                                        return (
+                                            <label
+                                                key={child.id}
+                                                className={`p-2 px-3 flex items-center justify-between cursor-pointer transition-colors ${
+                                                    isChecked ? 'bg-slate-50/70' : 'hover:bg-slate-50/50'
+                                                }`}
+                                            >
+                                                <div className="flex items-center gap-2.5 min-w-0">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isChecked}
+                                                        onChange={() => {
+                                                            const next = new Set(selectedDirectReportIds);
+                                                            if (isChecked) next.delete(child.id);
+                                                            else next.add(child.id);
+                                                            setSelectedDirectReportIds(next);
+                                                        }}
+                                                        className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                                                    />
+                                                    <div className="min-w-0">
+                                                        <p className="font-bold text-xs text-slate-900 truncate">{child.name}</p>
+                                                        <p className="text-[10px] text-slate-500 truncate">{getRoleDisplayName(child.role)} {child.location ? `• ${child.location}` : ''}</p>
+                                                    </div>
+                                                </div>
+                                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
+                                                    {child.role ? child.role.replace(/_/g, ' ') : 'Staff'}
+                                                </span>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* Escalation Slot */}
+                            <div className="space-y-1">
+                                <label className="font-bold text-slate-800 text-xs block">
+                                    3. Assign to Escalation Level:
+                                </label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {[
+                                        { slot: 1 as const, title: 'L1 Primary', desc: 'First-line approver' },
+                                        { slot: 2 as const, title: 'L2 Secondary', desc: 'Second level' },
+                                        { slot: 3 as const, title: 'L3 Escalation', desc: 'Final tier' },
+                                    ].map(item => (
+                                        <button
+                                            key={item.slot}
+                                            type="button"
+                                            onClick={() => setReassignSlot(item.slot)}
+                                            className={`p-2 rounded-xl border text-left cursor-pointer transition-all ${
+                                                reassignSlot === item.slot
+                                                    ? 'bg-emerald-50 border-emerald-500 text-emerald-950 ring-1 ring-emerald-500'
+                                                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                                            }`}
+                                        >
+                                            <p className="font-bold text-xs">{item.title}</p>
+                                            <p className="text-[10px] text-slate-500">{item.desc}</p>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="p-4 border-t border-slate-100 flex items-center justify-between bg-slate-50/80">
+                            <button
+                                type="button"
+                                onClick={() => setReassignModalTarget(null)}
+                                disabled={isReassigning}
+                                className="px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-200/60 rounded-xl transition-colors cursor-pointer"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleConfirmReassignment}
+                                disabled={isReassigning || !selectedNewManagerId || selectedDirectReportIds.size === 0}
+                                className={`px-5 py-2.5 text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-sm transition-all cursor-pointer ${
+                                    isReassigning || !selectedNewManagerId || selectedDirectReportIds.size === 0
+                                        ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                                        : 'bg-emerald-700 hover:bg-emerald-800 text-white shadow-emerald-700/20'
+                                }`}
+                            >
+                                {isReassigning ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                        <span>Reassigning...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <ArrowRightLeft className="w-4 h-4" />
+                                        <span>Reassign {selectedDirectReportIds.size} Reports</span>
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Delete Inactive User Confirmation Modal */}
+            {userToDelete && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+                    <div 
+                        className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden flex flex-col animate-fade-in-scale"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {/* Modal Header */}
+                        <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-rose-50/80">
+                            <div className="flex items-center gap-2.5">
+                                <div className="p-2 rounded-xl bg-rose-100 text-rose-700 border border-rose-200">
+                                    <Trash2 className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-slate-900 text-sm sm:text-base leading-tight">
+                                        Delete Inactive User
+                                    </h3>
+                                    <p className="text-xs text-rose-700 mt-0.5 font-medium">
+                                        Permanent removal from workflow & system
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setUserToDelete(null)}
+                                disabled={isDeletingUser}
+                                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-200/60 cursor-pointer"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div className="p-5 space-y-4 text-xs text-slate-700">
+                            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center gap-3">
+                                <WorkflowUserAvatar user={userToDelete} theme={getRoleTheme(userToDelete.role)} size="w-10 h-10" />
+                                <div className="min-w-0 flex-1">
+                                    <p className="font-bold text-slate-900 text-sm truncate">{userToDelete.name}</p>
+                                    <p className="text-slate-500 text-[11px] truncate">{userToDelete.email || 'No email registered'}</p>
+                                    <div className="flex items-center gap-1.5 mt-1">
+                                        <span className="text-[10px] font-semibold text-slate-600 bg-slate-200/80 px-1.5 py-0.5 rounded">
+                                            {getRoleDisplayName(userToDelete.role)}
+                                        </span>
+                                        <span className="text-[10px] font-bold text-rose-700 bg-rose-100 border border-rose-200 px-1.5 py-0.5 rounded">
+                                            {getUserActivityStatus(userToDelete).label}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-1.5 text-amber-900">
+                                <div className="flex items-center gap-1.5 font-bold text-xs text-amber-800">
+                                    <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                                    <span>Permanent Action</span>
+                                </div>
+                                <p className="text-[11px] text-amber-800 pl-5">
+                                    This user will be permanently deleted from the database. All biometric assignments, records, and login permissions will be removed.
+                                </p>
+                                {userToDelete.children && userToDelete.children.length > 0 && (
+                                    <p className="text-[11px] text-amber-900 font-semibold pl-5 pt-1">
+                                        ⚠️ This user has <strong>{userToDelete.children.length} direct report(s)</strong>. They will automatically be linked to this user's manager to prevent workflow disconnection.
+                                    </p>
+                                )}
+                            </div>
+
+                            <p className="text-slate-600 text-[11px]">
+                                Are you sure you want to permanently delete <strong>{userToDelete.name}</strong>?
+                            </p>
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setUserToDelete(null)}
+                                disabled={isDeletingUser}
+                                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-200/70 transition-colors cursor-pointer"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleConfirmDeleteUser}
+                                disabled={isDeletingUser}
+                                className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                            >
+                                {isDeletingUser ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                                <span>{isDeletingUser ? 'Deleting...' : 'Delete Permanently'}</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Toast Notification Banner */}
+            {toastNotification && (
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 animate-fade-in-scale">
+                    <div className={`px-4 py-2.5 rounded-xl shadow-lg border text-xs font-bold flex items-center gap-2 ${
+                        toastNotification.type === 'success' 
+                            ? 'bg-emerald-800 text-white border-emerald-900' 
+                            : 'bg-rose-800 text-white border-rose-900'
+                    }`}>
+                        {toastNotification.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-emerald-300" /> : <AlertTriangle className="w-4 h-4 text-rose-300" />}
+                        <span>{toastNotification.message}</span>
+                        <button onClick={() => setToastNotification(null)} className="ml-2 hover:opacity-80 cursor-pointer">
+                            <X className="w-3.5 h-3.5" />
+                        </button>
                     </div>
                 </div>
             )}

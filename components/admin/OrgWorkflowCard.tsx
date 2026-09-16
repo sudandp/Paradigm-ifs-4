@@ -22,6 +22,7 @@ interface OrgWorkflowCardProps {
     finalConfirmationRole?: string;
     onManagerChange?: (userId: string, managerId: string, slot?: 1 | 2 | 3) => void;
     onSave?: () => void;
+    onRefresh?: () => void;
 }
 
 type SubView = 'tree' | 'teams' | 'simulator';
@@ -32,7 +33,8 @@ const OrgWorkflowCard: React.FC<OrgWorkflowCardProps> = ({
     organizations = [],
     finalConfirmationRole = 'hr',
     onManagerChange,
-    onSave
+    onSave,
+    onRefresh
 }) => {
     const [subView, setSubView] = useState<SubView>('tree');
     const [searchQuery, setSearchQuery] = useState('');
@@ -200,6 +202,7 @@ const OrgWorkflowCard: React.FC<OrgWorkflowCardProps> = ({
                             onToggleFullscreen={handleToggleFullscreen}
                             onSelectEmployeeForTrace={handleSelectForTrace}
                             onManagerChange={onManagerChange}
+                            onRefresh={onRefresh}
                         />
 
                         {/* Floating Visual Legend */}

@@ -1,7 +1,6 @@
--- RPC: delete_user
--- Deletes a user from both public.users and auth.users in one atomic operation.
--- Safely cleans up/nullifies all referencing foreign keys (system_backups, attendance_audit_logs, security_audit_logs, tickets, tasks, etc.)
--- Must be run with SECURITY DEFINER so it can access auth.users and bypass RLS.
+-- MIGRATION: 20260916_fix_delete_user_cascade_all.sql
+-- Fix foreign key constraint violations when deleting users by ensuring delete_user RPC
+-- nullifies all referencing tables (system_backups, attendance_audit_logs, etc.) and cascades child deletions.
 
 CREATE OR REPLACE FUNCTION delete_user(target_user_id uuid)
 RETURNS void

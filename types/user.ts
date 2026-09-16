@@ -60,6 +60,8 @@ export type Permission =
   | 'view_crm_checklists'
   | 'view_operations'
   | 'view_referrals'
+  | 'view_candidate_referrals'
+  | 'view_business_referrals'
   | 'view_my_referrals'
   | 'view_client_dashboard'
   | 'view_management_dashboard'
