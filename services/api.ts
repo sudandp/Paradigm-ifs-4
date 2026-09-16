@@ -3628,7 +3628,7 @@ export const api = {
     try {
       const { data: u } = await supabase.from('users').select('email').eq('id', id).maybeSingle();
       if (u?.email) userEmail = u.email;
-    } catch (_) {}
+    } catch (_) { /* ignore */ }
 
     // Helper for safe multi-table cleanup before deletion
     const runFullCleanup = async () => {
@@ -3740,7 +3740,7 @@ export const api = {
       console.warn('[deleteUser] RPC failed, retrying after second cleanup pass:', error.message);
       try {
         await runFullCleanup();
-      } catch (_) {}
+      } catch (_) { /* ignore */ }
 
       // Direct public.users delete fallback
       const directDel = await supabase.from('users').delete().eq('id', id);
