@@ -312,7 +312,7 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
         const orgId = user.organizationId || user.societyId;
         if (orgId && organizations.length > 0) {
             const org = organizations.find(o => o.id === orgId || (user.organizationId && user.organizationId.split(',').map(s => s.trim()).includes(o.id)));
-            if (org?.location) return org.location;
+            if ((org as any)?.location) return (org as any).location;
         }
         return '';
     }, [organizations]);
