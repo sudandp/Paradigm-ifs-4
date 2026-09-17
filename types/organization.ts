@@ -108,6 +108,7 @@ export interface Organization {
   fieldStaffNames?: string[];
   backendFieldStaffName?: string;
   parentId?: string;
+  status?: 'active' | 'inactive' | string;
 }
 
 export type RegistrationType = 'ROC' | 'ROF' | 'Society' | 'Trust' | '';

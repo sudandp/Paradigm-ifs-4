@@ -399,6 +399,26 @@ export const SiteManagement: React.FC = () => {
         return filteredOrganizations.slice(start, start + pageSize);
     }, [filteredOrganizations, currentPage, pageSize]);
 
+    const [selectedSiteIds, setSelectedSiteIds] = useState<string[]>([]);
+
+    const toggleSelectAll = () => {
+        if (selectedSiteIds.length === paginatedOrganizations.length && paginatedOrganizations.length > 0) {
+            setSelectedSiteIds([]);
+        } else {
+            setSelectedSiteIds(paginatedOrganizations.map(o => o.id));
+        }
+    };
+
+    const toggleSelectSite = (id: string) => {
+        setSelectedSiteIds(prev => 
+            prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+        );
+    };
+
+    useEffect(() => {
+        setSelectedSiteIds([]);
+    }, [currentPage, pageSize, searchTerm, filterSite, filterLocation, filterOps, filterSiteManager, filterFieldStaff, filterManpower, filterStatus, sortBy]);
+
     useEffect(() => {
         setTotalSites(filteredOrganizations.length);
     }, [filteredOrganizations]);
@@ -879,62 +899,55 @@ export const SiteManagement: React.FC = () => {
                     />
                 </div>
             ) : (
-                <div className="bg-card rounded-3xl shadow-sm border border-border overflow-hidden">
-                    {/* Table Sub-header matching Image 2 */}
-                    <div className="p-4 border-b border-gray-100 dark:border-zinc-800 flex items-center justify-between flex-wrap gap-2">
-                        <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-gray-500 dark:text-gray-400">
-                                Showing {filteredOrganizations.length} of {scopedOrganizations.length} Sites
-                            </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-400">Per page:</span>
-                            <select
-                                value={pageSize}
-                                onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
-                                className="text-xs font-bold rounded-lg border border-gray-200 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-950 px-2 py-1 text-gray-700 dark:text-gray-200 outline-none cursor-pointer"
-                            >
-                                {[10, 20, 50, 100].map(s => <option key={s} value={s}>{s}</option>)}
-                            </select>
-                        </div>
-                    </div>
-
-                    {isLoading ? (
-                        <div className="overflow-x-auto">
-                            <table className="w-full">
+                <>
+                    <div className="overflow-x-auto border border-border rounded-xl bg-page shadow-xs relative">
+                        {isLoading ? (
+                            <table className="min-w-full border-collapse text-sm table-fixed">
                                 <tbody className="divide-y divide-border">
-                                    <TableSkeleton cols={5} rows={5} />
+                                    <TableSkeleton cols={6} rows={5} />
                                 </tbody>
                             </table>
-                        </div>
-                    ) : scopedOrganizations.length === 0 ? (
-                        <div className="p-8 text-center text-muted">
-                            <Building className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                            <p>No sites found. Add a new site to get started.</p>
-                        </div>
-                    ) : filteredOrganizations.length === 0 ? (
-                        <div className="p-12 text-center text-muted">
-                            <Search className="w-10 h-10 mx-auto mb-3 opacity-20" />
-                            <p className="font-semibold text-sm">No sites matching your filters</p>
-                            <p className="text-xs text-gray-400 mt-1">Try modifying or resetting your search and dropdown filters.</p>
-                            <Button variant="secondary" size="sm" onClick={handleResetFilters} className="mt-4">
-                                Reset All Filters
-                            </Button>
-                        </div>
-                    ) : (
-                        <div className="overflow-x-auto">
-                            <table className="w-full">
-                                <thead className="bg-muted/50">
+                        ) : scopedOrganizations.length === 0 ? (
+                            <div className="p-8 text-center text-muted">
+                                <Building className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                                <p>No sites found. Add a new site to get started.</p>
+                            </div>
+                        ) : filteredOrganizations.length === 0 ? (
+                            <div className="p-12 text-center text-muted">
+                                <Search className="w-10 h-10 mx-auto mb-3 opacity-20" />
+                                <p className="font-semibold text-sm">No sites matching your filters</p>
+                                <p className="text-xs text-gray-400 mt-1">Try modifying or resetting your search and dropdown filters.</p>
+                                <Button variant="secondary" size="sm" onClick={handleResetFilters} className="mt-4">
+                                    Reset All Filters
+                                </Button>
+                            </div>
+                        ) : (
+                            <table className="min-w-full border-collapse text-sm table-fixed">
+                                <thead className="bg-muted/10 text-primary-text">
                                     <tr>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Site Name</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Location</th>
-                                        <th className="px-6 py-3 text-center text-xs font-medium text-muted uppercase tracking-wider">Manpower</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Key Staff</th>
-                                        <th className="px-6 py-3 text-right text-xs font-medium text-muted uppercase tracking-wider">Actions</th>
+                                        <th scope="col" className="p-3 text-left w-[4%] border-b border-border">
+                                            <button 
+                                                onClick={toggleSelectAll}
+                                                className={`transition-colors ${selectedSiteIds.length === paginatedOrganizations.length && paginatedOrganizations.length > 0 ? 'text-emerald-500' : 'text-slate-400 hover:text-slate-600'}`}
+                                                title="Select All Visible"
+                                            >
+                                                {selectedSiteIds.length === paginatedOrganizations.length && paginatedOrganizations.length > 0 ? (
+                                                    <CheckSquare className="h-4 w-4" />
+                                                ) : (
+                                                    <Square className="h-4 w-4" />
+                                                )}
+                                            </button>
+                                        </th>
+                                        <th scope="col" className="p-3 text-left text-xs font-semibold uppercase tracking-wider w-[24%] border-b border-border">Site Name</th>
+                                        <th scope="col" className="p-3 text-left text-xs font-semibold uppercase tracking-wider w-[26%] border-b border-border">Location</th>
+                                        <th scope="col" className="p-3 text-center text-xs font-semibold uppercase tracking-wider w-[12%] border-b border-border">Manpower</th>
+                                        <th scope="col" className="p-3 text-left text-xs font-semibold uppercase tracking-wider w-[22%] border-b border-border">Key Staff</th>
+                                        <th scope="col" className="p-3 text-right text-xs font-semibold uppercase tracking-wider w-[12%] border-b border-border pr-4">Actions</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-border">
+                                <tbody className="divide-y divide-border md:bg-card md:divide-y-0">
                                     {paginatedOrganizations.map((org) => {
+                                        const isSelected = selectedSiteIds.includes(org.id);
                                         const isProvisional = !!org.provisionalCreationDate;
                                         const daysLeft = isProvisional && org.provisionalCreationDate
                                             ? 90 - differenceInDays(new Date(), new Date(org.provisionalCreationDate))
@@ -947,83 +960,104 @@ export const SiteManagement: React.FC = () => {
                                             : fieldOff;
 
                                         return (
-                                            <tr key={org.id} className="hover:bg-muted/5 transition-colors">
-                                                <td className="px-6 py-4">
-                                                    <div className="flex items-center">
-                                                        <div>
-                                                            <div className="font-medium text-primary-text">{org.shortName}</div>
-                                                            <div className="text-xs text-muted">{org.fullName}</div>
+                                            <tr 
+                                                key={org.id} 
+                                                className={`hover:bg-slate-50 transition-colors border-b border-border ${isSelected ? 'bg-emerald-50/50' : ''}`}
+                                            >
+                                                <td className="p-3 align-top">
+                                                    <button 
+                                                        onClick={() => toggleSelectSite(org.id)}
+                                                        className={`mt-0.5 transition-colors ${isSelected ? 'text-emerald-500' : 'text-slate-300 hover:text-slate-400'}`}
+                                                    >
+                                                        {isSelected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+                                                    </button>
+                                                </td>
+                                                <td className="p-3 align-top">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isProvisional && daysLeft <= 0 ? 'bg-rose-500' : 'bg-emerald-500'}`} />
+                                                        <div className="min-w-0">
+                                                            <div className="font-semibold text-primary-text leading-tight truncate" title={org.shortName}>{org.shortName}</div>
+                                                            {org.fullName && (
+                                                                <div className="text-xs text-muted truncate mt-0.5" title={org.fullName}>
+                                                                    {org.fullName}
+                                                                </div>
+                                                            )}
                                                             {isProvisional && (
-                                                                <div className={`mt-1 text-xs px-2 py-0.5 rounded-full inline-flex items-center gap-1 ${daysLeft > 30 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}`}>
+                                                                <span className={`mt-1 inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider ${daysLeft > 30 ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'}`}>
                                                                     <AlertCircle className="w-3 h-3" />
                                                                     {daysLeft > 0 ? `${daysLeft} days left` : 'Expired'}
-                                                                </div>
+                                                                </span>
                                                             )}
                                                         </div>
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-4">
-                                                    <div className="text-sm text-primary-text max-w-xs truncate" title={org.address}>
-                                                        {org.address}
+                                                <td className="p-3 align-top">
+                                                    <div className="text-sm text-primary-text truncate" title={org.address || ''}>
+                                                        {org.address || '-'}
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-4 text-center">
-                                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                                <td className="p-3 align-top text-center">
+                                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 uppercase tracking-wider">
                                                         {org.manpowerApprovedCount || 0}
                                                     </span>
                                                 </td>
-                                                <td className="px-6 py-4">
+                                                <td className="p-3 align-top">
                                                     <div className="text-xs space-y-1">
                                                         {displayRM && (
-                                                            <div className="flex items-center gap-1" title="Reporting Manager">
-                                                                <span className="font-semibold text-primary-text">RM:</span> {displayRM}
+                                                            <div className="flex items-center gap-1.5" title="Reporting Manager (RM)">
+                                                                <span className="font-bold text-gray-500 text-[10px] uppercase tracking-wider">RM:</span>
+                                                                <span className="font-medium text-primary-text truncate">{displayRM}</span>
                                                             </div>
                                                         )}
                                                         {displaySM && (
-                                                            <div className="flex items-center gap-1" title="Site Manager">
-                                                                <span className="font-semibold text-primary-text">SM:</span> {displaySM}
+                                                            <div className="flex items-center gap-1.5" title="Site Manager (SM)">
+                                                                <span className="font-bold text-gray-500 text-[10px] uppercase tracking-wider">SM:</span>
+                                                                <span className="font-medium text-primary-text truncate">{displaySM}</span>
                                                             </div>
                                                         )}
                                                         {displayFS && (
-                                                            <div className="flex items-start gap-1" title="Field Staff">
-                                                                <span className="font-semibold text-primary-text whitespace-nowrap">FS:</span>
-                                                                <span className="truncate max-w-[150px]">{displayFS}</span>
+                                                            <div className="flex items-start gap-1.5" title="Field Staff (FS)">
+                                                                <span className="font-bold text-gray-500 text-[10px] uppercase tracking-wider whitespace-nowrap">FS:</span>
+                                                                <span className="text-primary-text truncate max-w-[150px]">{displayFS}</span>
                                                             </div>
                                                         )}
                                                         {org.backendFieldStaffName && (
-                                                            <div className="flex items-start gap-1" title="Backend Field Staff">
-                                                                <span className="font-semibold text-primary-text whitespace-nowrap">bfs:</span>
-                                                                <span className="truncate max-w-[150px]">{org.backendFieldStaffName}</span>
+                                                            <div className="flex items-start gap-1.5" title="Backend Field Staff (BFS)">
+                                                                <span className="font-bold text-gray-500 text-[10px] uppercase tracking-wider whitespace-nowrap">BFS:</span>
+                                                                <span className="text-primary-text truncate max-w-[150px]">{org.backendFieldStaffName}</span>
                                                             </div>
+                                                        )}
+                                                        {!displayRM && !displaySM && !displayFS && !org.backendFieldStaffName && (
+                                                            <span className="text-gray-400 italic text-xs">-</span>
                                                         )}
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-4 text-right whitespace-nowrap">
-                                                    <div className="flex items-center justify-end gap-2">
-                                                        <Button
-                                                            variant="icon"
-                                                            size="sm"
+                                                <td className="p-3 align-top text-right pr-4">
+                                                    <div className="flex items-center gap-1.5 justify-end">
+                                                        <button
                                                             onClick={() => handleViewDetails(org)}
-                                                            title="Manpower Details"
+                                                            title="View Manpower Details"
+                                                            aria-label="View Manpower Details"
+                                                            className="p-1 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
                                                         >
-                                                            <Users className="w-4 h-4 text-blue-600" />
-                                                        </Button>
-                                                        <Button
-                                                            variant="icon"
-                                                            size="sm"
+                                                            <Users className="w-4 h-4" />
+                                                        </button>
+                                                        <button
                                                             onClick={() => handleEdit(org)}
                                                             title="Configure Site"
+                                                            aria-label="Configure Site"
+                                                            className="p-1 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"
                                                         >
-                                                            <Settings className="w-4 h-4 text-gray-600" />
-                                                        </Button>
-                                                        <Button
-                                                            variant="icon"
-                                                            size="sm"
+                                                            <Settings className="w-4 h-4" />
+                                                        </button>
+                                                        <button
                                                             onClick={() => handleDelete(org)}
                                                             title="Delete Site"
+                                                            aria-label="Delete Site"
+                                                            className="p-1 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded transition-colors"
                                                         >
-                                                            <Trash2 className="w-4 h-4 text-red-600" />
-                                                        </Button>
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -1031,18 +1065,18 @@ export const SiteManagement: React.FC = () => {
                                     })}
                                 </tbody>
                             </table>
+                        )}
+                    </div>
 
-                            <Pagination 
-                                currentPage={currentPage}
-                                totalItems={filteredOrganizations.length}
-                                pageSize={pageSize}
-                                onPageChange={setCurrentPage}
-                                onPageSizeChange={setPageSize}
-                                className="mt-4 p-4"
-                            />
-                        </div>
-                    )}
-                </div>
+                    <Pagination 
+                        currentPage={currentPage}
+                        totalItems={filteredOrganizations.length}
+                        pageSize={pageSize}
+                        onPageChange={setCurrentPage}
+                        onPageSizeChange={setPageSize}
+                        className="mt-6"
+                    />
+                </>
             )}
         </div>
     );
