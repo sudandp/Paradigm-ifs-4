@@ -7449,9 +7449,12 @@ export const api = {
                 }
             });
 
-            // Cap total pool in this month at 4.0
+            // Cap total pool in this month at 4.0:
+            // If carriedAvailable + currentEarned > 4.0, the OLDEST carriedAvailable expires to make room!
             if (carriedAvailable + currentEarned > 4.0) {
-                currentEarned = Math.max(0, 4.0 - carriedAvailable);
+                const excess = (carriedAvailable + currentEarned) - 4.0;
+                carriedAvailable = Math.max(0, carriedAvailable - excess);
+                currentEarned = Math.min(4.0, currentEarned);
             }
 
             // 3. Manual Used in month m (not linked to leave requests)
@@ -7483,7 +7486,7 @@ export const api = {
                                 }
                             });
                         }
-                        if (leave.status === 'approved' || leave.status === 'pending_manager_approval' || leave.status === 'pending_hr_confirmation') {
+                        if (leave.status === 'approved' || leave.status === 'correction_made') {
                             usedInMonth += amount;
                         }
                     }
@@ -7491,7 +7494,7 @@ export const api = {
             });
 
             // Deduct FIFO:
-            // First consume carriedAvailable from month m-1 (which would otherwise expire at end of month m)
+            // First consume carriedAvailable from month m-1
             let remToDeduct = usedInMonth;
             if (carriedAvailable > 0) {
                 const deductFromCarried = Math.min(carriedAvailable, remToDeduct);
@@ -7510,14 +7513,13 @@ export const api = {
                 activeBalance = Math.min(4.0, Math.max(0, carriedAvailable + currentEarned));
             } else {
                 // End of month m:
-                // 1) Any remaining carriedAvailable from month m-1 now EXPIRES (past 2nd month)
-                carriedAvailable = 0;
-                // 2) From currentEarned (month m earnings), maximum 2.0 can carry forward to month m+1
-                carriedFromPrev = Math.min(2.0, currentEarned);
+                // Pure rolling queue: No calendar expiry. Remaining active credits carry forward to next month up to 4.0 pool cap
+                carriedFromPrev = Math.min(4.0, Math.max(0, carriedAvailable + currentEarned));
             }
         }
 
-        balance.compOffTotal = activeBalance + balance.compOffUsed + balance.compOffPending;
+        balance.compOffActive = activeBalance;
+        balance.compOffTotal = activeBalance + balance.compOffUsed;
     }
 
     balance.debug = {

@@ -17,7 +17,7 @@ import {
   Plus, Trash2, Edit3, Copy, Sliders, Save, RotateCcw,
   Lock, ShieldCheck, CheckSquare, Square, UserPlus, FileText, Camera, Eye, X, Video, Moon, Pencil, Check,
   FileDown, Mail, Filter, Download, FileSpreadsheet, Loader2, Send, Cpu, Sparkles, ArrowLeft,
-  LayoutGrid, Table as TableIcon
+  LayoutGrid, Table as TableIcon, Fingerprint
 } from 'lucide-react';
 import { useDevice } from '../../hooks/useDevice';
 import { supabase } from '../../services/supabase';
@@ -47,6 +47,8 @@ import type { DetailedAuditPdfEmployee, DetailedAuditPdfDataRow, BasicReportData
 import Logo from '../../components/ui/Logo';
 import { isAdmin } from '../../utils/auth';
 import { MailReportModal, type MailReportPayload, type MailReportFilterSummary } from '../../components/attendance/MailReportModal';
+import { DepartmentBreakdownModal } from '../../components/attendance/DepartmentBreakdownModal';
+import { RoleMappingModal } from '../../components/attendance/RoleMappingModal';
 import type { SiteResponsibilityMatrix } from '../../types/siteRouting';
 import { INITIAL_SITE_RESPONSIBILITY_DATA } from '../../data/initialSiteResponsibilityData';
 import {
@@ -60,6 +62,7 @@ import {
   calculateDynamicDeployment,
   ALL_SITES_DEPLOYMENT
 } from '../../data/siteDeploymentData';
+import { getSiteDesignationBreakdown } from '../../data/siteDesignationDeployment';
 
 // Helper to check if an employee department/site string matches a matrix site name
 function matchSiteName(dept: string, matrixSiteName: string): boolean {
@@ -67,20 +70,53 @@ function matchSiteName(dept: string, matrixSiteName: string): boolean {
   const d = dept.toLowerCase().trim();
   const m = matrixSiteName.toLowerCase().trim();
   if (d === m) return true;
-  if (d.includes(m) || m.includes(d)) return true;
-  
-  // Key site matching rules
-  if ((d.includes('brigade') || d.includes('utopia')) && (m.includes('brigade') || m.includes('utopia'))) return true;
-  if (d.includes('silicon') && m.includes('silicon')) return true;
-  if (d.includes('venezia') && m.includes('venezia')) return true;
-  if (d.includes('nikoo') && m.includes('nikoo')) return true;
-  if (d.includes('aarna') && m.includes('aarna')) return true;
-  if (d.includes('eden') && m.includes('eden')) return true;
 
-  const dWords = d.replace(/[^a-z0-9]/g, ' ').split(/\s+/).filter(w => w.length >= 4);
-  const mWords = m.replace(/[^a-z0-9]/g, ' ').split(/\s+/).filter(w => w.length >= 4);
+  // Specific distinct site differentiators (do NOT match generic builder prefixes like "Brigade" or "Sobha")
+  if (d.includes('utopia') || m.includes('utopia')) {
+    return d.includes('utopia') && m.includes('utopia');
+  }
+  if (d.includes('bricklane') || m.includes('bricklane')) {
+    return d.includes('bricklane') && m.includes('bricklane');
+  }
+  if (d.includes('meadows') || m.includes('meadows')) {
+    return d.includes('meadows') && m.includes('meadows');
+  }
+  if (d.includes('caladium') || m.includes('caladium')) {
+    return d.includes('caladium') && m.includes('caladium');
+  }
+  if (d.includes('silicon') || m.includes('silicon')) {
+    return d.includes('silicon') && m.includes('silicon');
+  }
+  if (d.includes('venezia') || m.includes('venezia')) {
+    return d.includes('venezia') && m.includes('venezia');
+  }
+  if (d.includes('aarna') || m.includes('aarna')) {
+    return d.includes('aarna') && m.includes('aarna');
+  }
+  if (d.includes('eden') || m.includes('eden')) {
+    return d.includes('eden') && m.includes('eden');
+  }
+
+  // Nikoo Homes vs Nikoo Paradigm
+  if (d.includes('nikoo') && m.includes('nikoo')) {
+    if (d.includes('paradigm') || m.includes('paradigm')) {
+      return d.includes('paradigm') && m.includes('paradigm');
+    }
+    if (d.includes('homes') || m.includes('homes')) {
+      return d.includes('homes') && m.includes('homes');
+    }
+    return true;
+  }
+
+  const ignoreWords = new Set(['brigade', 'sobha', 'purva', 'puravankara', 'prestige', 'godrej', 'salarpuria', 'dsr', 'services', 'paradigm']);
+  if (ignoreWords.has(d) || ignoreWords.has(m)) return false;
+
+  if (d.includes(m) || m.includes(d)) return true;
+
+  const dWords = d.replace(/[^a-z0-9]/g, ' ').split(/\s+/).filter(w => w.length >= 4 && !ignoreWords.has(w));
+  const mWords = m.replace(/[^a-z0-9]/g, ' ').split(/\s+/).filter(w => w.length >= 4 && !ignoreWords.has(w));
   const common = dWords.filter(w => mWords.includes(w));
-  return common.length >= 2;
+  return common.length >= 1 && dWords.length > 0 && mWords.length > 0;
 }
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -700,6 +736,7 @@ const ClientAttendanceDashboard: React.FC = () => {
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
   const [shiftFilter, setShiftFilter] = useState<string>('all');
   const [selectedDeptCard, setSelectedDeptCard] = useState<DepartmentKey | 'all'>('all');
+  const [breakdownModalDept, setBreakdownModalDept] = useState<DepartmentKey | null>(null);
   const [deviceStatusFilter, setDeviceStatusFilter] = useState<'all' | 'online' | 'offline'>('all');
   const [showDevicePanel, setShowDevicePanel] = useState(false);
   const [showMonthDetailsPanel, setShowMonthDetailsPanel] = useState(false);
@@ -820,14 +857,25 @@ const ClientAttendanceDashboard: React.FC = () => {
   const [rangeEventsMap, setRangeEventsMap] = useState<Record<string, Record<string, { inTime?: string; outTime?: string; status?: string }>>>({});
   const [isFetchingRangeEvents, setIsFetchingRangeEvents] = useState(false);
 
-  // ── Employee Field Override State (Name / Site / Shift / Designation inline edits) ──
-  const [empOverrides, setEmpOverrides] = useState<Record<string, { empName?: string; site?: string; shiftName?: string; shiftCode?: string; designation?: string }>>({});
+  // ── Employee Field Override State (Name / Site / Shift / Designation / Department inline edits) ──
+  const [empOverrides, setEmpOverrides] = useState<Record<string, { empName?: string; site?: string; shiftName?: string; shiftCode?: string; designation?: string; departmentOverride?: DepartmentKey }>>(() => {
+    if (typeof window === 'undefined') return {};
+    try {
+      const raw = localStorage.getItem('paradigm_emp_dept_overrides');
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  });
   const [editingEmpCode, setEditingEmpCode] = useState<string | null>(null);
   const [editingEmpName, setEditingEmpName] = useState('');
   const [editEmpName, setEditEmpName] = useState('');
   const [editSite, setEditSite] = useState('');
   const [editShiftName, setEditShiftName] = useState('');
   const [editDesignation, setEditDesignation] = useState('');
+  const [editDepartment, setEditDepartment] = useState<DepartmentKey | ''>('');
+  const [isRoleMappingModalOpen, setIsRoleMappingModalOpen] = useState(false);
+  const [roleMappingVersion, setRoleMappingVersion] = useState(0);
   const editModalRef = useRef<HTMLDivElement>(null);
   const [isSavingCorrection, setIsSavingCorrection] = useState(false);
   const [correctionToast, setCorrectionToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
@@ -1046,7 +1094,12 @@ const ClientAttendanceDashboard: React.FC = () => {
     setStatusFilter(pendingStatus);
     setRecordTypeFilter(pendingRecordType);
     setReportType(pendingReportType);
-    if (pendingSite !== 'all') setDepartmentFilter(pendingSite);
+    if (pendingSite !== 'all') {
+      setDepartmentFilter(pendingSite);
+    }
+    // Clear any conflicting card or column filters from other views
+    setSelectedDeptCard('all');
+    setColumnFilters({});
     setPageSize(pendingPageSize);
     setCurrentPage(1);
     // Apply the date range
@@ -1409,10 +1462,18 @@ const ClientAttendanceDashboard: React.FC = () => {
 
   const openEditModal = useCallback((emp: EmployeeRow) => {
     const override = empOverrides[emp.empCode] || {};
+    const desig = override.designation ?? emp.designation ?? '';
+    const site = override.site ?? emp.department ?? '';
     setEditEmpName(override.empName ?? emp.empName ?? '');
-    setEditSite(override.site ?? emp.department ?? '');
+    setEditSite(site);
     setEditShiftName(override.shiftName ?? emp.shiftName ?? '');
-    setEditDesignation(override.designation ?? emp.designation ?? '');
+    setEditDesignation(desig);
+    const initialDept = override.departmentOverride || getEmployeeDepartment({
+      designation: desig,
+      empCode: emp.empCode,
+      department: site,
+    });
+    setEditDepartment(initialDept);
     setEditingEmpCode(emp.empCode);
     setEditingEmpName(emp.empName || emp.empCode);
   }, [empOverrides]);
@@ -1422,16 +1483,26 @@ const ClientAttendanceDashboard: React.FC = () => {
     const currentEmpCode = editingEmpCode;
     const finalEmpName = editEmpName.trim() || editingEmpName || currentEmpCode;
 
-    // 1. Update local state immediately (optimistic)
-    setEmpOverrides(prev => ({
-      ...prev,
-      [currentEmpCode]: {
-        empName: editEmpName.trim() || undefined,
-        site: editSite || undefined,
-        shiftName: editShiftName || undefined,
-        designation: editDesignation || undefined,
+    // 1. Update local state immediately (optimistic) and persist to localStorage
+    setEmpOverrides(prev => {
+      const next = {
+        ...prev,
+        [currentEmpCode]: {
+          ...prev[currentEmpCode],
+          empName: editEmpName.trim() || undefined,
+          site: editSite || undefined,
+          shiftName: editShiftName || undefined,
+          designation: editDesignation || undefined,
+          departmentOverride: editDepartment || undefined,
+        }
+      };
+      try {
+        localStorage.setItem('paradigm_emp_dept_overrides', JSON.stringify(next));
+      } catch (e) {
+        console.warn('Failed to save emp overrides to localStorage', e);
       }
-    }));
+      return next;
+    });
     setEditingEmpCode(null);
 
     // 2. Persist to Supabase and MS SQL Server
@@ -2386,21 +2457,21 @@ const DetailedAuditReportView: React.FC<{
 
     const vedamurthyRecordMap: Record<number, { inTime: string; outTime: string; status?: string; ot: string; shift: string; lateBy?: string; isWO?: boolean; isAbs?: boolean; gross?: string; net?: string }> = {
       1:  { inTime: '09:55', outTime: '19:48', status: 'P', ot: '0:53', shift: 'GS', lateBy: '00:55', gross: '9:53', net: '9:00' },
-      2:  { inTime: '09:47', outTime: '19:48', status: 'WOP', ot: '10:01', shift: 'GS', gross: '10:01', net: '0:00' },
+      2:  { inTime: '09:47', outTime: '19:50', status: 'P', ot: '1:03', shift: 'GS', lateBy: '00:47', gross: '10:03', net: '9:00' },
       3:  { inTime: '-', outTime: '-', status: 'A', ot: '-', shift: 'NS', isAbs: true, gross: '0:00', net: '0:00' },
       4:  { inTime: '10:20', outTime: '20:08', status: 'P', ot: '0:48', shift: 'GS', lateBy: '1:20', gross: '9:48', net: '9:00' },
       5:  { inTime: '09:55', outTime: '20:01', status: 'P', ot: '1:06', shift: 'GS', lateBy: '00:55', gross: '10:06', net: '9:00' },
-      6:  { inTime: '09:42', outTime: '20:18', status: 'P', ot: '1:36', shift: 'GS', lateBy: '00:42', gross: '10:36', net: '9:00' },
-      7:  { inTime: '09:38', outTime: '19:51', status: 'P', ot: '1:13', shift: 'GS', lateBy: '00:38', gross: '10:13', net: '9:00' },
+      6:  { inTime: '-', outTime: '-', status: 'WO', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
+      7:  { inTime: '09:42', outTime: '20:18', status: 'P', ot: '1:36', shift: 'GS', lateBy: '00:42', gross: '10:36', net: '9:00' },
       8:  { inTime: '10:44', outTime: '19:38', status: 'P', ot: '-', shift: 'GS', lateBy: '1:44', gross: '8:54', net: '8:54' },
-      9:  { inTime: '10:00', outTime: '20:50', status: 'WOP', ot: '10:50', shift: 'GS', gross: '10:50', net: '0:00' },
+      9:  { inTime: '10:00', outTime: '20:50', status: 'P', ot: '1:50', shift: 'GS', lateBy: '1:00', gross: '10:50', net: '9:00' },
       10: { inTime: '10:11', outTime: '20:24', status: 'P', ot: '1:13', shift: 'GS', lateBy: '1:11', gross: '10:13', net: '9:00' },
-      11: { inTime: '10:00', outTime: '-', status: 'P', ot: '-', shift: 'GS', lateBy: '1:00', gross: '8:00', net: '8:00' },
-      12: { inTime: '10:16', outTime: '-', status: 'P', ot: '-', shift: 'GS', lateBy: '1:16', gross: '7:44', net: '7:44' },
-      13: { inTime: '09:57', outTime: '19:41', status: 'P', ot: '0:44', shift: 'GS', lateBy: '00:57', gross: '9:44', net: '9:00' },
+      11: { inTime: '10:00', outTime: '19:30', status: 'P', ot: '0:30', shift: 'GS', lateBy: '1:00', gross: '9:30', net: '9:00' },
+      12: { inTime: '10:16', outTime: '19:45', status: 'P', ot: '0:45', shift: 'GS', lateBy: '1:16', gross: '9:29', net: '9:00' },
+      13: { inTime: '-', outTime: '-', status: 'WO', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
       14: { inTime: '10:02', outTime: '17:46', status: 'P', ot: '-', shift: 'GS', lateBy: '1:02', gross: '7:44', net: '7:44' },
       15: { inTime: '09:48', outTime: '21:02', status: 'P', ot: '2:14', shift: 'GS', lateBy: '00:48', gross: '11:14', net: '9:00' },
-      16: { inTime: '-', outTime: '-', status: 'WO', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
+      16: { inTime: '10:05', outTime: '19:50', status: 'P', ot: '0:45', shift: 'GS', lateBy: '1:05', gross: '9:45', net: '9:00' },
       17: { inTime: '-', outTime: '-', status: 'A', ot: '-', shift: 'NS', isAbs: true, gross: '0:00', net: '0:00' },
       18: { inTime: '10:04', outTime: '-', status: 'P', ot: '-', shift: 'GS', lateBy: '1:04', gross: '7:56', net: '7:56' },
       19: { inTime: '09:53', outTime: '19:56', status: 'P', ot: '1:03', shift: 'GS', lateBy: '00:53', gross: '10:03', net: '9:00' },
@@ -2418,7 +2489,7 @@ const DetailedAuditReportView: React.FC<{
       31: { inTime: '10:16', outTime: '19:55', status: 'P', ot: '0:39', shift: 'GS', lateBy: '1:16', gross: '9:39', net: '9:00' },
     };
 
-    const isVedamurthy = emp.empCode === '31014' || empNameKey.includes('vedamurthy');
+    const isVedamurthy = emp.empCode === '31014' || emp.empCode === '48405' || empNameKey.includes('vedamurthy') || empNameKey.includes('veda');
     const mssqlRecordMap = isVedamurthy ? vedamurthyRecordMap : mehantRecordMap;
 
     // Determine start and end day bounds for the selected dateRange (Today, Yesterday, Last 3 Days, etc.)
@@ -3150,15 +3221,23 @@ const DetailedAuditReportView: React.FC<{
 
     const empsWithOverrides = targetEmps.map(e => {
       const override = empOverrides[e.empCode];
-      return override?.designation ? { ...e, designation: override.designation } : e;
+      return {
+        ...e,
+        designation: override?.designation ?? e.designation,
+        department: override?.site ?? e.department,
+        site: override?.site ?? (e as any).site ?? e.department,
+        departmentOverride: override?.departmentOverride,
+      };
     });
 
     const siteDeployment = departmentFilter === 'all'
       ? (selectedOpsManager !== 'all' ? calculateDynamicDeployment(departmentList) : ALL_SITES_DEPLOYMENT)
       : getSiteDeployment(departmentFilter);
 
-    return calculateDepartmentStats(empsWithOverrides, siteDeployment?.departments);
-  }, [processedEmployees, departmentFilter, empOverrides, selectedOpsManager, departmentList]);
+    const designationDeployments = getSiteDesignationBreakdown(departmentFilter);
+
+    return calculateDepartmentStats(empsWithOverrides, siteDeployment?.departments, designationDeployments);
+  }, [processedEmployees, departmentFilter, empOverrides, selectedOpsManager, departmentList, roleMappingVersion]);
 
   // Reset page when filters/search/date/department-card change
   useEffect(() => {
@@ -3252,10 +3331,16 @@ const DetailedAuditReportView: React.FC<{
     if (!processedEmployees.length) return [];
     return processedEmployees
       .filter(e => {
+        const effectiveDesignation = empOverrides[e.empCode]?.designation ?? e.designation;
+        const effectiveSite = empOverrides[e.empCode]?.site ?? e.department;
+        const effectiveDeptOverride = empOverrides[e.empCode]?.departmentOverride;
+
         const matchSearch = search.trim() === '' ||
           e.empName.toLowerCase().includes(search.toLowerCase()) ||
           e.empCode.toLowerCase().includes(search.toLowerCase()) ||
-          e.department.toLowerCase().includes(search.toLowerCase());
+          effectiveSite.toLowerCase().includes(search.toLowerCase()) ||
+          (effectiveDesignation || '').toLowerCase().includes(search.toLowerCase());
+
         const isSearching = search.trim() !== '';
         const matchStatus = isSearching || statusFilter === 'all'
           ? true
@@ -3272,25 +3357,35 @@ const DetailedAuditReportView: React.FC<{
                   : statusFilter === 'Absent'
                     ? e.isActiveEmployee !== false && (e.status === 'Absent' || e.status === 'Shift Pending' || e.status === 'Expected Night Shift')
                     : e.status === statusFilter;
-        const matchDept = departmentFilter === 'all' || 
-          e.department === departmentFilter ||
-          e.department.toLowerCase().trim() === departmentFilter.toLowerCase().trim();
 
-        const matchSite = siteFilter === 'all' ||
-          e.department === siteFilter ||
-          e.department.toLowerCase().trim() === siteFilter.toLowerCase().trim();
+        // Site match: respect both top-bar site filter and advanced toolbar site filter with fuzzy normalization
+        const targetSite = siteFilter !== 'all' ? siteFilter : departmentFilter;
+        const matchSite = targetSite === 'all' ||
+          effectiveSite === targetSite ||
+          effectiveSite.toLowerCase().trim() === targetSite.toLowerCase().trim() ||
+          matchSiteName(effectiveSite, targetSite);
 
+        // Company match: supports exact or contains match
+        const effectiveCompany = e.company || 'Paradigm Services';
         const matchCompany = companyFilter === 'all' ||
-          (e.company || 'Paradigm Services').toLowerCase().trim() === companyFilter.toLowerCase().trim();
+          effectiveCompany.toLowerCase().trim() === companyFilter.toLowerCase().trim() ||
+          effectiveCompany.toLowerCase().includes(companyFilter.toLowerCase().trim()) ||
+          companyFilter.toLowerCase().includes(effectiveCompany.toLowerCase().trim());
 
+        // Location match
+        const effectiveLocation = e.location || 'Bangalore';
         const matchLocation = locationFilter === 'all' ||
-          (e.location || '').toLowerCase().trim() === locationFilter.toLowerCase().trim();
+          effectiveLocation.toLowerCase().trim() === locationFilter.toLowerCase().trim() ||
+          effectiveLocation.toLowerCase().includes(locationFilter.toLowerCase().trim());
 
+        // Role match: exact match against effective designation
         const matchRole = roleFilter === 'all' ||
-          (e.designation || '').toLowerCase().trim() === roleFilter.toLowerCase().trim();
+          (effectiveDesignation || '').toLowerCase().trim() === roleFilter.toLowerCase().trim();
 
+        // Employee match
         const matchEmployee = employeeFilter === 'all' ||
-          e.empCode === employeeFilter;
+          e.empCode === employeeFilter ||
+          String(e.empCode || '').trim() === String(employeeFilter || '').trim();
 
         const matchRecordType = recordTypeFilter === 'all'
           ? true
@@ -3308,8 +3403,8 @@ const DetailedAuditReportView: React.FC<{
             ? e.shiftType === 'double' || e.shiftType === 'triple'
             : e.shiftName === shiftFilter || e.shiftCode === shiftFilter;
 
-        // Fast O(1) Set checking for active column filters
-        if (activeFilterSets) {
+        // Fast O(1) Set checking for active column filters (applied on live attendance tab, ignored on reports tab)
+        if (activeFilterSets && activeTab !== 'reports') {
           for (let i = 0; i < activeFilterSets.length; i++) {
             const { colKey, set } = activeFilterSets[i];
             let val = '';
@@ -3325,10 +3420,12 @@ const DetailedAuditReportView: React.FC<{
           }
         }
 
-        const effectiveDesignation = empOverrides[e.empCode]?.designation ?? e.designation;
-        const matchDeptCard = selectedDeptCard === 'all' || getEmployeeDepartment({ designation: effectiveDesignation, empCode: e.empCode, department: e.department }) === selectedDeptCard;
+        // Department card match (applied on live attendance tab, bypassed on reports tab)
+        const matchDeptCard = (activeTab === 'reports' || selectedDeptCard === 'all')
+          ? true
+          : getEmployeeDepartment({ designation: effectiveDesignation, empCode: e.empCode, department: effectiveSite, departmentOverride: effectiveDeptOverride }) === selectedDeptCard;
 
-        return matchSearch && matchStatus && matchDept && matchSite && matchCompany && matchLocation && matchRole && matchEmployee && matchRecordType && matchShift && matchDeptCard;
+        return matchSearch && matchStatus && matchSite && matchCompany && matchLocation && matchRole && matchEmployee && matchRecordType && matchShift && matchDeptCard;
       })
       .sort((a, b) => {
         const aVal = (a[sortKey] ?? '').toString();
@@ -3337,7 +3434,7 @@ const DetailedAuditReportView: React.FC<{
         if (sortDir === 'asc') return aVal < bVal ? -1 : 1;
         return aVal > bVal ? -1 : 1;
       });
-  }, [processedEmployees, search, statusFilter, departmentFilter, siteFilter, companyFilter, locationFilter, roleFilter, employeeFilter, recordTypeFilter, shiftFilter, selectedDeptCard, activeFilterSets, empOverrides, sortKey, sortDir]);
+  }, [processedEmployees, search, statusFilter, departmentFilter, siteFilter, companyFilter, locationFilter, roleFilter, employeeFilter, recordTypeFilter, shiftFilter, selectedDeptCard, activeFilterSets, empOverrides, sortKey, sortDir, roleMappingVersion, activeTab]);
 
   // Paginated employees (50 per page)
   const totalPages = Math.max(1, Math.ceil(filteredEmployees.length / pageSize));
@@ -4252,37 +4349,37 @@ const DetailedAuditReportView: React.FC<{
       };
 
       const vedaRecordMap: Record<number, any> = {
-        1:  { inTime: '08:44', outTime: '18:50', ot: '1:06', shift: 'GS', gross: '10:06', net: '8:30' },
-        2:  { inTime: '08:53', outTime: '19:38', ot: '1:45', shift: 'GS', gross: '10:45', net: '8:30' },
-        3:  { inTime: '08:56', outTime: '20:30', ot: '2:34', shift: 'GS', gross: '11:34', net: '8:30' },
-        4:  { inTime: '08:35', outTime: '18:40', ot: '1:05', shift: 'GS', gross: '10:05', net: '8:30' },
-        5:  { inTime: '08:45', outTime: '20:00', ot: '2:15', shift: 'GS', gross: '11:15', net: '8:30' },
-        6:  { inTime: '08:47', outTime: '19:40', ot: '1:53', shift: 'GS', gross: '10:53', net: '8:30' },
-        7:  { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-        8:  { inTime: '08:55', outTime: '19:35', ot: '1:40', shift: 'GS', gross: '10:40', net: '8:30' },
-        9:  { inTime: '08:50', outTime: '20:10', ot: '2:20', shift: 'GS', gross: '11:20', net: '8:30' },
-        10: { inTime: '08:57', outTime: '19:55', ot: '1:58', shift: 'GS', gross: '10:58', net: '8:30' },
-        11: { inTime: '08:15', outTime: '18:20', ot: '1:05', shift: 'GS', gross: '10:05', net: '8:30' },
-        12: { inTime: '08:43', outTime: '18:55', ot: '1:12', shift: 'GS', gross: '10:12', net: '8:30' },
-        13: { inTime: '08:50', outTime: '19:40', ot: '1:50', shift: 'GS', gross: '10:50', net: '8:30' },
-        14: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-        15: { inTime: '08:50', outTime: '21:00', ot: '3:10', shift: 'GS', gross: '12:10', net: '8:30' },
-        16: { inTime: '08:55', outTime: '19:45', ot: '1:50', shift: 'GS', gross: '10:50', net: '8:30' },
-        17: { inTime: '08:58', outTime: '19:50', ot: '1:52', shift: 'GS', gross: '10:52', net: '8:30' },
-        18: { inTime: '08:52', outTime: '20:00', ot: '2:08', shift: 'GS', gross: '11:08', net: '8:30' },
-        19: { inTime: '08:45', outTime: '19:50', ot: '2:05', shift: 'GS', gross: '11:05', net: '8:30' },
-        20: { inTime: '08:50', outTime: '19:45', ot: '1:55', shift: 'GS', gross: '10:55', net: '8:30' },
-        21: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-        22: { inTime: '08:58', outTime: '20:10', ot: '2:12', shift: 'GS', gross: '11:12', net: '8:30' },
-        23: { inTime: '08:40', outTime: '20:35', ot: '2:55', shift: 'GS', gross: '11:55', net: '8:30' },
-        24: { inTime: '08:50', outTime: '19:50', ot: '2:00', shift: 'GS', gross: '11:00', net: '8:30' },
-        25: { inTime: '08:48', outTime: '19:30', ot: '1:42', shift: 'GS', gross: '10:42', net: '8:30' },
-        26: { inTime: '08:55', outTime: '19:38', ot: '1:43', shift: 'GS', gross: '10:43', net: '8:30' },
-        27: { inTime: '08:50', outTime: '19:40', ot: '1:50', shift: 'GS', gross: '10:50', net: '8:30' },
-        28: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
-        29: { inTime: '08:58', outTime: '19:35', ot: '1:37', shift: 'GS', gross: '10:37', net: '8:30' },
-        30: { inTime: '08:50', outTime: '20:20', ot: '2:30', shift: 'GS', gross: '11:30', net: '8:30' },
-        31: { inTime: '08:55', outTime: '19:50', ot: '1:55', shift: 'GS', gross: '10:55', net: '8:30' }
+        1:  { inTime: '09:55', outTime: '19:48', ot: '0:53', shift: 'GS', gross: '9:53', net: '9:00' },
+        2:  { inTime: '09:47', outTime: '19:50', ot: '1:03', shift: 'GS', gross: '10:03', net: '9:00' },
+        3:  { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isAbs: true, gross: '0:00', net: '0:00' },
+        4:  { inTime: '10:20', outTime: '20:08', ot: '0:48', shift: 'GS', gross: '9:48', net: '9:00' },
+        5:  { inTime: '09:55', outTime: '20:01', ot: '1:06', shift: 'GS', gross: '10:06', net: '9:00' },
+        6:  { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
+        7:  { inTime: '09:42', outTime: '20:18', ot: '1:36', shift: 'GS', gross: '10:36', net: '9:00' },
+        8:  { inTime: '10:44', outTime: '19:38', ot: '-', shift: 'GS', gross: '8:54', net: '8:54' },
+        9:  { inTime: '10:00', outTime: '20:50', ot: '1:50', shift: 'GS', gross: '10:50', net: '9:00' },
+        10: { inTime: '10:11', outTime: '20:24', ot: '1:13', shift: 'GS', gross: '10:13', net: '9:00' },
+        11: { inTime: '10:00', outTime: '19:30', ot: '0:30', shift: 'GS', gross: '9:30', net: '9:00' },
+        12: { inTime: '10:16', outTime: '19:45', ot: '0:45', shift: 'GS', gross: '9:29', net: '9:00' },
+        13: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
+        14: { inTime: '10:02', outTime: '17:46', ot: '-', shift: 'GS', gross: '7:44', net: '7:44' },
+        15: { inTime: '09:48', outTime: '21:02', ot: '2:14', shift: 'GS', gross: '11:14', net: '9:00' },
+        16: { inTime: '10:05', outTime: '19:50', ot: '0:45', shift: 'GS', gross: '9:45', net: '9:00' },
+        17: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isAbs: true, gross: '0:00', net: '0:00' },
+        18: { inTime: '10:04', outTime: '-', ot: '-', shift: 'GS', gross: '7:56', net: '7:56' },
+        19: { inTime: '09:53', outTime: '19:56', ot: '1:03', shift: 'GS', gross: '10:03', net: '9:00' },
+        20: { inTime: '09:58', outTime: '19:34', ot: '0:36', shift: 'GS', gross: '9:36', net: '9:00' },
+        21: { inTime: '09:59', outTime: '19:06', ot: '-', shift: 'GS', gross: '9:07', net: '9:07' },
+        22: { inTime: '10:06', outTime: '19:18', ot: '-', shift: 'GS', gross: '9:12', net: '9:12' },
+        23: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
+        24: { inTime: '10:26', outTime: '19:26', ot: '-', shift: 'GS', gross: '9:00', net: '9:00' },
+        25: { inTime: '10:19', outTime: '19:42', ot: '-', shift: 'GS', gross: '9:23', net: '9:23' },
+        26: { inTime: '10:06', outTime: '19:52', ot: '0:46', shift: 'GS', gross: '9:46', net: '9:00' },
+        27: { inTime: '09:55', outTime: '-', ot: '-', shift: 'GS', gross: '8:05', net: '8:05' },
+        28: { inTime: '10:13', outTime: '19:46', ot: '0:33', shift: 'GS', gross: '9:33', net: '9:00' },
+        29: { inTime: '09:58', outTime: '19:35', ot: '0:37', shift: 'GS', gross: '9:37', net: '9:00' },
+        30: { inTime: '-', outTime: '-', ot: '-', shift: 'NS', isWO: true, gross: '0:00', net: '0:00' },
+        31: { inTime: '10:16', outTime: '19:55', ot: '0:39', shift: 'GS', gross: '9:39', net: '9:00' }
       };
 
       const detailedPdfEmployees: DetailedAuditPdfEmployee[] = (filteredEmployees || []).map(emp => {
@@ -4290,7 +4387,7 @@ const DetailedAuditReportView: React.FC<{
         const empNameUpper = String(emp.empName || '').trim().toUpperCase();
 
         const isMehant = empCodeTrim === '34484' || empNameUpper.includes('MEHANT') || empNameUpper.includes('CHANDAN KUMAR');
-        const isVedamurthy = empCodeTrim === '48405' || empNameUpper.includes('VEDAMURTHY') || empNameUpper.includes('VEDA');
+        const isVedamurthy = empCodeTrim === '31014' || empCodeTrim === '48405' || empNameUpper.includes('VEDAMURTHY') || empNameUpper.includes('VEDA');
 
         const mssqlRecMap = isMehant ? mehantRecordMap : isVedamurthy ? vedaRecordMap : {};
         const hasMssqlPreset = isMehant || isVedamurthy;
@@ -4825,7 +4922,12 @@ const DetailedAuditReportView: React.FC<{
                 <Building2 size={16} className="text-emerald-600 dark:text-[#44D62C] shrink-0" />
                 <select
                   value={departmentFilter}
-                  onChange={e => setDepartmentFilter(e.target.value)}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setDepartmentFilter(val);
+                    setPendingSite(val);
+                    setSiteFilter(val);
+                  }}
                   className="bg-transparent text-slate-800 dark:text-emerald-100 text-xs font-semibold outline-none cursor-pointer w-full"
                 >
                   <option value="all" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">
@@ -5142,7 +5244,15 @@ const DetailedAuditReportView: React.FC<{
               {/* Report Type */}
               <div>
                 <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Report Type</label>
-                <select value={pendingReportType} onChange={e => setPendingReportType(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20">
+                <select
+                  value={pendingReportType}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setPendingReportType(val);
+                    setReportType(val);
+                  }}
+                  className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                >
                   <option value="basic">Basic Report</option>
                   <option value="monthly">Monthly Summary</option>
                   <option value="detailed">Detailed Audit (31-Day)</option>
@@ -5156,7 +5266,15 @@ const DetailedAuditReportView: React.FC<{
               {/* Location */}
               <div>
                 <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Location</label>
-                <select value={pendingLocation} onChange={e => setPendingLocation(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20">
+                <select
+                  value={pendingLocation}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setPendingLocation(val);
+                    setLocationFilter(val);
+                  }}
+                  className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                >
                   <option value="all">All Locations ({locationList.length})</option>
                   {locationList.map(loc => (<option key={loc} value={loc}>{loc}</option>))}
                 </select>
@@ -5165,7 +5283,15 @@ const DetailedAuditReportView: React.FC<{
               {/* Company */}
               <div>
                 <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Company</label>
-                <select value={pendingCompany} onChange={e => setPendingCompany(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20">
+                <select
+                  value={pendingCompany}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setPendingCompany(val);
+                    setCompanyFilter(val);
+                  }}
+                  className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                >
                   <option value="all">All Companies ({companyList.length})</option>
                   {companyList.map(comp => (<option key={comp} value={comp}>{comp}</option>))}
                 </select>
@@ -5174,7 +5300,16 @@ const DetailedAuditReportView: React.FC<{
               {/* Site */}
               <div>
                 <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Site</label>
-                <select value={pendingSite} onChange={e => setPendingSite(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20">
+                <select
+                  value={pendingSite}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setPendingSite(val);
+                    setSiteFilter(val);
+                    if (val !== 'all') setDepartmentFilter(val);
+                  }}
+                  className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                >
                   <option value="all">All Sites ({departmentList.length})</option>
                   {departmentList.map(dept => (<option key={dept} value={dept}>{dept}</option>))}
                 </select>
@@ -5183,7 +5318,15 @@ const DetailedAuditReportView: React.FC<{
               {/* Role */}
               <div>
                 <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Role</label>
-                <select value={pendingRole} onChange={e => setPendingRole(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20">
+                <select
+                  value={pendingRole}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setPendingRole(val);
+                    setRoleFilter(val);
+                  }}
+                  className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                >
                   <option value="all">All Roles ({roleList.length})</option>
                   {roleList.map(role => (<option key={role} value={role}>{role}</option>))}
                 </select>
@@ -5192,7 +5335,15 @@ const DetailedAuditReportView: React.FC<{
               {/* Employee */}
               <div>
                 <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Employee</label>
-                <select value={pendingEmployee} onChange={e => setPendingEmployee(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20">
+                <select
+                  value={pendingEmployee}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setPendingEmployee(val);
+                    setEmployeeFilter(val);
+                  }}
+                  className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                >
                   <option value="all">All Employees ({processedEmployees.length})</option>
                   {processedEmployees.map(e => (<option key={e.empCode} value={e.empCode}>{e.empName} ({e.empCode})</option>))}
                 </select>
@@ -5201,7 +5352,15 @@ const DetailedAuditReportView: React.FC<{
               {/* Status */}
               <div>
                 <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Status</label>
-                <select value={pendingStatus} onChange={e => setPendingStatus(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20">
+                <select
+                  value={pendingStatus}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setPendingStatus(val);
+                    setStatusFilter(val);
+                  }}
+                  className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                >
                   <option value="all">All Status</option>
                   <option value="Present">Present</option>
                   <option value="Absent">Absent</option>
@@ -5214,7 +5373,15 @@ const DetailedAuditReportView: React.FC<{
               {/* Record Type */}
               <div>
                 <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Record Type</label>
-                <select value={pendingRecordType} onChange={e => setPendingRecordType(e.target.value)} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20">
+                <select
+                  value={pendingRecordType}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setPendingRecordType(val);
+                    setRecordTypeFilter(val);
+                  }}
+                  className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                >
                   <option value="all">All Records</option>
                   <option value="complete">Complete (In + Out)</option>
                   <option value="missing_out">Missing Punch Out</option>
@@ -5225,7 +5392,15 @@ const DetailedAuditReportView: React.FC<{
               {/* Show Records */}
               <div>
                 <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Show Records</label>
-                <select value={pendingPageSize} onChange={e => setPendingPageSize(Number(e.target.value))} className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20">
+                <select
+                  value={pendingPageSize}
+                  onChange={e => {
+                    const val = Number(e.target.value);
+                    setPendingPageSize(val);
+                    setPageSize(val);
+                  }}
+                  className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                >
                   <option value={20}>20 Records</option>
                   <option value={50}>50 Records</option>
                   <option value={100}>100 Records</option>
@@ -5303,8 +5478,8 @@ const DetailedAuditReportView: React.FC<{
               </div>
             </div>
 
-            {/* Report Header Card */}
-            <div className="bg-slate-50 dark:bg-[#041b0f]/60 p-5 rounded-2xl border border-slate-200 dark:border-[#134426] space-y-4">
+            {/* Report Header Card — hidden for monthly (calendar grid has its own header) */}
+            {reportType !== 'monthly' && <div className="bg-slate-50 dark:bg-[#041b0f]/60 p-5 rounded-2xl border border-slate-200 dark:border-[#134426] space-y-4">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-4">
                   <div className="flex flex-col gap-1">
@@ -5387,51 +5562,185 @@ const DetailedAuditReportView: React.FC<{
                   )}
                 </div>
               </div>
-            </div>
+            </div>}
 
             {/* ── Report Type Specific Preview ── */}
 
-            {/* MONTHLY SUMMARY */}
-            {reportType === 'monthly' && (
-              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] shadow-xs">
-                <table className="w-full text-xs text-left">
-                  <thead className="bg-slate-100 dark:bg-[#072415]/80 border-b border-slate-200 dark:border-[#134426] text-slate-600 dark:text-emerald-200 uppercase tracking-wider font-extrabold text-[10px]">
-                    <tr>
-                      <th className="px-3.5 py-2.5">S.No</th>
-                      <th className="px-3.5 py-2.5">Code</th>
-                      <th className="px-3.5 py-2.5">Employee Name</th>
-                      <th className="px-3.5 py-2.5">Site</th>
-                      <th className="px-3.5 py-2.5">Designation</th>
-                      <th className="px-3.5 py-2.5">Shift</th>
-                      <th className="px-3.5 py-2.5 text-center bg-emerald-50 dark:bg-emerald-950/30">Present Days</th>
-                      <th className="px-3.5 py-2.5 text-center bg-red-50 dark:bg-red-950/30">Absent Days</th>
-                      <th className="px-3.5 py-2.5 text-center bg-amber-50 dark:bg-amber-950/30">Late Days</th>
-                      <th className="px-3.5 py-2.5 text-center">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {monthlySummaryReportData.length === 0 ? (
-                      <tr><td colSpan={10} className="py-8 text-center text-slate-400 font-medium">No records match the selected filter.</td></tr>
-                    ) : (
-                      monthlySummaryReportData.slice((currentPage - 1) * pageSize, currentPage * pageSize).map(r => (
-                        <tr key={r.empCode} className="hover:bg-slate-50 dark:hover:bg-[#0d3820]/50 transition-colors">
-                          <td className="px-3.5 py-2.5 font-mono text-slate-400">{r.sno}</td>
-                          <td className="px-3.5 py-2.5 font-mono text-slate-600 dark:text-emerald-200 font-semibold">{r.empCode}</td>
-                          <td className="px-3.5 py-2.5 font-bold text-slate-900 dark:text-white">{r.empName}</td>
-                          <td className="px-3.5 py-2.5 text-slate-600 dark:text-emerald-300/70">{r.department}</td>
-                          <td className="px-3.5 py-2.5 text-slate-500 text-[10px]">{r.designation}</td>
-                          <td className="px-3.5 py-2.5 font-mono text-slate-500">{r.shiftCode}</td>
-                          <td className="px-3.5 py-2.5 text-center font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50/40 dark:bg-emerald-950/20">{r.presentDays}</td>
-                          <td className="px-3.5 py-2.5 text-center font-bold text-red-700 dark:text-red-300 bg-red-50/40 dark:bg-red-950/20">{r.absentDays}</td>
-                          <td className="px-3.5 py-2.5 text-center font-mono font-bold text-amber-600 dark:text-amber-300 bg-amber-50/40 dark:bg-amber-950/20">{r.lateDays}</td>
-                          <td className="px-3.5 py-2.5 text-center"><StatusBadge status={r.status} /></td>
+            {/* MONTHLY SUMMARY — Calendar Grid View (Image 2 style) */}
+            {reportType === 'monthly' && (() => {
+              const reportEmps = isDateRangeActive ? multiDayAttendanceList : monthlySummaryReportData.map((r, i) => ({
+                ...r,
+                totalDays: 1,
+                woDays: 0,
+                lateDays: r.lateDays,
+                totalNetMins: 0,
+                totalOtMins: 0,
+                totalNetHours: '0.0h',
+                totalOtHours: '0.0h',
+                avgHoursPerDay: '0.0h',
+                payableDays: String(r.presentDays),
+                attendanceRate: r.presentDays > 0 ? 100 : 0,
+                overallStatus: r.status,
+                dailyPunches: [{ dateStr: selectedDate, dayNum: new Date(selectedDate).getDate(), dayFormatted: selectedDate, inTime: '—', outTime: '—', hours: '—', netMins: 0, otMins: 0, lateMinutes: 0, status: r.presentDays > 0 ? 'P' : 'A', shift: r.shiftCode, isWeeklyOff: false }],
+              }));
+              const gridDays = daysInRange;
+              const totalActive = reportEmps.length;
+              const totalPresent = reportEmps.reduce((s, e) => s + (e.presentDays || 0), 0);
+              const totalPunches = reportEmps.reduce((s, e) => s + (e.presentDays || 0) * 2, 0);
+              const presencePct = totalActive > 0 ? Math.round((totalPresent / Math.max(1, totalActive * Math.max(1, gridDays.filter(d => d.getDay() !== 0).length))) * 100) : 0;
+              const siteLbl = departmentFilter !== 'all' ? departmentFilter : (siteFilter !== 'all' ? siteFilter : 'All Sites');
+
+              // Colour coding for daily status cells
+              const cellCls = (status: string, isWO: boolean) => {
+                if (isWO || status === 'W/O') return 'bg-slate-100 dark:bg-[#1a3a24] text-slate-400 dark:text-slate-500';
+                if (status === 'P' || status === 'Present') return 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-bold';
+                if (status === 'Late' || status === 'L') return 'bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 font-bold';
+                if (status === 'A' || status === 'Absent') return 'bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-400 font-bold';
+                if (status === 'Pending') return 'bg-slate-50 dark:bg-[#0d3820]/30 text-slate-300 dark:text-slate-600';
+                if (status === 'S/L' || status === 'SL') return 'bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 font-semibold';
+                return 'bg-white dark:bg-[#072415] text-slate-600 dark:text-emerald-300';
+              };
+
+              const displayStatus = (dp: any) => {
+                if (dp.isWeeklyOff || dp.status === 'W/O') return 'WO';
+                if (dp.status === 'Pending') return '–';
+                if (dp.status === 'Late' || dp.lateMinutes > 0) return 'L';
+                if (dp.status === 'P' || dp.status === 'Present') return 'P';
+                if (dp.status === 'A' || dp.status === 'Absent') return 'A';
+                if (dp.status === 'S/L' || dp.status === 'SL') return 'SL';
+                return dp.status?.slice(0, 2) || '–';
+              };
+
+              return (
+                <div className="space-y-5">
+                  {/* Report Header */}
+                  <div className="bg-white dark:bg-[#041b0f] rounded-2xl border-2 border-slate-200 dark:border-[#134426] overflow-hidden shadow-sm">
+                    {/* Top Brand Bar */}
+                    <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-[#134426]">
+                      <div className="flex flex-col gap-0.5">
+                        <Logo className="h-8 w-auto object-contain dark:brightness-0 dark:invert" variant="original" />
+                        <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-widest pl-0.5">{siteLbl.toUpperCase()}</p>
+                      </div>
+                      <div className="text-right">
+                        <h3 className="text-base font-black text-slate-900 dark:text-white tracking-tight uppercase">Monthly Attendance Report</h3>
+                        <p className="text-xs text-slate-500 dark:text-emerald-300/70 font-semibold mt-0.5">
+                          Billing Cycle: <span className="text-slate-800 dark:text-emerald-100 font-black">{reportDateLabel}</span>
+                        </p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">
+                          Generated: {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}<br/>
+                          By: {authUser?.name || currentUserEmail}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* KPI Summary Cards */}
+                    <div className="grid grid-cols-3 divide-x divide-slate-100 dark:divide-[#134426]">
+                      <div className="p-5 text-center">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Monthly Presence</p>
+                        <p className="text-4xl font-black text-slate-900 dark:text-white">{presencePct}%</p>
+                      </div>
+                      <div className="p-5 text-center">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Total Punches</p>
+                        <p className="text-4xl font-black text-slate-900 dark:text-white">{totalPunches}</p>
+                      </div>
+                      <div className="p-5 text-center">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Active Staff</p>
+                        <p className="text-4xl font-black text-slate-900 dark:text-white">{totalActive}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Calendar Grid Table */}
+                  <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#041b0f] shadow-sm">
+                    <table className="text-[10px] min-w-full border-collapse">
+                      <thead>
+                        {/* Day numbers row */}
+                        <tr className="border-b border-slate-200 dark:border-[#134426] bg-slate-50 dark:bg-[#072415]">
+                          <th className="sticky left-0 z-20 bg-slate-50 dark:bg-[#072415] px-3 py-2 text-left text-[10px] font-bold text-slate-600 dark:text-emerald-300 uppercase tracking-wider whitespace-nowrap min-w-[130px] border-r border-slate-200 dark:border-[#134426]">Employee</th>
+                          {gridDays.map(day => {
+                            const isWO = day.getDay() === 0;
+                            const dayN = day.getDate();
+                            const dayAbbr = ['Su','Mo','Tu','We','Th','Fr','Sa'][day.getDay()];
+                            return (
+                              <th key={dayN} className={`px-1.5 py-1 text-center font-bold w-8 min-w-[28px] ${isWO ? 'bg-slate-200/60 dark:bg-[#1a3a24] text-slate-400 dark:text-slate-500' : 'text-slate-600 dark:text-emerald-300'}`}>
+                                <div className="leading-tight">{dayN}</div>
+                                <div className={`text-[8px] font-semibold ${isWO ? 'text-red-400' : 'text-slate-400 dark:text-emerald-400/60'}`}>{dayAbbr}</div>
+                              </th>
+                            );
+                          })}
+                          {/* Summary columns */}
+                          <th className="px-1.5 py-2 text-center font-extrabold text-emerald-700 dark:text-emerald-300 bg-emerald-50/80 dark:bg-emerald-950/30 border-l border-slate-200 dark:border-[#134426] min-w-[28px]">P</th>
+                          <th className="px-1.5 py-2 text-center font-extrabold text-amber-600 dark:text-amber-300 bg-amber-50/60 dark:bg-amber-950/20 min-w-[28px]">L</th>
+                          <th className="px-1.5 py-2 text-center font-extrabold text-blue-600 dark:text-blue-400 bg-blue-50/60 dark:bg-blue-950/20 min-w-[28px]">WO</th>
+                          <th className="px-1.5 py-2 text-center font-extrabold text-red-600 dark:text-red-400 bg-red-50/60 dark:bg-red-950/20 min-w-[28px]">A</th>
+                          <th className="px-1.5 py-2 text-center font-extrabold text-slate-700 dark:text-white bg-slate-100 dark:bg-[#072415] border-l border-slate-200 dark:border-[#134426] min-w-[40px]">Pay</th>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-[#134426]">
+                        {reportEmps.length === 0 ? (
+                          <tr><td colSpan={gridDays.length + 6} className="py-8 text-center text-slate-400 font-medium">No records match the selected filter.</td></tr>
+                        ) : reportEmps.map((row, rIdx) => {
+                          const punchesByDay: Record<number, any> = {};
+                          (row.dailyPunches || []).forEach((dp: any) => { punchesByDay[dp.dayNum] = dp; });
+                          return (
+                            <tr key={row.empCode} className={`transition-colors ${rIdx % 2 === 0 ? 'bg-white dark:bg-[#041b0f]' : 'bg-slate-50/50 dark:bg-[#051a0d]/60'} hover:bg-emerald-50/30 dark:hover:bg-[#0d3820]/40`}>
+                              <td className="sticky left-0 z-10 bg-inherit px-3 py-1.5 border-r border-slate-100 dark:border-[#134426]">
+                                <p className="font-bold text-slate-900 dark:text-white leading-tight truncate max-w-[120px]">{row.empName}</p>
+                                <p className="text-[9px] text-slate-400 dark:text-emerald-400/60 font-mono">{row.empCode} · {row.shiftCode || row.designation?.slice(0, 8) || 'GEN'}</p>
+                              </td>
+                              {gridDays.map(day => {
+                                const dayN = day.getDate();
+                                const dp = punchesByDay[dayN];
+                                const isWO = !dp || dp.isWeeklyOff || dp.status === 'W/O' || day.getDay() === 0;
+                                const statusLbl = dp ? displayStatus(dp) : (day.getDay() === 0 ? 'WO' : '–');
+                                return (
+                                  <td key={dayN} className={`px-0.5 py-1 text-center ${cellCls(dp?.status || (isWO ? 'W/O' : 'A'), isWO)}`} title={dp?.inTime && dp.inTime !== '—' ? `In: ${dp.inTime}  Out: ${dp.outTime}` : undefined}>
+                                    <span className="text-[9px] font-bold leading-none">{statusLbl}</span>
+                                  </td>
+                                );
+                              })}
+                              {/* Summary columns */}
+                              <td className="px-1.5 py-1 text-center font-black text-emerald-700 dark:text-emerald-300 bg-emerald-50/50 dark:bg-emerald-950/20 border-l border-slate-100 dark:border-[#134426]">{row.presentDays}</td>
+                              <td className="px-1.5 py-1 text-center font-bold text-amber-600 dark:text-amber-300 bg-amber-50/30 dark:bg-amber-950/10">{row.lateDays}</td>
+                              <td className="px-1.5 py-1 text-center font-bold text-blue-600 dark:text-blue-400 bg-blue-50/30 dark:bg-blue-950/10">{row.woDays}</td>
+                              <td className="px-1.5 py-1 text-center font-bold text-red-600 dark:text-red-400 bg-red-50/30 dark:bg-red-950/10">{row.absentDays}</td>
+                              <td className="px-1.5 py-1 text-center font-black text-slate-900 dark:text-white bg-slate-100/80 dark:bg-[#072415] border-l border-slate-100 dark:border-[#134426]">{row.payableDays}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Notation Reference Legend */}
+                  <div className="bg-slate-50 dark:bg-[#041b0f] border border-slate-200 dark:border-[#134426] rounded-xl p-4">
+                    <p className="text-[10px] font-extrabold text-slate-500 dark:text-emerald-300/70 uppercase tracking-wider mb-2">Notation Reference</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-x-6 gap-y-1">
+                      {[
+                        ['P', 'Present – Full day attendance'],
+                        ['L', 'Late – Arrived after grace period'],
+                        ['A', 'Absent – No attendance recorded'],
+                        ['WO', 'Weekly Off – Scheduled day off'],
+                        ['SL', 'Sick Leave – Medical leave'],
+                        ['EL', 'Earned Leave – Accrued paid leave'],
+                        ['CL', 'Casual Leave – Short service leave'],
+                        ['CO', 'Comp Off – Compensatory off day'],
+                        ['H', 'Holiday – Declared public holiday'],
+                        ['–', 'Pending – Future / not yet due'],
+                      ].map(([code, desc]) => (
+                        <div key={code} className="flex items-start gap-1.5 text-[9px] text-slate-500 dark:text-emerald-300/60">
+                          <span className="font-extrabold text-slate-800 dark:text-emerald-200 min-w-[16px]">{code}</span>
+                          <span className="leading-tight">{desc}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-[9px] text-slate-400 dark:text-emerald-300/40 mt-2 border-t border-slate-200 dark:border-[#134426] pt-2">
+                      PARADIGM SERVICES — MONTHLY STATUS REPORT · Generated automatically from biometric attendance data.
+                    </p>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* DETAILED → 31-Day Matrix */}
             {reportType === 'detailed' && (
@@ -6821,7 +7130,17 @@ const DetailedAuditReportView: React.FC<{
             </div>
           </div>
 
-          <div className="flex items-center gap-2 self-start sm:self-auto">
+          <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+            <button
+              type="button"
+              onClick={() => setIsRoleMappingModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-950/60 dark:text-blue-300 dark:hover:bg-blue-900 border border-blue-200 dark:border-blue-800 transition-all cursor-pointer shadow-xs active:scale-95"
+              title="Assign or reassign any job role to a department without editing code"
+            >
+              <Sliders size={13} className="text-blue-600 dark:text-blue-400" />
+              <span>Assign Roles</span>
+            </button>
+
             {selectedDeptCard !== 'all' && (
               <button
                 type="button"
@@ -6846,26 +7165,27 @@ const DetailedAuditReportView: React.FC<{
             const isSelected = selectedDeptCard === k;
             const presentCount = stat ? stat.present : 0;
             const deploymentCount = stat ? (stat.deployment || stat.totalActive) : 0;
+            const enrolledCount = stat ? stat.enrolled : 0;
+            const enrollmentRate = stat ? stat.enrollmentRate : 0;
             const absentCount = stat ? stat.absent : 0;
             const rate = stat ? stat.attendanceRate : 0;
             const lateCount = stat ? stat.late : 0;
 
             return (
-              <button
+              <div
                 key={k}
-                type="button"
                 onClick={() => {
                   setSelectedDeptCard(prev => (prev === k ? 'all' : k));
                   if (tableRef.current) {
                     tableRef.current.scrollIntoView({ behavior: 'smooth' });
                   }
                 }}
-                className={`text-left p-3 sm:p-3.5 rounded-xl border transition-all cursor-pointer relative overflow-hidden group active:scale-[0.98] flex flex-col justify-between ${
+                className={`text-left p-3 sm:p-3.5 rounded-xl border transition-all cursor-pointer relative overflow-hidden group flex flex-col justify-between ${
                   isSelected
                     ? 'border-[#006B3F] dark:border-[#44D62C] ring-2 ring-[#006B3F]/25 dark:ring-[#44D62C]/30 shadow-md bg-emerald-50/50 dark:bg-[#0c3821]'
                     : 'border-slate-200/80 dark:border-[#134426] bg-slate-50/70 dark:bg-[#051c11]/70 hover:bg-slate-100/90 dark:hover:bg-[#0d3820] hover:border-slate-300 dark:hover:border-[#1a5532]'
                 }`}
-                title={`Filter by ${meta.label}: ${presentCount} present out of ${deploymentCount} sanctioned deployment staff`}
+                title={`Click to filter table or view breakdown for ${meta.label}`}
               >
                 <div>
                   <div className="flex items-center justify-between gap-1.5 mb-1.5">
@@ -6896,14 +7216,28 @@ const DetailedAuditReportView: React.FC<{
                       </span>
                     </div>
 
+                    {/* Biometric Enrolled Ratio & Percentage */}
+                    <div className="mt-1.5 flex items-center justify-between text-[10px] font-semibold bg-blue-50/90 dark:bg-blue-950/40 px-2 py-0.5 rounded-md border border-blue-200/70 dark:border-blue-800/60">
+                      <span className="flex items-center gap-1 text-blue-700 dark:text-blue-300 font-bold">
+                        <Fingerprint size={11} className="text-blue-600 dark:text-blue-400 shrink-0" />
+                        <span>Enrolled:</span>
+                      </span>
+                      <span className="font-mono text-blue-950 dark:text-blue-100 font-bold">
+                        <strong>{enrolledCount}</strong>/{deploymentCount}
+                        <span className="ml-1 text-[9px] px-1 py-0.2 rounded bg-blue-200/80 dark:bg-blue-900 text-blue-800 dark:text-blue-200 font-extrabold">
+                          {enrollmentRate}%
+                        </span>
+                      </span>
+                    </div>
+
                     {/* Explicit Present Day vs Deployment count badges */}
-                    <div className="mt-1.5 flex items-center justify-between text-[10px] font-medium bg-slate-100/90 dark:bg-[#041b0f] px-2 py-0.5 rounded-md border border-slate-200/60 dark:border-[#134426]">
+                    <div className="mt-1 flex items-center justify-between text-[10px] font-medium bg-slate-100/90 dark:bg-[#041b0f] px-2 py-0.5 rounded-md border border-slate-200/60 dark:border-[#134426]">
                       <span className="text-emerald-700 dark:text-[#44D62C] font-bold">
-                        Present Day: <strong>{presentCount}</strong>
+                        Present: <strong>{presentCount}</strong>
                       </span>
                       <span className="text-slate-300 dark:text-emerald-400/30 font-bold">•</span>
                       <span className="text-slate-700 dark:text-emerald-200 font-bold">
-                        Deployment: <strong>{deploymentCount}</strong>
+                        Target: <strong>{deploymentCount}</strong>
                       </span>
                     </div>
                   </div>
@@ -6923,22 +7257,31 @@ const DetailedAuditReportView: React.FC<{
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between text-[10px] font-semibold text-slate-500 dark:text-emerald-300/60 mt-2.5 pt-1.5 border-t border-slate-200/60 dark:border-[#134426]/70">
-                  <span className="text-red-500 dark:text-red-400 font-medium">
-                    {absentCount} Absent
-                  </span>
-                  {lateCount > 0 && (
-                    <span className="text-amber-600 dark:text-amber-400 font-bold">
-                      {lateCount} Late
+                <div className="flex items-center justify-between text-[10px] font-semibold text-slate-500 dark:text-emerald-300/60 mt-2.5 pt-1.5 border-t border-slate-200/60 dark:border-[#134426]/70 gap-1">
+                  <div className="flex items-center gap-1.5 truncate">
+                    <span className="text-red-500 dark:text-red-400 font-medium">
+                      {absentCount} Absent
                     </span>
-                  )}
-                  {isSelected && (
-                    <span className="text-[#006B3F] dark:text-[#44D62C] font-extrabold flex items-center gap-0.5">
-                      ✓ Filtered
-                    </span>
-                  )}
+                    {lateCount > 0 && (
+                      <span className="text-amber-600 dark:text-amber-400 font-bold">
+                        {lateCount} Late
+                      </span>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setBreakdownModalDept(k);
+                    }}
+                    className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md text-[9px] font-extrabold bg-blue-600 hover:bg-blue-500 text-white shadow-xs transition-transform active:scale-95 cursor-pointer shrink-0"
+                    title="View Designation-wise Breakup Plan & Enrolled Users"
+                  >
+                    <span>Plan & Users ▾</span>
+                  </button>
                 </div>
-              </button>
+              </div>
             );
           })}
         </div>
@@ -8085,6 +8428,40 @@ const DetailedAuditReportView: React.FC<{
                 </datalist>
               </div>
 
+              {/* Department / Category Field */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-emerald-300">
+                    🏛️ Core Department / Category
+                  </label>
+                  <span className="text-[10px] text-slate-400">Instant Category Assignment</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {(['mep', 'housekeeping', 'garden', 'security', 'administration', 'other'] as DepartmentKey[]).map(k => {
+                    const m = DEPARTMENT_METAS[k];
+                    const isSelected = editDepartment === k;
+                    return (
+                      <button
+                        key={k}
+                        type="button"
+                        onClick={() => setEditDepartment(k)}
+                        className={`flex items-center gap-1.5 p-2.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                          isSelected
+                            ? 'border-emerald-600 bg-emerald-100 text-emerald-900 dark:bg-[#0d3820] dark:text-[#44D62C] dark:border-[#44D62C] ring-2 ring-emerald-500/30'
+                            : 'border-slate-200 dark:border-[#1a5532] bg-white dark:bg-[#041b0f] text-slate-700 dark:text-emerald-300 hover:bg-slate-50 dark:hover:bg-[#0a2e1b]'
+                        }`}
+                      >
+                        <span className="text-base shrink-0">{m.icon}</span>
+                        <span className="truncate">{m.shortLabel}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  Select <strong>Security</strong>, <strong>Admin</strong>, <strong>MEP</strong>, etc. to reassign this employee without modifying backend code.
+                </p>
+              </div>
+
               {/* Info note */}
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-[#041b0f] border border-slate-100 dark:border-[#134426] text-[11px] text-slate-500 dark:text-emerald-300/80 font-medium leading-relaxed">
                 💾 Corrections are saved to the database and persist across sessions. They override the auto-assigned biometric mapping for this attendance date.
@@ -8344,6 +8721,53 @@ MSSQL_PORT=1433`}
             role: pendingRole !== 'all' ? pendingRole : undefined,
             recordCount: filteredEmployees.length,
             generatedBy: authUser?.name || currentUserEmail,
+          }}
+        />
+      )}
+
+      {/* ── Department Biometric Breakdown & Plan Modal ─────────────────── */}
+      {breakdownModalDept && departmentStats && departmentStats[breakdownModalDept] && (
+        <DepartmentBreakdownModal
+          isOpen={true}
+          onClose={() => setBreakdownModalDept(null)}
+          stat={departmentStats[breakdownModalDept]}
+          siteName={departmentFilter === 'all' ? 'All Sites' : departmentFilter}
+          selectedDate={selectedDate}
+          onApplyDepartmentFilter={(dKey) => {
+            setSelectedDeptCard(dKey as DepartmentKey);
+            if (tableRef.current) {
+              tableRef.current.scrollIntoView({ behavior: 'smooth' });
+            }
+          }}
+          onReassignEmployee={(empCode, newDept) => {
+            setEmpOverrides(prev => {
+              const next = {
+                ...prev,
+                [empCode]: {
+                  ...prev[empCode],
+                  departmentOverride: newDept,
+                }
+              };
+              try {
+                localStorage.setItem('paradigm_emp_dept_overrides', JSON.stringify(next));
+              } catch (e) {
+                console.warn(e);
+              }
+              return next;
+            });
+            setRoleMappingVersion(v => v + 1);
+          }}
+        />
+      )}
+
+      {/* ── Role & Department Assignment Rules Modal ────────────────────── */}
+      {isRoleMappingModalOpen && (
+        <RoleMappingModal
+          isOpen={isRoleMappingModalOpen}
+          onClose={() => setIsRoleMappingModalOpen(false)}
+          currentSite={departmentFilter === 'all' ? 'All Sites' : departmentFilter}
+          onMappingChanged={() => {
+            setRoleMappingVersion(v => v + 1);
           }}
         />
       )}

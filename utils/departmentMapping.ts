@@ -306,6 +306,69 @@ const EXACT_DESIGNATION_MAP: Record<string, DepartmentKey> = {
   'soft service executive': 'administration',
 };
 
+// UI-Configured Custom Role Mappings (persisted in LocalStorage / Supabase)
+export interface CustomRoleMapping {
+  id: string;
+  siteName: string; // 'all' or specific site name
+  designation: string;
+  department: DepartmentKey;
+  updatedAt?: string;
+}
+
+export const ROLE_MAPPING_STORAGE_KEY = 'paradigm_role_dept_mappings';
+export const EMP_DEPT_OVERRIDE_STORAGE_KEY = 'paradigm_emp_dept_overrides';
+
+export function getCustomRoleMappings(): CustomRoleMapping[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(ROLE_MAPPING_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveCustomRoleMapping(mapping: Omit<CustomRoleMapping, 'id' | 'updatedAt'>): CustomRoleMapping[] {
+  const current = getCustomRoleMappings();
+  const id = `${(mapping.siteName || 'all').toLowerCase().trim()}:::${mapping.designation.toLowerCase().trim()}`;
+  const filtered = current.filter(m => m.id !== id);
+  const updated: CustomRoleMapping[] = [
+    ...filtered,
+    {
+      ...mapping,
+      id,
+      updatedAt: new Date().toISOString(),
+    },
+  ];
+  try {
+    localStorage.setItem(ROLE_MAPPING_STORAGE_KEY, JSON.stringify(updated));
+  } catch (e) {
+    console.warn('Failed to save role mapping to localStorage', e);
+  }
+  return updated;
+}
+
+export function deleteCustomRoleMapping(id: string): CustomRoleMapping[] {
+  const current = getCustomRoleMappings();
+  const updated = current.filter(m => m.id !== id);
+  try {
+    localStorage.setItem(ROLE_MAPPING_STORAGE_KEY, JSON.stringify(updated));
+  } catch (e) {
+    console.warn('Failed to delete role mapping from localStorage', e);
+  }
+  return updated;
+}
+
+// Site-specific role overrides (e.g., Security Officer categorized as Admin specifically for Utopia)
+export interface SiteRoleOverrideRule {
+  sitePattern: RegExp;
+  designationPatterns: RegExp[];
+  targetDepartment: DepartmentKey;
+  description?: string;
+}
+
+export const SITE_SPECIFIC_ROLE_OVERRIDES: SiteRoleOverrideRule[] = [];
+
 /**
  * Normalizes an employee's designation and code to determine their functional department bucket
  */
@@ -313,9 +376,46 @@ export function getEmployeeDepartment(emp: {
   designation?: string;
   empCode?: string;
   department?: string;
+  site?: string;
+  departmentOverride?: DepartmentKey;
 }): DepartmentKey {
+  // 0a. Explicit user override on individual employee (highest priority)
+  if (emp.departmentOverride) {
+    return emp.departmentOverride;
+  }
+
   const desig = (emp.designation || '').toLowerCase().trim();
   const cleanCode = (emp.empCode || '').replace(/\D/g, '');
+  const siteStr = ((emp.department || emp.site || '') as string).trim().toLowerCase();
+
+  // 0b. Custom UI Role Mappings configured by user from UI without code changes
+  if (typeof window !== 'undefined' && desig) {
+    const customMappings = getCustomRoleMappings();
+    for (const cm of customMappings) {
+      const cmDesig = cm.designation.toLowerCase().trim();
+      const matchDesig = desig === cmDesig || desig.includes(cmDesig) || cmDesig.includes(desig);
+      if (matchDesig) {
+        if (!cm.siteName || cm.siteName === 'all' || cm.siteName === 'All Sites') {
+          return cm.department;
+        }
+        const cmSite = cm.siteName.toLowerCase().trim();
+        if (siteStr.includes(cmSite) || cmSite.includes(siteStr)) {
+          return cm.department;
+        }
+      }
+    }
+  }
+
+  // 0c. Site-specific role overrides (e.g. Utopia: Security Officer -> Admin)
+  if (siteStr && desig) {
+    for (const rule of SITE_SPECIFIC_ROLE_OVERRIDES) {
+      if (rule.sitePattern.test(siteStr)) {
+        if (rule.designationPatterns.some(p => p.test(desig))) {
+          return rule.targetDepartment;
+        }
+      }
+    }
+  }
 
   // 1. Direct dictionary match
   if (desig && EXACT_DESIGNATION_MAP[desig]) {
@@ -404,25 +504,42 @@ export function getEmployeeDepartment(emp: {
   return 'other';
 }
 
+export interface DesignationBreakdownItem {
+  designation: string;
+  department: DepartmentKey;
+  deployed: number;
+  enrolled: number;
+  present: number;
+  absent: number;
+  late: number;
+  shortage: number; // enrolled - deployed
+  employees: any[];
+}
+
 export interface DepartmentStat {
   key: DepartmentKey;
   meta: DepartmentMeta;
   totalActive: number;
   totalHeadcount: number;
   deployment: number;
+  enrolled: number;
+  enrollmentRate: number;
   present: number;
   absent: number;
   late: number;
   attendanceRate: number;
+  designationBreakdown: DesignationBreakdownItem[];
+  employees: any[];
 }
 
 /**
- * Computes department-wise attendance statistics for an array of processed employees
- * Accepts optional site/global sanctioned deployment counts from Version_5.6 Final.xlsm
+ * Computes department-wise attendance & biometric enrollment statistics for an array of processed employees
+ * Accepts optional site/global sanctioned deployment counts and designation deployment items from Version_5.6 Final.xlsm
  */
 export function calculateDepartmentStats(
   employees: any[],
-  deploymentCounts?: Record<DepartmentKey, number>
+  deploymentCounts?: Record<DepartmentKey, number>,
+  designationDeployments?: { designation: string; count: number; department: string }[]
 ): Record<DepartmentKey, DepartmentStat> {
   const baseKeys: DepartmentKey[] = ['mep', 'housekeeping', 'garden', 'security', 'administration', 'other'];
   
@@ -434,23 +551,71 @@ export function calculateDepartmentStats(
       totalActive: 0,
       totalHeadcount: 0,
       deployment: 0,
+      enrolled: 0,
+      enrollmentRate: 0,
       present: 0,
       absent: 0,
       late: 0,
       attendanceRate: 0,
+      designationBreakdown: [],
+      employees: [],
     };
   });
+
+  // Map of per-department designation aggregations
+  const desigMaps: Record<DepartmentKey, Record<string, DesignationBreakdownItem>> = {
+    mep: {},
+    housekeeping: {},
+    garden: {},
+    security: {},
+    administration: {},
+    other: {},
+  };
+
+  // Seed with sanctioned designation deployment targets if provided
+  if (designationDeployments && designationDeployments.length > 0) {
+    designationDeployments.forEach(item => {
+      const dKey = (item.department as DepartmentKey) || 'other';
+      const normDesig = item.designation.trim().toUpperCase();
+      if (!desigMaps[dKey][normDesig]) {
+        desigMaps[dKey][normDesig] = {
+          designation: item.designation.trim(),
+          department: dKey,
+          deployed: item.count || 0,
+          enrolled: 0,
+          present: 0,
+          absent: 0,
+          late: 0,
+          shortage: 0,
+          employees: [],
+        };
+      } else {
+        desigMaps[dKey][normDesig].deployed += item.count || 0;
+      }
+    });
+  }
 
   employees.forEach(emp => {
     const dept = getEmployeeDepartment(emp);
     const target = stats[dept] || stats.other;
     
     target.totalHeadcount++;
+    target.employees.push(emp);
     
     // Check active status
     const isActive = emp.isActiveEmployee !== false;
     if (isActive) {
       target.totalActive++;
+    }
+
+    // Biometric enrollment check: Employee has a valid biometric ID or machine punch code
+    const isEnrolled = Boolean(
+      (emp.empCode && emp.empCode !== '—' && emp.empCode.trim() !== '') ||
+      emp.biometricId
+    ) && emp.status !== 'Not Joined Yet' && emp.status !== 'Discontinued / Left' && emp.lifecycleStatus !== 'Discontinued';
+
+    if (isEnrolled) {
+      target.enrolled++;
     }
 
     // Check present status
@@ -467,20 +632,64 @@ export function calculateDepartmentStats(
       target.present++;
     }
 
-    if (emp.lateMinutes > 0 || emp.status === 'Late') {
+    const isLate = emp.lateMinutes > 0 || emp.status === 'Late';
+    if (isLate) {
       target.late++;
     }
+
+    // Group into designation breakdown
+    const rawDesig = (emp.designation || 'General Staff').trim();
+    const normDesig = rawDesig.toUpperCase();
+    const dMap = desigMaps[dept] || desigMaps.other;
+
+    if (!dMap[normDesig]) {
+      dMap[normDesig] = {
+        designation: rawDesig,
+        department: dept,
+        deployed: 0,
+        enrolled: 0,
+        present: 0,
+        absent: 0,
+        late: 0,
+        shortage: 0,
+        employees: [],
+      };
+    }
+
+    if (isEnrolled) {
+      dMap[normDesig].enrolled++;
+    }
+    if (isPresent) {
+      dMap[normDesig].present++;
+    }
+    if (isLate) {
+      dMap[normDesig].late++;
+    }
+    dMap[normDesig].employees.push(emp);
   });
 
-  // Calculate absent, deployment, and attendance rates
+  // Finalize totals, rates, and designation lists
   baseKeys.forEach(k => {
     const s = stats[k];
     const sanctioned = deploymentCounts && deploymentCounts[k] !== undefined && deploymentCounts[k] > 0
       ? deploymentCounts[k]
-      : (s.totalActive || s.totalHeadcount);
+      : (s.enrolled || s.totalActive || s.totalHeadcount);
+    
     s.deployment = sanctioned;
     s.absent = Math.max(0, sanctioned - s.present);
     s.attendanceRate = sanctioned > 0 ? Math.round((s.present / sanctioned) * 100) : 0;
+    s.enrollmentRate = sanctioned > 0 ? Math.round((s.enrolled / sanctioned) * 100) : (s.enrolled > 0 ? 100 : 0);
+
+    // Convert designation map to sorted array
+    const desigList = Object.values(desigMaps[k]).map(item => ({
+      ...item,
+      absent: Math.max(0, (item.deployed || item.enrolled) - item.present),
+      shortage: item.enrolled - item.deployed,
+    }));
+
+    // Sort by deployed target desc, then enrolled desc
+    desigList.sort((a, b) => (b.deployed - a.deployed) || (b.enrolled - a.enrolled));
+    s.designationBreakdown = desigList;
   });
 
   return stats;

@@ -1033,7 +1033,7 @@ const LeaveDashboard: React.FC = () => {
             });
         });
 
-        // 7. Month-by-Month Simulation for 2-Month Validity & Max 2.0d Carry-Forward
+        // 7. Month-by-Month Simulation for 2-Month Validity & Max 4.0d Pool Capacity (Oldest Forfeited when Pool Exceeds 4d)
         const sortedForSim = [...list].sort((a, b) => new Date(a.date.replace(/-/g, '/')).getTime() - new Date(b.date.replace(/-/g, '/')).getTime());
 
         const coLeaves = allLeaves
@@ -1056,6 +1056,14 @@ const LeaveDashboard: React.FC = () => {
                 };
             });
 
+        // 7. Pure Rolling FIFO Queue Simulation (NO TIME-BASED EXPIRY, MAX 4.0d CAPACITY)
+        // Rule:
+        // - No calendar or time-based expiry.
+        // - Active pool is capped at max 4.0 days.
+        // - Leaves deduct from the oldest active credits first (FIFO).
+        // - When a new credit is earned and active pool exceeds 4.0 days,
+        //   the OLDEST credit in the active pool expires / is pushed out to maintain 4.0d cap.
+
         const itemStateMap = new Map<string, {
             remaining: number;
             validUntilStr: string;
@@ -1065,123 +1073,100 @@ const LeaveDashboard: React.FC = () => {
         }>();
 
         sortedForSim.forEach(item => {
-            const itemDate = new Date(item.date.replace(/-/g, '/'));
-            const m = itemDate.getMonth();
-            const nextMonthEnd = new Date(targetYear, m + 2, 0);
-            const validUntilStr = format(nextMonthEnd, 'dd MMM yyyy');
             itemStateMap.set(item.id, {
                 remaining: item.credit,
-                validUntilStr,
+                validUntilStr: 'No Expiry (Active)',
                 status: 'Active',
-                statusReason: `Valid until ${validUntilStr}`,
+                statusReason: 'Active in Pool (Capacity: 4.0d)',
                 usedBy: []
             });
         });
 
-        let carriedOver: Array<{ id: string; remaining: number }> = [];
-        const viewingMonth = viewingDate.getMonth();
+        // Timeline of events: credits and approved leaves
+        type SimEvent = 
+            | { type: 'credit'; date: string; item: typeof sortedForSim[0] }
+            | { type: 'leave'; date: string; days: number; reason?: string; id: string };
 
-        for (let m = 0; m <= viewingMonth; m++) {
-            const monthEarned = sortedForSim
-                .filter(item => new Date(item.date.replace(/-/g, '/')).getMonth() === m)
-                .map(item => ({ id: item.id, remaining: item.credit }));
+        const simEvents: SimEvent[] = [];
+        sortedForSim.forEach(item => simEvents.push({ type: 'credit', date: item.date, item }));
+        coLeaves.forEach(l => simEvents.push({ type: 'leave', date: l.startDate, days: l.days, reason: l.reason, id: l.id }));
 
-            const monthLeaves = coLeaves.filter(l => new Date(l.startDate.replace(/-/g, '/')).getMonth() === m);
+        // Sort chronologically (credits before leaves on the same date)
+        simEvents.sort((a, b) => {
+            const cmp = new Date(a.date.replace(/-/g, '/')).getTime() - new Date(b.date.replace(/-/g, '/')).getTime();
+            if (cmp !== 0) return cmp;
+            return a.type === 'credit' ? -1 : 1;
+        });
 
-            for (const leave of monthLeaves) {
-                let needed = leave.days;
-                for (const credit of carriedOver) {
-                    if (needed <= 0) break;
-                    if (credit.remaining > 0) {
-                        const deduct = Math.min(credit.remaining, needed);
-                        credit.remaining -= deduct;
-                        needed -= deduct;
-                        const st = itemStateMap.get(credit.id);
+        const activeQueue: Array<{ id: string; source: string; date: string; remaining: number }> = [];
+
+        simEvents.forEach(event => {
+            if (event.type === 'credit') {
+                activeQueue.push({
+                    id: event.item.id,
+                    source: event.item.source,
+                    date: event.item.date,
+                    remaining: event.item.credit
+                });
+
+                // Check 4.0d max capacity: if pool > 4.0, expire the OLDEST credit!
+                const totalActive = activeQueue.reduce((sum, c) => sum + c.remaining, 0);
+                if (totalActive > 4.0) {
+                    let excess = Math.round((totalActive - 4.0) * 10) / 10;
+                    while (excess > 0 && activeQueue.length > 0) {
+                        const oldest = activeQueue[0];
+                        const deduct = Math.min(oldest.remaining, excess);
+                        oldest.remaining -= deduct;
+                        excess -= deduct;
+                        const st = itemStateMap.get(oldest.id);
                         if (st) {
                             st.remaining -= deduct;
-                            st.usedBy.push({ date: leave.startDate, days: deduct, reason: leave.reason });
+                            if (st.remaining <= 0) {
+                                st.status = 'Expired';
+                                const formattedDate = format(new Date(event.date.replace(/-/g, '/')), 'dd MMM yyyy');
+                                st.statusReason = `Expired on ${formattedDate} (Pushed out as pool reached 4-day max limit)`;
+                            } else {
+                                st.statusReason = `${st.remaining.toFixed(1)}d active (${(event.item.credit - st.remaining).toFixed(1)}d pushed out)`;
+                            }
+                        }
+                        if (oldest.remaining <= 0) {
+                            activeQueue.shift();
                         }
                     }
                 }
-                for (const credit of monthEarned) {
-                    if (needed <= 0) break;
-                    if (credit.remaining > 0) {
-                        const deduct = Math.min(credit.remaining, needed);
-                        credit.remaining -= deduct;
-                        needed -= deduct;
-                        const st = itemStateMap.get(credit.id);
-                        if (st) {
-                            st.remaining -= deduct;
-                            st.usedBy.push({ date: leave.startDate, days: deduct, reason: leave.reason });
-                        }
-                    }
-                }
-            }
-
-            // End of month m
-            const monthEndDate = new Date(targetYear, m + 1, 0);
-            const monthEndDisplay = format(monthEndDate, 'dd MMM yyyy');
-
-            // 1. Carried-over credits expire at the end of month m
-            for (const credit of carriedOver) {
-                if (credit.remaining > 0) {
-                    const st = itemStateMap.get(credit.id);
-                    if (st) {
-                        st.remaining = 0;
-                        st.status = 'Expired';
-                        st.statusReason = `Expired on ${monthEndDisplay} (Unused within 2-month window)`;
-                    }
-                    credit.remaining = 0;
-                }
-            }
-
-            // 2. Carry-forward cap (max 2.0d)
-            const totalMonthRemaining = monthEarned.reduce((sum, c) => sum + c.remaining, 0);
-            if (totalMonthRemaining > 2.0) {
-                let excess = Math.round((totalMonthRemaining - 2.0) * 10) / 10;
-                for (let i = monthEarned.length - 1; i >= 0 && excess > 0; i--) {
-                    const c = monthEarned[i];
-                    const deduct = Math.min(c.remaining, excess);
-                    c.remaining -= deduct;
-                    excess -= deduct;
-                    const st = itemStateMap.get(c.id);
+            } else if (event.type === 'leave') {
+                let needed = event.days;
+                while (needed > 0 && activeQueue.length > 0) {
+                    const oldest = activeQueue[0];
+                    const deduct = Math.min(oldest.remaining, needed);
+                    oldest.remaining -= deduct;
+                    needed -= deduct;
+                    const st = itemStateMap.get(oldest.id);
                     if (st) {
                         st.remaining -= deduct;
+                        st.usedBy.push({ date: event.date, days: deduct, reason: event.reason });
                         if (st.remaining <= 0) {
-                            st.status = 'Expired';
-                            st.statusReason = `Forfeited on ${monthEndDisplay} (Exceeded 2-day carry-forward cap)`;
+                            st.status = 'Used';
+                            const dateFormatted = format(new Date(event.date.replace(/-/g, '/')), 'dd MMM yyyy');
+                            st.statusReason = `Used on ${dateFormatted} for Comp Off leave`;
+                        } else {
+                            st.statusReason = `${st.remaining.toFixed(1)}d active in pool (${(deduct).toFixed(1)}d used)`;
                         }
+                    }
+                    if (oldest.remaining <= 0) {
+                        activeQueue.shift();
                     }
                 }
             }
-
-            carriedOver = monthEarned.filter(c => c.remaining > 0);
-        }
+        });
 
         // Apply calculated states back to list items
         list.forEach(item => {
             const st = itemStateMap.get(item.id);
             if (st) {
                 item.validUntil = st.validUntilStr;
-                if (st.status === 'Active') {
-                    if (st.remaining <= 0) {
-                        item.status = 'Used';
-                        const firstUse = st.usedBy[0];
-                        const dateFormatted = firstUse ? format(new Date(firstUse.date.replace(/-/g, '/')), 'dd MMM') : '';
-                        item.statusReason = st.usedBy.length > 1
-                            ? `Used across ${st.usedBy.length} leaves (${st.usedBy.map(u => `${u.days}d on ${format(new Date(u.date.replace(/-/g, '/')), 'dd MMM')}`).join(', ')})`
-                            : `Used on ${dateFormatted} for Comp Off leave`;
-                    } else if (st.remaining < item.credit) {
-                        item.status = 'Active';
-                        item.statusReason = `${st.remaining.toFixed(1)}d available until ${st.validUntilStr} (${(item.credit - st.remaining).toFixed(1)}d used)`;
-                    } else {
-                        item.status = 'Active';
-                        item.statusReason = `Available until ${st.validUntilStr}`;
-                    }
-                } else {
-                    item.status = st.status;
-                    item.statusReason = st.statusReason;
-                }
+                item.status = st.status;
+                item.statusReason = st.statusReason;
             }
         });
 
@@ -1287,93 +1272,94 @@ const LeaveDashboard: React.FC = () => {
             });
         });
 
-        // Add monthly expiration & carry-forward cap forfeiture debits
-        const targetYear = viewingDate.getFullYear();
-        const viewingMonth = viewingDate.getMonth();
-        const sortedCredits = [...compOffEarnedBreakup]
-            .filter(item => item.type !== 'opening')
-            .sort((a, b) => new Date(a.date.replace(/-/g, '/')).getTime() - new Date(b.date.replace(/-/g, '/')).getTime());
+        // Pure Rolling FIFO Queue Simulation for 4.0d Pool Cap debits
+        // Rule:
+        // - NO calendar month or time-based expiry debits.
+        // - Leaves deduct on FIFO basis.
+        // - When a new credit is earned and active queue exceeds 4.0d, the oldest credit is pushed out (forfeited).
+        type LedgerSimEvent =
+            | { type: 'opening'; date: string; amount: number; id: string }
+            | { type: 'credit'; date: string; amount: number; source: string; id: string }
+            | { type: 'leave'; date: string; days: number; id: string };
 
-        let simCarriedOver: Array<{ id: string; source: string; remaining: number }> = [];
-
-        for (let m = 0; m <= viewingMonth; m++) {
-            const monthEarned = sortedCredits
-                .filter(item => new Date(item.date.replace(/-/g, '/')).getMonth() === m)
-                .map(item => ({ id: item.id, source: item.source, remaining: item.credit }));
-
-            const monthLeaves = coLeavesMapped.filter(l => new Date(l.date.replace(/-/g, '/')).getMonth() === m);
-
-            for (const l of monthLeaves) {
-                let needed = l.days;
-                for (const c of simCarriedOver) {
-                    if (needed <= 0) break;
-                    if (c.remaining > 0) {
-                        const deduct = Math.min(c.remaining, needed);
-                        c.remaining -= deduct;
-                        needed -= deduct;
-                    }
-                }
-                for (const c of monthEarned) {
-                    if (needed <= 0) break;
-                    if (c.remaining > 0) {
-                        const deduct = Math.min(c.remaining, needed);
-                        c.remaining -= deduct;
-                        needed -= deduct;
-                    }
-                }
-            }
-
-            const monthEndDate = new Date(targetYear, m + 1, 0);
-            const monthEndStr = format(monthEndDate, 'yyyy-MM-dd');
-            const monthEndDisplay = format(monthEndDate, 'dd MMM yyyy');
-
-            // 1. Carried-over credits from m-1 expire at end of month m
-            for (const c of simCarriedOver) {
-                if (c.remaining > 0) {
-                    entries.push({
-                        id: `comp-expiry-${c.id}-${m}`,
-                        date: monthEndStr,
-                        type: 'debit',
-                        description: `Expired: Unused Comp Off (${c.source})`,
-                        amount: c.remaining,
-                        details: `Expired on ${monthEndDisplay} (Unused within 2-month validity period)`,
-                        isExpiry: true,
-                        reason: '2-Month Validity Expiry'
-                    });
-                    c.remaining = 0;
-                }
-            }
-
-            // 2. Carry-forward cap (max 2.0d)
-            const totalMonthRemaining = monthEarned.reduce((sum, c) => sum + c.remaining, 0);
-            if (totalMonthRemaining > 2.0) {
-                const excess = Math.round((totalMonthRemaining - 2.0) * 10) / 10;
-                entries.push({
-                    id: `comp-forfeit-${m}`,
-                    date: monthEndStr,
-                    type: 'debit',
-                    description: `Carry-Forward Cap (Max 2.0d/mo)`,
-                    amount: excess,
-                    details: `Forfeited on ${monthEndDisplay} (Exceeded 2-day carry-forward cap)`,
-                    isExpiry: true,
-                    reason: 'Monthly Carry-Forward Cap'
-                });
-                let ex = excess;
-                for (let i = monthEarned.length - 1; i >= 0 && ex > 0; i--) {
-                    const deduct = Math.min(monthEarned[i].remaining, ex);
-                    monthEarned[i].remaining -= deduct;
-                    ex -= deduct;
-                }
-            }
-
-            simCarriedOver = monthEarned.filter(c => c.remaining > 0);
+        const simEvents: LedgerSimEvent[] = [];
+        if (openingBalance > 0) {
+            simEvents.push({ type: 'opening', date: openingDate, amount: openingBalance, id: 'comp-opening-bal' });
         }
+        compOffEarnedBreakup.forEach(c => {
+            if (c.type !== 'opening') {
+                simEvents.push({ type: 'credit', date: c.date, amount: c.credit, source: c.source, id: c.id });
+            }
+        });
+        coLeavesMapped.forEach(l => {
+            simEvents.push({ type: 'leave', date: l.date, days: l.days, id: l.id });
+        });
+
+        // Chronological order: date asc, credit before leave on same date
+        simEvents.sort((a, b) => {
+            const cmp = new Date(a.date.replace(/-/g, '/')).getTime() - new Date(b.date.replace(/-/g, '/')).getTime();
+            if (cmp !== 0) return cmp;
+            return a.type === 'credit' || a.type === 'opening' ? -1 : 1;
+        });
+
+        const activeQueue: Array<{ id: string; source: string; date: string; remaining: number }> = [];
+
+        simEvents.forEach(evt => {
+            if (evt.type === 'opening' || evt.type === 'credit') {
+                activeQueue.push({
+                    id: evt.id,
+                    source: evt.type === 'opening' ? 'Opening Balance' : evt.source,
+                    date: evt.date,
+                    remaining: evt.amount
+                });
+
+                // Check 4.0d pool cap
+                const totalActive = activeQueue.reduce((sum, c) => sum + c.remaining, 0);
+                if (totalActive > 4.0) {
+                    let excess = Math.round((totalActive - 4.0) * 10) / 10;
+                    while (excess > 0 && activeQueue.length > 0) {
+                        const oldest = activeQueue[0];
+                        const deduct = Math.min(oldest.remaining, excess);
+                        oldest.remaining -= deduct;
+                        excess -= deduct;
+
+                        entries.push({
+                            id: `comp-pool-cap-${oldest.id}-${evt.id}`,
+                            date: evt.date,
+                            type: 'debit',
+                            description: `Pool Cap Exceeded (Max 4.0d)`,
+                            amount: deduct,
+                            details: `Oldest credit forfeited (${oldest.source}) as pool reached 4.0d limit`,
+                            isExpiry: true,
+                            reason: 'Max 4.0d Pool Capacity'
+                        });
+
+                        if (oldest.remaining <= 0) {
+                            activeQueue.shift();
+                        }
+                    }
+                }
+            } else if (evt.type === 'leave') {
+                let needed = evt.days;
+                while (needed > 0 && activeQueue.length > 0) {
+                    const oldest = activeQueue[0];
+                    const deduct = Math.min(oldest.remaining, needed);
+                    oldest.remaining -= deduct;
+                    needed -= deduct;
+                    if (oldest.remaining <= 0) {
+                        activeQueue.shift();
+                    }
+                }
+            }
+        });
 
         // Sort chronologically:
-        // Date asc -> credit before debit -> leave debit before expiry debit
+        // Date asc -> opening/credit before debit -> leave debit before expiry debit
         entries.sort((a, b) => {
             const cmp = new Date(a.date.replace(/-/g, '/')).getTime() - new Date(b.date.replace(/-/g, '/')).getTime();
             if (cmp !== 0) return cmp;
+            if (a.type === 'opening') return -1;
+            if (b.type === 'opening') return 1;
             if (a.type === 'credit' && b.type === 'debit') return -1;
             if (a.type === 'debit' && b.type === 'credit') return 1;
             if (!a.isExpiry && b.isExpiry) return -1;
@@ -1381,31 +1367,24 @@ const LeaveDashboard: React.FC = () => {
             return 0;
         });
 
-        // Compute running balance with 4.0d cap
+        // Compute running balance
         let balance = 0;
         const result: CompLedgerEntry[] = entries.map(e => {
-            let wasCapped = false;
             let rawBal = balance;
             if (e.type === 'opening') {
                 balance = Math.min(4.0, e.amount);
                 rawBal = e.amount;
             } else if (e.type === 'credit') {
                 rawBal = Math.round((balance + e.amount) * 10) / 10;
-                if (rawBal > 4.0) {
-                    wasCapped = true;
-                    balance = 4.0;
-                } else {
-                    balance = rawBal;
-                }
+                balance = rawBal;
             } else if (e.type === 'debit') {
                 rawBal = Math.round((balance - e.amount) * 10) / 10;
-                balance = Math.max(0, rawBal);
+                balance = rawBal;
             }
             return {
                 ...e,
                 runningBalance: balance,
-                rawBalance: rawBal,
-                isCapped: wasCapped
+                rawBalance: rawBal
             };
         });
 
@@ -2326,6 +2305,23 @@ const LeaveDashboard: React.FC = () => {
     const userRulesForDisplay = attendanceSettings ? attendanceSettings[staffCategory] : null;
     const blueLeaveStatus = getBlueLeaveStatusForViewingDate();
 
+    // Month-based Active & Available Compensatory Off calculations as of the selected viewingDate
+    const viewingMonthEndStr = format(endOfMonth(viewingDate), 'yyyy-MM-dd');
+    const compOffActiveDays = (() => {
+        const entriesUpToMonth = compOffLedger.filter(e => e.date <= viewingMonthEndStr);
+        if (entriesUpToMonth.length > 0) {
+            return Math.max(0, entriesUpToMonth[entriesUpToMonth.length - 1].runningBalance);
+        }
+        if (balanceDataState?.compOffActive !== undefined) {
+            return Math.max(0, balanceDataState.compOffActive);
+        }
+        return 0;
+    })();
+
+    const compOffTotalEarned = compOffEarnedBreakup.reduce((sum, item) => sum + item.credit, 0);
+    const compOffPendingDays = Number(balanceDataState?.compOffPending || 0);
+    const compOffAvailableDays = Math.max(0, compOffActiveDays - compOffPendingDays);
+
     const balanceCards = balanceDataState ? [
         { 
             title: 'Earned Leave', 
@@ -2376,8 +2372,8 @@ const LeaveDashboard: React.FC = () => {
         ] : []),
         { 
             title: 'Compensatory Off', 
-            value: `${((balanceDataState.compOffTotal - balanceDataState.compOffUsed - (balanceDataState.compOffPending || 0))).toFixed(1)} / 4`, 
-            description: `Max Capacity: 4d. Available: ${((balanceDataState.compOffTotal - balanceDataState.compOffUsed - (balanceDataState.compOffPending || 0))).toFixed(1)}d.${(balanceDataState.compOffPending || 0) > 0 ? ` (Pending: ${balanceDataState.compOffPending}d)` : ''}`,
+            value: `${compOffAvailableDays % 1 === 0 ? compOffAvailableDays : compOffAvailableDays.toFixed(1)} / 4`, 
+            description: `Max Capacity: 4d. Available: ${compOffAvailableDays % 1 === 0 ? compOffAvailableDays : compOffAvailableDays.toFixed(1)}d.${compOffPendingDays > 0 ? ` (Pending: ${compOffPendingDays}d)` : ''}`,
             icon: CalendarClock,
             isExpired: balanceDataState.expiryStates?.compOff,
             isHidden: isTechnicalRole(user?.role) || isProbation,
@@ -3722,7 +3718,7 @@ const LeaveDashboard: React.FC = () => {
                                 <Eye className={`w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 ${compModalTab === 'earned' ? 'opacity-100' : 'opacity-60 group-hover:opacity-100'}`} />
                             </div>
                             <span className="text-lg sm:text-xl md:text-2xl font-black text-emerald-900 dark:text-emerald-100 block">
-                                {((balanceDataState?.compOffTotal || 0)).toFixed(1)}d
+                                {compOffTotalEarned.toFixed(1)}d
                             </span>
                             <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold block mt-0.5">
                                 View Credits & Grants
@@ -3768,7 +3764,7 @@ const LeaveDashboard: React.FC = () => {
                                 <Eye className={`w-3.5 h-3.5 text-blue-600 dark:text-blue-400 ${compModalTab === 'balance' ? 'opacity-100' : 'opacity-60 group-hover:opacity-100'}`} />
                             </div>
                             <span className="text-lg sm:text-xl md:text-2xl font-black text-blue-900 dark:text-blue-100 block">
-                                {(((balanceDataState?.compOffTotal || 0) - (balanceDataState?.compOffUsed || 0) - (balanceDataState?.compOffPending || 0))).toFixed(1)}d
+                                {compOffAvailableDays.toFixed(1)}d
                             </span>
                             <span className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold block mt-0.5">
                                 View Balance Ledger
@@ -3788,7 +3784,7 @@ const LeaveDashboard: React.FC = () => {
                             }`}
                         >
                             <Eye className="w-3.5 h-3.5" />
-                            <span>Earned Break Up ({((balanceDataState?.compOffTotal || 0)).toFixed(1)}d)</span>
+                            <span>Earned Break Up ({compOffTotalEarned.toFixed(1)}d)</span>
                         </button>
                         <button
                             type="button"
@@ -3812,7 +3808,7 @@ const LeaveDashboard: React.FC = () => {
                             }`}
                         >
                             <Eye className="w-3.5 h-3.5" />
-                            <span>Balance Tracker ({(((balanceDataState?.compOffTotal || 0) - (balanceDataState?.compOffUsed || 0) - (balanceDataState?.compOffPending || 0))).toFixed(1)}d)</span>
+                            <span>Balance Tracker ({compOffAvailableDays.toFixed(1)}d)</span>
                         </button>
                     </div>
 
@@ -3825,25 +3821,24 @@ const LeaveDashboard: React.FC = () => {
                                     <div className="flex items-center gap-2">
                                         <CalendarClock className="w-4 h-4 text-[#44D62C] flex-shrink-0" />
                                         <span className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-white">
-                                            Comp Off Policy & Validity Rules
+                                            Comp Off Policy & Pool Rules
                                         </span>
                                     </div>
                                     <span className="text-[11px] sm:text-xs font-bold px-2.5 py-0.5 rounded-md bg-[#44D62C]/20 text-[#44D62C] border border-[#44D62C]/30 w-fit">
-                                        Max Capacity: 4.0 Days • Carry-Forward: Max 2.0 Days
+                                        Max Pool Capacity: 4.0 Days • Rolling FIFO Replacement (No Time Expiry)
                                     </span>
                                 </div>
                                 <p className="text-xs text-slate-600 dark:text-white/80 leading-relaxed">
-                                    Compensatory Off is earned by working on scheduled Weekly Offs (Sundays) or approved Company Holidays. As per company policy, earned credits are valid for use in the earned month and the following month (<strong>2-month validity window</strong>), can carry forward up to <strong>2.0 days</strong> across months, and the total active pool is capped at a maximum of <strong>4.0 days</strong> at any time.
+                                    Compensatory Off is earned by working on scheduled Weekly Offs (Sundays) or approved Company Holidays. <strong>Credits do not expire based on calendar dates</strong> and carry forward into the active pool. The active pool is strictly capped at a maximum of <strong>4.0 days</strong>—if you earn a new credit while already at the 4.0-day limit, the oldest unused credit expires to maintain the 4.0-day capacity.
                                 </p>
 
                                 {/* Capacity Bar */}
                                 {(() => {
-                                    const availableCompOff = Math.max(0, (balanceDataState?.compOffTotal || 0) - (balanceDataState?.compOffUsed || 0) - (balanceDataState?.compOffPending || 0));
-                                    const capPercent = Math.min(100, (availableCompOff / 4) * 100);
+                                    const capPercent = Math.min(100, (compOffActiveDays / 4) * 100);
                                     return (
                                         <div className="space-y-1.5 pt-1">
                                             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center text-[11px] font-semibold text-slate-500 dark:text-white/70 gap-0.5">
-                                                <span>Current Active Pool: <strong className="text-slate-900 dark:text-white">{availableCompOff.toFixed(1)} days</strong></span>
+                                                <span>Current Active Pool: <strong className="text-slate-900 dark:text-white">{compOffActiveDays.toFixed(1)} days</strong></span>
                                                 <span>Capacity Used: <strong className="text-emerald-600 dark:text-[#44D62C]">{capPercent.toFixed(0)}%</strong> (Max 4d)</span>
                                             </div>
                                             <div className="w-full bg-slate-200 dark:bg-[#092c19] h-2.5 rounded-full overflow-hidden border border-slate-300 dark:border-[#134426]">
@@ -3864,7 +3859,7 @@ const LeaveDashboard: React.FC = () => {
                                         Comp Off Credits & Grants ({compOffEarnedBreakup.length} {compOffEarnedBreakup.length === 1 ? 'entry' : 'entries'})
                                     </h4>
                                     <span className="text-[11px] font-bold text-emerald-600 dark:text-[#44D62C]">
-                                        Total Earned: {((balanceDataState?.compOffTotal || 0)).toFixed(1)}d
+                                        Total Earned: {compOffTotalEarned.toFixed(1)}d
                                     </span>
                                 </div>
                                 {compOffEarnedBreakup.length > 0 ? (
@@ -3878,7 +3873,7 @@ const LeaveDashboard: React.FC = () => {
                                                         <th className="py-2.5 px-3 text-center whitespace-nowrap font-bold text-emerald-600 dark:text-[#44D62C]">Credit</th>
                                                         <th className="py-2.5 px-3">Occasion / Source</th>
                                                         <th className="py-2.5 px-3">Attendance & Hours</th>
-                                                        <th className="py-2.5 px-3 whitespace-nowrap">Valid Until</th>
+                                                        <th className="py-2.5 px-3 whitespace-nowrap">Validity Rule</th>
                                                         <th className="py-2.5 px-3 text-center whitespace-nowrap">Status & Details</th>
                                                     </tr>
                                                 </thead>
@@ -3965,7 +3960,7 @@ const LeaveDashboard: React.FC = () => {
                                                         </p>
                                                         {item.validUntil && (
                                                             <div className="text-[10px] text-slate-500 dark:text-white/60 flex items-center justify-between mt-1 pt-1 border-t border-slate-100 dark:border-white/5">
-                                                                <span>Valid Until:</span>
+                                                                <span>Validity:</span>
                                                                 <strong className="text-slate-700 dark:text-white/80">{item.validUntil}</strong>
                                                             </div>
                                                         )}
