@@ -1,0 +1,1718 @@
+{
+  "JANHAVI SHELTER": {
+    "total": 9,
+    "departments": {
+      "mep": 2,
+      "housekeeping": 6,
+      "garden": 0,
+      "security": 0,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "SOBHA CITY MYKONOS": {
+    "total": 25,
+    "departments": {
+      "mep": 7,
+      "housekeeping": 13,
+      "garden": 3,
+      "security": 0,
+      "administration": 2,
+      "other": 0
+    }
+  },
+  "MANTRI ELEGANCE": {
+    "total": 36,
+    "departments": {
+      "mep": 10,
+      "housekeeping": 17,
+      "garden": 5,
+      "security": 0,
+      "administration": 3,
+      "other": 1
+    }
+  },
+  "AHAD EUPHORIA": {
+    "total": 36,
+    "departments": {
+      "mep": 11,
+      "housekeeping": 20,
+      "garden": 3,
+      "security": 0,
+      "administration": 2,
+      "other": 0
+    }
+  },
+  "SOBHA DEW FLOWER": {
+    "total": 35,
+    "departments": {
+      "mep": 8,
+      "housekeeping": 17,
+      "garden": 7,
+      "security": 0,
+      "administration": 3,
+      "other": 0
+    }
+  },
+  "SHRIRAM SMRITHI": {
+    "total": 96,
+    "departments": {
+      "mep": 13,
+      "housekeeping": 38,
+      "garden": 9,
+      "security": 31,
+      "administration": 4,
+      "other": 1
+    }
+  },
+  "ASSETZ SOUL AND SOIL - PHASE I & II": {
+    "total": 35.5,
+    "departments": {
+      "mep": 8,
+      "housekeeping": 7,
+      "garden": 3,
+      "security": 15.5,
+      "administration": 1,
+      "other": 1
+    }
+  },
+  "NVT OPEN SKY": {
+    "total": 2,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 1,
+      "garden": 1,
+      "security": 0,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "NVT SYMPHONY OF ORCHIDS": {
+    "total": 4,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 4,
+      "garden": 0,
+      "security": 0,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "AZVEN BREATHE": {
+    "total": 18,
+    "departments": {
+      "mep": 3,
+      "housekeeping": 5,
+      "garden": 9,
+      "security": 0,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "STERLING TERRACES": {
+    "total": 32,
+    "departments": {
+      "mep": 6,
+      "housekeeping": 17,
+      "garden": 5,
+      "security": 0,
+      "administration": 3,
+      "other": 1
+    }
+  },
+  "BRIGADE OMEGA": {
+    "total": 26,
+    "departments": {
+      "mep": 5,
+      "housekeeping": 17,
+      "garden": 0,
+      "security": 0,
+      "administration": 3,
+      "other": 1
+    }
+  },
+  "SJR VERITY": {
+    "total": 19,
+    "departments": {
+      "mep": 3,
+      "housekeeping": 13,
+      "garden": 2,
+      "security": 0,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "Artisane Forest Breeze": {
+    "total": 24,
+    "departments": {
+      "mep": 4,
+      "housekeeping": 9,
+      "garden": 2,
+      "security": 8,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "DSR EDEN GREENS": {
+    "total": 20,
+    "departments": {
+      "mep": 2,
+      "housekeeping": 6,
+      "garden": 1,
+      "security": 9,
+      "administration": 1,
+      "other": 1
+    }
+  },
+  "OAKYARD": {
+    "total": 13,
+    "departments": {
+      "mep": 3,
+      "housekeeping": 9,
+      "garden": 0,
+      "security": 0,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "PRESTIGE ST.JOHN'S\u00a0WOOD": {
+    "total": 7,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 0,
+      "garden": 7,
+      "security": 0,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "SUBHA ELAN": {
+    "total": 9,
+    "departments": {
+      "mep": 3,
+      "housekeeping": 5,
+      "garden": 1,
+      "security": 0,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "SOBHA MORZARIA": {
+    "total": 24,
+    "departments": {
+      "mep": 6,
+      "housekeeping": 12,
+      "garden": 4,
+      "security": 0,
+      "administration": 1,
+      "other": 1
+    }
+  },
+  "SNN GREENBAY": {
+    "total": 57,
+    "departments": {
+      "mep": 10,
+      "housekeeping": 42,
+      "garden": 0,
+      "security": 0,
+      "administration": 5,
+      "other": 0
+    }
+  },
+  "DSR WOODWINDS": {
+    "total": 21,
+    "departments": {
+      "mep": 8,
+      "housekeeping": 9,
+      "garden": 1,
+      "security": 0,
+      "administration": 2,
+      "other": 1
+    }
+  },
+  "PURVA SUNSHINE": {
+    "total": 16,
+    "departments": {
+      "mep": 5,
+      "housekeeping": 8,
+      "garden": 1,
+      "security": 0,
+      "administration": 2,
+      "other": 0
+    }
+  },
+  "SHRIRAM SIGNIAA": {
+    "total": 24,
+    "departments": {
+      "mep": 6,
+      "housekeeping": 12,
+      "garden": 5,
+      "security": 0,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "GINA SHALOM": {
+    "total": 21,
+    "departments": {
+      "mep": 5,
+      "housekeeping": 6,
+      "garden": 1,
+      "security": 8,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "SNN SPIRITUA": {
+    "total": 16,
+    "departments": {
+      "mep": 4,
+      "housekeeping": 4,
+      "garden": 1,
+      "security": 6,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "SNN SPIRITUA PROJECT": {
+    "total": 1,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 1,
+      "garden": 0,
+      "security": 0,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "THE LAKE VIEW ADDRESS": {
+    "total": 25,
+    "departments": {
+      "mep": 8,
+      "housekeeping": 6,
+      "garden": 9,
+      "security": 0,
+      "administration": 2,
+      "other": 0
+    }
+  },
+  "NVT VAKSANA": {
+    "total": 14,
+    "departments": {
+      "mep": 4,
+      "housekeeping": 4,
+      "garden": 4,
+      "security": 0,
+      "administration": 1,
+      "other": 1
+    }
+  },
+  "ARATT MILANO": {
+    "total": 8,
+    "departments": {
+      "mep": 1,
+      "housekeeping": 5,
+      "garden": 1,
+      "security": 0,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "ARATT AERIS": {
+    "total": 16,
+    "departments": {
+      "mep": 5,
+      "housekeeping": 8,
+      "garden": 1,
+      "security": 0,
+      "administration": 1,
+      "other": 1
+    }
+  },
+  "PALIWAL (TITANIUM)": {
+    "total": 40,
+    "departments": {
+      "mep": 14,
+      "housekeeping": 8,
+      "garden": 1,
+      "security": 14,
+      "administration": 2,
+      "other": 1
+    }
+  },
+  "FICO": {
+    "total": 5,
+    "departments": {
+      "mep": 5,
+      "housekeeping": 0,
+      "garden": 0,
+      "security": 0,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "SNN JAYANAGAR OFFICE": {
+    "total": 6,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 6,
+      "garden": 0,
+      "security": 0,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "MANTRI PREMERO": {
+    "total": 7,
+    "departments": {
+      "mep": 4,
+      "housekeeping": 0,
+      "garden": 1,
+      "security": 0,
+      "administration": 1,
+      "other": 1
+    }
+  },
+  "VAISHNAVI TERRACES": {
+    "total": 40,
+    "departments": {
+      "mep": 12,
+      "housekeeping": 23,
+      "garden": 4,
+      "security": 0,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "NCC ASTER PARK": {
+    "total": 38,
+    "departments": {
+      "mep": 9,
+      "housekeeping": 10,
+      "garden": 3,
+      "security": 14,
+      "administration": 2,
+      "other": 0
+    }
+  },
+  "NATIONAL PUBLIC SCHOOL MARATHAHALLI": {
+    "total": 23,
+    "departments": {
+      "mep": 1,
+      "housekeeping": 21,
+      "garden": 0,
+      "security": 0,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "NATIONAL PUBLIC SCHOOL WHITEFIELD": {
+    "total": 61,
+    "departments": {
+      "mep": 1,
+      "housekeeping": 58,
+      "garden": 0,
+      "security": 0,
+      "administration": 1,
+      "other": 1
+    }
+  },
+  "NATIONAL PUBLIC SCHOOL - SARJAPUR": {
+    "total": 31,
+    "departments": {
+      "mep": 1,
+      "housekeeping": 29,
+      "garden": 0,
+      "security": 0,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "KOLTE PATIL MIRABILIS": {
+    "total": 34,
+    "departments": {
+      "mep": 8,
+      "housekeeping": 20,
+      "garden": 5,
+      "security": 0,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "PURVA SEASONS": {
+    "total": 18,
+    "departments": {
+      "mep": 13,
+      "housekeeping": 0,
+      "garden": 0,
+      "security": 0,
+      "administration": 5,
+      "other": 0
+    }
+  },
+  "BOLLINENI SILAS": {
+    "total": 56,
+    "departments": {
+      "mep": 8,
+      "housekeeping": 15,
+      "garden": 3,
+      "security": 27,
+      "administration": 2,
+      "other": 1
+    }
+  },
+  "THE COUNTY ADDRESS": {
+    "total": 34,
+    "departments": {
+      "mep": 6,
+      "housekeeping": 5,
+      "garden": 5,
+      "security": 16,
+      "administration": 2,
+      "other": 0
+    }
+  },
+  "ICON SANCTUARY": {
+    "total": 24,
+    "departments": {
+      "mep": 6,
+      "housekeeping": 4,
+      "garden": 2,
+      "security": 10,
+      "administration": 1,
+      "other": 1
+    }
+  },
+  "TRANS INDUS": {
+    "total": 9,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 0,
+      "garden": 0,
+      "security": 9,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "NVT MYSTIC GARDEN": {
+    "total": 11,
+    "departments": {
+      "mep": 3,
+      "housekeeping": 4,
+      "garden": 3,
+      "security": 0,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "NVT ORCHID GARDEN": {
+    "total": 12,
+    "departments": {
+      "mep": 4,
+      "housekeeping": 3,
+      "garden": 3,
+      "security": 0,
+      "administration": 1,
+      "other": 1
+    }
+  },
+  "SUMADURA SILVER RIPPLES": {
+    "total": 35,
+    "departments": {
+      "mep": 12,
+      "housekeeping": 17,
+      "garden": 2,
+      "security": 0,
+      "administration": 3,
+      "other": 1
+    }
+  },
+  "HABITAT ILLUMINAR": {
+    "total": 15,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 15,
+      "garden": 0,
+      "security": 0,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "SOBHA CHRYSANTHEMUM": {
+    "total": 32,
+    "departments": {
+      "mep": 7,
+      "housekeeping": 17,
+      "garden": 4,
+      "security": 0,
+      "administration": 3,
+      "other": 1
+    }
+  },
+  "VAMSI RAM BUILDERS JYOTHI WOODS": {
+    "total": 8,
+    "departments": {
+      "mep": 1,
+      "housekeeping": 5,
+      "garden": 0,
+      "security": 0,
+      "administration": 1,
+      "other": 1
+    }
+  },
+  "GODREJ E CITY": {
+    "total": 43,
+    "departments": {
+      "mep": 12,
+      "housekeeping": 27,
+      "garden": 0,
+      "security": 0,
+      "administration": 4,
+      "other": 0
+    }
+  },
+  "BHUVANA GREENS": {
+    "total": 14,
+    "departments": {
+      "mep": 3,
+      "housekeeping": 8,
+      "garden": 2,
+      "security": 0,
+      "administration": 0,
+      "other": 1
+    }
+  },
+  "RAJA WOODS PARKK": {
+    "total": 20,
+    "departments": {
+      "mep": 4,
+      "housekeeping": 4,
+      "garden": 2,
+      "security": 8,
+      "administration": 1,
+      "other": 1
+    }
+  },
+  "PRESTIGE GARDEN BAY": {
+    "total": 25,
+    "departments": {
+      "mep": 4,
+      "housekeeping": 12,
+      "garden": 7,
+      "security": 0,
+      "administration": 1,
+      "other": 1
+    }
+  },
+  "Essar Precision Engineering": {
+    "total": 2,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 2,
+      "garden": 0,
+      "security": 0,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "SV Grandur": {
+    "total": 11,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 0,
+      "garden": 0,
+      "security": 11,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "GR SANKALPA": {
+    "total": 18,
+    "departments": {
+      "mep": 6,
+      "housekeeping": 8,
+      "garden": 2,
+      "security": 0,
+      "administration": 1,
+      "other": 1
+    }
+  },
+  "MEADOW IN THE SUN": {
+    "total": 20,
+    "departments": {
+      "mep": 5,
+      "housekeeping": 11,
+      "garden": 2,
+      "security": 0,
+      "administration": 1,
+      "other": 1
+    }
+  },
+  "ARVIND SKYLAND": {
+    "total": 40,
+    "departments": {
+      "mep": 5,
+      "housekeeping": 17,
+      "garden": 2,
+      "security": 14,
+      "administration": 2,
+      "other": 0
+    }
+  },
+  "ALANOVILLE- HARYAN & GOYAL CO": {
+    "total": 14,
+    "departments": {
+      "mep": 4,
+      "housekeeping": 4,
+      "garden": 4,
+      "security": 0,
+      "administration": 1,
+      "other": 1
+    }
+  },
+  "HABITAT EDEN HEIGHTS": {
+    "total": 28,
+    "departments": {
+      "mep": 3,
+      "housekeeping": 12,
+      "garden": 0,
+      "security": 12,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "SNN RAJA BAY VISTA": {
+    "total": 2,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 2,
+      "garden": 0,
+      "security": 0,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "SNN RAJ VIVIENTE": {
+    "total": 2,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 2,
+      "garden": 0,
+      "security": 0,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "SNN CLERMONT MARKETING OFFICE": {
+    "total": 2,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 2,
+      "garden": 0,
+      "security": 0,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "42 MARK ONE VILLA": {
+    "total": 24,
+    "departments": {
+      "mep": 5,
+      "housekeeping": 5,
+      "garden": 2,
+      "security": 10,
+      "administration": 1,
+      "other": 1
+    }
+  },
+  "SNN CLERMONT PROJECT": {
+    "total": 2,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 2,
+      "garden": 0,
+      "security": 0,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "SAI KRUPA ELITE": {
+    "total": 10,
+    "departments": {
+      "mep": 1,
+      "housekeeping": 3,
+      "garden": 1,
+      "security": 4,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "GREEN WOOD": {
+    "total": 12,
+    "departments": {
+      "mep": 2,
+      "housekeeping": 7,
+      "garden": 2,
+      "security": 0,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "SAKET COMMERCIAL": {
+    "total": 7,
+    "departments": {
+      "mep": 1,
+      "housekeeping": 5,
+      "garden": 0,
+      "security": 0,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "BRIGADE LABURNUM": {
+    "total": 20,
+    "departments": {
+      "mep": 3,
+      "housekeeping": 6,
+      "garden": 2,
+      "security": 8,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "BASIL WOODS - Lakshmipuram": {
+    "total": 3,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 0,
+      "garden": 0,
+      "security": 3,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "BASIL WOODS - Malleswaram": {
+    "total": 1,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 0,
+      "garden": 0,
+      "security": 1,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "GR GR RESIDENCY": {
+    "total": 11,
+    "departments": {
+      "mep": 3,
+      "housekeeping": 7,
+      "garden": 1,
+      "security": 0,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "BRIGADE JACARANDA": {
+    "total": 25,
+    "departments": {
+      "mep": 2,
+      "housekeeping": 10,
+      "garden": 2,
+      "security": 10,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "ADARSHA PALACE": {
+    "total": 15,
+    "departments": {
+      "mep": 4,
+      "housekeeping": 7,
+      "garden": 3,
+      "security": 0,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "PRIDE PICASA": {
+    "total": 8,
+    "departments": {
+      "mep": 1,
+      "housekeeping": 4,
+      "garden": 1,
+      "security": 0,
+      "administration": 1,
+      "other": 1
+    }
+  },
+  "RAJA PRAKRUTHI": {
+    "total": 11,
+    "departments": {
+      "mep": 3,
+      "housekeeping": 6,
+      "garden": 1,
+      "security": 0,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "SNN ETTERNIA": {
+    "total": 3,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 3,
+      "garden": 0,
+      "security": 0,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "ELAN HOMES": {
+    "total": 32,
+    "departments": {
+      "mep": 6,
+      "housekeeping": 21,
+      "garden": 0,
+      "security": 0,
+      "administration": 4,
+      "other": 1
+    }
+  },
+  "PURVA VENEZIA": {
+    "total": 74,
+    "departments": {
+      "mep": 21,
+      "housekeeping": 43,
+      "garden": 0,
+      "security": 0,
+      "administration": 9,
+      "other": 1
+    }
+  },
+  "MARATT PIMENTO": {
+    "total": 12,
+    "departments": {
+      "mep": 4,
+      "housekeeping": 6,
+      "garden": 1,
+      "security": 0,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "MARAT PIMENTO PROJECT": {
+    "total": 0,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 0,
+      "garden": 0,
+      "security": 0,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "SJR SPENCER": {
+    "total": 17,
+    "departments": {
+      "mep": 3,
+      "housekeeping": 5,
+      "garden": 1,
+      "security": 6,
+      "administration": 1,
+      "other": 1
+    }
+  },
+  "ISKCON TTD": {
+    "total": 2,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 0,
+      "garden": 0,
+      "security": 2,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "BREN PADDINGTON": {
+    "total": 23,
+    "departments": {
+      "mep": 8,
+      "housekeeping": 11,
+      "garden": 2,
+      "security": 0,
+      "administration": 1,
+      "other": 1
+    }
+  },
+  "URBAN GREENS": {
+    "total": 21,
+    "departments": {
+      "mep": 4,
+      "housekeeping": 5,
+      "garden": 3,
+      "security": 8,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "NVT LIFE SQUARE": {
+    "total": 9,
+    "departments": {
+      "mep": 5,
+      "housekeeping": 3,
+      "garden": 0,
+      "security": 0,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "PURVA PALM BEACH": {
+    "total": 107,
+    "departments": {
+      "mep": 17,
+      "housekeeping": 30,
+      "garden": 0,
+      "security": 51,
+      "administration": 5,
+      "other": 4
+    }
+  },
+  "NVT STOPPING BY THE WOOD": {
+    "total": 1,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 1,
+      "garden": 0,
+      "security": 0,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "PRESTIGE NOTTING HILLS": {
+    "total": 21,
+    "departments": {
+      "mep": 6,
+      "housekeeping": 9,
+      "garden": 4,
+      "security": 0,
+      "administration": 2,
+      "other": 0
+    }
+  },
+  "JAIN HEIGHTS": {
+    "total": 30,
+    "departments": {
+      "mep": 3,
+      "housekeeping": 6,
+      "garden": 3,
+      "security": 17,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "SALARPURIA LUXURIA": {
+    "total": 32,
+    "departments": {
+      "mep": 10,
+      "housekeeping": 16,
+      "garden": 2,
+      "security": 0,
+      "administration": 3,
+      "other": 1
+    }
+  },
+  "SNN RAJ LAKEVIEW": {
+    "total": 44,
+    "departments": {
+      "mep": 13,
+      "housekeeping": 26,
+      "garden": 0,
+      "security": 0,
+      "administration": 5,
+      "other": 0
+    }
+  },
+  "GEM PARK": {
+    "total": 16,
+    "departments": {
+      "mep": 3,
+      "housekeeping": 3,
+      "garden": 3,
+      "security": 6,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "MANTRI TRANQUIL": {
+    "total": 73,
+    "departments": {
+      "mep": 22,
+      "housekeeping": 31,
+      "garden": 13,
+      "security": 0,
+      "administration": 6,
+      "other": 1
+    }
+  },
+  "MAHENDRA AARNA": {
+    "total": 44.26,
+    "departments": {
+      "mep": 12.26,
+      "housekeeping": 23,
+      "garden": 5,
+      "security": 0,
+      "administration": 3,
+      "other": 1
+    }
+  },
+  "THE CENTRAL REGENCY": {
+    "total": 14,
+    "departments": {
+      "mep": 7,
+      "housekeeping": 6,
+      "garden": 0,
+      "security": 0,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "RAJA RITZ AVENUE": {
+    "total": 45,
+    "departments": {
+      "mep": 9,
+      "housekeeping": 14,
+      "garden": 4,
+      "security": 16,
+      "administration": 1,
+      "other": 1
+    }
+  },
+  "SNN ESTATE FELICITY": {
+    "total": 6,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 6,
+      "garden": 0,
+      "security": 0,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "VBHC SERENE TOWN": {
+    "total": 10,
+    "departments": {
+      "mep": 3,
+      "housekeeping": 6,
+      "garden": 1,
+      "security": 0,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "ELITA PROMENADE": {
+    "total": 14,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 0,
+      "garden": 14,
+      "security": 0,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "PRESTIGE GULMOHAR": {
+    "total": 41,
+    "departments": {
+      "mep": 7,
+      "housekeeping": 13,
+      "garden": 2,
+      "security": 16,
+      "administration": 3,
+      "other": 0
+    }
+  },
+  "SOBHA SILICON OASIS": {
+    "total": 64,
+    "departments": {
+      "mep": 17,
+      "housekeeping": 31,
+      "garden": 12,
+      "security": 0,
+      "administration": 4,
+      "other": 0
+    }
+  },
+  "SHRIRAM SPURTHI": {
+    "total": 27,
+    "departments": {
+      "mep": 3,
+      "housekeeping": 11,
+      "garden": 1,
+      "security": 11,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "TATA SHERWOOD": {
+    "total": 36,
+    "departments": {
+      "mep": 11,
+      "housekeeping": 13,
+      "garden": 8,
+      "security": 0,
+      "administration": 3,
+      "other": 1
+    }
+  },
+  "PRESTIGE SOUTH RIDGE": {
+    "total": 31,
+    "departments": {
+      "mep": 8,
+      "housekeeping": 14,
+      "garden": 8,
+      "security": 0,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "UL INDIA": {
+    "total": 5,
+    "departments": {
+      "mep": 4,
+      "housekeeping": 0,
+      "garden": 0,
+      "security": 0,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "CITILIGHT": {
+    "total": 23,
+    "departments": {
+      "mep": 3,
+      "housekeeping": 7,
+      "garden": 2,
+      "security": 10,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "NIKOO HOMES": {
+    "total": 178,
+    "departments": {
+      "mep": 31,
+      "housekeeping": 50,
+      "garden": 12,
+      "security": 72,
+      "administration": 12,
+      "other": 1
+    }
+  },
+  "MJ AMADEUS": {
+    "total": 22,
+    "departments": {
+      "mep": 6,
+      "housekeeping": 11,
+      "garden": 3,
+      "security": 0,
+      "administration": 2,
+      "other": 0
+    }
+  },
+  "GARDEN MANSION": {
+    "total": 6,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 0,
+      "garden": 0,
+      "security": 6,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "KESHAV SETLUR": {
+    "total": 2,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 0,
+      "garden": 0,
+      "security": 2,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "MANIKCHAND": {
+    "total": 14,
+    "departments": {
+      "mep": 4,
+      "housekeeping": 8,
+      "garden": 1,
+      "security": 0,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "BRIGADE BRICKLANE": {
+    "total": 29,
+    "departments": {
+      "mep": 8,
+      "housekeeping": 15,
+      "garden": 4,
+      "security": 0,
+      "administration": 2,
+      "other": 0
+    }
+  },
+  "42 ESTATES QUEENS SQUARE": {
+    "total": 17,
+    "departments": {
+      "mep": 7,
+      "housekeeping": 5,
+      "garden": 3,
+      "security": 0,
+      "administration": 1,
+      "other": 1
+    }
+  },
+  "SRI KUMARAN CHILDREN'S HOME": {
+    "total": 19,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 19,
+      "garden": 0,
+      "security": 0,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "MAHINDRA WINDCHIMES": {
+    "total": 63,
+    "departments": {
+      "mep": 11,
+      "housekeeping": 21,
+      "garden": 4,
+      "security": 21,
+      "administration": 4,
+      "other": 2
+    }
+  },
+  "AKSHAYA PATRA - ISKCON": {
+    "total": 3,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 0,
+      "garden": 0,
+      "security": 3,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "ADVAITHA AKSHA": {
+    "total": 22,
+    "departments": {
+      "mep": 5,
+      "housekeeping": 13,
+      "garden": 2,
+      "security": 0,
+      "administration": 2,
+      "other": 0
+    }
+  },
+  "SHRIRAM CHIRPING WOODS": {
+    "total": 15,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 0,
+      "garden": 0,
+      "security": 15,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "CITRUS TRAIL FARM & KITCHEN": {
+    "total": 10,
+    "departments": {
+      "mep": 1,
+      "housekeeping": 0,
+      "garden": 3,
+      "security": 5,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "CHANEL INDIA PVT LTD": {
+    "total": 2,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 2,
+      "garden": 0,
+      "security": 0,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "ARYA HAMSA": {
+    "total": 12,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 0,
+      "garden": 0,
+      "security": 12,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "RAJA FOUR SQUARES": {
+    "total": 5,
+    "departments": {
+      "mep": 1,
+      "housekeeping": 2,
+      "garden": 0,
+      "security": 2,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "NVT OIKOS": {
+    "total": 2,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 1,
+      "garden": 1,
+      "security": 0,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "THE IMPERIAL ADDRESS": {
+    "total": 7,
+    "departments": {
+      "mep": 1,
+      "housekeeping": 3,
+      "garden": 0,
+      "security": 0,
+      "administration": 2,
+      "other": 1
+    }
+  },
+  "WYZMINDZ SOLUTIONS": {
+    "total": 4,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 3,
+      "garden": 0,
+      "security": 1,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "TRASCCON": {
+    "total": 15,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 7,
+      "garden": 0,
+      "security": 8,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "NADATHUR FAME INDIA": {
+    "total": 26,
+    "departments": {
+      "mep": 1,
+      "housekeeping": 16,
+      "garden": 0,
+      "security": 8,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "SNN DUOMONT": {
+    "total": 3,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 3,
+      "garden": 0,
+      "security": 0,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "VRINDHAVAN - PG": {
+    "total": 1,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 0,
+      "garden": 0,
+      "security": 1,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "LAKSHMI ENTERPRISES": {
+    "total": 11,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 4,
+      "garden": 0,
+      "security": 7,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "SUNNY GROVE": {
+    "total": 7,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 2,
+      "garden": 0,
+      "security": 4,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "URBAN SERENITY": {
+    "total": 4,
+    "departments": {
+      "mep": 4,
+      "housekeeping": 0,
+      "garden": 0,
+      "security": 0,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "THE PROMONT HOUSING": {
+    "total": 48.5,
+    "departments": {
+      "mep": 12.5,
+      "housekeeping": 21,
+      "garden": 8,
+      "security": 0,
+      "administration": 5,
+      "other": 2
+    }
+  },
+  "ARTISANE\u00a0PROJECTS": {
+    "total": 8,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 0,
+      "garden": 0,
+      "security": 8,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "UBER VERDANT PHASE 2": {
+    "total": 66,
+    "departments": {
+      "mep": 8,
+      "housekeeping": 27,
+      "garden": 0,
+      "security": 30,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "BLUE WATERS BY SJR PRIME CORP": {
+    "total": 39,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 32,
+      "garden": 7,
+      "security": 0,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "ISKCON VAIKUNTA HILL": {
+    "total": 4,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 0,
+      "garden": 0,
+      "security": 4,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "BIRLA ALOKYA": {
+    "total": 50,
+    "departments": {
+      "mep": 8,
+      "housekeeping": 16,
+      "garden": 6,
+      "security": 17,
+      "administration": 2,
+      "other": 1
+    }
+  },
+  "HABITAT AURA": {
+    "total": 8,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 0,
+      "garden": 0,
+      "security": 8,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "KOLTE PATIL I TOWERS": {
+    "total": 30,
+    "departments": {
+      "mep": 8,
+      "housekeeping": 17,
+      "garden": 2,
+      "security": 0,
+      "administration": 2,
+      "other": 1
+    }
+  },
+  "GK ISPATS PVT LTD": {
+    "total": 9,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 0,
+      "garden": 0,
+      "security": 9,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "AIKYAM - RAMESHWARAM CAFE": {
+    "total": 13,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 0,
+      "garden": 0,
+      "security": 13,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "NVT A WONDERFUL WORLD": {
+    "total": 3,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 3,
+      "garden": 0,
+      "security": 0,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "BLUEJAY ASTER": {
+    "total": 12,
+    "departments": {
+      "mep": 2,
+      "housekeeping": 4,
+      "garden": 1,
+      "security": 4,
+      "administration": 1,
+      "other": 0
+    }
+  },
+  "AUGUST PARK": {
+    "total": 31,
+    "departments": {
+      "mep": 7,
+      "housekeeping": 10,
+      "garden": 3,
+      "security": 9,
+      "administration": 1,
+      "other": 1
+    }
+  },
+  "PRAMUKH MM MERIDIAN": {
+    "total": 35,
+    "departments": {
+      "mep": 6,
+      "housekeeping": 13,
+      "garden": 2,
+      "security": 11,
+      "administration": 2,
+      "other": 1
+    }
+  },
+  "HEBBAL INFRA SPACE": {
+    "total": 7,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 7,
+      "garden": 0,
+      "security": 0,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "SNN BELLAHALLI": {
+    "total": 4,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 4,
+      "garden": 0,
+      "security": 0,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "PRESTIGE OASIS": {
+    "total": 59,
+    "departments": {
+      "mep": 10,
+      "housekeeping": 13,
+      "garden": 34,
+      "security": 0,
+      "administration": 2,
+      "other": 0
+    }
+  },
+  "BRIGADE CORNERSTONE UTOPIA - SERENE": {
+    "total": 89,
+    "departments": {
+      "mep": 14,
+      "housekeeping": 33,
+      "garden": 2,
+      "security": 34,
+      "administration": 5,
+      "other": 1
+    }
+  },
+  "KRISHVI WISTERIA": {
+    "total": 7,
+    "departments": {
+      "mep": 2,
+      "housekeeping": 4,
+      "garden": 1,
+      "security": 0,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "NVT WHISPERING HUES": {
+    "total": 1,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 1,
+      "garden": 0,
+      "security": 0,
+      "administration": 0,
+      "other": 0
+    }
+  },
+  "GLOBAL EDIFICE INFRA": {
+    "total": 8,
+    "departments": {
+      "mep": 0,
+      "housekeeping": 3,
+      "garden": 0,
+      "security": 5,
+      "administration": 0,
+      "other": 0
+    }
+  }
+}

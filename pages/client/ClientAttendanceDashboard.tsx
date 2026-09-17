@@ -49,6 +49,17 @@ import { isAdmin } from '../../utils/auth';
 import { MailReportModal, type MailReportPayload, type MailReportFilterSummary } from '../../components/attendance/MailReportModal';
 import type { SiteResponsibilityMatrix } from '../../types/siteRouting';
 import { INITIAL_SITE_RESPONSIBILITY_DATA } from '../../data/initialSiteResponsibilityData';
+import {
+  DepartmentKey,
+  DEPARTMENT_METAS,
+  getEmployeeDepartment,
+  calculateDepartmentStats
+} from '../../utils/departmentMapping';
+import {
+  getSiteDeployment,
+  calculateDynamicDeployment,
+  ALL_SITES_DEPLOYMENT
+} from '../../data/siteDeploymentData';
 
 // Helper to check if an employee department/site string matches a matrix site name
 function matchSiteName(dept: string, matrixSiteName: string): boolean {
@@ -688,6 +699,7 @@ const ClientAttendanceDashboard: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('Present');
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
   const [shiftFilter, setShiftFilter] = useState<string>('all');
+  const [selectedDeptCard, setSelectedDeptCard] = useState<DepartmentKey | 'all'>('all');
   const [deviceStatusFilter, setDeviceStatusFilter] = useState<'all' | 'online' | 'offline'>('all');
   const [showDevicePanel, setShowDevicePanel] = useState(false);
   const [showMonthDetailsPanel, setShowMonthDetailsPanel] = useState(false);
@@ -3125,10 +3137,33 @@ const DetailedAuditReportView: React.FC<{
     return Array.from(set).sort();
   }, [processedEmployees]);
 
-  // Reset page when filters/search/date change
+  // Computed department-wise attendance stats (Option A matrix) reacting to site filter, overrides, and Excel deployment records
+  const departmentStats = useMemo(() => {
+    if (!processedEmployees.length) return null;
+    const targetEmps = departmentFilter === 'all'
+      ? processedEmployees
+      : processedEmployees.filter(e => {
+          const override = empOverrides[e.empCode];
+          const site = override?.site ?? e.department;
+          return site === departmentFilter || site.toLowerCase().trim() === departmentFilter.toLowerCase().trim();
+        });
+
+    const empsWithOverrides = targetEmps.map(e => {
+      const override = empOverrides[e.empCode];
+      return override?.designation ? { ...e, designation: override.designation } : e;
+    });
+
+    const siteDeployment = departmentFilter === 'all'
+      ? (selectedOpsManager !== 'all' ? calculateDynamicDeployment(departmentList) : ALL_SITES_DEPLOYMENT)
+      : getSiteDeployment(departmentFilter);
+
+    return calculateDepartmentStats(empsWithOverrides, siteDeployment?.departments);
+  }, [processedEmployees, departmentFilter, empOverrides, selectedOpsManager, departmentList]);
+
+  // Reset page when filters/search/date/department-card change
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, statusFilter, departmentFilter, shiftFilter, sortKey, sortDir, selectedDate, columnFilters]);
+  }, [search, statusFilter, departmentFilter, shiftFilter, selectedDeptCard, sortKey, sortDir, selectedDate, columnFilters]);
 
   // Computed 7-day trend respecting site access control & active workforce filtering
   const accessibleTrend = useMemo(() => {
@@ -3290,7 +3325,10 @@ const DetailedAuditReportView: React.FC<{
           }
         }
 
-        return matchSearch && matchStatus && matchDept && matchSite && matchCompany && matchLocation && matchRole && matchEmployee && matchRecordType && matchShift;
+        const effectiveDesignation = empOverrides[e.empCode]?.designation ?? e.designation;
+        const matchDeptCard = selectedDeptCard === 'all' || getEmployeeDepartment({ designation: effectiveDesignation, empCode: e.empCode, department: e.department }) === selectedDeptCard;
+
+        return matchSearch && matchStatus && matchDept && matchSite && matchCompany && matchLocation && matchRole && matchEmployee && matchRecordType && matchShift && matchDeptCard;
       })
       .sort((a, b) => {
         const aVal = (a[sortKey] ?? '').toString();
@@ -3299,7 +3337,7 @@ const DetailedAuditReportView: React.FC<{
         if (sortDir === 'asc') return aVal < bVal ? -1 : 1;
         return aVal > bVal ? -1 : 1;
       });
-  }, [processedEmployees, search, statusFilter, departmentFilter, siteFilter, companyFilter, locationFilter, roleFilter, employeeFilter, recordTypeFilter, shiftFilter, activeFilterSets, empOverrides, sortKey, sortDir]);
+  }, [processedEmployees, search, statusFilter, departmentFilter, siteFilter, companyFilter, locationFilter, roleFilter, employeeFilter, recordTypeFilter, shiftFilter, selectedDeptCard, activeFilterSets, empOverrides, sortKey, sortDir]);
 
   // Paginated employees (50 per page)
   const totalPages = Math.max(1, Math.ceil(filteredEmployees.length / pageSize));
@@ -6761,6 +6799,151 @@ const DetailedAuditReportView: React.FC<{
         })()}
       </div>
 
+      {/* ── DEPARTMENT-WISE WORKFORCE & ATTENDANCE SUMMARY (Option A Matrix) ── */}
+      <div className="bg-white dark:bg-[#072415] rounded-2xl border border-slate-200/80 dark:border-[#134426] p-4 sm:p-5 shadow-xs space-y-3.5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-slate-100 dark:border-[#134426]">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-[#0d3820] flex items-center justify-center text-emerald-700 dark:text-[#44D62C] font-bold text-sm shrink-0 border border-emerald-200 dark:border-[#1a5532]">
+              <Building2 size={16} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="font-extrabold text-slate-900 dark:text-white text-xs sm:text-sm uppercase tracking-wider">
+                  Department-wise Attendance Breakdown
+                </h2>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-[#44D62C] border border-emerald-200 dark:border-emerald-800">
+                  Present Day vs Deployment
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-emerald-300/70">
+                Present Day Count against Deployed Staff Strength. Click any department card below to filter the employee list.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            {selectedDeptCard !== 'all' && (
+              <button
+                type="button"
+                onClick={() => setSelectedDeptCard('all')}
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-[#0d3820] dark:text-emerald-200 dark:hover:bg-[#1a5532] border border-slate-200 dark:border-[#1a5532] transition-all cursor-pointer shadow-xs active:scale-95"
+              >
+                <X size={13} className="text-slate-500 dark:text-emerald-400" />
+                <span>Reset ({DEPARTMENT_METAS[selectedDeptCard]?.shortLabel})</span>
+              </button>
+            )}
+            <span className="text-[11px] font-semibold text-slate-400 dark:text-emerald-400/60 hidden sm:inline">
+              6 Core Departments
+            </span>
+          </div>
+        </div>
+
+        {/* 6 Department Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
+          {(['mep', 'housekeeping', 'garden', 'security', 'administration', 'other'] as DepartmentKey[]).map(k => {
+            const stat = departmentStats ? departmentStats[k] : null;
+            const meta = DEPARTMENT_METAS[k];
+            const isSelected = selectedDeptCard === k;
+            const presentCount = stat ? stat.present : 0;
+            const deploymentCount = stat ? (stat.deployment || stat.totalActive) : 0;
+            const absentCount = stat ? stat.absent : 0;
+            const rate = stat ? stat.attendanceRate : 0;
+            const lateCount = stat ? stat.late : 0;
+
+            return (
+              <button
+                key={k}
+                type="button"
+                onClick={() => {
+                  setSelectedDeptCard(prev => (prev === k ? 'all' : k));
+                  if (tableRef.current) {
+                    tableRef.current.scrollIntoView({ behavior: 'smooth' });
+                  }
+                }}
+                className={`text-left p-3 sm:p-3.5 rounded-xl border transition-all cursor-pointer relative overflow-hidden group active:scale-[0.98] flex flex-col justify-between ${
+                  isSelected
+                    ? 'border-[#006B3F] dark:border-[#44D62C] ring-2 ring-[#006B3F]/25 dark:ring-[#44D62C]/30 shadow-md bg-emerald-50/50 dark:bg-[#0c3821]'
+                    : 'border-slate-200/80 dark:border-[#134426] bg-slate-50/70 dark:bg-[#051c11]/70 hover:bg-slate-100/90 dark:hover:bg-[#0d3820] hover:border-slate-300 dark:hover:border-[#1a5532]'
+                }`}
+                title={`Filter by ${meta.label}: ${presentCount} present out of ${deploymentCount} sanctioned deployment staff`}
+              >
+                <div>
+                  <div className="flex items-center justify-between gap-1.5 mb-1.5">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="text-base sm:text-lg shrink-0">{meta.icon}</span>
+                      <span className="text-xs font-bold text-slate-800 dark:text-emerald-100 truncate">
+                        {meta.shortLabel}
+                      </span>
+                    </div>
+                    <span className={`text-[10px] font-extrabold px-1.5 py-0.2 rounded-md ${meta.badgeBg} ${meta.badgeText} shrink-0`}>
+                      {rate}%
+                    </span>
+                  </div>
+
+                  {/* Main Present / Deployed Counter */}
+                  <div className="mt-1">
+                    <div className="flex items-baseline justify-between gap-1">
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white leading-none">
+                          {presentCount}
+                        </span>
+                        <span className="text-xs font-bold text-slate-400 dark:text-emerald-300/60">
+                          / {deploymentCount}
+                        </span>
+                      </div>
+                      <span className="text-[9px] font-extrabold text-slate-400 dark:text-emerald-400/70 uppercase tracking-tight">
+                        Present / Deployed
+                      </span>
+                    </div>
+
+                    {/* Explicit Present Day vs Deployment count badges */}
+                    <div className="mt-1.5 flex items-center justify-between text-[10px] font-medium bg-slate-100/90 dark:bg-[#041b0f] px-2 py-0.5 rounded-md border border-slate-200/60 dark:border-[#134426]">
+                      <span className="text-emerald-700 dark:text-[#44D62C] font-bold">
+                        Present Day: <strong>{presentCount}</strong>
+                      </span>
+                      <span className="text-slate-300 dark:text-emerald-400/30 font-bold">•</span>
+                      <span className="text-slate-700 dark:text-emerald-200 font-bold">
+                        Deployment: <strong>{deploymentCount}</strong>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Progress bar */}
+                  <div className="w-full bg-slate-200/80 dark:bg-slate-800/80 h-1.5 rounded-full overflow-hidden mt-2">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        rate >= 80
+                          ? 'bg-emerald-500'
+                          : rate >= 50
+                          ? 'bg-amber-500'
+                          : 'bg-red-500'
+                      }`}
+                      style={{ width: `${Math.min(100, Math.max(presentCount > 0 ? 5 : 0, rate))}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between text-[10px] font-semibold text-slate-500 dark:text-emerald-300/60 mt-2.5 pt-1.5 border-t border-slate-200/60 dark:border-[#134426]/70">
+                  <span className="text-red-500 dark:text-red-400 font-medium">
+                    {absentCount} Absent
+                  </span>
+                  {lateCount > 0 && (
+                    <span className="text-amber-600 dark:text-amber-400 font-bold">
+                      {lateCount} Late
+                    </span>
+                  )}
+                  {isSelected && (
+                    <span className="text-[#006B3F] dark:text-[#44D62C] font-extrabold flex items-center gap-0.5">
+                      ✓ Filtered
+                    </span>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* ── PRESENT MONTH ATTENDANCE DETAILS PANEL (collapsible) ───────────────────────── */}
       {showMonthDetailsPanel && (
         <div className="bg-white dark:bg-[#072415] rounded-2xl border border-slate-200/80 dark:border-[#134426] shadow-xs overflow-hidden p-5 space-y-4 animate-in fade-in duration-200">
@@ -7013,6 +7196,20 @@ const DetailedAuditReportView: React.FC<{
                   ({filteredEmployees.length} of {data?.employees.length ?? 0})
                 </span>
               )}
+              {selectedDeptCard !== 'all' && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-[#44D62C] border border-emerald-300 dark:border-emerald-800 animate-in fade-in">
+                  <span>{DEPARTMENT_METAS[selectedDeptCard]?.icon}</span>
+                  <span>Dept: {DEPARTMENT_METAS[selectedDeptCard]?.label}</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDeptCard('all')}
+                    className="ml-1 text-slate-500 hover:text-red-500 dark:hover:text-red-400 font-extrabold cursor-pointer"
+                    title="Clear department filter"
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
             </h2>
 
             {/* Mobile View Mode Switcher (Visible on small screens) */}
@@ -7217,6 +7414,16 @@ const DetailedAuditReportView: React.FC<{
                             )}
                           </span>
                           <span className="text-slate-300 dark:text-[#1a5532]">•</span>
+                          {(() => {
+                            const deptKey = getEmployeeDepartment({ designation: displayDesignation, empCode: emp.empCode, department: emp.department });
+                            const deptMeta = DEPARTMENT_METAS[deptKey];
+                            return (
+                              <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[9px] font-extrabold ${deptMeta.badgeBg} ${deptMeta.badgeText}`}>
+                                <span>{deptMeta.icon}</span>
+                                <span>{deptMeta.shortLabel}</span>
+                              </span>
+                            );
+                          })()}
                           <span className="truncate max-w-[140px] font-medium text-slate-600 dark:text-emerald-300/70">{displayDesignation || 'Staff'}</span>
                         </div>
                       </div>
@@ -7613,24 +7820,34 @@ const DetailedAuditReportView: React.FC<{
                       </td>
 
                       {/* DESIGNATION column — editable */}
-                      <td className="px-4 py-3 text-slate-500 dark:text-emerald-300/80 max-w-[120px]">
-                        <div className="flex items-center gap-1 group/desig">
-                          <span className={`truncate ${override.designation ? 'text-emerald-700 dark:text-[#44D62C] font-semibold' : ''}`}>
-                            {displayDesignation}
-                          </span>
-                          {override.designation && (
-                            <span className="text-[9px] text-emerald-600 font-bold">✏</span>
-                          )}
-                          {isEditable && (
-                            <button
-                              onClick={() => openEditModal(emp)}
-                              className="opacity-0 group-hover/desig:opacity-100 ml-0.5 p-0.5 rounded text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-all cursor-pointer shrink-0"
-                              title="Correct auto-assigned designation"
-                            >
-                              <Pencil size={11} />
-                            </button>
-                          )}
-                        </div>
+                      <td className="px-4 py-3 text-slate-500 dark:text-emerald-300/80 max-w-[160px]">
+                        {(() => {
+                          const deptKey = getEmployeeDepartment({ designation: displayDesignation, empCode: emp.empCode, department: emp.department });
+                          const deptMeta = DEPARTMENT_METAS[deptKey];
+                          return (
+                            <div className="flex items-center gap-1.5 group/desig flex-wrap">
+                              <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[9px] font-extrabold ${deptMeta.badgeBg} ${deptMeta.badgeText} shrink-0`}>
+                                <span>{deptMeta.icon}</span>
+                                <span>{deptMeta.shortLabel}</span>
+                              </span>
+                              <span className={`truncate font-medium text-slate-700 dark:text-emerald-100 ${override.designation ? 'text-emerald-700 dark:text-[#44D62C] font-semibold' : ''}`}>
+                                {displayDesignation}
+                              </span>
+                              {override.designation && (
+                                <span className="text-[9px] text-emerald-600 font-bold">✏</span>
+                              )}
+                              {isEditable && (
+                                <button
+                                  onClick={() => openEditModal(emp)}
+                                  className="opacity-0 group-hover/desig:opacity-100 ml-0.5 p-0.5 rounded text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-all cursor-pointer shrink-0"
+                                  title="Correct auto-assigned designation"
+                                >
+                                  <Pencil size={11} />
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="px-4 py-3 font-mono">
                         {emp.inTime ? (
