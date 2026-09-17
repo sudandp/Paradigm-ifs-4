@@ -13,6 +13,7 @@ import { Document, Page, View, Text, StyleSheet, Image, Font } from '@react-pdf/
 import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
 import { calculateStatsForDateRange, resolveMonthlyDayHeaders, formatDepartment } from '../../utils/attendanceCalculations';
 import { FIXED_HOLIDAYS } from '../../utils/constants';
+import { isSecurityEmployee } from '../../utils/reportLogos';
 
 // Register a standard font if needed, or use defaults
 // Font.register({ family: 'Inter', src: '...' });
@@ -2987,7 +2988,8 @@ export interface DetailedAuditPdfEmployee {
 
 const matrixStyles = StyleSheet.create({
   page: {
-    padding: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
     fontSize: 7,
     fontFamily: 'Helvetica',
     backgroundColor: '#ffffff',
@@ -2996,7 +2998,7 @@ const matrixStyles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
     borderBottomWidth: 1.5,
     borderBottomColor: '#006B3F',
     paddingBottom: 4,
@@ -3014,8 +3016,8 @@ const matrixStyles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#cbd5e1',
     borderRadius: 6,
-    padding: 8,
-    marginBottom: 10,
+    padding: 6,
+    marginBottom: 8,
   },
   empHeader: {
     flexDirection: 'row',
@@ -3071,13 +3073,13 @@ const matrixStyles = StyleSheet.create({
     flexDirection: 'row',
     borderBottomWidth: 0.5,
     borderBottomColor: '#e2e8f0',
-    minHeight: 11,
+    minHeight: 12,
     alignItems: 'center',
   },
   labelCell: {
-    width: 65,
+    width: 58,
     paddingLeft: 3,
-    fontSize: 6,
+    fontSize: 5.5,
     fontWeight: 'bold',
     color: '#334155',
     backgroundColor: '#f1f5f9',
@@ -3087,10 +3089,70 @@ const matrixStyles = StyleSheet.create({
   dayCell: {
     flex: 1,
     textAlign: 'center',
-    fontSize: 5.5,
+    fontSize: 5,
     color: '#1e293b',
     borderRightWidth: 0.5,
     borderRightColor: '#e2e8f0',
+    paddingHorizontal: 0.5,
+  },
+  inTimeCell: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 4.8,
+    fontWeight: 'bold',
+    color: '#166534',
+    borderRightWidth: 0.5,
+    borderRightColor: '#e2e8f0',
+    paddingHorizontal: 0.5,
+  },
+  outTimeCell: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 4.8,
+    fontWeight: 'bold',
+    color: '#1e3a8a',
+    borderRightWidth: 0.5,
+    borderRightColor: '#e2e8f0',
+    paddingHorizontal: 0.5,
+  },
+  timingCell: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 4.8,
+    color: '#334155',
+    borderRightWidth: 0.5,
+    borderRightColor: '#e2e8f0',
+    paddingHorizontal: 0.5,
+  },
+  netWorkedCell: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 4.8,
+    fontWeight: 'bold',
+    color: '#15803d',
+    borderRightWidth: 0.5,
+    borderRightColor: '#e2e8f0',
+    paddingHorizontal: 0.5,
+  },
+  otCell: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 4.8,
+    fontWeight: 'bold',
+    color: '#b45309',
+    borderRightWidth: 0.5,
+    borderRightColor: '#e2e8f0',
+    paddingHorizontal: 0.5,
+  },
+  shiftCell: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 4.5,
+    fontWeight: 'bold',
+    color: '#475569',
+    borderRightWidth: 0.5,
+    borderRightColor: '#e2e8f0',
+    paddingHorizontal: 0.5,
   },
   statsBar: {
     flexDirection: 'row',
@@ -3120,6 +3182,69 @@ const matrixStyles = StyleSheet.create({
   },
 });
 
+/**
+ * Format punch time cleanly to HH:mm (24-hour) for PDF grid so it never overlaps or touches cell borders.
+ */
+export const formatGridTime = (timeStr: string | null | undefined): string => {
+  if (!timeStr || timeStr === '-' || timeStr === '—' || timeStr === 'null' || timeStr.trim() === '') return '-';
+  const clean = timeStr.trim().replace(/[\u2013\u2014]/g, '-');
+  if (clean === '-' || clean === '—') return '-';
+  
+  // 12-hr with AM/PM (e.g. 07:59 am, 07:40 pm, 7:59 PM, 07:59am)
+  const m12 = clean.match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/i);
+  if (m12) {
+    let h = parseInt(m12[1], 10);
+    const m = m12[2];
+    const isPM = m12[3].toLowerCase() === 'pm';
+    if (isPM && h < 12) h += 12;
+    if (!isPM && h === 12) h = 0;
+    return `${String(h).padStart(2, '0')}:${m}`;
+  }
+
+  // 24-hr (e.g. 09:55, 19:48, 9:55)
+  const m24 = clean.match(/^(\d{1,2}):(\d{2})$/);
+  if (m24) {
+    return `${m24[1].padStart(2, '0')}:${m24[2]}`;
+  }
+  
+  return clean;
+};
+
+/**
+ * Format durations cleanly to H:MM so text fits comfortably without clipping or encoding issues.
+ */
+export const formatGridDuration = (durStr: string | null | undefined): string => {
+  if (!durStr || durStr === '-' || durStr === '—' || durStr === 'null' || durStr.trim() === '') return '-';
+  const clean = durStr.trim().replace(/[\u2013\u2014]/g, '-');
+  if (clean === '-' || clean === '—') return '-';
+  
+  // E.g. "11h 41m" -> "11:41"
+  const hmMatch = clean.match(/^(\d+)\s*h\s*(\d+)?\s*m?$/i);
+  if (hmMatch) {
+    const h = hmMatch[1];
+    const m = hmMatch[2] ? hmMatch[2].padStart(2, '0') : '00';
+    return `${h}:${m}`;
+  }
+  
+  return clean;
+};
+
+/**
+ * Format Shift name to a concise code (max 4 chars) so it never spills into neighboring columns.
+ */
+export const formatGridShift = (shiftStr: string | null | undefined): string => {
+  if (!shiftStr || shiftStr === '-' || shiftStr === '—' || shiftStr.trim() === '') return '-';
+  const clean = shiftStr.trim().replace(/[\u2013\u2014]/g, '-');
+  if (clean.length <= 4) return clean;
+  if (/night.*12/i.test(clean)) return 'NS12';
+  if (/day.*12/i.test(clean)) return 'DS12';
+  if (/general/i.test(clean)) return 'GS';
+  if (/night/i.test(clean)) return 'NS';
+  if (/morning/i.test(clean)) return 'MS';
+  if (/evening/i.test(clean)) return 'ES';
+  return clean.slice(0, 4).toUpperCase();
+};
+
 export const DetailedAuditPdfDocument: React.FC<{
   employees: DetailedAuditPdfEmployee[];
   generatedBy?: string;
@@ -3129,32 +3254,43 @@ export const DetailedAuditPdfDocument: React.FC<{
 
   return (
     <Document>
-      {employees.map((emp, empIdx) => (
-        <Page key={`${emp.empCode}-${empIdx}`} size="A4" orientation="landscape" style={matrixStyles.page}>
-          {/* Header */}
-          <View style={matrixStyles.headerRow} fixed>
-            <View>
-              <Text style={matrixStyles.title}>PARADIGM SERVICES™</Text>
-              <Text style={matrixStyles.subtitle}>Detailed Audit Attendance Report (31-Day) · Site: {emp.department}</Text>
-            </View>
-            <View style={{ alignItems: 'flex-end' }}>
-              <Text style={matrixStyles.subtitle}>Billing Cycle: {periodLabel || emp.billingPeriod}</Text>
-              <Text style={{ fontSize: 6, color: '#94a3b8' }}>Generated by: {generatedBy || 'admin@paradigmfms.com'}</Text>
-            </View>
-          </View>
+      {employees.map((emp, empIdx) => {
+        const isSecurity = isSecurityEmployee(emp);
+        const companyTitle = isSecurity ? 'SOUTHWALL SECURITY LLP' : 'PARADIGM SERVICES™';
+        const companyLogo = isSecurity ? '/South-Wall-Logo.png' : '/paradigm-logo.png';
+        const brandColor = isSecurity ? '#0f2942' : '#006B3F';
 
-          {/* Main Card */}
-          <View style={matrixStyles.cardContainer}>
-            {/* Employee Header */}
-            <View style={matrixStyles.empHeader}>
-              <View>
-                <Text style={matrixStyles.empName}>Name : {emp.empName} ({emp.empCode})</Text>
-                <Text style={matrixStyles.metaText}>Role: {emp.designation} | Billing Cycle: {emp.billingPeriod}</Text>
+        return (
+          <Page key={`${emp.empCode}-${empIdx}`} size="A4" orientation="landscape" style={matrixStyles.page}>
+            {/* Header */}
+            <View style={matrixStyles.headerRow} fixed>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Image src={companyLogo} style={{ height: 26, width: 85, objectFit: 'contain' }} />
+                <View>
+                  <Text style={[matrixStyles.title, { color: brandColor }]}>{companyTitle}</Text>
+                  <Text style={matrixStyles.subtitle}>Detailed Audit Attendance Report (31-Day) · Site: {emp.department}</Text>
+                </View>
               </View>
               <View style={{ alignItems: 'flex-end' }}>
-                <Text style={[matrixStyles.metaText, { fontWeight: 'bold', color: '#006B3F' }]}>SITE: {emp.department.toUpperCase()}</Text>
+                <Text style={matrixStyles.subtitle}>Billing Cycle: {periodLabel || emp.billingPeriod}</Text>
+                <Text style={{ fontSize: 6, color: '#94a3b8' }}>Generated by: {generatedBy || 'admin@paradigmfms.com'}</Text>
               </View>
             </View>
+
+            {/* Main Card */}
+            <View style={matrixStyles.cardContainer}>
+              {/* Employee Header */}
+              <View style={matrixStyles.empHeader}>
+                <View>
+                  <Text style={matrixStyles.empName}>Name : {emp.empName} ({emp.empCode})</Text>
+                  <Text style={matrixStyles.metaText}>Role: {emp.designation} | Billing Cycle: {emp.billingPeriod}</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={[matrixStyles.metaText, { fontWeight: 'bold', color: brandColor }]}>
+                    ORG: {companyTitle}  |  SITE: {emp.department.toUpperCase()}
+                  </Text>
+                </View>
+              </View>
 
             {/* Top 5 KPI Cards */}
             <View style={matrixStyles.kpiRow}>
@@ -3196,7 +3332,7 @@ export const DetailedAuditPdfDocument: React.FC<{
               <View style={matrixStyles.gridRow}>
                 <Text style={matrixStyles.labelCell}>Status</Text>
                 {emp.dailyData.map(d => (
-                  <Text key={d.dayNum} style={[matrixStyles.dayCell, { fontWeight: 'bold', color: d.status === 'P' ? '#16a34a' : d.status === 'W/O' ? '#0284c7' : d.status === 'A' ? '#dc2626' : '#64748b' }]}>
+                  <Text key={d.dayNum} style={[matrixStyles.dayCell, { fontWeight: 'bold', color: d.status === 'P' ? '#16a34a' : d.status === 'W/O' ? '#0284c7' : d.status === 'A' ? '#dc2626' : d.status === 'H' ? '#1d4ed8' : '#64748b' }]}>
                     {d.status}
                   </Text>
                 ))}
@@ -3206,7 +3342,7 @@ export const DetailedAuditPdfDocument: React.FC<{
               <View style={matrixStyles.gridRow}>
                 <Text style={matrixStyles.labelCell}>InTime</Text>
                 {emp.dailyData.map(d => (
-                  <Text key={d.dayNum} style={matrixStyles.dayCell}>{d.inTime}</Text>
+                  <Text key={d.dayNum} style={matrixStyles.inTimeCell}>{formatGridTime(d.inTime)}</Text>
                 ))}
               </View>
 
@@ -3214,7 +3350,7 @@ export const DetailedAuditPdfDocument: React.FC<{
               <View style={matrixStyles.gridRow}>
                 <Text style={matrixStyles.labelCell}>OutTime</Text>
                 {emp.dailyData.map(d => (
-                  <Text key={d.dayNum} style={matrixStyles.dayCell}>{d.outTime}</Text>
+                  <Text key={d.dayNum} style={matrixStyles.outTimeCell}>{formatGridTime(d.outTime)}</Text>
                 ))}
               </View>
 
@@ -3222,7 +3358,7 @@ export const DetailedAuditPdfDocument: React.FC<{
               <View style={matrixStyles.gridRow}>
                 <Text style={matrixStyles.labelCell}>Gross Dur</Text>
                 {emp.dailyData.map(d => (
-                  <Text key={d.dayNum} style={matrixStyles.dayCell}>{d.grossDur}</Text>
+                  <Text key={d.dayNum} style={matrixStyles.timingCell}>{formatGridDuration(d.grossDur)}</Text>
                 ))}
               </View>
 
@@ -3230,7 +3366,7 @@ export const DetailedAuditPdfDocument: React.FC<{
               <View style={matrixStyles.gridRow}>
                 <Text style={matrixStyles.labelCell}>Break In</Text>
                 {emp.dailyData.map(d => (
-                  <Text key={d.dayNum} style={matrixStyles.dayCell}>{d.breakIn || '-'}</Text>
+                  <Text key={d.dayNum} style={matrixStyles.timingCell}>{formatGridTime(d.breakIn)}</Text>
                 ))}
               </View>
 
@@ -3238,7 +3374,7 @@ export const DetailedAuditPdfDocument: React.FC<{
               <View style={matrixStyles.gridRow}>
                 <Text style={matrixStyles.labelCell}>Break Out</Text>
                 {emp.dailyData.map(d => (
-                  <Text key={d.dayNum} style={matrixStyles.dayCell}>{d.breakOut || '-'}</Text>
+                  <Text key={d.dayNum} style={matrixStyles.timingCell}>{formatGridTime(d.breakOut)}</Text>
                 ))}
               </View>
 
@@ -3246,7 +3382,7 @@ export const DetailedAuditPdfDocument: React.FC<{
               <View style={matrixStyles.gridRow}>
                 <Text style={matrixStyles.labelCell}>Break Dur</Text>
                 {emp.dailyData.map(d => (
-                  <Text key={d.dayNum} style={matrixStyles.dayCell}>{d.breakDur}</Text>
+                  <Text key={d.dayNum} style={matrixStyles.timingCell}>{formatGridDuration(d.breakDur)}</Text>
                 ))}
               </View>
 
@@ -3254,25 +3390,29 @@ export const DetailedAuditPdfDocument: React.FC<{
               <View style={[matrixStyles.gridRow, { backgroundColor: '#f0fdf4' }]}>
                 <Text style={[matrixStyles.labelCell, { backgroundColor: '#dcfce7', color: '#14532d' }]}>Net worked</Text>
                 {emp.dailyData.map(d => (
-                  <Text key={d.dayNum} style={[matrixStyles.dayCell, { fontWeight: 'bold', color: '#15803d' }]}>{d.netWorked}</Text>
+                  <Text key={d.dayNum} style={matrixStyles.netWorkedCell}>{formatGridDuration(d.netWorked)}</Text>
                 ))}
               </View>
 
               {/* Late By Row */}
               <View style={matrixStyles.gridRow}>
                 <Text style={matrixStyles.labelCell}>Late By</Text>
-                {emp.dailyData.map(d => (
-                  <Text key={d.dayNum} style={[matrixStyles.dayCell, { color: d.lateBy !== '-' ? '#dc2626' : '#94a3b8', fontWeight: d.lateBy !== '-' ? 'bold' : 'normal' }]}>
-                    {d.lateBy}
-                  </Text>
-                ))}
+                {emp.dailyData.map(d => {
+                  const lateVal = formatGridDuration(d.lateBy);
+                  const isLate = lateVal !== '-' && lateVal !== '00:00' && lateVal !== '0:00';
+                  return (
+                    <Text key={d.dayNum} style={[matrixStyles.timingCell, { color: isLate ? '#dc2626' : '#94a3b8', fontWeight: isLate ? 'bold' : 'normal' }]}>
+                      {lateVal}
+                    </Text>
+                  );
+                })}
               </View>
 
               {/* OT Row */}
               <View style={[matrixStyles.gridRow, { backgroundColor: '#fffbeb' }]}>
                 <Text style={[matrixStyles.labelCell, { backgroundColor: '#fef3c7', color: '#78350f' }]}>OT</Text>
                 {emp.dailyData.map(d => (
-                  <Text key={d.dayNum} style={[matrixStyles.dayCell, { fontWeight: 'bold', color: '#b45309' }]}>{d.ot}</Text>
+                  <Text key={d.dayNum} style={matrixStyles.otCell}>{formatGridDuration(d.ot)}</Text>
                 ))}
               </View>
 
@@ -3280,7 +3420,7 @@ export const DetailedAuditPdfDocument: React.FC<{
               <View style={[matrixStyles.gridRow, { backgroundColor: '#f1f5f9' }]}>
                 <Text style={matrixStyles.labelCell}>Shift</Text>
                 {emp.dailyData.map(d => (
-                  <Text key={d.dayNum} style={[matrixStyles.dayCell, { fontWeight: 'bold' }]}>{d.shift}</Text>
+                  <Text key={d.dayNum} style={matrixStyles.shiftCell}>{formatGridShift(d.shift)}</Text>
                 ))}
               </View>
             </View>
@@ -3304,11 +3444,13 @@ export const DetailedAuditPdfDocument: React.FC<{
               <Text style={[matrixStyles.legendBadge, { backgroundColor: '#fef3c7', color: '#b45309' }]}>H/P Holiday Present</Text>
               <Text style={[matrixStyles.legendBadge, { backgroundColor: '#fae8ff', color: '#a21caf' }]}>SL Sick Leave</Text>
               <Text style={[matrixStyles.legendBadge, { backgroundColor: '#f3e8ff', color: '#7e22ce' }]}>EL Earned Leave</Text>
-              <Text style={[matrixStyles.legendBadge, { backgroundColor: '#f1f5f9', color: '#475569' }]}>C/O Comp Off</Text>
             </View>
           </View>
         </Page>
-      ))}
+        );
+      })}
+
     </Document>
   );
 };
+

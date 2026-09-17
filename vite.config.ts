@@ -128,6 +128,155 @@ export default defineConfig({
           let subPath = '/attendance';
           if (path === '/api/mssql-devices') subPath = '/devices';
           if (path === '/api/mssql-update-employee') subPath = '/update-employee';
+          if (path === '/api/mssql-attendance-report') subPath = '/attendance-report';
+
+          // ── Dedicated Multi-Day Attendance Report Handler ──
+          if (path === '/api/mssql-attendance-report') {
+            // 1. First attempt: Direct /attendance-report on candidate bases
+            for (const base of candidateBases) {
+              const targetUrl = `${base}/attendance-report${search}`;
+              try {
+                const fetchRes = await fetch(targetUrl, {
+                  headers: {
+                    'x-api-key': 'paradigm-attendance-secret-2024',
+                    'x-api-secret': 'paradigm-attendance-secret-2024',
+                    'Bypass-Tunnel-Reminder': '1',
+                  },
+                  signal: AbortSignal.timeout(10000),
+                });
+                if (fetchRes.ok) {
+                  const data = await fetchRes.text();
+                  try {
+                    const parsed = JSON.parse(data);
+                    const recCount = parsed?.records ? Object.keys(parsed.records).length : (parsed?.totalEmployees || 0);
+                    if (recCount > 0) {
+                      console.log(`[MSSQL Proxy] ✅ Attendance Report direct via ${targetUrl} (${recCount} employees)`);
+                      res.statusCode = 200;
+                      res.setHeader('Content-Type', 'application/json');
+                      res.setHeader('Access-Control-Allow-Origin', '*');
+                      res.end(data);
+                      return;
+                    } else {
+                      console.log(`[MSSQL Proxy] ℹ️ Direct endpoint returned 0 records for site (${targetUrl}), engaging live multi-date aggregator fallback...`);
+                    }
+                  } catch (_) {
+                    res.statusCode = 200;
+                    res.setHeader('Content-Type', 'application/json');
+                    res.setHeader('Access-Control-Allow-Origin', '*');
+                    res.end(data);
+                    return;
+                  }
+                }
+              } catch {
+                // Direct endpoint fetch failure fallback
+              }
+            }
+
+            // 2. Resilient Fallback: Multi-Date Aggregator via live /attendance?date= endpoint
+            const startDate = urlObj.searchParams.get('startDate') || '2026-09-01';
+            const endDate = urlObj.searchParams.get('endDate') || new Date().toISOString().slice(0, 10);
+            const siteFilter = (urlObj.searchParams.get('site') || urlObj.searchParams.get('siteId') || 'all').toLowerCase().trim();
+
+            const dates: string[] = [];
+            const cur = new Date(startDate);
+            const endD = new Date(endDate);
+            while (cur <= endD) {
+              dates.push(cur.toISOString().slice(0, 10));
+              cur.setDate(cur.getDate() + 1);
+            }
+
+            const liveBase = candidateBases.find(b => !b.includes(':3000')) || 'https://attendance.cctv.rest';
+            console.log(`[MSSQL Report Aggregator] Querying remote server across ${dates.length} days (${startDate} to ${endDate}) via ${liveBase}...`);
+
+            const dayResults = await Promise.all(dates.map(async (d) => {
+              try {
+                const r = await fetch(`${liveBase}/attendance?date=${d}&siteId=all`, {
+                  headers: {
+                    'x-api-key': 'paradigm-attendance-secret-2024',
+                    'x-api-secret': 'paradigm-attendance-secret-2024',
+                    'Bypass-Tunnel-Reminder': '1',
+                  },
+                  signal: AbortSignal.timeout(12000),
+                });
+                if (r.ok) {
+                  const j: any = await r.json();
+                  return { date: d, employees: j.employees || [] };
+                }
+              } catch {
+                // Ignore individual day fetch failure and fallback to empty
+              }
+              return { date: d, employees: [] };
+            }));
+
+            const records: Record<string, any> = {};
+            dayResults.forEach(({ date, employees }) => {
+              employees.forEach((emp: any) => {
+                const code = String(emp.empCode || '').trim();
+                const site = String(emp.department || '').trim();
+
+                if (siteFilter && siteFilter !== 'all') {
+                  const cSite = site.toLowerCase();
+                  const matchesSite = cSite.includes(siteFilter) || siteFilter.includes(cSite);
+                  const matchesUtopiaPrefix = siteFilter.includes('utopia') && (code.startsWith('31') || code.startsWith('32'));
+                  if (!matchesSite && !matchesUtopiaPrefix) {
+                    return;
+                  }
+                }
+
+                if (!records[code]) {
+                  records[code] = {
+                    empCode: code,
+                    empName: emp.empName,
+                    department: site,
+                    designation: emp.designation,
+                    days: {},
+                    summary: { presentDays: 0, absentDays: 0, woDays: 0, lateDays: 0, totalNetMins: 0, totalOtMins: 0 },
+                  };
+                }
+
+                const isPres = emp.status === 'Present' || (emp.inTime && emp.inTime !== '—');
+                const isLate = emp.status === 'Late' || (emp.lateMinutes && emp.lateMinutes > 0);
+
+                let statusStr = 'A';
+                if (isPres) statusStr = 'P';
+                else if (isLate) statusStr = 'L';
+
+                if (isPres || isLate) {
+                  records[code].summary.presentDays++;
+                  if (isLate) records[code].summary.lateDays++;
+                } else {
+                  records[code].summary.absentDays++;
+                }
+
+                records[code].days[date] = {
+                  dateStr: date,
+                  inTime: emp.inTime || '—',
+                  outTime: emp.outTime || '—',
+                  hours: emp.workingHours && emp.workingHours !== '—' ? emp.workingHours : (isPres ? '9h 00m' : '—'),
+                  status: statusStr,
+                  isWeeklyOff: false,
+                  lateMinutes: emp.lateMinutes || 0,
+                };
+              });
+            });
+
+            const empList = Object.values(records);
+            console.log(`[MSSQL Report Aggregator] ✅ Aggregated ${empList.length} employees across ${dates.length} days`);
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.end(JSON.stringify({
+              success: true,
+              startDate,
+              endDate,
+              site: siteFilter,
+              totalEmployees: empList.length,
+              records,
+              employees: empList,
+              lastUpdated: new Date().toISOString(),
+            }));
+            return;
+          }
 
           const attemptLogs: string[] = [];
 

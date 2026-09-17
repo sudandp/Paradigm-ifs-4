@@ -1,7 +1,8 @@
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
-import { saveAs } from 'file-saver';
+import fileSaver from 'file-saver';
+const saveAs = (fileSaver as any)?.saveAs || (fileSaver as any)?.default?.saveAs || fileSaver;
 
 /**
  * Converts a Blob or ArrayBuffer to a Base64 string for Capacitor Filesystem write.

@@ -719,6 +719,302 @@ app.get('/attendance', requireApiKey, async (req, res) => {
   }
 });
 
+// ─── GET /attendance-report — Multi-day / Monthly Report Matrix ───────────
+app.get(['/attendance-report', '/api/attendance-report'], requireApiKey, async (req, res) => {
+  const startDate = (req.query.startDate || '').match(/^\d{4}-\d{2}-\d{2}$/)
+    ? req.query.startDate
+    : new Date().toISOString().slice(0, 8) + '01';
+  const endDate = (req.query.endDate || '').match(/^\d{4}-\d{2}-\d{2}$/)
+    ? req.query.endDate
+    : new Date().toISOString().slice(0, 10);
+  const siteFilter = (req.query.site || req.query.siteId || 'all').trim();
+  const empCodeFilter = (req.query.empCode || '').trim();
+
+  console.log(`[API] GET /attendance-report range=${startDate} to ${endDate}, site=${siteFilter}, emp=${empCodeFilter || 'all'}`);
+
+  try {
+    const p = await getPool();
+
+    // Check if Departments table exists
+    let hasDepts = false;
+    try {
+      const chk = await p.request().query(`SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Departments'`);
+      hasDepts = (chk.recordset && chk.recordset.length > 0);
+    } catch (_) {}
+
+    const selectDept = hasDepts ? `ISNULL(d.DepartmentFName, 'General')` : `'General'`;
+    const joinDept   = hasDepts ? `LEFT JOIN dbo.Departments d WITH (NOLOCK) ON e.DepartmentId = d.DepartmentId` : ``;
+
+    const reqReport = p.request();
+    reqReport.input('startDate', sql.VarChar, startDate);
+    reqReport.input('endDate', sql.VarChar, endDate);
+
+    let extraEmpClause = '';
+    if (empCodeFilter) {
+      reqReport.input('empCodeFilter', sql.VarChar, empCodeFilter);
+      extraEmpClause = `AND LTRIM(RTRIM(CAST(e.EmployeeCode AS VARCHAR(50)))) = @empCodeFilter`;
+    }
+
+    // Query dbo.AttendanceLogs joined with dbo.Employees
+    const attSql = `
+      SELECT 
+        LTRIM(RTRIM(CAST(e.EmployeeCode AS VARCHAR(50)))) AS empCode,
+        e.EmployeeName AS empName,
+        ${selectDept} AS department,
+        ISNULL(e.Designation, 'Staff') AS designation,
+        CONVERT(VARCHAR(10), a.AttendanceDate, 120) AS dateStr,
+        CASE 
+          WHEN a.InTime IS NULL OR a.InTime = '1900-01-01 00:00:00' THEN NULL 
+          ELSE CONVERT(VARCHAR(8), a.InTime, 108) 
+        END AS inTime,
+        CASE 
+          WHEN a.OutTime IS NULL OR a.OutTime = '1900-01-01 00:00:00' THEN NULL 
+          ELSE CONVERT(VARCHAR(8), a.OutTime, 108) 
+        END AS outTime,
+        ISNULL(a.Duration, 0) AS durationMins,
+        ISNULL(a.LateBy, 0) AS lateMinutes,
+        ISNULL(a.OverTime, 0) AS otMinutes,
+        LTRIM(RTRIM(ISNULL(a.Status, 'Absent'))) AS status,
+        LTRIM(RTRIM(ISNULL(a.StatusCode, 'A'))) AS statusCode,
+        ISNULL(a.WeeklyOff, 0) AS isWeeklyOff,
+        ISNULL(a.Holiday, 0) AS isHoliday,
+        ISNULL(a.Present, 0) AS isPresent,
+        ISNULL(a.Absent, 0) AS isAbsent,
+        ISNULL(a.PunchRecords, '') AS punchRecords
+      FROM dbo.Employees e WITH (NOLOCK)
+      ${joinDept}
+      JOIN dbo.AttendanceLogs a WITH (NOLOCK) 
+        ON e.EmployeeId = a.EmployeeId 
+       AND a.AttendanceDate >= @startDate 
+       AND a.AttendanceDate <= @endDate
+      WHERE ISNULL(e.RecordStatus, 1) = 1 
+        AND ISNULL(e.Status, 'Working') NOT IN ('Resigned', 'Deleted', 'Inactive')
+        ${extraEmpClause}
+      ORDER BY e.EmployeeName, a.AttendanceDate
+    `;
+
+    const reportRes = await reqReport.query(attSql);
+    let rows = reportRes.recordset || [];
+
+    // Prefix-based smart site mapper
+    const prefixSiteMap = new Map([
+      ['17', 'Mahendra Aarna'],
+      ['31', 'Brigade Cornerstone Utopia'],
+      ['32', 'Brigade Cornerstone Utopia'],
+      ['42', 'Purva Venezia'],
+      ['77', 'Nikoo Homes'],
+      ['78', 'Nikoo Homes'],
+      ['70', 'Sobha Silicon Oasis'],
+      ['79', 'Nikoo Paradigm'],
+      ['80', 'Nikoo Paradigm'],
+      ['99', 'Dsr Eden Greens'],
+    ]);
+
+    const resolveSite = (code, dbSite) => {
+      const s = String(dbSite || '').trim();
+      if (s && s !== 'General' && s !== 'Default' && s !== '—') return s;
+      const c = String(code || '').trim();
+      if (c.startsWith('31') || c.startsWith('32')) return 'Brigade Cornerstone Utopia';
+      if (c.length >= 3 && prefixSiteMap.has(c.slice(0, 3))) return prefixSiteMap.get(c.slice(0, 3));
+      if (c.startsWith('17')) return 'Mahendra Aarna';
+      if (c.startsWith('42')) return 'Purva Venezia';
+      if (c.startsWith('77') || c.startsWith('78')) return 'Nikoo Homes';
+      if (c.startsWith('70')) return 'Sobha Silicon Oasis';
+      if (c.startsWith('79') || c.startsWith('80')) return 'Nikoo Paradigm';
+      if (c.startsWith('99')) return 'Dsr Eden Greens';
+      return 'Default';
+    };
+
+    // If dbo.AttendanceLogs has 0 rows for this site/range (common before desktop recalculation),
+    // query authoritative raw biometric punch tables (dbo.DeviceLogs_M_YYYY)
+    const siteMatches = (code, dept) => {
+      if (siteFilter === 'all' || !siteFilter) return true;
+      const s = resolveSite(code, dept).toLowerCase();
+      const target = siteFilter.toLowerCase();
+      const isUtopia = target.includes('utopia') && (String(code).startsWith('31') || String(code).startsWith('32'));
+      return s.includes(target) || target.includes(s) || isUtopia;
+    };
+
+    const siteMatchedRows = rows.filter(r => siteMatches(r.empCode, r.department));
+    if (siteMatchedRows.length === 0) {
+      console.log(`[API] AttendanceLogs has 0 records for site='${siteFilter}'. Querying DeviceLogs tables directly...`);
+      const [syStr, smStr] = startDate.split('-');
+      const [eyStr, emStr] = endDate.split('-');
+      const candidateTables = new Set(['DeviceLogs']);
+
+      const sM = parseInt(smStr, 10);
+      const eM = parseInt(emStr, 10);
+      const sY = parseInt(syStr, 10);
+      const eY = parseInt(eyStr, 10);
+
+      for (let y = sY; y <= eY; y++) {
+        const startMonth = (y === sY) ? sM : 1;
+        const endMonth = (y === eY) ? eM : 12;
+        for (let m = startMonth; m <= endMonth; m++) {
+          const mPad = m < 10 ? `0${m}` : `${m}`;
+          candidateTables.add(`DeviceLogs_${m}_${y}`);
+          candidateTables.add(`DeviceLogs_${mPad}_${y}`);
+        }
+      }
+
+      const tblNamesArray = Array.from(candidateTables);
+      const reqTbl = p.request();
+      tblNamesArray.forEach((t, idx) => reqTbl.input(`t${idx}`, sql.VarChar, t));
+
+      const existingTblsRes = await reqTbl.query(`
+        SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES 
+        WHERE TABLE_NAME IN (${tblNamesArray.map((_, idx) => `@t${idx}`).join(',')})
+      `).catch(() => ({ recordset: [] }));
+
+      const validTables = (existingTblsRes.recordset || []).map(r => r.TABLE_NAME);
+      if (validTables.length > 0) {
+        const unionSql = validTables.map(tbl => `
+          SELECT LTRIM(RTRIM(CAST(UserId AS VARCHAR(50)))) AS empCode, LogDate 
+          FROM dbo.[${tbl}] WITH (NOLOCK)
+          WHERE LogDate >= '${startDate} 00:00:00' AND LogDate <= '${endDate} 23:59:59'
+        `).join(' UNION ALL ');
+
+        const rawPunchesSql = `
+          WITH RawPunches AS (
+            ${unionSql}
+          ),
+          DailyAgg AS (
+            SELECT 
+              empCode,
+              CONVERT(VARCHAR(10), LogDate, 120) AS dateStr,
+              MIN(LogDate) AS inPunch,
+              MAX(LogDate) AS outPunch,
+              COUNT(*) AS punchCount
+            FROM RawPunches
+            GROUP BY empCode, CONVERT(VARCHAR(10), LogDate, 120)
+          )
+          SELECT 
+            LTRIM(RTRIM(CAST(e.EmployeeCode AS VARCHAR(50)))) AS empCode,
+            e.EmployeeName AS empName,
+            ${selectDept} AS department,
+            ISNULL(e.Designation, 'Staff') AS designation,
+            d.dateStr,
+            CONVERT(VARCHAR(8), d.inPunch, 108) AS inTime,
+            CASE WHEN d.punchCount > 1 THEN CONVERT(VARCHAR(8), d.outPunch, 108) ELSE NULL END AS outTime,
+            DATEDIFF(minute, d.inPunch, d.outPunch) AS durationMins,
+            0 AS lateMinutes,
+            0 AS otMinutes,
+            'Present' AS status,
+            'P' AS statusCode,
+            0 AS isWeeklyOff,
+            0 AS isHoliday,
+            1 AS isPresent,
+            0 AS isAbsent
+          FROM DailyAgg d
+          JOIN dbo.Employees e WITH (NOLOCK) ON LTRIM(RTRIM(CAST(e.EmployeeCode AS VARCHAR(50)))) = d.empCode
+          ${joinDept}
+          WHERE ISNULL(e.RecordStatus, 1) = 1 
+            AND ISNULL(e.Status, 'Working') NOT IN ('Resigned', 'Deleted', 'Inactive')
+            ${extraEmpClause}
+          ORDER BY e.EmployeeName, d.dateStr
+        `;
+
+        const rawRes = await p.request().query(rawPunchesSql).catch((err) => {
+          console.error('[API] DeviceLogs query error:', err.message);
+          return { recordset: [] };
+        });
+        if (rawRes.recordset && rawRes.recordset.length > 0) {
+          rows = rawRes.recordset;
+          console.log(`[API] DeviceLogs fallback retrieved ${rows.length} biometric daily punch records.`);
+        }
+      }
+    }
+
+    const records = {};
+    for (const r of rows) {
+      const code = r.empCode;
+      const site = resolveSite(code, r.department);
+
+      // Site filter if specified
+      if (siteFilter !== 'all' && siteFilter !== '') {
+        const target = siteFilter.toLowerCase().trim();
+        const current = site.toLowerCase().trim();
+        const isUtopia = target.includes('utopia') && (String(code).startsWith('31') || String(code).startsWith('32'));
+        if (!current.includes(target) && !target.includes(current) && !isUtopia) {
+          continue;
+        }
+      }
+
+      if (!records[code]) {
+        records[code] = {
+          empCode: code,
+          empName: r.empName,
+          department: site,
+          designation: r.designation,
+          days: {},
+          summary: {
+            presentDays: 0,
+            absentDays: 0,
+            woDays: 0,
+            lateDays: 0,
+            totalNetMins: 0,
+            totalOtMins: 0,
+          }
+        };
+      }
+
+      const isP = r.statusCode === 'P' || r.isPresent === 1 || r.status.toLowerCase().includes('present');
+      const isWO = r.isWeeklyOff === 1 || r.statusCode === 'WO' || r.status.toLowerCase().includes('weekly');
+      const isA = r.isAbsent === 1 || r.statusCode === 'A' || r.status.toLowerCase().includes('absent');
+
+      let finalStatus = 'A';
+      if (isP) finalStatus = 'P';
+      else if (isWO) finalStatus = 'WO';
+      else if (isA) finalStatus = 'A';
+      else if (r.statusCode) finalStatus = r.statusCode;
+
+      if (isP) records[code].summary.presentDays++;
+      else if (isWO) records[code].summary.woDays++;
+      else if (isA) records[code].summary.absentDays++;
+
+      if (r.lateMinutes > 0) records[code].summary.lateDays++;
+      records[code].summary.totalNetMins += r.durationMins || 0;
+      records[code].summary.totalOtMins += r.otMinutes || 0;
+
+      const inTimeClean = r.inTime ? r.inTime.slice(0, 5) : '—';
+      const outTimeClean = r.outTime ? r.outTime.slice(0, 5) : '—';
+      const h = Math.floor(r.durationMins / 60);
+      const m = r.durationMins % 60;
+      const hoursFormatted = r.durationMins > 0 ? `${h}h ${String(m).padStart(2, '0')}m` : '—';
+
+      records[code].days[r.dateStr] = {
+        dateStr: r.dateStr,
+        inTime: inTimeClean,
+        outTime: outTimeClean,
+        hours: hoursFormatted,
+        durationMins: r.durationMins,
+        netMins: r.durationMins,
+        otMins: r.otMinutes,
+        lateMinutes: r.lateMinutes,
+        status: finalStatus,
+        isWeeklyOff: isWO,
+        punchRecords: r.punchRecords,
+      };
+    }
+
+    const empList = Object.values(records);
+    return res.json({
+      success: true,
+      startDate,
+      endDate,
+      site: siteFilter,
+      totalEmployees: empList.length,
+      records,
+      employees: empList,
+      lastUpdated: new Date().toISOString(),
+    });
+
+  } catch (err) {
+    console.error('[API] /attendance-report error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // ΓöÇΓöÇΓöÇ GET /tables ΓÇö helper to discover your DB schema ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 app.get('/tables', requireApiKey, async (req, res) => {
   try {
