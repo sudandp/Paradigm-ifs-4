@@ -204,7 +204,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
         // renders Sundays/presence/holidays even while settings are still loading
         const effectiveSettings = settings ?? {};
         const staffCategory = getStaffCategory(user.roleId || user.role || '', user.societyId, effectiveSettings);
-        const threshold = (effectiveSettings as any)?.[staffCategory]?.weekendPresentThreshold ?? 2;
+        const threshold = (effectiveSettings as any)?.[staffCategory]?.weekendPresentThreshold ?? 4;
         
         // Start buffer to seed counters
         const bufferStart = startOfWeek(subDays(startOfMonth(currentDate), 15), { weekStartsOn: 1 });
@@ -331,7 +331,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
             } else if (foundLeave) {
                 finalStatus = 'leave';
             } else if (isSunday) {
-                finalStatus = isBeforeEmployment ? 'neutral' : 'sunday';
+                finalStatus = isBeforeEmployment ? 'neutral' : (isPast && !meetsThreshold ? 'absent' : 'sunday');
             } else if (isPast) {
                 finalStatus = isBeforeEmployment ? 'neutral' : 'absent';
             }
@@ -927,6 +927,9 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                             }
                         } else if (status === 'absent') {
                             overlayText = 'A';
+                            if (date.getDay() === 0) {
+                                cellTooltip = 'Sunday (Absent - Weekly work threshold not met)';
+                            }
                         }
 
                         return (
