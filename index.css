@@ -2417,3 +2417,46 @@ html.dark .fo-btn-secondary:active {
     0%   { transform: translateX(-100%); }
     100% { transform: translateX(100%); }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   3D CARD FLIP ANIMATION UTILITIES (Auth Flip Card)
+   ═══════════════════════════════════════════════════════════════════════════ */
+.perspective-1000 {
+    perspective: 1000px;
+}
+
+.perspective-1200 {
+    perspective: 1200px;
+}
+
+.preserve-3d {
+    transform-style: preserve-3d;
+}
+
+.backface-hidden {
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+}
+
+.rotate-y-180 {
+    transform: rotateY(180deg);
+}
+
+.auth-card-flipper {
+    transition: transform 0.75s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    transform-style: preserve-3d;
+}
+
+/* Auth Layout responsive scaling for standard 1080p and 768p displays at 100% zoom */
+@media (min-width: 1024px) and (max-height: 900px) {
+    .auth-desktop-scale {
+        zoom: 0.88;
+    }
+}
+@media (min-width: 1024px) and (max-height: 760px) {
+    .auth-desktop-scale {
+        zoom: 0.80;
+    }
+}
+
+

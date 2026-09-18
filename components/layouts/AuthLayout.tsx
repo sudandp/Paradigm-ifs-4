@@ -4,11 +4,17 @@ import { useUiSettingsStore } from '../../store/uiSettingsStore';
 import { useDevice } from '../../hooks/useDevice';
 import Logo from '../ui/Logo';
 import ReferralModal from '../modals/ReferralModal';
+import Login from '../../pages/auth/Login';
+import SignUp from '../../pages/auth/SignUp';
+import AuthFlipCard from '../auth/AuthFlipCard';
 
 const AuthLayout: React.FC = () => {
     const { isMobile } = useDevice();
     const { setReferralModalOpen } = useUiSettingsStore(); // still used by mobile view
     const location = useLocation();
+
+    const isFlipPair = location.pathname.includes('login') || location.pathname.includes('signup') || location.pathname === '/auth' || location.pathname === '/auth/';
+    const isFlipped = location.pathname.includes('signup');
 
     const pageInfo = useMemo(() => {
         const path = location.pathname;
@@ -43,19 +49,49 @@ const AuthLayout: React.FC = () => {
                     <Logo className="!h-14 !w-auto max-w-[200px] object-contain" variant="original" />
                 </div>
 
-                {/* Center Container: Card only */}
+                {/* Center Container: 3D Flip Card for Login / Register */}
                 <div className="relative z-10 w-full max-w-[min(95vw,420px)] flex-grow flex flex-col items-center justify-center mx-auto pb-6">
-                    {/* Mobile Dark Card */}
-                    <div className="w-full bg-[#111a16] rounded-3xl p-6 shadow-2xl border border-[#202f29] text-left">
-                        <div className="text-center mb-6">
-                            <h2 className="text-2xl font-extrabold text-white mb-2 tracking-tight">{pageInfo.title}</h2>
-                            <p className="text-white/60 text-sm font-medium leading-relaxed">{pageInfo.subtitle}</p>
-                        </div>
+                    {isFlipPair ? (
+                        <AuthFlipCard
+                            isFlipped={isFlipped}
+                            variant="dark"
+                            front={
+                                <div className="w-full bg-[#111a16] rounded-3xl p-6 shadow-2xl border border-[#202f29] text-left">
+                                    <div className="text-center mb-6">
+                                        <h2 className="text-2xl font-extrabold text-white mb-2 tracking-tight">Sign In</h2>
+                                        <p className="text-white/60 text-sm font-medium leading-relaxed">Enter your credentials to access your account.</p>
+                                    </div>
 
-                        <div className="auth-form-outlet leading-normal">
-                            <Outlet />
+                                    <div className="auth-form-outlet leading-normal">
+                                        <Login />
+                                    </div>
+                                </div>
+                            }
+                            back={
+                                <div className="w-full bg-[#111a16] rounded-3xl p-6 shadow-2xl border border-[#202f29] text-left">
+                                    <div className="text-center mb-6">
+                                        <h2 className="text-2xl font-extrabold text-white mb-2 tracking-tight">Create Account</h2>
+                                        <p className="text-white/60 text-sm font-medium leading-relaxed">Join the Paradigm family today.</p>
+                                    </div>
+
+                                    <div className="auth-form-outlet leading-normal">
+                                        <SignUp />
+                                    </div>
+                                </div>
+                            }
+                        />
+                    ) : (
+                        <div className="w-full bg-[#111a16] rounded-3xl p-6 shadow-2xl border border-[#202f29] text-left">
+                            <div className="text-center mb-6">
+                                <h2 className="text-2xl font-extrabold text-white mb-2 tracking-tight">{pageInfo.title}</h2>
+                                <p className="text-white/60 text-sm font-medium leading-relaxed">{pageInfo.subtitle}</p>
+                            </div>
+
+                            <div className="auth-form-outlet leading-normal">
+                                <Outlet />
+                            </div>
                         </div>
-                    </div>
+                    )}
                 </div>
 
                 {/* Footer Links and Copyright outside the card - sitting at the absolute bottom */}
@@ -109,28 +145,57 @@ const AuthLayout: React.FC = () => {
                 }
             `}</style>
 
-            {/* === LEFT PANEL: White Form Area === */}
-            <div className="relative z-20 flex flex-col items-start justify-start h-full overflow-y-auto pt-[6vh] pb-28 hide-scrollbar" style={{ width: '50%', paddingLeft: '8%' }}>
-                <div className="w-full max-w-[520px] px-4">
-                    {/* Floating Logo (No background card, full container width) */}
-                    <div className="mb-6 flex justify-start">
-                        <Logo className="!w-auto !h-16 max-w-[200px] object-contain transition-all duration-300 hover:scale-[1.01]" variant="original" />
+            {/* === LEFT PANEL: Form Area with 3D Flip Card === */}
+            <div className="relative z-20 flex flex-col items-start justify-center h-full overflow-y-auto pt-[2vh] pb-20 hide-scrollbar auth-desktop-scale" style={{ width: '50%', paddingLeft: '8%' }}>
+                <div className="w-full max-w-[420px] px-2">
+                    {/* Floating Logo */}
+                    <div className="mb-3 flex justify-start">
+                        <Logo className="!w-auto !h-10 max-w-[170px] object-contain transition-all duration-300 hover:scale-[1.01]" variant="original" />
                     </div>
 
-                    {/* Title */}
-                    <h2 className="font-poppins font-black text-gray-900 text-[32px] tracking-tight leading-tight mb-2">{pageInfo.title}</h2>
-                    {pageInfo.subtitle ? (
-                        <p className="font-poppins text-gray-400 text-[13px] font-medium mb-6">{pageInfo.subtitle}</p>
+                    {isFlipPair ? (
+                        <AuthFlipCard
+                            isFlipped={isFlipped}
+                            variant="light"
+                            front={
+                                <div className="w-full bg-white/90 backdrop-blur-xl border border-gray-200/70 rounded-2xl p-5 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.04)] text-left">
+                                    <h2 className="font-poppins font-black text-gray-900 text-[22px] tracking-tight leading-tight mb-0.5">Sign In</h2>
+                                    <p className="font-poppins text-gray-400 text-[12px] font-medium mb-3">Enter your credentials to access your account.</p>
+                                    <div className="auth-form-outlet">
+                                        <Login />
+                                    </div>
+                                </div>
+                            }
+                            back={
+                                <div className="w-full bg-white/90 backdrop-blur-xl border border-gray-200/70 rounded-2xl p-5 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.04)] text-left">
+                                    <h2 className="font-poppins font-black text-gray-900 text-[22px] tracking-tight leading-tight mb-0.5">Create Account</h2>
+                                    <p className="font-poppins text-gray-400 text-[12px] font-medium mb-3">Join the Paradigm family today.</p>
+                                    <div className="auth-form-outlet">
+                                        <SignUp />
+                                    </div>
+                                </div>
+                            }
+                        />
                     ) : (
-                        <div className="h-4" />
-                    )}
+                        <>
+                            {/* Title for non-flip routes (e.g. forgot-password) */}
+                            <h2 className="font-poppins font-black text-gray-900 text-[24px] tracking-tight leading-tight mb-1">{pageInfo.title}</h2>
+                            {pageInfo.subtitle ? (
+                                <p className="font-poppins text-gray-400 text-[12px] font-medium mb-4">{pageInfo.subtitle}</p>
+                            ) : (
+                                <div className="h-2" />
+                            )}
 
-                    {/* Form outlet */}
-                    <div className="auth-form-outlet mt-[4vh]">
-                        <Outlet />
-                    </div>
+                            {/* Form outlet */}
+                            <div className="auth-form-outlet mt-2">
+                                <Outlet />
+                            </div>
+                        </>
+                    )}
                 </div>
             </div>
+
+
 
             {/* === RIGHT PANEL: Diagonal Emerald Polygon === */}
             <div

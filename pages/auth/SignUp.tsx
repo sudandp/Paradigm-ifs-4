@@ -7,7 +7,7 @@ import Button from '../../components/ui/Button';
 import { Mail, Lock, User as UserIcon, MailCheck, AlertTriangle } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useDevice } from '../../hooks/useDevice';
-import Input from '../../components/ui/Input';
+import WaveFloatingInput from '../../components/ui/WaveFloatingInput';
 
 const validationSchema = yup.object({
     name: yup.string().required('Your name is required'),
@@ -58,79 +58,76 @@ const SignUp: React.FC = () => {
     }
 
     return (
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <Input 
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-2">
+            <WaveFloatingInput 
                 id="name" 
+                label="Full Name"
                 registration={register('name')} 
                 error={errors.name?.message} 
-                placeholder="Full Name" 
-                icon={<UserIcon className={isMobile ? "h-5 w-5 text-white/50" : undefined} />}
-                className={isMobile 
-                    ? "!text-[16px] !bg-white/[0.06] !text-white !border-white/10 focus:!border-emerald-500/40 focus:!ring-0 !rounded-2xl !py-4 transition-all placeholder:!text-white/35"
-                    : "!text-[15px] !rounded-[12px] !py-3 !px-4.5 !bg-white !text-gray-900 !border-gray-200 focus:!border-emerald-500 focus:!ring-0 !shadow-sm transition-all"
-                } 
+                icon={<UserIcon className="h-3.5 w-3.5" />}
+                variant={isMobile ? 'dark' : 'light'}
             />
-            <Input 
-                id="email" 
+            <WaveFloatingInput 
+                id="signup-email" 
+                type="email"
+                label="Email Address"
+                autoComplete="email"
                 registration={register('email')} 
                 error={errors.email?.message} 
-                placeholder="Email Address" 
-                icon={<Mail className={isMobile ? "h-5 w-5 text-white/50" : undefined} />}
-                className={isMobile 
-                    ? "!text-[16px] !bg-white/[0.06] !text-white !border-white/10 focus:!border-emerald-500/40 focus:!ring-0 !rounded-2xl !py-4 transition-all placeholder:!text-white/35"
-                    : "!text-[15px] !rounded-[12px] !py-3 !px-4.5 !bg-white !text-gray-900 !border-gray-200 focus:!border-emerald-500 focus:!ring-0 !shadow-sm transition-all"
-                } 
+                icon={<Mail className="h-3.5 w-3.5" />}
+                variant={isMobile ? 'dark' : 'light'}
             />
-            <Input 
-                id="password" 
+            <WaveFloatingInput 
+                id="signup-password" 
                 type="password" 
+                label="Create Password"
+                autoComplete="new-password"
                 registration={register('password')} 
                 error={errors.password?.message} 
-                placeholder="Create Password" 
-                icon={<Lock className={isMobile ? "h-5 w-5 text-white/50" : undefined} />}
-                className={isMobile 
-                    ? "!text-[16px] !bg-white/[0.06] !text-white !border-white/10 focus:!border-emerald-500/40 focus:!ring-0 !rounded-2xl !py-4 transition-all placeholder:!text-white/35"
-                    : "!text-[15px] !rounded-[12px] !py-3 !px-4.5 !bg-white !text-gray-900 !border-gray-200 focus:!border-emerald-500 focus:!ring-0 !shadow-sm transition-all"
-                } 
+                icon={<Lock className="h-3.5 w-3.5" />}
+                variant={isMobile ? 'dark' : 'light'}
             />
-            <Input 
-                id="confirmPassword" 
+            <WaveFloatingInput 
+                id="signup-confirm-password" 
                 type="password" 
+                label="Confirm Password"
+                autoComplete="new-password"
                 registration={register('confirmPassword')} 
                 error={errors.confirmPassword?.message} 
-                placeholder="Confirm Password" 
-                icon={<Lock className={isMobile ? "h-5 w-5 text-white/50" : undefined} />}
-                className={isMobile 
-                    ? "!text-[16px] !bg-white/[0.06] !text-white !border-white/10 focus:!border-emerald-500/40 focus:!ring-0 !rounded-2xl !py-4 transition-all placeholder:!text-white/35"
-                    : "!text-[15px] !rounded-[12px] !py-3 !px-4.5 !bg-white !text-gray-900 !border-gray-200 focus:!border-emerald-500 focus:!ring-0 !shadow-sm transition-all"
-                } 
+                icon={<Lock className="h-3.5 w-3.5" />}
+                variant={isMobile ? 'dark' : 'light'}
             />
             
             {error && (
-                <div className={`flex items-center gap-2 p-3 rounded-xl border ${isMobile ? 'text-[13px] text-red-400 bg-red-400/10 border-red-400/20' : 'text-sm text-red-600 bg-red-50 border-red-100'}`}>
-                    <AlertTriangle className={isMobile ? "h-4 w-4 flex-shrink-0" : "h-4 w-4 flex-shrink-0"} />
+                <div className={`flex items-center gap-2 p-2.5 rounded-xl border animate-fadeIn ${isMobile ? 'text-[13px] text-red-400 bg-red-400/10 border-red-400/20' : 'text-xs text-red-600 bg-red-50 border-red-100'}`}>
+                    <AlertTriangle className="h-4 w-4 flex-shrink-0" />
                     <span className="leading-tight font-semibold">{error}</span>
                 </div>
             )}
 
-            <Button 
-                type="submit" 
-                className={isMobile 
-                    ? "w-full !font-black !h-14 !rounded-2xl !text-[16px] transition-all !bg-emerald-500 hover:!bg-emerald-600 !text-white active:scale-[0.98] !shadow-[0_4px_12px_rgba(16,185,129,0.2)]"
-                    : "w-full !font-black !py-3 !rounded-full !text-[14px] !tracking-[0.2em] !uppercase transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-lg !bg-emerald-600 !text-white hover:!bg-emerald-700 shadow-emerald-600/25"
-                } 
-                isLoading={isSubmitting} 
-                size="lg"
-            >
-                Create Account
-            </Button>
+            <div className="pt-2">
+                <Button 
+                    type="submit" 
+                    className={isMobile 
+                        ? "w-full !font-black !h-14 !rounded-2xl !text-[16px] transition-all !bg-[#3eff99] hover:!bg-[#2ae080] !text-[#05110c] active:scale-[0.97] !shadow-[0_12px_24px_rgba(62,255,153,0.2)] hover:!shadow-[0_16px_32px_rgba(62,255,153,0.3)] cursor-pointer"
+                        : "w-full !font-black !h-10.5 !rounded-xl !text-[12px] !tracking-[0.15em] !uppercase transition-all active:scale-[0.97] shadow-sm !bg-emerald-600 !text-white hover:!bg-emerald-700 shadow-emerald-600/25 cursor-pointer"
+                    } 
+                    isLoading={isSubmitting} 
+                    size="lg"
+                >
+                    Create Account
+                </Button>
+            </div>
 
-            <div className="text-center mt-3 space-y-4">
-                <p className={isMobile ? "text-[13px] text-white/60 font-medium" : "text-sm text-gray-500 font-medium pt-4"}>
+
+            <div className="text-center mt-3 space-y-3">
+                <p className={isMobile ? "text-[13px] text-white/60 font-medium" : "text-sm text-gray-500 font-medium pt-2"}>
                     Already have an account?{' '}
-                    <Link to="/auth/login" className={`font-bold transition-colors ${isMobile ? 'text-emerald-400 hover:text-emerald-300' : 'text-emerald-600 hover:text-emerald-700'} ml-0.5`}>Sign In</Link>
+                    <Link to="/auth/login" className={`font-bold transition-colors ${isMobile ? 'text-[#3eff99] hover:text-[#2ae080]' : 'text-emerald-600 hover:text-emerald-700'} ml-1`}>
+                        Sign In
+                    </Link>
                 </p>
-                <div className={`pt-6 border-t ${isMobile ? 'border-white/10' : 'border-gray-100'}`}>
+                <div className={`pt-4 border-t ${isMobile ? 'border-white/10' : 'border-gray-100'}`}>
                     <p className={`text-[10px] uppercase tracking-widest font-medium leading-relaxed ${isMobile ? 'text-white/30' : 'text-gray-400'}`}>
                         © Paradigm FMS Services. All rights reserved.
                     </p>
@@ -141,3 +138,4 @@ const SignUp: React.FC = () => {
 };
 
 export default SignUp;
+

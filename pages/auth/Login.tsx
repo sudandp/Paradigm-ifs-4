@@ -18,6 +18,8 @@ import type { User } from '../../types';
 import { Mail, Lock, AlertTriangle, Check } from 'lucide-react';
 import { api } from '../../services/api';
 import { useDevice } from '../../hooks/useDevice';
+import WaveFloatingInput from '../../components/ui/WaveFloatingInput';
+
 
 const emailValidationSchema = yup.object({
     email: yup.string().email('Must be a valid email').required('Email is required'),
@@ -134,31 +136,31 @@ const Login: React.FC = () => {
     if (isMobile) {
         return (
             <div className="w-full">
-                <form onSubmit={handleEmailSubmit(onEmailSubmit)} className="space-y-5">
-                    <fieldset disabled={isFormDisabled} className="space-y-5">
-                        <Input
+                <form onSubmit={handleEmailSubmit(onEmailSubmit)} className="space-y-4">
+                    <fieldset disabled={isFormDisabled} className="space-y-2">
+                        <WaveFloatingInput
                             id="email-mob"
                             type="email"
-                            placeholder="Email address"
+                            label="Email Address"
                             autoComplete="email"
-                            icon={<Mail className="h-5 w-5 text-white/40" />}
+                            icon={<Mail className="h-4 w-4" />}
                             registration={registerEmail('email')}
                             error={emailErrors.email?.message}
-                            className="!text-[16px] !bg-[#131d1a] !text-white !border-[#20312a] focus:!border-emerald-500/50 focus:!ring-0 !rounded-2xl !py-4.5 transition-all placeholder:!text-white/30"
+                            variant="dark"
                         />
 
-                        <Input
+                        <WaveFloatingInput
                             id="password-mob"
                             type="password"
-                            placeholder="Password/PIN"
+                            label="Password / PIN"
                             autoComplete="current-password"
-                            icon={<Lock className="h-5 w-5 text-white/40" />}
+                            icon={<Lock className="h-4 w-4" />}
                             registration={registerEmail('password')}
                             error={emailErrors.password?.message}
-                            className="!text-[16px] !bg-[#131d1a] !text-white !border-[#20312a] focus:!border-emerald-500/50 focus:!ring-0 !rounded-2xl !py-4.5 transition-all placeholder:!text-white/30"
+                            variant="dark"
                         />
 
-                        <div className="flex items-center justify-between px-1 mt-2">
+                        <div className="flex items-center justify-between px-1 pt-3">
                             <label className="flex items-center gap-3 cursor-pointer group select-none">
                                 <div className="relative flex items-center">
                                     <input
@@ -166,8 +168,8 @@ const Login: React.FC = () => {
                                         className="peer sr-only"
                                         {...registerEmail('rememberMe')}
                                     />
-                                    <div className="h-5 w-5 rounded-md border border-[#20312a] bg-[#131d1a] transition-all peer-checked:bg-emerald-500 peer-checked:border-emerald-500 group-hover:border-emerald-500/50"></div>
-                                    <Check className="absolute inset-0 h-5 w-5 text-white scale-0 transition-transform peer-checked:scale-100 p-0.5" />
+                                    <div className="h-5 w-5 rounded-md border border-[#20312a] bg-[#131d1a] transition-all peer-checked:bg-[#3eff99] peer-checked:border-[#3eff99] group-hover:border-[#3eff99]/50"></div>
+                                    <Check className="absolute inset-0 h-5 w-5 text-[#05110c] scale-0 transition-transform peer-checked:scale-100 p-0.5 font-bold" />
                                 </div>
                                 <span className="text-sm font-medium text-white/60 group-hover:text-white transition-colors">Remember me</span>
                             </label>
@@ -181,7 +183,7 @@ const Login: React.FC = () => {
                     </fieldset>
 
                     {error && (
-                        <div className="flex items-center gap-3 text-[13px] text-red-400 p-4 bg-red-400/10 rounded-2xl border border-red-400/20">
+                        <div className="flex items-center gap-3 text-[13px] text-red-400 p-4 bg-red-400/10 rounded-2xl border border-red-400/20 animate-fadeIn">
                             <AlertTriangle className="h-5 w-5 flex-shrink-0 text-red-400" />
                             <span className="leading-snug font-medium">{error}</span>
                         </div>
@@ -189,7 +191,7 @@ const Login: React.FC = () => {
 
                     <Button
                         type="submit"
-                        className="w-full !font-black !h-14 !rounded-2xl !text-[16px] transition-all !bg-[#3eff99] hover:!bg-[#2ae080] !text-[#05110c] active:scale-[0.98] !shadow-[0_12px_24px_rgba(62,255,153,0.15)] signin-btn mt-4"
+                        className="w-full !font-black !h-14 !rounded-2xl !text-[16px] transition-all !bg-[#3eff99] hover:!bg-[#2ae080] !text-[#05110c] active:scale-[0.97] !shadow-[0_12px_24px_rgba(62,255,153,0.2)] hover:!shadow-[0_16px_32px_rgba(62,255,153,0.3)] signin-btn mt-4 cursor-pointer"
                         isLoading={loading && !isSuccess}
                         disabled={isFormDisabled && !isSuccess}
                     >
@@ -212,7 +214,7 @@ const Login: React.FC = () => {
                             type="button"
                             variant="outline"
                             onClick={() => handleGoogleLogin()}
-                            className="w-full !h-14 !rounded-2xl !border-[#20312a] !bg-[#131d1a] !text-white hover:!bg-[#19221f] transition-all !text-base font-bold flex items-center justify-center gap-3 google-btn"
+                            className="w-full !h-14 !rounded-2xl !border-[#20312a] !bg-[#131d1a] !text-white hover:!bg-[#19221f] transition-all !text-base font-bold flex items-center justify-center gap-3 google-btn active:scale-[0.97] cursor-pointer"
                         >
                             {commonGoogleIcon}
                             <span>Sign in with Google</span>
@@ -222,7 +224,7 @@ const Login: React.FC = () => {
                     <div className="mt-8 text-center space-y-4">
                         <p className="text-[13px] text-white/50">
                             Don't have an account?{' '}
-                            <Link to="/auth/signup" className="font-bold text-[#3eff99] hover:text-[#2ae080] transition-colors">
+                            <Link to="/auth/signup" className="font-bold text-[#3eff99] hover:text-[#2ae080] transition-colors ml-1">
                                 Create Account
                             </Link>
                         </p>
@@ -260,37 +262,39 @@ const Login: React.FC = () => {
     // --- WEB VIEW — Diagonal Split Panel Form ---
     return (
         <>
-            <form onSubmit={handleEmailSubmit(onEmailSubmit)} className="space-y-5">
-                <fieldset disabled={isFormDisabled} className="space-y-4">
-                    {/* Username / Email Field — rounded box style */}
+            <form onSubmit={handleEmailSubmit(onEmailSubmit)} className="space-y-3">
+                <fieldset disabled={isFormDisabled} className="space-y-2">
+                    {/* Username / Email Field with Wave Floating Label */}
                     <div>
-                        <Input
+                        <WaveFloatingInput
                             id="email-web"
                             type="email"
-                            placeholder="Username"
-                            icon={<Mail className="h-5 w-5 text-gray-400" />}
+                            label="Username or Email"
+                            autoComplete="email"
+                            icon={<Mail className="h-3.5 w-3.5" />}
                             registration={registerEmail('email')}
                             error={emailErrors.email?.message}
-                            className="!text-[15px] !bg-gray-50/50 hover:!bg-gray-50/80 focus:!bg-white !text-gray-800 !border !border-gray-200 focus:!border-emerald-500 focus:!shadow-[0_0_0_4px_rgba(16,185,129,0.15)] hover:border-gray-300 !rounded-[12px] !py-3 transition-all placeholder:!text-gray-400 !shadow-sm focus:!ring-0"
+                            variant="light"
                         />
                     </div>
 
-                    {/* Password Field — rounded box style */}
+                    {/* Password Field with Wave Floating Label */}
                     <div>
-                        <Input
+                        <WaveFloatingInput
                             id="password-web"
                             type="password"
-                            placeholder="Password"
-                            icon={<Lock className="h-5 w-5 text-gray-400" />}
+                            label="Password"
+                            autoComplete="current-password"
+                            icon={<Lock className="h-3.5 w-3.5" />}
                             registration={registerEmail('password')}
                             error={emailErrors.password?.message}
-                            className="!text-[15px] !bg-gray-50/50 hover:!bg-gray-50/80 focus:!bg-white !text-gray-800 !border !border-gray-200 focus:!border-emerald-500 focus:!shadow-[0_0_0_4px_rgba(16,185,129,0.15)] hover:border-gray-300 !rounded-[12px] !py-3 transition-all placeholder:!text-gray-400 !shadow-sm focus:!ring-0"
+                            variant="light"
                         />
                     </div>
 
                     {/* Remember Me + Forgot Password */}
                     <div className="flex items-center justify-between pt-1">
-                        <label className="flex items-center gap-3 cursor-pointer group select-none">
+                        <label className="flex items-center gap-2.5 cursor-pointer group select-none">
                             <div className="relative flex items-center">
                                 <input
                                     type="checkbox"
@@ -298,14 +302,14 @@ const Login: React.FC = () => {
                                     className="peer sr-only"
                                     {...registerEmail('rememberMe')}
                                 />
-                                <div className="h-5 w-5 rounded-md border border-gray-300 bg-white transition-all peer-checked:bg-emerald-600 peer-checked:border-emerald-600 group-hover:border-emerald-500"></div>
-                                <Check className="absolute inset-0 h-5 w-5 text-white scale-0 transition-transform peer-checked:scale-100 p-0.5" />
+                                <div className="h-4 w-4 rounded border border-gray-300 bg-white transition-all peer-checked:bg-emerald-600 peer-checked:border-emerald-600 group-hover:border-emerald-500"></div>
+                                <Check className="absolute inset-0 h-4 w-4 text-white scale-0 transition-transform peer-checked:scale-100 p-0.5" />
                             </div>
-                            <span className="text-gray-500 text-[14px] font-semibold group-hover:text-gray-700 transition-colors">Remember Me</span>
+                            <span className="text-gray-500 text-[12px] font-semibold group-hover:text-gray-700 transition-colors">Remember Me</span>
                         </label>
                         <Link
                             to="/auth/forgot-password"
-                            className="text-[14px] font-semibold text-gray-400 hover:text-emerald-600 transition-colors"
+                            className="text-[12px] font-semibold text-gray-400 hover:text-emerald-600 transition-colors"
                         >
                             Forgot password?
                         </Link>
@@ -313,64 +317,64 @@ const Login: React.FC = () => {
                 </fieldset>
 
                 {error && (
-                    <div className="flex items-center gap-3 text-sm text-red-600 p-3 bg-red-50 rounded-xl border border-red-100">
+                    <div className="flex items-center gap-2.5 text-xs text-red-600 p-2.5 bg-red-50 rounded-xl border border-red-100 animate-fadeIn">
                         <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-                        <span className="text-[15px]">{error}</span>
+                        <span className="text-[13px]">{error}</span>
                     </div>
                 )}
 
                 {/* Action Buttons — equal width (50% / 50%) */}
-                <div className="flex items-center gap-3 pt-4">
+                <div className="flex items-center gap-2.5 pt-2">
                     <Button
                         type="submit"
-                        className={`flex-1 !font-black !h-12 !rounded-2xl !text-[13px] !tracking-[0.18em] !uppercase transition-all transform hover:scale-[1.01] active:scale-[0.99] shadow-md ${isSuccess
+                        className={`flex-1 !font-black !h-10.5 !rounded-xl !text-[12px] !tracking-[0.15em] !uppercase transition-all active:scale-[0.97] shadow-sm cursor-pointer ${isSuccess
                             ? '!bg-emerald-500 !text-white shadow-emerald-500/30'
                             : '!bg-emerald-600 hover:!bg-emerald-700 !text-white shadow-emerald-600/25'
                             }`}
                         isLoading={loading && !isSuccess}
                         disabled={isFormDisabled && !isSuccess}
                     >
-                        {isSuccess ? <Check className="w-5 h-5 mx-auto" /> : "LOGIN"}
+                        {isSuccess ? <Check className="w-4 h-4 mx-auto" /> : "LOGIN"}
                     </Button>
 
                     <button
                         type="button"
                         onClick={handleGoogleLogin}
                         disabled={isFormDisabled}
-                        className="flex-1 h-12 flex items-center justify-center gap-2 bg-white border border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700 rounded-2xl transition-all transform hover:scale-[1.01] active:scale-[0.99] shadow-sm disabled:opacity-50 font-poppins whitespace-nowrap"
+                        className="flex-1 h-10.5 flex items-center justify-center gap-2 bg-white border border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700 rounded-xl transition-all active:scale-[0.97] shadow-sm disabled:opacity-50 font-poppins whitespace-nowrap cursor-pointer"
                         title="Sign in with Google"
                     >
                         {commonGoogleIcon}
-                        <span className="text-[12px] font-semibold text-gray-700">Sign in with Google</span>
+                        <span className="text-[11.5px] font-semibold text-gray-700">Google</span>
                     </button>
                 </div>
 
-                  {/* Premium Referral Strip — White Themed for Web */}
-                <div className="relative mt-3 overflow-hidden rounded-2xl border border-transparent bg-emerald-50/20 hover:bg-emerald-50/30 transition-all duration-300 cursor-pointer group/ref">
+                {/* Premium Referral Strip — Compact Themed for Web */}
+                <div className="relative mt-2 overflow-hidden rounded-xl border border-transparent bg-emerald-50/30 hover:bg-emerald-50/50 transition-all duration-300 cursor-pointer group/ref">
                     <SkyShotFireworks />
                     <button
                         type="button"
                         onClick={() => setReferralModalOpen(true)}
                         disabled={isFormDisabled}
-                        className="relative z-10 w-full flex items-center justify-between gap-4 px-4 py-3"
+                        className="relative z-10 w-full flex items-center justify-between gap-3 px-3 py-2"
                         title="Join Referral Program"
                     >
                         {/* Left: label + subtext */}
                         <div className="text-left">
-                            <p className="text-[12px] font-black text-emerald-700 tracking-[0.18em] uppercase font-poppins flex items-center gap-1.5">
-                                <span className="text-base">🎇</span> REFERRAL PROGRAM
+                            <p className="text-[11px] font-black text-emerald-700 tracking-[0.15em] uppercase font-poppins flex items-center gap-1">
+                                <span className="text-xs">🎇</span> REFERRAL PROGRAM
                             </p>
-                            <p className="text-[10px] text-emerald-800/60 mt-0.5 font-medium leading-tight">
-                                Earn rewards by referring candidates o...
+                            <p className="text-[9.5px] text-emerald-800/60 font-medium leading-tight">
+                                Earn rewards by referring candidates &amp; leads
                             </p>
                         </div>
 
                         {/* Right: REFERRAL | PROGRAM overlapping capsules */}
-                        <div className="flex items-center shrink-0 transition-transform group-hover/ref:scale-[1.04]">
-                            <span className="px-4 py-1.5 bg-black text-white font-bold uppercase text-[10px] tracking-wider rounded-full border-2 border-white ring-1 ring-black/20 shadow-sm relative z-0">
+                        <div className="flex items-center shrink-0 transition-transform group-hover/ref:scale-[1.03]">
+                            <span className="px-2.5 py-1 bg-black text-white font-bold uppercase text-[8.5px] tracking-wider rounded-full border border-white shadow-sm relative z-0">
                                 REFERRAL
                             </span>
-                            <span className="-ml-3 px-4 py-1.5 bg-[#ff0000] text-white font-bold uppercase text-[10px] tracking-wider rounded-full border-2 border-white ring-1 ring-black/20 shadow-sm relative z-10">
+                            <span className="-ml-2 px-2.5 py-1 bg-[#ff0000] text-white font-bold uppercase text-[8.5px] tracking-wider rounded-full border border-white shadow-sm relative z-10">
                                 PROGRAM
                             </span>
                         </div>

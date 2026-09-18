@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 128,
-  "latestVersionName": "21.8.0",
+  "latestVersionCode": 131,
+  "latestVersionName": "22.1.0",
   "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
   "apkDownloadUrl": "https://play.google.com/store/apps/details?id=com.paradigm.ifs",
-  "releaseNotes": "feat: add app upgrade manager, version tracking, and team map view component\nfeat: introduce mobile home view, team map, app versioning, and Android configurations\nfeat: add mobile navigation components, HR reporting dashboards, and desktop productivity agent infrastructure\nfeat: add comprehensive office management application structure with dashboards, tracking services, and desktop agent\nchore: update project dependencies in package-lock.json",
+  "releaseNotes": "feat: add client attendance dashboard, Supabase services, and fix stale attendance state on sign-in\nfeat: add attendance management system with API proxy, UI dashboards, and report generation utilities\nfeat: add attendance dashboards, role mapping components, and database query utilities\nfeat: add OrganizationManagement page for site administration and filtering\nfeat: add site deployment data sync scripts, department mapping utilities, and management dashboards",
   "isMandatory": false
 }
