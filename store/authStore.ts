@@ -889,10 +889,13 @@ export const useAuthStore = create<AuthState>()(
                 // Online but genuinely no events today – safe to reset
                 if (events.length === 0) {
                     const currentState = get();
-                    // If device is offline, already checked-in, or has any prior punch today —
-                    // do NOT wipe state on an empty fallback (protects against flaky WiFi returning 0 rows)
-                    if (currentState.isOffline || currentState.lastCheckInTime || currentState.isCheckedIn || currentState.isFieldCheckedIn || currentState.isSiteOtCheckedIn) {
-                        console.warn('[authStore] Zero events returned during offline/reconnect fallback – keeping existing state.');
+                    // ONLY preserve stale state when the device is genuinely offline.
+                    // Previously this also checked lastCheckInTime/isCheckedIn which caused stale
+                    // Zustand-persisted state from Device A or a previous day to be FROZEN in the
+                    // UI on a second device or post-update launch, even when the server confirmed
+                    // there are no events today. (Bug fix: second-device / post-update stale data)
+                    if (currentState.isOffline) {
+                        console.warn('[authStore] Zero events returned while offline – keeping last known state from device cache.');
                         set({ isAttendanceLoading: false });
                         return;
                     }
@@ -1876,6 +1879,88 @@ export const useAuthStore = create<AuthState>()(
     {
         name: 'paradigm-auth-storage',
         storage: createJSONStorage(() => CapacitorStorage as any),
+        // Bump version whenever persisted schema changes — triggers migrate() on old stored data.
+        version: 2,
+        migrate: (persistedState: any, version: number) => {
+            // Version 1 → 2: wipe all attendance-only fields so a stale "checked-in" state
+            // from a previous build or another device does not bleed into the fresh session.
+            if (version < 2) {
+                console.log('[AuthStore] Migrating persisted state from version', version, '→ 2: resetting attendance fields.');
+                return {
+                    ...persistedState,
+                    isCheckedIn: false,
+                    lastCheckInTime: null,
+                    lastCheckOutTime: null,
+                    firstBreakInTime: null,
+                    lastBreakInTime: null,
+                    lastBreakOutTime: null,
+                    totalBreakDurationToday: 0,
+                    totalWorkingDurationToday: 0,
+                    breakIntervals: [],
+                    isOnBreak: false,
+                    dailyPunchCount: 0,
+                    approvedUnlockCount: 0,
+                    dailyUnlockRequestCount: 0,
+                    isPunchUnlocked: false,
+                    isFieldCheckedIn: false,
+                    isFieldCheckedOut: false,
+                    isSiteOtCheckedIn: false,
+                    hasPreviousDayOpenSession: false,
+                    hasActiveOpenSession: false,
+                    previousDaySessionInfo: null,
+                    pendingAutoPunchOut: null,
+                };
+            }
+            return persistedState;
+        },
+        onRehydrateStorage: () => (state) => {
+            // After the persisted state is loaded, check whether the Supabase session
+            // belongs to the SAME user as the persisted identity. If not (second device,
+            // different account, or session rotation), wipe the stale attendance fields
+            // immediately so the UI never renders wrong attendance data.
+            if (!state) return;
+            try {
+                // Read the live Supabase session synchronously from localStorage
+                // (HybridAuthStorage always mirrors Preferences → localStorage)
+                const keys = Object.keys(localStorage);
+                const authKey = keys.find(k => k.includes('-auth-token') && k.startsWith('sb-'));
+                if (authKey) {
+                    const raw = localStorage.getItem(authKey);
+                    if (raw) {
+                        const parsed = JSON.parse(raw);
+                        const sessionUserId = parsed?.user?.id;
+                        const persistedUserId = state.user?.id;
+                        if (sessionUserId && persistedUserId && sessionUserId !== persistedUserId) {
+                            // Different user in session vs persisted store — reset attendance to prevent
+                            // Device A's punch data showing on Device B's login.
+                            console.warn('[AuthStore] User ID mismatch on rehydration (persisted:', persistedUserId, '/ session:', sessionUserId, ') — resetting attendance state.');
+                            state.isCheckedIn = false;
+                            state.lastCheckInTime = null;
+                            state.lastCheckOutTime = null;
+                            state.firstBreakInTime = null;
+                            state.lastBreakInTime = null;
+                            state.lastBreakOutTime = null;
+                            state.totalBreakDurationToday = 0;
+                            state.totalWorkingDurationToday = 0;
+                            state.breakIntervals = [];
+                            state.isOnBreak = false;
+                            state.dailyPunchCount = 0;
+                            state.approvedUnlockCount = 0;
+                            state.isPunchUnlocked = false;
+                            state.isFieldCheckedIn = false;
+                            state.isFieldCheckedOut = false;
+                            state.isSiteOtCheckedIn = false;
+                            state.hasPreviousDayOpenSession = false;
+                            state.hasActiveOpenSession = false;
+                            state.previousDaySessionInfo = null;
+                            state.pendingAutoPunchOut = null;
+                        }
+                    }
+                }
+            } catch {
+                // Non-critical: if the check fails the server fetch will correct state anyway
+            }
+        },
         partialize: (state) => ({
             // ── Core identity (only essential fields, not full profile blobs) ──
             user: state.user ? {

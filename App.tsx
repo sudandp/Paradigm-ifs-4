@@ -1639,6 +1639,23 @@ const App: React.FC = () => {
         if (event === 'SIGNED_IN') {
           setTimeout(async () => {
             try {
+              // If the newly signed-in user ID differs from what's currently in the store,
+              // reset attendance state immediately so stale punch data from another device
+              // or session never appears in the UI. (Bug fix: second-device stale data)
+              const currentStoreUser = useAuthStore.getState().user;
+              if (!currentStoreUser || currentStoreUser.id !== session.user.id) {
+                console.log('[AuthEvent] SIGNED_IN: User ID changed or fresh login — resetting attendance state before profile fetch.');
+                resetAttendance();
+                try {
+                  for (let i = localStorage.length - 1; i >= 0; i--) {
+                    const k = localStorage.key(i);
+                    if (k && (k.startsWith('attendance_') || k.startsWith('paradigm_site_attendance_cache_'))) {
+                      localStorage.removeItem(k);
+                    }
+                  }
+                } catch { /* ignore */ }
+              }
+
               const appUser = await authService.getAppUserProfile(session.user);
               if (isMounted && appUser) {
                 setUser(appUser);
@@ -1654,6 +1671,7 @@ const App: React.FC = () => {
             }
           }, 0);
         }
+
       } else if (event === 'SIGNED_OUT') {
         const isExplicit = authService.isExplicitSignOut();
         const isMobileDevice = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || Capacitor.isNativePlatform();

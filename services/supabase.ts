@@ -142,6 +142,9 @@ const HybridAuthStorage = {
 const isNativePlatform = isBrowser && (Capacitor.isNativePlatform() || !!(window as any).Capacitor?.isNativePlatform());
 
 // Custom fetch wrapper with adaptive 30-second timeout to prevent dead socket hangs on mobile
+// and cache: 'no-store' to prevent Android WebView from serving stale cached API responses.
+// Without 'no-store', the Android Chromium WebView disk cache will serve yesterday's leave balances,
+// attendance events, and all other Supabase REST responses — causing wrong data on every page.
 const customFetch = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   const controller = new AbortController();
   const timeoutDuration = 30000; // 30s timeout for mobile network resilience
@@ -165,9 +168,14 @@ const customFetch = (input: RequestInfo | URL, init?: RequestInit): Promise<Resp
 
   return fetch(input, {
     ...init,
+    // Force bypass of Android WebView HTTP disk cache for all Supabase API calls.
+    // 'no-store' = never cache the response (stronger than 'no-cache' which still validates).
+    // This is the primary fix for stale leave balances, attendance data, and all API-driven pages.
+    cache: 'no-store',
     signal: controller.signal,
   }).finally(() => clearTimeout(timer));
 };
+
 
 // Main client for all requests
 export const supabase = createClient(resolvedUrl, resolvedAnonKey, {

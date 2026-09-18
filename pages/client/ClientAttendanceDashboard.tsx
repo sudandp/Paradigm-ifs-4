@@ -640,48 +640,49 @@ const DEVICES_CACHE_KEY = 'paradigm_site_devices_cache';
 const DEFAULT_ATTENDANCE_SNAPSHOT: AttendanceData = {
   summary: {
     date: format(new Date(), 'yyyy-MM-dd'),
-    totalEmployees: 4066,
-    totalHeadcount: 4172,
-    activeTotal: 4066,
-    inactiveTotal: 106,
-    present: 653,
-    absent: 3413,
+    totalEmployees: 0,
+    totalHeadcount: 0,
+    activeTotal: 0,
+    inactiveTotal: 0,
+    present: 0,
+    absent: 0,
     late: 0,
-    onTime: 653,
-    attendanceRate: 16,
+    onTime: 0,
+    attendanceRate: 0,
   },
-  deviceSummary: { online: 45, offline: 3, total: 48 },
+  deviceSummary: { online: 0, offline: 0, total: 0 },
   employees: [],
-  trend: [
-    { date: '03 Sep', present: 668, absent: 3398, attendanceRate: 16 },
-    { date: '04 Sep', present: 668, absent: 3398, attendanceRate: 16 },
-    { date: '05 Sep', present: 658, absent: 3408, attendanceRate: 16 },
-    { date: '06 Sep', present: 560, absent: 3506, attendanceRate: 14 },
-    { date: '07 Sep', present: 671, absent: 3395, attendanceRate: 17 },
-    { date: '08 Sep', present: 665, absent: 3401, attendanceRate: 16 },
-    { date: '09 Sep', present: 653, absent: 3413, attendanceRate: 16 },
-  ],
-  departments: [
-    { name: 'Nikoo Paradigm', present: 8, total: 1164 },
-    { name: 'Default', present: 111, total: 539 },
-    { name: 'Nikoo Homes', present: 142, total: 358 },
-    { name: 'Brigade Cornerstone Utopia', present: 68, total: 213 },
-  ],
+  trend: [],
+  departments: [],
   lastUpdated: new Date().toISOString(),
   connectionStatus: 'connected',
 };
 
 const DEFAULT_DEVICES_SNAPSHOT: DeviceData = {
   devices: [],
-  online: 45,
-  offline: 3,
-  total: 48,
+  online: 0,
+  offline: 0,
+  total: 0,
 };
 
 function getLocalAttendanceCache(date?: string): AttendanceData {
   try {
-    const key = date ? `${ATTENDANCE_CACHE_PREFIX}${date}` : ATTENDANCE_CACHE_LATEST;
-    const raw = localStorage.getItem(key) || localStorage.getItem(ATTENDANCE_CACHE_LATEST);
+    if (date) {
+      const key = `${ATTENDANCE_CACHE_PREFIX}${date}`;
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        // Only return cache if it matches the EXACT date requested and has data
+        if (parsed && parsed.summary?.date === date && (parsed.summary || (Array.isArray(parsed.employees) && parsed.employees.length > 0))) {
+          return parsed;
+        }
+      }
+      // NEVER fall back to ATTENDANCE_CACHE_LATEST when a specific date is requested,
+      // as that would serve yesterday's or previous day's data for today!
+      return { ...DEFAULT_ATTENDANCE_SNAPSHOT, summary: { ...DEFAULT_ATTENDANCE_SNAPSHOT.summary, date } };
+    }
+
+    const raw = localStorage.getItem(ATTENDANCE_CACHE_LATEST);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && (parsed.summary || (Array.isArray(parsed.employees) && parsed.employees.length > 0))) {
@@ -2048,12 +2049,25 @@ const ClientAttendanceDashboard: React.FC = () => {
         import.meta.env.VITE_API_URL || 
         (Capacitor.isNativePlatform() ? 'https://app.paradigmfms.com' : '')
       ).replace(/\/$/, '');
+      const ts = Date.now();
       const [attRes, deviceRes] = await Promise.all([
-        fetch(`${apiBaseUrl}/api/mssql-attendance?date=${selectedDate}&siteId=all`, {
-          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        fetch(`${apiBaseUrl}/api/mssql-attendance?date=${selectedDate}&siteId=all&_t=${ts}`, {
+          cache: 'no-store',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+          },
         }),
-        fetch(`${apiBaseUrl}/api/mssql-devices`, {
-          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        fetch(`${apiBaseUrl}/api/mssql-devices?_t=${ts}`, {
+          cache: 'no-store',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+          },
         }),
       ]);
 
@@ -4022,7 +4036,13 @@ const DetailedAuditReportView: React.FC<{
         // Scale timeout based on range size: 15s for ≤31 days, 30s for ≤90 days, 60s for year+
         const rangeDays = Math.ceil((new Date(end).getTime() - new Date(start).getTime()) / (1000 * 60 * 60 * 24)) + 1;
         const timeoutMs = rangeDays <= 31 ? 15000 : rangeDays <= 90 ? 30000 : 60000;
-        const res = await fetch(`${apiBaseUrl}/api/mssql-attendance-report?startDate=${start}&endDate=${end}&site=${encodeURIComponent(site)}`, {
+        const ts = Date.now();
+        const res = await fetch(`${apiBaseUrl}/api/mssql-attendance-report?startDate=${start}&endDate=${end}&site=${encodeURIComponent(site)}&_t=${ts}`, {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+          },
           signal: AbortSignal.timeout(timeoutMs),
         });
 

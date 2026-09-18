@@ -97,7 +97,8 @@ export async function executeSafeCacheClearance(): Promise<void> {
           key.includes('paradigm_lastPath') ||
           key.includes('cache') ||
           key.includes('options') ||
-          key.includes('theme');
+          key.includes('theme') ||
+          key.includes('attendance');
 
         if (isStaleTarget) {
           keysToRemove.push(key);
@@ -126,12 +127,55 @@ export async function executeSafeCacheClearance(): Promise<void> {
   } catch (idbErr) {
     console.warn('[AppUpgrade] IndexedDB cache cleanup warning:', idbErr);
   }
+
+  // 5. Reset attendance-only fields inside paradigm-auth-storage (Capacitor Preferences)
+  // The Zustand persist middleware stores isCheckedIn, breakIntervals, etc. alongside the
+  // user identity. After an app upgrade, these attendance fields are stale (from yesterday
+  // or from another device). We zero them out here while preserving the user identity so
+  // that the fresh checkAttendanceStatus() server fetch always wins on first render.
+  try {
+    const { Preferences } = await import('@capacitor/preferences');
+    const { value: rawAuthStorage } = await Preferences.get({ key: 'paradigm-auth-storage' });
+    if (rawAuthStorage) {
+      const parsed = JSON.parse(rawAuthStorage);
+      const stateToReset = parsed?.state || parsed;
+      const ATTENDANCE_RESET_FIELDS: Record<string, unknown> = {
+        isCheckedIn: false,
+        lastCheckInTime: null,
+        lastCheckOutTime: null,
+        firstBreakInTime: null,
+        lastBreakInTime: null,
+        lastBreakOutTime: null,
+        totalBreakDurationToday: 0,
+        totalWorkingDurationToday: 0,
+        breakIntervals: [],
+        isOnBreak: false,
+        dailyPunchCount: 0,
+        approvedUnlockCount: 0,
+        isPunchUnlocked: false,
+        isFieldCheckedIn: false,
+        isFieldCheckedOut: false,
+        isSiteOtCheckedIn: false,
+        hasPreviousDayOpenSession: false,
+        hasActiveOpenSession: false,
+        previousDaySessionInfo: null,
+        pendingAutoPunchOut: null,
+      };
+      Object.assign(stateToReset, ATTENDANCE_RESET_FIELDS);
+      const updated = parsed?.state ? { ...parsed, state: stateToReset } : stateToReset;
+      await Preferences.set({ key: 'paradigm-auth-storage', value: JSON.stringify(updated) });
+      console.log('[AppUpgrade] Reset attendance fields in paradigm-auth-storage after upgrade.');
+    }
+  } catch (prefErr) {
+    console.warn('[AppUpgrade] Failed to reset attendance fields in Preferences:', prefErr);
+  }
 }
 
 /**
  * Detects version upgrade and triggers automatic safe cache cleanup.
  * Returns true if an upgrade cleanup was executed, false otherwise.
  */
+
 export async function checkAndHandleAppUpgrade(): Promise<boolean> {
   try {
     let currentBuild = String(APP_BUILD_NUMBER || '1');
