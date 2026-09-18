@@ -1164,7 +1164,7 @@ const VerificationDashboard: React.FC = () => {
     }
 
     return (
-        <div className="p-3 md:p-6 flex-1 flex flex-col bg-slate-50/50 dark:bg-[#041b0f] min-h-screen md:min-h-0 space-y-5 max-md:pb-36">
+        <div className="p-3 md:p-6 bg-slate-50/50 dark:bg-[#041b0f] min-h-full space-y-5 pb-24">
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
             
             {/* Mobile Top Back Bar */}
@@ -1377,7 +1377,7 @@ const VerificationDashboard: React.FC = () => {
             </div>
 
             {/* Main Table Card */}
-            <div className="bg-white dark:bg-[#092c19] rounded-2xl shadow-sm border border-slate-200/80 dark:border-[#134426] overflow-hidden flex-1 flex flex-col">
+            <div className="bg-white dark:bg-[#092c19] rounded-2xl shadow-sm border border-slate-200/80 dark:border-[#134426] overflow-hidden">
                 <div className="p-4 border-b border-slate-100 dark:border-[#134426] bg-slate-50/50 dark:bg-[#092c19] flex-shrink-0">
                     <div className="flex flex-col lg:flex-row justify-between items-center gap-4">
                         <div className="bg-slate-200/60 dark:bg-[#041b0f] border border-transparent dark:border-[#134426] p-1 rounded-xl w-full lg:w-auto self-start">
@@ -1419,7 +1419,7 @@ const VerificationDashboard: React.FC = () => {
                     </div>
                 </div>
 
-            <div className="overflow-x-auto overflow-y-hidden pb-16 md:pb-0">
+            <div className="overflow-x-auto pb-6 md:pb-2">
                 {isMobile ? (
                     <div className="flex flex-col gap-3 px-1 mt-2">
                         {isLoading ? (

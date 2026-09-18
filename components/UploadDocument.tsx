@@ -179,14 +179,31 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
 
             // Run OCR if configured
             if (onOcrComplete && ocrSchema && setToast) {
+                const effectiveDocType = docType || (() => {
+                    const l = label.toLowerCase();
+                    if (l.includes('bank') || l.includes('cheque') || l.includes('passbook')) return 'Bank';
+                    if (l.includes('aadhaar') || l.includes('id proof')) return l.includes('back') ? 'idBack' : 'idFront';
+                    if (l.includes('pan')) return 'PAN';
+                    if (l.includes('salary') || l.includes('payslip')) return 'Salary';
+                    if (l.includes('uan')) return 'UAN';
+                    if (l.includes('esi')) return 'ESI';
+                    if (l.includes('certificate') || l.includes('degree')) return 'Education';
+                    return undefined;
+                })();
+
                 try {
-                    const extractedData = await api.extractDataFromImage(base64, selectedFile.type, ocrSchema, docType);
+                    const extractedData = await api.extractDataFromImage(base64, selectedFile.type, ocrSchema, effectiveDocType);
                     setExtractedInfo(extractedData);
                     onOcrComplete(extractedData);
                     // Let the caller's onOcrComplete toast handle success in online mode.
-                    // In offline mode show a distinct info toast.
+                    // In offline mode show an informative success or warning toast.
                     if (extractedData?._offlineFallback) {
-                        setToast({ message: '📵 Offline mode — some fields extracted via on-device OCR. Please verify and complete any missing fields manually.', type: 'error' });
+                        const extractedKeys = Object.keys(extractedData).filter(k => !k.startsWith('_'));
+                        if (extractedKeys.length > 0) {
+                            setToast({ message: 'Document details extracted via on-device OCR. Please review.', type: 'success' });
+                        } else {
+                            setToast({ message: 'Document text read, but specific fields could not be matched. Please fill in manually.', type: 'error' });
+                        }
                     }
                 } catch (ocrError: any) {
                     console.error("OCR failed:", ocrError);

@@ -243,7 +243,7 @@ const BankDetails = () => {
                     <input placeholder="IFSC Code" {...register('ifscCode')} className="form-input"/>
                     <input placeholder="Branch Name" {...register('branchName')} className="form-input"/>
                     <Controller name="bankProof" control={control} render={({ field }) => (
-                        <UploadDocument label="Upload Bank Proof (Optional)" file={field.value} onFileChange={field.onChange} allowCapture/>
+                        <UploadDocument label="Upload Bank Proof (Optional)" file={field.value} onFileChange={field.onChange} allowCapture docType="Bank" onOcrComplete={handleOcrComplete} ocrSchema={bankProofSchema} setToast={setToast} />
                     )}/>
                 </div>
             </form>
@@ -264,6 +264,7 @@ const BankDetails = () => {
                         onOcrComplete={handleOcrComplete}
                         ocrSchema={bankProofSchema}
                         setToast={setToast}
+                        docType="Bank"
                     />
                 )}/>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-6 border-t">
