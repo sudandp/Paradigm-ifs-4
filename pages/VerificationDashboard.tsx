@@ -72,13 +72,26 @@ const VerificationDashboard: React.FC = () => {
     const navigate = useNavigate();
     const isMobile = useMediaQuery('(max-width: 767px)');
 
+    // Stats computed from ALL submissions (not filtered)
+    const stats = useMemo(() => ({
+        total:    submissions.length,
+        pending:  submissions.filter(s => s.status === 'pending').length,
+        verified: submissions.filter(s => s.status === 'verified').length,
+        rejected: submissions.filter(s => s.status === 'rejected').length,
+    }), [submissions]);
+
+    const TAB_LABELS: Record<string, string> = { all: 'All', pending: 'Pending', verified: 'Verified', rejected: 'Rejected' };
+    const TAB_COUNTS: Record<string, number> = { all: stats.total, pending: stats.pending, verified: stats.verified, rejected: stats.rejected };
+
     const fetchSubmissions = useCallback(async () => {
         if (!user) return;
         setIsLoading(true);
         try {
             const isSuperAdmin = ['admin', 'super_admin'].includes(user.role);
+            // Always fetch ALL submissions so stats cards show correct totals;
+            // status filtering is done client-side below.
             const data = await api.getVerificationSubmissions(
-                statusFilter === 'all' ? undefined : statusFilter,
+                undefined,
                 undefined,
                 isSuperAdmin ? undefined : user.id
             );
@@ -88,7 +101,7 @@ const VerificationDashboard: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [statusFilter, user]);
+    }, [user]);
 
     useEffect(() => {
         fetchSubmissions();
@@ -96,6 +109,9 @@ const VerificationDashboard: React.FC = () => {
 
     const filteredSubmissions = useMemo(() => {
         return submissions.filter(s => {
+            // 1. Status filter
+            if (statusFilter !== 'all' && s.status !== statusFilter) return false;
+            // 2. Search filter
             const siteName = s.organizationName || s.organization?.organizationName || '';
             return (
                 s.personal.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -104,7 +120,7 @@ const VerificationDashboard: React.FC = () => {
                 siteName.toLowerCase().includes(searchTerm.toLowerCase())
             );
         });
-    }, [submissions, searchTerm]);
+    }, [submissions, searchTerm, statusFilter]);
 
     const handleConfirmReject = async (reason: string) => {
         if (!rejectModalSubmission || !rejectModalSubmission.id) return;
@@ -161,7 +177,12 @@ const VerificationDashboard: React.FC = () => {
         setSyncingId(id);
         try {
             const updatedSubmission = await api.syncPortals(id);
-            setSubmissions(prev => prev.map(s => s.id === id ? updatedSubmission : s));
+            // Merge updated fields back — do NOT replace the whole object.
+            // syncPortals may return a partial record (edge fn path) that lacks
+            // nested fields like personal/bank/uan, which breaks VerificationChecks.
+            setSubmissions(prev => prev.map(s =>
+                s.id === id ? { ...s, ...updatedSubmission } : s
+            ));
             if (updatedSubmission.portalSyncStatus === 'synced') {
                 setToast({ message: 'Portals synced successfully!', type: 'success' });
             } else {
@@ -196,14 +217,34 @@ const VerificationDashboard: React.FC = () => {
                 </div>
             )}
 
-            <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6">
+            <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-4">
                 <div>
                     <h2 className="text-2xl font-bold text-primary-text">Verification Dashboard</h2>
                     <p className="text-muted">Review and verify onboarding submissions</p>
                 </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row justify-between items-center my-6 gap-4">
+            {/* Stats summary cards */}
+            {!isLoading && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+                    {[
+                        { label: 'Forms Submitted', value: stats.total,    color: 'bg-blue-50 border-blue-200 text-blue-800',     dot: 'bg-blue-500' },
+                        { label: 'Pending Review',  value: stats.pending,  color: 'bg-amber-50 border-amber-200 text-amber-800',  dot: 'bg-amber-500' },
+                        { label: 'Verified',        value: stats.verified, color: 'bg-emerald-50 border-emerald-200 text-emerald-800', dot: 'bg-emerald-500' },
+                        { label: 'Rejected',        value: stats.rejected, color: 'bg-rose-50 border-rose-200 text-rose-800',     dot: 'bg-rose-500' },
+                    ].map(({ label, value, color, dot }) => (
+                        <div key={label} className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${color} shadow-sm`}>
+                            <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${dot}`} />
+                            <div>
+                                <p className="text-xs font-semibold uppercase tracking-wide opacity-70">{label}</p>
+                                <p className="text-xl font-black">{value}</p>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row justify-between items-center my-4 gap-4">
                 <div className="w-full sm:w-auto border-b border-border">
                     <nav className="-mb-px flex space-x-6" aria-label="Tabs">
                         {['all', 'pending', 'verified', 'rejected'].map(tab => (
@@ -213,9 +254,14 @@ const VerificationDashboard: React.FC = () => {
                                 className={`${statusFilter === tab
                                     ? 'border-emerald-500 text-emerald-700 font-bold'
                                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                                    } whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm capitalize transition-colors duration-200`}
+                                    } whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm capitalize transition-colors duration-200 flex items-center gap-1.5`}
                             >
-                                {tab}
+                                {TAB_LABELS[tab]}
+                                {TAB_COUNTS[tab] > 0 && (
+                                    <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full leading-none ${
+                                        statusFilter === tab ? 'bg-emerald-500 text-white' : 'bg-gray-200 text-gray-600'
+                                    }`}>{TAB_COUNTS[tab]}</span>
+                                )}
                             </button>
                         ))}
                     </nav>

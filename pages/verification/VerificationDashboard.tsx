@@ -780,7 +780,10 @@ const VerificationDashboard: React.FC = () => {
     const fetchSubmissions = useCallback(async (showSkeleton = false) => {
         if (showSkeleton) setIsLoading(true);
         try {
-            const data = await api.getVerificationSubmissions(statusFilter === 'all' ? undefined : statusFilter);
+            // Always fetch ALL submissions so the stats KPI cards show correct
+            // totals across every status. Client-side filtering (statusFilter)
+            // is applied in companyScopedSubmissions / filteredSubmissions below.
+            const data = await api.getVerificationSubmissions(undefined);
             for (const s of data) {
                 const isAutoAiFlow = s.submissionMode === 'auto_ai' || (s.submissionMode !== 'manual' && !s.requiresManualVerification);
                 if (s.status === 'pending' && isAutoAiFlow && checkIsAllDocsVerified(s) && s.id) {
@@ -798,7 +801,7 @@ const VerificationDashboard: React.FC = () => {
         } finally {
             if (showSkeleton) setIsLoading(false);
         }
-    }, [statusFilter]);
+    }, []);
 
     const handleManualSync = useCallback(async () => {
       setIsSyncing(true);
@@ -874,6 +877,9 @@ const VerificationDashboard: React.FC = () => {
     const filteredSubmissions = useMemo(() => {
         if (!companyScopedSubmissions) return [];
         return companyScopedSubmissions.filter(s => {
+            // 1. Status tab filter (client-side, since we now fetch all)
+            if (statusFilter !== 'all' && s.status !== statusFilter) return false;
+            // 2. Search filter
             const siteName = s.organizationName || s.organization?.organizationName || '';
             const query = searchTerm.toLowerCase().trim();
             if (!query) return true;
@@ -890,7 +896,7 @@ const VerificationDashboard: React.FC = () => {
                 siteName.toLowerCase().includes(query)
             );
         });
-    }, [companyScopedSubmissions, searchTerm]);
+    }, [companyScopedSubmissions, searchTerm, statusFilter]);
 
     const handleApprove = (idOrSubmission: string | OnboardingData) => {
         if (typeof idOrSubmission === 'string') {
@@ -985,8 +991,12 @@ const VerificationDashboard: React.FC = () => {
         try {
             // The sync function now returns the updated submission
             const updatedSubmission = await api.syncPortals(id);
-            // We can update the state directly, but the real-time listener will also catch this
-            setSubmissions(prev => prev.map(s => s.id === id ? updatedSubmission : s));
+            // Merge-update: spread the existing record first so nested objects
+            // (personal, bank, uan, etc.) are preserved if the edge-function
+            // returns only a partial payload.
+            setSubmissions(prev => prev.map(s =>
+                s.id === id ? { ...s, ...updatedSubmission } : s
+            ));
             if (updatedSubmission.portalSyncStatus === 'synced') {
                 setToast({ message: 'Portals synced successfully!', type: 'success' });
             } else {

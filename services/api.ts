@@ -2060,89 +2060,83 @@ export const api = {
 
   _saveSubmission: async (data: OnboardingData, asDraft: boolean): Promise<{ draftId: string }> => {
     const { data: { session } } = await supabase.auth.getSession();
-    const userId = session?.user?.id || 'offline_user';
+    const currentActiveUser = useAuthStore.getState().user;
+    const userId = session?.user?.id || currentActiveUser?.id || null;
 
     const submissionId = (data.id && !data.id.startsWith('draft_'))
         ? data.id
         : crypto.randomUUID();
     
-    const offlineSubmission: OnboardingData = {
-      ...data,
-      id: submissionId,
-      status: asDraft ? 'draft' : data.status,
-    };
-
-    const status = await Network.getStatus();
-    if (!status.connected || (isOfflineEnabled() && !_isOfflineOnline())) {
-      await cacheOnboardingSubmission({ ...offlineSubmission, pending: true });
-      await _offlineEnqueue({
-        id: submissionId,
-        tableName: 'onboarding_submissions',
-        action: 'INSERT',
-        payload: toSnakeCase(offlineSubmission) as Record<string, unknown>,
-      });
-      console.log(`[API] Onboarding submission queued offline (id=${submissionId})`);
-      return { draftId: submissionId };
-    }
-
-    const dataWithPaths = await processFilesForUpload(data, userId, submissionId);
-    const snakedData = toSnakeCase(dataWithPaths);
-
     // Resolve current user info for creator defaults
-    const currentActiveUser = useAuthStore.getState().user;
     const currentUserName = currentActiveUser?.name || (currentActiveUser as any)?.full_name || session?.user?.user_metadata?.full_name || session?.user?.user_metadata?.name || session?.user?.email?.split('@')[0] || '';
     const currentUserPhoto = (currentActiveUser as any)?.avatar_url || (currentActiveUser as any)?.photo_url || (currentActiveUser as any)?.profile_photo || session?.user?.user_metadata?.avatar_url || session?.user?.user_metadata?.picture || null;
     const currentUserRole = currentActiveUser?.role || '';
     
     // Preserve original creator info if already present; only set to current user on initial creation
-    const originalCreatedUserId = (data as any).createdUserId || (data as any).created_user_id || (snakedData as any).created_user_id || (data as any).userId || (data as any).user_id || userId;
+    const originalCreatedUserId = (data as any).createdUserId || (data as any).created_user_id || (data as any).userId || (data as any).user_id || userId;
     const originalCreatedByName = (data as any).createdByName || (data as any).created_by_name || (data as any).createdBy || (data as any).created_by || (data as any).submitted_by || currentUserName;
     const originalCreatedByPhoto = (data as any).createdByPhoto || (data as any).created_by_photo || currentUserPhoto;
     const originalCreatedByRole = (data as any).createdByRole || (data as any).created_by_role || currentUserRole;
 
-    const dbData = {
-      ...snakedData,
+    const offlineSubmission: OnboardingData = {
+      ...data,
       id: submissionId,
-      user_id: originalCreatedUserId,
-      created_user_id: originalCreatedUserId,
-      created_by_name: originalCreatedByName,
-      created_by_photo: originalCreatedByPhoto,
-      created_by_role: originalCreatedByRole,
-      employee_id: data.personal?.employeeId || null,
       status: asDraft ? 'draft' : data.status,
-      organization_id: data.organization?.organizationId || null,
-      organization_name: data.organization?.organizationName || null,
+      created_user_id: originalCreatedUserId,
+      createdUserId: originalCreatedUserId,
+      created_by_name: originalCreatedByName,
+      createdByName: originalCreatedByName,
+      created_by_photo: originalCreatedByPhoto,
+      createdByPhoto: originalCreatedByPhoto,
+      created_by_role: originalCreatedByRole,
+      createdByRole: originalCreatedByRole,
     };
 
-    delete dbData.file;
-    delete dbData.confirm_account_number;
-    delete (dbData as any).is_qr_verified;
-    delete (dbData as any).created_by_name;
-    delete (dbData as any).created_by_photo;
-    delete (dbData as any).created_by_role;
-    delete (dbData as any).created_by;
-    delete (dbData as any).createdByName;
-    delete (dbData as any).createdByPhoto;
-    delete (dbData as any).createdByRole;
-    delete (dbData as any).submission_mode;
-    delete (dbData as any).verified_by;
-    delete (dbData as any).verified_by_photo;
-    delete (dbData as any).verified_at;
-    delete (dbData as any).verification_mode;
-    delete (dbData as any).verifiedBy;
-    delete (dbData as any).verifiedAt;
-    delete (dbData as any).verifiedByPhoto;
-    delete (dbData as any).verificationMode;
-    delete (dbData as any).rejected_at;
-    delete (dbData as any).rejected_by;
-    delete (dbData as any).rejection_reason;
-    delete (dbData as any).rejectedAt;
-    delete (dbData as any).rejectedBy;
-    delete (dbData as any).rejectionReason;
-    delete (dbData as any).rejection_notes;
-    delete (dbData as any).rejectionNotes;
-    delete (dbData as any).pending;
-    delete (dbData as any).failed;
+    const buildCleanDbData = (payloadSource: any) => {
+      const snaked = toSnakeCase(payloadSource);
+      const clean = {
+        ...snaked,
+        id: submissionId,
+        user_id: originalCreatedUserId,
+        created_user_id: originalCreatedUserId,
+        employee_id: data.personal?.employeeId || null,
+        status: asDraft ? 'draft' : data.status,
+        organization_id: data.organization?.organizationId || null,
+        organization_name: data.organization?.organizationName || null,
+      };
+
+      const keysToDelete = [
+        'file', 'confirm_account_number', 'is_qr_verified',
+        'created_by_name', 'created_by_photo', 'created_by_role', 'created_by', 'created_by_name_snake',
+        'createdByName', 'createdByPhoto', 'createdByRole',
+        'submission_mode', 'verified_by', 'verified_by_photo', 'verified_at', 'verification_mode',
+        'verifiedBy', 'verifiedAt', 'verifiedByPhoto', 'verificationMode',
+        'rejected_at', 'rejected_by', 'rejection_reason', 'rejectedAt', 'rejectedBy',
+        'rejectionReason', 'rejection_notes', 'rejectionNotes', 'rejectionReasonText',
+        'fcuStatus', 'fcuAcknowledgedBy', 'fcuAcknowledgedAt', 'fcuVerifiedBy', 'fcuVerifiedAt', 'fcuNotes',
+        'pending', 'failed'
+      ];
+      keysToDelete.forEach(k => delete (clean as any)[k]);
+      return clean;
+    };
+
+    const status = await Network.getStatus();
+    if (!status.connected || (isOfflineEnabled() && !_isOfflineOnline())) {
+      await cacheOnboardingSubmission({ ...offlineSubmission, pending: true });
+      const offlineDbData = buildCleanDbData(offlineSubmission);
+      await _offlineEnqueue({
+        id: submissionId,
+        tableName: 'onboarding_submissions',
+        action: 'INSERT',
+        payload: offlineDbData as Record<string, unknown>,
+      });
+      console.log(`[API] Onboarding submission queued offline (id=${submissionId})`);
+      return { draftId: submissionId };
+    }
+
+    const uploadUserId = userId || originalCreatedUserId || '00000000-0000-0000-0000-000000000000';
+    const dataWithPaths = await processFilesForUpload(data, uploadUserId, submissionId);
+    const dbData = buildCleanDbData(dataWithPaths);
 
     try {
       const { data: savedData, error } = await supabase.from('onboarding_submissions').upsert(dbData, { onConflict: 'id' }).select('id').single();

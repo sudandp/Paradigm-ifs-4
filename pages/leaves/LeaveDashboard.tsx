@@ -1043,14 +1043,18 @@ const LeaveDashboard: React.FC = () => {
                 return lType.includes('comp') && (lStatus === 'approved' || lStatus === 'correction_made');
             })
             .map(l => {
-                let days = l.dayOption === 'half' ? 0.5 : 1;
-                if (l.startDate !== l.endDate && l.dayOption !== 'half') {
-                    days = differenceInCalendarDays(new Date(l.endDate.replace(/-/g, '/')), new Date(l.startDate.replace(/-/g, '/'))) + 1;
+                const sDate = l.startDate || (l as any).start_date;
+                const eDate = l.endDate || (l as any).end_date;
+                const dOption = l.dayOption || (l as any).day_option;
+                let days = dOption === 'half' ? 0.5 : 1;
+                if (sDate && eDate && sDate !== eDate && dOption !== 'half') {
+                    days = differenceInCalendarDays(new Date(eDate.replace(/-/g, '/')), new Date(sDate.replace(/-/g, '/'))) + 1;
                 }
                 return {
                     id: l.id,
-                    startDate: l.startDate,
-                    endDate: l.endDate,
+                    startDate: sDate,
+                    endDate: eDate,
+                    dayOption: dOption,
                     days,
                     reason: l.reason
                 };
@@ -1089,7 +1093,24 @@ const LeaveDashboard: React.FC = () => {
 
         const simEvents: SimEvent[] = [];
         sortedForSim.forEach(item => simEvents.push({ type: 'credit', date: item.date, item }));
-        coLeaves.forEach(l => simEvents.push({ type: 'leave', date: l.startDate, days: l.days, reason: l.reason, id: l.id }));
+        coLeaves.forEach(l => {
+            const sDate = l.startDate;
+            const eDate = l.endDate;
+            const dOption = l.dayOption;
+            if (!sDate) return;
+            if (!eDate || sDate === eDate || dOption === 'half') {
+                simEvents.push({ type: 'leave', date: sDate, days: l.days, reason: l.reason, id: l.id });
+            } else {
+                const intervalDays = eachDayOfInterval({
+                    start: startOfDay(new Date(sDate.replace(/-/g, '/'))),
+                    end: startOfDay(new Date(eDate.replace(/-/g, '/')))
+                });
+                intervalDays.forEach(d => {
+                    const dStr = format(d, 'yyyy-MM-dd');
+                    simEvents.push({ type: 'leave', date: dStr, days: 1, reason: l.reason, id: `${l.id}-${dStr}` });
+                });
+            }
+        });
 
         // Sort chronologically (credits before leaves on the same date)
         simEvents.sort((a, b) => {
@@ -1147,8 +1168,8 @@ const LeaveDashboard: React.FC = () => {
                         st.usedBy.push({ date: event.date, days: deduct, reason: event.reason });
                         if (st.remaining <= 0) {
                             st.status = 'Used';
-                            const dateFormatted = format(new Date(event.date.replace(/-/g, '/')), 'dd MMM yyyy');
-                            st.statusReason = `Used on ${dateFormatted} for Comp Off leave`;
+                            const distinctDates = Array.from(new Set(st.usedBy.map(u => format(new Date(u.date.replace(/-/g, '/')), 'dd MMM yyyy'))));
+                            st.statusReason = `Used on ${distinctDates.join(', ')} for Comp Off leave`;
                         } else {
                             st.statusReason = `${st.remaining.toFixed(1)}d active in pool (${(deduct).toFixed(1)}d used)`;
                         }

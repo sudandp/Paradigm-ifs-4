@@ -50,7 +50,9 @@ export const generateEmployeeId = (companyOrSiteName?: string | null): string =>
 const getInitialState = (): OnboardingData => {
   let authUser: any = null;
   try {
-    const raw = typeof window !== 'undefined' ? localStorage.getItem('auth-storage') : null;
+    const raw = typeof window !== 'undefined'
+      ? (localStorage.getItem('paradigm-auth-storage') || localStorage.getItem('auth-storage'))
+      : null;
     if (raw) authUser = JSON.parse(raw)?.state?.user;
   } catch (_e) {
     void _e; // ignore parse error during initial state recovery
