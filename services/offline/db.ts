@@ -23,29 +23,64 @@ import type { OnboardingData } from '../../types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type OutboxStatus = 'pending' | 'syncing' | 'synced' | 'failed';
-export type OutboxAction = 'INSERT' | 'UPDATE' | 'DELETE';
+export type OutboxStatus = 'pending' | 'syncing' | 'synced' | 'failed' | 'conflict' | 'auth_paused';
+export type OutboxAction = 'UPSERT' | 'DELETE' | 'INSERT' | 'UPDATE';
+
+export interface Attachment {
+  /** Key in the IDB `photos` store */
+  photoId: string;
+  /** Dot-notated or direct target path in payload, e.g. 'snag_picture_url' or 'documents.aadhaar_url' */
+  payloadPath: string;
+  /** Deterministic cloud path: `${userId}/${table}/${recordId}/${key}.jpg` */
+  storagePath: string;
+  /** Set after successful upload so retries skip it */
+  uploadedUrl?: string;
+}
+
+export interface OutboxError {
+  kind: 'network' | 'auth' | 'permanent' | 'conflict';
+  code?: string;
+  message: string;
+}
 
 export interface OutboxItem {
   /** Client-generated UUID — also the record's permanent ID in Supabase */
   id: string;
+  /** Business record ID (matches id) */
+  recordId?: string;
   tableName: string;
   action: OutboxAction;
   payload: Record<string, unknown>;
-  /** ID of a related photo blob in the `photos` store, if any */
+  /** Legacy single photo ID in the `photos` store */
   photoId?: string;
+  /** Rich multi-attachment list with deterministic paths */
+  attachments?: Attachment[];
+  /** Server version the edit was based on (for conflict detection) */
+  baseUpdatedAt?: string;
+  /** Prior client revision tokens preserved across coalesces */
+  priorRevisions?: string[];
+  /** Payload shape version, for app upgrades with queued items */
+  schemaVersion?: number;
+  /** Owner ID; drain and UI filter by current user to isolate data on shared devices */
+  userId?: string;
+  /** Device ISO timestamp when user initiated action */
+  capturedAt?: string;
   status: OutboxStatus;
   /** Epoch ms when enqueued */
   createdAt: number;
   attempts: number;
-  /** Last Supabase error message, populated on failure */
+  /** Last error message, populated on failure */
   failureReason?: string;
+  /** Detailed error classification */
+  lastError?: OutboxError;
   /** Epoch ms timestamp when next attempt can be performed (exponential backoff) */
   nextAttemptAt?: number;
+  /** Optional parent record UUID for dependency ordering */
+  dependsOn?: string;
 }
 
 export interface StoredPhoto {
-  /** Matches the related OutboxItem.photoId */
+  /** Matches the related OutboxItem.photoId or Attachment.photoId */
   id: string;
   /** Raw photo Blob — IndexedDB stores Blobs natively */
   blob: Blob;
@@ -58,7 +93,7 @@ export interface StoredPhoto {
 // ─── Schema ──────────────────────────────────────────────────────────────────
 
 const DB_NAME = 'paradigmOfflineDB';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 export interface ParadigmDB {
   snag_audits: {
@@ -90,7 +125,7 @@ export interface ParadigmDB {
   outbox: {
     key: string;
     value: OutboxItem;
-    indexes: { 'by-status': string; 'by-table': string };
+    indexes: { 'by-status': string; 'by-table': string; 'by-user': string };
   };
   photos: {
     key: string;
@@ -106,7 +141,7 @@ let dbPromise: Promise<IDBPDatabase<ParadigmDB>> | null = null;
 export function getDb(): Promise<IDBPDatabase<ParadigmDB>> {
   if (!dbPromise) {
     dbPromise = openDB<ParadigmDB>(DB_NAME, DB_VERSION, {
-      upgrade(db) {
+      upgrade(db, oldVersion, _newVersion, transaction) {
         // snag_audits
         if (!db.objectStoreNames.contains('snag_audits')) {
           db.createObjectStore('snag_audits', { keyPath: 'id' });
@@ -144,6 +179,12 @@ export function getDb(): Promise<IDBPDatabase<ParadigmDB>> {
           const outboxStore = db.createObjectStore('outbox', { keyPath: 'id' });
           outboxStore.createIndex('by-status', 'status', { unique: false });
           outboxStore.createIndex('by-table', 'tableName', { unique: false });
+          outboxStore.createIndex('by-user', 'userId', { unique: false });
+        } else if (oldVersion < 4) {
+          const outboxStore = transaction.objectStore('outbox');
+          if (!outboxStore.indexNames.contains('by-user')) {
+            outboxStore.createIndex('by-user', 'userId', { unique: false });
+          }
         }
 
         // photos — Blob storage for offline photo attachments

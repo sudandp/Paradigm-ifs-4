@@ -16,6 +16,7 @@ import { exportGenericReportToExcel } from '../../utils/excelExport';
 import { Navigate } from 'react-router-dom';
 import { isAdmin } from '../../utils/auth';
 import MobileTopBar from '../../components/navigation/MobileTopBar';
+import { copyToClipboard } from '../../utils/clipboardHelper';
 
 // Import and register chart.js components
 import {
@@ -627,8 +628,8 @@ const ApprovalsInbox: React.FC = () => {
     }
   };
 
-  const handleCopy = (code: string, id: string) => {
-    navigator.clipboard.writeText(code);
+  const handleCopy = async (code: string, id: string) => {
+    await copyToClipboard(code);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
   };

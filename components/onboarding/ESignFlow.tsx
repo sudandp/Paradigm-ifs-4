@@ -21,6 +21,7 @@ import { App } from '@capacitor/app';
 import { Loader2, FileSignature, CheckCircle2, XCircle, ExternalLink, RefreshCw, ShieldCheck, X } from 'lucide-react';
 import { esignGateway } from '../../services/esign/esignGateway';
 import type { ESignSession, ESignStatusResult } from '../../services/esign/esignGateway';
+import { openExternal } from '../../utils/urlHandler';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -108,8 +109,8 @@ const ESignFlow: React.FC<ESignFlowProps> = ({
           }
         });
       } else {
-        // Web: open in new tab, start polling
-        window.open(newSession.signingUrl, '_blank', 'noopener');
+        // Web: open in external browser, start polling
+        await openExternal(newSession.signingUrl);
         startPolling(newSession.requestId);
       }
     } catch (err: any) {
@@ -244,7 +245,7 @@ const ESignFlow: React.FC<ESignFlowProps> = ({
               <button
                 id="esign-reopen-btn"
                 type="button"
-                onClick={() => window.open(session.signingUrl, '_blank', 'noopener')}
+                onClick={() => openExternal(session.signingUrl)}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg border border-accent text-accent text-sm font-medium hover:bg-accent/10 transition-colors"
               >
                 <ExternalLink className="h-4 w-4" />

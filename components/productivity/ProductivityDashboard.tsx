@@ -35,6 +35,7 @@ import type {
 } from '../../types';
 import Button from '../ui/Button';
 import Toast from '../ui/Toast';
+import { safeCopyToClipboard } from '../../utils/clipboardHelper';
 
 interface ProductivityDashboardProps {
   targetUserId?: string;
@@ -136,8 +137,8 @@ export const ProductivityDashboard: React.FC<ProductivityDashboardProps> = ({
     return `${mins}m`;
   };
 
-  const copyToClipboard = (text: string, id: string) => {
-    navigator.clipboard.writeText(text);
+  const copyToClipboard = async (text: string, id: string) => {
+    await safeCopyToClipboard(text);
     setCopiedCommand(id);
     setToast({ message: 'Command copied to clipboard!', type: 'success' });
     setTimeout(() => setCopiedCommand(null), 2500);

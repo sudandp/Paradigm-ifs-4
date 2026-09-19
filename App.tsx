@@ -24,6 +24,7 @@ import { GOOGLE_CONFIG } from './config/authConfig';
 import { api as apiService } from './services/api';
 import type { User } from './types';
 import { syncEngine } from './services/offline/syncEngine';
+import { OfflineStatusBanner } from './components/offline/OfflineStatusBanner';
 import { useOnboardingStore } from './store/onboardingStore';
 import { usePWAStore } from './store/pwaStore';
 import { useNotificationStore } from './store/notificationStore';
@@ -110,6 +111,8 @@ const ClientDashboard = lazyWithRetry(() => import('./pages/client/ClientDashboa
 const ClientAttendanceDashboard = lazyWithRetry(() => import('./pages/client/ClientAttendanceDashboard'));
 const ManagementDashboard = lazyWithRetry(() => import('./pages/management/ManagementDashboard'));
 const ProfilePage = lazyWithRetry(() => import('./pages/profile/ProfilePage'));
+const SyncReview = lazyWithRetry(() => import('./pages/offline/SyncReview'));
+const OfflineDiagnostics = lazyWithRetry(() => import('./pages/settings/OfflineDiagnostics'));
 const AttendanceDashboard = lazyWithRetry(() => import('./pages/attendance/AttendanceDashboard'));
 const DeviceManagement = lazyWithRetry(() => import('./pages/settings/DeviceManagement'));
 const MyLocations = lazyWithRetry(() => import('./pages/attendance/MyLocations'));
@@ -512,6 +515,7 @@ const MainLayoutWrapper: React.FC = () => {
 
   return (
     <>
+      <OfflineStatusBanner />
       {isMobile ? <MobileLayout /> : <MainLayout />}
       {user && ['hr_recruitment', 'developer', 'admin', 'super_admin'].includes(user.role) && isHrmsRoute && <VoipDialer />}
     </>
@@ -568,6 +572,19 @@ const App: React.FC = () => {
       }
     } catch (e) {
       console.warn('[Impersonation] Error syncing stored session on mount:', e);
+    }
+  }, []);
+ 
+  // Request persistent storage quota if available on mobile / desktop browsers
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.persist) {
+      navigator.storage.persist().then(granted => {
+        if (granted) {
+          console.log('[Storage] Persistent IndexedDB storage quota granted.');
+        }
+      }).catch(e => {
+        console.debug('[Storage] Storage persist request skipped:', e);
+      });
     }
   }, []);
 
@@ -2120,6 +2137,9 @@ const App: React.FC = () => {
             <Route path="profile" element={<ProfilePage />} />
           </Route>
           <Route path="mobile-home" element={<MobileHome />} />
+          <Route path="sync-review" element={<SyncReview />} />
+          <Route path="offline/diagnostics" element={<OfflineDiagnostics />} />
+          <Route path="settings/offline-diagnostics" element={<OfflineDiagnostics />} />
 
           {/* Referral Module */}
           <Route path="referral/employee" element={<EmployeeReferralForm />} />

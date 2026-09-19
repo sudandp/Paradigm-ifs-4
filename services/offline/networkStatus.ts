@@ -66,3 +66,29 @@ export function onStatusChange(cb: StatusCallback): () => void {
   _listeners.add(cb);
   return () => _listeners.delete(cb);
 }
+
+/**
+ * Verifies real end-to-end connectivity by pinging the Supabase backend.
+ * `isOnline()` / `navigator.onLine` only tests whether a network interface exists,
+ * which is true on captive portals, dead Wi-Fi, and 0-data connections.
+ */
+export async function isReachable(timeoutMs = 4000): Promise<boolean> {
+  if (!isOnline()) return false;
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+
+    const { supabaseUrl } = await import('../supabase');
+    const targetUrl = `${supabaseUrl}/auth/v1/health`;
+
+    const res = await fetch(targetUrl, {
+      method: 'GET',
+      signal: ctrl.signal,
+      cache: 'no-store',
+    });
+    clearTimeout(t);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}

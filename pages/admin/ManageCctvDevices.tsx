@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { CctvActionZoneModal, ActionZonePoint } from '../../components/cctv/CctvActionZoneModal';
 import { safeCopyToClipboard } from '../../utils/clipboardHelper';
+import { openExternal } from '../../utils/urlHandler';
 
 interface CctvDevice {
   id: string;
@@ -149,7 +150,7 @@ const CameraLivePreview: React.FC<{ camera: any; serverHost: string | null; admi
         }, 'image/jpeg', 0.92);
       }
     } catch {
-      window.open(`${activeBase}/camera/snapshot/${encodeURIComponent(camName)}?ngrok-skip-browser-warning=1`, '_blank');
+      openExternal(`${activeBase}/camera/snapshot/${encodeURIComponent(camName)}?ngrok-skip-browser-warning=1`);
     }
   };
 

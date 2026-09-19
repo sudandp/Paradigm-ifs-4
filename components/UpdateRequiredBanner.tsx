@@ -54,7 +54,7 @@ const UpdateRequiredBanner: React.FC = () => {
     if (Capacitor.isNativePlatform()) {
       openExternal(playStoreUrl);
     } else {
-      window.open(fallbackUrl, '_blank');
+      openExternal(fallbackUrl);
     }
   };
 

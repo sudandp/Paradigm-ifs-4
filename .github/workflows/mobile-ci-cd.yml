@@ -30,6 +30,8 @@ jobs:
         run: npm ci
 
       - name: Build Web Assets
+        env:
+          VITE_OFFLINE_ENABLED: 'true'
         run: npm run build
 
       - name: Capacitor Sync Android

@@ -11,7 +11,10 @@ import type {
 } from '../types/operations';
 import { isOfflineEnabled } from './offline/featureFlag';
 import { isOnline } from './offline/networkStatus';
-import { enqueue, storePhoto, cancelPendingInsert, getPending, getAll as getAllOutboxItems } from './offline/outbox';
+import { saveOfflineAware, unwrap, isNetworkError } from './offline/saveOfflineAware';
+import * as cache from './offline/cache';
+import * as outbox from './offline/outbox';
+import { getCurrentUserId, syncEngine } from './offline/syncEngine';
 import {
   cacheSnagEntry,
   cacheSnagEntries,
@@ -242,324 +245,244 @@ export const opsApi = {
   // SNAG AUDITS
   // ==========================================================================
 
+  /**
+   * Merge local outbox/IDB entries that haven't been synced yet into the
+   * server list so they remain visible while sync is pending, in-flight, or
+   * failed. Uses getAll() (not getPending()) so 'syncing' and 'failed' items
+   * are never invisible.
+   */
   getSnagEntries: async (): Promise<SnagEntry[]> => {
-    /**
-     * Merge local outbox/IDB entries that haven't been synced yet into the
-     * server list so they remain visible while sync is pending, in-flight, or
-     * failed. Uses getAll() (not getPending()) so 'syncing' and 'failed' items
-     * are never invisible.
-     */
-    const mergeLocalPendingSnags = async (serverEntries: SnagEntry[]): Promise<SnagEntry[]> => {
-      if (!isOfflineEnabled()) return serverEntries;
+    const mergeWithOutbox = async (baseEntries: SnagEntry[]): Promise<SnagEntry[]> => {
       try {
-        const cached = await getCachedSnagEntries();
-        // Use getAll() — covers pending, syncing AND failed statuses.
-        // getPending() was filtering to 'pending' only which hid 'syncing' &
-        // 'failed' items; markSynced() deletes from outbox so we never see
-        // already-uploaded rows here.
-        const allOutbox = await getAllOutboxItems().catch(() => []);
+        const outboxItems = await outbox.getForTable('snag_audits');
+        if (!outboxItems || outboxItems.length === 0) return baseEntries;
 
-        // If the outbox is empty (everything synced) and the IDB cache has no
-        // entries that are absent from the server list, nothing to merge.
-        if (allOutbox.length === 0) return serverEntries;
+        const outboxMap = new Map<string, any>();
+        outboxItems.forEach(item => outboxMap.set(item.id, item));
 
-        const pendingMap = new Map<string, any>();
-        allOutbox.forEach((p: any) => pendingMap.set(p.id, p));
-        const serverIds = new Set(serverEntries.map(s => s.id));
+        const baseMap = new Map<string, SnagEntry>();
+        baseEntries.forEach(e => baseMap.set(e.id, e));
 
-        const localPendingEntries: SnagEntry[] = [];
-        for (const row of cached) {
-          const camel = toCamelCase(row) as SnagEntry;
-          // Show if: still in outbox (any status) AND not yet in Supabase response.
-          if (pendingMap.has(camel.id) && !serverIds.has(camel.id)) {
-            const outboxItem: any = pendingMap.get(camel.id);
-            (camel as any).pending = outboxItem?.status === 'pending' || outboxItem?.status === 'syncing';
-            (camel as any).failed = outboxItem?.status === 'failed';
-            localPendingEntries.push(camel);
+        // Incorporate outbox items
+        for (const [id, item] of outboxMap.entries()) {
+          if (item.action === 'DELETE') {
+            baseMap.delete(id);
+            continue;
+          }
+          if (item.payload) {
+            const camelPayload = toCamelCase(item.payload) as SnagEntry;
+            (camelPayload as any).outboxStatus = item.status;
+            (camelPayload as any).pending = item.status === 'pending' || item.status === 'syncing';
+            (camelPayload as any).failed = item.status === 'failed';
+            (camelPayload as any).conflict = item.status === 'conflict';
+            baseMap.set(id, camelPayload);
           }
         }
 
-        return [...localPendingEntries, ...serverEntries];
-      } catch {
-        return serverEntries;
+        // Annotate any existing entries matching outbox
+        for (const [id, entry] of baseMap.entries()) {
+          if (outboxMap.has(id)) {
+            const item = outboxMap.get(id);
+            (entry as any).outboxStatus = item.status;
+            (entry as any).pending = item.status === 'pending' || item.status === 'syncing';
+            (entry as any).failed = item.status === 'failed';
+            (entry as any).conflict = item.status === 'conflict';
+          }
+        }
+
+        return Array.from(baseMap.values()).sort(
+          (a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime()
+        );
+      } catch (err) {
+        console.warn('[opsApi] mergeWithOutbox error:', err);
+        return baseEntries;
       }
     };
 
-    // ── Offline path ──────────────────────────────────────────────────────────
-    // Use authStore.isOffline as the authoritative offline signal — it is set
-    // via active-ping verification in App.tsx and is correct even when
-    // navigator.onLine is still true (WiFi-connected but no real internet).
-    const authIsOffline = useAuthStore.getState().isOffline;
-    if (isOfflineEnabled() && (!isOnline() || authIsOffline)) {
-      const cached = await getCachedSnagEntries();
-      const pendingItems = await getPending().catch(() => []);
-      const pendingMap = new Map<string, any>();
-      pendingItems.forEach((p: any) => pendingMap.set(p.id, p));
-      return cached.map((row) => {
-        const camel = toCamelCase(row) as SnagEntry;
-        if (pendingMap.has(camel.id)) {
-          const outboxItem: any = pendingMap.get(camel.id);
-          (camel as any).pending = outboxItem?.status === 'pending' || outboxItem?.status === 'syncing';
-          (camel as any).failed = outboxItem?.status === 'failed';
-        }
-        return camel;
-      });
+    if (!isOnline()) {
+      const cached = await cache.getAll<SnagEntry>('snag_audits');
+      return await mergeWithOutbox(cached);
     }
 
-    // ── Online path ───────────────────────────────────────────────────────────
     try {
       const { data, error } = await supabase
         .from('snag_audits')
         .select('*')
         .order('timestamp', { ascending: false });
-      
+
       if (error) throw error;
       const entries = (data || []).map((row: any) => toCamelCase(row) as SnagEntry);
-      // Write-through: update local cache after every successful online fetch
-      cacheSnagEntries(entries).catch(() => {});
-      return await mergeLocalPendingSnags(entries);
-    } catch (err) {
-      if (isOfflineEnabled()) {
-        console.warn('[opsApi] Online fetch snag_audits failed, falling back to offline IDB cache:', err);
-        const cached = await getCachedSnagEntries();
-        const pendingItems = await getPending().catch(() => []);
-        const pendingMap = new Map<string, any>();
-        pendingItems.forEach((p: any) => pendingMap.set(p.id, p));
-        return cached.map((row) => {
-          const camel = toCamelCase(row) as SnagEntry;
-          if (pendingMap.has(camel.id)) {
-            const outboxItem: any = pendingMap.get(camel.id);
-            (camel as any).pending = outboxItem?.status === 'pending' || outboxItem?.status === 'syncing';
-            (camel as any).failed = outboxItem?.status === 'failed';
-          }
-          return camel;
-        });
-      }
-      throw err;
+      await cache.putServerRecords('snag_audits', entries);
+      return await mergeWithOutbox(entries);
+    } catch (fetchErr) {
+      console.warn('[opsApi] Online fetch snag_audits failed, falling back to IDB cache:', fetchErr);
+      const cached = await cache.getAll<SnagEntry>('snag_audits');
+      return await mergeWithOutbox(cached);
     }
   },
 
-  saveSnagEntry: async (entry: Partial<SnagEntry>, fileToUpload?: File): Promise<SnagEntry> => {
-    const runOfflineSave = async (): Promise<SnagEntry> => {
-      const localId = (entry.id && !entry.id.startsWith('snag-') && !entry.id.startsWith('sample-'))
-        ? entry.id
-        : crypto.randomUUID();
+  saveSnagEntry: async (entry: Partial<SnagEntry>, fileToUpload?: File): Promise<SnagEntry & { saveResult?: 'synced' | 'queued' }> => {
+    const isExisting = Boolean(entry.id && !entry.id.startsWith('snag-') && !entry.id.startsWith('sample-'));
+    const recordId = isExisting ? (entry.id as string) : crypto.randomUUID();
+    const currentUser = useAuthStore.getState().user;
+    const now = new Date().toISOString();
 
-      // Store photo blob in IDB for later upload & generate base64 dataUrl for local preview
-      let photoId: string | undefined;
-      let localPhotoDataUrl: string | undefined;
-      if (fileToUpload) {
-        try {
-          photoId = await storePhoto(fileToUpload, fileToUpload.name, localId);
-          localPhotoDataUrl = await new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onload = ev => resolve((ev.target?.result as string) || '');
-            reader.onerror = () => resolve('');
-            reader.readAsDataURL(fileToUpload);
-          });
-        } catch (photoErr) {
-          console.warn('[opsApi] Failed to store photo blob offline:', photoErr);
-        }
-      }
-
-      const currentUser = useAuthStore.getState().user;
-      const now = new Date().toISOString();
-      const offlineEntry: SnagEntry & { pending: boolean } = {
-        ...entry,
-        id: localId,
-        timestamp: entry.timestamp || now,
-        createdAt: entry.createdAt || now,
-        updatedAt: now,
-        submittedBy: entry.submittedBy || currentUser?.name || 'Staff',
-        emailAddress: entry.emailAddress || currentUser?.email || '',
-        // Note: snag_audits has no user_id column — attribution via submittedBy/emailAddress
-        snagPictureUrl: entry.snagPictureUrl || localPhotoDataUrl || '',
-        snagPictureName: fileToUpload?.name ?? entry.snagPictureName ?? '',
-        pending: true,
-      } as SnagEntry & { pending: boolean };
-
-      const snakePayload = toSnakeCase(offlineEntry) as Record<string, unknown>;
-
-      // Write to local IDB mirror for immediate UI display
-      await cacheSnagEntry(offlineEntry);
-
-      // Enqueue to outbox for sync on reconnect
-      await enqueue({
-        id: localId,
-        tableName: 'snag_audits',
-        action: entry.id && !entry.id.startsWith('snag-') && !entry.id.startsWith('sample-')
-          ? 'UPDATE'
-          : 'INSERT',
-        payload: snakePayload,
-        photoId,
-      });
-
-      console.log(`[opsApi] Snag entry queued offline (id=${localId})`);
-      return { ...offlineEntry, pending: true } as SnagEntry & { pending: boolean };
+    const snagRecord: SnagEntry = {
+      ...entry,
+      id: recordId,
+      timestamp: entry.timestamp || now,
+      createdAt: entry.createdAt || now,
+      updatedAt: now,
+      submittedBy: entry.submittedBy || currentUser?.name || 'Staff',
+      emailAddress: entry.emailAddress || currentUser?.email || '',
+      criticality: entry.criticality || 'Medium',
+      status: entry.status || 'Open',
+      snagDescription: entry.snagDescription || '',
+      actionToBeTaken: entry.actionToBeTaken || '',
+      remarks: entry.remarks || '',
+      nameOfSite: entry.nameOfSite || '',
+      purposeOfVisit: entry.purposeOfVisit || [],
+      department: entry.department || [],
+      snagPictureName: fileToUpload?.name ?? entry.snagPictureName ?? '',
+      snagPictureUrl: entry.snagPictureUrl || '',
     };
 
-    // ── Offline path ──────────────────────────────────────────────────────────
-    if (isOfflineEnabled() && !isOnline()) {
-      return await runOfflineSave();
-    }
+    const attachments = fileToUpload
+      ? [
+          {
+            blob: fileToUpload,
+            payloadPath: 'snag_picture_url',
+            key: 'snag_photo',
+          },
+        ]
+      : [];
 
-    // ── Online path (with network error fallback) ────────────────────────────────────
-    try {
-      let pictureUrl = entry.snagPictureUrl;
-      let pictureName = entry.snagPictureName;
+    const saveResult = await saveOfflineAware({
+      table: 'snag_audits',
+      record: snagRecord,
+      attachments,
+      baseUpdatedAt: entry.updatedAt,
+      onlineSave: async (cleanRecord) => {
+        let pictureUrl = cleanRecord.snagPictureUrl;
+        let pictureName = cleanRecord.snagPictureName;
 
-      // Upload picture to storage if present
-      if (fileToUpload) {
-        try {
+        if (fileToUpload) {
           const uploadResult = await api.uploadDocument(fileToUpload, 'onboarding-documents');
           pictureUrl = uploadResult.url;
           pictureName = fileToUpload.name;
-        } catch (err) {
-          console.error('Failed to upload snag picture to cloud:', err);
         }
-      }
 
-      const snagData = {
-        ...entry,
-        snagPictureUrl: pictureUrl,
-        snagPictureName: pictureName
-      };
+        const payload = {
+          ...cleanRecord,
+          snagPictureUrl: pictureUrl,
+          snagPictureName: pictureName,
+        };
 
-      const { id, createdAt, updatedAt, ...rest } = snagData as any;
-      let query;
+        const { id, createdAt, updatedAt, ...rest } = payload as any;
+        let query;
+        if (isExisting) {
+          query = supabase.from('snag_audits').update(toSnakeCase(rest)).eq('id', id);
+        } else {
+          query = supabase.from('snag_audits').insert({ id, ...toSnakeCase(rest) });
+        }
 
-      if (id && !id.startsWith('snag-') && !id.startsWith('sample-')) {
-        query = supabase.from('snag_audits').update(toSnakeCase(rest)).eq('id', id);
-      } else {
-        const { id: _, ...insertRest } = rest;
-        query = supabase.from('snag_audits').insert(toSnakeCase(insertRest));
-      }
+        const res = await query.select('*').single();
+        unwrap(res);
+      },
+    });
 
-      const { data, error } = await query.select('*').single();
-      if (error) {
-        console.error('Supabase saveSnagEntry error details:', error);
-        throw error;
-      }
+    // Notify managers on critical snag if online save succeeded
+    if (saveResult === 'synced' && snagRecord.criticality === 'High') {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: submittingUser } = await supabase
+            .from('users')
+            .select('reporting_manager_id, reporting_manager_2_id, reporting_manager_3_id')
+            .eq('id', user.id)
+            .single();
 
-      const saved = toCamelCase(data) as SnagEntry;
+          if (submittingUser) {
+            const managers = [
+              submittingUser.reporting_manager_id,
+              submittingUser.reporting_manager_2_id,
+              submittingUser.reporting_manager_3_id,
+            ].filter(Boolean) as string[];
 
-      // Cache the saved entry locally for offline reads
-      cacheSnagEntry(saved).catch(() => {});
-
-      // Trigger critical notifications to all managers if criticality is High
-      if (saved.criticality === 'High') {
-        try {
-          const { data: { user } } = await supabase.auth.getUser();
-          if (user) {
-            const { data: submittingUser, error: userFetchError } = await supabase
-              .from('users')
-              .select('reporting_manager_id, reporting_manager_2_id, reporting_manager_3_id')
-              .eq('id', user.id)
-              .single();
-
-            if (submittingUser && !userFetchError) {
-              const managers = [
-                submittingUser.reporting_manager_id,
-                submittingUser.reporting_manager_2_id,
-                submittingUser.reporting_manager_3_id
-              ].filter(Boolean) as string[];
-
-              for (const managerId of managers) {
-                await api.createNotification({
-                  userId: managerId,
-                  message: `Critical Snag: "${saved.snagDescription}" reported at "${saved.nameOfSite}" by ${saved.submittedBy || 'staff'}.`,
-                  type: 'warning',
-                  severity: 'High',
-                  linkTo: '/operations/snag-audit',
-                  metadata: { snagId: saved.id }
-                });
-              }
+            for (const managerId of managers) {
+              await api.createNotification({
+                userId: managerId,
+                message: `Critical Snag: "${snagRecord.snagDescription}" reported at "${snagRecord.nameOfSite}" by ${snagRecord.submittedBy || 'staff'}.`,
+                type: 'warning',
+                severity: 'High',
+                linkTo: '/operations/snag-audit',
+                metadata: { snagId: snagRecord.id },
+              });
             }
           }
-        } catch (notifyErr) {
-          console.error('Failed to trigger critical snag notification to managers:', notifyErr);
         }
+      } catch (notifyErr) {
+        console.warn('[opsApi] Failed to trigger critical snag notification:', notifyErr);
       }
-
-      return saved;
-    } catch (onlineErr) {
-      if (isOfflineEnabled()) {
-        console.warn('[opsApi] Online saveSnagEntry failed, falling back to offline outbox:', onlineErr);
-        return await runOfflineSave();
-      }
-      throw onlineErr;
     }
+
+    return {
+      ...snagRecord,
+      saveResult,
+      pending: saveResult === 'queued',
+    } as SnagEntry & { saveResult?: 'synced' | 'queued' };
   },
 
   deleteSnagEntry: async (id: string): Promise<void> => {
-    // Offline path: queue the DELETE for sync, remove from IDB immediately
-    // so the withdrawn record cannot reappear in the offline list.
-    // Compliance note: this closes the gap where an admin deletes a snag
-    // while an auditor's device is offline — the delete propagates on reconnect.
-    if (isOfflineEnabled() && !isOnline()) {
-      // Remove from local IDB immediately so it cannot reappear in the offline list
-      await deleteSnagEntryFromCache(id);
+    // 1. Remove from local cache immediately
+    await cache.del('snag_audits', id);
+    deleteSnagEntryFromCache(id).catch(() => {});
 
-      // Edge case: record was created offline and deleted offline before it ever synced.
-      // The server has never seen this ID — sending a DELETE would be a no-op at best
-      // or a permission error at worst. Cancel the pending INSERT instead.
-      const wasCancelledLocally = await cancelPendingInsert(id);
-      if (!wasCancelledLocally) {
-        // Record has been synced before — safe to enqueue a DELETE for propagation
-        await enqueue({ id, tableName: 'snag_audits', action: 'DELETE', payload: { id } });
+    // 2. Remove from outbox if pending
+    await outbox.removeForRecord('snag_audits', id);
+
+    // 3. If online, try online deletion
+    if (isOnline()) {
+      try {
+        const { error } = await supabase.from('snag_audits').delete().eq('id', id);
+        if (error) throw error;
+        return;
+      } catch (err) {
+        if (!isNetworkError(err)) throw err;
       }
-      return;
     }
 
-    const { error } = await supabase.from('snag_audits').delete().eq('id', id);
-    if (error) throw error;
-    // Mirror delete to IDB — prevents withdrawn records from reappearing offline
-    deleteSnagEntryFromCache(id).catch((e) =>
-      console.warn('[Offline] IDB delete mirror failed for snag', id, e)
-    );
+    // 4. If offline or network drop, enqueue DELETE
+    await outbox.enqueue({
+      id,
+      tableName: 'snag_audits',
+      action: 'DELETE',
+      payload: { id },
+      schemaVersion: 1,
+      userId: getCurrentUserId() || 'anonymous',
+      capturedAt: new Date().toISOString(),
+    });
   },
 
   updateSnagStatus: async (id: string, status: SnagEntry['status']): Promise<void> => {
-    const runOfflineUpdate = async () => {
-      try {
-        const cached = await getCachedSnagEntries();
-        const existing = cached.find((c: any) => c.id === id);
-        if (existing) {
-          const updated = { ...toCamelCase(existing), status, updatedAt: new Date().toISOString(), pending: true };
-          await cacheSnagEntry(updated as SnagEntry);
-        }
-        await enqueue({
-          id,
-          tableName: 'snag_audits',
-          action: 'UPDATE',
-          payload: { id, status, updated_at: new Date().toISOString() },
-        });
-        console.log(`[opsApi] Status update queued offline for snag (id=${id}, status=${status})`);
-      } catch (err) {
-        console.warn('[opsApi] Failed to update snag status offline:', err);
-      }
-    };
-
-    if (isOfflineEnabled() && !isOnline()) {
-      return await runOfflineUpdate();
+    let existing = await cache.get<SnagEntry>('snag_audits', id);
+    if (!existing) {
+      const cached = await cache.getCachedSnagEntries();
+      existing = cached.find((c: any) => c.id === id);
     }
+    const now = new Date().toISOString();
+    const updatedRecord: SnagEntry = existing
+      ? { ...existing, status, updatedAt: now }
+      : ({ id, status, updatedAt: now } as any);
 
-    try {
-      const { error } = await supabase.from('snag_audits').update({ status }).eq('id', id);
-      if (error) throw error;
-      // Mirror status update to local IDB cache
-      const cached = await getCachedSnagEntries();
-      const existing = cached.find((c: any) => c.id === id);
-      if (existing) {
-        const updated = { ...toCamelCase(existing), status, updatedAt: new Date().toISOString(), pending: false };
-        cacheSnagEntry(updated as SnagEntry).catch(() => {});
-      }
-    } catch (err) {
-      if (isOfflineEnabled()) {
-        console.warn('[opsApi] Online updateSnagStatus failed, falling back to offline outbox:', err);
-        return await runOfflineUpdate();
-      }
-      throw err;
-    }
+    await saveOfflineAware({
+      table: 'snag_audits',
+      record: updatedRecord,
+      baseUpdatedAt: existing?.updatedAt,
+      onlineSave: async () => {
+        const res = await supabase.from('snag_audits').update({ status }).eq('id', id);
+        unwrap(res);
+      },
+    });
   }
 };

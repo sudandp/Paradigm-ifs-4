@@ -17,8 +17,24 @@ import {
 
 type StatusFilter = 'all' | 'rejected' | 'draft' | 'pending' | 'verified';
 
-const SyncStatusBadge: React.FC<{ pending?: boolean; failed?: boolean }> = ({ pending, failed }) => {
-    if (failed) {
+const SyncStatusBadge: React.FC<{ pending?: boolean; failed?: boolean; syncStatus?: string }> = ({ pending, failed, syncStatus }) => {
+    if (syncStatus === 'syncing') {
+        return (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 whitespace-nowrap">
+                <RefreshCw size={10} className="animate-spin text-blue-600" />
+                Syncing…
+            </span>
+        );
+    }
+    if (syncStatus === 'conflict') {
+        return (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200 whitespace-nowrap">
+                <AlertTriangle size={10} className="text-purple-600" />
+                Conflict
+            </span>
+        );
+    }
+    if (failed || syncStatus === 'failed') {
         return (
             <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700 border border-red-300 whitespace-nowrap">
                 <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />
@@ -26,11 +42,11 @@ const SyncStatusBadge: React.FC<{ pending?: boolean; failed?: boolean }> = ({ pe
             </span>
         );
     }
-    if (pending) {
+    if (pending || syncStatus === 'pending') {
         return (
             <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 whitespace-nowrap">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                Not Synced
+                Queued Offline
             </span>
         );
     }
@@ -817,7 +833,10 @@ export const MySubmissions: React.FC = () => {
                                                         )}
                                                         <div>
                                                             <div className="font-black text-white capitalize text-sm">{displayName}</div>
-                                                            <div className="text-xs text-white/50 font-medium">{s.personal?.employeeId || 'ID: Pending'}</div>
+                                                            <div className="flex items-center gap-1.5 mt-0.5">
+                                                                <span className="text-xs text-white/50 font-medium">{s.personal?.employeeId || 'ID: Pending'}</span>
+                                                                <SyncStatusBadge pending={(s as any).pending} failed={(s as any).failed} syncStatus={(s as any).syncStatus} />
+                                                            </div>
                                                         </div>
                                                     </div>
                                                     <StatusChip status={s.status} />
@@ -995,7 +1014,7 @@ export const MySubmissions: React.FC = () => {
                                                                 <span className="font-mono text-[10px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200/60">
                                                                     {s.personal?.employeeId || 'ID: Pending'}
                                                                 </span>
-                                                                <SyncStatusBadge pending={(s as any).pending} failed={(s as any).failed} />
+                                                                <SyncStatusBadge pending={(s as any).pending} failed={(s as any).failed} syncStatus={(s as any).syncStatus} />
                                                             </div>
                                                         </div>
                                                     </div>

@@ -7,6 +7,7 @@ import type { LeaveRequest, LeaveRequestStatus, AttendanceEvent } from '../../ty
 import { format, startOfMonth, endOfMonth, differenceInMinutes, isSameDay } from 'date-fns';
 import { api } from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
+import { useNavigate } from 'react-router-dom';
 import { isAdmin } from '../../utils/auth';
 
 interface LeaveDetailsModalProps {
@@ -17,6 +18,7 @@ interface LeaveDetailsModalProps {
 }
 
 const LeaveDetailsModal: React.FC<LeaveDetailsModalProps> = ({ isOpen, onClose, request, onStatusChanged }) => {
+    const navigate = useNavigate();
     const [monthlyInsights, setMonthlyInsights] = useState<{ avgHours: number; daysWorked: number } | null>(null);
     const [isLoadingInsights, setIsLoadingInsights] = useState(false);
     const [leaveBalance, setLeaveBalance] = useState<any | null>(null);
@@ -224,7 +226,7 @@ const LeaveDetailsModal: React.FC<LeaveDetailsModalProps> = ({ isOpen, onClose, 
     };
 
     const getStatusText = (status: LeaveRequestStatus, req: LeaveRequest) => {
-        let text = status.replace(/_/g, ' ');
+        const text = status.replace(/_/g, ' ');
         if ((status === 'pending_manager_approval' || status === 'pending_hr_confirmation') && req.currentApproverName) {
             return `Pending from ${req.currentApproverName}`;
         }
@@ -248,7 +250,8 @@ const LeaveDetailsModal: React.FC<LeaveDetailsModalProps> = ({ isOpen, onClose, 
                 url: proxyUrl,
                 title: cleanName
             });
-            window.open(`/#/document-viewer?${params.toString()}`, '_blank');
+            onClose();
+            navigate(`/document-viewer?${params.toString()}`);
         }
     };
 

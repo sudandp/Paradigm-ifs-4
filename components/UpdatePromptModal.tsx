@@ -25,7 +25,7 @@ export const UpdatePromptModal: React.FC<UpdatePromptModalProps> = ({ updateInfo
       }
     } else {
       const fallbackUrl = 'https://play.google.com/store/apps/details?id=com.paradigm.ifs';
-      window.open(fallbackUrl, '_blank');
+      await openExternal(fallbackUrl);
     }
   };
 

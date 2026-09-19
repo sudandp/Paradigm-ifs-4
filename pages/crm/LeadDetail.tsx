@@ -83,8 +83,15 @@ const LeadDetail: React.FC = () => {
       const filename = `Proposal_${quotation.quotationNumber || 'Document'}.html`;
       await downloadFile(blob, filename, 'text/html');
     } else {
-      const win = window.open('', '_blank');
-      if (win) { win.document.write(html); win.document.close(); win.print(); }
+      // Web: create a blob URL to avoid popup blockers and blank window issues
+      const blob = new Blob([html], { type: 'text/html' });
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
     }
   };
 

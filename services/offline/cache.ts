@@ -18,6 +18,104 @@ import type { HTMasterOption, OfflineHTYardAuditRecord } from '../../types/htYar
 import type { PPMExecutionRecord } from '../../types/ppm';
 import type { OnboardingData } from '../../types';
 
+// ─── Generic Domain Cache Helpers ─────────────────────────────────────────────
+
+/**
+ * Puts a single record into the local domain cache store.
+ */
+export async function put<T extends { id: string }>(tableName: string, record: T): Promise<void> {
+  if (!record?.id) return;
+  try {
+    const db = await getDb();
+    if (db.objectStoreNames.contains(tableName as any)) {
+      await db.put(tableName as any, record);
+    }
+  } catch (err) {
+    console.warn(`[Cache] Failed to put record into ${tableName}:`, err);
+  }
+}
+
+/**
+ * Gets a single record from the local domain cache store.
+ */
+export async function get<T = any>(tableName: string, id: string): Promise<T | undefined> {
+  try {
+    const db = await getDb();
+    if (db.objectStoreNames.contains(tableName as any)) {
+      return (await db.get(tableName as any, id)) as T;
+    }
+  } catch (err) {
+    console.warn(`[Cache] Failed to get record from ${tableName}:`, err);
+  }
+  return undefined;
+}
+
+/**
+ * Retrieves all records from an IndexedDB table cache.
+ */
+export async function getAll<T = any>(tableName: string): Promise<T[]> {
+  try {
+    const db = await getDb();
+    if (db.objectStoreNames.contains(tableName as any)) {
+      return (await db.getAll(tableName as any)) as T[];
+    }
+  } catch (err) {
+    console.warn(`[Cache] Failed to getAll records from ${tableName}:`, err);
+  }
+  return [];
+}
+
+/**
+ * Deletes a record from an IndexedDB table cache.
+ */
+export async function del(tableName: string, id: string): Promise<void> {
+  try {
+    const db = await getDb();
+    if (db.objectStoreNames.contains(tableName as any)) {
+      await db.delete(tableName as any, id);
+    }
+  } catch (err) {
+    console.warn(`[Cache] Failed to delete record from ${tableName}:`, err);
+  }
+}
+
+/**
+ * Stores records fetched from the server.
+ * CRITICAL RULE: Skips any record whose `id` currently exists in the outbox,
+ * ensuring unuploaded local edits are never overwritten by stale server copies.
+ */
+export async function putServerRecords<T extends { id: string }>(
+  tableName: string,
+  records: T[]
+): Promise<void> {
+  if (!Array.isArray(records) || records.length === 0) return;
+  try {
+    const db = await getDb();
+    if (!db.objectStoreNames.contains(tableName as any)) return;
+
+    // Identify outbox entries for this table
+    let protectedIds = new Set<string>();
+    try {
+      const outboxItems = await db.getAllFromIndex('outbox', 'by-table', tableName);
+      protectedIds = new Set(outboxItems.map((i) => i.id));
+    } catch {
+      const allOutbox = await db.getAll('outbox');
+      protectedIds = new Set(allOutbox.filter((i) => i.tableName === tableName).map((i) => i.id));
+    }
+
+    const tx = db.transaction(tableName as any, 'readwrite');
+    for (const record of records) {
+      if (record?.id && !protectedIds.has(record.id)) {
+        await tx.store.put(record);
+      }
+    }
+    await tx.done;
+    console.debug(`[Cache] Stored ${records.length} records in ${tableName} (protected ${protectedIds.size} queued items)`);
+  } catch (err) {
+    console.warn(`[Cache] Failed to put server records in ${tableName}:`, err);
+  }
+}
+
 // ─── ht_master_options cache ─────────────────────────────────────────────────
 
 /**

@@ -15,6 +15,7 @@ import Modal from '../../components/ui/Modal';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import MobileTopBar from '../../components/navigation/MobileTopBar';
 import { safeCopyToClipboard } from '../../utils/clipboardHelper';
+import { openExternal } from '../../utils/urlHandler';
 
 interface UserAddressInfo {
   user: User;
@@ -645,7 +646,7 @@ export default function UserHomeDetails() {
       url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.area + ' ' + (item.pincode !== 'N/A' ? item.pincode : ''))}`;
     }
     if (url) {
-      window.open(url, '_blank', 'noopener,noreferrer');
+      openExternal(url);
     } else {
       setToast({ message: 'No location coordinates or address available for maps.', type: 'warning' });
     }

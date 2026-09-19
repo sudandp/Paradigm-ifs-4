@@ -26,11 +26,25 @@ import { syncEngine } from '../../services/offline/syncEngine';
 import * as outbox from '../../services/offline/outbox';
 import { getDb } from '../../services/offline/db';
 import Button from '../../components/ui/Button';
+import { Preferences } from '@capacitor/preferences';
 
 // ─── Sync Status Badge ────────────────────────────────────────────────────────
 
-const SyncStatusBadge: React.FC<{ pending?: boolean; failed?: boolean }> = ({ pending, failed }) => {
-  if (failed) {
+const SyncStatusBadge: React.FC<{
+  pending?: boolean;
+  failed?: boolean;
+  conflict?: boolean;
+  outboxStatus?: string;
+}> = ({ pending, failed, conflict, outboxStatus }) => {
+  if (conflict || outboxStatus === 'conflict') {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 whitespace-nowrap">
+        <AlertTriangle size={10} className="text-amber-600 animate-pulse" />
+        Conflict
+      </span>
+    );
+  }
+  if (failed || outboxStatus === 'failed') {
     return (
       <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700 border border-red-300 whitespace-nowrap">
         <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />
@@ -38,11 +52,19 @@ const SyncStatusBadge: React.FC<{ pending?: boolean; failed?: boolean }> = ({ pe
       </span>
     );
   }
-  if (pending) {
+  if (outboxStatus === 'syncing') {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 whitespace-nowrap">
+        <RefreshCw size={10} className="text-blue-600 animate-spin" />
+        Syncing…
+      </span>
+    );
+  }
+  if (pending || outboxStatus === 'pending') {
     return (
       <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 whitespace-nowrap">
-        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-        Not Synced
+        <Clock size={10} className="text-amber-500" />
+        Queued Offline
       </span>
     );
   }
@@ -569,7 +591,12 @@ const AuditDraftsModal: React.FC<AuditDraftsModalProps> = ({
                           </span>
                         )}
 
-                        <SyncStatusBadge pending={audit.pending} failed={audit.failed} />
+                        <SyncStatusBadge
+                          pending={audit.pending}
+                          failed={audit.failed}
+                          conflict={audit.conflict}
+                          outboxStatus={audit.outboxStatus}
+                        />
 
                         {isSelected && (
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-600 text-white flex items-center gap-1">
@@ -890,10 +917,33 @@ export const HTYardAuditDashboard: React.FC = () => {
   const loadAudits = async (targetAuditId?: string) => {
     try {
       const list = await api.getAllHTYardAudits();
-      setAllAudits(list);
-      if (list && list.length > 0) {
-        let selected = list[0];
-        const effectiveId = targetAuditId || selectedAuditId || localStorage.getItem('paradigm_ht_last_active_audit_id');
+      const outboxItems = await outbox.getForTable('ht_yard_audits').catch(() => []);
+      const outboxMap = new Map<string, any>();
+      outboxItems.forEach(item => outboxMap.set(item.id, item));
+
+      const enrichedList = list.map((auditItem: any) => {
+        const id = auditItem.activeAudit?.id;
+        if (outboxMap.has(id)) {
+          const item = outboxMap.get(id);
+          return {
+            ...auditItem,
+            activeAudit: {
+              ...auditItem.activeAudit,
+              outboxStatus: item.status,
+              pending: item.status === 'pending' || item.status === 'syncing',
+              failed: item.status === 'failed',
+              conflict: item.status === 'conflict',
+            }
+          };
+        }
+        return auditItem;
+      });
+
+      setAllAudits(enrichedList);
+      if (enrichedList && enrichedList.length > 0) {
+        let selected = enrichedList[0];
+        const { value: storedAuditId } = await Preferences.get({ key: 'paradigm_ht_last_active_audit_id' });
+        const effectiveId = targetAuditId || selectedAuditId || storedAuditId;
 
         if (effectiveId) {
           const found = list.find((a: any) => a.activeAudit?.id === effectiveId);
@@ -905,7 +955,7 @@ export const HTYardAuditDashboard: React.FC = () => {
         }
 
         if (selected?.activeAudit?.id) {
-          localStorage.setItem('paradigm_ht_last_active_audit_id', selected.activeAudit.id);
+          Preferences.set({ key: 'paradigm_ht_last_active_audit_id', value: selected.activeAudit.id });
           if (!selectedAuditId || selectedAuditId !== selected.activeAudit.id) {
             setSearchParams({ auditId: selected.activeAudit.id }, { replace: true });
           }
@@ -1190,7 +1240,7 @@ export const HTYardAuditDashboard: React.FC = () => {
     setShowSiteDropdown(false);
     setShowDraftsModal(false);
     if (item.activeAudit?.id) {
-      localStorage.setItem('paradigm_ht_last_active_audit_id', item.activeAudit.id);
+      Preferences.set({ key: 'paradigm_ht_last_active_audit_id', value: item.activeAudit.id });
       setSearchParams({ auditId: item.activeAudit.id }, { replace: true });
     }
     toast.success(`Switched to ${item.activeAudit.siteName}`);
@@ -1220,7 +1270,7 @@ export const HTYardAuditDashboard: React.FC = () => {
           setResponses(next.responses || {});
           setSnagItems(next.snagItems || []);
           if (next.activeAudit?.id) {
-            localStorage.setItem('paradigm_ht_last_active_audit_id', next.activeAudit.id);
+            Preferences.set({ key: 'paradigm_ht_last_active_audit_id', value: next.activeAudit.id });
             setSearchParams({ auditId: next.activeAudit.id }, { replace: true });
           }
         } else {
@@ -1228,7 +1278,7 @@ export const HTYardAuditDashboard: React.FC = () => {
           setEquipmentInstances([]);
           setResponses({});
           setSnagItems([]);
-          localStorage.removeItem('paradigm_ht_last_active_audit_id');
+          Preferences.remove({ key: 'paradigm_ht_last_active_audit_id' });
         }
       }
       setShowDeleteModal(false);
@@ -1316,7 +1366,7 @@ export const HTYardAuditDashboard: React.FC = () => {
     setAuditLogs([]);
     setActiveInstanceId('site_common');
     setShowNewAuditModal(false);
-    localStorage.setItem('paradigm_ht_last_active_audit_id', auditId);
+    Preferences.set({ key: 'paradigm_ht_last_active_audit_id', value: auditId });
     setSearchParams({ auditId }, { replace: true });
     addAuditLog({ actionType: 'CREATE', target: trimmedSite, details: `Created new HT Yard audit draft for "${trimmedSite}"` });
     api.saveHTYardAudit(initialAuditData).then(() => {
@@ -1804,7 +1854,12 @@ export const HTYardAuditDashboard: React.FC = () => {
                             <span className="font-mono">{item.activeAudit?.referenceNumber}</span>
                             <span>•</span>
                             <span>{item.activeAudit?.auditDate}</span>
-                            <SyncStatusBadge pending={item.activeAudit?.pending} failed={item.activeAudit?.failed} />
+                            <SyncStatusBadge
+                              pending={item.activeAudit?.pending}
+                              failed={item.activeAudit?.failed}
+                              conflict={item.activeAudit?.conflict}
+                              outboxStatus={item.activeAudit?.outboxStatus}
+                            />
                           </div>
                         </div>
                         <div className="flex items-center gap-1">

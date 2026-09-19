@@ -91,6 +91,8 @@ import { isOfflineEnabled } from './offline/featureFlag';
 import { isOnline as _isOfflineOnline } from './offline/networkStatus';
 import { enqueue as _offlineEnqueue, getAll as _offlineGetOutboxAll } from './offline/outbox';
 import { getDb } from './offline/db';
+import { saveOfflineAware, unwrap } from './offline/saveOfflineAware';
+import type { AttachmentInput } from './offline/saveOfflineAware';
 import {
   cacheHtYardAudit,
   getCachedHtYardAudits,
@@ -100,7 +102,8 @@ import {
   deletePpmExecutionFromCache,
   cacheOnboardingSubmission,
   getCachedOnboardingSubmissions,
-  deleteOnboardingSubmissionFromCache
+  deleteOnboardingSubmissionFromCache,
+  putServerRecords,
 } from './offline/cache';
 import type { OfflineHTYardAuditRecord } from '../types/htYard';
 import type { PPMExecutionRecord } from '../types/ppm';
@@ -1951,12 +1954,14 @@ export const api = {
           if (idx >= 0) {
             (result[idx] as any).pending = isPending;
             (result[idx] as any).failed = isFailed;
+            (result[idx] as any).syncStatus = outboxItem.status;
           } else {
             const payload = outboxItem.payload;
             if (payload) {
               const camel = toCamelCase(payload) as OnboardingData;
               (camel as any).pending = isPending;
               (camel as any).failed = isFailed;
+              (camel as any).syncStatus = outboxItem.status;
               result.unshift(camel);
             }
           }
@@ -2011,7 +2016,10 @@ export const api = {
         }
         return item;
       }) as OnboardingData[];
-      mapped.forEach(item => cacheOnboardingSubmission(item).catch(() => {}));
+      await putServerRecords(
+        'onboarding_submissions',
+        mapped.filter((m): m is OnboardingData & { id: string } => Boolean(m.id))
+      ).catch(() => {});
       return mergeLocalPendingOnboardings(mapped);
     });
   },
@@ -2078,19 +2086,7 @@ export const api = {
     const originalCreatedByPhoto = (data as any).createdByPhoto || (data as any).created_by_photo || currentUserPhoto;
     const originalCreatedByRole = (data as any).createdByRole || (data as any).created_by_role || currentUserRole;
 
-    const offlineSubmission: OnboardingData = {
-      ...data,
-      id: submissionId,
-      status: asDraft ? 'draft' : data.status,
-      created_user_id: originalCreatedUserId,
-      createdUserId: originalCreatedUserId,
-      created_by_name: originalCreatedByName,
-      createdByName: originalCreatedByName,
-      created_by_photo: originalCreatedByPhoto,
-      createdByPhoto: originalCreatedByPhoto,
-      created_by_role: originalCreatedByRole,
-      createdByRole: originalCreatedByRole,
-    };
+    const uploadUserId = userId || originalCreatedUserId || '00000000-0000-0000-0000-000000000000';
 
     const buildCleanDbData = (payloadSource: any) => {
       const snaked = toSnakeCase(payloadSource);
@@ -2120,40 +2116,69 @@ export const api = {
       return clean;
     };
 
-    const status = await Network.getStatus();
-    if (!status.connected || (isOfflineEnabled() && !_isOfflineOnline())) {
-      await cacheOnboardingSubmission({ ...offlineSubmission, pending: true });
-      const offlineDbData = buildCleanDbData(offlineSubmission);
-      await _offlineEnqueue({
-        id: submissionId,
-        tableName: 'onboarding_submissions',
-        action: 'INSERT',
-        payload: offlineDbData as Record<string, unknown>,
-      });
-      console.log(`[API] Onboarding submission queued offline (id=${submissionId})`);
-      return { draftId: submissionId };
-    }
+    const extractAttachments = (
+      obj: any,
+      snakePath = '',
+      attachmentsList: AttachmentInput[] = []
+    ): any => {
+      if (obj === null || obj === undefined) return obj;
+      if (typeof obj !== 'object') return obj;
 
-    const uploadUserId = userId || originalCreatedUserId || '00000000-0000-0000-0000-000000000000';
-    const dataWithPaths = await processFilesForUpload(data, uploadUserId, submissionId);
-    const dbData = buildCleanDbData(dataWithPaths);
+      if (Array.isArray(obj)) {
+        return obj.map((item, index) =>
+          extractAttachments(item, snakePath ? `${snakePath}.${index}` : `${index}`, attachmentsList)
+        );
+      }
 
-    try {
-      const { data: savedData, error } = await supabase.from('onboarding_submissions').upsert(dbData, { onConflict: 'id' }).select('id').single();
-      if (error) throw error;
-      await cacheOnboardingSubmission(toCamelCase(dbData) as OnboardingData).catch(() => {});
-      return { draftId: savedData.id };
-    } catch (err: any) {
-      console.warn('[API] Online onboarding submission failed, queueing offline fallback:', err?.message || err);
-      await cacheOnboardingSubmission({ ...offlineSubmission, pending: true, failed: true });
-      await _offlineEnqueue({
-        id: submissionId,
-        tableName: 'onboarding_submissions',
-        action: 'INSERT',
-        payload: dbData as Record<string, unknown>,
-      });
-      return { draftId: submissionId };
-    }
+      if (obj.file instanceof File || obj.file instanceof Blob || obj.blob instanceof Blob) {
+        const blob: Blob = obj.file || obj.blob;
+        const key = (obj.name || snakePath.split('.').pop() || 'document').replace(/[^a-zA-Z0-9_.-]/g, '_');
+        attachmentsList.push({
+          blob,
+          payloadPath: snakePath,
+          key,
+        });
+        const { file, blob: _b, ...cleanObj } = obj;
+        return cleanObj;
+      }
+
+      const cleanClone: any = {};
+      for (const key of Object.keys(obj)) {
+        const snakeKey = /^\d+$/.test(key) ? key : key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+        const nextPath = snakePath ? `${snakePath}.${snakeKey}` : snakeKey;
+        cleanClone[key] = extractAttachments(obj[key], nextPath, attachmentsList);
+      }
+      return cleanClone;
+    };
+
+    const attachments: AttachmentInput[] = [];
+    const sanitizedData = extractAttachments(data, '', attachments);
+    const offlineDbData = buildCleanDbData(sanitizedData);
+
+    await saveOfflineAware({
+      table: 'onboarding_submissions',
+      record: offlineDbData,
+      attachments,
+      baseUpdatedAt: data.updatedAt || (data as any).updated_at,
+      onlineSave: async () => {
+        const dataWithPaths = await processFilesForUpload(data, uploadUserId, submissionId);
+        const onlineDbData = buildCleanDbData(dataWithPaths);
+        const { data: savedData, error } = await supabase
+          .from('onboarding_submissions')
+          .upsert(onlineDbData, { onConflict: 'id' })
+          .select('id')
+          .single();
+        if (error) throw error;
+        await cacheOnboardingSubmission(toCamelCase(onlineDbData) as OnboardingData).catch(() => {});
+      },
+    });
+
+    const localCamel = toCamelCase(offlineDbData) as OnboardingData;
+    await cacheOnboardingSubmission(localCamel).catch(() => {});
+    await offlineDb.setCache(`onboarding_${submissionId}`, localCamel).catch(() => {});
+
+    console.log(`[API] Onboarding submission saved via saveOfflineAware (id=${submissionId})`);
+    return { draftId: submissionId };
   },
 
   saveDraft: async (data: OnboardingData) => api._saveSubmission(data, true),
@@ -2732,7 +2757,7 @@ export const api = {
     const userId = session?.user?.id || 'anonymous_user';
     const timestamp = Date.now();
     const sanitizedFileName = file.name.replace(/\s+/g, '_').toLowerCase();
-    const filePath = `documents/${userId}/${timestamp}/${sanitizedFileName}`;
+    const filePath = `${userId}/documents/${timestamp}/${sanitizedFileName}`;
     
     // Ensure the destination bucket exists
     await api.ensureBucket(bucket);
@@ -4478,31 +4503,16 @@ export const api = {
       }
     } catch { /* non-fatal */ }
 
-    // ── Offline path ─────────────────────────────────────────────────────────
-    if (isOfflineEnabled() && !_isOfflineOnline()) {
-      await cacheHtYardAudit(record);
-      await _offlineEnqueue({
-        id: record.id,
-        tableName: 'ht_yard_audits',
-        action: 'INSERT',
-        payload: record as Record<string, unknown>,
-      });
-      console.log(`[API] HT Yard audit queued offline (id=${record.id})`);
-      return;
-    }
-
-    // ── Online path (unchanged) ────────────────────────────────────────────────
-    try {
-      // Write-through to IDB for future offline reads
-      cacheHtYardAudit(record).catch(() => {});
-
-      const { error } = await supabase.from('ht_yard_audits').upsert(record);
-      if (error) {
-        console.warn('[API] ht_yard_audits upsert fallback to local storage:', error.message);
-      }
-    } catch (err) {
-      console.warn('[API] Error saving HT Yard audit:', err);
-    }
+    // Save with unified offline-aware wrapper (supports offline queue & conflict detection)
+    await saveOfflineAware({
+      table: 'ht_yard_audits',
+      record,
+      baseUpdatedAt: auditData.activeAudit?.updatedAt,
+      onlineSave: async (clean) => {
+        const res = await supabase.from('ht_yard_audits').upsert(clean, { onConflict: 'id' });
+        unwrap(res);
+      },
+    });
   },
 
   getAllHTYardAudits: async (): Promise<any[]> => {

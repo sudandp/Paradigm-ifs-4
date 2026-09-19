@@ -21,6 +21,7 @@ import { CctvQuickMapModal, UserOptionItem, SiteLocationItem, QuickMapTargetLog 
 import { CctvActionZoneModal, ActionZonePoint, resampleToFixed20Points } from '../../components/cctv/CctvActionZoneModal';
 import { cctvAttendanceBridgeService } from '../../services/cctvAttendanceBridge';
 import { safeCopyToClipboard } from '../../utils/clipboardHelper';
+import { openExternal } from '../../utils/urlHandler';
 
 // Fallback URL used ONLY when Supabase has no ngrok_url yet (first boot before heartbeat).
 const NGROK_PROXY_FALLBACK = 'https://cctv.cctv.rest';
@@ -157,7 +158,7 @@ const NvrCameraStream: React.FC<{
         }, 'image/jpeg', 0.92);
       }
     } catch {
-      window.open(`${activeBase}/camera/snapshot/${encodeURIComponent(camName)}?ngrok-skip-browser-warning=1`, '_blank');
+      openExternal(`${activeBase}/camera/snapshot/${encodeURIComponent(camName)}?ngrok-skip-browser-warning=1`);
     }
   };
 

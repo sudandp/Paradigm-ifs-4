@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import Header from './Header';
 import BottomNav from './BottomNav';
 import { NotificationPanel } from '../notifications/NotificationPanel';
@@ -14,6 +14,22 @@ const MobileLayout: React.FC = () => {
     const store = useSettingsStore();
     const appVersion = APP_VERSION || store.apiSettings.appVersion || '20.3.0';
     const location = useLocation();
+    const navigate = useNavigate();
+    const tapCountRef = useRef(0);
+    const tapTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+    const handleVersionTap = () => {
+        tapCountRef.current += 1;
+        if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
+        if (tapCountRef.current >= 5) {
+            tapCountRef.current = 0;
+            navigate('/settings/offline-diagnostics');
+        } else {
+            tapTimerRef.current = setTimeout(() => {
+                tapCountRef.current = 0;
+            }, 1500);
+        }
+    };
     const { fetchNotifications, isPanelOpen, setIsPanelOpen } = useNotificationStore();
     const { user, isOffline } = useAuthStore();
     const isMobileHome = location.pathname === '/mobile-home' || location.pathname === '/';
@@ -244,7 +260,11 @@ const MobileLayout: React.FC = () => {
                 {!isFullScreenLoading && (
                 <div className="mt-8 mb-4 py-4 flex flex-col items-center justify-center opacity-30 select-none text-center">
                     <div className="h-[1px] w-8 bg-gradient-to-r from-transparent via-white/40 to-transparent mb-3" />
-                    <p className="text-[9px] text-white font-semibold tracking-[0.1em] uppercase mb-1">
+                    <p 
+                        onClick={handleVersionTap}
+                        className="text-[9px] text-white font-semibold tracking-[0.1em] uppercase mb-1 cursor-pointer active:scale-95 transition-transform"
+                        title="App version (tap 5 times for offline diagnostics)"
+                    >
                         Paradigm FMS Services v{appVersion}
                     </p>
                     <p className="text-[8px] text-white/70 tracking-normal leading-relaxed">

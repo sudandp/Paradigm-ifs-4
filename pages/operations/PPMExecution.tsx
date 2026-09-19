@@ -5,8 +5,9 @@ import { PPMAuditFormEngine } from '../../components/ppm/PPMAuditFormEngine';
 import { PPMSummaryRollup } from '../../components/ppm/PPMSummaryRollup';
 import { PPMObservation } from '../../types/ppm';
 
-import { cachePpmExecution } from '../../services/offline/cache';
-import { enqueue } from '../../services/offline/outbox';
+import { saveOfflineAware, unwrap } from '../../services/offline/saveOfflineAware';
+import { supabase } from '../../services/supabase';
+import { useAuthStore } from '../../store/authStore';
 import toast from 'react-hot-toast';
 import MobileTopBar from '../../components/navigation/MobileTopBar';
 
@@ -59,33 +60,43 @@ export const PPMExecution: React.FC = () => {
   };
 
   const handleSubmit = async () => {
-    const executionId = `ppm-${categoryId}-${Date.now()}`;
+    const executionId = crypto.randomUUID();
+    const currentUser = useAuthStore.getState().user;
+    const now = new Date().toISOString();
     const record = {
       id: executionId,
-      site_name: 'PPM Site Audit',
-      reference_number: `PPM-${Date.now()}`,
+      site_name: (currentUser as any)?.assignedSite || currentUser?.societyName || currentUser?.locationName || 'PPM Site Audit',
+      reference_number: `PPM-${Date.now().toString(36).toUpperCase()}`,
       category_id: categoryId || 'ELECTRICAL_PANEL',
-      audit_date: new Date().toISOString().split('T')[0],
+      audit_date: now.split('T')[0],
       status: 'SUBMITTED' as const,
-      auditor_name: 'Field Technician',
+      auditor_name: currentUser?.name || currentUser?.email || 'Field Technician',
       observations,
       summary_counts: { critical: 0, major: 0, medium: 0, minor: 0, total: Object.keys(observations).length },
       snag_ids: [],
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      created_at: now,
+      updated_at: now,
     };
 
     try {
-      await cachePpmExecution({ ...record, pending: true });
-      await enqueue({
-        id: executionId,
-        tableName: 'ppm_executions',
-        action: 'INSERT',
-        payload: record,
+      const result = await saveOfflineAware({
+        table: 'ppm_executions',
+        record,
+        onlineSave: async (clean) => {
+          const res = await supabase.from('ppm_executions').upsert(clean, { onConflict: 'id' });
+          unwrap(res);
+        },
       });
-      toast.success('PPM Audit saved & queued for sync!');
+
+      if (result === 'queued') {
+        toast.success('⚡ PPM Audit saved locally. Will auto-sync on reconnect.');
+      } else {
+        toast.success('PPM Audit saved & synced successfully!');
+      }
     } catch (err: any) {
-      console.warn('Saved local PPM execution fallback:', err);
+      console.warn('Failed to save PPM execution:', err);
+      toast.error('Could not save PPM audit: ' + (err?.message || 'Unknown error'));
+      return;
     }
     navigate('/operations/ppm-audits');
   };

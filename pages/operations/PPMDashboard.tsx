@@ -6,6 +6,7 @@ import { getCachedPpmExecutions, deletePpmExecutionFromCache } from '../../servi
 import { syncEngine } from '../../services/offline/syncEngine';
 import * as outbox from '../../services/offline/outbox';
 import { getDb } from '../../services/offline/db';
+import { api } from '../../services/api';
 import Button from '../../components/ui/Button';
 import toast from 'react-hot-toast';
 import MobileTopBar from '../../components/navigation/MobileTopBar';
@@ -232,7 +233,42 @@ export const PPMDashboard: React.FC = () => {
 
   const loadSavedRuns = React.useCallback(async () => {
     try {
-      const runs = await getCachedPpmExecutions();
+      const runs = await api.getAllPPMExecutions();
+      // Merge any pending outbox items for ppm_executions
+      const outboxItems = await outbox.getForTable('ppm_executions');
+      if (outboxItems && outboxItems.length > 0) {
+        const outboxMap = new Map<string, any>();
+        outboxItems.forEach(item => outboxMap.set(item.id, item));
+
+        const runsMap = new Map<string, PPMExecutionRecord>();
+        runs.forEach(r => runsMap.set(r.id, r));
+
+        for (const [id, item] of outboxMap.entries()) {
+          if (item.action === 'DELETE') {
+            runsMap.delete(id);
+          } else if (item.payload) {
+            const localRecord = item.payload as PPMExecutionRecord;
+            (localRecord as any).outboxStatus = item.status;
+            (localRecord as any).pending = item.status === 'pending' || item.status === 'syncing';
+            (localRecord as any).failed = item.status === 'failed';
+            runsMap.set(id, localRecord);
+          }
+        }
+        for (const [id, record] of runsMap.entries()) {
+          if (outboxMap.has(id)) {
+            const item = outboxMap.get(id);
+            (record as any).outboxStatus = item.status;
+            (record as any).pending = item.status === 'pending' || item.status === 'syncing';
+            (record as any).failed = item.status === 'failed';
+          }
+        }
+        setSavedRuns(
+          Array.from(runsMap.values()).sort(
+            (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+          )
+        );
+        return;
+      }
       setSavedRuns(runs || []);
     } catch (err) {
       console.warn('[PPMDashboard] Failed to load saved PPM runs:', err);
@@ -634,9 +670,26 @@ export const PPMDashboard: React.FC = () => {
                             <span className="font-extrabold text-sm text-slate-900 dark:text-white">
                               {run.site_name || activeCategoryObj.name}
                             </span>
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300">
-                              {run.status || 'SUBMITTED'}
-                            </span>
+                            <div className="flex items-center gap-1.5">
+                              {(run as any).pending && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                                  Queued Offline
+                                </span>
+                              )}
+                              {(run as any).outboxStatus === 'syncing' && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-300">
+                                  Syncing…
+                                </span>
+                              )}
+                              {!(run as any).pending && (run as any).outboxStatus !== 'syncing' && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                  Synced
+                                </span>
+                              )}
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300">
+                                {run.status || 'SUBMITTED'}
+                              </span>
+                            </div>
                           </div>
 
                           <div className="text-xs text-slate-500 space-y-1 font-medium">

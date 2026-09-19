@@ -44,6 +44,7 @@ import type { SnagEntry, Criticality, PurposeOfVisit, Department } from '../../t
 import { syncEngine } from '../../services/offline/syncEngine';
 import * as outbox from '../../services/offline/outbox';
 import { getDb } from '../../services/offline/db';
+import { getCachedSites } from '../../services/offline/prefetch';
 import MobileTopBar from '../../components/navigation/MobileTopBar';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -142,7 +143,18 @@ const SnagForm: React.FC<SnagFormProps> = ({ initialData, onSave, onCancel }) =>
   const [imagePreview, setImagePreview] = useState<string | null>(
     restoredDraft?.snagPictureUrl || initialData?.snagPictureUrl || null
   );
+  const [cachedSites, setCachedSites] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Pre-load cached sites from IDB for offline suggestions
+  useEffect(() => {
+    getCachedSites().then(sites => {
+      if (Array.isArray(sites)) {
+        const names = sites.map((s: any) => s.name || s.short_name).filter(Boolean);
+        setCachedSites(Array.from(new Set(names)));
+      }
+    }).catch(() => {});
+  }, []);
 
   // Show restore toast with Discard option
   useEffect(() => {
@@ -252,10 +264,18 @@ const SnagForm: React.FC<SnagFormProps> = ({ initialData, onSave, onCancel }) =>
           Name of the Site <span className="text-red-500">*</span>
         </label>
         <Input
+          list="snag-sites-list"
           value={form.nameOfSite}
           onChange={e => setForm(f => ({ ...f, nameOfSite: e.target.value }))}
-          placeholder="Enter site name"
+          placeholder="Enter or select site name"
         />
+        {cachedSites.length > 0 && (
+          <datalist id="snag-sites-list">
+            {cachedSites.map(site => (
+              <option key={site} value={site} />
+            ))}
+          </datalist>
+        )}
       </div>
 
       {/* Purpose of Visit */}
@@ -581,8 +601,21 @@ const InfoRow: React.FC<{ icon: React.ReactNode; label: string; value: string }>
   </div>
 );
 
-const SyncStatusBadge: React.FC<{ pending?: boolean; failed?: boolean }> = ({ pending, failed }) => {
-  if (failed) {
+const SyncStatusBadge: React.FC<{
+  pending?: boolean;
+  failed?: boolean;
+  conflict?: boolean;
+  outboxStatus?: string;
+}> = ({ pending, failed, conflict, outboxStatus }) => {
+  if (conflict || outboxStatus === 'conflict') {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300 whitespace-nowrap">
+        <AlertTriangle size={12} className="text-amber-600 animate-pulse" />
+        Conflict
+      </span>
+    );
+  }
+  if (failed || outboxStatus === 'failed') {
     return (
       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700 border border-red-300 whitespace-nowrap">
         <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />
@@ -590,11 +623,19 @@ const SyncStatusBadge: React.FC<{ pending?: boolean; failed?: boolean }> = ({ pe
       </span>
     );
   }
-  if (pending) {
+  if (outboxStatus === 'syncing') {
     return (
-      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-red-50 text-red-600 border border-red-200 whitespace-nowrap">
-        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-        Not Synced
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 whitespace-nowrap">
+        <RefreshCw size={12} className="text-blue-600 animate-spin" />
+        Syncing…
+      </span>
+    );
+  }
+  if (pending || outboxStatus === 'pending') {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200 whitespace-nowrap">
+        <Clock size={12} className="text-amber-500" />
+        Queued Offline
       </span>
     );
   }
@@ -1279,7 +1320,6 @@ const SnagAuditPage: React.FC = () => {
               <ClipboardCheck size={40} className="mb-3 opacity-30" />
               <p className="font-medium">No snag entries found</p>
               <p className="text-sm mt-1">Add a new snag or import from Excel</p>
-import MobileTopBar from '../../components/navigation/MobileTopBar';
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -1317,7 +1357,12 @@ import MobileTopBar from '../../components/navigation/MobileTopBar';
                         <StatusBadge value={entry.status} />
                       </td>
                       <td className="px-4 py-3">
-                        <SyncStatusBadge pending={(entry as any).pending} failed={(entry as any).failed} />
+                        <SyncStatusBadge
+                          pending={(entry as any).pending}
+                          failed={(entry as any).failed}
+                          conflict={(entry as any).conflict}
+                          outboxStatus={(entry as any).outboxStatus}
+                        />
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
@@ -1403,6 +1448,7 @@ import MobileTopBar from '../../components/navigation/MobileTopBar';
                       }
                       setShowForm(false);
                       setEditingEntry(null);
+                      sessionStorage.removeItem(SNAG_DRAFT_KEY);
                       fetchEntries();
                     } catch (err) {
                       console.error('Failed to save snag entry:', err);

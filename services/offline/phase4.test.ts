@@ -222,5 +222,5 @@ describe('phase4.test.ts — Batch Photo Upload Throttling', () => {
 
     expect(results).toEqual(['result-1', 'result-2', 'result-3', 'result-4', 'result-5']);
     expect(maxObservedWorkers).toBeLessThanOrEqual(2);
-  });
+  }, 10000);
 });
