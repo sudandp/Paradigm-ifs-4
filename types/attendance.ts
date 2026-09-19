@@ -258,6 +258,21 @@ export interface UserHoliday {
   year: number;
 }
 
+export interface ThirdSaturdayPolicyConfig {
+  enabled: boolean;
+  officeStaffOnly?: boolean; // Applicable for Head Office / Office Staff only (Image 2)
+  femaleExempt: boolean;
+  applicableEntities: string[];
+  exemptEntities: string[];
+  applicableLocations: string[];
+  exemptLocations: string[];
+  requireReportingManagerApproval: boolean;
+  allowDirectUnlockOnApproval: boolean;
+  notifyReportingManager: boolean;
+  lastUpdated?: string;
+  updatedBy?: string;
+}
+
 export interface AttendanceSettings {
   office: StaffAttendanceRules;
   field: StaffAttendanceRules;
@@ -282,6 +297,7 @@ export interface AttendanceSettings {
       management?: string;
     };
   };
+  thirdSaturdayPolicy?: ThirdSaturdayPolicyConfig;
 }
 
 export interface Holiday {

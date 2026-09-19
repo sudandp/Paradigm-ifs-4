@@ -30,7 +30,7 @@ import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { Capacitor } from '@capacitor/core';
 import { reverseGeocode, getPrecisePosition } from '../../utils/locationUtils';
 import { formatDistance, stepsToDistanceKm } from '../../utils/distanceUtils';
-import { isThirdSaturday } from '../../utils/date';
+import { isThirdSaturday, isThirdSaturdayPolicyApplicable } from '../../utils/date';
 
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { isAdmin } from '../../utils/auth';
@@ -879,9 +879,12 @@ const ProfilePage: React.FC = () => {
         });
     }, []);
     
-    const isThirdSaturdayToday = isThirdSaturday(new Date());
-    // Blocked if: (Punched Today OR today is 3rd Saturday) AND Not Currently Checked In (office, field, or active open session) AND Not Unlocked
-    const isPunchBlocked = (hasPunchedToday || isThirdSaturdayToday) && !isCheckedIn && !isFieldCheckedIn && !isSiteOtCheckedIn && !hasActiveOpenSession && !isPunchUnlocked;
+    const lastCompany = useAuthStore(s => s.lastCompany);
+    const isThirdSaturdayToday = isThirdSaturday(new Date()) && isThirdSaturdayPolicyApplicable(user, lastCompany);
+    const hasApprovedThirdSaturdayWork = approvedUnlockCount > 0 || unlockRequestStatus === 'approved';
+    const isThirdSaturdayBlocked = isThirdSaturdayToday && !hasApprovedThirdSaturdayWork;
+    // Blocked if: (Punched Today OR today is 3rd Saturday blocked) AND Not Currently Checked In (office, field, or active open session) AND Not Unlocked
+    const isPunchBlocked = (hasPunchedToday || isThirdSaturdayBlocked) && !isCheckedIn && !isFieldCheckedIn && !isSiteOtCheckedIn && !hasActiveOpenSession && !isPunchUnlocked;
     // Combined check-in state: true if user is checked in via either office, field, site-ot, or has active open session
     const effectivelyCheckedIn = isCheckedIn || isFieldCheckedIn || isSiteOtCheckedIn || (hasActiveOpenSession && previousDaySessionInfo != null);
 
@@ -939,7 +942,7 @@ const ProfilePage: React.FC = () => {
     // Check for existing unlock request
     // Check for existing unlock request on mount/update
     useEffect(() => {
-        if (hasPunchedToday && !isPunchUnlocked) {
+        if ((hasPunchedToday || isThirdSaturdayBlocked) && !isPunchUnlocked) {
             api.getMyUnlockRequest().then(req => {
                 if (req) {
                     setUnlockRequestStatus(req.status);
@@ -950,7 +953,7 @@ const ProfilePage: React.FC = () => {
                 }
             });
         }
-    }, [hasPunchedToday, isPunchUnlocked, checkAttendanceStatus]);
+    }, [hasPunchedToday, isThirdSaturdayBlocked, isPunchUnlocked, checkAttendanceStatus]);
 
     // Poll for status update if pending (Real-time update)
     useEffect(() => {
@@ -973,13 +976,15 @@ const ProfilePage: React.FC = () => {
     useEffect(() => {
         if (isPunchBlocked && unlockRequestStatus !== 'pending') {
             setToast({ 
-                message: isNextRequestOT
-                    ? 'Request manager approval for overtime (OT) punch.'
-                    : 'One punch-in allowed per day. Request approval for emergency punch.', 
+                message: isThirdSaturdayBlocked && !hasPunchedToday
+                    ? 'Today is the 3rd Saturday. Request manager approval to work today.'
+                    : isNextRequestOT
+                        ? 'Request manager approval for overtime (OT) punch.'
+                        : 'One punch-in allowed per day. Request approval for emergency punch.', 
                 type: 'warning' 
             });
         }
-    }, [isPunchBlocked, unlockRequestStatus, isNextRequestOT]);
+    }, [isPunchBlocked, unlockRequestStatus, isNextRequestOT, isThirdSaturdayBlocked, hasPunchedToday]);
 
     // Fetch or calculate employee scores on mount
     useEffect(() => {

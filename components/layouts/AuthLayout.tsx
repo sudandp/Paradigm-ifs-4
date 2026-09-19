@@ -49,49 +49,18 @@ const AuthLayout: React.FC = () => {
                     <Logo className="!h-14 !w-auto max-w-[200px] object-contain" variant="original" />
                 </div>
 
-                {/* Center Container: 3D Flip Card for Login / Register */}
+                {/* Center Container: Mobile Dark Card */}
                 <div className="relative z-10 w-full max-w-[min(95vw,420px)] flex-grow flex flex-col items-center justify-center mx-auto pb-6">
-                    {isFlipPair ? (
-                        <AuthFlipCard
-                            isFlipped={isFlipped}
-                            variant="dark"
-                            front={
-                                <div className="w-full bg-[#111a16] rounded-3xl p-6 shadow-2xl border border-[#202f29] text-left">
-                                    <div className="text-center mb-6">
-                                        <h2 className="text-2xl font-extrabold text-white mb-2 tracking-tight">Sign In</h2>
-                                        <p className="text-white/60 text-sm font-medium leading-relaxed">Enter your credentials to access your account.</p>
-                                    </div>
-
-                                    <div className="auth-form-outlet leading-normal">
-                                        <Login />
-                                    </div>
-                                </div>
-                            }
-                            back={
-                                <div className="w-full bg-[#111a16] rounded-3xl p-6 shadow-2xl border border-[#202f29] text-left">
-                                    <div className="text-center mb-6">
-                                        <h2 className="text-2xl font-extrabold text-white mb-2 tracking-tight">Create Account</h2>
-                                        <p className="text-white/60 text-sm font-medium leading-relaxed">Join the Paradigm family today.</p>
-                                    </div>
-
-                                    <div className="auth-form-outlet leading-normal">
-                                        <SignUp />
-                                    </div>
-                                </div>
-                            }
-                        />
-                    ) : (
-                        <div className="w-full bg-[#111a16] rounded-3xl p-6 shadow-2xl border border-[#202f29] text-left">
-                            <div className="text-center mb-6">
-                                <h2 className="text-2xl font-extrabold text-white mb-2 tracking-tight">{pageInfo.title}</h2>
-                                <p className="text-white/60 text-sm font-medium leading-relaxed">{pageInfo.subtitle}</p>
-                            </div>
-
-                            <div className="auth-form-outlet leading-normal">
-                                <Outlet />
-                            </div>
+                    <div className="w-full bg-[#111a16] rounded-3xl p-6 shadow-2xl border border-[#202f29] text-left">
+                        <div className="text-center mb-6">
+                            <h2 className="text-2xl font-extrabold text-white mb-2 tracking-tight">{pageInfo.title}</h2>
+                            <p className="text-white/60 text-sm font-medium leading-relaxed">{pageInfo.subtitle}</p>
                         </div>
-                    )}
+
+                        <div className="auth-form-outlet leading-normal">
+                            <Outlet />
+                        </div>
+                    </div>
                 </div>
 
                 {/* Footer Links and Copyright outside the card - sitting at the absolute bottom */}

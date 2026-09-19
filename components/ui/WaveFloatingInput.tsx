@@ -142,8 +142,8 @@ export const WaveFloatingInput: React.FC<WaveFloatingInputProps> = ({
                         icon ? 'pl-7' : 'pl-0'
                     } ${isPassword ? 'pr-7' : 'pr-0'} ${
                         isDark
-                            ? 'text-white border-white/20 focus:border-[#3eff99] placeholder-transparent'
-                            : 'text-gray-900 border-gray-200 focus:border-emerald-600 placeholder-transparent'
+                            ? 'text-white border-white/20 focus:border-[#3eff99] placeholder-transparent [color-scheme:dark]'
+                            : 'text-gray-900 border-gray-200 focus:border-emerald-600 placeholder-transparent [color-scheme:light]'
                     } ${error ? '!border-red-500' : ''} ${className}`}
                 />
 

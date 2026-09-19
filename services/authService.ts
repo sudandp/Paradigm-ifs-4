@@ -111,6 +111,8 @@ export const getAppUserProfile = async (supabaseUser: SupabaseUser): Promise<App
             societyId: data.society_id,
             societyName: data.society_name,
             locationId: data.location_id,
+            location: data.location || data.location_name,
+            locationName: data.location_name || data.location,
             reportingManagerId: data.reporting_manager_id,
             reportingManager2Id: data.reporting_manager_2_id,
             reportingManager3Id: data.reporting_manager_3_id,

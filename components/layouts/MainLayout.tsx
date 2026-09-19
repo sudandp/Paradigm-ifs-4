@@ -74,6 +74,7 @@ export const allNavLinks: NavLinkConfig[] = [
     { to: '/hr/leave-management', label: 'Leave Management', icon: CalendarCheck2, permission: 'manage_leave_requests', category: 'Leaves & Rules' },
     { to: '/admin/approval-workflow', label: 'Leave Approval Settings', icon: ClipboardCheck, permission: 'manage_approval_workflow', category: 'Leaves & Rules' },
     { to: '/hr/attendance-settings', label: 'Attendance Rules', icon: ListTodo, permission: 'manage_attendance_rules', category: 'Leaves & Rules' },
+    { to: '/hr/third-saturday-policy', label: '3rd Saturday Policy', icon: Calendar, permission: 'manage_attendance_rules', category: 'Leaves & Rules' },
 
     // Employee Onboarding
     { to: '/verification/dashboard', label: 'All Submissions', icon: ClipboardList, permission: 'view_all_submissions', category: 'Employee Onboarding' },

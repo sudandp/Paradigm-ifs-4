@@ -9,6 +9,7 @@ import type { AddressSettings, AttendanceSettings, Holiday, GmcPolicySettings, P
 import { api } from '../services/api';
 import { HOLIDAY_SELECTION_POOL } from '../utils/constants';
 import { APP_VERSION } from '../src/config/appVersion';
+import { DEFAULT_THIRD_SATURDAY_POLICY, setRuntimeThirdSaturdayPolicy } from '../utils/date';
 
 interface SettingsState {
   address: AddressSettings;
@@ -185,7 +186,8 @@ const initialAttendance: AttendanceSettings = {
       { id: 'shift_b', name: 'Shift B (Afternoon)', startTime: '14:00', endTime: '21:00', crossesMidnight: false, autoCheckoutBufferMinutes: 30 },
       { id: 'shift_c', name: 'Shift C (Night)', startTime: '21:00', endTime: '07:00', crossesMidnight: true, autoCheckoutBufferMinutes: 30 },
     ],
-  }
+  },
+  thirdSaturdayPolicy: DEFAULT_THIRD_SATURDAY_POLICY,
 };
 
 const initialGmcPolicy: GmcPolicySettings = {
@@ -329,12 +331,23 @@ export const useSettingsStore = create<SettingsState>()(
             notifications: notificationSettings || initialNotifications,
             voipSettings: voipSettings || initialVoipSettings,
           });
+
+          if (attendanceSettings?.thirdSaturdayPolicy) {
+            setRuntimeThirdSaturdayPolicy(attendanceSettings.thirdSaturdayPolicy);
+          } else {
+            setRuntimeThirdSaturdayPolicy(DEFAULT_THIRD_SATURDAY_POLICY);
+          }
         }
       },
       updateAddressSettings: (settings) => set((state) => ({
         address: { ...state.address, ...settings }
       })),
-      updateAttendanceSettings: (settings) => set({ attendance: settings }),
+      updateAttendanceSettings: (settings) => {
+        if (settings?.thirdSaturdayPolicy) {
+          setRuntimeThirdSaturdayPolicy(settings.thirdSaturdayPolicy);
+        }
+        set({ attendance: settings });
+      },
       updateGmcPolicySettings: (settings) => set((state) => ({
         gmcPolicy: { ...state.gmcPolicy, ...settings }
       })),

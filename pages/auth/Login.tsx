@@ -137,27 +137,28 @@ const Login: React.FC = () => {
         return (
             <div className="w-full">
                 <form onSubmit={handleEmailSubmit(onEmailSubmit)} className="space-y-4">
-                    <fieldset disabled={isFormDisabled} className="space-y-2">
-                        <WaveFloatingInput
+                    <fieldset disabled={isFormDisabled} className="space-y-4">
+                        <Input
                             id="email-mob"
                             type="email"
-                            label="Email Address"
+                            placeholder="Email address"
                             autoComplete="email"
-                            icon={<Mail className="h-4 w-4" />}
+                            icon={<Mail className="h-5 w-5 text-white/40" />}
                             registration={registerEmail('email')}
                             error={emailErrors.email?.message}
-                            variant="dark"
+                            className="!text-[16px] !bg-[#131d1a] !text-white !border-[#20312a] focus:!border-emerald-500/50 focus:!ring-0 !rounded-2xl !py-4 transition-all placeholder:!text-white/30"
                         />
 
-                        <WaveFloatingInput
+                        <Input
                             id="password-mob"
                             type="password"
-                            label="Password / PIN"
+                            placeholder="Password/PIN"
                             autoComplete="current-password"
-                            icon={<Lock className="h-4 w-4" />}
+                            icon={<Lock className="h-5 w-5 text-white/40" />}
                             registration={registerEmail('password')}
                             error={emailErrors.password?.message}
-                            variant="dark"
+                            passwordToggleClassName="!text-[#3eff99] hover:!text-[#2ae080]"
+                            className="!text-[16px] !bg-[#131d1a] !text-white !border-[#20312a] focus:!border-emerald-500/50 focus:!ring-0 !rounded-2xl !py-4 transition-all placeholder:!text-white/30"
                         />
 
                         <div className="flex items-center justify-between px-1 pt-3">

@@ -4,7 +4,7 @@ import { AlertTriangle, Clock, MoveLeft } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
 import { dispatchNotificationFromRules } from '../../services/notificationService';
-import { isThirdSaturday } from '../../utils/date';
+import { isThirdSaturday, isThirdSaturdayPolicyApplicable } from '../../utils/date';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import MobileTopBar from '../../components/navigation/MobileTopBar';
@@ -17,7 +17,8 @@ const RequestUnlockPage: React.FC = () => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const dailyUnlockRequestCount = useAuthStore(s => s.dailyUnlockRequestCount);
-    const isThirdSaturdayToday = isThirdSaturday(new Date());
+    const lastCompany = useAuthStore(s => s.lastCompany);
+    const isThirdSaturdayToday = isThirdSaturday(new Date()) && isThirdSaturdayPolicyApplicable(user, lastCompany);
     const isOTRequest = dailyUnlockRequestCount >= 1 && !isThirdSaturdayToday;
 
     const handleUnlockRequest = async () => {
@@ -31,7 +32,7 @@ const RequestUnlockPage: React.FC = () => {
             if (isThirdSaturdayToday) {
                 const d = new Date();
                 const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-                await api.submitLeaveRequest({
+                const leaveRes = await api.submitLeaveRequest({
                     leaveType: 'Blue Leave Work',
                     startDate: todayStr,
                     endDate: todayStr,
@@ -40,6 +41,27 @@ const RequestUnlockPage: React.FC = () => {
                     userId: user?.id || '',
                     userName: user?.name || ''
                 });
+
+                // Notify reporting manager explicitly
+                if (user?.reportingManagerId) {
+                    await dispatchNotificationFromRules('leave_request', {
+                        actorName: user.name,
+                        actionText: 'has requested approval to work on 3rd Saturday (Blue Leave Work)',
+                        locString: '',
+                        title: '3rd Saturday Work Request',
+                        link: '/my-team',
+                        actor: {
+                            id: user.id,
+                            name: user.name,
+                            reportingManagerId: user.reportingManagerId,
+                            role: user.role
+                        },
+                        metadata: {
+                            leaveRequestId: leaveRes?.id,
+                            title: '3rd Saturday Work Request'
+                        }
+                    });
+                }
             } else {
                 await api.requestAttendanceUnlock(unlockReason);
                 
@@ -73,9 +95,9 @@ const RequestUnlockPage: React.FC = () => {
             setTimeout(() => {
                 navigate('/profile', { replace: true });
             }, 1500);
-        } catch (error) {
-            console.error(error);
-            setToast({ message: 'Failed to submit request.', type: 'error' });
+        } catch (error: any) {
+            console.error('Error submitting unlock request:', error);
+            setToast({ message: error?.message || 'Failed to submit request.', type: 'error' });
             setIsSubmitting(false);
         }
     };

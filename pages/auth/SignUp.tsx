@@ -8,6 +8,7 @@ import { Mail, Lock, User as UserIcon, MailCheck, AlertTriangle } from 'lucide-r
 import { useAuthStore } from '../../store/authStore';
 import { useDevice } from '../../hooks/useDevice';
 import WaveFloatingInput from '../../components/ui/WaveFloatingInput';
+import Input from '../../components/ui/Input';
 
 const validationSchema = yup.object({
     name: yup.string().required('Your name is required'),
@@ -57,6 +58,85 @@ const SignUp: React.FC = () => {
         );
     }
 
+    if (isMobile) {
+        return (
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                <Input 
+                    id="name" 
+                    registration={register('name')} 
+                    error={errors.name?.message} 
+                    placeholder="Full Name"
+                    icon={<UserIcon className="h-5 w-5 text-white/50" />}
+                    className="!text-[16px] !bg-white/[0.06] !text-white !border-white/10 focus:!border-emerald-500/40 focus:!ring-0 !rounded-2xl !py-4 transition-all placeholder:!text-white/35"
+                />
+                <Input 
+                    id="signup-email" 
+                    type="email"
+                    autoComplete="email"
+                    registration={register('email')} 
+                    error={errors.email?.message} 
+                    placeholder="Email Address"
+                    icon={<Mail className="h-5 w-5 text-white/50" />}
+                    className="!text-[16px] !bg-white/[0.06] !text-white !border-white/10 focus:!border-emerald-500/40 focus:!ring-0 !rounded-2xl !py-4 transition-all placeholder:!text-white/35"
+                />
+                <Input 
+                    id="signup-password" 
+                    type="password" 
+                    autoComplete="new-password"
+                    registration={register('password')} 
+                    error={errors.password?.message} 
+                    placeholder="Create Password"
+                    icon={<Lock className="h-5 w-5 text-white/50" />}
+                    passwordToggleClassName="!text-[#3eff99] hover:!text-[#2ae080]"
+                    className="!text-[16px] !bg-white/[0.06] !text-white !border-white/10 focus:!border-emerald-500/40 focus:!ring-0 !rounded-2xl !py-4 transition-all placeholder:!text-white/35"
+                />
+                <Input 
+                    id="signup-confirm-password" 
+                    type="password" 
+                    autoComplete="new-password"
+                    registration={register('confirmPassword')} 
+                    error={errors.confirmPassword?.message} 
+                    placeholder="Confirm Password"
+                    icon={<Lock className="h-5 w-5 text-white/50" />}
+                    passwordToggleClassName="!text-[#3eff99] hover:!text-[#2ae080]"
+                    className="!text-[16px] !bg-white/[0.06] !text-white !border-white/10 focus:!border-emerald-500/40 focus:!ring-0 !rounded-2xl !py-4 transition-all placeholder:!text-white/35"
+                />
+                
+                {error && (
+                    <div className="flex items-center gap-2 p-3 rounded-xl border text-[13px] text-red-400 bg-red-400/10 border-red-400/20 animate-fadeIn">
+                        <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                        <span className="leading-tight font-semibold">{error}</span>
+                    </div>
+                )}
+
+                <div className="pt-2">
+                    <Button 
+                        type="submit" 
+                        className="w-full !font-black !h-14 !rounded-2xl !text-[16px] transition-all !bg-[#3eff99] hover:!bg-[#2ae080] !text-[#05110c] active:scale-[0.97] !shadow-[0_12px_24px_rgba(62,255,153,0.2)] hover:!shadow-[0_16px_32px_rgba(62,255,153,0.3)] cursor-pointer"
+                        isLoading={isSubmitting} 
+                        size="lg"
+                    >
+                        Create Account
+                    </Button>
+                </div>
+
+                <div className="text-center mt-3 space-y-4">
+                    <p className="text-[13px] text-white/60 font-medium">
+                        Already have an account?{' '}
+                        <Link to="/auth/login" className="font-bold transition-colors text-[#3eff99] hover:text-[#2ae080] ml-1">
+                            Sign In
+                        </Link>
+                    </p>
+                    <div className="pt-4 border-t border-white/10">
+                        <p className="text-[10px] uppercase tracking-widest font-medium leading-relaxed text-white/30">
+                            © Paradigm FMS Services. All rights reserved.
+                        </p>
+                    </div>
+                </div>
+            </form>
+        );
+    }
+
     return (
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-2">
             <WaveFloatingInput 
@@ -65,7 +145,7 @@ const SignUp: React.FC = () => {
                 registration={register('name')} 
                 error={errors.name?.message} 
                 icon={<UserIcon className="h-3.5 w-3.5" />}
-                variant={isMobile ? 'dark' : 'light'}
+                variant="light"
             />
             <WaveFloatingInput 
                 id="signup-email" 
@@ -75,7 +155,7 @@ const SignUp: React.FC = () => {
                 registration={register('email')} 
                 error={errors.email?.message} 
                 icon={<Mail className="h-3.5 w-3.5" />}
-                variant={isMobile ? 'dark' : 'light'}
+                variant="light"
             />
             <WaveFloatingInput 
                 id="signup-password" 
@@ -85,7 +165,7 @@ const SignUp: React.FC = () => {
                 registration={register('password')} 
                 error={errors.password?.message} 
                 icon={<Lock className="h-3.5 w-3.5" />}
-                variant={isMobile ? 'dark' : 'light'}
+                variant="light"
             />
             <WaveFloatingInput 
                 id="signup-confirm-password" 
@@ -95,11 +175,11 @@ const SignUp: React.FC = () => {
                 registration={register('confirmPassword')} 
                 error={errors.confirmPassword?.message} 
                 icon={<Lock className="h-3.5 w-3.5" />}
-                variant={isMobile ? 'dark' : 'light'}
+                variant="light"
             />
             
             {error && (
-                <div className={`flex items-center gap-2 p-2.5 rounded-xl border animate-fadeIn ${isMobile ? 'text-[13px] text-red-400 bg-red-400/10 border-red-400/20' : 'text-xs text-red-600 bg-red-50 border-red-100'}`}>
+                <div className="flex items-center gap-2 p-2.5 rounded-xl border animate-fadeIn text-xs text-red-600 bg-red-50 border-red-100">
                     <AlertTriangle className="h-4 w-4 flex-shrink-0" />
                     <span className="leading-tight font-semibold">{error}</span>
                 </div>
@@ -108,10 +188,7 @@ const SignUp: React.FC = () => {
             <div className="pt-2">
                 <Button 
                     type="submit" 
-                    className={isMobile 
-                        ? "w-full !font-black !h-14 !rounded-2xl !text-[16px] transition-all !bg-[#3eff99] hover:!bg-[#2ae080] !text-[#05110c] active:scale-[0.97] !shadow-[0_12px_24px_rgba(62,255,153,0.2)] hover:!shadow-[0_16px_32px_rgba(62,255,153,0.3)] cursor-pointer"
-                        : "w-full !font-black !h-10.5 !rounded-xl !text-[12px] !tracking-[0.15em] !uppercase transition-all active:scale-[0.97] shadow-sm !bg-emerald-600 !text-white hover:!bg-emerald-700 shadow-emerald-600/25 cursor-pointer"
-                    } 
+                    className="w-full !font-black !h-10.5 !rounded-xl !text-[12px] !tracking-[0.15em] !uppercase transition-all active:scale-[0.97] shadow-sm !bg-emerald-600 !text-white hover:!bg-emerald-700 shadow-emerald-600/25 cursor-pointer"
                     isLoading={isSubmitting} 
                     size="lg"
                 >
@@ -119,16 +196,15 @@ const SignUp: React.FC = () => {
                 </Button>
             </div>
 
-
             <div className="text-center mt-3 space-y-3">
-                <p className={isMobile ? "text-[13px] text-white/60 font-medium" : "text-sm text-gray-500 font-medium pt-2"}>
+                <p className="text-sm text-gray-500 font-medium pt-2">
                     Already have an account?{' '}
-                    <Link to="/auth/login" className={`font-bold transition-colors ${isMobile ? 'text-[#3eff99] hover:text-[#2ae080]' : 'text-emerald-600 hover:text-emerald-700'} ml-1`}>
+                    <Link to="/auth/login" className="font-bold transition-colors text-emerald-600 hover:text-emerald-700 ml-1">
                         Sign In
                     </Link>
                 </p>
-                <div className={`pt-4 border-t ${isMobile ? 'border-white/10' : 'border-gray-100'}`}>
-                    <p className={`text-[10px] uppercase tracking-widest font-medium leading-relaxed ${isMobile ? 'text-white/30' : 'text-gray-400'}`}>
+                <div className="pt-4 border-t border-gray-100">
+                    <p className="text-[10px] uppercase tracking-widest font-medium leading-relaxed text-gray-400">
                         © Paradigm FMS Services. All rights reserved.
                     </p>
                 </div>

@@ -716,6 +716,29 @@ const AttendanceSettings: React.FC = () => {
                 </Button>
             </div>
 
+            {/* ── 3rd Saturday Policy Direct Navigation Banner ─────────────────────── */}
+            <div className="bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-blue-500/10 border border-emerald-500/30 p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
+                <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-lg bg-emerald-600 text-white shadow-sm flex-shrink-0">
+                        <Calendar className="h-5 w-5" />
+                    </div>
+                    <div>
+                        <h4 className="text-sm font-bold text-primary-text">3rd Saturday Work Policy & Conditions Control</h4>
+                        <p className="text-xs text-muted">
+                            Configure female exemptions, target entities (PIFS, AP Enterprises, Southwall), exempt entities (PPFMS, Hyderabad), and approval conditions with live simulator.
+                        </p>
+                    </div>
+                </div>
+                <Button
+                    size="sm"
+                    variant="primary"
+                    onClick={() => { window.location.hash = '#/hr/third-saturday-policy'; }}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white shrink-0 text-xs"
+                >
+                    Configure Conditions & Simulator →
+                </Button>
+            </div>
+
             {/* ── Scope Filters Card ───────────────────────────────────────────────── */}
             <div className="bg-card p-5 rounded-xl border border-border shadow-sm">
                 <div className="flex flex-col md:flex-row gap-3 items-start md:items-center flex-wrap">

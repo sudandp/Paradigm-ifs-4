@@ -7692,7 +7692,7 @@ export const api = {
       targetOpeningDateStr = userProfile.sick_leave_opening_date;
     } else if (leaveTypeLower.includes('comp') || leaveTypeLower === 'co') {
       targetOpeningDateStr = userProfile.comp_off_opening_date;
-    } else if (leaveTypeLower.includes('floating') || leaveTypeLower === 'fh') {
+    } else if ((leaveTypeLower.includes('floating') || leaveTypeLower === 'fh' || leaveTypeLower.includes('blue leave')) && !leaveTypeLower.includes('work')) {
       targetOpeningDateStr = userProfile.floating_leave_opening_date;
     } else if (leaveTypeLower.includes('child')) {
       targetOpeningDateStr = userProfile.child_care_leave_opening_date;
@@ -7770,7 +7770,7 @@ export const api = {
         throw new Error(`Insufficient earned leave balance. Requested: ${requestedDays} days, Available: ${balances.earnedTotal - balances.earnedUsed - balances.earnedPending} days.`);
       }
     }
-    else if (leaveTypeLower.includes('floating') || leaveTypeLower === 'fh' || leaveTypeLower.includes('blue leave')) {
+    else if ((leaveTypeLower.includes('floating') || leaveTypeLower === 'fh' || leaveTypeLower.includes('blue leave')) && !leaveTypeLower.includes('work')) {
       const now = new Date();
       const reqMonthStart = startOfMonth(startD);
       const reqMonthEnd = endOfMonth(startD);
@@ -7855,10 +7855,15 @@ export const api = {
 
     if (userProfile.reporting_manager_id) {
       try {
+        const isBLW = data.leaveType === 'Blue Leave Work' || String(data.leaveType || '').toLowerCase().includes('blue leave work');
         dispatchNotificationFromRules('leave_request', {
           actorName: data.userName || 'An employee',
-          actionText: `has submitted a new ${data.leaveType} leave request`,
+          actionText: isBLW 
+            ? 'has requested approval to work on 3rd Saturday (Blue Leave Work)' 
+            : `has submitted a new ${data.leaveType} leave request`,
           locString: '',
+          title: isBLW ? '3rd Saturday Work Request' : undefined,
+          link: '/my-team',
           actor: { 
             id: data.userId, 
             name: data.userName || 'Employee', 
@@ -7866,7 +7871,8 @@ export const api = {
             reportingManagerId: userProfile.reporting_manager_id 
           },
           metadata: {
-            leaveRequestId: insertedData.id
+            leaveRequestId: insertedData.id,
+            title: isBLW ? '3rd Saturday Work Request' : undefined
           }
         });
       } catch (notifError) {
@@ -9220,41 +9226,8 @@ export const api = {
         return;
     }
 
-    // If it's Blue Leave Work, enforce dual-manager approval if applicable
+    // If it's Blue Leave Work, reporting manager approval authorizes employee to work for that regular day
     if (request.leave_type === 'Blue Leave Work') {
-        const { data: userProfile } = await supabase.from('users').select('reporting_manager_id, reporting_manager_2_id').eq('id', request.user_id).single();
-        
-        if (userProfile && userProfile.reporting_manager_id === approverId && userProfile.reporting_manager_2_id) {
-            // Forward to 2nd Manager
-            const { error } = await supabase.from('leave_requests').update({ 
-                status: 'pending_manager_approval', 
-                current_approver_id: userProfile.reporting_manager_2_id, 
-                approval_history: updatedHistory 
-            }).eq('id', id);
-            if (error) throw error;
-            
-            // Notify 2nd Manager
-            try {
-                dispatchNotificationFromRules('leave_request', {
-                    actorName: 'Blue Leave Work request',
-                    actionText: `has been approved by ${approverData.name} and requires your final approval`,
-                    locString: '',
-                    actor: { 
-                        id: request.user_id, 
-                        name: 'Employee', 
-                        role: 'staff', 
-                        reportingManagerId: userProfile.reporting_manager_2_id 
-                    },
-                    metadata: { leaveRequestId: id }
-                });
-            } catch (notifError) {
-                console.error('Failed to notify 2nd manager for Blue Leave Work:', notifError);
-            }
-            await api.markRelatedNotificationsAsRead(id);
-            return;
-        }
-
-        // If the current approver is the 2nd manager, or if there is no 2nd manager, fully approve it
         const { error } = await supabase.from('leave_requests').update({ 
             status: 'approved', 
             current_approver_id: null, 
@@ -9262,13 +9235,34 @@ export const api = {
         }).eq('id', id);
         if (error) throw error;
 
-        // Notify the employee that their request was approved
+        // Notify 2nd Manager if present (informational)
+        try {
+            const { data: userProfile } = await supabase.from('users').select('reporting_manager_id, reporting_manager_2_id').eq('id', request.user_id).single();
+            if (userProfile && userProfile.reporting_manager_2_id && userProfile.reporting_manager_id === approverId) {
+                dispatchNotificationFromRules('leave_request', {
+                    actorName: 'Blue Leave Work request',
+                    actionText: `has been approved by ${approverData.name} (employee is authorized to work today)`,
+                    locString: '',
+                    actor: { 
+                        id: request.user_id, 
+                        name: 'Employee', 
+                        role: 'staff', 
+                        reportingManagerId: userProfile.reporting_manager_2_id 
+                    },
+                    metadata: { leaveRequestId: id, title: '3rd Saturday Work Approved' }
+                });
+            }
+        } catch (notifError) {
+            console.error('Failed to notify 2nd manager for Blue Leave Work:', notifError);
+        }
+
+        // Notify the employee that their 3rd Saturday work request was approved
         await supabase.from('notifications').insert({
             user_id: request.user_id,
-            message: `Your Blue Leave Work request for ${request.start_date} has been fully approved by ${approverData.name}.`,
+            message: `Your 3rd Saturday work request for ${request.start_date} has been approved by ${approverData.name}. You are now allowed to work for today.`,
             type: 'approval_request',
             is_read: false,
-            metadata: { title: 'Blue Leave Work Approved ✅', leaveRequestId: id, date: request.start_date }
+            metadata: { title: '3rd Saturday Work Approved ✅', leaveRequestId: id, date: request.start_date }
         });
         await api.markRelatedNotificationsAsRead(id);
         return;

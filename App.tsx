@@ -116,6 +116,7 @@ const MyLocations = lazyWithRetry(() => import('./pages/attendance/MyLocations')
 const AttendanceActionPage = lazyWithRetry(() => import('./pages/attendance/AttendanceActionPage'));
 const RequestUnlockPage = lazyWithRetry(() => import('./pages/attendance/RequestUnlockPage'));
 const AttendanceSettings = lazyWithRetry(() => import('./pages/hr/AttendanceSettings'));
+const ThirdSaturdayPolicyPage = lazyWithRetry(() => import('./pages/hr/ThirdSaturdayPolicyPage'));
 const NotificationsControl = lazyWithRetry(() => import('./pages/hr/NotificationsControl'));
 const UserVehiclesManagement = lazyWithRetry(() => import('./pages/admin/UserVehiclesManagement'));
 const UserHomeDetails = lazyWithRetry(() => import('./pages/admin/UserHomeDetails'));
@@ -2288,6 +2289,7 @@ const App: React.FC = () => {
           {/* HR */}
           <Route element={<ProtectedRoute requiredPermission="manage_attendance_rules" />}>
             <Route path="hr/attendance-settings" element={<AttendanceSettings />} />
+            <Route path="hr/third-saturday-policy" element={<ThirdSaturdayPolicyPage />} />
             <Route path="notifications" element={<NotificationsControl />} />
             <Route path="hr/advanced-notifications" element={<AdvancedNotificationSettings />} />
             <Route path="hr/family-verification" element={<FamilyVerification />} />
