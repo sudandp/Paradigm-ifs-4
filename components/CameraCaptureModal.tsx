@@ -323,7 +323,11 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
     setShutterFlash(true);
     setTimeout(() => setShutterFlash(false), 180);
 
-    stopLiveCamera();
+    // Delay stopping the camera to ensure the GPU has fully flushed the frame to the canvas
+    // before the video stream is destroyed. This prevents black/blank photo issues on mobile devices.
+    setTimeout(() => {
+      stopLiveCamera();
+    }, 250);
 
     // Auto-rotate if sideways landscape document photographed in portrait
     autoRotateDocumentIfSideways(dataUrl, docType, documentTitle).then((rotRes) => {
@@ -481,6 +485,132 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
     }
   };
 
+  // ─── Smart Auto-Capture (Stability Detection) ───
+  const [autoCaptureProgress, setAutoCaptureProgress] = useState(0);
+  const autoCaptureRef = useRef({
+    prevData: null as Uint8ClampedArray | null,
+    stableFrames: 0,
+    isActive: false,
+    reqId: 0,
+  });
+
+  const runAutoCaptureLoop = useCallback(async () => {
+    if (!videoRef.current || !autoCaptureRef.current.isActive) return;
+    const video = videoRef.current;
+    
+    // Video not ready yet
+    if (video.videoWidth === 0 || video.videoHeight === 0) {
+      autoCaptureRef.current.reqId = requestAnimationFrame(runAutoCaptureLoop);
+      return;
+    }
+
+    // ─── Real Face Detection for PHOTO Mode ───
+    if (activeMode === 'PHOTO') {
+      try {
+        const faceapi = await import('@vladmandic/face-api');
+        if (!faceapi.nets.tinyFaceDetector.isLoaded) {
+          const isNative = typeof window !== 'undefined' && (window as any).Capacitor?.isNativePlatform?.();
+          const modelUrl = isNative ? 'capacitor://localhost/models' : '/models';
+          await faceapi.nets.tinyFaceDetector.loadFromUri(modelUrl);
+        }
+        
+        const detection = await faceapi.detectSingleFace(
+          video, 
+          new faceapi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: 0.5 })
+        );
+        
+        if (detection) {
+          autoCaptureRef.current.stableFrames++;
+        } else {
+          // Allow minor blips, but generally reset
+          autoCaptureRef.current.stableFrames = Math.max(0, autoCaptureRef.current.stableFrames - 1);
+        }
+      } catch (err) {
+        console.warn('Face detection error:', err);
+      }
+      
+      // Face-api is slower, so 6 consecutive frames of face is enough
+      const targetFrames = 6; 
+      const progress = Math.min(100, (autoCaptureRef.current.stableFrames / targetFrames) * 100);
+      setAutoCaptureProgress(progress);
+      
+      if (autoCaptureRef.current.stableFrames >= targetFrames) {
+        autoCaptureRef.current.isActive = false;
+        handleSnapPhoto();
+        return;
+      }
+      
+      if (autoCaptureRef.current.isActive) {
+        autoCaptureRef.current.reqId = requestAnimationFrame(runAutoCaptureLoop);
+      }
+      return;
+    }
+
+    // ─── Stability Detection for Document Modes ───
+    const canvas = document.createElement('canvas');
+    canvas.width = 64; 
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+
+    ctx.drawImage(video, 0, 0, 64, 64);
+    const imageData = ctx.getImageData(0, 0, 64, 64);
+    const data = imageData.data;
+
+    let motion = 0;
+    if (autoCaptureRef.current.prevData) {
+      const prev = autoCaptureRef.current.prevData;
+      // Calculate absolute difference between frames to detect movement
+      for (let i = 0; i < data.length; i += 4) {
+        motion += Math.abs(data[i] - prev[i]) + Math.abs(data[i+1] - prev[i+1]) + Math.abs(data[i+2] - prev[i+2]);
+      }
+    }
+    autoCaptureRef.current.prevData = new Uint8ClampedArray(data);
+
+    const avgMotion = motion / (64 * 64);
+    
+    // Threshold for stability (relaxed up to 80 for normal camera noise)
+    if (avgMotion >= 0 && avgMotion < 80) { 
+      autoCaptureRef.current.stableFrames++;
+    } else {
+      autoCaptureRef.current.stableFrames = 0;
+    }
+
+    // Require ~0.75 seconds of stability (approx 45 frames)
+    const targetFrames = 45; 
+    const progress = Math.min(100, (autoCaptureRef.current.stableFrames / targetFrames) * 100);
+    
+    setAutoCaptureProgress(progress);
+
+    if (autoCaptureRef.current.stableFrames >= targetFrames) {
+      autoCaptureRef.current.isActive = false;
+      handleSnapPhoto();
+      return;
+    }
+
+    if (autoCaptureRef.current.isActive) {
+      autoCaptureRef.current.reqId = requestAnimationFrame(runAutoCaptureLoop);
+    }
+  }, [handleSnapPhoto, activeMode]);
+
+  useEffect(() => {
+    // Run auto-capture for all document types and photos
+    if (isLiveCameraActive && !capturedImage) {
+      autoCaptureRef.current.isActive = true;
+      autoCaptureRef.current.stableFrames = 0;
+      setAutoCaptureProgress(0);
+      autoCaptureRef.current.reqId = requestAnimationFrame(runAutoCaptureLoop);
+    } else {
+      autoCaptureRef.current.isActive = false;
+      cancelAnimationFrame(autoCaptureRef.current.reqId);
+      setAutoCaptureProgress(0);
+    }
+    return () => {
+      autoCaptureRef.current.isActive = false;
+      cancelAnimationFrame(autoCaptureRef.current.reqId);
+    };
+  }, [isLiveCameraActive, capturedImage, runAutoCaptureLoop]);
+
   if (!isOpen) return null;
 
   const displayImage = croppedImage || capturedImage;
@@ -515,6 +645,28 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         onChange={handleFileInputChange}
         className="hidden"
       />
+
+      {/* ─── Live Video Stream Background (Full Screen) ─── */}
+      {isLiveCameraActive && !capturedImage && (
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          className="absolute inset-0 w-full h-full object-cover z-0"
+          style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }}
+        />
+      )}
+
+      {/* ─── Captured Image Preview Background (Full Screen) ─── */}
+      {displayImage && !showCropper && (
+        <img
+          src={displayImage}
+          alt={activeMode === 'PHOTO' ? 'Captured profile photo' : 'Captured document'}
+          className="absolute inset-0 w-full h-full object-cover z-0"
+          style={{ transform: (facingMode === 'user' && !croppedImage) ? 'scaleX(-1)' : 'none' }}
+        />
+      )}
 
       {/* Shutter Flash Animation */}
       {shutterFlash && (
@@ -613,20 +765,8 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         </p>
       </div>
 
-      {/* ─── Center Viewfinder Area ─── */}
-      <div className="relative flex-1 flex items-center justify-center overflow-hidden">
-        {/* Live Video Stream */}
-        {isLiveCameraActive && !capturedImage && (
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            className="absolute inset-0 w-full h-full object-cover z-0"
-            style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }}
-          />
-        )}
-
+      {/* ─── Center Viewfinder Area (No overflow-hidden to allow dimming shadow to cover screen) ─── */}
+      <div className="relative flex-1 flex items-center justify-center">
         {/* Fallback Screen (if video stream not available or user uploaded from gallery) */}
         {showFallbackUI && !capturedImage && (
           <div className="relative z-10 flex flex-col items-center px-6 text-center max-w-xs animate-in fade-in">
@@ -659,37 +799,56 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         {/* Live Framing Box with 4 Thick Corner Brackets (Exact Visual from Image) */}
         {!showCropper && (
           <div
-            className={`relative z-10 pointer-events-none transition-all duration-300 flex items-center justify-center ${getViewfinderStyle()}`}
+            className={`relative z-10 pointer-events-none transition-all duration-500 flex items-center justify-center ${getViewfinderStyle()} ${autoCaptureProgress > 0 && activeMode === 'PHOTO' ? 'scale-[1.02]' : 'scale-100'}`}
             style={{
-              boxShadow: '0 0 0 9999px rgba(11, 15, 23, 0.68)',
+              boxShadow: activeMode === 'PHOTO' ? '0 0 0 9999px rgba(0, 0, 0, 0.85)' : '0 0 0 9999px rgba(11, 15, 23, 0.68)',
             }}
           >
-            {/* 4 Rounded Corner Brackets */}
+            {/* Continuous Blue Border and Scanning Line (Matches Image 1) */}
             {activeMode !== 'PHOTO' && (
               <>
-                {/* Top-Left */}
-                <div className="absolute -top-1.5 -left-1.5 w-9 h-9 border-t-4 border-l-4 border-white rounded-tl-2xl shadow-[0_0_12px_rgba(255,255,255,0.4)]" />
-                {/* Top-Right */}
-                <div className="absolute -top-1.5 -right-1.5 w-9 h-9 border-t-4 border-r-4 border-white rounded-tr-2xl shadow-[0_0_12px_rgba(255,255,255,0.4)]" />
-                {/* Bottom-Left */}
-                <div className="absolute -bottom-1.5 -left-1.5 w-9 h-9 border-b-4 border-l-4 border-white rounded-bl-2xl shadow-[0_0_12px_rgba(255,255,255,0.4)]" />
-                {/* Bottom-Right */}
-                <div className="absolute -bottom-1.5 -right-1.5 w-9 h-9 border-b-4 border-r-4 border-white rounded-br-2xl shadow-[0_0_12px_rgba(255,255,255,0.4)]" />
+                {/* Solid Blue Box Outline with Auto-Capture Progress Fill */}
+                <div className="absolute inset-0 border-[3px] border-blue-500 rounded-[14px] shadow-[0_0_12px_rgba(59,130,246,0.3)] pointer-events-none overflow-hidden">
+                  {isLiveCameraActive && !capturedImage && autoCaptureProgress > 0 && (
+                    <div 
+                      className="absolute bottom-0 left-0 right-0 bg-blue-500/20 transition-all duration-75"
+                      style={{ height: `${autoCaptureProgress}%` }}
+                    />
+                  )}
+                </div>
+                
+                {/* Animated Scanning Line */}
+                <div className="absolute left-[-4%] right-[-4%] h-[2.5px] bg-blue-400 shadow-[0_0_16px_5px_rgba(96,165,250,0.5)] z-20 animate-scan-line rounded-full" />
               </>
             )}
 
-            {/* Profile Circle Frame */}
+            {/* Profile Circle Frame (Apple Face ID Style) */}
             {activeMode === 'PHOTO' && (
               <>
-                <div className="absolute inset-0 rounded-full border-4 border-white shadow-[0_0_16px_rgba(255,255,255,0.4)] pointer-events-none z-10" />
-                {!displayImage && (
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-30 z-0">
-                    <svg viewBox="0 0 200 200" className="w-[72%] h-[72%] stroke-white fill-none stroke-[2] stroke-dasharray-[5,5]">
-                      <ellipse cx="100" cy="80" rx="42" ry="50" />
-                      <path d="M 36 190 C 42 145, 62 135, 100 135 C 138 135, 158 145, 164 190" />
+                <div className={`absolute inset-0 rounded-full transition-all duration-300 ${autoCaptureProgress > 0 ? 'border-transparent' : 'border-[3px] border-white/80'}`}>
+                  {/* Segmented SVG Circular Progress Ring */}
+                  {isLiveCameraActive && !capturedImage && autoCaptureProgress > 0 && (
+                    <svg className="absolute inset-0 w-full h-full -rotate-90 scale-[1.05] pointer-events-none" viewBox="0 0 100 100">
+                      <defs>
+                        <mask id="segmented-mask">
+                           {/* 60 segments (301.59 circumference / 5 = 60.3), so dasharray 3 2 is perfect */}
+                           <circle cx="50" cy="50" r="48" fill="none" stroke="white" strokeWidth="10" strokeDasharray="3.15 1.87" />
+                        </mask>
+                      </defs>
+                      {/* Inactive Background Ticks */}
+                      <circle cx="50" cy="50" r="48" fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="3.5" mask="url(#segmented-mask)" />
+                      {/* Active Glowing Green Ticks */}
+                      <circle 
+                        cx="50" cy="50" r="48" fill="none" stroke="#4ade80" strokeWidth="4.5" 
+                        strokeDasharray={2 * Math.PI * 48}
+                        strokeDashoffset={(2 * Math.PI * 48) * (1 - autoCaptureProgress / 100)}
+                        strokeLinecap="round"
+                        mask="url(#segmented-mask)"
+                        className="transition-all duration-75 ease-linear drop-shadow-[0_0_6px_rgba(74,222,128,0.8)]"
+                      />
                     </svg>
-                  </div>
-                )}
+                  )}
+                </div>
               </>
             )}
 
@@ -708,18 +867,6 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
               </div>
             )}
 
-            {/* Captured Still Preview in Viewfinder */}
-            {displayImage && !showCropper && (
-              <img
-                src={displayImage}
-                alt={activeMode === 'PHOTO' ? 'Captured profile photo' : 'Captured document'}
-                className={`w-full h-full ${
-                  activeMode === 'PHOTO'
-                    ? 'object-cover rounded-full'
-                    : 'object-contain rounded-xl'
-                }`}
-              />
-            )}
           </div>
         )}
 

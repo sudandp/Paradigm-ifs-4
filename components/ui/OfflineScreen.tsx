@@ -11,7 +11,12 @@ import { motion, AnimatePresence, Variants } from 'framer-motion';
 import { Capacitor } from '@capacitor/core';
 import Logo from './Logo';
 
-const OfflineScreen: React.FC = () => {
+export interface OfflineScreenProps {
+  forceBlock?: boolean;
+  onReturnHome?: () => void;
+}
+
+const OfflineScreen: React.FC<OfflineScreenProps> = ({ forceBlock = false, onReturnHome }) => {
   const [isRetrying, setIsRetrying] = useState(false);
   const [retryFailed, setRetryFailed] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -517,14 +522,25 @@ const OfflineScreen: React.FC = () => {
                 </span>
               </motion.button>
 
-              <motion.button
-                onClick={() => setIsDismissed(true)}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className="flex-1 w-full min-h-[48px] bg-slate-800 hover:bg-slate-900 text-slate-200 font-bold px-5 py-3.5 rounded-2xl transition-all duration-200 text-xs tracking-wider uppercase border border-slate-700/50 flex items-center justify-center gap-2 cursor-pointer shadow-md whitespace-nowrap"
-              >
-                <span>⚡ Continue Working Offline</span>
-              </motion.button>
+              {forceBlock ? (
+                <motion.button
+                  onClick={onReturnHome}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="flex-1 w-full min-h-[48px] bg-slate-800 hover:bg-slate-900 text-slate-200 font-bold px-5 py-3.5 rounded-2xl transition-all duration-200 text-xs tracking-wider uppercase border border-slate-700/50 flex items-center justify-center gap-2 cursor-pointer shadow-md whitespace-nowrap"
+                >
+                  <span>🏠 Return to Home</span>
+                </motion.button>
+              ) : (
+                <motion.button
+                  onClick={() => setIsDismissed(true)}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="flex-1 w-full min-h-[48px] bg-slate-800 hover:bg-slate-900 text-slate-200 font-bold px-5 py-3.5 rounded-2xl transition-all duration-200 text-xs tracking-wider uppercase border border-slate-700/50 flex items-center justify-center gap-2 cursor-pointer shadow-md whitespace-nowrap"
+                >
+                  <span>⚡ Continue Working Offline</span>
+                </motion.button>
+              )}
             </div>
           </motion.div>
         </div>

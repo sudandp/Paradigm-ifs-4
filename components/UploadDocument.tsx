@@ -485,6 +485,99 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
     };
 
     const Icon = getIconForLabel(label);
+    const isPhoto = label.toLowerCase().includes('photo');
+
+    if (isPhoto) {
+        return (
+            <div className="w-full flex flex-col items-center justify-center py-2 relative">
+                <ImagePreviewModal isOpen={isPreviewOpen} onClose={() => setIsPreviewOpen(false)} imageUrl={file?.preview ? getProxyUrl(file.preview) : ''} />
+                
+                <div className="flex flex-col items-center gap-1 mb-3">
+                    <label className="block text-sm font-bold text-white md:text-primary-text flex items-center gap-1" htmlFor={inputId}>
+                        {label}
+                        {verificationStatus === true && <CheckCircle className="h-4 w-4 text-emerald-400" />}
+                        {verificationStatus === false && <XCircle className="h-4 w-4 text-rose-400" />}
+                    </label>
+                    {displayError && <span className="text-[10px] text-rose-400 font-bold max-w-[200px] text-center">{displayError}</span>}
+                </div>
+                
+                {file ? (
+                    <div className="relative group/photo">
+                        <div 
+                            className="w-[110px] h-[110px] md:w-[130px] md:h-[130px] rounded-[32px] md:rounded-[40px] border-[2px] border-dashed border-white/50 p-1.5 flex items-center justify-center cursor-pointer transition-transform duration-300 hover:scale-105 shadow-[0_8px_32px_rgba(0,0,0,0.15)]"
+                            onClick={() => setIsPreviewOpen(true)}
+                        >
+                            <BlurhashImage 
+                                src={getProxyUrl(file.preview)} 
+                                blurhash={file.blurhash}
+                                seed={file.name || label}
+                                alt="preview"
+                                fallbackSrc="https://placehold.co/400x400?text=Photo"
+                                className="w-full h-full rounded-[26px] md:rounded-[34px] overflow-hidden"
+                                imgClassName="w-full h-full object-cover"
+                            />
+                            {isLoading && (
+                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center rounded-[26px] md:rounded-[34px]">
+                                    <Loader2 className="h-6 w-6 animate-spin text-white" />
+                                </div>
+                            )}
+                        </div>
+                        
+                        {!isLoading && (
+                            <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); handleRemove(); }}
+                                className="absolute -top-1.5 -right-1.5 bg-white text-rose-500 hover:text-white hover:bg-rose-500 rounded-full p-2 shadow-[0_4px_16px_rgba(0,0,0,0.3)] z-20 transition-all duration-300 hover:scale-110"
+                                title="Remove Photo"
+                            >
+                                <Trash2 className="h-4 w-4" />
+                            </button>
+                        )}
+                        
+                        {!isLoading && (
+                            <label 
+                                htmlFor={inputId} 
+                                className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[9px] font-bold px-3 py-1 rounded-full shadow-lg border border-white/20 cursor-pointer opacity-0 group-hover/photo:opacity-100 transition-opacity hover:bg-slate-700 uppercase tracking-wider"
+                            >
+                                Change
+                            </label>
+                        )}
+                    </div>
+                ) : (
+                    <div className="flex flex-col items-center justify-center">
+                        <label 
+                            htmlFor={inputId}
+                            className={`w-[110px] h-[110px] md:w-[130px] md:h-[130px] rounded-[32px] md:rounded-[40px] border-[2px] border-dashed flex flex-col items-center justify-center cursor-pointer transition-all duration-300 hover:scale-105 shadow-lg group relative ${displayError ? 'border-rose-400 bg-rose-500/10' : 'border-white/50 bg-white/5 hover:bg-white/10 md:border-gray-300 md:bg-gray-50'}`}
+                        >
+                            <Icon className={`h-8 w-8 mb-1.5 transition-colors ${displayError ? 'text-rose-400' : 'text-white/60 group-hover:text-white/90 md:text-gray-400 md:group-hover:text-accent'}`} />
+                            <span className={`text-[9px] font-bold uppercase tracking-widest text-center px-1 ${displayError ? 'text-rose-400' : 'text-white/60 md:text-gray-400'}`}>Upload</span>
+                        </label>
+                        
+                        {allowCapture && (
+                            <button 
+                                type="button" 
+                                onClick={(e) => { e.preventDefault(); setIsCameraOpen(true); }} 
+                                className="mt-4 flex items-center justify-center font-bold text-white hover:text-white/80 md:text-accent md:hover:text-accent-dark transition-colors text-[11px] bg-white/10 md:bg-white px-4 py-2 rounded-full border border-white/20 md:border-gray-200 hover:bg-white/20 md:hover:border-accent shadow-md md:shadow-sm uppercase tracking-wider"
+                            >
+                                <Camera className="h-3.5 w-3.5 mr-1.5 text-rose-400 md:text-accent" />
+                                Capture Photo
+                            </button>
+                        )}
+                    </div>
+                )}
+                
+                <input
+                    id={inputId}
+                    type="file"
+                    accept={allowedTypes?.join(',')}
+                    onChange={(e) => { if (e.target.files && e.target.files.length > 0) handleFileSelect(e.target.files[0]); }}
+                    className="hidden"
+                    disabled={isLoading}
+                />
+                {allowCapture && <CameraCaptureModal isOpen={isCameraOpen} onClose={() => setIsCameraOpen(false)} onCapture={handleCapture} docType={docType} documentTitle={label} captureGuidance="profile" />}
+            </div>
+        );
+    }
 
     return (
         <div className="w-full">

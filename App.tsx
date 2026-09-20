@@ -2076,11 +2076,39 @@ const App: React.FC = () => {
     );
   }
 
+  // Determine if the current route is allowed offline
+  const OFFLINE_ALLOWED_PATHS = [
+    '/',
+    '/splash',
+    '/mobile-home',
+    '/sync-review',
+    '/offline/diagnostics',
+    '/settings/offline-diagnostics',
+    '/attendance/face',
+    '/attendance/punch',
+    '/profile',
+    '/leaves/dashboard',
+    '/leaves/apply',
+    '/leaves/holidays'
+  ];
+
+  const isCurrentRouteOfflineAllowed = 
+    OFFLINE_ALLOWED_PATHS.includes(location.pathname) || 
+    location.pathname.startsWith('/auth');
+
+  const shouldShowOfflineScreen = isOffline && (!user || !isCurrentRouteOfflineAllowed);
+
   // Once initialized, render the main application structure.
   return (
     <div className="relative min-h-screen w-full overflow-x-hidden bg-slate-50 dark:bg-slate-900">
       <AnimatePresence mode="wait">
-        {isOffline && !user && <OfflineScreen key="offline-screen-modal" />}
+        {shouldShowOfflineScreen && (
+          <OfflineScreen 
+            key={`offline-screen-modal-${location.pathname}`} 
+            forceBlock={!!user && !isCurrentRouteOfflineAllowed}
+            onReturnHome={() => navigate('/mobile-home')}
+          />
+        )}
       </AnimatePresence>
       <ScrollToTop />
       <ThemeManager />

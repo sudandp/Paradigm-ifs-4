@@ -80,7 +80,7 @@ export const OfflineStatusBanner: React.FC<OfflineStatusBannerProps> = ({
   }
 
   // 3. Offline / Disconnected
-  if (!isOnline || !isReachableState) {
+  if (!isOnline) {
     const containerClasses = isCard
       ? `rounded-xl border border-emerald-700/50 bg-emerald-950/90 backdrop-blur-md px-3.5 py-2 text-emerald-200 text-xs font-medium flex items-center justify-between shadow-md w-[calc(100%-2rem)] max-w-md mx-auto mb-3 ${className}`
       : `w-full bg-emerald-950/80 border-b border-emerald-800/40 px-4 py-2 text-emerald-300 text-xs sm:text-sm font-medium flex items-center justify-between shadow-xs ${className}`;
