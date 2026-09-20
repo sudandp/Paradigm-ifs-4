@@ -52,6 +52,11 @@ async function bootstrap() {
   // No-op when VITE_OFFLINE_ENABLED !== 'true'.
   syncEngine.start();
 
+  // Pre-warm master data caches in background if online (sites, structure, designations)
+  import('./services/offline/prefetch')
+    .then(({ prefetchMasterData }) => prefetchMasterData().catch(() => {}))
+    .catch(() => {});
+
   const root = ReactDOM.createRoot(rootElement!);
   root.render(
     <React.StrictMode>

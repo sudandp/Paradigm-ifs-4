@@ -3977,8 +3977,7 @@ export const api = {
   },
 
   getOrganizations: async (filter?: { page?: number, pageSize?: number }): Promise<any> => {
-    const status = await Network.getStatus();
-    if (status.connected) {
+    if (_isOfflineOnline()) {
       try {
         let query = supabase.from('organizations').select('*', { count: 'exact' });
         
@@ -3997,7 +3996,7 @@ export const api = {
         if (error) throw error;
         
         const formattedData = (data || []).map(toCamelCase);
-        if (!isPaginated) {
+        if (!isPaginated && formattedData.length > 0) {
             await offlineDb.setCache('organizations', formattedData);
         }
 
@@ -4006,11 +4005,22 @@ export const api = {
         }
         return formattedData;
       } catch (err) {
-        console.warn('Failed to fetch organizations from cloud, falling back to cache');
+        console.warn('Failed to fetch organizations from cloud, falling back to cache:', err);
       }
     }
     
-    const cached = await offlineDb.getCache('organizations') || [];
+    let cached = await offlineDb.getCache('organizations');
+    if (!cached || !Array.isArray(cached) || cached.length === 0) {
+      try {
+        const idbCached = await (await import('./offline/cache')).getAll<any>('organizations');
+        if (idbCached && idbCached.length > 0) {
+          cached = idbCached.map(toCamelCase);
+        }
+      } catch {
+        // IDB fallback notice
+      }
+    }
+    cached = cached || [];
     if (filter?.page !== undefined && filter?.pageSize !== undefined) {
         return { data: cached, total: cached.length };
     }
@@ -4034,6 +4044,14 @@ export const api = {
     if (error) throw error;
   },
   getOrganizationStructure: async (): Promise<OrganizationGroup[]> => {
+    // 1. If currently offline, return cached structure immediately
+    if (!_isOfflineOnline()) {
+      const cached = await offlineDb.getCache('organization_structure');
+      if (cached && Array.isArray(cached) && cached.length > 0) {
+        return cached;
+      }
+    }
+
     try {
       const [groupsRes, companiesRes, entitiesRes] = await Promise.allSettled([
         supabase.from('organization_groups').select('*'),
@@ -4045,9 +4063,30 @@ export const api = {
       const companies = (companiesRes.status === 'fulfilled' && !companiesRes.value.error) ? (companiesRes.value.data || []) : [];
       const entities = (entitiesRes.status === 'fulfilled' && !entitiesRes.value.error) ? (entitiesRes.value.data || []) : [];
 
+      // If queries failed (network error / offline), fallback to cached data before returning any dummy structure
+      const anyFailure = (groupsRes.status === 'rejected' || !!(groupsRes.status === 'fulfilled' && groupsRes.value.error)) ||
+                         (companiesRes.status === 'rejected' || !!(companiesRes.status === 'fulfilled' && companiesRes.value.error)) ||
+                         (entitiesRes.status === 'rejected' || !!(entitiesRes.status === 'fulfilled' && entitiesRes.value.error));
+
+      if (anyFailure && groups.length === 0 && companies.length === 0 && entities.length === 0) {
+        console.warn('[API] getOrganizationStructure queries failed, returning cached structure');
+        const cached = await offlineDb.getCache('organization_structure');
+        if (cached && Array.isArray(cached) && cached.length > 0) {
+          return cached;
+        }
+      }
+
       const camelGroups: any[] = groups.map(g => processUrlsForDisplay(toCamelCase(g)));
       const camelCompanies: any[] = companies.map(c => processUrlsForDisplay(toCamelCase(c)));
       const camelEntities: any[] = entities.map(e => processUrlsForDisplay(toCamelCase(e)));
+
+      // If we couldn't fetch anything and have cache, prefer cache over hollow fallback
+      if (camelGroups.length === 0 && camelCompanies.length === 0) {
+        const cached = await offlineDb.getCache('organization_structure');
+        if (cached && Array.isArray(cached) && cached.length > 0) {
+          return cached;
+        }
+      }
 
       // Ensure AP Group exists if empty
       if (camelGroups.length === 0) {
@@ -4133,7 +4172,8 @@ export const api = {
           });
       }
 
-      if (structure.length > 0) {
+      // ONLY cache if we actually have valid real data (do not cache an empty/hollow shell)
+      if (groups.length > 0 && companies.length > 0) {
         await offlineDb.setCache('organization_structure', structure);
       }
       return structure;
@@ -10235,9 +10275,35 @@ export const api = {
     if (error) throw error;
   },
   getSiteStaffDesignations: async (): Promise<SiteStaffDesignation[]> => {
-    const { data, error } = await supabase.from('settings').select('site_staff_designations').eq('id', 'singleton').single();
-    if (error) throw error;
-    return (data?.site_staff_designations || []).map(toCamelCase);
+    if (!_isOfflineOnline()) {
+      const cached = await offlineDb.getCache('site_staff_designations');
+      if (cached && Array.isArray(cached) && cached.length > 0) return cached;
+      const initialData = await offlineDb.getCache('initial_app_data');
+      if (initialData?.settings?.siteStaffDesignations && Array.isArray(initialData.settings.siteStaffDesignations) && initialData.settings.siteStaffDesignations.length > 0) {
+        return initialData.settings.siteStaffDesignations;
+      }
+    }
+
+    try {
+      const { data, error } = await supabase.from('settings').select('site_staff_designations').eq('id', 'singleton').single();
+      if (!error && data?.site_staff_designations) {
+        const formatted = (data.site_staff_designations || []).map(toCamelCase);
+        await offlineDb.setCache('site_staff_designations', formatted);
+        return formatted;
+      }
+    } catch (err) {
+      console.warn('[API] getSiteStaffDesignations fetch error, using cache:', err);
+    }
+
+    const cached = await offlineDb.getCache('site_staff_designations');
+    if (cached && Array.isArray(cached) && cached.length > 0) return cached;
+
+    const initialData = await offlineDb.getCache('initial_app_data');
+    if (initialData?.settings?.siteStaffDesignations && Array.isArray(initialData.settings.siteStaffDesignations)) {
+      return initialData.settings.siteStaffDesignations;
+    }
+
+    return [];
   },
   updateSiteStaffDesignations: async (designations: SiteStaffDesignation[]): Promise<void> => {
     const { error } = await supabase.from('settings').upsert({

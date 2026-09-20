@@ -57,6 +57,19 @@ export async function prefetchMasterData(): Promise<PrefetchStats | null> {
       // Table may not exist or be restricted — non-fatal
     }
 
+    // 3. Prefetch Organization Structure & Designations (for SelectOrganization offline support)
+    try {
+      const { api, offlineDb } = await import('../api');
+      if (orgs && orgs.length > 0) {
+        await offlineDb.setCache('organizations', orgs);
+      }
+      await api.getOrganizationStructure();
+      await api.getSiteStaffDesignations();
+      console.log('[Prefetch] Cached organization structure and staff designations');
+    } catch (orgStructErr) {
+      console.warn('[Prefetch] Notice: non-fatal organization structure prefetch:', orgStructErr);
+    }
+
     const stats: PrefetchStats = {
       sitesCount,
       durationMs: Date.now() - startTime,

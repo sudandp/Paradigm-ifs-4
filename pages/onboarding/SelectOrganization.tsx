@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useOnboardingStore, isSouthWallCompany } from '../../store/onboardingStore';
 import { useEnrollmentRulesStore } from '../../store/enrollmentRulesStore';
-import { api } from '../../services/api';
+import { api, offlineDb } from '../../services/api';
 import type { OrganizationGroup, Organization, SiteStaffDesignation } from '../../types';
 import Button from '../../components/ui/Button';
 import Select from '../../components/ui/Select';
@@ -59,12 +59,69 @@ const SelectOrganization = () => {
         const fetchData = async () => {
             setIsLoading(true);
             try {
-                const [structure, orgs, designations] = await Promise.all([
+                const [structureRes, orgsRes, designationsRes] = await Promise.allSettled([
                     api.getOrganizationStructure(),
                     api.getOrganizations(),
                     api.getSiteStaffDesignations(),
                     fetchRules().catch(() => null),
                 ]);
+
+                let structure = structureRes.status === 'fulfilled' && Array.isArray(structureRes.value) ? structureRes.value : [];
+                let orgs = orgsRes.status === 'fulfilled' && Array.isArray(orgsRes.value) ? orgsRes.value : [];
+                let designations = designationsRes.status === 'fulfilled' && Array.isArray(designationsRes.value) ? designationsRes.value : [];
+
+                // 1. Structure fallback: if empty, try offlineDb cache
+                if (structure.length === 0) {
+                    const cachedStruct = await offlineDb.getCache('organization_structure');
+                    if (cachedStruct && Array.isArray(cachedStruct) && cachedStruct.length > 0) {
+                        structure = cachedStruct;
+                    }
+                }
+
+                // 2. Organizations fallback: if empty, try offlineDb cache
+                if (orgs.length === 0) {
+                    const cachedOrgs = await offlineDb.getCache('organizations');
+                    if (cachedOrgs && Array.isArray(cachedOrgs) && cachedOrgs.length > 0) {
+                        orgs = cachedOrgs;
+                    }
+                }
+
+                // 3. Designations fallback: if empty, try offlineDb cache or initial_app_data
+                if (designations.length === 0) {
+                    const cachedDesigs = await offlineDb.getCache('site_staff_designations');
+                    if (cachedDesigs && Array.isArray(cachedDesigs) && cachedDesigs.length > 0) {
+                        designations = cachedDesigs;
+                    } else {
+                        const initData = await offlineDb.getCache('initial_app_data');
+                        if (initData?.settings?.siteStaffDesignations && Array.isArray(initData.settings.siteStaffDesignations)) {
+                            designations = initData.settings.siteStaffDesignations;
+                        }
+                    }
+                }
+
+                // 4. Synthesize structure from cached organizations if structure is still empty
+                // This ensures an offline field staff can always select a site even if full hierarchy wasn't cached
+                if (structure.length === 0 && orgs.length > 0) {
+                    const sites = orgs.map((o: any) => ({
+                        id: o.id,
+                        name: o.name || o.shortName || 'Site',
+                        location: o.city || 'General',
+                        organizationId: o.id,
+                    }));
+                    structure = [{
+                        id: 'offline_default_group',
+                        name: 'Paradigm Sites',
+                        companies: [{
+                            id: 'offline_default_company',
+                            name: 'Paradigm Services',
+                            groupId: 'offline_default_group',
+                            location: 'General',
+                            entities: sites,
+                        }],
+                        locations: ['General'],
+                    }];
+                }
+
                 setGroups(structure);
                 setOrganizations(orgs);
                 setSiteStaffDesignations(designations);
@@ -75,7 +132,7 @@ const SelectOrganization = () => {
             }
         };
         fetchData();
-    }, []);
+    }, [fetchRules]);
 
     // ── Cascade derivations ────────────────────────────────────────────────
 
