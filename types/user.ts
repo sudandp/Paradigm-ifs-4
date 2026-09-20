@@ -300,6 +300,10 @@ export interface BankDetails {
   bankName: string;
   branchName: string;
   bankProof?: UploadedFile | null;
+  nameMismatchReason?: string;
+  nameMismatchAcknowledged?: boolean;
+  nameMismatchAcknowledgedBy?: string;
+  nameMismatchAcknowledgedAt?: string;
   verifiedStatus?: {
     accountHolderName?: boolean | null;
     accountNumber?: boolean | null;

@@ -110,33 +110,7 @@ const OfflineScreen: React.FC = () => {
   };
 
   if (isDismissed) {
-    return (
-      <div
-        className="fixed top-3 left-1/2 -translate-x-1/2 z-[999999] pointer-events-auto select-none transition-all duration-300"
-        style={{
-          marginTop: 'calc(0.5rem + env(safe-area-inset-top, 0px))',
-        }}
-      >
-        <div className="flex items-center gap-3 px-4 py-2 bg-slate-950/90 backdrop-blur-md border border-amber-500/40 rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.35)] text-white text-xs max-w-[92vw] sm:max-w-md">
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-            <span className="font-extrabold text-amber-400 uppercase tracking-wider text-[10px] sm:text-[11px] whitespace-nowrap">
-              ⚡ Offline Mode
-            </span>
-          </div>
-          <span className="hidden sm:inline text-slate-300 text-[11px] font-medium truncate">
-            Saving to local device storage
-          </span>
-          <button
-            onClick={() => setIsDismissed(false)}
-            className="flex-shrink-0 ml-auto px-2.5 py-1 rounded-full bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 font-bold text-[9px] sm:text-[10px] uppercase tracking-wider transition-all cursor-pointer active:scale-95 flex items-center gap-1"
-          >
-            <WifiOff className="w-3 h-3" />
-            <span>Status</span>
-          </button>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   // ── Shared sub-components ───────────────────────────────────────────────────

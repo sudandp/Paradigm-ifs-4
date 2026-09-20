@@ -111,6 +111,10 @@ const getInitialState = (): OnboardingData => {
     ifscCode: '',
     bankName: '',
     branchName: '',
+    nameMismatchReason: '',
+    nameMismatchAcknowledged: false,
+    nameMismatchAcknowledgedBy: '',
+    nameMismatchAcknowledgedAt: '',
     verifiedStatus: {},
   },
   uan: { hasPreviousPf: false, verifiedStatus: {}, salarySlip: null },
@@ -179,6 +183,7 @@ const stripHeavyData = (obj: any): any => {
 const safeLocalStorage = {
   getItem: (name: string): string | null => {
     try {
+      if (typeof localStorage === 'undefined') return null;
       return localStorage.getItem(name);
     } catch (err) {
       console.warn('[Storage] Failed to read from localStorage:', err);
@@ -187,13 +192,16 @@ const safeLocalStorage = {
   },
   setItem: (name: string, value: string): void => {
     try {
+      if (typeof localStorage === 'undefined') return;
       localStorage.setItem(name, value);
     } catch (err) {
       console.warn('[Storage] LocalStorage quota warning — sanitizing draft storage:', err);
       try {
         const parsed = JSON.parse(value);
         const stripped = stripHeavyData(parsed);
-        localStorage.setItem(name, JSON.stringify(stripped));
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem(name, JSON.stringify(stripped));
+        }
       } catch (fallbackErr) {
         console.warn('[Storage] LocalStorage full, retaining state in memory safely.');
       }
@@ -201,11 +209,89 @@ const safeLocalStorage = {
   },
   removeItem: (name: string): void => {
     try {
-      localStorage.removeItem(name);
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem(name);
+      }
     } catch {
       /* ignore */
     }
   }
+};
+
+// Helper to deduplicate family members and guarantee unique React keys
+export const deduplicateFamilyMembers = (family: FamilyMember[]): FamilyMember[] => {
+  if (!Array.isArray(family)) return [];
+  const result: FamilyMember[] = [];
+  const seenIds = new Set<string>();
+  const seenUniqueRelations = new Set<string>(); // Father, Mother, Spouse, Wife, Husband
+
+  for (let i = 0; i < family.length; i++) {
+    let m = family[i];
+    if (!m) continue;
+
+    // 1. Check if another member with the exact same ID already exists
+    if (m.id && seenIds.has(m.id)) {
+      const existingIdx = result.findIndex(r => r.id === m.id);
+      if (existingIdx >= 0) {
+        const existing = result[existingIdx];
+        const namesDiffer = !!(existing.name && m.name && existing.name.trim().toLowerCase() !== m.name.trim().toLowerCase());
+        if (!namesDiffer) {
+          // Same person duplicated -> merge fields into single entry
+          result[existingIdx] = {
+            ...existing,
+            ...m,
+            name: m.name || existing.name,
+            relation: m.relation || existing.relation,
+            phone: m.phone || existing.phone,
+            dob: m.dob || existing.dob,
+            idProof: m.idProof || existing.idProof,
+            occupation: m.occupation || existing.occupation,
+            gender: m.gender || existing.gender,
+            dependent: m.dependent ?? existing.dependent,
+          };
+          continue;
+        }
+        // Distinct persons sharing same ID collision -> re-key second member
+        m = { ...m, id: `fam_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 7)}` };
+      }
+    }
+
+    // 2. Check if duplicate of single-instance relation (Father, Mother, Spouse, etc.)
+    const rel = (m.relation || '').trim().toLowerCase();
+    const isSingleInstanceRel = ['father', 'mother', 'spouse', 'wife', 'husband'].includes(rel);
+
+    if (isSingleInstanceRel && seenUniqueRelations.has(rel)) {
+      const existingIdx = result.findIndex(r => (r.relation || '').trim().toLowerCase() === rel);
+      if (existingIdx >= 0) {
+        result[existingIdx] = {
+          ...result[existingIdx],
+          ...m,
+          name: m.name || result[existingIdx].name,
+          phone: m.phone || result[existingIdx].phone,
+          dob: m.dob || result[existingIdx].dob,
+          idProof: m.idProof || result[existingIdx].idProof,
+          relation: m.relation || result[existingIdx].relation,
+          occupation: m.occupation || result[existingIdx].occupation,
+          gender: m.gender || result[existingIdx].gender,
+          dependent: m.dependent ?? result[existingIdx].dependent,
+        };
+        continue;
+      }
+    }
+
+    if (isSingleInstanceRel && m.name) {
+      seenUniqueRelations.add(rel);
+    }
+
+    let memberId = m.id;
+    if (!memberId) {
+      memberId = `fam_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 7)}`;
+    }
+    seenIds.add(memberId);
+    result.push({ ...m, id: memberId });
+  }
+
+  return result;
 };
 
 // Fix: Removed generic type argument from create() to avoid untyped function call error.
@@ -213,7 +299,16 @@ export const useOnboardingStore = create<OnboardingState>()(
   persist(
     (set) => ({
       data: getInitialState(),
-      setData: (data) => set({ data }),
+      setData: (data) => {
+        let nextData = data;
+        if (nextData && Array.isArray(nextData.family)) {
+          nextData = {
+            ...nextData,
+            family: deduplicateFamilyMembers(nextData.family),
+          };
+        }
+        set({ data: nextData });
+      },
       updatePersonal: (personalUpdate) => set((state) => ({
         data: {
           ...state.data,
@@ -240,7 +335,7 @@ export const useOnboardingStore = create<OnboardingState>()(
       updateFamily: (family) => set((state) => ({
         data: {
           ...state.data,
-          family,
+          family: deduplicateFamilyMembers(family),
         },
       })),
       updateEducation: (education) => set((state) => ({ data: { ...state.data, education } })),
@@ -380,6 +475,11 @@ export const useOnboardingStore = create<OnboardingState>()(
       partialize: (state: any) => ({
         data: stripHeavyData(state.data),
       }),
+      onRehydrateStorage: () => (state) => {
+        if (state && state.data && Array.isArray(state.data.family)) {
+          state.data.family = deduplicateFamilyMembers(state.data.family);
+        }
+      },
     }
   )
 );

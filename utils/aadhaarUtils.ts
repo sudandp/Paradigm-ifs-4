@@ -54,17 +54,33 @@ export const formatGender = (gender: string): string => {
 
 export const parseAadhaarQR = (qrText: string): AadhaarData | null => {
     try {
-        if (qrText.includes('<?xml')) {
-            const parser = new DOMParser();
-            const xmlDoc = parser.parseFromString(qrText, 'text/xml');
-            const root = xmlDoc.documentElement;
+        if (qrText.includes('<?xml') || qrText.includes('<PrintLetterBarcodeData')) {
+            let root: Element | null = null;
+            let xmlDoc: Document | null = null;
+            if (typeof DOMParser !== 'undefined') {
+                try {
+                    const parser = new DOMParser();
+                    xmlDoc = parser.parseFromString(qrText, 'text/xml');
+                    root = xmlDoc.documentElement;
+                } catch {
+                    // fall back to regex
+                }
+            }
 
             const getVal = (tags: string[]) => {
+                if (root && xmlDoc) {
+                    for (const tag of tags) {
+                        const attr = root.getAttribute(tag);
+                        if (attr) return attr.trim();
+                        const el = xmlDoc.getElementsByTagName(tag)[0] || xmlDoc.querySelector(tag);
+                        if (el && el.textContent) return el.textContent.trim();
+                    }
+                }
+                // Regex fallback for attribute matching (safe in Node.js & malformed XML)
                 for (const tag of tags) {
-                    const attr = root.getAttribute(tag);
-                    if (attr) return attr.trim();
-                    const el = xmlDoc.getElementsByTagName(tag)[0] || xmlDoc.querySelector(tag);
-                    if (el && el.textContent) return el.textContent.trim();
+                    const m = qrText.match(new RegExp(`\\b${tag}="([^"]*)"`, 'i')) ||
+                              qrText.match(new RegExp(`<${tag}>([^<]*)</${tag}>`, 'i'));
+                    if (m && m[1]) return m[1].trim();
                 }
                 return '';
             };

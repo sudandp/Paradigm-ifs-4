@@ -2,7 +2,7 @@ import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getProxyUrl, getCleanFilename } from '../utils/fileUrl';
 import type { UploadedFile } from '../types';
-import { UploadCloud, File as FileIcon, X, RefreshCw, Camera, Loader2, AlertTriangle, CheckCircle, Eye, Trash2, BadgeInfo, CreditCard, User as UserIcon, FileText, FileSignature, IndianRupee, GraduationCap, Fingerprint, XCircle, Maximize2, FileBarChart, FileSpreadsheet, FileArchive, HeartPulse, Crop } from 'lucide-react';
+import { UploadCloud, File as FileIcon, X, RefreshCw, Camera, Loader2, AlertTriangle, CheckCircle, Eye, Trash2, BadgeInfo, CreditCard, User as UserIcon, FileText, FileSignature, IndianRupee, GraduationCap, Fingerprint, XCircle, Maximize2, FileBarChart, FileSpreadsheet, FileArchive, HeartPulse, Crop, RotateCw } from 'lucide-react';
 import { api } from '../services/api';
 import Button from './ui/Button';
 import CameraCaptureModal from './CameraCaptureModal';
@@ -13,6 +13,7 @@ import { useOnboardingStore } from '../store/onboardingStore';
 import BlurhashImage from './ui/BlurhashImage';
 import { encodeImageToBlurhash } from '../utils/blurhash';
 import { compressImageFile, CLIENT_COMPRESSION_PRESETS } from '../utils/imageCompression';
+import { autoRotateDocumentIfSideways, rotateImage } from '../utils/imageRotation';
 
 interface UploadDocumentProps {
   label: string;
@@ -106,6 +107,19 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
         }
         return undefined;
     }, [label, docType]);
+
+    const effectiveDocType = useMemo<string | undefined>(() => {
+        if (docType) return docType;
+        const l = label.toLowerCase();
+        if (l.includes('bank') || l.includes('cheque') || l.includes('passbook')) return 'Bank';
+        if (l.includes('aadhaar') || l.includes('id proof')) return l.includes('back') ? 'idBack' : 'idFront';
+        if (l.includes('pan')) return 'PAN';
+        if (l.includes('salary') || l.includes('payslip')) return 'Salary';
+        if (l.includes('uan')) return 'UAN';
+        if (l.includes('esi')) return 'ESI';
+        if (l.includes('certificate') || l.includes('degree')) return 'Education';
+        return undefined;
+    }, [docType, label]);
     
     const handleFileSelect = useCallback(async (rawFile: File, base64FromCapture?: string) => {
         if (!allowedTypes.includes(rawFile.type)) {
@@ -116,15 +130,44 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
         setUploadError('');
         setIsLoading(true);
 
-        // Pre-compress image if applicable (shrinks 5-15MB phone camera photos to ~150-250KB)
-        let selectedFile = rawFile;
+        // ── Auto-Rotate Sideways Landscape Document (e.g. PAN, Aadhaar, Bank Cheque) ──
+        let rawFileToProcess = rawFile;
+        let base64FromCaptureToProcess = base64FromCapture;
+        if (rawFile.type.startsWith('image/')) {
+            try {
+                const autoRot = await autoRotateDocumentIfSideways(
+                    base64FromCapture ? `data:${rawFile.type};base64,${base64FromCapture}` : rawFile,
+                    effectiveDocType,
+                    label,
+                    rawFile.name
+                );
+                if (autoRot.wasRotated) {
+                    rawFileToProcess = autoRot.file;
+                    base64FromCaptureToProcess = autoRot.dataUrl.split(',')[1];
+                    console.info(`[UploadDocument] Auto-rotated sideways document to landscape orientation: ${label}`);
+                }
+            } catch (rotErr) {
+                console.warn('[UploadDocument] Auto-rotation skipped on select:', rotErr);
+            }
+        }
+
+        // Read pristine uncompressed base64 for OCR before any lossy compression is applied
+        const rawBase64ForOcr = base64FromCaptureToProcess || await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+            reader.onerror = reject;
+            reader.readAsDataURL(rawFileToProcess);
+        });
+
+        // Pre-compress image if applicable (shrinks 5-15MB phone camera photos to ~150-250KB for storage upload)
+        let selectedFile = rawFileToProcess;
         try {
-            if (rawFile.type.startsWith('image/')) {
-                selectedFile = await compressImageFile(rawFile, CLIENT_COMPRESSION_PRESETS.DOCUMENT);
+            if (rawFileToProcess.type.startsWith('image/')) {
+                selectedFile = await compressImageFile(rawFileToProcess, CLIENT_COMPRESSION_PRESETS.DOCUMENT);
             }
         } catch (compErr) {
             console.warn('Image pre-compression fallback:', compErr);
-            selectedFile = rawFile;
+            selectedFile = rawFileToProcess;
         }
 
         if (selectedFile.size > 10 * 1024 * 1024) { // 10MB absolute limit
@@ -133,7 +176,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
             return;
         }
 
-        const preview = base64FromCapture ? `data:${selectedFile.type};base64,${base64FromCapture}` : URL.createObjectURL(selectedFile);
+        const preview = base64FromCaptureToProcess ? `data:${selectedFile.type};base64,${base64FromCaptureToProcess}` : URL.createObjectURL(selectedFile);
         
         // Asynchronously compute client-side BlurHash for instant placeholders
         let clientBlurhash: string | undefined = undefined;
@@ -167,6 +210,24 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                 reader.onerror = reject;
                 reader.readAsDataURL(selectedFile);
             });
+
+            // ── Upgrade blob: URL → stable data: URL so preview survives navigation ──
+            // blob: URLs die when the page re-renders or the user navigates away and back.
+            // Replacing with a data: URL ensures thumbnails always load correctly,
+            // including after offline→online transitions.
+            if (!base64FromCapture && preview.startsWith('blob:')) {
+                const stableDataUrl = `data:${selectedFile.type};base64,${base64}`;
+                const upgradedFileData: UploadedFile = {
+                    name: selectedFile.name,
+                    type: selectedFile.type,
+                    size: selectedFile.size,
+                    preview: stableDataUrl,
+                    file: selectedFile,
+                    blurhash: clientBlurhash,
+                };
+                onFileChange(upgradedFileData);
+                URL.revokeObjectURL(preview); // free memory — we have a data URL now
+            }
             
             if (onVerification) {
                 const verificationResult = await onVerification(base64, selectedFile.type);
@@ -179,22 +240,43 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
 
             // Run OCR if configured
             if (onOcrComplete && ocrSchema && setToast) {
-                const effectiveDocType = docType || (() => {
-                    const l = label.toLowerCase();
-                    if (l.includes('bank') || l.includes('cheque') || l.includes('passbook')) return 'Bank';
-                    if (l.includes('aadhaar') || l.includes('id proof')) return l.includes('back') ? 'idBack' : 'idFront';
-                    if (l.includes('pan')) return 'PAN';
-                    if (l.includes('salary') || l.includes('payslip')) return 'Salary';
-                    if (l.includes('uan')) return 'UAN';
-                    if (l.includes('esi')) return 'ESI';
-                    if (l.includes('certificate') || l.includes('degree')) return 'Education';
-                    return undefined;
-                })();
-
                 try {
-                    const extractedData = await api.extractDataFromImage(base64, selectedFile.type, ocrSchema, effectiveDocType);
+                    // Use uncompressed pristine base64 and original MIME type for OCR
+                    const extractedData = await api.extractDataFromImage(rawBase64ForOcr, rawFile.type, ocrSchema, effectiveDocType);
+
+                    // ── Offline Document Type Mismatch & Missing Required Data Verification ──
+                    if (extractedData?._documentMismatch || extractedData?._requiredDataMissing) {
+                        const errorMsg = extractedData._mismatchError || extractedData.errorMessage || 'Required document data could not be found. Please check the document.';
+                        setUploadError(errorMsg);
+                        if (setToast) {
+                            setToast({ message: errorMsg, type: 'error' });
+                        }
+                        setExtractedInfo(extractedData);
+                        // Crucial: keep the uploaded file selected so the user does NOT lose their upload!
+                        setIsLoading(false);
+                        return;
+                    }
+
+                    // Success: Clear any prior error and proceed
+                    setUploadError('');
                     setExtractedInfo(extractedData);
                     onOcrComplete(extractedData);
+
+                    // If OCR detected that a rotated candidate was upright, upgrade local preview & file
+                    if (extractedData?._uprightDataUrl && extractedData?._wasRotated) {
+                        try {
+                            const uprightFile = base64ToFile(extractedData._uprightDataUrl, 'image/jpeg', selectedFile.name);
+                            onFileChange({
+                                ...localFileData,
+                                preview: extractedData._uprightDataUrl,
+                                file: uprightFile,
+                            });
+                            console.info('[UploadDocument] Auto-updated preview with OCR-verified upright image.');
+                        } catch (e) {
+                            console.warn('[UploadDocument] Failed to apply OCR upright image:', e);
+                        }
+                    }
+
                     // Let the caller's onOcrComplete toast handle success in online mode.
                     // In offline mode show an informative success or warning toast.
                     if (extractedData?._offlineFallback) {
@@ -215,8 +297,8 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
             // so the file is persisted on the server and not kept in browser memory.
             try {
                 const { url, path } = await api.uploadDocument(selectedFile, 'onboarding-documents');
-                // Revoke the old blob URL to free memory
-                if (preview.startsWith('blob:')) URL.revokeObjectURL(preview);
+                // Revoke the old blob URL to free memory (safe even if already revoked)
+                if (preview.startsWith('blob:')) { try { URL.revokeObjectURL(preview); } catch {} }
                 const storedFileData: UploadedFile = {
                     name: selectedFile.name,
                     type: selectedFile.type,
@@ -229,9 +311,14 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                 };
                 onFileChange(storedFileData);
             } catch (uploadErr: any) {
-                // Upload failed — keep the local file data but warn the user
-                console.error("Supabase upload failed:", uploadErr);
-                if (setToast) setToast({ message: 'Document saved locally but cloud upload failed. It will retry on save.', type: 'error' });
+                // When offline, upload failure is expected — don't show a scary toast.
+                // The data: URL preview is already set, so the document is visible locally.
+                const { isOnline } = await import('../services/offline/networkStatus').catch(() => ({ isOnline: () => true }));
+                if (isOnline() && setToast) {
+                    setToast({ message: 'Document saved locally but cloud upload failed. It will retry on save.', type: 'error' });
+                } else {
+                    console.info('[UploadDocument] Offline — cloud upload skipped, file stored locally with data URL.');
+                }
             }
 
         } catch (e: any) {
@@ -297,6 +384,54 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
             }
         }
     }, [file]);
+
+    const handleRotateDocument = useCallback(async () => {
+        if (!file || !file.type.startsWith('image/')) return;
+        try {
+            setIsLoading(true);
+            const source = file.preview || (file as any).file;
+            if (!source) return;
+            const filename = file.name || 'document.jpg';
+            const { dataUrl, file: rotatedFile } = await rotateImage(source, 90, filename);
+
+            const updatedFileData: UploadedFile = {
+                name: filename,
+                type: 'image/jpeg',
+                size: rotatedFile.size,
+                preview: dataUrl,
+                file: rotatedFile,
+                blurhash: file.blurhash,
+            };
+            onFileChange(updatedFileData);
+
+            // Re-run OCR on the rotated document so fields are re-extracted in the upright orientation
+            if (onOcrComplete && ocrSchema && setToast) {
+                try {
+                    const rawBase64 = dataUrl.split(',')[1];
+                    const extractedData = await api.extractDataFromImage(rawBase64, 'image/jpeg', ocrSchema, effectiveDocType);
+                    if (extractedData?._documentMismatch || extractedData?._requiredDataMissing) {
+                        const errorMsg = extractedData._mismatchError || extractedData.errorMessage || 'Required document data could not be found.';
+                        setUploadError(errorMsg);
+                        setToast({ message: errorMsg, type: 'error' });
+                    } else {
+                        setUploadError('');
+                        setExtractedInfo(extractedData);
+                        onOcrComplete(extractedData);
+                        setToast({ message: 'Document rotated 90° and details re-extracted!', type: 'success' });
+                    }
+                } catch (ocrErr) {
+                    console.warn('[handleRotateDocument] OCR re-extraction error:', ocrErr);
+                }
+            } else if (setToast) {
+                setToast({ message: 'Document rotated 90° clockwise', type: 'success' });
+            }
+        } catch (err: any) {
+            console.error('[UploadDocument] Rotation failed:', err);
+            if (setToast) setToast({ message: 'Failed to rotate document', type: 'error' });
+        } finally {
+            setIsLoading(false);
+        }
+    }, [file, onFileChange, onOcrComplete, ocrSchema, setToast, effectiveDocType]);
 
     const handleRemove = async () => {
         if (!file) return;
@@ -368,6 +503,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                         ${transparent 
                             ? 'bg-transparent border-0' 
                             : 'bg-white/5 border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.1)] backdrop-blur-xl hover:border-white/30 md:bg-white md:border-border md:hover:border-accent/40 md:shadow-sm'}
+                        ${displayError ? '!border-rose-500 ring-2 ring-rose-500/20' : ''}
                         ${variant === 'compact' ? 'min-h-[120px] p-3' : 'min-h-[160px] p-4'} justify-center
                      `}>
                         <div className="absolute inset-0 z-0 flex items-center justify-center opacity-[0.03] select-none pointer-events-none mix-blend-overlay">
@@ -383,6 +519,18 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                                         seed={file.name || label}
                                         alt="preview" 
                                         fallbackSrc="https://placehold.co/400x200?text=Image+Not+Found"
+                                        onError={() => {
+                                            // If the blob URL expired (navigation / re-render), recover from File object
+                                            const rawFile = (file as any).file as File | undefined;
+                                            if (rawFile instanceof File) {
+                                                const reader = new FileReader();
+                                                reader.onloadend = () => {
+                                                    const dataUrl = reader.result as string;
+                                                    onFileChange({ ...file, preview: dataUrl });
+                                                };
+                                                reader.readAsDataURL(rawFile);
+                                            }
+                                        }}
                                         className={`
                                             ${label.toLowerCase().includes('photo') ? 'w-full h-full' : variant === 'compact' ? 'max-w-full max-h-[100px]' : 'max-w-full max-h-[180px]'}
                                             rounded transition-transform duration-500 group-hover:scale-105 shadow-sm
@@ -409,6 +557,14 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                                                 title="Crop Image"
                                             >
                                                 <Crop className="h-5 w-5" />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={(e) => { e.stopPropagation(); handleRotateDocument(); }}
+                                                className="p-2.5 bg-indigo-600/80 hover:bg-indigo-600 backdrop-blur-md rounded-full text-white transition-all transform scale-90 group-hover:scale-100 shadow-lg cursor-pointer"
+                                                title="Rotate 90° Clockwise"
+                                            >
+                                                <RotateCw className="h-5 w-5" />
                                             </button>
                                             <label
                                                 htmlFor={inputId}
@@ -510,6 +666,18 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                                     </button>
                                 )}
 
+                                {/* Rotate Document Button - 1-tap 90° clockwise rotation */}
+                                {file.type.startsWith('image/') && (
+                                    <button 
+                                        type="button" 
+                                        onClick={handleRotateDocument}
+                                        className="text-xs font-bold text-indigo-700 hover:text-indigo-800 flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 shadow-2xs transition-all cursor-pointer"
+                                        title="Rotate Document 90° Clockwise"
+                                    >
+                                        <RotateCw className="h-3.5 w-3.5 text-indigo-600" /> Rotate
+                                    </button>
+                                )}
+
                                 {/* Change File Button */}
                                 <label 
                                     htmlFor={inputId} 
@@ -593,7 +761,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
             />
 
             <div className="text-center mt-1 min-h-[16px]">
-                {displayError && <p className="text-xs text-red-500">{displayError}</p>}
+                {displayError && <p className="text-xs text-rose-500 font-medium">{displayError}</p>}
             </div>
 
             {/* Extracted OCR Inspection Modal */}
@@ -663,6 +831,8 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                         setPendingRawFile(null);
                     }}
                     captureGuidance={captureGuidance}
+                    docType={effectiveDocType}
+                    documentTitle={label}
                     initialImage={pendingUploadDataUrl}
                     cropHint={cropHint}
                 />
@@ -682,6 +852,9 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                         setIsCameraOpen(false);
                     }}
                     captureGuidance={captureGuidance}
+                    docType={effectiveDocType}
+                    documentTitle={label}
+                    cropHint={cropHint}
                 />
             )}
         </div>

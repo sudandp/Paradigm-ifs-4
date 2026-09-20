@@ -48,21 +48,30 @@ const AddressDetails = () => {
     const [ismwLoading, setIsmwLoading] = useState(false);
     const [ismwLocalAddress, setIsmwLocalAddress] = useState<ISMWLocalAddress | null>(null);
 
+    const cleanAddressLine1 = (line?: string) => (line || '')
+        .replace(/^(?:Address[:\s]+)?(?:S\/O|C\/O|D\/O|W\/O|SO|CO|DO|WO)[\s:.-]+[A-Za-z\s.]{2,35}?(?:,\s*|\s+(?=(?:[0-9]{1,4}[\/\-A-Za-z]|[0-9]+|No\.?|D\.?No|Door|H\.?No|Flat|Plot|Shop|OM\s+SHAKTHI|THIRUCHI|Street|Road|Nagar|Colony)))/i, '')
+        .trim();
+
     const uniqueAddresses = useMemo(() => {
         const list = data.address.extractedAddresses || [];
         const uniqueMap = new Map<string, ExtractedAddress & { sources: string[] }>();
         
         for (const addr of list) {
-            const normalized = `${(addr.line1 || '').trim().toLowerCase()}|${(addr.line2 || '').trim().toLowerCase()}|${(addr.city || '').trim().toLowerCase()}|${(addr.state || '').trim().toLowerCase()}|${(addr.pincode || '').trim().toLowerCase()}`;
+            const rawSource = addr.source || 'Document';
+            const cleanSource = /aadhaar/i.test(rawSource) ? 'Aadhaar' : rawSource;
+            const line1 = cleanAddressLine1(addr.line1);
+            const normalized = `${(line1 || '').trim().toLowerCase()}|${(addr.line2 || '').trim().toLowerCase()}|${(addr.city || '').trim().toLowerCase()}|${(addr.state || '').trim().toLowerCase()}|${(addr.pincode || '').trim().toLowerCase()}`;
             if (uniqueMap.has(normalized)) {
                 const existing = uniqueMap.get(normalized)!;
-                if (!existing.sources.includes(addr.source)) {
-                    existing.sources.push(addr.source);
+                if (!existing.sources.includes(cleanSource)) {
+                    existing.sources.push(cleanSource);
                 }
             } else {
                 uniqueMap.set(normalized, {
                     ...addr,
-                    sources: [addr.source]
+                    line1,
+                    source: cleanSource,
+                    sources: [cleanSource]
                 });
             }
         }
@@ -256,11 +265,14 @@ const AddressDetails = () => {
                                 className="w-full bg-[#1b271b] border border-emerald-900/40 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                             >
                                 <option value="">-- Choose Address --</option>
-                                {uniqueAddresses.map((addr, index) => (
-                                    <option key={index} value={index}>
-                                        [{addr.sources.join(', ')}] {addr.line1 ? `${addr.line1}, ` : ''}{addr.city}, {addr.state} - {addr.pincode}
-                                    </option>
-                                ))}
+                                {uniqueAddresses.map((addr, index) => {
+                                    const formattedSources = Array.from(new Set(addr.sources.map(s => /aadhaar/i.test(s) ? 'Aadhaar' : s))).join(', ');
+                                    return (
+                                        <option key={index} value={index}>
+                                            [{formattedSources}] {addr.line1 ? `${addr.line1}, ` : ''}{addr.city}, {addr.state} - {addr.pincode}
+                                        </option>
+                                    );
+                                })}
                             </select>
                         </div>
                     )}

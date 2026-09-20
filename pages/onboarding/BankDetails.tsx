@@ -34,6 +34,10 @@ export const bankDetailsSchema = yup.object({
     bankName: yup.string().required('Bank name is required'),
     branchName: yup.string().required('Branch name is required'),
     bankProof: yup.mixed().optional().nullable(),
+    nameMismatchReason: yup.string().optional().nullable(),
+    nameMismatchAcknowledged: yup.boolean().optional(),
+    nameMismatchAcknowledgedBy: yup.string().optional().nullable(),
+    nameMismatchAcknowledgedAt: yup.string().optional().nullable(),
     verifiedStatus: yup.object().optional(),
 }).defined();
 
@@ -44,6 +48,14 @@ interface OutletContext {
 
 type PennyDropState = 'idle' | 'loading' | 'matched' | 'mismatch' | 'error';
 
+const MISMATCH_REASONS = [
+    "Employee has no bank account — Father's account provided",
+    "Employee has no bank account — Mother's account provided",
+    "Employee has no bank account — Spouse's account provided",
+    "Joint account with family member",
+    "Spelling variation / Initial difference in bank record",
+];
+
 const BankDetails = () => {
     const { onValidated, setToast } = useOutletContext<OutletContext>();
     const { user } = useAuthStore();
@@ -51,6 +63,7 @@ const BankDetails = () => {
     const isMobile = useMediaQuery('(max-width: 767px)');
     const [pennyDropState, setPennyDropState] = useState<PennyDropState>('idle');
     const [pennyDropName, setPennyDropName] = useState<string | null>(null);
+    const [mismatchErrors, setMismatchErrors] = useState<{ reason?: string; ack?: string }>({});
 
     const { register, handleSubmit, formState: { errors }, control, setValue, watch, reset } = useForm<BankDetails>({
         // FIX: Cast resolver to resolve type incompatibility between yup and react-hook-form.
@@ -82,12 +95,30 @@ const BankDetails = () => {
             clearTimeout(debounceTimer);
         };
     }, [watch, updateBank]);
-    
+
     const bankData = watch();
+
+    // If account holder name is empty (e.g. user didn't upload bank proof), auto-align with personal full name
+    useEffect(() => {
+        if (!bankData.accountHolderName && !data.bank.accountHolderName) {
+            const fullName = `${data.personal.firstName || ''} ${data.personal.lastName || ''}`.trim();
+            if (fullName) {
+                const formatted = formatNameToTitleCase(fullName);
+                setValue('accountHolderName', formatted, { shouldValidate: true });
+                updateBank({ accountHolderName: formatted });
+            }
+        }
+    }, [data.personal.firstName, data.personal.lastName, data.bank.accountHolderName, bankData.accountHolderName, setValue, updateBank]);
 
     const employeeFullName = `${data.personal.firstName || ''} ${data.personal.lastName || ''}`.trim().toLowerCase();
     const accountHolderNameLower = (bankData.accountHolderName || '').trim().toLowerCase();
     const isNameMismatch = !!(bankData.accountHolderName && employeeFullName && accountHolderNameLower !== employeeFullName);
+
+    useEffect(() => {
+        if (!isNameMismatch && (mismatchErrors.reason || mismatchErrors.ack)) {
+            setMismatchErrors({});
+        }
+    }, [isNameMismatch, mismatchErrors.reason, mismatchErrors.ack]);
 
     useEffect(() => {
         const ifsc = bankData.ifscCode;
@@ -116,7 +147,43 @@ const BankDetails = () => {
     }, [bankData.ifscCode, setValue]);
 
     const onSubmit: SubmitHandler<BankDetails> = async (formData) => {
-        updateBank(formData);
+        // Enforce Name Mismatch Verification & Field Officer Acknowledgement
+        if (isNameMismatch) {
+            const reason = (formData.nameMismatchReason || watch('nameMismatchReason') || '').trim();
+            const acknowledged = Boolean(formData.nameMismatchAcknowledged ?? watch('nameMismatchAcknowledged'));
+
+            const newErrors: { reason?: string; ack?: string } = {};
+            if (!reason) {
+                newErrors.reason = 'Please provide a valid reason explaining why the bank account name differs from the employee profile name.';
+            }
+            if (!acknowledged) {
+                newErrors.ack = 'Field Officer acknowledgement is mandatory before proceeding to the next stage.';
+            }
+
+            if (newErrors.reason || newErrors.ack) {
+                setMismatchErrors(newErrors);
+                setToast({
+                    message: 'Name mismatch detected: Please provide a reason and confirm Field Officer acknowledgement before proceeding.',
+                    type: 'error'
+                });
+                const section = document.getElementById('name-mismatch-section');
+                if (section) {
+                    section.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+                return; // STOP THERE ONLY! Do NOT allow proceeding.
+            }
+        }
+
+        const officerName = user?.name || 'Field Officer';
+        const updatedPayload: BankDetails = {
+            ...formData,
+            nameMismatchReason: isNameMismatch ? (formData.nameMismatchReason || watch('nameMismatchReason') || '').trim() : undefined,
+            nameMismatchAcknowledged: isNameMismatch ? true : false,
+            nameMismatchAcknowledgedBy: isNameMismatch ? officerName : undefined,
+            nameMismatchAcknowledgedAt: isNameMismatch ? (data.bank.nameMismatchAcknowledgedAt || new Date().toISOString()) : undefined,
+        };
+
+        updateBank(updatedPayload);
         await onValidated();
     };
 
@@ -222,6 +289,153 @@ const BankDetails = () => {
         },
         required: ["accountHolderName", "accountNumber", "ifscCode", "bankName", "branchName"],
     };
+
+    const renderNameMismatchSection = () => {
+        if (!isNameMismatch) return null;
+
+        const officerName = user?.name || 'Field Officer';
+        const currentReason = watch('nameMismatchReason') || '';
+        const currentAck = watch('nameMismatchAcknowledged') || false;
+
+        return (
+            <div 
+                id="name-mismatch-section" 
+                className="rounded-xl border-2 border-amber-400/80 dark:border-amber-500/60 bg-amber-50/80 dark:bg-amber-950/30 p-4 sm:p-5 shadow-sm transition-all"
+            >
+                <div className="flex items-start gap-3">
+                    <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 shrink-0 mt-0.5 border border-amber-300 dark:border-amber-700">
+                        <AlertTriangle className="h-5 w-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                            <h4 className="text-sm font-bold text-amber-950 dark:text-amber-100 uppercase tracking-wide">
+                                Account Name Mismatch Resolution Required
+                            </h4>
+                            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-200/80 dark:bg-amber-900 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700">
+                                Action Required
+                            </span>
+                        </div>
+                        <p className="text-xs text-amber-800 dark:text-amber-300 mt-1">
+                            The bank account holder name differs from the candidate's profile name. Under company policy, crediting salary to a family member's or third-party account requires an authorized reason and Field Officer acknowledgement before proceeding.
+                        </p>
+
+                        {/* Name Comparison Pill Box */}
+                        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs bg-white/90 dark:bg-slate-900/80 p-3 rounded-lg border border-amber-200 dark:border-amber-900/60">
+                            <div>
+                                <span className="text-muted block text-[10px] uppercase font-semibold">Employee Profile Name</span>
+                                <span className="font-semibold text-primary-text text-sm">
+                                    {data.personal.firstName || ''} {data.personal.lastName || ''}
+                                </span>
+                            </div>
+                            <div>
+                                <span className="text-muted block text-[10px] uppercase font-semibold">Bank Account Holder Name</span>
+                                <span className="font-semibold text-rose-600 dark:text-rose-400 text-sm">
+                                    {bankData.accountHolderName || '-'}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Quick Reason Selector Chips */}
+                        <div className="mt-3.5">
+                            <label className="block text-xs font-semibold text-amber-950 dark:text-amber-100 mb-1.5">
+                                Select Common Reason (Click to auto-fill):
+                            </label>
+                            <div className="flex flex-wrap gap-1.5">
+                                {MISMATCH_REASONS.map((preset) => {
+                                    const isSelected = currentReason === preset;
+                                    return (
+                                        <button
+                                            key={preset}
+                                            type="button"
+                                            onClick={() => {
+                                                setValue('nameMismatchReason', preset, { shouldValidate: true, shouldDirty: true });
+                                                setMismatchErrors(prev => ({ ...prev, reason: undefined }));
+                                            }}
+                                            className={`text-xs px-3 py-1.5 rounded-lg border text-left transition-all ${
+                                                isSelected 
+                                                    ? 'bg-amber-600 text-white border-amber-600 shadow font-semibold' 
+                                                    : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-amber-200 dark:border-slate-700 hover:border-amber-400 hover:bg-amber-50/50 dark:hover:bg-slate-700'
+                                            }`}
+                                        >
+                                            {preset}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* Textarea for Reason */}
+                        <div className="mt-3">
+                            <label htmlFor="nameMismatchReason" className="block text-xs font-semibold text-amber-950 dark:text-amber-100 mb-1">
+                                Specific Reason for Name Mismatch <span className="text-red-500 font-bold">*</span>
+                            </label>
+                            <textarea
+                                id="nameMismatchReason"
+                                rows={2}
+                                placeholder="E.g., Employee does not have an active bank account. Father's account provided with candidate's consent."
+                                {...register('nameMismatchReason', {
+                                    onChange: () => {
+                                        if (mismatchErrors.reason) {
+                                            setMismatchErrors(prev => ({ ...prev, reason: undefined }));
+                                        }
+                                    }
+                                })}
+                                className={`w-full text-xs rounded-lg border p-2.5 bg-white dark:bg-slate-900 text-primary-text placeholder-muted transition-colors ${
+                                    mismatchErrors.reason 
+                                        ? 'border-red-500 focus:border-red-500 focus:ring-1 focus:ring-red-500' 
+                                        : 'border-amber-300 dark:border-slate-700 focus:border-amber-500 focus:ring-1 focus:ring-amber-500'
+                                }`}
+                            />
+                            {mismatchErrors.reason && (
+                                <p className="mt-1 text-xs text-red-600 dark:text-red-400 font-medium flex items-center gap-1">
+                                    <XCircle className="h-3.5 w-3.5 shrink-0" />
+                                    {mismatchErrors.reason}
+                                </p>
+                            )}
+                        </div>
+
+                        {/* Field Officer Acknowledgement Checkbox */}
+                        <div className={`mt-3.5 p-3 rounded-lg border transition-all ${
+                            currentAck 
+                                ? 'bg-emerald-50/90 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-700' 
+                                : mismatchErrors.ack 
+                                    ? 'bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-700' 
+                                    : 'bg-white/90 dark:bg-slate-900/80 border-amber-300 dark:border-slate-700'
+                        }`}>
+                            <label className="flex items-start gap-2.5 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    id="nameMismatchAcknowledged"
+                                    {...register('nameMismatchAcknowledged', {
+                                        onChange: (e) => {
+                                            if (e.target.checked) {
+                                                setMismatchErrors(prev => ({ ...prev, ack: undefined }));
+                                            }
+                                        }
+                                    })}
+                                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                                />
+                                <div className="text-xs">
+                                    <span className="font-bold text-primary-text block">
+                                        Field Officer Verification & Acknowledgement <span className="text-red-500 font-bold">*</span>
+                                    </span>
+                                    <span className="text-muted block mt-0.5 leading-relaxed">
+                                        I, <strong className="text-primary-text">{officerName}</strong> (Field Officer), confirm and acknowledge that I have verified the relationship with the candidate and inspected relationship proof. I verify the candidate's consent to credit salary into this account.
+                                    </span>
+                                </div>
+                            </label>
+                            {mismatchErrors.ack && (
+                                <p className="mt-2 text-xs text-red-600 dark:text-red-400 font-medium flex items-center gap-1">
+                                    <XCircle className="h-3.5 w-3.5 shrink-0" />
+                                    {mismatchErrors.ack}
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
     
     if (isMobile) {
         return (
@@ -245,6 +459,7 @@ const BankDetails = () => {
                     <Controller name="bankProof" control={control} render={({ field }) => (
                         <UploadDocument label="Upload Bank Proof (Optional)" file={field.value} onFileChange={field.onChange} allowCapture docType="Bank" onOcrComplete={handleOcrComplete} ocrSchema={bankProofSchema} setToast={setToast} />
                     )}/>
+                    {renderNameMismatchSection()}
                 </div>
             </form>
         );
@@ -292,6 +507,9 @@ const BankDetails = () => {
                     <VerifiedInput label="IFSC Code" id="ifscCode" hasValue={!!bankData.ifscCode} isVerified={data.bank.verifiedStatus?.ifscCode === true} onManualInput={() => handleManualInput(['ifscCode'])} error={errors.ifscCode?.message} registration={register('ifscCode')} />
                     <VerifiedInput label="Branch Name" id="branchName" hasValue={!!bankData.branchName} isVerified={false} error={errors.branchName?.message} registration={register('branchName')} />
                 </div>
+
+                {/* ── Account Name Mismatch Resolution Section ── */}
+                {renderNameMismatchSection()}
 
                 {/* ── Penny Drop Verification Button ── */}
                 <div className="pt-4 border-t flex flex-col gap-3">

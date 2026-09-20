@@ -268,7 +268,7 @@ const Review = () => {
         return missing;
     }, [currentRules.documents, data.personal.photo, data.personal.idProofFront, data.personal.idProofBack, data.bank.bankProof, data.personal.panCard, data.uan.hasPreviousPf, data.uan.document, data.uan.salarySlip, data.education, data.family]);
 
-    const canSubmit = (verificationState === 'success' || !perfiosApi.enabled) && data.formsGenerated && missingMandatoryDocs.length === 0;
+    const canSubmit = (verificationState === 'success' || !perfiosApi.enabled) && missingMandatoryDocs.length === 0;
     
     const resolvedAadhaar = data.personal.aadhaarNumber || (/^\d{12}$/.test(data.personal.idProofNumber || '') ? data.personal.idProofNumber : '');
     const resolvedPan = data.personal.panNumber || (/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/i.test(data.personal.idProofNumber || '') ? data.personal.idProofNumber : '');
@@ -280,8 +280,18 @@ const Review = () => {
                  if (!canSubmit) {
                      if (missingMandatoryDocs.length > 0) {
                          alert(`Please upload all mandatory documents before submitting:\n• ${missingMandatoryDocs.map(d => d.label).join('\n• ')}`);
+                     } else if (perfiosApi.enabled && verificationState !== 'success') {
+                         alert('Please complete Third-Party Verification before submitting.');
                      }
                      return;
+                 }
+                 if (!data.formsGenerated) {
+                     setFormsGenerated(true);
+                     useOnboardingStore.getState().setFormsGenerated(true);
+                     try {
+                         const { savePifsCompliancePdfToServer } = await import('../../services/pifsCompliancePdfService');
+                         savePifsCompliancePdfToServer(useOnboardingStore.getState().data).catch(console.warn);
+                     } catch { /* non-blocking */ }
                  }
                  await onSubmit(); 
              }} id="review-form">
@@ -340,6 +350,21 @@ const Review = () => {
                             <MobileDetailItem label="Account Number" value={'*'.repeat(Math.max(0, data.bank.accountNumber.length - 4)) + data.bank.accountNumber.slice(-4)} />
                             <MobileDetailItem label="IFSC Code" value={data.bank.ifscCode} />
                          </div>
+                         {data.bank.nameMismatchReason && (
+                             <div className="mt-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs">
+                                 <div className="flex items-center gap-1.5 font-semibold text-amber-400 mb-1">
+                                     <AlertTriangle className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                                     <span>Account Name Mismatch Declaration</span>
+                                 </div>
+                                 <p className="text-slate-200 text-xs mt-0.5">{data.bank.nameMismatchReason}</p>
+                                 {data.bank.nameMismatchAcknowledged && (
+                                     <div className="mt-2 pt-1.5 border-t border-amber-500/20 text-emerald-400 font-medium text-[11px] flex items-center gap-1">
+                                         <CheckCircle className="h-3 w-3 shrink-0 text-emerald-400" />
+                                         <span>Verified & Acknowledged by {data.bank.nameMismatchAcknowledgedBy || 'Field Officer'}</span>
+                                     </div>
+                                 )}
+                             </div>
+                         )}
                     </section>
                     <section>
                         <h4 className="fo-section-title mb-2">Uniform Details</h4>
@@ -374,7 +399,7 @@ const Review = () => {
                     <div className="p-4 bg-black/20 rounded-xl border border-slate-700/50 flex flex-col gap-3">
                         <div>
                             <p className="font-medium text-sm text-slate-200">Review official employee onboarding forms.</p>
-                            <p className="text-xs text-slate-400">Mandatory before final submission.</p>
+                            <p className="text-xs text-slate-400">Preview and download official onboarding documents.</p>
                         </div>
                         {data.formsGenerated ? (
                             <div className="flex items-center gap-2 font-semibold text-emerald-400 text-sm">
@@ -438,8 +463,18 @@ const Review = () => {
             if (!canSubmit) {
                 if (missingMandatoryDocs.length > 0) {
                     alert(`Please upload all mandatory documents before submitting:\n• ${missingMandatoryDocs.map(d => d.label).join('\n• ')}`);
+                } else if (perfiosApi.enabled && verificationState !== 'success') {
+                    alert('Please complete Third-Party Verification before submitting.');
                 }
                 return;
+            }
+            if (!data.formsGenerated) {
+                setFormsGenerated(true);
+                useOnboardingStore.getState().setFormsGenerated(true);
+                try {
+                    const { savePifsCompliancePdfToServer } = await import('../../services/pifsCompliancePdfService');
+                    savePifsCompliancePdfToServer(useOnboardingStore.getState().data).catch(console.warn);
+                } catch { /* non-blocking */ }
             }
             await onSubmit(); 
         }} id="review-form">
@@ -558,6 +593,29 @@ const Review = () => {
                         {data.uan.hasPreviousPf && <DetailItemWithStatus label="UAN" value={data.uan.uanNumber} status={data.uan.verifiedStatus?.uanNumber} isVerifying={verificationState === 'verifying'} />}
                         {data.esi.hasEsi && <DetailItemWithStatus label="ESI Number" value={data.esi.esiNumber} status={data.esi.verifiedStatus?.esiNumber} isVerifying={verificationState === 'verifying'} />}
                     </dl>
+                    {data.bank.nameMismatchReason && (
+                        <div className="mt-4 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs flex flex-col gap-2">
+                            <div className="flex items-center gap-2 font-semibold text-amber-800 dark:text-amber-300">
+                                <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                                <span>Account Name Mismatch Declaration</span>
+                            </div>
+                            <div className="pl-6 text-primary-text">
+                                <span className="text-muted block text-[11px]">Reason Provided:</span>
+                                <p className="font-medium text-sm mt-0.5">{data.bank.nameMismatchReason}</p>
+                            </div>
+                            {data.bank.nameMismatchAcknowledged && (
+                                <div className="pl-6 pt-1.5 border-t border-amber-500/20 text-emerald-700 dark:text-emerald-400 font-semibold flex items-center gap-1.5">
+                                    <CheckCircle className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                                    <span>Verified & Acknowledged by {data.bank.nameMismatchAcknowledgedBy || 'Field Officer'}</span>
+                                    {data.bank.nameMismatchAcknowledgedAt && (
+                                        <span className="text-muted text-[11px] font-normal">
+                                            ({formatDisplayDate(data.bank.nameMismatchAcknowledgedAt)})
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </section>
                 
                 {data.uniforms.length > 0 && (
@@ -623,7 +681,7 @@ const Review = () => {
                  <div className="p-4 bg-page rounded-lg flex flex-col sm:flex-row items-center justify-between gap-4">
                     <div className="flex-1">
                         <p className="font-medium">Generate and review the official PDF documents.</p>
-                        <p className="text-sm text-muted">This step is mandatory before final submission.</p>
+                        <p className="text-sm text-muted">Preview and download official onboarding documents.</p>
                     </div>
                     {data.formsGenerated ? (
                         <div className="flex items-center gap-2 font-semibold text-green-600">
@@ -685,9 +743,8 @@ const Review = () => {
                         <AlertTriangle className="h-4 w-4 flex-shrink-0" />
                         <span>
                             To submit application: 
-                            {missingMandatoryDocs.length > 0 && ` 1. Upload missing mandatory document(s) (${missingMandatoryDocs.map(d => d.label).join(', ')}).`}
-                            {!data.formsGenerated && ` ${missingMandatoryDocs.length > 0 ? '2' : '1'}. Click "Generate & Review Forms" above.`}
-                            {perfiosApi.enabled && verificationState !== 'success' && ` ${missingMandatoryDocs.length > 0 ? '3' : '2'}. Complete Third-Party Verification.`}
+                            {missingMandatoryDocs.length > 0 && ` Upload missing mandatory document(s) (${missingMandatoryDocs.map(d => d.label).join(', ')}).`}
+                            {perfiosApi.enabled && verificationState !== 'success' && ` Complete Third-Party Verification.`}
                         </span>
                     </div>
                 )}
@@ -721,8 +778,8 @@ const Review = () => {
                         ) : (
                             <Button
                                 type="submit"
-                                isLoading={false}
-                                disabled={!canSubmit}
+                                isLoading={isSubmitting}
+                                disabled={!canSubmit || isSubmitting}
                             >
                                 Submit Application
                             </Button>

@@ -451,7 +451,13 @@ const AddEmployee: React.FC = () => {
                         >
                             <Home className="h-5 w-5" />
                         </Button>
-                        <Button id="save-and-next-button" type="submit" form={`${stepKeys[currentStepIndex]}-form`}>
+                        <Button 
+                            id="save-and-next-button" 
+                            type="submit" 
+                            form={`${stepKeys[currentStepIndex]}-form`}
+                            isLoading={isReviewStep ? isSubmitting : false}
+                            disabled={isReviewStep ? isSubmitting : false}
+                        >
                             {isReviewStep ? 'Submit' : 'Next'}
                         </Button>
                     </div>

@@ -1,18 +1,22 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom';
-import { RefreshCw, Check, X, Loader2, Crop as CropIcon, ZoomIn, ZoomOut, Camera as CameraIcon, ImageIcon } from 'lucide-react';
-import { Camera } from '@capacitor/camera';
-import { CameraResultType, CameraSource } from '@capacitor/camera';
-import { Capacitor } from '@capacitor/core';
+import { 
+  ArrowLeft, Zap, Grid3X3, SwitchCamera, Sliders, 
+  Camera as CameraIcon, Check, Crop as CropIcon, 
+  ImageIcon, Loader2, RotateCcw, RotateCw
+} from 'lucide-react';
 import { api } from '../services/api';
 import ReactCrop, { type Crop, type PercentCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
+import { rotateImage, autoRotateDocumentIfSideways } from '../utils/imageRotation';
 
-interface CameraCaptureModalProps {
+export interface CameraCaptureModalProps {
   isOpen: boolean;
   onClose: () => void;
   onCapture: (base64Image: string, mimeType: string) => void;
   captureGuidance?: 'document' | 'profile' | 'none';
+  docType?: string;
+  documentTitle?: string;
   autoConfirm?: boolean;
   /** Pre-captured image (data URL) — skips camera and goes straight to preview */
   initialImage?: string;
@@ -21,6 +25,9 @@ interface CameraCaptureModalProps {
   /** Optional contextual hint shown in preview step to guide user where to crop */
   cropHint?: string;
 }
+
+type ScannerMode = 'PHOTO' | 'DOCUMENT' | 'ID CARD' | 'BOOK' | 'BARCODE';
+type FilterMode = 'natural' | 'enhanced' | 'bw';
 
 async function getCroppedImg(image: HTMLImageElement, crop: Crop): Promise<string> {
   const canvas = document.createElement('canvas');
@@ -45,7 +52,7 @@ async function getCroppedImg(image: HTMLImageElement, crop: Crop): Promise<strin
     pixelHeight = Math.round(crop.height * scaleY);
   }
 
-  // Clamping to ensure we never read outside image boundaries
+  // Clamping to ensure boundaries
   pixelX = Math.max(0, Math.min(pixelX, image.naturalWidth - 1));
   pixelY = Math.max(0, Math.min(pixelY, image.naturalHeight - 1));
   pixelWidth = Math.max(1, Math.min(pixelWidth, image.naturalWidth - pixelX));
@@ -74,102 +81,273 @@ async function getCroppedImg(image: HTMLImageElement, crop: Crop): Promise<strin
   return canvas.toDataURL('image/jpeg', 0.95);
 }
 
-// ─── Style constants ───
-const BG = '#041b0f';
-const ACCENT = '#22c55e';
+const PRESETS = [
+  { id: 'both_cards', label: '🟥 Both Cards (Red Box)', crop: { unit: '%' as const, x: 3.5, y: 56.5, width: 93, height: 39 } },
+  { id: 'address', label: '📍 Address Strip', crop: { unit: '%' as const, x: 51, y: 62, width: 45.5, height: 33.5 } },
+  { id: 'left_card', label: '🪪 Left Card', crop: { unit: '%' as const, x: 3.5, y: 56.5, width: 45.5, height: 39 } },
+  { id: 'right_card', label: '🪪 Right Card', crop: { unit: '%' as const, x: 51, y: 56.5, width: 45.5, height: 39 } },
+  { id: 'full_doc', label: '🔲 Full Doc', crop: { unit: '%' as const, x: 0, y: 0, width: 100, height: 100 } },
+];
 
-const circleBtn: React.CSSProperties = {
-  width: 56, height: 56, borderRadius: '50%',
-  display: 'flex', alignItems: 'center', justifyContent: 'center',
-  cursor: 'pointer', border: '1px solid rgba(255,255,255,0.2)',
-  background: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(8px)',
-  WebkitBackdropFilter: 'blur(8px)', transition: 'background 0.2s', padding: 0,
-};
-const iconStyle: React.CSSProperties = { width: 22, height: 22, color: '#ffffff' };
+const SCANNER_MODES: ScannerMode[] = ['PHOTO', 'DOCUMENT', 'ID CARD', 'BOOK', 'BARCODE'];
 
-const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({ isOpen, onClose, onCapture, captureGuidance = 'none', autoConfirm = false, initialImage, isLoading = false, cropHint }) => {
+const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
+  isOpen,
+  onClose,
+  onCapture,
+  captureGuidance = 'none',
+  docType,
+  documentTitle,
+  autoConfirm = false,
+  initialImage,
+  isLoading = false,
+  cropHint,
+}) => {
+  // Determine initial default mode based on document type
+  const getInitialMode = useCallback((): ScannerMode => {
+    if (captureGuidance === 'profile') return 'PHOTO';
+    const tag = `${docType || ''} ${documentTitle || ''}`.toLowerCase();
+    if (tag.includes('photo') || tag.includes('avatar') || tag.includes('selfie')) return 'PHOTO';
+    if (tag.includes('aadhaar') || tag.includes('pan') || tag.includes('voter') || tag.includes('driving') || tag.includes('license') || tag.includes('dl') || tag.includes('id proof')) {
+      return 'ID CARD';
+    }
+    if (tag.includes('bank') || tag.includes('cheque') || tag.includes('passbook') || tag.includes('salary') || tag.includes('payslip') || tag.includes('uan') || tag.includes('certificate') || tag.includes('education')) {
+      return 'DOCUMENT';
+    }
+    return 'ID CARD';
+  }, [captureGuidance, docType, documentTitle]);
+
+  const getInitialFacingMode = useCallback((): 'environment' | 'user' => {
+    if (captureGuidance === 'profile') return 'user';
+    const tag = `${docType || ''} ${documentTitle || ''}`.toLowerCase();
+    if (tag.includes('photo') || tag.includes('avatar') || tag.includes('selfie')) return 'user';
+    return 'environment';
+  }, [captureGuidance, docType, documentTitle]);
+
+  const [activeMode, setActiveMode] = useState<ScannerMode>(getInitialMode);
   const [capturedImage, setCapturedImage] = useState<string | null>(initialImage || null);
+  const [isLiveCameraActive, setIsLiveCameraActive] = useState(false);
+  const [facingMode, setFacingMode] = useState<'environment' | 'user'>(getInitialFacingMode);
+  const [isFlashOn, setIsFlashOn] = useState(false);
+  const [hasFlashSupport, setHasFlashSupport] = useState(false);
+  const [isGridOn, setIsGridOn] = useState(false);
+  const [filterMode, setFilterMode] = useState<FilterMode>('natural');
+  const [shutterFlash, setShutterFlash] = useState(false);
+
   const [error, setError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingMessage, setProcessingMessage] = useState('');
   const [showCropper, setShowCropper] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
   const [crop, setCrop] = useState<Crop>();
-  const [aspect, setAspect] = useState<number | undefined>(undefined);
+  const [aspect, setAspect] = useState<number | undefined>(() => (captureGuidance === 'profile' || getInitialMode() === 'PHOTO') ? 1 : undefined);
   const [croppedImage, setCroppedImage] = useState<string | null>(null);
   const [activePreset, setActivePreset] = useState<string | null>('both_cards');
-  const [isCameraActive, setIsCameraActive] = useState(false);
   const [showFallbackUI, setShowFallbackUI] = useState(false);
-  const captureInProgress = useRef(false);
+
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const PRESETS = [
-    { id: 'both_cards', label: '🟥 Both Cards (Red Box)', crop: { unit: '%' as const, x: 3.5, y: 56.5, width: 93, height: 39 } },
-    { id: 'address', label: '📍 Address Strip', crop: { unit: '%' as const, x: 51, y: 62, width: 45.5, height: 33.5 } },
-    { id: 'left_card', label: '🪪 Left Card', crop: { unit: '%' as const, x: 3.5, y: 56.5, width: 45.5, height: 39 } },
-    { id: 'right_card', label: '🪪 Right Card', crop: { unit: '%' as const, x: 51, y: 56.5, width: 45.5, height: 39 } },
-    { id: 'full_doc', label: '🔲 Full Doc', crop: { unit: '%' as const, x: 0, y: 0, width: 100, height: 100 } },
-  ];
+  // Sync mode and camera facing direction when props change
+  useEffect(() => {
+    const nextMode = getInitialMode();
+    setActiveMode(nextMode);
+    const nextFacing = getInitialFacingMode();
+    setFacingMode(nextFacing);
+    setAspect(nextMode === 'PHOTO' ? 1 : undefined);
+  }, [getInitialMode, getInitialFacingMode]);
 
-  // Check if we're running in the custom Android WebView wrapper
-  const isAndroidWrapper = navigator.userAgent.includes('ParadigmApp');
-  const isCapacitor = Capacitor.isNativePlatform();
-  const startWithImage = !!initialImage;
+  // Sync initialImage if provided (auto-orienting sideways cards)
+  useEffect(() => {
+    if (initialImage) {
+      autoRotateDocumentIfSideways(initialImage, docType, documentTitle).then((rotRes) => {
+        setCapturedImage(rotRes.dataUrl);
+      }).catch(() => {
+        setCapturedImage(initialImage);
+      });
+      setIsLiveCameraActive(false);
+    }
+  }, [initialImage, docType, documentTitle]);
 
-  // ─── Capacitor Camera capture ───
-  const handleCapacitorCapture = async () => {
-    // If in the Android wrapper, Capacitor might not be bridged correctly to the remote URL.
-    // In that case, we should skip Capacitor and go straight to HTML5 capture.
-    if (isAndroidWrapper) {
-      console.log('Android wrapper detected, skipping Capacitor camera');
-      return false;
+  // ─── Camera Stream Management ───
+  const stopLiveCamera = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => {
+        try {
+          if (isFlashOn) {
+            (track as any).applyConstraints({ advanced: [{ torch: false }] }).catch(() => {});
+          }
+          track.stop();
+        } catch (e) {
+          console.warn('Track stop error:', e);
+        }
+      });
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setIsLiveCameraActive(false);
+    setIsFlashOn(false);
+  }, [isFlashOn]);
+
+  const startLiveCamera = useCallback(async (facing: 'environment' | 'user' = facingMode) => {
+    // If starting with an image or cropper active, skip live camera
+    if (capturedImage) return;
+
+    // Check mediaDevices support
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      console.warn('getUserMedia not supported in this environment');
+      setShowFallbackUI(true);
+      return;
     }
 
+    setError(null);
+    setIsProcessing(true);
+    setProcessingMessage('Starting live camera...');
+    stopLiveCamera();
+
     try {
-      if (!isCapacitor) {
-        const permissions = await Camera.checkPermissions();
-        if (permissions.camera === 'denied') {
-          const req = await Camera.requestPermissions({ permissions: ['camera'] });
-          if (req.camera === 'denied') {
-            setError('Camera permission denied. Please grant camera access in Settings.');
-            return false;
-          }
-        }
+      const constraints: MediaStreamConstraints = {
+        video: {
+          facingMode: { ideal: facing },
+          width: { ideal: 1920, min: 1080 },
+          height: { ideal: 1080, min: 720 },
+        },
+        audio: false,
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      streamRef.current = stream;
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play().catch(e => console.warn('Video play interrupted:', e));
       }
 
-      const image = await Camera.getPhoto({
-        quality: 85,
-        width: 1024,
-        allowEditing: false,
-        resultType: CameraResultType.Base64,
-        source: CameraSource.Camera,
-        saveToGallery: false,
-        promptLabelHeader: captureGuidance === 'profile' ? 'Capture Profile Photo' : 'Capture Document',
-        promptLabelPhoto: 'From Gallery',
-        promptLabelPicture: 'Take Photo',
-      });
+      // Check flash / torch capability
+      const track = stream.getVideoTracks()[0];
+      const capabilities = (track?.getCapabilities?.() || {}) as any;
+      setHasFlashSupport(!!capabilities.torch);
 
-      if (image.base64String) {
-        const dataUrl = `data:image/${image.format || 'jpeg'};base64,${image.base64String}`;
-        if (autoConfirm) {
-          onCapture(image.base64String, `image/${image.format || 'jpeg'}`);
-          onClose();
-          return true;
-        }
-        setCapturedImage(dataUrl);
-        return true;
-      }
-      return false;
+      setIsLiveCameraActive(true);
+      setShowFallbackUI(false);
     } catch (err: any) {
-      const msg = err?.message || '';
-      if (msg.toLowerCase().includes('cancel')) { onClose(); return true; }
-      console.error('Capacitor Camera failed:', err);
-      return false;
+      console.warn('Live camera stream error, switching to fallback:', err);
+      setIsLiveCameraActive(false);
+      setShowFallbackUI(true);
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setError('Camera access denied. Please enable camera permissions in your browser or select an image from gallery.');
+      }
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [capturedImage, facingMode, stopLiveCamera]);
+
+  // Start camera when modal opens without a pre-existing image
+  useEffect(() => {
+    if (isOpen && !capturedImage) {
+      startLiveCamera(facingMode);
+    } else if (!isOpen) {
+      stopLiveCamera();
+      setCapturedImage(null);
+      setCroppedImage(null);
+      setShowCropper(false);
+      setShowFallbackUI(false);
+      setError(null);
+    }
+
+    return () => {
+      stopLiveCamera();
+    };
+  }, [isOpen, capturedImage, facingMode, startLiveCamera, stopLiveCamera]);
+
+  // ─── Camera Controls ───
+  const handleToggleFlash = async () => {
+    if (!streamRef.current) return;
+    const track = streamRef.current.getVideoTracks()[0];
+    if (!track) return;
+    try {
+      const next = !isFlashOn;
+      await (track as any).applyConstraints({
+        advanced: [{ torch: next }]
+      });
+      setIsFlashOn(next);
+    } catch (err) {
+      console.warn('Torch constraint toggle error:', err);
     }
   };
 
-  // ─── HTML5 fallback ───
-  const triggerFileInput = () => {
+  const handleFlipCamera = () => {
+    const nextFacing = facingMode === 'environment' ? 'user' : 'environment';
+    setFacingMode(nextFacing);
+    startLiveCamera(nextFacing);
+  };
+
+  const handleToggleGrid = () => {
+    setIsGridOn(prev => !prev);
+  };
+
+  const handleCycleFilter = () => {
+    setFilterMode(prev => prev === 'natural' ? 'enhanced' : prev === 'enhanced' ? 'bw' : 'natural');
+  };
+
+  // ─── Live Shutter Snap ───
+  const handleSnapPhoto = () => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 1920;
+    canvas.height = video.videoHeight || 1080;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Apply document contrast/filters if selected
+    if (filterMode === 'enhanced') {
+      ctx.filter = 'contrast(1.25) brightness(1.05) saturate(1.05)';
+    } else if (filterMode === 'bw') {
+      ctx.filter = 'grayscale(1) contrast(1.4) brightness(1.05)';
+    }
+
+    // If selfie camera, mirror horizontally so captured photo matches preview
+    if (facingMode === 'user') {
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
+    }
+
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+
+    // Shutter flash effect
+    setShutterFlash(true);
+    setTimeout(() => setShutterFlash(false), 180);
+
+    stopLiveCamera();
+
+    // Auto-rotate if sideways landscape document photographed in portrait
+    autoRotateDocumentIfSideways(dataUrl, docType, documentTitle).then((rotRes) => {
+      const finalDataUrl = rotRes.dataUrl;
+      setCapturedImage(finalDataUrl);
+      if (autoConfirm) {
+        const b64 = finalDataUrl.split(',')[1];
+        onCapture(b64, 'image/jpeg');
+        onClose();
+      }
+    }).catch(() => {
+      setCapturedImage(dataUrl);
+      if (autoConfirm) {
+        const b64 = dataUrl.split(',')[1];
+        onCapture(b64, 'image/jpeg');
+        onClose();
+      }
+    });
+  };
+
+  // ─── File Input (Gallery Fallback) ───
+  const triggerFileInput = (e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
       fileInputRef.current.click();
@@ -181,98 +359,72 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({ isOpen, onClose
     if (!file) return;
     try {
       const reader = new FileReader();
-      reader.onloadend = () => {
+      reader.onloadend = async () => {
         const dataUrl = reader.result as string;
-        if (autoConfirm) {
-          const b64 = dataUrl.split(',')[1];
-          onCapture(b64, file.type || 'image/jpeg');
-          onClose();
-          return;
-        }
-        setCapturedImage(dataUrl);
+        stopLiveCamera();
         setShowFallbackUI(false);
         setError(null);
+        let finalDataUrl = dataUrl;
+        try {
+          const rotRes = await autoRotateDocumentIfSideways(dataUrl, docType, documentTitle, file.name);
+          finalDataUrl = rotRes.dataUrl;
+        } catch (rotErr) {
+          console.warn('[CameraCaptureModal] Auto-rotation skipped on file upload:', rotErr);
+        }
+        setCapturedImage(finalDataUrl);
+        if (autoConfirm) {
+          const b64 = finalDataUrl.split(',')[1];
+          onCapture(b64, file.type || 'image/jpeg');
+          onClose();
+        }
       };
       reader.readAsDataURL(file);
     } catch (err) {
-      console.error('File read failed:', err);
-      setError('Failed to read captured photo.');
+      console.error('File reading failed:', err);
+      setError('Could not load image file from device.');
     }
   };
 
-  // ─── Main capture handler ───
-  const handleCapture = useCallback(async () => {
-    if (captureInProgress.current) return;
-    captureInProgress.current = true;
-
-    setError(null);
-    setIsProcessing(true);
-    setIsCameraActive(true);
-    setProcessingMessage('Opening camera...');
-
+  // ─── Rotate 90° Clockwise ───
+  const handleRotate = async () => {
+    const target = croppedImage || capturedImage;
+    if (!target) return;
     try {
-      // If we're starting with an image (from native camera), we don't need to capture again.
-      if (startWithImage) {
-        setIsCameraActive(false);
-        setIsProcessing(false);
-        captureInProgress.current = false;
-        return;
+      const res = await rotateImage(target, 90, 'rotated.jpg');
+      if (croppedImage) {
+        setCroppedImage(res.dataUrl);
+      } else {
+        setCapturedImage(res.dataUrl);
       }
-
-      const success = await handleCapacitorCapture();
-      if (!success) {
-        // Capacitor camera failed — show fallback UI with file picker
-        console.log('Capacitor camera unavailable or skipped, showing fallback');
-        setIsCameraActive(false);
-        setIsProcessing(false);
-        setShowFallbackUI(true);
-        // Auto-trigger file input on mobile platforms
-        if (isAndroidWrapper || isCapacitor) {
-          setTimeout(() => triggerFileInput(), 100);
-        }
-        captureInProgress.current = false;
-        return;
-      }
-    } catch (err: any) {
-      console.error('Camera error:', err);
-      setShowFallbackUI(true);
-    } finally {
-      setIsCameraActive(false);
-      setTimeout(() => { setIsProcessing(false); captureInProgress.current = false; }, 300);
+    } catch (err) {
+      console.warn('[CameraCaptureModal] Rotate error:', err);
     }
-  }, [captureGuidance, autoConfirm, isCapacitor, isAndroidWrapper, startWithImage]);
+  };
 
-  // When initialImage is provided (native capture), set it
-  useEffect(() => {
-    if (initialImage) setCapturedImage(initialImage);
-  }, [initialImage]);
-
-  // Auto-trigger capture when modal opens (only if no pre-captured image)
-  useEffect(() => {
-    if (isOpen && !capturedImage && !startWithImage) {
-      handleCapture();
-    }
-  }, [isOpen]);
-
+  // ─── Retake / Reset ───
   const handleRetake = () => {
-    setError(null); setCapturedImage(null); setCroppedImage(null);
-    setShowCropper(false); setShowFallbackUI(false);
-    handleCapture();
+    setError(null);
+    setCapturedImage(null);
+    setCroppedImage(null);
+    setShowCropper(false);
+    setShowFallbackUI(false);
+    startLiveCamera(facingMode);
+  };
+
+  // ─── Crop Controls ───
+  const handleShowCropper = () => {
+    setShowCropper(true);
+    setAspect(activeMode === 'PHOTO' ? 1 : undefined);
+    const initial = activeMode === 'PHOTO'
+      ? { unit: '%' as const, x: 15, y: 10, width: 70, height: 70 }
+      : { unit: '%' as const, x: 3.5, y: 56.5, width: 93, height: 39 };
+    setCrop(initial);
+    setActivePreset(activeMode === 'PHOTO' ? null : 'both_cards');
   };
 
   const applyPreset = (presetCrop: PercentCrop, presetId: string) => {
     setActivePreset(presetId);
     setCrop(presetCrop);
-  };
-
-  const handleShowCropper = () => {
-    setShowCropper(true);
-    setAspect(undefined);
-    const initial = captureGuidance === 'profile'
-      ? { unit: '%' as const, x: 20, y: 15, width: 60, height: 60 }
-      : { unit: '%' as const, x: 3.5, y: 56.5, width: 93, height: 39 };
-    setCrop(initial);
-    setActivePreset(captureGuidance === 'profile' ? null : 'both_cards');
   };
 
   const handleApplyCrop = async () => {
@@ -285,8 +437,8 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({ isOpen, onClose
       }
       setShowCropper(false);
     } catch (err) {
-      console.error('Failed to crop image:', err);
-      setError('Failed to crop image');
+      console.error('Crop failed:', err);
+      setError('Failed to crop image.');
     }
   };
 
@@ -294,162 +446,286 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({ isOpen, onClose
     setShowCropper(false);
   };
 
+  // ─── Final Confirm & Use ───
   const handleUsePhoto = async () => {
     const img = croppedImage || capturedImage;
     if (!img) return;
     setIsProcessing(true);
+    setError(null);
     try {
-      const b64 = img.split(',')[1];
-      setProcessingMessage('Processing photo...');
-      const enhanced = captureGuidance === 'document' ? await api.enhanceDocumentPhoto(b64, 'image/jpeg') : null;
+      const b64 = img.includes(',') ? img.split(',')[1] : img;
+      setProcessingMessage(activeMode === 'PHOTO' ? 'Processing photo...' : 'Preparing document...');
+      let enhanced: string | null = null;
+      if (captureGuidance === 'document') {
+        try {
+          enhanced = await api.enhanceDocumentPhoto(b64, 'image/jpeg');
+        } catch (enhanceErr) {
+          console.warn('[CameraCapture] Document enhancement bypassed (quota limit / offline):', enhanceErr);
+          enhanced = null;
+        }
+      }
       onCapture(enhanced || b64, 'image/jpeg');
       onClose();
-    } catch (err: any) { setError(err.message || 'Processing failed.'); }
-    finally { setIsProcessing(false); }
+    } catch (err: any) {
+      console.error('[CameraCapture] Failed in handleUsePhoto:', err);
+      // Fail-safe: even if unexpected error happens, pass raw photo and close modal
+      try {
+        const fallbackB64 = img.includes(',') ? img.split(',')[1] : img;
+        onCapture(fallbackB64, 'image/jpeg');
+        onClose();
+      } catch (finalErr: any) {
+        setError(finalErr?.message || 'Processing failed.');
+      }
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   if (!isOpen) return null;
+
   const displayImage = croppedImage || capturedImage;
+
+  // Viewfinder Card Aspect Ratio based on Mode
+  const getViewfinderStyle = () => {
+    switch (activeMode) {
+      case 'PHOTO':
+        return 'w-[260px] h-[260px] sm:w-[290px] sm:h-[290px] rounded-full overflow-hidden';
+      case 'DOCUMENT':
+        return 'w-[84%] max-w-[340px] aspect-[1/1.38] rounded-2xl';
+      case 'BOOK':
+        return 'w-[92%] max-w-[380px] aspect-[1.3/1] rounded-2xl';
+      case 'BARCODE':
+        return 'w-[84%] max-w-[340px] h-[160px] rounded-2xl';
+      case 'ID CARD':
+      default:
+        return 'w-[88%] max-w-[360px] aspect-[1.586/1] rounded-2xl';
+    }
+  };
 
   const modalContent = (
     <div
-      className="camera-capture-modal"
-      style={{
-        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-        zIndex: 99999,
-        display: isCameraActive ? 'none' : 'flex',
-        flexDirection: 'column',
-        backgroundColor: BG, color: '#ffffff',
-        animation: 'none', opacity: 1,
-        border: 'none', borderRadius: 0, boxShadow: 'none',
-        overflow: 'hidden',
-      }}
+      className="fixed inset-0 z-[99999] flex flex-col bg-[#0b0f17] text-white select-none overflow-hidden font-sans"
+      style={{ touchAction: 'none' }}
     >
-      {/* Hidden HTML5 file input — works everywhere as fallback */}
+      {/* Hidden file input for gallery picker */}
       <input
         ref={fileInputRef}
         type="file"
         accept="image/*"
-        capture="user"
         onChange={handleFileInputChange}
-        style={{ display: 'none' }}
+        className="hidden"
       />
 
-      {/* Processing overlay */}
-      {(isProcessing || isLoading) && !isCameraActive && (
-        <div style={{
-          position: 'absolute', inset: 0, zIndex: 40,
-          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          backgroundColor: 'rgba(4,27,15,0.92)',
-        }}>
-          <Loader2 style={{ width: 48, height: 48, color: ACCENT }} className="animate-spin" />
-          <p style={{ marginTop: 16, fontSize: 17, fontWeight: 600, color: '#fff' }}>{processingMessage}</p>
+      {/* Shutter Flash Animation */}
+      {shutterFlash && (
+        <div className="absolute inset-0 bg-white z-[60] animate-out fade-out duration-200 pointer-events-none" />
+      )}
+
+      {/* Processing Loader Overlay */}
+      {(isProcessing || isLoading) && (
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#0b0f17]/90 backdrop-blur-sm">
+          <Loader2 className="w-12 h-12 text-blue-500 animate-spin" />
+          <p className="mt-4 text-sm font-semibold tracking-wide text-white">{processingMessage}</p>
         </div>
       )}
 
-      {/* ─── Top bar ─── */}
-      <div style={{
-        position: 'absolute', top: 0, left: 0, right: 0, zIndex: 30,
-        padding: '16px 16px 40px 16px',
-        background: `linear-gradient(to bottom, ${BG} 40%, transparent)`,
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        pointerEvents: 'none',
-      }}>
-        <div role="button" tabIndex={0} onClick={onClose}
-          style={{ ...circleBtn, width: 42, height: 42, pointerEvents: 'auto' }}>
-          <X style={{ width: 20, height: 20, color: '#fff' }} />
+      {/* ─── Top Navigation & Action Bar (Matching Attached Mockup) ─── */}
+      <div className="relative z-30 flex items-center justify-between px-4 py-3 bg-gradient-to-b from-[#0b0f17]/90 via-[#0b0f17]/60 to-transparent">
+        {/* Back / Close Button */}
+        <button
+          type="button"
+          onClick={onClose}
+          className="w-10 h-10 rounded-full flex items-center justify-center text-white/90 hover:text-white bg-white/10 hover:bg-white/20 active:scale-95 transition-all"
+          title="Back"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+
+        {/* Action Controls Group: Flash, Grid, Flip Camera, Settings */}
+        <div className="flex items-center gap-4 sm:gap-6">
+          {/* Flash / Torch Toggle */}
+          <button
+            type="button"
+            onClick={handleToggleFlash}
+            disabled={!hasFlashSupport}
+            className={`w-9 h-9 rounded-full flex items-center justify-center transition-all ${
+              isFlashOn
+                ? 'text-amber-400 bg-amber-400/20 ring-1 ring-amber-400'
+                : hasFlashSupport
+                  ? 'text-white/80 hover:text-white bg-white/10'
+                  : 'text-white/30 bg-white/5 cursor-not-allowed'
+            }`}
+            title={hasFlashSupport ? (isFlashOn ? 'Turn Flash Off' : 'Turn Flash On') : 'Flash not available'}
+          >
+            <Zap className={`w-4 h-4 ${isFlashOn ? 'fill-amber-400' : ''}`} />
+          </button>
+
+          {/* Grid Toggle */}
+          <button
+            type="button"
+            onClick={handleToggleGrid}
+            className={`w-9 h-9 rounded-full flex items-center justify-center transition-all ${
+              isGridOn
+                ? 'text-blue-400 bg-blue-500/20 ring-1 ring-blue-400'
+                : 'text-white/80 hover:text-white bg-white/10'
+            }`}
+            title="Toggle Alignment Grid"
+          >
+            <Grid3X3 className="w-4 h-4" />
+          </button>
+
+          {/* Flip / Switch Camera */}
+          <button
+            type="button"
+            onClick={handleFlipCamera}
+            className="w-9 h-9 rounded-full flex items-center justify-center text-white/80 hover:text-white bg-white/10 hover:bg-white/20 transition-all"
+            title="Switch Camera"
+          >
+            <SwitchCamera className="w-4 h-4" />
+          </button>
+
+          {/* Filter / Scanner Tuning */}
+          <button
+            type="button"
+            onClick={handleCycleFilter}
+            className={`w-9 h-9 rounded-full flex items-center justify-center transition-all ${
+              filterMode !== 'natural'
+                ? 'text-emerald-400 bg-emerald-500/20 ring-1 ring-emerald-400'
+                : 'text-white/80 hover:text-white bg-white/10'
+            }`}
+            title={`Filter Mode: ${filterMode.toUpperCase()}`}
+          >
+            <Sliders className="w-4 h-4" />
+          </button>
         </div>
-        <span style={{
-          fontSize: 17, fontWeight: 700, flex: 1, textAlign: 'center',
-          color: '#ffffff', letterSpacing: '0.02em', pointerEvents: 'auto',
-        }}>
-          {showCropper ? 'Crop Photo' : capturedImage && !isProcessing ? 'Preview' : 'Capture Photo'}
-        </span>
-        <div style={{ width: 42 }} />
       </div>
 
-      {/* ─── Main content ─── */}
-      <div style={{
-        flex: 1, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        overflow: 'hidden', backgroundColor: BG,
-      }}>
-        {/* Fallback UI — camera failed, show file picker options */}
+      {/* ─── Guidance Text Banner (Matching Attached Mockup) ─── */}
+      <div className="relative z-20 px-6 py-2 text-center pointer-events-none">
+        <p className="text-xs sm:text-sm font-medium text-white/90 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] max-w-sm mx-auto leading-relaxed">
+          {activeMode === 'PHOTO' || captureGuidance === 'profile'
+            ? 'Position your face inside the circle. Make sure your face is clearly visible with good lighting.'
+            : activeMode === 'BARCODE'
+              ? 'Align the barcode or QR code inside the frame to scan.'
+              : activeMode === 'BOOK'
+                ? 'Position both pages within the frame. Ensure the book lies flat.'
+                : 'Position your document inside the frame. Make sure the document is correct and clear enough.'}
+        </p>
+      </div>
+
+      {/* ─── Center Viewfinder Area ─── */}
+      <div className="relative flex-1 flex items-center justify-center overflow-hidden">
+        {/* Live Video Stream */}
+        {isLiveCameraActive && !capturedImage && (
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className="absolute inset-0 w-full h-full object-cover z-0"
+            style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }}
+          />
+        )}
+
+        {/* Fallback Screen (if video stream not available or user uploaded from gallery) */}
         {showFallbackUI && !capturedImage && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: 32 }}>
-            <div style={{
-              width: 80, height: 80, borderRadius: '50%', background: 'rgba(34,197,94,0.15)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20,
-            }}>
-              <CameraIcon style={{ width: 36, height: 36, color: ACCENT }} />
+          <div className="relative z-10 flex flex-col items-center px-6 text-center max-w-xs animate-in fade-in">
+            <div className="w-16 h-16 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center mb-4 ring-1 ring-blue-500/30">
+              <CameraIcon className="w-8 h-8" />
             </div>
-            <p style={{ fontSize: 18, fontWeight: 600, color: '#fff', marginBottom: 8, textAlign: 'center' }}>
-              {captureGuidance === 'profile' ? 'Take Profile Photo' : 'Capture Image'}
+            <h3 className="text-base font-bold text-white mb-1">Camera Scanner</h3>
+            <p className="text-xs text-white/60 mb-6 leading-relaxed">
+              Capture or upload your document to auto-extract text and verify details.
             </p>
-            <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.55)', marginBottom: 28, textAlign: 'center', lineHeight: 1.5, maxWidth: 280 }}>
-              Tap a button below to take a photo or choose from your gallery
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14, width: '100%', maxWidth: 260 }}>
-              <div role="button" tabIndex={0}
+            <div className="flex flex-col gap-3 w-full">
+              <button
+                type="button"
+                onClick={() => startLiveCamera(facingMode)}
+                className="w-full py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 font-semibold text-sm text-white shadow-lg shadow-blue-600/30 active:scale-95 transition-all flex items-center justify-center gap-2"
+              >
+                <CameraIcon className="w-4 h-4" /> Start Camera
+              </button>
+              <button
+                type="button"
                 onClick={triggerFileInput}
-                style={{
-                  background: ACCENT, color: '#fff', borderRadius: 16,
-                  padding: '16px 24px', fontWeight: 600, fontSize: 16, cursor: 'pointer',
-                  border: 'none', boxShadow: '0 4px 20px rgba(34,197,94,0.35)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-                }}>
-                  <CameraIcon style={{ width: 20, height: 20, color: '#fff' }} />
-                Open Camera
-              </div>
-              <div role="button" tabIndex={0}
-                onClick={() => {
-                  // Temporarily remove capture=user to allow gallery access
-                  if (fileInputRef.current) {
-                    fileInputRef.current.removeAttribute('capture');
-                    fileInputRef.current.value = '';
-                    fileInputRef.current.click();
-                    // Restore capture for next time
-                    setTimeout(() => {
-                      if (fileInputRef.current) fileInputRef.current.setAttribute('capture', 'user');
-                    }, 500);
-                  }
-                }}
-                style={{
-                  background: 'rgba(255,255,255,0.1)', color: '#fff', borderRadius: 16,
-                  padding: '16px 24px', fontWeight: 600, fontSize: 16, cursor: 'pointer',
-                  border: '1px solid rgba(255,255,255,0.15)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-                }}>
-                <ImageIcon style={{ width: 20, height: 20, color: '#fff' }} />
-                From Gallery
-              </div>
+                className="w-full py-3 px-4 rounded-xl bg-white/10 hover:bg-white/15 border border-white/20 font-semibold text-sm text-white active:scale-95 transition-all flex items-center justify-center gap-2"
+              >
+                <ImageIcon className="w-4 h-4" /> Choose from Gallery
+              </button>
             </div>
           </div>
         )}
 
-        {/* Error state */}
-        {error && !capturedImage && !showFallbackUI && (
-          <div style={{
-            position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
-            alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center',
-            backgroundColor: 'rgba(4,27,15,0.85)', zIndex: 10,
-          }}>
-            <p style={{ marginBottom: 20, color: '#fff', fontSize: 16, lineHeight: 1.5 }}>{error}</p>
-            <div role="button" tabIndex={0} onClick={handleCapture}
-              style={{ background: ACCENT, color: '#fff', borderRadius: 9999, padding: '14px 28px', fontWeight: 600, fontSize: 15, cursor: 'pointer', border: 'none' }}>
-              Try Again
-            </div>
+        {/* Live Framing Box with 4 Thick Corner Brackets (Exact Visual from Image) */}
+        {!showCropper && (
+          <div
+            className={`relative z-10 pointer-events-none transition-all duration-300 flex items-center justify-center ${getViewfinderStyle()}`}
+            style={{
+              boxShadow: '0 0 0 9999px rgba(11, 15, 23, 0.68)',
+            }}
+          >
+            {/* 4 Rounded Corner Brackets */}
+            {activeMode !== 'PHOTO' && (
+              <>
+                {/* Top-Left */}
+                <div className="absolute -top-1.5 -left-1.5 w-9 h-9 border-t-4 border-l-4 border-white rounded-tl-2xl shadow-[0_0_12px_rgba(255,255,255,0.4)]" />
+                {/* Top-Right */}
+                <div className="absolute -top-1.5 -right-1.5 w-9 h-9 border-t-4 border-r-4 border-white rounded-tr-2xl shadow-[0_0_12px_rgba(255,255,255,0.4)]" />
+                {/* Bottom-Left */}
+                <div className="absolute -bottom-1.5 -left-1.5 w-9 h-9 border-b-4 border-l-4 border-white rounded-bl-2xl shadow-[0_0_12px_rgba(255,255,255,0.4)]" />
+                {/* Bottom-Right */}
+                <div className="absolute -bottom-1.5 -right-1.5 w-9 h-9 border-b-4 border-r-4 border-white rounded-br-2xl shadow-[0_0_12px_rgba(255,255,255,0.4)]" />
+              </>
+            )}
+
+            {/* Profile Circle Frame */}
+            {activeMode === 'PHOTO' && (
+              <>
+                <div className="absolute inset-0 rounded-full border-4 border-white shadow-[0_0_16px_rgba(255,255,255,0.4)] pointer-events-none z-10" />
+                {!displayImage && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-30 z-0">
+                    <svg viewBox="0 0 200 200" className="w-[72%] h-[72%] stroke-white fill-none stroke-[2] stroke-dasharray-[5,5]">
+                      <ellipse cx="100" cy="80" rx="42" ry="50" />
+                      <path d="M 36 190 C 42 145, 62 135, 100 135 C 138 135, 158 145, 164 190" />
+                    </svg>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* 3x3 Alignment Grid (when toggled ON) */}
+            {isGridOn && (
+              <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none rounded-xl overflow-hidden opacity-60">
+                <div className="border-r border-b border-white/30" />
+                <div className="border-r border-b border-white/30" />
+                <div className="border-b border-white/30" />
+                <div className="border-r border-b border-white/30" />
+                <div className="border-r border-b border-white/30" />
+                <div className="border-b border-white/30" />
+                <div className="border-r border-white/30" />
+                <div className="border-r border-white/30" />
+                <div />
+              </div>
+            )}
+
+            {/* Captured Still Preview in Viewfinder */}
+            {displayImage && !showCropper && (
+              <img
+                src={displayImage}
+                alt={activeMode === 'PHOTO' ? 'Captured profile photo' : 'Captured document'}
+                className={`w-full h-full ${
+                  activeMode === 'PHOTO'
+                    ? 'object-cover rounded-full'
+                    : 'object-contain rounded-xl'
+                }`}
+              />
+            )}
           </div>
         )}
 
-        {/* Cropper */}
-        {showCropper && capturedImage ? (
-          <div style={{
-            position: 'absolute', inset: 0,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: '56px 12px 130px 12px',
-            backgroundColor: BG,
-            overflow: 'hidden',
-          }}>
+        {/* Cropper View */}
+        {showCropper && capturedImage && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center p-4 bg-[#0b0f17]">
             <style>{`
               .ReactCrop {
                 --rc-drag-handle-size: 22px;
@@ -457,52 +733,21 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({ isOpen, onClose
                 --rc-drag-bar-size: 14px;
                 touch-action: none !important;
                 user-select: none !important;
-                -webkit-user-select: none !important;
               }
               .ReactCrop__crop-selection {
-                border: 2.5px solid ${ACCENT} !important;
-                box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.72) !important;
-                background-color: rgba(34, 197, 94, 0.08) !important;
-                touch-action: none !important;
+                border: 2.5px solid #3b82f6 !important;
+                box-shadow: 0 0 0 9999px rgba(11, 15, 23, 0.75) !important;
+                background-color: rgba(59, 130, 246, 0.08) !important;
                 cursor: move !important;
               }
               .ReactCrop__drag-handle {
                 width: 22px !important;
                 height: 22px !important;
-                background-color: ${ACCENT} !important;
+                background-color: #3b82f6 !important;
                 border: 2.5px solid #ffffff !important;
                 border-radius: 50% !important;
-                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.7) !important;
-                opacity: 1 !important;
-                touch-action: none !important;
-                pointer-events: auto !important;
-                z-index: 10 !important;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.8) !important;
               }
-              .ReactCrop .ord-nw { top: 0; left: 0; transform: translate(-50%, -50%) !important; }
-              .ReactCrop .ord-n  { top: 0; left: 50%; transform: translate(-50%, -50%) !important; }
-              .ReactCrop .ord-ne { top: 0; right: 0; transform: translate(50%, -50%) !important; }
-              .ReactCrop .ord-e  { top: 50%; right: 0; transform: translate(50%, -50%) !important; }
-              .ReactCrop .ord-se { bottom: 0; right: 0; transform: translate(50%, 50%) !important; }
-              .ReactCrop .ord-s  { bottom: 0; left: 50%; transform: translate(-50%, 50%) !important; }
-              .ReactCrop .ord-sw { bottom: 0; left: 0; transform: translate(-50%, 50%) !important; }
-              .ReactCrop .ord-w  { top: 50%; left: 0; transform: translate(-50%, -50%) !important; }
-
-              /* Force all 8 handles visible even on touch devices (pointer: coarse) */
-              .ReactCrop .ord-n,
-              .ReactCrop .ord-e,
-              .ReactCrop .ord-s,
-              .ReactCrop .ord-w {
-                display: block !important;
-              }
-
-              /* Edge drag bars */
-              .ReactCrop__drag-bar {
-                touch-action: none !important;
-              }
-              .ReactCrop__drag-bar.ord-n { height: 16px !important; transform: translateY(-50%) !important; }
-              .ReactCrop__drag-bar.ord-s { height: 16px !important; transform: translateY(-50%) !important; }
-              .ReactCrop__drag-bar.ord-w { width: 16px !important; transform: translateX(-50%) !important; }
-              .ReactCrop__drag-bar.ord-e { width: 16px !important; transform: translateX(-50%) !important; }
             `}</style>
             <ReactCrop
               crop={crop}
@@ -510,170 +755,190 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({ isOpen, onClose
                 setActivePreset(null);
                 setCrop(percentCrop);
               }}
-              onComplete={(_, percentCrop) => {
-                setCrop(percentCrop);
-              }}
+              onComplete={(_, percentCrop) => setCrop(percentCrop)}
               aspect={aspect}
-              circularCrop={captureGuidance === 'profile'}
-              style={{
-                maxHeight: '100%',
-                maxWidth: '100%',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
+              circularCrop={activeMode === 'PHOTO'}
+              className="max-h-full max-w-full"
             >
               <img
                 ref={imgRef}
                 src={capturedImage}
-                alt="Crop Target"
+                alt="Target to crop"
                 style={{
-                  maxHeight: 'calc(100vh - 190px)',
+                  maxHeight: 'calc(100vh - 220px)',
                   maxWidth: 'calc(100vw - 24px)',
-                  width: 'auto',
-                  height: 'auto',
-                  display: 'block',
-                  userSelect: 'none',
-                  WebkitUserSelect: 'none',
+                  objectFit: 'contain',
                 }}
                 onLoad={() => {
-                  const initial = captureGuidance === 'profile'
+                  const initial = activeMode === 'PHOTO'
                     ? { unit: '%' as const, x: 20, y: 15, width: 60, height: 60 }
                     : { unit: '%' as const, x: 3.5, y: 56.5, width: 93, height: 39 };
                   setCrop(initial);
-                  setActivePreset(captureGuidance === 'profile' ? null : 'both_cards');
                 }}
               />
             </ReactCrop>
           </div>
-        ) : (
-          displayImage && !isProcessing && (
-            <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
-              <img src={displayImage} alt="Preview" style={{ maxWidth: '100%', maxHeight: cropHint ? 'calc(100% - 72px)' : '100%', objectFit: 'contain', border: 'none', borderRadius: 0 }} />
-              {cropHint && (
-                <div style={{
-                  position: 'absolute', bottom: 0, left: 0, right: 0,
-                  background: 'linear-gradient(to top, rgba(4,27,15,0.95) 60%, transparent)',
-                  padding: '32px 20px 16px',
-                  display: 'flex', alignItems: 'flex-start', gap: 10,
-                }}>
-                  <span style={{ fontSize: 18, flexShrink: 0 }}>📍</span>
-                  <p style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.85)', lineHeight: 1.5, margin: 0 }}>
-                    {cropHint}
-                  </p>
-                </div>
-              )}
-            </div>
-          )
         )}
       </div>
 
-      {/* ─── Bottom controls ─── */}
-      <div style={{
-        position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 30,
-        padding: '16px 16px 28px 16px',
-        background: `linear-gradient(to top, ${BG} 75%, transparent)`,
-        pointerEvents: 'none',
-      }}>
-        {showCropper && (
-          <div style={{ marginBottom: 12, pointerEvents: 'auto' }}>
-            {/* Quick Presets matching user's red box and other selections */}
-            {captureGuidance !== 'profile' && (
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6,
-                flexWrap: 'wrap',
-                marginBottom: 8,
-                padding: '0 4px',
-              }}>
-                {PRESETS.map((p) => {
-                  const isActive = activePreset === p.id;
-                  return (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => {
-                        setAspect(undefined);
-                        applyPreset(p.crop, p.id);
-                      }}
-                      style={{
-                        padding: '6px 14px',
-                        borderRadius: 9999,
-                        fontSize: 12,
-                        fontWeight: isActive ? 700 : 600,
-                        border: isActive ? `2px solid ${ACCENT}` : '1px solid rgba(255,255,255,0.2)',
-                        background: isActive ? 'rgba(34,197,94,0.32)' : 'rgba(255,255,255,0.08)',
-                        color: isActive ? '#ffffff' : 'rgba(255,255,255,0.85)',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        transition: 'all 0.15s ease',
-                        boxShadow: isActive ? '0 2px 10px rgba(34,197,94,0.3)' : 'none',
-                      }}
-                    >
-                      {p.label}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-            <p style={{ textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.65)', margin: '4px 0 0 0' }}>
-              💡 Drag any corner circle, edge or box center to adjust manually
-            </p>
-          </div>
-        )}
-
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 28, pointerEvents: 'auto' }}>
-          {showCropper ? (
-            <>
-              <div role="button" tabIndex={0} onClick={handleCancelCrop}
-                style={{ ...circleBtn, width: 'auto', height: 'auto', borderRadius: 9999, padding: '12px 24px', fontSize: 14, fontWeight: 600, color: '#fff' }}>
-                Cancel
-              </div>
-              <div role="button" tabIndex={0} onClick={handleApplyCrop}
-                style={{ ...circleBtn, width: 'auto', height: 'auto', borderRadius: 9999, padding: '12px 24px', fontSize: 14, fontWeight: 600, color: '#fff', background: ACCENT, border: 'none', boxShadow: '0 4px 20px rgba(34,197,94,0.4)', display: 'flex', gap: 8 }}>
-                <Check style={{ width: 18, height: 18, color: '#fff' }} /> Apply Crop
-              </div>
-            </>
-          ) : capturedImage ? (
-            <>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                <div role="button" tabIndex={0} onClick={handleRetake} title="Retake" style={circleBtn}>
-                  <RefreshCw style={iconStyle} />
-                </div>
-                <span style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.7)' }}>Retake</span>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                <div role="button" tabIndex={0} onClick={handleShowCropper} title="Crop" style={{ ...circleBtn, background: 'rgba(34,197,94,0.15)', borderColor: ACCENT }}>
-                  <CropIcon style={{ ...iconStyle, color: ACCENT }} />
-                </div>
-                <span style={{ fontSize: 11, fontWeight: 700, color: ACCENT }}>Crop</span>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                <div role="button" tabIndex={0} onClick={handleUsePhoto} title="Confirm & Use"
-                  style={{
-                    width: 66, height: 66, borderRadius: '50%',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    cursor: 'pointer', border: 'none', background: ACCENT,
-                    boxShadow: '0 4px 24px rgba(34,197,94,0.5)', padding: 0,
-                  }}>
-                  <Check style={{ width: 28, height: 28, color: '#fff' }} />
-                </div>
-                <span style={{ fontSize: 11, fontWeight: 700, color: '#ffffff' }}>Confirm</span>
-              </div>
-            </>
-          ) : null}
+      {/* Error Notice */}
+      {error && (
+        <div className="relative z-30 px-4 py-2 bg-red-900/60 border-t border-red-500/30 text-center">
+          <p className="text-xs text-red-200">{error}</p>
         </div>
+      )}
+
+      {/* ─── Mode Selector Tabs (Matching Attached Mockup) ─── */}
+      {!showCropper && !capturedImage && (
+        <div className="relative z-30 flex items-center justify-center gap-2 overflow-x-auto py-2.5 px-4 bg-gradient-to-t from-[#0b0f17] to-transparent">
+          {SCANNER_MODES.map((mode) => {
+            const isSelected = activeMode === mode;
+            return (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setActiveMode(mode)}
+                className={`px-4 py-1.5 rounded-full text-[11px] font-bold tracking-wider uppercase transition-all select-none whitespace-nowrap ${
+                  isSelected
+                    ? 'bg-white text-slate-900 shadow-lg scale-105'
+                    : 'bg-black/40 text-white/70 hover:text-white border border-white/10 hover:border-white/20'
+                }`}
+              >
+                {mode}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ─── Bottom Controls Bar (Matching Attached Mockup) ─── */}
+      <div className="relative z-30 flex items-center justify-between px-8 py-5 bg-[#0b0f17] border-t border-white/5">
+        {/* State A: Cropper Active */}
+        {showCropper ? (
+          <div className="flex items-center justify-between w-full">
+            <button
+              type="button"
+              onClick={handleCancelCrop}
+              className="px-5 py-2.5 rounded-full bg-white/10 hover:bg-white/15 text-white font-semibold text-xs active:scale-95 transition-all"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                if (!capturedImage) return;
+                try {
+                  const res = await rotateImage(capturedImage, 90, 'rotated.jpg');
+                  setCapturedImage(res.dataUrl);
+                } catch (e) {
+                  console.warn('Cropper rotate error:', e);
+                }
+              }}
+              className="px-4 py-2.5 rounded-full bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/40 text-white font-semibold text-xs flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer"
+              title="Rotate 90° Clockwise"
+            >
+              <RotateCw className="w-4 h-4 text-indigo-300" /> Rotate
+            </button>
+            <button
+              type="button"
+              onClick={handleApplyCrop}
+              className="px-5 py-2.5 rounded-full bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs flex items-center gap-1.5 shadow-lg shadow-blue-600/30 active:scale-95 transition-all"
+            >
+              <Check className="w-4 h-4" /> Apply Crop
+            </button>
+          </div>
+        ) : capturedImage ? (
+          /* State B: Photo Captured (Review & Confirm) */
+          <div className="flex items-center justify-between w-full">
+            <button
+              type="button"
+              onClick={handleRetake}
+              className="flex flex-col items-center gap-1 text-white/80 hover:text-white"
+            >
+              <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/15 transition-all">
+                <RotateCcw className="w-5 h-5" />
+              </div>
+              <span className="text-[10px] font-semibold tracking-wider uppercase text-white/60">Retake</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleRotate}
+              className="flex flex-col items-center gap-1 text-indigo-400 hover:text-indigo-300 active:scale-95 transition-all cursor-pointer"
+              title="Rotate 90° Clockwise"
+            >
+              <div className="w-12 h-12 rounded-full bg-indigo-500/15 border border-indigo-500/40 flex items-center justify-center hover:bg-indigo-500/25 transition-all">
+                <RotateCw className="w-5 h-5 text-indigo-400" />
+              </div>
+              <span className="text-[10px] font-semibold tracking-wider uppercase text-indigo-400">Rotate</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleShowCropper}
+              className="flex flex-col items-center gap-1 text-blue-400 hover:text-blue-300"
+            >
+              <div className="w-12 h-12 rounded-full bg-blue-500/15 border border-blue-500/40 flex items-center justify-center hover:bg-blue-500/25 transition-all">
+                <CropIcon className="w-5 h-5" />
+              </div>
+              <span className="text-[10px] font-semibold tracking-wider uppercase text-blue-400">Crop</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleUsePhoto}
+              className="flex flex-col items-center gap-1 text-white"
+            >
+              <div className="w-14 h-14 rounded-full bg-blue-600 hover:bg-blue-500 shadow-xl shadow-blue-600/40 flex items-center justify-center active:scale-95 transition-all">
+                <Check className="w-7 h-7 text-white" />
+              </div>
+              <span className="text-[10px] font-bold tracking-wider uppercase text-white">Use Photo</span>
+            </button>
+          </div>
+        ) : (
+          /* State C: Live Camera Scanner (Matching Attached Mockup) */
+          <>
+            {/* Left: Thumbnail Gallery / Choose File */}
+            <button
+              type="button"
+              onClick={triggerFileInput}
+              className="w-12 h-12 rounded-xl bg-white/10 hover:bg-white/15 border border-white/20 flex items-center justify-center text-white active:scale-95 transition-all"
+              title="Upload from Gallery"
+            >
+              <ImageIcon className="w-6 h-6 text-white/90" />
+            </button>
+
+            {/* Center: Large Circular Shutter Button (White Ring, Blue Center, Camera Icon) */}
+            <div className="flex items-center justify-center">
+              <button
+                type="button"
+                onClick={handleSnapPhoto}
+                disabled={!isLiveCameraActive}
+                className="w-18 h-18 rounded-full border-4 border-white p-1 flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-[0_0_20px_rgba(59,130,246,0.3)] disabled:opacity-50"
+                title="Capture Photo"
+              >
+                <div className="w-full h-full rounded-full bg-blue-600 hover:bg-blue-500 flex items-center justify-center shadow-inner">
+                  <CameraIcon className="w-7 h-7 text-white" />
+                </div>
+              </button>
+            </div>
+
+            {/* Right: Quick Confirm / Upload Direct Checkmark */}
+            <button
+              type="button"
+              onClick={triggerFileInput}
+              className="w-11 h-11 rounded-full bg-white text-blue-600 flex items-center justify-center shadow-md hover:bg-white/90 active:scale-95 transition-all"
+              title="Confirm or Pick"
+            >
+              <Check className="w-5 h-5 stroke-[2.5]" />
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
 
-  return modalContent;
+  return ReactDOM.createPortal(modalContent, document.body);
 };
 
 export default CameraCaptureModal;

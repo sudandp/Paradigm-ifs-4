@@ -24,7 +24,6 @@ import { GOOGLE_CONFIG } from './config/authConfig';
 import { api as apiService } from './services/api';
 import type { User } from './types';
 import { syncEngine } from './services/offline/syncEngine';
-import { OfflineStatusBanner } from './components/offline/OfflineStatusBanner';
 import { useOnboardingStore } from './store/onboardingStore';
 import { usePWAStore } from './store/pwaStore';
 import { useNotificationStore } from './store/notificationStore';
@@ -515,7 +514,6 @@ const MainLayoutWrapper: React.FC = () => {
 
   return (
     <>
-      <OfflineStatusBanner />
       {isMobile ? <MobileLayout /> : <MainLayout />}
       {user && ['hr_recruitment', 'developer', 'admin', 'super_admin'].includes(user.role) && isHrmsRoute && <VoipDialer />}
     </>
@@ -2082,7 +2080,7 @@ const App: React.FC = () => {
   return (
     <div className="relative min-h-screen w-full overflow-x-hidden bg-slate-50 dark:bg-slate-900">
       <AnimatePresence mode="wait">
-        {isOffline && <OfflineScreen key="offline-screen-modal" />}
+        {isOffline && !user && <OfflineScreen key="offline-screen-modal" />}
       </AnimatePresence>
       <ScrollToTop />
       <ThemeManager />

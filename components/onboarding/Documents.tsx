@@ -148,8 +148,8 @@ const Documents: React.FC = () => {
                     <div className="mt-6 pt-6 border-t border-[#374151]">
                         <h4 className="form-header-title mb-4">Family Member Documents</h4>
                          <div className="space-y-4">
-                            {data.family.map(member => (
-                                <UploadDocument key={member.id} label={`ID Proof for ${member.name || 'Family Member'}`} file={member.idProof} onFileChange={(file) => updateFamilyMember(member.id, { idProof: file })} onOcrComplete={handleFamilyOcr(member.id)} ocrSchema={idProofSchema} setToast={setToast} allowCapture docType="Aadhaar" />
+                            {data.family.map((member, idx) => (
+                                <UploadDocument key={member.id ? `${member.id}_${idx}` : `fam_${idx}`} label={`ID Proof for ${member.name || 'Family Member'}`} file={member.idProof} onFileChange={(file) => updateFamilyMember(member.id, { idProof: file })} onOcrComplete={handleFamilyOcr(member.id)} ocrSchema={idProofSchema} setToast={setToast} allowCapture docType="Aadhaar" />
                             ))}
                             {data.family.length === 0 && <p className="text-sm text-gray-400">No family members added.</p>}
                             <Button type="button" onClick={() => navigate('/onboarding/add/family')} variant="secondary" className="w-full flex items-center justify-center">
@@ -232,9 +232,9 @@ const Documents: React.FC = () => {
                 <section>
                     <h4 className="text-md font-semibold text-primary-text mb-4 border-b pb-2">Family Member Documents</h4>
                     <div className="space-y-4">
-                        {data.family.map((member) => (
+                        {data.family.map((member, idx) => (
                             <UploadDocument
-                                key={member.id}
+                                key={member.id ? `${member.id}_${idx}` : `fam_${idx}`}
                                 label={`ID Proof for ${member.name || `(${member.relation})`}`}
                                 file={member.idProof}
                                 onFileChange={(file) => updateFamilyMember(member.id, { idProof: file })}

@@ -9,6 +9,7 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { useLoadingScreenStore } from '../../store/loadingScreenStore';
 import ReferralModal from '../modals/ReferralModal';
 import { APP_VERSION } from '../../src/config/appVersion';
+import { OfflineStatusBanner } from '../offline/OfflineStatusBanner';
 
 const MobileLayout: React.FC = () => {
     const store = useSettingsStore();
@@ -31,7 +32,7 @@ const MobileLayout: React.FC = () => {
         }
     };
     const { fetchNotifications, isPanelOpen, setIsPanelOpen } = useNotificationStore();
-    const { user, isOffline } = useAuthStore();
+    const { user } = useAuthStore();
     const isMobileHome = location.pathname === '/mobile-home' || location.pathname === '/';
     const [isHeaderVisible, setIsHeaderVisible] = useState(!isMobileHome);
     const lastScrollY = useRef(0);
@@ -221,7 +222,7 @@ const MobileLayout: React.FC = () => {
         <div className="flex flex-col h-screen overflow-hidden bg-[#041b0f]">
 
             {/* Mobile Header - Auto-hide on scroll & pull-down reveal */}
-             {!isFullScreenLoading && !isOffline &&
+             {!isFullScreenLoading &&
               !location.pathname.startsWith('/onboarding/aadhaar-scan') && 
               !location.pathname.startsWith('/finance/attendance/add') && 
               !location.pathname.startsWith('/finance/attendance/edit') && 
@@ -254,6 +255,7 @@ const MobileLayout: React.FC = () => {
                         : 'calc(7rem + max(0.5rem, env(safe-area-inset-bottom)))' 
                 }}
             >
+                <OfflineStatusBanner variant="card" />
                 <Outlet />
                 
                 {/* App Version Footer */}

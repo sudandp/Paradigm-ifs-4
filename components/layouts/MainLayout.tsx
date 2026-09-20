@@ -13,6 +13,7 @@ import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useDevice } from '../../hooks/useDevice';
 import { isAdmin } from '../../utils/auth';
 import Header from './Header';
+import { OfflineStatusBanner } from '../offline/OfflineStatusBanner';
 import { NotificationPanel } from '../notifications/NotificationPanel';
 import BreakTrackingMonitor from '../attendance/BreakTrackingMonitor';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -751,6 +752,7 @@ const MainLayout: React.FC = () => {
 
             <div className={`flex-1 flex flex-col h-full overflow-hidden ${isMobile ? 'bg-[#041b0f]' : 'bg-gray-50/50'} ${isMobile && !isSidebarExpanded ? 'ml-[56px]' : ''}`}>
                 <Header />
+                <OfflineStatusBanner variant="bar" />
                 <BreakTrackingMonitor />
 
                 <main ref={mainContentRef} className={`flex-1 overflow-y-auto ${isMobile ? 'bg-[#041b0f]' : 'bg-page desktop-scaled'} relative flex flex-col`}>

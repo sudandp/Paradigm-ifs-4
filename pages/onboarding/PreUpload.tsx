@@ -3,7 +3,7 @@ import { useForm, Controller, SubmitHandler, useFieldArray, Resolver } from 'rea
 import { useNavigate } from 'react-router-dom';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
-import { useOnboardingStore } from '../../store/onboardingStore';
+import { useOnboardingStore, deduplicateFamilyMembers } from '../../store/onboardingStore';
 import { useEnrollmentRulesStore, getRulesForDesignation } from '../../store/enrollmentRulesStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import type { UploadedFile, PersonalDetails, BankDetails, UanDetails, EsiDetails, FamilyMember, DocumentRules, EducationRecord } from '../../types';
@@ -267,6 +267,7 @@ const PreUpload = () => {
         voterIdNumber: { type: Type.STRING, description: "The Voter ID number (EPIC number)." },
         email: { type: Type.STRING, description: "The person's email address if printed on the document." },
         phone: { type: Type.STRING, description: "The person's phone or mobile number if printed on the document (e.g. '9008885355')." },
+        fatherName: { type: Type.STRING, description: "Father's or Care-Of (S/O, C/O, D/O) name if printed on the document." },
         address: { type: Type.OBJECT, description: "Full address if present on this document (e.g. full e-Aadhaar letter sheet).", properties: {
             line1: { type: Type.STRING, description: "Address line 1 excluding city/state/pincode." },
             city: { type: Type.STRING, description: "City or District (e.g. 'Bengaluru')." },
@@ -282,7 +283,8 @@ const PreUpload = () => {
             state: { type: Type.STRING },
             pincode: { type: Type.STRING },
         }},
-        phone: { type: Type.STRING, description: "The person's phone or mobile number if printed on the back of the card (e.g. 'Mobile: XXXXXXXXXX')." }
+        phone: { type: Type.STRING, description: "The person's phone or mobile number if printed on the back of the card (e.g. 'Mobile: XXXXXXXXXX')." },
+        fatherName: { type: Type.STRING, description: "Father's or Care-Of (C/O, S/O, D/O) full name printed before the address on the back of the card (e.g. from 'S/O Mari Dass', return 'Mari Dass')." }
     }}), []);
 
     const bankProofSchema = useMemo(() => ({ type: Type.OBJECT, properties: {
@@ -321,6 +323,7 @@ const PreUpload = () => {
     const educationSchema = useMemo(() => ({ type: Type.OBJECT, properties: { degree: { type: Type.STRING }, institution: { type: Type.STRING }, endYear: { type: Type.STRING } } }), []);
     const panSchema = useMemo(() => ({ type: Type.OBJECT, properties: {
         name: { type: Type.STRING, description: "Full name as shown on the PAN card." },
+        fatherName: { type: Type.STRING, description: "Father's full name as shown on the PAN card." },
         panNumber: { type: Type.STRING, description: "The 10-character PAN number." },
         dob: { type: Type.STRING, description: "Date of birth in YYYY-MM-DD format." },
         email: { type: Type.STRING, description: "The email address if printed on the card." },
@@ -337,6 +340,10 @@ const PreUpload = () => {
 
     const handleImmediateOcr = async (docType: string, extractedData: any, index?: number) => {
         try {
+            if (extractedData?._documentMismatch || extractedData?._requiredDataMissing) {
+                return;
+            }
+
             const currentData = store.data;
             const personalUpdate: Partial<PersonalDetails> = {};
             const personalVerified: Partial<PersonalDetails['verifiedStatus']> = {};
@@ -402,6 +409,22 @@ const PreUpload = () => {
                 }
             };
 
+            const safeParseDob = (rawDob: string | undefined | null): string => {
+                if (!rawDob) return '';
+                const clean = rawDob.trim();
+                if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) return clean;
+                if (/^\d{4}$/.test(clean)) return `${clean}-01-01`;
+                try {
+                    const d = new Date(clean.replace(/[-.]/g, '/'));
+                    if (!isNaN(d.getTime())) return format(d, 'yyyy-MM-dd');
+                } catch {
+                    /* ignore unparseable date */
+                }
+                return '';
+            };
+
+            const isNoiseName = (n?: string) => !n || ['lees', 'eater', 'sa', 'bot', 'pate', 'tiene', 'pies', 'eater io', 'sa bot'].includes(n.toLowerCase().trim());
+
             if (docType === 'idFront') {
                 const idData = extractedData;
                 if (idData.name) {
@@ -413,11 +436,10 @@ const PreUpload = () => {
                     personalVerified.name = true;
                 }
                 if (idData.dob) {
-                    try {
-                        personalUpdate.dob = format(new Date(idData.dob.replace(/[-./]/g, '/')), 'yyyy-MM-dd');
+                    const parsed = safeParseDob(idData.dob);
+                    if (parsed) {
+                        personalUpdate.dob = parsed;
                         personalVerified.dob = true;
-                    } catch {
-                        /* ignore unparseable date */
                     }
                 }
                 if (idData.gender) {
@@ -447,6 +469,30 @@ const PreUpload = () => {
                 if (idData.phone) {
                     handleExtractedPhone(idData.phone, docName);
                 }
+                if (idData.fatherName) {
+                    const formattedFather = formatNameToTitleCase(idData.fatherName);
+                    const fatherIndex = familyUpdate.findIndex((f: any) => f.relation === 'Father');
+                    if (fatherIndex >= 0) {
+                        familyUpdate[fatherIndex] = {
+                            ...familyUpdate[fatherIndex],
+                            name: formattedFather,
+                        };
+                    } else {
+                        familyUpdate.push({
+                            id: `fam_father_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                            relation: 'Father',
+                            name: formattedFather,
+                            dob: '',
+                            gender: 'Male',
+                            dependent: true,
+                            idProof: null,
+                        });
+                    }
+                    if (!currentData.personal.emergencyContactName || isNoiseName(currentData.personal.emergencyContactName)) {
+                        personalUpdate.emergencyContactName = formattedFather;
+                        personalUpdate.relationship = 'Father';
+                    }
+                }
                 // Handle full e-Aadhaar sheets that contain address on the front/top page
                 if (idData.address && (idData.address.pincode || idData.address.line1)) {
                     const newAddress = {
@@ -456,10 +502,10 @@ const PreUpload = () => {
                         state: idData.address.state || '',
                         country: 'India',
                         pincode: idData.address.pincode || '',
-                        source: 'Aadhaar Front'
+                        source: 'Aadhaar'
                     };
                     const updatedList = [
-                        ...(currentData.address.extractedAddresses || []).filter((a: any) => a.source !== 'Aadhaar Front'),
+                        ...(currentData.address.extractedAddresses || []).filter((a: any) => !/aadhaar/i.test(a.source)),
                         newAddress
                     ];
                     addressUpdate = {
@@ -479,10 +525,10 @@ const PreUpload = () => {
                         state: extractedData.address.state || '',
                         country: 'India',
                         pincode: extractedData.address.pincode || '',
-                        source: 'Aadhaar Back'
+                        source: 'Aadhaar'
                     };
                     const updatedList = [
-                        ...(currentData.address.extractedAddresses || []).filter((a: any) => a.source !== 'Aadhaar Back'),
+                        ...(currentData.address.extractedAddresses || []).filter((a: any) => !/aadhaar/i.test(a.source)),
                         newAddress
                     ];
                     addressUpdate = {
@@ -493,13 +539,37 @@ const PreUpload = () => {
                     };
                     setToast({ message: 'Address extracted and saved.', type: 'success' });
                 }
+                if (extractedData.fatherName) {
+                    const formattedFather = formatNameToTitleCase(extractedData.fatherName);
+                    const fatherIndex = familyUpdate.findIndex((f: any) => f.relation === 'Father');
+                    if (fatherIndex >= 0) {
+                        familyUpdate[fatherIndex] = {
+                            ...familyUpdate[fatherIndex],
+                            name: formattedFather,
+                        };
+                    } else {
+                        familyUpdate.push({
+                            id: `fam_father_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                            relation: 'Father',
+                            name: formattedFather,
+                            dob: '',
+                            gender: 'Male',
+                            dependent: true,
+                            idProof: null,
+                        });
+                    }
+                    if (!currentData.personal.emergencyContactName || isNoiseName(currentData.personal.emergencyContactName)) {
+                        personalUpdate.emergencyContactName = formattedFather;
+                        personalUpdate.relationship = 'Father';
+                    }
+                }
                 if (extractedData.phone) {
                     handleExtractedPhone(extractedData.phone, docName);
                 }
             } else if (docType === 'pan') {
                 const panData = extractedData;
                 if (panData.panNumber) {
-                    const cleanPan = panData.panNumber.replace(/\s/g, '');
+                    const cleanPan = panData.panNumber.replace(/\s/g, '').toUpperCase();
                     personalUpdate.panNumber = cleanPan;
                     personalVerified.panNumber = true;
                     personalVerified.panCard = true;
@@ -507,21 +577,44 @@ const PreUpload = () => {
                         personalUpdate.idProofNumber = cleanPan;
                         personalVerified.idProofNumber = true;
                     }
-                    if (!currentData.personal.firstName && panData.name) {
-                        const nameParts = panData.name.split(' ');
-                        personalUpdate.firstName = formatNameToTitleCase(nameParts.shift() || '');
-                        personalUpdate.lastName = formatNameToTitleCase(nameParts.pop() || '');
-                        personalUpdate.middleName = formatNameToTitleCase(nameParts.join(' '));
-                        personalUpdate.preferredName = personalUpdate.firstName;
-                        personalVerified.name = true;
+                }
+                if (panData.name && (isNoiseName(currentData.personal.firstName) || !currentData.personal.firstName)) {
+                    const nameParts = panData.name.split(' ');
+                    personalUpdate.firstName = formatNameToTitleCase(nameParts.shift() || '');
+                    personalUpdate.lastName = formatNameToTitleCase(nameParts.pop() || '');
+                    personalUpdate.middleName = formatNameToTitleCase(nameParts.join(' '));
+                    personalUpdate.preferredName = personalUpdate.firstName;
+                    personalVerified.name = true;
+                }
+                if (panData.fatherName) {
+                    const formattedFather = formatNameToTitleCase(panData.fatherName);
+                    const fatherIndex = familyUpdate.findIndex((f: any) => f.relation === 'Father');
+                    if (fatherIndex >= 0) {
+                        familyUpdate[fatherIndex] = {
+                            ...familyUpdate[fatherIndex],
+                            name: formattedFather,
+                        };
+                    } else {
+                        familyUpdate.push({
+                            id: `fam_father_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                            relation: 'Father',
+                            name: formattedFather,
+                            dob: '',
+                            gender: 'Male',
+                            dependent: true,
+                            idProof: null,
+                        });
                     }
-                    if (!currentData.personal.dob && panData.dob) {
-                        try {
-                            personalUpdate.dob = format(new Date(panData.dob.replace(/[-./]/g, '/')), 'yyyy-MM-dd');
-                            personalVerified.dob = true;
-                        } catch {
-                            /* ignore unparseable date */
-                        }
+                    if (!currentData.personal.emergencyContactName || isNoiseName(currentData.personal.emergencyContactName)) {
+                        personalUpdate.emergencyContactName = formattedFather;
+                        personalUpdate.relationship = 'Father';
+                    }
+                }
+                if (panData.dob && (!currentData.personal.dob || currentData.personal.dob === '')) {
+                    const parsed = safeParseDob(panData.dob);
+                    if (parsed) {
+                        personalUpdate.dob = parsed;
+                        personalVerified.dob = true;
                     }
                 }
                 if (panData.email && panData.email.includes('@')) {
@@ -534,11 +627,39 @@ const PreUpload = () => {
             } else if (docType === 'bank') {
                 const bankData = extractedData;
                 // ─── Bank account fields
-                if (bankData.accountHolderName) { bankUpdate.accountHolderName = formatNameToTitleCase(bankData.accountHolderName); bankVerified.accountHolderName = true; }
+                if (bankData.accountHolderName) { 
+                    bankUpdate.accountHolderName = formatNameToTitleCase(bankData.accountHolderName); 
+                    bankVerified.accountHolderName = true; 
+                    if (isNoiseName(currentData.personal.firstName) || !currentData.personal.firstName) {
+                        const nameParts = bankData.accountHolderName.trim().split(/\s+/);
+                        personalUpdate.firstName = formatNameToTitleCase(nameParts.shift() || '');
+                        personalUpdate.lastName = formatNameToTitleCase(nameParts.pop() || '');
+                        personalUpdate.middleName = formatNameToTitleCase(nameParts.join(' '));
+                        personalUpdate.preferredName = personalUpdate.firstName;
+                        personalVerified.name = true;
+                    }
+                }
                 if (bankData.accountNumber) { const acNum = bankData.accountNumber.replace(/\D/g, ''); bankUpdate.accountNumber = acNum; bankUpdate.confirmAccountNumber = acNum; bankVerified.accountNumber = true; }
                 if (bankData.ifscCode) { bankUpdate.ifscCode = bankData.ifscCode.toUpperCase().replace(/\s/g, ''); bankVerified.ifscCode = true; }
-                if (bankData.bankName) bankUpdate.bankName = bankData.bankName;
-                if (bankData.branchName) bankUpdate.branchName = bankData.branchName;
+                if (bankData.bankName) {
+                    bankUpdate.bankName = bankData.bankName;
+                } else if (bankUpdate.ifscCode || bankData.ifscCode) {
+                    const code = (bankUpdate.ifscCode || bankData.ifscCode).toUpperCase();
+                    const prefix = code.substring(0, 4);
+                    const ifscBankMap: Record<string, string> = {
+                        'HDFC': 'HDFC Bank', 'SBIN': 'State Bank of India', 'ICIC': 'ICICI Bank',
+                        'UTIB': 'Axis Bank', 'KKBK': 'Kotak Mahindra Bank', 'PUNB': 'Punjab National Bank',
+                        'BARB': 'Bank of Baroda', 'CNRB': 'Canara Bank', 'UBIN': 'Union Bank of India',
+                        'BKID': 'Bank of India', 'IDIB': 'Indian Bank', 'IBKL': 'IDBI Bank',
+                        'INDB': 'IndusInd Bank', 'YESB': 'Yes Bank', 'FDRL': 'Federal Bank', 'IDFB': 'IDFC First Bank'
+                    };
+                    if (ifscBankMap[prefix]) bankUpdate.bankName = ifscBankMap[prefix];
+                }
+                if (bankData.branchName) {
+                    bankUpdate.branchName = bankData.branchName;
+                } else if (bankUpdate.bankName || bankData.bankName) {
+                    bankUpdate.branchName = 'Main Branch';
+                }
                 // ─── Personal fields from bank document
                 if (bankData.email && bankData.email.includes('@')) {
                     personalUpdate.email = bankData.email.toLowerCase().trim();
@@ -547,14 +668,21 @@ const PreUpload = () => {
                     handleExtractedPhone(bankData.phone, docName);
                 }
                 // ─── Address from bank document
-                if (bankData.city || bankData.line1) {
+                const bankAddr = bankData.address || {};
+                const resolvedLine1 = bankData.line1 || bankAddr.line1 || '';
+                const resolvedLine2 = bankData.line2 || bankAddr.line2 || '';
+                const resolvedCity = bankData.city || bankAddr.city || '';
+                const resolvedState = bankData.state || bankAddr.state || '';
+                const resolvedPincode = bankData.pincode || bankAddr.pincode || '';
+
+                if (resolvedCity || resolvedLine1 || resolvedPincode) {
                     const newAddress = {
-                        line1: bankData.line1 || '',
-                        line2: bankData.line2 || '',
-                        city: bankData.city || '',
-                        state: bankData.state || '',
+                        line1: resolvedLine1,
+                        line2: resolvedLine2,
+                        city: resolvedCity,
+                        state: resolvedState || 'Karnataka',
                         country: 'India',
-                        pincode: bankData.pincode || '',
+                        pincode: resolvedPincode,
                         source: 'Bank Proof'
                     };
                     const updatedList = [
@@ -565,19 +693,19 @@ const PreUpload = () => {
                     const isMainAddressBlank = !currentData.address.present.line1 && !currentData.address.present.city;
                     addressUpdate = {
                         present: isMainAddressBlank ? {
-                            line1: bankData.line1 || '',
-                            line2: bankData.line2 || '',
-                            city: bankData.city || '',
-                            state: bankData.state || currentData.address.present.state,
-                            pincode: bankData.pincode || currentData.address.present.pincode,
+                            line1: resolvedLine1,
+                            line2: resolvedLine2,
+                            city: resolvedCity,
+                            state: resolvedState || currentData.address.present.state || 'Karnataka',
+                            pincode: resolvedPincode || currentData.address.present.pincode,
                             country: 'India',
                         } : currentData.address.present,
                         permanent: isMainAddressBlank ? {
-                            line1: bankData.line1 || '',
-                            line2: bankData.line2 || '',
-                            city: bankData.city || '',
-                            state: bankData.state || currentData.address.permanent.state,
-                            pincode: bankData.pincode || currentData.address.permanent.pincode,
+                            line1: resolvedLine1,
+                            line2: resolvedLine2,
+                            city: resolvedCity,
+                            state: resolvedState || currentData.address.permanent.state || 'Karnataka',
+                            pincode: resolvedPincode || currentData.address.permanent.pincode,
                             country: 'India',
                         } : currentData.address.permanent,
                         sameAsPresent: currentData.address.sameAsPresent,
@@ -610,14 +738,7 @@ const PreUpload = () => {
                 }
                 setToast({ message: `${docType === 'salary' ? 'Salary slip' : 'UAN'} details extracted and saved.`, type: 'success' });
             } else if (docType === 'familyAadhaar' && index !== undefined) {
-                let dobString = '';
-                if (extractedData.dob) {
-                    try {
-                        dobString = format(new Date(extractedData.dob.replace(/[-./]/g, '/')), 'yyyy-MM-dd');
-                    } catch {
-                        /* ignore unparseable date */
-                    }
-                }
+                const dobString = safeParseDob(extractedData.dob);
                 
                 let extractedPhone = '';
                 if (extractedData.phone) {
@@ -765,62 +886,311 @@ const PreUpload = () => {
         setIsProcessing(true);
         store.setRequiresManualVerification(isOverridden);
 
-        // Helper: only convert to base64 if the file has a raw File object (i.e., newly uploaded).
-        // Files loaded back from the store have no .file and only have a URL/preview.
-        const safeFileToBase64 = (f: UploadedFile | null | undefined) => {
-            if (!f || !f.file) return Promise.resolve(null);
-            return fileToBase64(f.file);
+        // Helper: convert an UploadedFile to base64 data string
+        const safeFileToBase64 = async (f: UploadedFile | null | undefined): Promise<{ base64: string; type: string } | null> => {
+            if (!f) return null;
+            if (f.file) {
+                return fileToBase64(f.file);
+            }
+            if (f.preview && f.preview.startsWith('data:')) {
+                const parts = f.preview.split(',');
+                const mimeMatch = f.preview.match(/^data:(.*?);base64,/);
+                return { base64: parts[1] || '', type: mimeMatch ? mimeMatch[1] : (f.type || 'image/jpeg') };
+            }
+            return null;
         };
 
         try {
-            // File Conversions — only convert files that are freshly uploaded (have a raw File object)
-            const filePromises = [
+            // File Conversions
+            const [
+                idFrontFileData,
+                idBackFileData,
+                bankFileData,
+                panFileData,
+                salaryFileData,
+                uanFileData
+            ] = await Promise.all([
                 safeFileToBase64(formData.idProofFront),
                 (formData.idProofType === 'Aadhaar' || formData.idProofType === 'Voter ID') ? safeFileToBase64(formData.idProofBack) : Promise.resolve(null),
                 safeFileToBase64(formData.bankProof),
                 safeFileToBase64(formData.panCard),
                 safeFileToBase64(formData.salarySlip),
-                safeFileToBase64(formData.uanProof),
-                ...formData.family.map((f) => safeFileToBase64(f.idProof)),
-                ...formData.education.map((e) => safeFileToBase64(e.document))
-            ];
-            const [idFrontFileData, idBackFileData, bankFileData, panFileData, salaryFileData, uanFileData, ...otherFilesData] = await Promise.all(filePromises);
-            const familyFilesData = otherFilesData.slice(0, formData.family.length);
-            const educationFilesData = otherFilesData.slice(formData.family.length);
+                safeFileToBase64(formData.uanProof)
+            ]);
+
+            const currentData = store.data;
+            const personalUpdate: Partial<PersonalDetails> = {};
+            const bankUpdate: Partial<BankDetails> = {};
+            const uanUpdate: Partial<UanDetails> = {};
+            const esiUpdate: Partial<EsiDetails> = {};
+            let addressUpdate = currentData.address;
+
+            // Import offline extraction for fallback check
+            const { extractDataOffline } = await import('../../services/offline/offlineExtraction');
+
+            // 1. Fallback PAN extraction if missing in store and not yet extracted
+            if (panFileData && !currentData.personal.panNumber && !personalUpdate.panNumber) {
+                try {
+                    const panExt = await extractDataOffline(panFileData.base64, 'PAN', panFileData.type);
+                    if (panExt.panNumber) {
+                        personalUpdate.panNumber = panExt.panNumber;
+                        if (currentData.personal.idProofType === 'PAN') personalUpdate.idProofNumber = panExt.panNumber;
+                    }
+                    if (panExt.name && !currentData.personal.firstName && !personalUpdate.firstName) {
+                        const nameParts = panExt.name.split(' ');
+                        personalUpdate.firstName = formatNameToTitleCase(nameParts.shift() || '');
+                        personalUpdate.lastName = formatNameToTitleCase(nameParts.pop() || '');
+                        personalUpdate.middleName = formatNameToTitleCase(nameParts.join(' '));
+                        personalUpdate.preferredName = personalUpdate.firstName;
+                    }
+                    if (panExt.dob && !currentData.personal.dob && !personalUpdate.dob) {
+                        personalUpdate.dob = panExt.dob;
+                    }
+                    if (panExt.fatherName) {
+                        const formattedFather = formatNameToTitleCase(panExt.fatherName);
+                        const existingFather = currentData.family.find(f => f.relation === 'Father');
+                        if (existingFather) {
+                            existingFather.name = formattedFather;
+                        } else {
+                            currentData.family.push({
+                                id: `fam_father_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                                relation: 'Father',
+                                name: formattedFather,
+                                dob: '',
+                                gender: 'Male',
+                                dependent: true,
+                                idProof: null,
+                            });
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[PreUpload] PAN fallback extraction error:', e);
+                }
+            }
+
+            // 2. Fallback ID Front (Aadhaar / ID) extraction — extract once, apply each field independently
+            // This ensures DOB and gender are filled even if firstName was already set by immediate OCR
+            if (idFrontFileData) {
+                const needsName = !currentData.personal.firstName && !personalUpdate.firstName;
+                const needsDob = !currentData.personal.dob && !personalUpdate.dob;
+                const needsGender = !currentData.personal.gender && !personalUpdate.gender;
+                const needsAadhaar = !currentData.personal.aadhaarNumber && !personalUpdate.aadhaarNumber;
+                const needsAddress = !currentData.address.present.line1;
+                const needsFather = !currentData.family.some(f => f.relation === 'Father');
+
+                if (needsName || needsDob || needsGender || needsAadhaar || needsAddress || needsFather) {
+                    try {
+                        const idExt = await extractDataOffline(idFrontFileData.base64, 'idFront', idFrontFileData.type);
+                        if (idExt.name && needsName) {
+                            const nameParts = idExt.name.split(' ');
+                            personalUpdate.firstName = formatNameToTitleCase(nameParts.shift() || '');
+                            personalUpdate.lastName = formatNameToTitleCase(nameParts.pop() || '');
+                            personalUpdate.middleName = formatNameToTitleCase(nameParts.join(' '));
+                            personalUpdate.preferredName = personalUpdate.firstName;
+                        }
+                        if (idExt.dob && needsDob) {
+                            personalUpdate.dob = idExt.dob;
+                        }
+                        if (idExt.gender && needsGender) {
+                            personalUpdate.gender = idExt.gender as any;
+                        }
+                        if (idExt.aadhaarNumber && needsAadhaar) {
+                            personalUpdate.aadhaarNumber = idExt.aadhaarNumber;
+                            personalUpdate.idProofNumber = idExt.aadhaarNumber;
+                        }
+                        if (idExt.fatherName) {
+                            const formattedFather = formatNameToTitleCase(idExt.fatherName);
+                            const existingFather = currentData.family.find(f => f.relation === 'Father');
+                            if (existingFather) {
+                                existingFather.name = formattedFather;
+                            } else {
+                                currentData.family.push({
+                                    id: `fam_father_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                                    relation: 'Father',
+                                    name: formattedFather,
+                                    dob: '',
+                                    gender: 'Male',
+                                    dependent: true,
+                                    idProof: null,
+                                });
+                            }
+                        }
+                        if (idExt.address && needsAddress) {
+                            addressUpdate = {
+                                ...currentData.address,
+                                present: { ...currentData.address.present, ...idExt.address, country: 'India' },
+                                permanent: { ...currentData.address.permanent, ...idExt.address, country: 'India' },
+                                sameAsPresent: true,
+                            };
+                        }
+                    } catch (e) {
+                        console.warn('[PreUpload] ID Front fallback extraction error:', e);
+                    }
+                }
+            }
 
 
+            // 3. Fallback ID Back (Address & Father) extraction if missing
+            if (idBackFileData && (!currentData.address.present.line1 || !currentData.address.present.pincode || !currentData.family.some(f => f.relation === 'Father'))) {
+                try {
+                    const backExt = await extractDataOffline(idBackFileData.base64, 'idBack', idBackFileData.type);
+                    if (backExt.address) {
+                        addressUpdate = {
+                            ...currentData.address,
+                            present: { ...currentData.address.present, ...backExt.address, country: 'India' },
+                            permanent: { ...currentData.address.permanent, ...backExt.address, country: 'India' },
+                            sameAsPresent: true,
+                        };
+                    }
+                    if (backExt.fatherName) {
+                        const formattedFather = formatNameToTitleCase(backExt.fatherName);
+                        const existingFather = currentData.family.find(f => f.relation === 'Father');
+                        if (existingFather) {
+                            existingFather.name = formattedFather;
+                        } else {
+                            currentData.family.push({
+                                id: `fam_father_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                                relation: 'Father',
+                                name: formattedFather,
+                                dob: '',
+                                gender: 'Male',
+                                dependent: true,
+                                idProof: null,
+                            });
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[PreUpload] ID Back fallback extraction error:', e);
+                }
+            }
+
+            // 4. Fallback Bank extraction if missing in store
+            if (bankFileData && (!currentData.bank.accountNumber || !currentData.bank.ifscCode)) {
+                try {
+                    const bankExt = await extractDataOffline(bankFileData.base64, 'Bank', bankFileData.type);
+                    if (bankExt.accountHolderName && !currentData.bank.accountHolderName) {
+                        bankUpdate.accountHolderName = formatNameToTitleCase(bankExt.accountHolderName);
+                        if (!currentData.personal.firstName && !personalUpdate.firstName) {
+                            const nameParts = bankExt.accountHolderName.trim().split(/\s+/);
+                            personalUpdate.firstName = formatNameToTitleCase(nameParts.shift() || '');
+                            personalUpdate.lastName = formatNameToTitleCase(nameParts.pop() || '');
+                            personalUpdate.middleName = formatNameToTitleCase(nameParts.join(' '));
+                            personalUpdate.preferredName = personalUpdate.firstName;
+                        }
+                    }
+                    if (bankExt.accountNumber && !currentData.bank.accountNumber) {
+                        bankUpdate.accountNumber = bankExt.accountNumber;
+                        bankUpdate.confirmAccountNumber = bankExt.accountNumber;
+                    }
+                    if (bankExt.ifscCode && !currentData.bank.ifscCode) {
+                        bankUpdate.ifscCode = bankExt.ifscCode.toUpperCase();
+                    }
+                    if (bankExt.bankName && !currentData.bank.bankName) {
+                        bankUpdate.bankName = bankExt.bankName;
+                    }
+                    if (bankExt.branchName && !currentData.bank.branchName) {
+                        bankUpdate.branchName = bankExt.branchName;
+                    }
+                    const extAddr = bankExt.address || {};
+                    const extLine1 = String(bankExt.line1 || extAddr.line1 || '');
+                    const extCity = String(bankExt.city || extAddr.city || '');
+                    const extState = String(bankExt.state || extAddr.state || 'Karnataka');
+                    const extPin = String(bankExt.pincode || extAddr.pincode || '');
+                    if ((extLine1 || extCity || extPin) && !addressUpdate.present?.line1) {
+                        const newAddr = {
+                            line1: extLine1,
+                            line2: '',
+                            city: extCity,
+                            state: extState,
+                            country: 'India',
+                            pincode: extPin,
+                        };
+                        addressUpdate = {
+                            ...addressUpdate,
+                            present: { ...addressUpdate.present, ...newAddr },
+                            permanent: { ...addressUpdate.permanent, ...newAddr },
+                            sameAsPresent: true,
+                        };
+                    }
+                } catch (e) {
+                    console.warn('[PreUpload] Bank fallback extraction error:', e);
+                }
+            }
+
+            // 5. Fallback Salary extraction if missing
+            if (salaryFileData && (!currentData.uan.uanNumber || !currentData.personal.salary)) {
+                try {
+                    const salExt = await extractDataOffline(salaryFileData.base64, 'Salary', salaryFileData.type);
+                    if (salExt.uanNumber && !currentData.uan.uanNumber) {
+                        uanUpdate.uanNumber = salExt.uanNumber;
+                        uanUpdate.hasPreviousPf = true;
+                    }
+                    if (salExt.pfNumber && !currentData.uan.pfNumber) {
+                        uanUpdate.pfNumber = salExt.pfNumber;
+                        uanUpdate.hasPreviousPf = true;
+                    }
+                    if (salExt.esiNumber && !currentData.esi.esiNumber) {
+                        esiUpdate.esiNumber = salExt.esiNumber;
+                        esiUpdate.hasEsi = true;
+                    }
+                    if (salExt.grossSalary && !currentData.personal.salary && !personalUpdate.salary) {
+                        const num = parseFloat(salExt.grossSalary.replace(/[^0-9.]/g, ''));
+                        if (!isNaN(num) && num > 0) personalUpdate.salary = num;
+                    }
+                } catch (e) {
+                    console.warn('[PreUpload] Salary fallback extraction error:', e);
+                }
+            }
 
             // ─── Atomic store update ─────────────────────────────────────────
-            // We just update the document files since OCR data is already saved instantly.
-            const currentData = store.data;
             const nextData = {
                 ...currentData,
                 personal: {
                     ...currentData.personal,
+                    ...personalUpdate,
                     idProofType: formData.idProofType,
                     idProofFront: formData.idProofFront,
                     idProofBack: formData.idProofBack,
                     photo: formData.photo,
-                    mobile: formData.aadhaarLinkedMobile,
-                    alternateMobile: formData.alternateMobile,
+                    mobile: formData.aadhaarLinkedMobile || currentData.personal.mobile,
+                    alternateMobile: formData.alternateMobile || currentData.personal.alternateMobile,
                     panCard: formData.panCard,
                 },
+                address: addressUpdate,
                 bank: {
                     ...currentData.bank,
+                    ...bankUpdate,
                     bankProof: formData.bankProof,
                 },
                 uan: {
                     ...currentData.uan,
+                    ...uanUpdate,
                     salarySlip: formData.salarySlip,
                     document: formData.uanProof,
                 },
-                family: formData.family.map((f, i) => {
-                    const currentFam = currentData.family[i] || { 
-                        id: `fam_preupload_${Date.now()}_${i}`,
-                        name: '', dob: '', gender: '', occupation: '', dependent: false, relation: '', phone: '', idProof: null
-                    };
-                    return { ...currentFam, relation: f.relation, phone: f.phone, idProof: f.idProof };
-                }),
+                esi: {
+                    ...currentData.esi,
+                    ...esiUpdate,
+                },
+                family: (() => {
+                    const mapped: FamilyMember[] = formData.family.map((f, i) => {
+                        const currentFam = currentData.family[i] || { 
+                            id: `fam_preupload_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 6)}`,
+                            name: '', dob: '', gender: '', occupation: '', dependent: false, relation: '', phone: '', idProof: null
+                        };
+                        return { 
+                            ...currentFam, 
+                            relation: f.relation || currentFam.relation || '', 
+                            phone: f.phone || currentFam.phone || '', 
+                            idProof: f.idProof || currentFam.idProof || null 
+                        };
+                    });
+                    const fatherInStore = currentData.family.find(f => f.relation === 'Father');
+                    if (fatherInStore && !mapped.some(f => f.id === fatherInStore.id || f.relation === 'Father')) {
+                        mapped.push(fatherInStore);
+                    }
+                    return deduplicateFamilyMembers(mapped);
+                })(),
                 education: formData.education.map((e, i) => {
                     const currentEdu = currentData.education[i] || { 
                         id: `edu_preupload_${Date.now()}_${i}`,
@@ -833,9 +1203,13 @@ const PreUpload = () => {
             };
             store.setData(nextData);
 
+            try {
+                await api.saveDraft(nextData);
+            } catch {
+                // local state is already synced in memory
+            }
+
             setToast({ message: 'Application auto-filled! Please review.', type: 'success' });
-            // Defer navigation by one tick so React flushes the atomic state
-            // update before PersonalDetails mounts and reads defaultValues.
             setTimeout(() => navigate('/onboarding/add/personal'), 0);
         } catch (error: unknown) {
             const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
@@ -957,7 +1331,6 @@ const PreUpload = () => {
         <>
             {isProcessing && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex flex-col items-center justify-center animate-fade-in">
-      <MobileTopBar title="PRE-UPLOAD" parentPath="/onboarding" />
                     <div className="bg-[#0a2518] md:bg-white border border-white/10 md:border-border p-8 rounded-2xl shadow-xl">
                         <Loader2 className="h-12 w-12 animate-spin text-accent mx-auto" />
                         <p className="mt-4 text-lg font-semibold text-white md:text-primary-text">Processing Documents...</p>
@@ -965,36 +1338,37 @@ const PreUpload = () => {
                     </div>
                 </div>
             )}
-            <div className="w-full px-0 md:bg-card md:p-6 lg:p-8 md:rounded-xl md:shadow-card md:border md:border-border">
+            <div className="w-full max-w-md mx-auto px-4 md:max-w-none md:p-6 lg:p-8 md:bg-card md:rounded-xl md:shadow-card md:border md:border-border pb-32 md:pb-8">
+                <MobileTopBar title="DOCUMENT COLLECTION" parentPath="/onboarding/select-organization" />
                 {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
                 <MismatchModal {...mismatchModalState} onClose={() => setMismatchModalState({ isOpen: false, employeeName: '', bankName: '', reason: '' })} onOverride={handleOverride} />
                 <form onSubmit={handleSubmit(handleFormSubmit)}>
                     {/* Page header — matches mobile style */}
-                    <div className="flex items-center justify-between mb-6">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
                         <div>
                             <h1 className="text-xl font-bold text-white md:text-primary-text">Document Collection</h1>
-                            <p className="text-sm text-white/50 md:text-muted mt-0.5">Upload documents to auto-fill the application.</p>
+                            <p className="text-xs sm:text-sm text-white/50 md:text-muted mt-0.5">Upload documents to auto-fill the application.</p>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center justify-between sm:justify-end gap-2.5">
                             <Button 
                                 type="button" 
                                 variant="outline" 
                                 size="sm" 
                                 onClick={() => processAndNavigate(getValues(), true)}
-                                className="text-xs !py-1.5"
+                                className="text-xs !py-1.5 whitespace-nowrap"
                             >
                                 Skip & Fill Manually <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
                             </Button>
-                            <div className="flex items-center gap-3 px-4 py-2 rounded-2xl bg-white/5 border border-white/10 md:bg-gray-100 md:border-gray-200">
-                                <span className={`text-sm font-bold ${isManualMode ? 'text-accent' : 'text-white/40 md:text-muted'}`}>Manual</span>
+                            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 md:bg-gray-100 md:border-gray-200 shrink-0">
+                                <span className={`text-xs font-bold ${isManualMode ? 'text-accent' : 'text-white/40 md:text-muted'}`}>Manual</span>
                                 <button type="button" onClick={() => {
                                     const nextManual = !isManualMode;
                                     setIsManualMode(nextManual);
                                     store.setData({ ...store.data, submissionMode: (nextManual ? 'manual' : 'auto_ai') as 'manual' | 'auto_ai', requiresManualVerification: nextManual });
-                                }} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${!isManualMode ? 'bg-accent' : 'bg-white/10 md:bg-gray-200'}`}>
-                                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${!isManualMode ? 'translate-x-6' : 'translate-x-1'}`} />
+                                }} className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${!isManualMode ? 'bg-accent' : 'bg-white/10 md:bg-gray-200'}`}>
+                                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${!isManualMode ? 'translate-x-4' : 'translate-x-1'}`} />
                                 </button>
-                                <span className={`text-sm font-bold ${!isManualMode ? 'text-accent' : 'text-white/40 md:text-muted'}`}>Auto AI</span>
+                                <span className={`text-xs font-bold ${!isManualMode ? 'text-accent' : 'text-white/40 md:text-muted'}`}>Auto AI</span>
                             </div>
                         </div>
                     </div>
@@ -1075,14 +1449,14 @@ const PreUpload = () => {
                                         <span className="text-xs font-semibold text-white/90 md:text-primary-text">Aadhaar Front Side</span>
                                         <FieldRequirementBadge isMandatory={mandatoryFields.idProofFront} />
                                     </div>
-                                    <Controller name="idProofFront" control={control} render={({ field }) => <UploadDocument label={`Aadhaar (Front Side)${mandatoryFields.idProofFront ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.idProofFront?.message as string} allowCapture verificationStatus={store.data.personal.verifiedStatus?.idProofNumber} ocrSchema={idFrontSchema} onOcrComplete={(data) => handleImmediateOcr('idFront', data)} docType={idProofType} setToast={setToast} />} />
+                                    <Controller name="idProofFront" control={control} render={({ field }) => <UploadDocument label={`Aadhaar (Front Side)${mandatoryFields.idProofFront ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.idProofFront?.message as string} allowCapture verificationStatus={store.data.personal.verifiedStatus?.idProofNumber} ocrSchema={idFrontSchema} onOcrComplete={(data) => handleImmediateOcr('idFront', data)} docType="idFront" setToast={setToast} />} />
                                 </div>
                                 <div className="flex flex-col gap-1.5">
                                     <div className="flex items-center justify-between mb-0.5">
                                         <span className="text-xs font-semibold text-white/90 md:text-primary-text">Aadhaar Back Side</span>
                                         <FieldRequirementBadge isMandatory={mandatoryFields.idProofBack} />
                                     </div>
-                                    <Controller name="idProofBack" control={control} render={({ field }) => <UploadDocument label={`Aadhaar (Back Side)${mandatoryFields.idProofBack ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.idProofBack?.message as string} allowCapture verificationStatus={store.data.personal.verifiedStatus?.idProofNumber} ocrSchema={addressSchema} onOcrComplete={(data) => handleImmediateOcr('idBack', data)} docType={idProofType} setToast={setToast} />} />
+                                    <Controller name="idProofBack" control={control} render={({ field }) => <UploadDocument label={`Aadhaar (Back Side)${mandatoryFields.idProofBack ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.idProofBack?.message as string} allowCapture verificationStatus={store.data.personal.verifiedStatus?.idProofNumber} ocrSchema={addressSchema} onOcrComplete={(data) => handleImmediateOcr('idBack', data)} docType="idBack" setToast={setToast} />} />
                                 </div>
                             </div>
                         </div>
@@ -1201,25 +1575,30 @@ const PreUpload = () => {
 
                     {/* Footer Actions */}
                     <div className="pt-6 border-t border-white/10 md:border-border">
-                        <div className="flex justify-between items-center gap-4 flex-wrap">
-                            <Button type="button" variant="secondary" onClick={() => navigate(-1)}>
+                        <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
+                            <Button type="button" variant="secondary" onClick={() => navigate(-1)} className="w-full sm:w-auto">
                                 <ArrowLeft className="mr-2 h-4 w-4" /> Back
                             </Button>
-                            <div className="flex items-center gap-3 flex-wrap">
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
                                 <Button 
                                     type="button" 
                                     variant="outline" 
                                     onClick={() => processAndNavigate(getValues(), true)}
+                                    className="w-full sm:w-auto text-xs"
                                 >
                                     Skip & Fill Manually <ArrowRight className="ml-2 h-4 w-4" />
                                 </Button>
-                                <DraftSaveIndicator status={saveStatus} lastSavedAt={lastSavedAt} onManualSave={handlePreUploadDraft} />
-                                {saveStatus === 'dirty' && (
-                                    <Button type="button" variant="outline" size="sm" onClick={handlePreUploadDraft} className="flex items-center gap-1 text-sm">
-                                        <Save className="h-4 w-4" /> Save Draft
-                                    </Button>
-                                )}
-                                <Button type="submit" isLoading={isProcessing}>Process & Continue</Button>
+                                <div className="flex items-center justify-between sm:justify-end gap-2">
+                                    <DraftSaveIndicator status={saveStatus} lastSavedAt={lastSavedAt} onManualSave={handlePreUploadDraft} />
+                                    {saveStatus === 'dirty' && (
+                                        <Button type="button" variant="outline" size="sm" onClick={handlePreUploadDraft} className="flex items-center gap-1 text-xs">
+                                            <Save className="h-3.5 w-3.5" /> Save Draft
+                                        </Button>
+                                    )}
+                                </div>
+                                <Button type="submit" isLoading={isProcessing} className="w-full sm:w-auto !py-3 font-bold">
+                                    Process & Continue
+                                </Button>
                             </div>
                         </div>
                     </div>

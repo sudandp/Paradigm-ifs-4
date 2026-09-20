@@ -129,22 +129,38 @@ const FamilyDetails = () => {
 
     // L-16: Keep emergency contact in sync if the selected family member's details change in the form
     useEffect(() => {
-        if (!familyWatch) return;
-        familyWatch.forEach((member) => {
-            if (member && member.id && member.id === onboardingData.personal.emergencyContactId) {
-                const phoneChanged = member.phone !== onboardingData.personal.emergencyContactNumber;
-                const nameChanged = member.name !== onboardingData.personal.emergencyContactName;
-                const relationChanged = member.relation !== onboardingData.personal.relationship;
-                if (phoneChanged || nameChanged || relationChanged) {
-                    updatePersonal({
-                        emergencyContactName: member.name || '',
-                        emergencyContactNumber: member.phone || '',
-                        relationship: member.relation as any,
-                    });
-                }
-            }
-        });
-    }, [familyWatch, onboardingData.personal.emergencyContactId, onboardingData.personal.emergencyContactName, onboardingData.personal.relationship, onboardingData.personal.emergencyContactNumber, updatePersonal]);
+        const emergencyId = onboardingData.personal.emergencyContactId;
+        if (!familyWatch || !emergencyId) return;
+
+        const matchingMember = familyWatch.find((member) => member && member.id === emergencyId);
+        if (!matchingMember) return;
+
+        const formPhone = (matchingMember.phone || '').trim();
+        const storePhone = (onboardingData.personal.emergencyContactNumber || '').trim();
+        const formName = (matchingMember.name || '').trim();
+        const storeName = (onboardingData.personal.emergencyContactName || '').trim();
+        const formRelation = (matchingMember.relation || '').trim();
+        const storeRelation = (onboardingData.personal.relationship || '').trim();
+
+        const phoneChanged = formPhone !== storePhone;
+        const nameChanged = formName !== storeName;
+        const relationChanged = formRelation !== storeRelation;
+
+        if (phoneChanged || nameChanged || relationChanged) {
+            updatePersonal({
+                emergencyContactName: formName,
+                emergencyContactNumber: formPhone,
+                relationship: (matchingMember.relation || '') as any,
+            });
+        }
+    }, [
+        familyWatch,
+        onboardingData.personal.emergencyContactId,
+        onboardingData.personal.emergencyContactName,
+        onboardingData.personal.relationship,
+        onboardingData.personal.emergencyContactNumber,
+        updatePersonal
+    ]);
 
     // L-01 + L-02: When relation is selected, infer gender and mark dependent
     const handleRelationChange = (index: number, relation: any) => {
@@ -169,10 +185,9 @@ const FamilyDetails = () => {
     };
 
     // Auto-sync gender when relation is prefilled or changed
-    const familyWatchList = watch('family');
     useEffect(() => {
-        if (!familyWatchList || familyWatchList.length === 0) return;
-        familyWatchList.forEach((member, index) => {
+        if (!familyWatch || familyWatch.length === 0) return;
+        familyWatch.forEach((member, index) => {
             if (!member) return;
             const rel = member.relation as string;
             const currentGender = member.gender;
@@ -188,7 +203,7 @@ const FamilyDetails = () => {
                 }
             }
         });
-    }, [familyWatchList, setValue, onboardingData.personal.gender]);
+    }, [familyWatch, setValue, onboardingData.personal.gender]);
 
 
     const handleOcrComplete = (index: number) => (extractedData: any) => {
@@ -292,7 +307,7 @@ const FamilyDetails = () => {
                             onboardingData.personal.emergencyContactId === memberId);
 
                         return (
-                            <div key={field.id} className="p-4 border border-border rounded-xl relative space-y-4">
+                            <div key={`${field.id}_${index}`} className="p-4 border border-border rounded-xl relative space-y-4">
                                 <button type="button" onClick={() => handleRemoveClick(index)} className="absolute top-2 right-2 p-1 text-red-500 rounded-full z-10" aria-label="Remove family member">
                                     <Trash2 className="h-5 w-5" />
                                 </button>
@@ -385,7 +400,7 @@ const FamilyDetails = () => {
                         onboardingData.personal.emergencyContactId === memberId);
 
                     return (
-                        <div key={field.id} className="p-4 border border-border rounded-xl relative">
+                        <div key={`${field.id}_${index}`} className="p-4 border border-border rounded-xl relative">
                             <button type="button" onClick={() => handleRemoveClick(index)} className="absolute top-2 right-2 p-1 text-red-500 hover:bg-red-100 rounded-full" aria-label={`Remove ${field.name}`}>
                                 <Trash2 className="h-4 w-4" />
                             </button>

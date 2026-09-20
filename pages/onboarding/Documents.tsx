@@ -19,9 +19,8 @@ const formatNameToTitleCase = (value: string | undefined) => {
 }
 
 export const performOCR = async (file: File) => {
-    const { default: Tesseract } = await import('tesseract.js');
-    const result = await Tesseract.recognize(file, 'eng');
-    return result.data.text;
+    const { recognizeWithOfflineWorker } = await import('../../services/offline/offlineExtraction');
+    return recognizeWithOfflineWorker(file);
 };
 
 interface OutletContext {
@@ -45,9 +44,8 @@ const Documents = () => {
         setIsOcrProcessing(true);
         setToast({ message: 'Analyzing license for expiry date...', type: 'success' });
         try {
-            const { default: Tesseract } = await import('tesseract.js');
-            const result = await Tesseract.recognize(file, 'eng');
-            const text = result.data.text;
+            const { recognizeWithOfflineWorker } = await import('../../services/offline/offlineExtraction');
+            const text = await recognizeWithOfflineWorker(file);
             
             // Basic regex to find common expiry date formats (e.g., DD/MM/YYYY, DD-MM-YYYY, Exp: 12/2026)
             const dateMatch = text.match(/(?:valid till|expiry|exp|validity|valid upto)[\s:]*([\d]{2}[/-][\d]{2}[/-][\d]{4})/i) ||
@@ -195,8 +193,8 @@ const Documents = () => {
                     <div className="mt-6 pt-6 border-t border-[#374151]">
                         <h4 className="form-header-title mb-4">Family Member Documents</h4>
                          <div className="space-y-4">
-                            {data.family.map(member => (
-                                <UploadDocument key={member.id} label={`ID Proof for ${member.name || 'Family Member'}`} file={member.idProof} onFileChange={(file) => updateFamilyMember(member.id, { idProof: file })} onOcrComplete={handleFamilyOcr(member.id)} ocrSchema={idProofSchema} setToast={setToast} allowCapture docType="Aadhaar" />
+                            {data.family.map((member, idx) => (
+                                <UploadDocument key={member.id ? `${member.id}_${idx}` : `fam_${idx}`} label={`ID Proof for ${member.name || 'Family Member'}`} file={member.idProof} onFileChange={(file) => updateFamilyMember(member.id, { idProof: file })} onOcrComplete={handleFamilyOcr(member.id)} ocrSchema={idProofSchema} setToast={setToast} allowCapture docType="Aadhaar" />
                             ))}
                             {data.family.length === 0 && <p className="text-sm text-gray-400">No family members added.</p>}
                             <Button type="button" onClick={() => navigate('/onboarding/add/family')} variant="secondary" className="w-full flex items-center justify-center">
@@ -306,9 +304,9 @@ const Documents = () => {
                 <section>
                     <h4 className="text-md font-semibold text-primary-text mb-4 border-b pb-2">Family Member Documents</h4>
                     <div className="space-y-4">
-                        {data.family.map((member) => (
+                        {data.family.map((member, idx) => (
                             <UploadDocument
-                                key={member.id}
+                                key={member.id ? `${member.id}_${idx}` : `fam_${idx}`}
                                 label={`ID Proof for ${member.name || `(${member.relation})`}`}
                                 file={member.idProof}
                                 onFileChange={(file) => updateFamilyMember(member.id, { idProof: file })}

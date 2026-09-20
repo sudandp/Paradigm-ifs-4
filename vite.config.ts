@@ -345,6 +345,7 @@ export default defineConfig({
       '@react-pdf/pdfkit',
       'pako',
       'buffer',
+      'jsqr',
     ],
   },
   resolve: {

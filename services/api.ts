@@ -9803,10 +9803,19 @@ export const api = {
     return { success, message: success ? 'UAN found and linked.' : 'UAN not found in EPFO database.', verifiedFields: { name: null, dob: null, aadhaar: null, bank: null, uan: success, esi: null } };
   },
   extractDataFromImage: async (base64: string, mimeType: string, schema: any, docType?: string): Promise<any> => {
-    // ── Offline-first: if no network, fall back to on-device Tesseract OCR ──
-    const { isOnline } = await import('./offline/networkStatus');
+    // ── Offline-first: use isReachable() for a true connectivity check ──
+    // navigator.onLine / isOnline() only checks if a network interface exists,
+    // which can be true on dead Wi-Fi or captive portals. isReachable() makes
+    // an actual HTTP ping to the Supabase backend with a short timeout.
+    const { isOnline, isReachable } = await import('./offline/networkStatus');
     if (!isOnline()) {
-      console.info('[OCR] Offline detected — using on-device Tesseract fallback.');
+      console.info('[OCR] Offline (no network interface) — using on-device Tesseract fallback.');
+      return api.extractDataFromImageLocal(base64, docType, mimeType);
+    }
+    // Even if navigator.onLine is true, verify actual backend reachability
+    const reachable = await isReachable(3000).catch(() => false);
+    if (!reachable) {
+      console.info('[OCR] Network exists but backend unreachable — using on-device Tesseract fallback.');
       return api.extractDataFromImageLocal(base64, docType, mimeType);
     }
     if (keyPool.length === 0) {
@@ -9833,373 +9842,99 @@ export const api = {
     }
   },
   extractDataFromImageLocal: async (base64: string, docType?: string, mimeType?: string): Promise<any> => {
-    let rawText = '';
-    let tesseractWorker: any = null;
-
-    const isPdf = (mimeType && mimeType.includes('pdf')) || base64.startsWith('JVBERi') || base64.startsWith('data:application/pdf');
-
-    try {
-      if (isPdf) {
-        try {
-          const cleanBase64 = base64.includes(',') ? base64.split(',')[1] : base64;
-          const binaryString = atob(cleanBase64);
-          const bytes = new Uint8Array(binaryString.length);
-          for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-          }
-
-          const pdfjsLib = await import('pdfjs-dist/build/pdf.js');
-          const pdfjs = (pdfjsLib as any).default || pdfjsLib;
-          if (pdfjs.GlobalWorkerOptions && !pdfjs.GlobalWorkerOptions.workerSrc) {
-            pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version || '3.11.174'}/pdf.worker.min.js`;
-          }
-
-          const loadingTask = pdfjs.getDocument({
-            data: bytes,
-            isEvalSupported: false,
-            useSystemFonts: true,
-          });
-          const pdfDoc = await loadingTask.promise;
-          const maxPages = Math.min(pdfDoc.numPages, 3);
-          const textParts: string[] = [];
-          for (let p = 1; p <= maxPages; p++) {
-            const page = await pdfDoc.getPage(p);
-            const textContent = await page.getTextContent();
-            const pageText = textContent.items.map((it: any) => it.str || '').join(' ');
-            if (pageText.trim()) {
-              textParts.push(pageText);
-            }
-          }
-          rawText = textParts.join('\n');
-
-          // If scanned PDF with no digital text, render first page to canvas and OCR with Tesseract
-          if (!rawText || rawText.trim().length < 15) {
-            if (typeof document !== 'undefined') {
-              const page1 = await pdfDoc.getPage(1);
-              const viewport = page1.getViewport({ scale: 2.0 });
-              const canvas = document.createElement('canvas');
-              canvas.width = viewport.width;
-              canvas.height = viewport.height;
-              const ctx = canvas.getContext('2d');
-              if (ctx) {
-                await page1.render({ canvasContext: ctx, viewport }).promise;
-                const renderedDataUrl = canvas.toDataURL('image/png');
-                const { createWorker } = await import('tesseract.js');
-                tesseractWorker = await createWorker('eng');
-                const { data: { text } } = await tesseractWorker.recognize(renderedDataUrl);
-                rawText = text;
-              }
-            }
-          }
-        } catch (pdfErr) {
-          console.warn('[OCR] PDF text extraction error:', pdfErr);
-        }
-      }
-
-      // If not a PDF or PDF text was not extracted, use Tesseract image recognition
-      if (!rawText) {
-        const cleanBase64 = base64.includes(',') ? base64.split(',')[1] : base64;
-        const mimePrefix = cleanBase64.startsWith('/9j') ? 'image/jpeg' : 'image/png';
-        const dataUrl = `data:${mimePrefix};base64,${cleanBase64}`;
-        if (!tesseractWorker) {
-          const { createWorker } = await import('tesseract.js');
-          tesseractWorker = await createWorker('eng');
-        }
-        const { data: { text } } = await tesseractWorker.recognize(dataUrl);
-        rawText = text;
-      }
-    } finally {
-      if (tesseractWorker) {
-        try {
-          await tesseractWorker.terminate();
-        } catch {
-          // ignore worker termination error
-        }
-      }
-    }
-
-    const result: any = { _offlineFallback: true, _rawText: rawText };
-
-    // ── Normalise whitespace for regex matching ───────────────────────────
-    const flat = rawText.replace(/\n/g, ' ').replace(/\s{2,}/g, ' ');
-    const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
-
-    // ── Shared helper: extract a value that follows a label keyword ───────
-    const afterLabel = (label: RegExp): string | null => {
-      const m = flat.match(new RegExp(label.source + '[:\\s]+([A-Za-z0-9 ./-]{2,60})', 'i'));
-      return m ? m[1].trim() : null;
-    };
-
-    // ── DOB: common formats DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD ──────────
-    const extractDob = (): string | null => {
-      const m =
-        flat.match(/(?:DOB|Date\s*of\s*Birth|D\.O\.B)[:\s]+([0-9]{2}[/-][0-9]{2}[/-][0-9]{4})/i) ||
-        flat.match(/([0-9]{2}[/-][0-9]{2}[/-][0-9]{4})/) ||
-        flat.match(/([0-9]{4}-[0-9]{2}-[0-9]{2})/);
-      if (!m) return null;
-      const raw = m[1];
-      if (/^\d{4}-/.test(raw)) return raw;
-      const parts = raw.split(/[/-]/);
-      if (parts.length !== 3) return null;
-      const [d, mo, y] = parts;
-      return `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
-    };
-
-    // ── Phone: 10-digit Indian mobile ──────────────────────────────────
-    const extractPhone = (): string | null => {
-      const m = flat.match(/(?:Mobile|Phone|Mob|Ph)[:\s]+([6-9][0-9]{9})/i) ||
-                flat.match(/\b([6-9][0-9]{9})\b/);
-      return m ? m[1] : null;
-    };
-
-    // ── Name: heuristic — first ALL-CAPS or Title-Case line near the top
-    const extractName = (): string | null => {
-      const labelled = afterLabel(/Name/);
-      if (labelled && labelled.split(' ').length >= 2) return labelled;
-      for (const line of lines.slice(0, 10)) {
-        if (/^[A-Z][a-zA-Z .]{4,}$/.test(line) && line.split(' ').length >= 2) return line;
-      }
-      return null;
-    };
-
-    // ── Gender ──────────────────────────────────────────────────────────
-    const extractGender = (): string | null => {
-      if (/\bMale\b/i.test(flat) && !/Female/i.test(flat)) return 'Male';
-      if (/\bFemale\b/i.test(flat)) return 'Female';
-      if (/\bTransgender\b/i.test(flat)) return 'Other';
-      return null;
-    };
-
-    // ── Auto-detect docType if not specified or generic ───────────────────
-    let effectiveType = docType || '';
-    if (!effectiveType || effectiveType.toLowerCase() === 'document') {
-      if (/[A-Z]{4}0[A-Z0-9]{6}/.test(flat) || /(?:account|ifsc|cheque|bank|branch)/i.test(flat)) {
-        effectiveType = 'Bank';
-      } else if (/[A-Z]{5}[0-9]{4}[A-Z]{1}/.test(flat)) {
-        effectiveType = 'PAN';
-      } else if (/\d{4}\s\d{4}\s\d{4}/.test(flat) || /aadhaar|uidai/i.test(flat)) {
-        effectiveType = 'Aadhaar';
-      } else if (/salary|payslip|gross/i.test(flat)) {
-        effectiveType = 'Salary';
-      } else if (/uan|epfo|universal\s*account/i.test(flat)) {
-        effectiveType = 'UAN';
-      }
-    }
-
-    // ╔══════════════════════════════════════════════════════════════════╗
-    // ║  Document-specific extraction                                    ║
-    // ╚══════════════════════════════════════════════════════════════════╝
-
-    if (effectiveType === 'Aadhaar' || effectiveType === 'idFront' || effectiveType === 'Aadhaar Front') {
-      const aM = flat.match(/\d{4}\s\d{4}\s\d{4}/) || flat.match(/\d{12}/);
-      if (aM) result.aadhaarNumber = aM[0].replace(/\s/g, '');
-      const vidM = flat.match(/(?:VID|Virtual\s*ID)[:\s]*([0-9]{4}\s*[0-9]{4}\s*[0-9]{4}\s*[0-9]{4})/i) ||
-                   flat.match(/\b([0-9]{4}\s[0-9]{4}\s[0-9]{4}\s[0-9]{4})\b/);
-      if (vidM) result.virtualId = vidM[1].replace(/\s/g, '');
-      const enrM = flat.match(/(?:Enrolment|Enrollment)\s*(?:No|Number)?[:\s]*([0-9]{4}\/[0-9]{5}\/[0-9]{5})/i);
-      if (enrM) result.enrolmentNumber = enrM[1];
-      const name = extractName();
-      if (name) result.name = name;
-      const dob = extractDob();
-      if (dob) result.dob = dob;
-      const gender = extractGender();
-      if (gender) result.gender = gender;
-      const phone = extractPhone();
-      if (phone) result.phone = phone;
-      const pinM = flat.match(/\b([1-9][0-9]{5})\b/);
-      if (pinM) {
-        const pin = pinM[1];
-        const statePatterns = ['Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh','Goa','Gujarat','Haryana','Himachal Pradesh','Jharkhand','Karnataka','Kerala','Madhya Pradesh','Maharashtra','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Punjab','Rajasthan','Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal','Delhi','Jammu','Ladakh','Puducherry'];
-        const state = statePatterns.find(s => flat.toLowerCase().includes(s.toLowerCase())) || '';
-        const cityM = flat.match(/(?:VTC|District|DIST|City)[:\s]*([A-Za-z ]{3,30})/i);
-        const city = cityM ? cityM[1].trim() : '';
-        const addrStart = flat.search(/(?:To|Address|S\/O|C\/O|W\/O|D\/O|H\.No|House|Flat|Plot|Cross|Layout|Street|Near|Behind)/i);
-        const addrEnd = flat.indexOf(pin);
-        const line1 = addrStart >= 0 && addrEnd > addrStart ? flat.slice(addrStart, addrEnd).trim() : '';
-        if (line1 || city || pin) {
-          result.address = { line1, city, state, pincode: pin };
-        }
-      }
-    } else if (effectiveType === 'idBack' || effectiveType === 'Aadhaar Back') {
-      const pinM = flat.match(/\b([1-9][0-9]{5})\b/);
-      const pin = pinM ? pinM[1] : '';
-      const statePatterns = ['Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh','Goa','Gujarat','Haryana','Himachal Pradesh','Jharkhand','Karnataka','Kerala','Madhya Pradesh','Maharashtra','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Punjab','Rajasthan','Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal','Delhi','Jammu','Ladakh','Puducherry'];
-      const state = statePatterns.find(s => flat.toLowerCase().includes(s.toLowerCase())) || '';
-      const cityM = flat.match(/(?:,\s*)([A-Za-z ]{3,30})(?:,\s*(?:[A-Za-z ]+))?(?:,\s*[0-9]{6})/);
-      const city = cityM ? cityM[1].trim() : '';
-      const addrStart = flat.search(/(?:S\/O|C\/O|W\/O|D\/O|H\.No|House|Flat|Plot|Street|Near|Behind)/i);
-      const addrEnd = pin ? flat.indexOf(pin) : flat.length;
-      const line1 = addrStart >= 0 ? flat.slice(addrStart, addrEnd > addrStart ? addrEnd : flat.length).trim() : '';
-      result.address = { line1, city, state, pincode: pin };
-      const phone = extractPhone();
-      if (phone) result.phone = phone;
-    } else if (effectiveType === 'PAN') {
-      const panM = flat.match(/[A-Z]{5}[0-9]{4}[A-Z]{1}/);
-      if (panM) result.panNumber = panM[0];
-      const name = extractName();
-      if (name) result.name = name;
-      const dob = extractDob();
-      if (dob) result.dob = dob;
-      const phone = extractPhone();
-      if (phone) result.phone = phone;
-    } else if (effectiveType === 'Bank' || effectiveType === 'Cheque' || effectiveType.toLowerCase() === 'bank') {
-      const ifscM = flat.match(/[A-Z]{4}0[A-Z0-9]{6}/);
-      if (ifscM) result.ifscCode = ifscM[0];
-
-      const acM = flat.match(/(?:A\/C|Account\s*(?:No\.?|Number|#)|Acc\s*No)[:\s.]*([0-9]{9,18})/i) ||
-                  flat.match(/\b([0-9]{11,18})\b/);
-      if (acM) {
-        result.accountNumber = acM[1];
-        result.confirmAccountNumber = acM[1];
-      }
-
-      const nameM = afterLabel(/(?:Account\s*Holder(?:\s*Name)?|A\/C\s*Holder|Beneficiary\s*Name|Customer\s*Name|Name)/);
-      if (nameM && nameM.length > 2) {
-        result.accountHolderName = nameM;
-      }
-
-      const bankLabelM = flat.match(/(?:Bank\s*Name|Bank)[:\s]+([A-Za-z ]{3,50})/i);
-      if (bankLabelM) {
-        result.bankName = bankLabelM[1].trim();
-      } else {
-        const KNOWN_BANKS = [
-          'State Bank of India', 'HDFC Bank', 'ICICI Bank', 'Axis Bank', 'Kotak Mahindra Bank',
-          'Punjab National Bank', 'Bank of Baroda', 'Canara Bank', 'Union Bank of India',
-          'Bank of India', 'Indian Bank', 'Central Bank of India', 'IDBI Bank', 'Indian Overseas Bank',
-          'UCO Bank', 'Bank of Maharashtra', 'Punjab & Sind Bank', 'IndusInd Bank', 'Yes Bank',
-          'Federal Bank', 'IDFC First Bank', 'South Indian Bank', 'RBL Bank', 'Karur Vysya Bank',
-          'Bandhan Bank', 'City Union Bank', 'Karnataka Bank', 'Standard Chartered Bank', 'Citibank', 'HSBC'
-        ];
-        const foundBank = KNOWN_BANKS.find(b => new RegExp('\\b' + b + '\\b', 'i').test(flat));
-        if (foundBank) {
-          result.bankName = foundBank;
-        } else if (ifscM) {
-          const ifscPrefix = ifscM[0].substring(0, 4);
-          const ifscBankMap: Record<string, string> = {
-            'HDFC': 'HDFC Bank',
-            'SBIN': 'State Bank of India',
-            'ICIC': 'ICICI Bank',
-            'UTIB': 'Axis Bank',
-            'KKBK': 'Kotak Mahindra Bank',
-            'PUNB': 'Punjab National Bank',
-            'BARB': 'Bank of Baroda',
-            'CNRB': 'Canara Bank',
-            'UBIN': 'Union Bank of India',
-            'BKID': 'Bank of India',
-            'IDIB': 'Indian Bank',
-            'IBKL': 'IDBI Bank',
-            'INDB': 'IndusInd Bank',
-            'YESB': 'Yes Bank',
-            'FDRL': 'Federal Bank',
-            'IDFB': 'IDFC First Bank',
-          };
-          if (ifscBankMap[ifscPrefix]) {
-            result.bankName = ifscBankMap[ifscPrefix];
-          }
-        }
-      }
-
-      const branchM = afterLabel(/(?:Account\s*Branch|Branch\s*(?:Name)?)/);
-      if (branchM) result.branchName = branchM;
-
-      const phone = extractPhone();
-      if (phone) result.phone = phone;
-
-      const pinM = flat.match(/\b([1-9][0-9]{5})\b/);
-      if (pinM) result.pincode = pinM[1];
-    } else if (effectiveType === 'Salary' || effectiveType === 'salary' || effectiveType === 'UAN' || effectiveType === 'uan') {
-      const uanM = flat.match(/(?:UAN|Universal\s*Account)[:\s]*([0-9]{12})/i) ||
-                   flat.match(/\b([0-9]{12})\b/);
-      if (uanM) result.uanNumber = uanM[1];
-      const pfM = flat.match(/[A-Z]{2}\/[A-Z]{3}\/[0-9]{6}\/[0-9]{3}/);
-      if (pfM) result.pfNumber = pfM[0];
-      const esiM = flat.match(/(?:ESI|ESIC)[:\s]*([0-9]{10,17})/i);
-      if (esiM) result.esiNumber = esiM[1];
-      const salaryM = flat.match(/(?:Gross|Total\s*Earnings)[:\s₹,]*([0-9,]{3,10})/i);
-      if (salaryM) result.grossSalary = salaryM[1].replace(/,/g, '');
-      const empM = afterLabel(/(?:Employee\s*Name|Emp\s*Name|Name)/);
-      if (empM) result.employeeName = empM;
-    }
-
-    return result;
+    const { extractDataOffline } = await import('./offline/offlineExtraction');
+    return extractDataOffline(base64, docType, mimeType);
   },
   crossVerifyNames: async (name1: string, name2: string): Promise<{ isMatch: boolean; reason: string }> => {
+    const isExact = name1.trim().toLowerCase() === name2.trim().toLowerCase();
     if (keyPool.length === 0) {
-      const isMatch = name1.trim().toLowerCase() === name2.trim().toLowerCase();
-      return { isMatch, reason: isMatch ? 'Exact match (AI disabled).' : 'No match (AI disabled).' };
+      return { isMatch: isExact, reason: isExact ? 'Exact match (AI disabled).' : 'No match (AI disabled).' };
     }
-    return callWithFallback(client => client.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: `Are these two names referring to the same person? Name 1: "${name1}", Name 2: "${name2}". Respond in JSON with keys: "isMatch" (boolean) and "reason" (string).`,
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            isMatch: { type: Type.BOOLEAN },
-            reason: { type: Type.STRING },
+    try {
+      return await callWithFallback(client => client.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: `Are these two names referring to the same person? Name 1: "${name1}", Name 2: "${name2}". Respond in JSON with keys: "isMatch" (boolean) and "reason" (string).`,
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              isMatch: { type: Type.BOOLEAN },
+              reason: { type: Type.STRING },
+            }
           }
         }
-      }
-    }).then(r => JSON.parse(r.text.trim())));
+      }).then(r => JSON.parse(r.text.trim())));
+    } catch (err) {
+      console.warn('[crossVerifyNames] Gemini API unavailable or quota exceeded; falling back to direct match:', err);
+      return { isMatch: isExact, reason: isExact ? 'Exact match (AI fallback).' : 'No match (AI fallback).' };
+    }
   },
   verifyFingerprintImage: async (base64: string, mimeType: string): Promise<{ containsFingerprints: boolean; reason: string }> => {
-    // When AI is unavailable return a default response indicating that no
-    // fingerprints were detected.  This fallback prevents runtime errors when
-    // running the project without a Gemini API key.
-    if (!ai) {
+    if (!ai || keyPool.length === 0) {
       return {
         containsFingerprints: false,
         reason: 'AI disabled; cannot detect fingerprints.'
       };
     }
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: {
-        parts: [
-          { text: 'Does this image contain one or more human fingerprints? The image might be a scan from paper. Respond in JSON with "containsFingerprints" (boolean) and "reason" (string).' },
-          { inlineData: { data: base64, mimeType } }
-        ]
-      },
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            containsFingerprints: { type: Type.BOOLEAN },
-            reason: { type: Type.STRING },
+    try {
+      return await callWithFallback(client => client.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: {
+          parts: [
+            { text: 'Does this image contain one or more human fingerprints? The image might be a scan from paper. Respond in JSON with "containsFingerprints" (boolean) and "reason" (string).' },
+            { inlineData: { data: base64, mimeType } }
+          ]
+        },
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              containsFingerprints: { type: Type.BOOLEAN },
+              reason: { type: Type.STRING },
+            }
           }
         }
-      }
-    });
-    const jsonStr = response.text.trim();
-    return JSON.parse(jsonStr);
+      }).then(r => JSON.parse(r.text.trim())));
+    } catch (err) {
+      console.warn('[verifyFingerprintImage] AI check failed or quota exceeded; bypassing fingerprint check:', err);
+      return {
+        containsFingerprints: false,
+        reason: 'AI quota reached or offline; skipped fingerprint detection.'
+      };
+    }
   },
   enhanceDocumentPhoto: async (base64: string, mimeType: string): Promise<string> => {
-    // When AI is unavailable simply return the original image.  This ensures
-    // document uploads still work without enhancement.
-    if (!ai) {
-      console.warn('AI disabled; returning original document photo without enhancement.');
+    // When AI is unavailable or fails (offline, rate limit 429, quota exhausted),
+    // safely return the original image so the camera & OCR flow is never blocked.
+    if (!ai || keyPool.length === 0) {
+      console.info('[enhanceDocumentPhoto] AI disabled or no keys; using raw document photo.');
       return base64;
     }
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: {
-        parts: [
-          { text: 'Enhance this document photo. Improve contrast, correct perspective to be flat, and make text as clear as possible. Return only the enhanced image.' },
-          { inlineData: { data: base64, mimeType } }
-        ]
-      },
-      config: {
-        responseModalities: [Modality.IMAGE],
-      },
-    });
-    for (const part of response.candidates[0].content.parts) {
-      if (part.inlineData) {
-        return part.inlineData.data;
+    try {
+      const response = await callWithFallback(client => client.models.generateContent({
+        model: 'gemini-2.5-flash-image',
+        contents: {
+          parts: [
+            { text: 'Enhance this document photo. Improve contrast, correct perspective to be flat, and make text as clear as possible. Return only the enhanced image.' },
+            { inlineData: { data: base64, mimeType } }
+          ]
+        },
+        config: {
+          responseModalities: [Modality.IMAGE],
+        },
+      }));
+      for (const part of response.candidates?.[0]?.content?.parts || []) {
+        if (part.inlineData?.data) {
+          return part.inlineData.data;
+        }
       }
+      return base64;
+    } catch (err) {
+      console.warn('[enhanceDocumentPhoto] Cloud enhancement bypassed (quota exceeded / offline); using original photo:', err);
+      return base64;
     }
-    throw new Error("AI did not return an enhanced image.");
   },
   getCompOffLogs: async (userId: string): Promise<CompOffLog[]> => {
     const { data, error } = await supabase.from('comp_off_logs').select('*').eq('user_id', userId).order('date_earned', { ascending: false });

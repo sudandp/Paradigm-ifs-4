@@ -462,9 +462,9 @@ const PersonalDetails = () => {
                          {familySuggestions.length > 0 && (
                             <div className="mb-4 flex flex-wrap gap-2 items-center bg-[#243524]/20 p-3 rounded-lg border border-emerald-950/20">
                                 <span className="text-xs text-muted font-medium">Use family member details:</span>
-                                {familySuggestions.map(member => (
+                                {familySuggestions.map((member, idx) => (
                                     <button
-                                        key={member.id}
+                                        key={member.id ? `${member.id}_${idx}` : `sugg_${idx}`}
                                         type="button"
                                         onClick={() => {
                                             setValue('emergencyContactName', member.name, { shouldValidate: true });
