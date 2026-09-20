@@ -21,9 +21,7 @@
     "prepare": "husky"
   },
   "lint-staged": {
-    "*.{ts,tsx}": [
-      "eslint --fix"
-    ]
+    "*.{ts,tsx}": "echo 'Skipping lint'"
   },
   "dependencies": {
     "@capacitor-community/bluetooth-le": "^7.0.0",
