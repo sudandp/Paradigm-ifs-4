@@ -63,6 +63,7 @@ public class MainActivity extends BridgeActivity {
 
     private void setupWebViewListeners() {
         if (bridge != null && bridge.getWebView() != null) {
+            bridge.getWebView().getSettings().setMediaPlaybackRequiresUserGesture(false);
             bridge.getWebView().setDownloadListener((url, userAgent, contentDisposition, mimetype, contentLength) -> {
                 try {
                     Intent intent = new Intent(Intent.ACTION_VIEW);

@@ -7147,19 +7147,24 @@ export const api = {
           const lStatus = String(l.status || '').toLowerCase();
           return l.start_date === thirdSatStr && 
                  (lStatus === 'approved' || lStatus === 'correction_made') && 
-                 (lType.includes('blue leave work') || lType.includes('correction') || lType.includes('comp'));
+                 (lType.includes('correction') || lType.includes('regularization'));
         });
       }
     }
 
     if (isBangaloreStaff && isFloatingHolidayValid(todayStr) && !isFemaleUser) {
-        floatingTotalValue = rules.monthlyFloatingLeaves || 1;
         if (!thirdSatPassed) {
-          // Has not occurred yet — cannot be taken in advance, 0 available
-          initialFloatingUsed = floatingTotalValue;
+          // Has not occurred yet — cannot be taken in advance, 0 available, 0 earned yet (0/0)
+          floatingTotalValue = 0;
+          initialFloatingUsed = 0;
         } else if (!workedOn3rdSat) {
-          // Passed and user did NOT work — consumed as holiday, 0 available
-          initialFloatingUsed = floatingTotalValue;
+          // Passed and user did NOT work — consumed as holiday, 0 available, 0 earned to take later (0/0)
+          floatingTotalValue = 0;
+          initialFloatingUsed = 0;
+        } else {
+          // Worked on 3rd Saturday: 1 earned
+          floatingTotalValue = rules.monthlyFloatingLeaves || 1;
+          initialFloatingUsed = 0;
         }
     }
 

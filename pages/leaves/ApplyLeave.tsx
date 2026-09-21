@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getStaffCategory, isTechnicalRole, calculateWorkingHours, getEarlyDepartureDeductions, formatMinutesToHoursOrMins } from '../../utils/attendanceCalculations';
 
 import { useAuthStore } from '../../store/authStore';
+import { useImpersonationStore } from '../../store/impersonationStore';
 import { api } from '../../services/api';
 import type { LeaveType, UploadedFile, LeaveBalance, UserChild, StaffAttendanceRules, LeaveRequestStatus, AttendanceEvent } from '../../types';
 import { ArrowLeft, Clock, CloudOff, X, AlertTriangle } from 'lucide-react';
@@ -46,10 +47,11 @@ type LeaveRequestFormData = {
     compOffAgreement?: boolean;
 };
 
-const getLeaveValidationSchema = (threshold: number) => yup.object({
+const getLeaveValidationSchema = (threshold: number, isAdminUser: boolean = false) => yup.object({
     leaveType: yup.string<LeaveType>().oneOf(['Earned', 'Sick', 'Floating', 'Comp Off', 'Loss of Pay', 'Maternity', 'Child Care', 'Pink Leave', 'Blue Leave Work', 'WFH', 'Correction', 'Permission', 'Regularization']).required('Leave type is required'),
     startDate: yup.string().required('Start date is required')
         .test('is-valid-correction-date', 'Correction can only be raised for the same day (today) or within the last 48 hours', function (value) {
+            if (isAdminUser) return true;
             const { leaveType } = this.parent as { leaveType?: string };
             if (leaveType !== 'Correction' || !value) return true;
             
@@ -150,13 +152,30 @@ const getLeaveValidationSchema = (threshold: number) => yup.object({
 
 const ApplyLeave: React.FC = () => {
     const { user, isCheckedIn, isOffline } = useAuthStore();
+    const { isImpersonating, impersonator } = useImpersonationStore();
     const navigate = useNavigate();
     const isMobile = useMediaQuery('(max-width: 767px)');
     const [toast, setToast] = React.useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const { attendance } = useSettingsStore();
     const sickLeaveCertificateThreshold = attendance.office.sickLeaveCertificateThreshold;
 
-    const validationSchema = useMemo(() => getLeaveValidationSchema(sickLeaveCertificateThreshold), [sickLeaveCertificateThreshold]);
+    // Detect if current submitter has admin privileges or is impersonating
+    const isAdminUser = useMemo(() => {
+        if (isImpersonating) return true;
+        const adminRoles = ['admin', 'super_admin', 'management', 'hr', 'director', 'manager'];
+        const currentRole = (user?.role || '').toLowerCase();
+        const impersonatorRole = (impersonator?.role || '').toLowerCase();
+        if (adminRoles.includes(currentRole) || adminRoles.includes(impersonatorRole)) return true;
+        if ((user as any)?.permissions?.some((p: string) => ['manage_users', 'manage_all_attendance', 'manage_leave_requests', 'manage_attendance_rules'].includes(p))) {
+            return true;
+        }
+        if ((impersonator as any)?.permissions?.some((p: string) => ['manage_users', 'manage_all_attendance', 'manage_leave_requests', 'manage_attendance_rules'].includes(p))) {
+            return true;
+        }
+        return false;
+    }, [isImpersonating, impersonator, user]);
+
+    const validationSchema = useMemo(() => getLeaveValidationSchema(sickLeaveCertificateThreshold, isAdminUser), [sickLeaveCertificateThreshold, isAdminUser]);
     const userCategory = useMemo(() => getStaffCategory(user?.role, user?.societyId, attendance), [user?.role, user?.societyId, attendance]);
     const rules = useMemo(() => {
         if (!attendance || !userCategory) return null;
@@ -862,7 +881,7 @@ const ApplyLeave: React.FC = () => {
         if (!user || isSubmitting) return;
         setIsSubmitting(true);
         try {
-            if (isProbation && ['Earned', 'Sick', 'Child Care'].includes(formData.leaveType)) {
+            if (isProbation && ['Earned', 'Sick', 'Child Care'].includes(formData.leaveType) && !isAdminUser) {
                 setToast({ message: `You cannot apply for ${formData.leaveType} during your 3-month probation period.`, type: 'error' });
                 setIsSubmitting(false);
                 return;
@@ -1053,7 +1072,8 @@ const ApplyLeave: React.FC = () => {
             }
 
             // Correction restriction: Same day or within 48 hours. If today is selected, check logs & duration.
-            if (formData.leaveType === 'Correction') {
+            // Bypassed for admin / impersonation submission to allow feeding historical data
+            if (formData.leaveType === 'Correction' && !isAdminUser) {
                 const now = new Date();
                 const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
                 const targetDate = new Date(formData.startDate.replace(/-/g, '/'));
@@ -1292,8 +1312,8 @@ const ApplyLeave: React.FC = () => {
                 }
             }
             
-            // Check Limits for Correction
-            if (formData.leaveType === 'Correction') {
+            // Check Limits for Correction (bypassed for admin)
+            if (formData.leaveType === 'Correction' && !isAdminUser) {
                 if (rules?.enableCorrectionLimits) {
                     // Verify duration
                     const getMinutes = (timeStr: string) => {
@@ -1677,15 +1697,27 @@ const ApplyLeave: React.FC = () => {
                             </div>
 
                             {watchLeaveType === 'Correction' && correctionUsage.enabled && (
-                                <div className={`p-4 rounded-xl border ${correctionUsage.used >= correctionUsage.limit ? 'bg-rose-500/10 border-rose-500/20 text-rose-500' : 'bg-amber-500/10 border-amber-500/20 text-amber-500'}`}>
+                                <div className={`p-4 rounded-xl border ${
+                                    isAdminUser 
+                                        ? 'bg-blue-500/10 border-blue-500/20 text-blue-500' 
+                                        : correctionUsage.used >= correctionUsage.limit 
+                                            ? 'bg-rose-500/10 border-rose-500/20 text-rose-500' 
+                                            : 'bg-amber-500/10 border-amber-500/20 text-amber-500'
+                                }`}>
                                     <div className="flex items-center gap-2 mb-1">
                                         <Clock className="w-5 h-5" />
                                         <h4 className="font-bold text-sm">Monthly Correction Limit</h4>
+                                        {isAdminUser && (
+                                            <span className="ml-auto text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-500 border border-blue-500/30">
+                                                Admin Bypass Active
+                                            </span>
+                                        )}
                                     </div>
                                     <p className="text-xs opacity-90 leading-relaxed mb-2">
                                         You have used <strong>{correctionUsage.used}</strong> out of <strong>{correctionUsage.limit}</strong> allowed corrections this month.
+                                        {isAdminUser && <span className="ml-1.5 font-semibold text-blue-500">(Admins can submit corrections beyond limit)</span>}
                                     </p>
-                                    {correctionUsage.used >= correctionUsage.limit && (
+                                    {correctionUsage.used >= correctionUsage.limit && !isAdminUser && (
                                         <div className="text-[11px] font-black uppercase tracking-widest bg-rose-500/20 p-2 rounded-lg mt-2">
                                             Limit Exceeded. Please contact admin for manual corrections.
                                         </div>
@@ -1694,18 +1726,35 @@ const ApplyLeave: React.FC = () => {
                             )}
 
                             {watchLeaveType === 'Correction' && (
-                                <div className="p-4 rounded-xl border bg-emerald-500/5 border-emerald-500/10 text-emerald-500 space-y-2">
+                                <div className={`p-4 rounded-xl border ${
+                                    isAdminUser
+                                        ? 'bg-blue-500/5 border-blue-500/20 text-blue-500'
+                                        : 'bg-emerald-500/5 border-emerald-500/10 text-emerald-500'
+                                } space-y-2`}>
                                     <div className="flex items-center gap-2 mb-1">
-                                        <Clock className="w-5 h-5 text-emerald-500" />
+                                        <Clock className={`w-5 h-5 ${isAdminUser ? 'text-blue-500' : 'text-emerald-500'}`} />
                                         <h4 className="font-bold text-sm">Correction Request Guidelines</h4>
+                                        {isAdminUser && (
+                                            <span className="ml-auto text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-500 border border-blue-500/30">
+                                                Admin Entry Mode
+                                            </span>
+                                        )}
                                     </div>
                                     <div className="text-xs opacity-95 leading-relaxed space-y-1.5">
-                                        <p>
-                                            • Corrections can only be raised for the <strong>same day (today)</strong> or within the last <strong>48 hours</strong>.
-                                        </p>
-                                        <p>
-                                            • For the <strong>present day (today)</strong>, corrections are only allowed if you have existing attendance logs (e.g., you forgot to punch out) or if you have worked for <strong>4 hours or more</strong>.
-                                        </p>
+                                        {isAdminUser ? (
+                                            <p>
+                                                • <strong>Admin Override Active:</strong> You can feed correction and attendance data for <strong>any date</strong> without the 48-hour limit, attendance log requirement, or monthly quota restrictions.
+                                            </p>
+                                        ) : (
+                                            <>
+                                                <p>
+                                                    • Corrections can only be raised for the <strong>same day (today)</strong> or within the last <strong>48 hours</strong>.
+                                                </p>
+                                                <p>
+                                                    • For the <strong>present day (today)</strong>, corrections are only allowed if you have existing attendance logs (e.g., you forgot to punch out) or if you have worked for <strong>4 hours or more</strong>.
+                                                </p>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
                             )}
@@ -2603,8 +2652,8 @@ const ApplyLeave: React.FC = () => {
                                 isLoading={isSubmitting} 
                                 disabled={
                                     isSubmitting || 
-                                    (watchLeaveType === 'Correction' && correctionUsage.enabled && correctionUsage.used >= correctionUsage.limit) || 
-                                    (watchLeaveType === 'Permission' && permissionUsage.enabled && permissionUsage.usedMins >= (permissionUsage.limitHrs || 3) * 60)
+                                    (watchLeaveType === 'Correction' && !isAdminUser && correctionUsage.enabled && correctionUsage.used >= correctionUsage.limit) || 
+                                    (watchLeaveType === 'Permission' && !isAdminUser && permissionUsage.enabled && permissionUsage.usedMins >= (permissionUsage.limitHrs || 3) * 60)
                                 }
                                 className={`flex-1 md:flex-none md:w-36 ${isMobile ? 'bg-[#065f46] hover:bg-[#044e39] text-white font-bold rounded-xl py-3.5 shadow-lg shadow-[#065f46]/30 border border-white/10' : ''}`}
                             >

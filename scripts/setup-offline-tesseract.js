@@ -71,6 +71,10 @@ download(traineddataUrl, langGzDest)
       const unzipped = zlib.gunzipSync(gzipped);
       fs.writeFileSync(langDest, unzipped);
       console.log('✓ Extracted uncompressed eng.traineddata successfully.');
+      // Remove .gz so Android AAPT doesn't treat eng.traineddata and eng.traineddata.gz as duplicate assets
+      if (fs.existsSync(langGzDest)) {
+        fs.unlinkSync(langGzDest);
+      }
     } catch (gunzipErr) {
       console.warn('! Gunzip warning:', gunzipErr.message);
     }

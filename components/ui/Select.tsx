@@ -6,6 +6,7 @@ interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   label?: string;
   labelClassName?: string;
   error?: string;
+  description?: string;
   requiredIndicator?: boolean;
   registration?: UseFormRegisterReturn;
   icon?: React.ReactNode;
@@ -13,7 +14,7 @@ interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
 }
 
 const Select = React.forwardRef<HTMLSelectElement, SelectProps>(({ 
-  label, labelClassName, id, error, requiredIndicator, registration, icon, children, ...props 
+  label, labelClassName, id, error, description, requiredIndicator, registration, icon, children, ...props 
 }, ref) => {
   const generatedId = useId();
   const selectId = id || generatedId;
@@ -57,6 +58,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(({
         {selectElement}
       </div>
       {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+      {description && !error && <p className="mt-1 text-xs text-muted">{description}</p>}
     </div>
   );
 });

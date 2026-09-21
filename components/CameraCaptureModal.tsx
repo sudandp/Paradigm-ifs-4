@@ -121,8 +121,9 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
     if (captureGuidance === 'profile') return 'user';
     const tag = `${docType || ''} ${documentTitle || ''}`.toLowerCase();
     if (tag.includes('photo') || tag.includes('avatar') || tag.includes('selfie')) return 'user';
+    if (getInitialMode() === 'PHOTO') return 'user';
     return 'environment';
-  }, [captureGuidance, docType, documentTitle]);
+  }, [captureGuidance, docType, documentTitle, getInitialMode]);
 
   const [activeMode, setActiveMode] = useState<ScannerMode>(getInitialMode);
   const [capturedImage, setCapturedImage] = useState<string | null>(initialImage || null);
@@ -132,6 +133,9 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
   const [hasFlashSupport, setHasFlashSupport] = useState(false);
   const [isGridOn, setIsGridOn] = useState(false);
   const [filterMode, setFilterMode] = useState<FilterMode>('natural');
+  const [filterToast, setFilterToast] = useState<string | null>(null);
+  const filterToastTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [isSwitchingCamera, setIsSwitchingCamera] = useState(false);
   const [shutterFlash, setShutterFlash] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
@@ -148,6 +152,17 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Callback ref to attach stream immediately whenever the video DOM node mounts or changes
+  const setVideoRef = useCallback((node: HTMLVideoElement | null) => {
+    videoRef.current = node;
+    if (node && streamRef.current) {
+      if (node.srcObject !== streamRef.current) {
+        node.srcObject = streamRef.current;
+      }
+      node.play().catch(e => console.warn('Video play on mount warning:', e));
+    }
+  }, []);
 
   // Sync mode and camera facing direction when props change
   useEffect(() => {
@@ -205,21 +220,141 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
 
     setError(null);
     setIsProcessing(true);
-    setProcessingMessage('Starting live camera...');
-    stopLiveCamera();
+    setProcessingMessage(facing === 'user' ? 'Opening front camera...' : 'Opening back camera...');
+    
+    // Stop and release previous stream so Android Camera HAL doesn't lock device
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => {
+        try {
+          if (isFlashOn) {
+            (track as any).applyConstraints({ advanced: [{ torch: false }] }).catch(() => {});
+          }
+          track.stop();
+        } catch (e) {
+          console.warn('Track stop error:', e);
+        }
+      });
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setIsFlashOn(false);
+
+    // Short pause allows Android Camera HAL to cleanly release previous hardware session
+    await new Promise(r => setTimeout(r, 180));
+
+    // Determine device orientation so camera doesn't zoom in 3x on mobile portrait
+    const isPortrait = typeof window !== 'undefined' ? window.innerHeight >= window.innerWidth : true;
+    const targetWidth = isPortrait ? { ideal: 1080 } : { ideal: 1920 };
+    const targetHeight = isPortrait ? { ideal: 1920 } : { ideal: 1080 };
+    const targetAspectRatio = isPortrait ? { ideal: 9 / 16 } : { ideal: 16 / 9 };
 
     try {
-      const constraints: MediaStreamConstraints = {
-        video: {
-          facingMode: { ideal: facing },
-          width: { ideal: 1920, min: 1080 },
-          height: { ideal: 1080, min: 720 },
-        },
-        audio: false,
-      };
+      let stream: MediaStream | null = null;
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      // Check available devices via enumerateDevices() to find exact camera
+      let preferredDeviceId: string | undefined;
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoInputs = devices.filter(d => d.kind === 'videoinput');
+        if (videoInputs.length > 1) {
+          if (facing === 'user') {
+            const front = videoInputs.find(d => 
+              /front|user|selfie/i.test(d.label) || /facing front/i.test(d.label)
+            );
+            if (front) preferredDeviceId = front.deviceId;
+          } else {
+            const back = videoInputs.find(d => 
+              /back|rear|environment/i.test(d.label) || /facing back/i.test(d.label)
+            );
+            if (back) preferredDeviceId = back.deviceId;
+          }
+        }
+      } catch (enumErr) {
+        console.warn('enumerateDevices error:', enumErr);
+      }
+
+      // Strategy 1: Specific Device ID (Most reliable on multi-camera Android devices)
+      if (preferredDeviceId) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              deviceId: { exact: preferredDeviceId },
+              width: targetWidth,
+              height: targetHeight,
+              aspectRatio: targetAspectRatio,
+            },
+            audio: false,
+          });
+        } catch (devErr) {
+          console.warn('deviceId exact constraint failed, falling back:', devErr);
+        }
+      }
+
+      // Strategy 2: Exact facingMode
+      if (!stream) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: { exact: facing },
+              width: targetWidth,
+              height: targetHeight,
+              aspectRatio: targetAspectRatio,
+            },
+            audio: false,
+          });
+        } catch (exactErr) {
+          console.warn('exact facingMode failed, falling back:', exactErr);
+        }
+      }
+
+      // Strategy 3: Direct facingMode constraint
+      if (!stream) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: facing,
+              width: targetWidth,
+              height: targetHeight,
+              aspectRatio: targetAspectRatio,
+            },
+            audio: false,
+          });
+        } catch (facingErr) {
+          console.warn('standard facingMode failed, falling back to ideal:', facingErr);
+        }
+      }
+
+      // Strategy 4: Ideal facingMode
+      if (!stream) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: { ideal: facing },
+              width: isPortrait ? { ideal: 720 } : { ideal: 1280 },
+              height: isPortrait ? { ideal: 1280 } : { ideal: 720 },
+            },
+            audio: false,
+          });
+        } catch (idealErr) {
+          console.warn('ideal facingMode failed, falling back to any camera:', idealErr);
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false,
+          });
+        }
+      }
+
+      if (!stream) {
+        throw new Error('Unable to obtain camera stream');
+      }
+
       streamRef.current = stream;
+
+      // Activate camera in React state so <video> element is rendered
+      setIsLiveCameraActive(true);
+      setShowFallbackUI(false);
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -230,20 +365,29 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
       const track = stream.getVideoTracks()[0];
       const capabilities = (track?.getCapabilities?.() || {}) as any;
       setHasFlashSupport(!!capabilities.torch);
-
-      setIsLiveCameraActive(true);
-      setShowFallbackUI(false);
     } catch (err: any) {
       console.warn('Live camera stream error, switching to fallback:', err);
       setIsLiveCameraActive(false);
       setShowFallbackUI(true);
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
         setError('Camera access denied. Please enable camera permissions in your browser or select an image from gallery.');
+      } else {
+        setError('Unable to access camera: ' + (err.message || 'Unknown error'));
       }
     } finally {
       setIsProcessing(false);
     }
-  }, [capturedImage, facingMode, stopLiveCamera]);
+  }, [capturedImage, facingMode, isFlashOn]);
+
+  // Ensure stream is played whenever isLiveCameraActive state changes
+  useEffect(() => {
+    if (isLiveCameraActive && videoRef.current && streamRef.current) {
+      if (videoRef.current.srcObject !== streamRef.current) {
+        videoRef.current.srcObject = streamRef.current;
+      }
+      videoRef.current.play().catch(e => console.warn('Stream play effect warning:', e));
+    }
+  }, [isLiveCameraActive]);
 
   // Start camera when modal opens without a pre-existing image
   useEffect(() => {
@@ -279,10 +423,22 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
     }
   };
 
-  const handleFlipCamera = () => {
+  const handleFlipCamera = async () => {
+    if (isSwitchingCamera || isProcessing) return;
     const nextFacing = facingMode === 'environment' ? 'user' : 'environment';
+    setIsSwitchingCamera(true);
     setFacingMode(nextFacing);
-    startLiveCamera(nextFacing);
+    try {
+      await startLiveCamera(nextFacing);
+      const label = nextFacing === 'user' ? 'Front Camera Active' : 'Back Camera Active';
+      setFilterToast(label);
+      if (filterToastTimerRef.current) clearTimeout(filterToastTimerRef.current);
+      filterToastTimerRef.current = setTimeout(() => {
+        setFilterToast(null);
+      }, 1800);
+    } finally {
+      setIsSwitchingCamera(false);
+    }
   };
 
   const handleToggleGrid = () => {
@@ -290,7 +446,25 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
   };
 
   const handleCycleFilter = () => {
-    setFilterMode(prev => prev === 'natural' ? 'enhanced' : prev === 'enhanced' ? 'bw' : 'natural');
+    const next = filterMode === 'natural' ? 'enhanced' : filterMode === 'enhanced' ? 'bw' : 'natural';
+    setFilterMode(next);
+    const label = next === 'enhanced' ? 'Enhanced Doc Mode' : next === 'bw' ? 'B&W High Contrast' : 'Natural Color';
+    setFilterToast(label);
+    if (filterToastTimerRef.current) clearTimeout(filterToastTimerRef.current);
+    filterToastTimerRef.current = setTimeout(() => {
+      setFilterToast(null);
+    }, 1800);
+  };
+
+  const handleModeChange = (mode: ScannerMode) => {
+    setActiveMode(mode);
+    setAspect(mode === 'PHOTO' ? 1 : undefined);
+    // Automatically switch to front camera for selfie PHOTO mode, and rear camera for documents
+    const targetFacing: 'user' | 'environment' = mode === 'PHOTO' ? 'user' : 'environment';
+    if (targetFacing !== facingMode) {
+      setFacingMode(targetFacing);
+      startLiveCamera(targetFacing);
+    }
   };
 
   // ─── Live Shutter Snap ───
@@ -649,12 +823,27 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
       {/* ─── Live Video Stream Background (Full Screen) ─── */}
       {isLiveCameraActive && !capturedImage && (
         <video
-          ref={videoRef}
+          ref={setVideoRef}
           autoPlay
           playsInline
           muted
+          // @ts-ignore
+          webkit-playsinline="true"
+          onLoadedMetadata={(e) => {
+            (e.target as HTMLVideoElement).play().catch(() => {});
+          }}
+          onClick={(e) => {
+            (e.target as HTMLVideoElement).play().catch(() => {});
+          }}
           className="absolute inset-0 w-full h-full object-cover z-0"
-          style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }}
+          style={{
+            transform: facingMode === 'user' ? 'scaleX(-1)' : 'none',
+            filter: filterMode === 'enhanced'
+              ? 'contrast(1.25) brightness(1.05) saturate(1.05)'
+              : filterMode === 'bw'
+                ? 'grayscale(1) contrast(1.35) brightness(1.05)'
+                : 'none',
+          }}
         />
       )}
 
@@ -664,7 +853,14 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
           src={displayImage}
           alt={activeMode === 'PHOTO' ? 'Captured profile photo' : 'Captured document'}
           className="absolute inset-0 w-full h-full object-cover z-0"
-          style={{ transform: (facingMode === 'user' && !croppedImage) ? 'scaleX(-1)' : 'none' }}
+          style={{
+            transform: (facingMode === 'user' && !croppedImage) ? 'scaleX(-1)' : 'none',
+            filter: filterMode === 'enhanced'
+              ? 'contrast(1.25) brightness(1.05) saturate(1.05)'
+              : filterMode === 'bw'
+                ? 'grayscale(1) contrast(1.35) brightness(1.05)'
+                : 'none',
+          }}
         />
       )}
 
@@ -681,31 +877,36 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         </div>
       )}
 
-      {/* ─── Top Navigation & Action Bar (Matching Attached Mockup) ─── */}
-      <div className="relative z-30 flex items-center justify-between px-4 py-3 bg-gradient-to-b from-[#0b0f17]/90 via-[#0b0f17]/60 to-transparent">
+      {/* ─── Top Navigation & Action Bar (Safe Area Protected below Status Bar) ─── */}
+      <div
+        className="relative z-30 flex items-center justify-between px-5 pb-3 bg-gradient-to-b from-[#0b0f17]/95 via-[#0b0f17]/75 to-transparent"
+        style={{
+          paddingTop: 'max(calc(env(safe-area-inset-top, 0px) + 0.75rem), 3.5rem)',
+        }}
+      >
         {/* Back / Close Button */}
         <button
           type="button"
           onClick={onClose}
-          className="w-10 h-10 rounded-full flex items-center justify-center text-white/90 hover:text-white bg-white/10 hover:bg-white/20 active:scale-95 transition-all"
+          className="w-10 h-10 rounded-full flex items-center justify-center text-white/90 hover:text-white bg-white/10 hover:bg-white/20 active:scale-95 transition-all shadow-md backdrop-blur-md border border-white/10"
           title="Back"
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
 
-        {/* Action Controls Group: Flash, Grid, Flip Camera, Settings */}
-        <div className="flex items-center gap-4 sm:gap-6">
+        {/* Action Controls Group: Flash, Grid, Flip Camera, Settings / Filter */}
+        <div className="flex items-center gap-3.5 sm:gap-5">
           {/* Flash / Torch Toggle */}
           <button
             type="button"
             onClick={handleToggleFlash}
             disabled={!hasFlashSupport}
-            className={`w-9 h-9 rounded-full flex items-center justify-center transition-all ${
+            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all shadow-md backdrop-blur-md ${
               isFlashOn
-                ? 'text-amber-400 bg-amber-400/20 ring-1 ring-amber-400'
+                ? 'text-amber-400 bg-amber-400/25 ring-1 ring-amber-400 border border-amber-400/40'
                 : hasFlashSupport
-                  ? 'text-white/80 hover:text-white bg-white/10'
-                  : 'text-white/30 bg-white/5 cursor-not-allowed'
+                  ? 'text-white/90 hover:text-white bg-white/10 hover:bg-white/20 border border-white/10'
+                  : 'text-white/30 bg-white/5 border border-white/5 cursor-not-allowed'
             }`}
             title={hasFlashSupport ? (isFlashOn ? 'Turn Flash Off' : 'Turn Flash On') : 'Flash not available'}
           >
@@ -716,10 +917,10 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
           <button
             type="button"
             onClick={handleToggleGrid}
-            className={`w-9 h-9 rounded-full flex items-center justify-center transition-all ${
+            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all shadow-md backdrop-blur-md ${
               isGridOn
-                ? 'text-blue-400 bg-blue-500/20 ring-1 ring-blue-400'
-                : 'text-white/80 hover:text-white bg-white/10'
+                ? 'text-blue-400 bg-blue-500/25 ring-1 ring-blue-400 border border-blue-400/40'
+                : 'text-white/90 hover:text-white bg-white/10 hover:bg-white/20 border border-white/10'
             }`}
             title="Toggle Alignment Grid"
           >
@@ -730,20 +931,21 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
           <button
             type="button"
             onClick={handleFlipCamera}
-            className="w-9 h-9 rounded-full flex items-center justify-center text-white/80 hover:text-white bg-white/10 hover:bg-white/20 transition-all"
-            title="Switch Camera"
+            disabled={isSwitchingCamera || isProcessing}
+            className="w-10 h-10 rounded-full flex items-center justify-center text-white/90 hover:text-white bg-white/10 hover:bg-white/20 active:scale-95 transition-all shadow-md backdrop-blur-md border border-white/10 disabled:opacity-50"
+            title={`Switch to ${facingMode === 'environment' ? 'Front (Selfie)' : 'Back (Rear)'} Camera`}
           >
-            <SwitchCamera className="w-4 h-4" />
+            <SwitchCamera className={`w-4 h-4 ${isSwitchingCamera ? 'animate-spin' : ''}`} />
           </button>
 
           {/* Filter / Scanner Tuning */}
           <button
             type="button"
             onClick={handleCycleFilter}
-            className={`w-9 h-9 rounded-full flex items-center justify-center transition-all ${
+            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all shadow-md backdrop-blur-md ${
               filterMode !== 'natural'
-                ? 'text-emerald-400 bg-emerald-500/20 ring-1 ring-emerald-400'
-                : 'text-white/80 hover:text-white bg-white/10'
+                ? 'text-emerald-400 bg-emerald-500/25 ring-1 ring-emerald-400 border border-emerald-400/40'
+                : 'text-white/90 hover:text-white bg-white/10 hover:bg-white/20 border border-white/10'
             }`}
             title={`Filter Mode: ${filterMode.toUpperCase()}`}
           >
@@ -751,6 +953,13 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Floating Status Pill for Filter Mode / Camera Flip */}
+      {filterToast && (
+        <div className="absolute top-28 left-1/2 -translate-x-1/2 z-40 px-4 py-1.5 rounded-full bg-black/80 backdrop-blur-md border border-white/20 text-xs font-semibold tracking-wide text-white shadow-xl animate-in fade-in zoom-in-95 duration-150 pointer-events-none whitespace-nowrap">
+          {filterToast}
+        </div>
+      )}
 
       {/* ─── Guidance Text Banner (Matching Attached Mockup) ─── */}
       <div className="relative z-20 px-6 py-2 text-center pointer-events-none">
@@ -935,20 +1144,20 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         </div>
       )}
 
-      {/* ─── Mode Selector Tabs (Matching Attached Mockup) ─── */}
+      {/* ─── Mode Selector Tabs (Matching Attached Mockup with Safe Scrolling) ─── */}
       {!showCropper && !capturedImage && (
-        <div className="relative z-30 flex items-center justify-center gap-2 overflow-x-auto py-2.5 px-4 bg-gradient-to-t from-[#0b0f17] to-transparent">
+        <div className="relative z-30 w-full flex items-center justify-start sm:justify-center gap-2 overflow-x-auto no-scrollbar py-2.5 px-5 bg-gradient-to-t from-[#0b0f17] to-transparent">
           {SCANNER_MODES.map((mode) => {
             const isSelected = activeMode === mode;
             return (
               <button
                 key={mode}
                 type="button"
-                onClick={() => setActiveMode(mode)}
-                className={`px-4 py-1.5 rounded-full text-[11px] font-bold tracking-wider uppercase transition-all select-none whitespace-nowrap ${
+                onClick={() => handleModeChange(mode)}
+                className={`shrink-0 px-4 py-1.5 rounded-full text-[11px] font-bold tracking-wider uppercase transition-all select-none whitespace-nowrap ${
                   isSelected
-                    ? 'bg-white text-slate-900 shadow-lg scale-105'
-                    : 'bg-black/40 text-white/70 hover:text-white border border-white/10 hover:border-white/20'
+                    ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30 scale-105 ring-1 ring-emerald-400'
+                    : 'bg-black/50 text-white/75 hover:text-white border border-white/10 hover:border-white/25 active:scale-95'
                 }`}
               >
                 {mode}
@@ -958,8 +1167,13 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         </div>
       )}
 
-      {/* ─── Bottom Controls Bar (Matching Attached Mockup) ─── */}
-      <div className="relative z-30 flex items-center justify-between px-8 py-5 bg-[#0b0f17] border-t border-white/5">
+      {/* ─── Bottom Controls Bar (Matching Attached Mockup with Safe Area) ─── */}
+      <div
+        className="relative z-30 flex items-center justify-between px-8 py-5 bg-[#0b0f17] border-t border-white/5"
+        style={{
+          paddingBottom: 'max(calc(env(safe-area-inset-bottom, 0px) + 1.25rem), 1.75rem)',
+        }}
+      >
         {/* State A: Cropper Active */}
         {showCropper ? (
           <div className="flex items-center justify-between w-full">

@@ -1,11 +1,11 @@
 export const RELEASE_NOTES = {
-  version: '22.1.0',
-  date: '2026-09-18',
+  version: '22.2.0',
+  date: '2026-09-21',
   notes: [
-  "feat: add client attendance dashboard, Supabase services, and fix stale attendance state on sign-in",
-  "feat: add attendance management system with API proxy, UI dashboards, and report generation utilities",
-  "feat: add attendance dashboards, role mapping components, and database query utilities",
-  "feat: add OrganizationManagement page for site administration and filtering",
-  "feat: add site deployment data sync scripts, department mapping utilities, and management dashboards"
+  "feat: add offline support UI and advanced document upload with camera capture and OCR",
+  "chore: skip linting in lint-staged and add eslint report",
+  "feat: implement offline OCR document extraction and onboarding workflow pages",
+  "feat: add offline onboarding module with Tesseract OCR support and UI components",
+  "feat: implement offline-first synchronization engine, mobile CI/CD pipeline, database migrations, and UI dashboards"
 ]
 };

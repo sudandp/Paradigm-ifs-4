@@ -195,6 +195,8 @@ const AddUserPage: React.FC = () => {
   const [selectedSiteIds, setSelectedSiteIds] = useState<string[]>([]);
   const [siteSearchTerm, setSiteSearchTerm] = useState<string>('');
   const [attendanceSettings, setAttendanceSettings] = useState<AttendanceSettings | null>(null);
+  // All users list for reporting manager dropdown
+  const [allUsers, setAllUsers] = useState<User[]>([]);
   // Auto-sync: when saving a user with an unmapped role, intercept and prompt for category
   const [pendingSubmitData, setPendingSubmitData] = useState<any>(null);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
@@ -349,15 +351,22 @@ const AddUserPage: React.FC = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [orgs, fetchedRoles, fetchedDevices, structure, settings, designations, matrix] = await Promise.all([
+        const [orgs, fetchedRoles, fetchedDevices, structure, settings, designations, matrix, usersData] = await Promise.all([
           api.getOrganizations(),
           api.getRoles(),
           api.getBiometricDevices ? api.getBiometricDevices() : Promise.resolve([]),
           api.getOrganizationStructure(),
           api.getAttendanceSettings(),
           api.getSiteStaffDesignations(),
-          api.getSiteResponsibilityMatrix().catch(() => [] as SiteResponsibilityMatrix[])
+          api.getSiteResponsibilityMatrix().catch(() => [] as SiteResponsibilityMatrix[]),
+          api.getUsers().catch(() => [] as User[])
         ]);
+
+        // Sort users alphabetically for the reporting manager dropdown
+        const sortedUsers = [...(usersData || [])].sort((a, b) =>
+          (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' })
+        );
+        setAllUsers(sortedUsers);
         
         // Deduplicate fetchedRoles by displayName (in case DB has two entries for same role)
         const seenRoleNames = new Set<string>();
@@ -404,8 +413,7 @@ const AddUserPage: React.FC = () => {
         setMatrixData(matrix);
 
         if (isEditing && id) {
-          const users = await api.getUsers();
-          const user = users.find(u => u.id === id);
+          const user = (usersData || []).find((u: User) => u.id === id) || null;
           if (user) {
             setInitialData(user);
 
@@ -489,6 +497,8 @@ const AddUserPage: React.FC = () => {
               compOffOpeningDate: user.compOffOpeningDate || user.joiningDate || defaultDateStr,
               floatingLeaveOpeningDate: user.floatingLeaveOpeningDate || user.joiningDate || defaultDateStr,
               childCareLeaveOpeningDate: user.childCareLeaveOpeningDate || user.joiningDate || defaultDateStr,
+              // Pre-populate reporting manager for edit mode
+              reportingManagerId: user.reportingManagerId || null,
             };
             reset(updatedUser);
 
@@ -1070,6 +1080,23 @@ const AddUserPage: React.FC = () => {
                   <option key={r.id} value={r.id}>{r.displayName}</option>
                 ))}
               </Select>
+              {/* Reporting Manager — auto-routes new employee into the approval workflow */}
+              <Select
+                label="Reporting Manager L1 (Optional)"
+                id="reportingManagerId-mobile"
+                registration={register('reportingManagerId')}
+                error={(errors as any).reportingManagerId?.message}
+              >
+                <option value="">None — assign later in Workflow</option>
+                {allUsers
+                  .filter(u => watch('id') ? u.id !== watch('id') : true)
+                  .map(u => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}{u.role ? ` (${u.role.replace(/_/g, ' ')})` : ''}
+                    </option>
+                  ))
+                }
+              </Select>
               {(() => {
                 const selectedIds = watch('organizationId') ? watch('organizationId').split(',').map(s => s.trim()) : [];
                 const siteDevices = allDevices.filter(d => selectedIds.includes(d.organizationId));
@@ -1386,6 +1413,24 @@ const AddUserPage: React.FC = () => {
             {roles.map(r => (
               <option key={r.id} value={r.id}>{r.displayName}</option>
             ))}
+          </Select>
+          {/* Reporting Manager — immediately routes the new employee into the leave approval chain */}
+          <Select
+            label="Reporting Manager L1 (Optional)"
+            id="reportingManagerId-desktop"
+            registration={register('reportingManagerId')}
+            error={(errors as any).reportingManagerId?.message}
+            description="Set now to auto-route leave approvals. Can also be set later in the Approval Workflow page."
+          >
+            <option value="">None — assign later in Workflow</option>
+            {allUsers
+              .filter(u => isEditing ? u.id !== id : true)
+              .map(u => (
+                <option key={u.id} value={u.id}>
+                  {u.name}{u.role ? ` · ${u.role.replace(/_/g, ' ')}` : ''}
+                </option>
+              ))
+            }
           </Select>
           {(() => {
             const selectedIds = watch('organizationId') ? watch('organizationId').split(',').map(s => s.trim()) : [];

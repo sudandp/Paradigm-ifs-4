@@ -800,7 +800,7 @@ export const extractDataOffline = async (
           bytes[i] = binaryString.charCodeAt(i);
         }
 
-        const pdfjsLib = await import('pdfjs-dist/build/pdf.js');
+        const pdfjsLib = await import('pdfjs-dist');
         interface PdfPage {
           getViewport: (options: { scale: number }) => { width: number; height: number };
           getTextContent: () => Promise<{ items: Array<{ str?: string }> }>;
@@ -816,10 +816,10 @@ export const extractDataOffline = async (
           getDocument: (params: unknown) => { promise: Promise<PdfDocument> };
         };
         if (pdfjs.GlobalWorkerOptions && !pdfjs.GlobalWorkerOptions.workerSrc) {
-          // Use locally bundled worker (in public/pdf.worker.min.js) so extraction
+          // Use locally bundled worker (in public/pdf.worker.min.mjs) so extraction
           // works completely offline without any CDN dependency.
           const origin = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : '';
-          pdfjs.GlobalWorkerOptions.workerSrc = `${origin}/pdf.worker.min.js`;
+          pdfjs.GlobalWorkerOptions.workerSrc = `${origin}/pdf.worker.min.mjs`;
         }
 
         const loadingTask = pdfjs.getDocument({

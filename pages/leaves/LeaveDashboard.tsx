@@ -277,6 +277,7 @@ const LeaveDashboard: React.FC = () => {
     const [showCompOffModal, setShowCompOffModal] = useState(false);
     const [showPermissionModal, setShowPermissionModal] = useState(false);
     const [showBlueLeaveModal, setShowBlueLeaveModal] = useState(false);
+    const [blueLeaveModalTab, setBlueLeaveModalTab] = useState<'year' | 'month'>('year');
     const [elModalTab, setElModalTab] = useState<'earned' | 'used' | 'balance'>('used');
     const [compModalTab, setCompModalTab] = useState<'earned' | 'used' | 'balance'>('earned');
     const [yearlyData, setYearlyData] = useState<{
@@ -550,7 +551,7 @@ const LeaveDashboard: React.FC = () => {
         return `${h}h ${m}m`;
     };
 
-    const { officeHolidays, fieldHolidays } = useSettingsStore();
+    const { officeHolidays, fieldHolidays, attendance: storeAttendance } = useSettingsStore();
 
     const adminHolidays = useMemo(() => {
         if (!user) return [];
@@ -2171,25 +2172,41 @@ const LeaveDashboard: React.FC = () => {
     const isFemale = ['female', 'ladies'].includes((user?.gender || '').toLowerCase());
     const isMale = !isFemale;
 
-    const isFloatingHolidayValidForViewingDate = () => {
-        if (!attendanceSettings || !user) return false;
-        const staffCategory = getStaffCategory(user.roleId || user.role || '', user.societyId, attendanceSettings);
-        const categorySettings = (attendanceSettings as any)?.[staffCategory];
-        if (!categorySettings) return false;
+    const isFloatingHolidayAllocatedForMonth = (monthIdx: number, monthDate?: Date) => {
+        const effectiveSettings = attendanceSettings || storeAttendance;
+        if (!user) return false;
+        const staffCategory = getStaffCategory(user.roleId || user.role || '', user.societyId, effectiveSettings);
+        const categorySettings = (effectiveSettings as any)?.[staffCategory] || (effectiveSettings as any)?.office;
 
-        // PRIORITY 1: If floatingHolidayMonths array is set → it is the SOLE gate.
-        if (categorySettings.floatingHolidayMonths && categorySettings.floatingHolidayMonths.length > 0) {
-            const monthIdx = viewingDate.getMonth();
-            return categorySettings.floatingHolidayMonths.includes(monthIdx);
+        if (categorySettings && categorySettings.monthlyFloatingLeaves !== undefined && categorySettings.monthlyFloatingLeaves <= 0) {
+            return false;
         }
 
-        // PRIORITY 2 (fallback): No month array → use validFrom/validTill.
-        const viewingDateStr = format(viewingDate, 'yyyy-MM-dd');
-        const validFrom = categorySettings.floatingLeavesValidFrom;
-        const validTill = categorySettings.floatingLeavesExpiryDate;
-        if (validFrom && viewingDateStr < validFrom) return false;
-        if (validTill && viewingDateStr > validTill) return false;
-        return true;
+        const configuredMonths: number[] | null = 
+            Array.isArray(categorySettings?.floatingHolidayMonths) && categorySettings.floatingHolidayMonths.length > 0
+                ? categorySettings.floatingHolidayMonths
+                : (Array.isArray(categorySettings?.floating_holiday_months) && categorySettings.floating_holiday_months.length > 0
+                    ? categorySettings.floating_holiday_months
+                    : null);
+
+        if (configuredMonths !== null) {
+            return configuredMonths.includes(monthIdx);
+        }
+
+        if (monthDate) {
+            const dateStr = format(monthDate, 'yyyy-MM-dd');
+            const validFrom = categorySettings?.floatingLeavesValidFrom || categorySettings?.floating_leaves_valid_from;
+            const validTill = categorySettings?.floatingLeavesExpiryDate || categorySettings?.floating_leaves_expiry_date;
+            if (validFrom && dateStr < validFrom) return false;
+            if (validTill && dateStr > validTill) return false;
+        }
+
+        // Default baseline configured in Attendance Settings for 2026: Feb (1), Mar (2), Apr (3) unselected
+        return [0, 4, 5, 6, 7, 8, 9, 10, 11].includes(monthIdx);
+    };
+
+    const isFloatingHolidayValidForViewingDate = () => {
+        return isFloatingHolidayAllocatedForMonth(viewingDate.getMonth(), viewingDate);
     };
 
     const getBlueLeaveStatusForViewingDate = () => {
@@ -2212,17 +2229,18 @@ const LeaveDashboard: React.FC = () => {
         }
 
         const isValid = isFloatingHolidayValidForViewingDate();
-        if (!isValid) return { total: 0, used: 0, pending: 0, available: 0, description: 'Not applicable for this period' };
+        if (!isValid) return { companyProvided: 0, total: 0, used: 0, appliedUsed: 0, pending: 0, available: 0, description: 'Not applicable for this period', workedOn3rdSat: false, thirdSatPassed: false, consumedAs3rdSat: 0 };
         
-        let total = 1;
+        let companyProvided = 1;
         if (attendanceSettings && user) {
              const staffCategory = getStaffCategory(user.roleId || user.role || '', user.societyId, attendanceSettings);
              const categorySettings = (attendanceSettings as any)?.[staffCategory];
              if (categorySettings && categorySettings.monthlyFloatingLeaves !== undefined) {
-                 total = categorySettings.monthlyFloatingLeaves;
+                 companyProvided = categorySettings.monthlyFloatingLeaves;
              }
         }
 
+        let total = companyProvided;
         let used = 0;
         let pending = 0;
 
@@ -2267,7 +2285,8 @@ const LeaveDashboard: React.FC = () => {
         let workedOn3rdSat = false;
         if (thirdSaturday) {
             const thirdSatStr = format(thirdSaturday, 'yyyy-MM-dd');
-            workedOn3rdSat = events.some(e => {
+            const allEvents = (yearlyData?.events?.length ? yearlyData.events : events) || [];
+            workedOn3rdSat = allEvents.some(e => {
                 const eDate = format(new Date(e.timestamp), 'yyyy-MM-dd');
                 const eventType = String(e.type || '').toLowerCase();
                 return eDate === thirdSatStr && (
@@ -2276,50 +2295,62 @@ const LeaveDashboard: React.FC = () => {
                     eventType === 'site-in' || eventType === 'site_in'
                 );
             });
-            // Also check approved Blue Leave Work requests or corrections
+            // Also check approved attendance corrections for 3rd Saturday (regularized punch-in)
             if (!workedOn3rdSat) {
                 workedOn3rdSat = allRelevantLeaves.some(req => {
                     const reqType = (req.leaveType || '').toLowerCase();
                     const reqDate = req.startDate;
                     return reqDate === thirdSatStr && 
                            (req.status === 'approved' || req.status === 'correction_made') && 
-                           (reqType.includes('blue leave work') || reqType.includes('correction') || reqType.includes('comp'));
+                           (reqType.includes('correction') || reqType.includes('regularization'));
                 });
             }
         }
 
         // Business Rules:
-        // 1. Before 3rd Saturday (in current/future month): Employee has NOT worked on 3rd Saturday yet -> 0/1 (0 available).
+        // 1. Before 3rd Saturday (in current/future month): Employee has NOT worked on 3rd Saturday yet -> 0/0 (0 available).
         // 2. On / After 3rd Saturday:
         //    - Worked on 3rd Saturday -> 1/1 earned. If user took Blue Leave in same month -> deduct used/pending.
-        //    - Absent on 3rd Saturday -> 0/1 (consumed as holiday).
+        //    - Absent on 3rd Saturday -> 0/0 (consumed as 3rd Sat holiday, 0 available).
         // 3. Month Expiration: Blue Leave cannot be carried forward. If viewing a past month and it was unused, it is expired.
         let available = 0;
         let description = '';
+        let consumedAs3rdSat = 0;
 
         if (!thirdSatPassed) {
             // Before 3rd Saturday: Cannot be taken in advance, 0 available
+            total = 0;
             available = 0;
-            used = total;
-            description = `Total: ${total}d. Available: 0d (Accrues after working on 3rd Sat)`;
+            description = `Provided: ${companyProvided}d. Available: 0d (Accrues after working on 3rd Sat)`;
         } else if (workedOn3rdSat) {
             // Worked on 3rd Saturday: 1 earned
+            total = companyProvided;
             available = Math.max(0, total - used - pending);
             if (isPastMonth) {
-                description = `Total: ${total}d. Expired at month end.`;
+                description = `Provided: ${companyProvided}d. Expired at month end.`;
             } else {
-                description = `Total: ${total}d. Available: ${available}d (Expires ${format(monthEnd, 'MMM dd')})${pending > 0 ? ` (Pending: ${pending}d)` : ''}`;
+                description = `Provided: ${companyProvided}d. Available: ${available}d (Expires ${format(monthEnd, 'MMM dd')})${pending > 0 ? ` (Pending: ${pending}d)` : ''}`;
             }
         } else {
-            // Absent on 3rd Saturday: Consumed as holiday -> 0 available
-            used = total;
+            // Absent on 3rd Saturday: Consumed as holiday -> 0 available, 0 earned to take later (0/0)
+            total = 0;
             available = 0;
-            description = `Total: ${total}d. Available: 0d (Taken as 3rd Sat holiday)`;
+            consumedAs3rdSat = companyProvided;
+            description = `Provided: ${companyProvided}d. Consumed as 3rd Sat holiday (0d available)`;
         }
-
-        if (used > total) used = total;
         
-        return { total, used, pending, available, description };
+        return { 
+            companyProvided, 
+            total, 
+            used: workedOn3rdSat ? used : (thirdSatPassed ? companyProvided : 0), 
+            appliedUsed: used, 
+            pending, 
+            available, 
+            description, 
+            workedOn3rdSat, 
+            thirdSatPassed,
+            consumedAs3rdSat 
+        };
     };
 
     const staffCategory = user ? getStaffCategory(user.roleId || user.role || '', user.societyId || user.organizationId, attendanceSettings) : 'office';
@@ -4722,8 +4753,8 @@ const LeaveDashboard: React.FC = () => {
             <Modal
                 isOpen={showBlueLeaveModal}
                 onClose={() => setShowBlueLeaveModal(false)}
-                title={`Blue Leave (Floating) Tracker - ${format(viewingDate, 'MMMM yyyy')}`}
-                maxWidth="md:max-w-3xl lg:max-w-4xl"
+                title={`Blue Leave (Floating) Tracker - ${blueLeaveModalTab === 'year' ? `${viewingDate.getFullYear()} Full Year Record` : format(viewingDate, 'MMMM yyyy')}`}
+                maxWidth="md:max-w-4xl lg:max-w-5xl xl:max-w-6xl"
                 footer={
                     <div className="flex justify-end">
                         <Button
@@ -4736,245 +4767,468 @@ const LeaveDashboard: React.FC = () => {
                 }
             >
                 {(() => {
-                    const monthStart = startOfMonth(viewingDate);
-                    const monthEnd = endOfMonth(viewingDate);
-                    let thirdSaturday: Date | null = null;
-                    const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
-                    let satCount = 0;
-                    for (const day of daysInMonth) {
-                        if (day.getDay() === 6) {
-                            satCount++;
-                            if (satCount === 3) {
-                                thirdSaturday = day;
-                                break;
+                    const targetYear = viewingDate.getFullYear();
+                    const today = new Date();
+                    const todayStart = startOfDay(today);
+                    const allEvents = (yearlyData?.events?.length ? yearlyData.events : events) || [];
+                    const allRelevantLeaves = [...(yearlyData?.leaves || []), ...requests].filter((v, i, a) => a.findIndex(t => t.id === v.id) === i);
+
+                    // 12-Month Computation for Full Year Record
+                    const yearMonthsData = Array.from({ length: 12 }, (_, monthIdx) => {
+                        const mDate = new Date(targetYear, monthIdx, 1);
+                        const mStart = startOfMonth(mDate);
+                        const mEnd = endOfMonth(mDate);
+
+                        const days = eachDayOfInterval({ start: mStart, end: mEnd });
+                        let satCount = 0;
+                        let thirdSat: Date | null = null;
+                        for (const d of days) {
+                            if (d.getDay() === 6) {
+                                satCount++;
+                                if (satCount === 3) {
+                                    thirdSat = d;
+                                    break;
+                                }
                             }
                         }
-                    }
-                    const today = new Date();
-                    const thirdSatPassed = thirdSaturday && startOfDay(thirdSaturday) <= startOfDay(today);
-                    const isPastMonth = monthEnd < startOfDay(today);
 
-                    let workedOn3rdSat = false;
-                    if (thirdSaturday) {
-                        const thirdSatStr = format(thirdSaturday, 'yyyy-MM-dd');
-                        workedOn3rdSat = events.some(e => {
-                            const eDate = format(new Date(e.timestamp), 'yyyy-MM-dd');
-                            const eventType = String(e.type || '').toLowerCase();
-                            return eDate === thirdSatStr && (
-                                eventType === 'punch-in' || eventType === 'check-in' ||
-                                eventType === 'punch_in' || eventType === 'checkin' ||
-                                eventType === 'site-in' || eventType === 'site_in'
-                            );
+                        const thirdSatPassed = thirdSat ? startOfDay(thirdSat) <= todayStart : false;
+                        const isPastMonth = mEnd < todayStart;
+                        const isCurrentMonth = format(mDate, 'yyyy-MM') === format(today, 'yyyy-MM');
+                        const isFutureMonth = mStart > todayStart;
+
+                        let workedOn3rdSat = false;
+                        let punchCount = 0;
+                        let firstPunchTime: string | null = null;
+                        let lastPunchTime: string | null = null;
+
+                        if (thirdSat) {
+                            const thirdSatStr = format(thirdSat, 'yyyy-MM-dd');
+                            const dayPunches = allEvents.filter(e => {
+                                if (!e || !e.timestamp) return false;
+                                const eDate = format(new Date(e.timestamp), 'yyyy-MM-dd');
+                                const eventType = String(e.type || '').toLowerCase();
+                                return eDate === thirdSatStr && [
+                                    'punch-in', 'check-in', 'punch_in', 'checkin', 'site-in', 'site_in',
+                                    'punch-out', 'check-out', 'punch_out', 'checkout', 'site-out', 'site_out'
+                                ].includes(eventType);
+                            }).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+                            punchCount = dayPunches.length;
+                            if (punchCount > 0) {
+                                firstPunchTime = format(new Date(dayPunches[0].timestamp), 'hh:mm a');
+                                lastPunchTime = format(new Date(dayPunches[dayPunches.length - 1].timestamp), 'hh:mm a');
+                                workedOn3rdSat = dayPunches.some(e => {
+                                    const eventType = String(e.type || '').toLowerCase();
+                                    return ['punch-in', 'check-in', 'punch_in', 'checkin', 'site-in', 'site_in'].includes(eventType);
+                                });
+                            }
+
+                            if (!workedOn3rdSat) {
+                                workedOn3rdSat = allRelevantLeaves.some(req => {
+                                    const reqType = (req.leaveType || '').toLowerCase();
+                                    const reqDate = req.startDate;
+                                    return reqDate === thirdSatStr && 
+                                           (req.status === 'approved' || req.status === 'correction_made') && 
+                                           (reqType.includes('correction') || reqType.includes('regularization'));
+                                });
+                            }
+                        }
+
+                        // Applied floating leaves in this month
+                        const appliedInMonth = allRelevantLeaves.filter(req => {
+                            let type = (req.leaveType || '').toLowerCase();
+                            const reqStart = new Date(req.startDate.replace(/-/g, '/'));
+                            const is3rdSat = reqStart.getDay() === 6 && Math.ceil(reqStart.getDate() / 7) === 3;
+                            if (is3rdSat && isMale && (type.includes('sick') || type === 'sl' || type === 's/l')) {
+                                type = 'floating';
+                            }
+                            if (type.includes('floating') || type === 'fh' || type === 'blue leave' || type === 'blue') {
+                                return reqStart >= mStart && reqStart <= mEnd;
+                            }
+                            return false;
                         });
-                        if (!workedOn3rdSat) {
-                            const allRelevantLeaves = [...(yearlyData?.leaves || []), ...requests].filter((v,i,a)=>a.findIndex(t=>(t.id === v.id))===i);
-                            workedOn3rdSat = allRelevantLeaves.some(req => {
-                                const reqType = (req.leaveType || '').toLowerCase();
-                                const reqDate = req.startDate;
-                                return reqDate === thirdSatStr && 
-                                       (req.status === 'approved' || req.status === 'correction_made') && 
-                                       (reqType.includes('blue leave work') || reqType.includes('correction') || reqType.includes('comp'));
-                            });
-                        }
-                    }
 
-                    // Find all applied blue/floating leaves for this viewing month
-                    const allLeaves = yearlyData?.leaves?.length ? yearlyData.leaves : requests;
-                    const blueLeavesThisMonth = (allLeaves || []).filter(req => {
-                        let type = (req.leaveType || (req as any).leave_type || '').toLowerCase();
-                        const reqStart = new Date(req.startDate.replace(/-/g, '/'));
-                        const is3rdSat = reqStart.getDay() === 6 && Math.ceil(reqStart.getDate() / 7) === 3;
-                        if (is3rdSat && isMale && (type.includes('sick') || type === 'sl' || type === 's/l')) {
-                            type = 'floating';
+                        const appliedUsed = appliedInMonth
+                            .filter(r => r.status === 'approved' || r.status === 'correction_made')
+                            .reduce((sum, r) => sum + (r.dayOption === 'half' ? 0.5 : (differenceInCalendarDays(new Date(r.endDate.replace(/-/g, '/')), new Date(r.startDate.replace(/-/g, '/'))) + 1)), 0);
+
+                        const appliedPending = appliedInMonth
+                            .filter(r => r.status === 'pending_manager_approval' || r.status === 'pending_hr_confirmation')
+                            .reduce((sum, r) => sum + (r.dayOption === 'half' ? 0.5 : (differenceInCalendarDays(new Date(r.endDate.replace(/-/g, '/')), new Date(r.startDate.replace(/-/g, '/'))) + 1)), 0);
+
+                        const isAllocated = isFloatingHolidayAllocatedForMonth(monthIdx, mDate);
+                        const companyProvided = isAllocated ? 1.0 : 0.0;
+                        let consumed = 0;
+                        let available = 0;
+                        let statusLabel = '';
+                        let statusBadgeColor = '';
+                        let statusDescription = '';
+
+                        if (!isAllocated) {
+                            consumed = 0;
+                            available = 0;
+                            statusLabel = 'Not Allocated';
+                            statusBadgeColor = 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-300 dark:border-slate-700';
+                            statusDescription = 'Floating holiday not allocated for this month in Attendance Settings. 3rd Saturday was a normal working day.';
+                        } else if (!thirdSatPassed) {
+                            consumed = 0;
+                            available = 0;
+                            statusLabel = isCurrentMonth ? 'Pending 3rd Sat Work' : 'Upcoming';
+                            statusBadgeColor = 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border-blue-300 dark:border-blue-800';
+                            statusDescription = 'Allowance locked. Unlocks only upon physically punching in on the 3rd Saturday.';
+                        } else if (workedOn3rdSat) {
+                            consumed = appliedUsed;
+                            available = isPastMonth ? 0 : Math.max(0, companyProvided - appliedUsed - appliedPending);
+                            if (isPastMonth) {
+                                if (appliedUsed >= 1.0) {
+                                    statusLabel = 'Fully Used (1.0d)';
+                                    statusBadgeColor = 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-[#44D62C] border-emerald-300 dark:border-[#44D62C]/40';
+                                    statusDescription = 'Worked 3rd Saturday. 1.0d unlocked and fully availed in this month.';
+                                } else if (appliedUsed > 0) {
+                                    statusLabel = `Used ${appliedUsed}d / Expired`;
+                                    statusBadgeColor = 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300 dark:border-amber-800';
+                                    statusDescription = `Worked 3rd Saturday. ${appliedUsed}d availed; remaining ${(companyProvided - appliedUsed).toFixed(1)}d expired at month end.`;
+                                } else {
+                                    statusLabel = 'Expired at Month End';
+                                    statusBadgeColor = 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300 dark:border-amber-800';
+                                    statusDescription = `Worked 3rd Saturday (+1.0d earned), but not availed. Expired on ${format(mEnd, 'dd MMM yyyy')}.`;
+                                }
+                            } else {
+                                if (available > 0) {
+                                    statusLabel = `${available.toFixed(1)}d Active & Available`;
+                                    statusBadgeColor = 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-[#44D62C] border-emerald-300 dark:border-[#44D62C]/40';
+                                    statusDescription = `Worked 3rd Saturday! 1.0d unlocked and valid to use until ${format(mEnd, 'dd MMM yyyy')}.`;
+                                } else {
+                                    statusLabel = 'Fully Used (1.0d)';
+                                    statusBadgeColor = 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300 border-slate-300 dark:border-slate-700';
+                                    statusDescription = 'Worked 3rd Saturday. All 1.0d applied and approved for this month.';
+                                }
+                            }
+                        } else {
+                            consumed = 1.0;
+                            available = 0;
+                            statusLabel = 'Taken as Holiday (0d)';
+                            statusBadgeColor = 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border-rose-300 dark:border-rose-800';
+                            statusDescription = 'Employee was absent / took 3rd Sat off. Allowance consumed as the holiday itself.';
                         }
-                        if (type.includes('floating') || type === 'fh' || type === 'blue leave' || type === 'blue') {
-                            return reqStart >= monthStart && reqStart <= monthEnd;
-                        }
-                        return false;
+
+                        return {
+                            monthIndex: monthIdx,
+                            monthDate: mDate,
+                            monthName: format(mDate, 'MMMM yyyy'),
+                            shortMonth: format(mDate, 'MMM'),
+                            thirdSat,
+                            thirdSatPassed,
+                            isPastMonth,
+                            isCurrentMonth,
+                            isFutureMonth,
+                            workedOn3rdSat,
+                            punchCount,
+                            firstPunchTime,
+                            lastPunchTime,
+                            appliedInMonth,
+                            appliedUsed,
+                            appliedPending,
+                            isAllocated,
+                            companyProvided,
+                            consumed,
+                            available,
+                            statusLabel,
+                            statusBadgeColor,
+                            statusDescription
+                        };
                     });
+
+                    // Summary KPI metrics
+                    const totalAllocatedMonthsAllYear = yearMonthsData.filter(m => m.isAllocated).length;
+                    const totalAllocatedMonthsPassed = yearMonthsData.filter(m => m.isAllocated && m.thirdSatPassed).length;
+                    const totalWorkedMonths = yearMonthsData.filter(m => m.isAllocated && m.thirdSatPassed && m.workedOn3rdSat).length;
+                    const totalHolidayMonths = yearMonthsData.filter(m => m.isAllocated && m.thirdSatPassed && !m.workedOn3rdSat).length;
+                    const totalAppliedAllYear = yearMonthsData.reduce((sum, m) => sum + m.appliedUsed, 0);
+                    const currentMonthIdx = today.getMonth();
+                    const currentMonthRecord = yearMonthsData.find(m => m.isCurrentMonth) || yearMonthsData[currentMonthIdx] || yearMonthsData[0];
+
+                    // Selected viewing month calculation for Tab 2
+                    const viewingMonthData = yearMonthsData.find(m => format(m.monthDate, 'yyyy-MM') === format(viewingDate, 'yyyy-MM')) || currentMonthRecord;
 
                     return (
                         <div className="space-y-5 text-slate-800 dark:text-slate-100">
-                            {/* Top KPI Cards */}
-                            <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                                <div className="p-3 sm:p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/50 text-center">
-                                    <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300 block mb-1">
-                                        Monthly Grant
-                                    </span>
-                                    <span className="text-lg sm:text-xl md:text-2xl font-black text-emerald-900 dark:text-emerald-100">
-                                        {blueLeaveStatus.total.toFixed(1)}d
-                                    </span>
-                                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold block mt-0.5">
-                                        1 Day / Month
-                                    </span>
-                                </div>
-
-                                <div className="p-3 sm:p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/50 text-center">
-                                    <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-rose-700 dark:text-rose-300 block mb-1">
-                                        Consumed
-                                    </span>
-                                    <span className="text-lg sm:text-xl md:text-2xl font-black text-rose-900 dark:text-rose-100">
-                                        {blueLeaveStatus.used.toFixed(1)}d
-                                    </span>
-                                    <span className="text-[10px] text-rose-600 dark:text-rose-400 font-semibold block mt-0.5">
-                                        {blueLeaveStatus.available === 0 && !workedOn3rdSat && thirdSatPassed ? 'Taken as 3rd Sat' : 'Used This Month'}
-                                    </span>
-                                </div>
-
-                                <div className="p-3 sm:p-3.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/50 text-center">
-                                    <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300 block mb-1">
-                                        Available Net
-                                    </span>
-                                    <span className="text-lg sm:text-xl md:text-2xl font-black text-blue-900 dark:text-blue-100">
-                                        {blueLeaveStatus.available.toFixed(1)}d
-                                    </span>
-                                    <span className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold block mt-0.5">
-                                        {blueLeaveStatus.available > 0 ? `Expires ${format(monthEnd, 'dd MMM')}` : (isPastMonth ? 'Expired at Month End' : 'Locked (Work 3rd Sat)')}
-                                    </span>
-                                </div>
+                            {/* Segmented View Mode Switcher */}
+                            <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-[#041b0f] rounded-xl border border-slate-200 dark:border-[#134426]">
+                                <button
+                                    type="button"
+                                    onClick={() => setBlueLeaveModalTab('year')}
+                                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                                        blueLeaveModalTab === 'year'
+                                            ? 'bg-white dark:bg-[#134426] text-emerald-700 dark:text-[#44D62C] shadow-xs'
+                                            : 'text-slate-600 dark:text-white/70 hover:text-slate-900 dark:hover:text-white'
+                                    }`}
+                                >
+                                    <Calendar className="w-3.5 h-3.5" />
+                                    <span>Full Year Record ({targetYear} Jan - Dec)</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setBlueLeaveModalTab('month')}
+                                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                                        blueLeaveModalTab === 'month'
+                                            ? 'bg-white dark:bg-[#134426] text-emerald-700 dark:text-[#44D62C] shadow-xs'
+                                            : 'text-slate-600 dark:text-white/70 hover:text-slate-900 dark:hover:text-white'
+                                    }`}
+                                >
+                                    <Calculator className="w-3.5 h-3.5" />
+                                    <span>Monthly Accounting ({format(viewingDate, 'MMMM yyyy')})</span>
+                                </button>
                             </div>
 
-                            {/* 3rd Saturday Status Banner */}
-                            <div className="p-3.5 sm:p-4 rounded-xl bg-slate-50 dark:bg-[#041b0f] border border-slate-200 dark:border-[#134426] space-y-3">
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                                    <div className="flex items-center gap-2">
-                                        <Calendar className="w-4 h-4 text-[#44D62C] flex-shrink-0" />
-                                        <span className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-white">
-                                            3rd Saturday Work Status ({format(viewingDate, 'MMMM yyyy')})
-                                        </span>
+                            {/* TAB 1: FULL YEAR RECORD (JAN TO DEC) */}
+                            {blueLeaveModalTab === 'year' && (
+                                <div className="space-y-5">
+                                    {/* Annual Summary KPI Cards */}
+                                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
+                                        <div className="p-3 sm:p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/50">
+                                            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300 block mb-1">
+                                                Annual Policy Allowance
+                                            </span>
+                                            <div className="flex items-baseline gap-1.5">
+                                                <span className="text-xl sm:text-2xl font-black text-emerald-900 dark:text-emerald-100">
+                                                    {totalAllocatedMonthsAllYear.toFixed(1)}d
+                                                </span>
+                                                <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+                                                    ({totalAllocatedMonthsPassed}.0d YTD)
+                                                </span>
+                                            </div>
+                                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium block mt-1">
+                                                {totalAllocatedMonthsAllYear} of 12 months allocated
+                                            </span>
+                                        </div>
+
+                                        <div className="p-3 sm:p-3.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/50">
+                                            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300 block mb-1">
+                                                3rd Sat Worked & Unlocked
+                                            </span>
+                                            <div className="flex items-baseline gap-1.5">
+                                                <span className="text-xl sm:text-2xl font-black text-blue-900 dark:text-blue-100">
+                                                    {totalWorkedMonths} Month{totalWorkedMonths !== 1 ? 's' : ''}
+                                                </span>
+                                                <span className="text-[11px] font-semibold text-blue-700 dark:text-blue-300">
+                                                    ({totalWorkedMonths}.0d)
+                                                </span>
+                                            </div>
+                                            <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium block mt-1">
+                                                Earned & unlocked for floating use
+                                            </span>
+                                        </div>
+
+                                        <div className="p-3 sm:p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/50">
+                                            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-rose-700 dark:text-rose-300 block mb-1">
+                                                Consumed as 3rd Sat Holiday
+                                            </span>
+                                            <div className="flex items-baseline gap-1.5">
+                                                <span className="text-xl sm:text-2xl font-black text-rose-900 dark:text-rose-100">
+                                                    {totalHolidayMonths} Month{totalHolidayMonths !== 1 ? 's' : ''}
+                                                </span>
+                                                <span className="text-[11px] font-semibold text-rose-700 dark:text-rose-300">
+                                                    ({totalHolidayMonths}.0d)
+                                                </span>
+                                            </div>
+                                            <span className="text-[10px] text-rose-600 dark:text-rose-400 font-medium block mt-1">
+                                                Absent / Off on scheduled 3rd Sat
+                                            </span>
+                                        </div>
+
+                                        <div className="p-3 sm:p-3.5 rounded-xl bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800/50">
+                                            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-sky-700 dark:text-sky-300 block mb-1">
+                                                Active Available (Current)
+                                            </span>
+                                            <div className="flex items-baseline gap-1.5">
+                                                <span className="text-xl sm:text-2xl font-black text-sky-900 dark:text-sky-100">
+                                                    {currentMonthRecord.available.toFixed(1)}d
+                                                </span>
+                                                <span className="text-[11px] font-semibold text-sky-700 dark:text-sky-300">
+                                                    ({currentMonthRecord.shortMonth})
+                                                </span>
+                                            </div>
+                                            <span className="text-[10px] text-sky-600 dark:text-sky-400 font-medium block mt-1">
+                                                {currentMonthRecord.statusLabel}
+                                            </span>
+                                        </div>
                                     </div>
-                                    {thirdSaturday && (
-                                        <span className={`text-[11px] sm:text-xs font-bold px-2.5 py-0.5 rounded-md border w-fit ${
-                                            !thirdSatPassed
-                                                ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border-blue-300 dark:border-blue-800'
-                                                : workedOn3rdSat
-                                                    ? 'bg-emerald-100 text-emerald-800 dark:bg-[#134426] dark:text-[#44D62C] border-emerald-300 dark:border-[#44D62C]/40'
-                                                    : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300 dark:border-amber-800'
-                                        }`}>
-                                            {!thirdSatPassed
-                                                ? 'Upcoming (Accrues upon working)'
-                                                : workedOn3rdSat
-                                                    ? 'Worked & Accrued (+1.0d)'
-                                                    : 'Taken as Holiday (0d Available)'}
-                                        </span>
-                                    )}
-                                </div>
 
-                                <div className="text-xs text-slate-600 dark:text-white/80 space-y-2">
-                                    <div className="flex items-center gap-2 text-xs">
-                                        <span className="font-semibold text-slate-500 dark:text-white/60">3rd Saturday Date:</span>
-                                        <span className="font-bold text-slate-900 dark:text-white">
-                                            {thirdSaturday ? format(thirdSaturday, 'EEEE, dd MMMM yyyy') : 'Not applicable'}
-                                        </span>
-                                    </div>
-                                    <p className="leading-relaxed">
-                                        {!thirdSatPassed ? (
-                                            <>The 3rd Saturday of {format(viewingDate, 'MMMM yyyy')} has not yet occurred. Under company policy, employees must <strong>physically work and punch in</strong> on the 3rd Saturday to earn 1.0 day of Blue Leave. It cannot be taken in advance.</>
-                                        ) : workedOn3rdSat ? (
-                                            <>Attendance records confirm you <strong>worked on the 3rd Saturday</strong> ({thirdSaturday ? format(thirdSaturday, 'dd MMM') : ''}). Your 1.0 day Blue Leave was unlocked and is available to use until <strong>{format(monthEnd, 'dd MMM yyyy')}</strong>.</>
-                                        ) : (
-                                            <>You did not work on the 3rd Saturday ({thirdSaturday ? format(thirdSaturday, 'dd MMM') : ''}) or took it as a holiday. As per policy, the 1-day floating allowance is consumed as the holiday itself, so <strong>0 days are available</strong> to take elsewhere.</>
-                                        )}
-                                    </p>
-                                </div>
-                            </div>
+                                    {/* Full Year Ledger Table */}
+                                    <div className="p-3.5 sm:p-4 rounded-xl bg-slate-50 dark:bg-[#041b0f] border border-slate-200 dark:border-[#134426] space-y-3">
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                            <div className="flex items-center gap-2">
+                                                <Calendar className="w-4 h-4 text-[#44D62C] flex-shrink-0" />
+                                                <span className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-white">
+                                                    Full Year Blue Leave Ledger (January to December {targetYear})
+                                                </span>
+                                            </div>
+                                            <span className="text-[11px] font-bold text-slate-500 dark:text-white/70">
+                                                Actual Punches & Attendance Records
+                                            </span>
+                                        </div>
 
-                            {/* Blue Leave Policy Rules */}
-                            <div className="p-3.5 sm:p-4 rounded-xl bg-slate-50 dark:bg-[#041b0f] border border-slate-200 dark:border-[#134426] space-y-2">
-                                <div className="flex items-center gap-2">
-                                    <Info className="w-4 h-4 text-[#44D62C] flex-shrink-0" />
-                                    <span className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-white">
-                                        Blue Leave Policy Guidelines
-                                    </span>
-                                </div>
-                                <ul className="text-xs text-slate-600 dark:text-white/80 space-y-1.5 list-disc pl-4 leading-relaxed">
-                                    <li><strong>Eligibility:</strong> Applicable for male employees at the Bangalore office.</li>
-                                    <li><strong>Earning Condition:</strong> 1.0 day is earned only after working on the 3rd Saturday of the calendar month.</li>
-                                    <li><strong>Monthly Validity:</strong> Must be consumed within the same calendar month. <strong>Strictly non-cumulative</strong> and does not carry forward to the next month.</li>
-                                    <li><strong>No Advance Leave:</strong> Cannot be applied or availed prior to working on the 3rd Saturday.</li>
-                                </ul>
-                            </div>
-
-                            {/* Applied Blue Leaves This Month */}
-                            <div className="space-y-2.5">
-                                <div className="flex items-center justify-between">
-                                    <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-white">
-                                        Blue Leave Applications ({format(viewingDate, 'MMMM yyyy')})
-                                    </h4>
-                                    <span className="text-[11px] font-bold text-slate-500 dark:text-white/70">
-                                        {blueLeavesThisMonth.length} request{blueLeavesThisMonth.length !== 1 ? 's' : ''}
-                                    </span>
-                                </div>
-
-                                {blueLeavesThisMonth.length > 0 ? (
-                                    <>
-                                        <div className="hidden sm:block border border-slate-200 dark:border-[#134426] rounded-xl overflow-x-auto shadow-2xs">
-                                            <table className="w-full text-left text-xs border-collapse min-w-[560px]">
+                                        {/* Desktop Table View */}
+                                        <div className="hidden md:block border border-slate-200 dark:border-[#134426] rounded-xl overflow-x-auto shadow-2xs">
+                                            <table className="w-full text-left text-xs border-collapse min-w-[780px]">
                                                 <thead>
-                                                    <tr className="bg-slate-100/80 dark:bg-[#041b0f] text-slate-600 dark:text-white/80 font-bold border-b border-slate-200 dark:border-[#134426]">
+                                                    <tr className="bg-slate-100/80 dark:bg-[#062615] text-slate-600 dark:text-white/80 font-bold border-b border-slate-200 dark:border-[#134426]">
                                                         <th className="py-2.5 px-3 w-10 text-center">#</th>
-                                                        <th className="py-2.5 px-3 whitespace-nowrap">Date</th>
-                                                        <th className="py-2.5 px-3 text-center whitespace-nowrap">Duration</th>
-                                                        <th className="py-2.5 px-3">Reason</th>
-                                                        <th className="py-2.5 px-3 whitespace-nowrap">Status</th>
-                                                        <th className="py-2.5 px-3 whitespace-nowrap">Approved By</th>
+                                                        <th className="py-2.5 px-3">Month</th>
+                                                        <th className="py-2.5 px-3 whitespace-nowrap">3rd Saturday</th>
+                                                        <th className="py-2.5 px-3 text-center whitespace-nowrap">Policy Credit</th>
+                                                        <th className="py-2.5 px-3">3rd Sat Work / Attendance</th>
+                                                        <th className="py-2.5 px-3 text-center whitespace-nowrap">Applied</th>
+                                                        <th className="py-2.5 px-3 text-center whitespace-nowrap">Consumed</th>
+                                                        <th className="py-2.5 px-3 whitespace-nowrap">Month Balance / Status</th>
+                                                        <th className="py-2.5 px-3 text-center whitespace-nowrap">Action</th>
                                                     </tr>
                                                 </thead>
-                                                <tbody className="divide-y divide-slate-100 dark:divide-[#134426]/60">
-                                                    {blueLeavesThisMonth.map((req, idx) => {
-                                                        const { approverName, approverPhoto, approvedDateStr } = getLeaveApprovalInfo(req);
-                                                        const isHalf = req.dayOption === 'half';
-                                                        const days = isHalf ? 0.5 : (differenceInCalendarDays(new Date(req.endDate.replace(/-/g, '/')), new Date(req.startDate.replace(/-/g, '/'))) + 1);
-
+                                                <tbody className="divide-y divide-slate-100 dark:divide-[#134426]/60 text-slate-700 dark:text-slate-200">
+                                                    {yearMonthsData.map((m, idx) => {
+                                                        const isSelectedViewing = format(m.monthDate, 'yyyy-MM') === format(viewingDate, 'yyyy-MM');
                                                         return (
-                                                            <tr key={req.id || idx} className="hover:bg-slate-50/80 dark:hover:bg-[#041b0f]/60 transition-colors">
-                                                                <td className="py-2.5 px-3 text-slate-400 font-mono text-[11px] text-center">{idx + 1}</td>
-                                                                <td className="py-2.5 px-3 font-semibold text-slate-900 dark:text-white whitespace-nowrap">
-                                                                    {format(new Date(req.startDate.replace(/-/g, '/')), 'dd MMM yyyy')}
+                                                            <tr 
+                                                                key={m.monthIndex} 
+                                                                className={`transition-colors ${
+                                                                    isSelectedViewing
+                                                                        ? 'bg-emerald-50/70 dark:bg-[#134426]/30'
+                                                                        : m.isCurrentMonth
+                                                                        ? 'bg-blue-50/40 dark:bg-blue-950/20 hover:bg-slate-50/80 dark:hover:bg-[#062615]/50'
+                                                                        : 'hover:bg-slate-50/80 dark:hover:bg-[#062615]/50'
+                                                                }`}
+                                                            >
+                                                                <td className="py-2.5 px-3 text-center font-mono text-[11px] text-slate-400">
+                                                                    {idx + 1}
                                                                 </td>
-                                                                <td className="py-2.5 px-3 text-center font-bold text-rose-600 dark:text-rose-400 whitespace-nowrap">
-                                                                    -{days}d
-                                                                </td>
-                                                                <td className="py-2.5 px-3 text-slate-600 dark:text-white/70 max-w-[200px] break-words" title={req.reason}>
-                                                                    {req.reason || '-'}
-                                                                </td>
-                                                                <td className="py-2.5 px-3 whitespace-nowrap">
-                                                                    <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                                                                        req.status === 'approved' || req.status === 'correction_made'
-                                                                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
-                                                                            : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
-                                                                    }`}>
-                                                                        {req.status}
-                                                                    </span>
-                                                                </td>
-                                                                <td className="py-2.5 px-3 whitespace-nowrap">
-                                                                    <div className="flex items-center gap-2">
-                                                                        {approverPhoto ? (
-                                                                            <img 
-                                                                                src={approverPhoto} 
-                                                                                alt={approverName} 
-                                                                                className="w-6 h-6 rounded-full object-cover border border-emerald-300 dark:border-[#134426] flex-shrink-0"
-                                                                                onError={(e) => {
-                                                                                    (e.target as HTMLElement).style.display = 'none';
-                                                                                    const fallback = (e.target as HTMLElement).nextElementSibling;
-                                                                                    if (fallback) (fallback as HTMLElement).classList.remove('hidden');
-                                                                                }}
-                                                                            />
-                                                                        ) : null}
-                                                                        <div className={`w-6 h-6 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 font-bold text-[10px] flex items-center justify-center border border-emerald-300 dark:border-[#134426] flex-shrink-0 ${approverPhoto ? 'hidden' : ''}`}>
-                                                                            {(approverName || 'A').charAt(0).toUpperCase()}
-                                                                        </div>
-                                                                        <div className="flex flex-col min-w-0">
-                                                                            <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                                                                                {approverName}
+                                                                <td className="py-2.5 px-3 font-bold text-slate-900 dark:text-white whitespace-nowrap">
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <span>{m.monthName}</span>
+                                                                        {m.isCurrentMonth && (
+                                                                            <span className="px-1.5 py-0.2 rounded bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-300 text-[9px] font-extrabold uppercase">
+                                                                                Current
                                                                             </span>
-                                                                            {approvedDateStr && (
-                                                                                <span className="text-[10px] text-slate-500 dark:text-white/60">
-                                                                                    {approvedDateStr}
-                                                                                </span>
+                                                                        )}
+                                                                        {isSelectedViewing && (
+                                                                            <span className="px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-[#44D62C] text-[9px] font-extrabold uppercase">
+                                                                                Selected
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                </td>
+                                                                <td className="py-2.5 px-3 font-mono text-[11px] text-slate-600 dark:text-white/70 whitespace-nowrap">
+                                                                    {m.thirdSat ? format(m.thirdSat, 'dd MMM yyyy') : '-'}
+                                                                </td>
+                                                                <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                                                                    {m.isAllocated ? (
+                                                                        <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                                                                            +{m.companyProvided.toFixed(1)}d
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="text-slate-400 dark:text-slate-500 font-mono text-[11px] font-semibold">
+                                                                            0.0d (Not Allocated)
+                                                                        </span>
+                                                                    )}
+                                                                </td>
+                                                                <td className="py-2.5 px-3">
+                                                                    {!m.isAllocated ? (
+                                                                        <div className="space-y-0.5">
+                                                                            <span className="inline-flex items-center gap-1 font-bold text-slate-700 dark:text-slate-300">
+                                                                                <Briefcase className="w-3.5 h-3.5 text-slate-500" />
+                                                                                Normal Working Day
+                                                                            </span>
+                                                                            {m.workedOn3rdSat && m.punchCount > 0 ? (
+                                                                                <div className="text-[10px] text-slate-500 dark:text-white/60 font-mono">
+                                                                                    {m.punchCount} punches ({m.firstPunchTime} - {m.lastPunchTime})
+                                                                                </div>
+                                                                            ) : m.workedOn3rdSat ? (
+                                                                                <div className="text-[10px] text-slate-500 dark:text-white/60">
+                                                                                    Regularized Attendance
+                                                                                </div>
+                                                                            ) : (
+                                                                                <div className="text-[10px] text-slate-400 dark:text-slate-500">
+                                                                                    {m.thirdSatPassed ? 'Absent / No punches' : `Scheduled on ${m.thirdSat ? format(m.thirdSat, 'dd MMM') : '-'}`}
+                                                                                </div>
                                                                             )}
                                                                         </div>
-                                                                    </div>
+                                                                    ) : m.workedOn3rdSat ? (
+                                                                        <div className="space-y-0.5">
+                                                                            <span className="inline-flex items-center gap-1 font-bold text-emerald-600 dark:text-[#44D62C]">
+                                                                                <Check className="w-3.5 h-3.5" />
+                                                                                Worked & Unlocked
+                                                                            </span>
+                                                                            {m.punchCount > 0 ? (
+                                                                                <div className="text-[10px] text-slate-500 dark:text-white/60 font-mono">
+                                                                                    {m.punchCount} punches ({m.firstPunchTime} - {m.lastPunchTime})
+                                                                                </div>
+                                                                            ) : (
+                                                                                <div className="text-[10px] text-slate-500 dark:text-white/60">
+                                                                                    Regularized Attendance
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    ) : m.thirdSatPassed ? (
+                                                                        <div className="space-y-0.5">
+                                                                            <span className="inline-flex items-center gap-1 font-bold text-rose-600 dark:text-rose-400">
+                                                                                <XCircle className="w-3.5 h-3.5" />
+                                                                                Taken as Holiday
+                                                                            </span>
+                                                                            <div className="text-[10px] text-slate-500 dark:text-white/60">
+                                                                                Absent / No punches
+                                                                            </div>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div className="space-y-0.5">
+                                                                            <span className="inline-flex items-center gap-1 font-bold text-blue-600 dark:text-blue-400">
+                                                                                <Clock className="w-3.5 h-3.5" />
+                                                                                Scheduled
+                                                                            </span>
+                                                                            <div className="text-[10px] text-slate-500 dark:text-white/60">
+                                                                                Upcoming on {m.thirdSat ? format(m.thirdSat, 'dd MMM') : '-'}
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                </td>
+                                                                <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                                                                    {m.appliedUsed > 0 ? (
+                                                                        <span className="font-bold text-rose-600 dark:text-rose-400">
+                                                                            -{m.appliedUsed.toFixed(1)}d
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="text-slate-400 dark:text-slate-500 font-mono text-[11px]">
+                                                                            0.0d
+                                                                        </span>
+                                                                    )}
+                                                                </td>
+                                                                <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                                                                    {m.consumed > 0 ? (
+                                                                        <span className="font-bold text-rose-600 dark:text-rose-400">
+                                                                            {m.consumed.toFixed(1)}d {m.workedOn3rdSat ? '(Used)' : '(Holiday)'}
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="text-slate-400 dark:text-slate-500 font-mono text-[11px]">
+                                                                            0.0d
+                                                                        </span>
+                                                                    )}
+                                                                </td>
+                                                                <td className="py-2.5 px-3 whitespace-nowrap">
+                                                                    <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${m.statusBadgeColor}`}>
+                                                                        {m.statusLabel}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setViewingDate(m.monthDate);
+                                                                            setBlueLeaveModalTab('month');
+                                                                        }}
+                                                                        className="px-2 py-1 rounded-md text-[11px] font-bold text-emerald-700 dark:text-[#44D62C] hover:bg-emerald-50 dark:hover:bg-[#134426] transition-colors border border-emerald-300/60 dark:border-[#134426]"
+                                                                    >
+                                                                        View Month
+                                                                    </button>
                                                                 </td>
                                                             </tr>
                                                         );
@@ -4983,56 +5237,527 @@ const LeaveDashboard: React.FC = () => {
                                             </table>
                                         </div>
 
-                                        <div className="sm:hidden space-y-2.5">
-                                            {blueLeavesThisMonth.map((req, idx) => {
-                                                const { approverName, approverPhoto, approvedDateStr } = getLeaveApprovalInfo(req);
-                                                const isHalf = req.dayOption === 'half';
-                                                const days = isHalf ? 0.5 : (differenceInCalendarDays(new Date(req.endDate.replace(/-/g, '/')), new Date(req.startDate.replace(/-/g, '/'))) + 1);
-
+                                        {/* Mobile Card List View */}
+                                        <div className="md:hidden space-y-2.5">
+                                            {yearMonthsData.map((m, idx) => {
+                                                const isSelectedViewing = format(m.monthDate, 'yyyy-MM') === format(viewingDate, 'yyyy-MM');
                                                 return (
-                                                    <div key={req.id || idx} className="p-3 rounded-xl bg-slate-50/80 dark:bg-[#041b0f]/60 border border-slate-200 dark:border-[#134426] space-y-2">
+                                                    <div 
+                                                        key={m.monthIndex} 
+                                                        className={`p-3 rounded-xl border space-y-2.5 transition-colors ${
+                                                            isSelectedViewing
+                                                                ? 'bg-emerald-50/70 dark:bg-[#134426]/30 border-emerald-300 dark:border-[#44D62C]/40'
+                                                                : 'bg-slate-50/80 dark:bg-[#041b0f]/60 border-slate-200 dark:border-[#134426]'
+                                                        }`}
+                                                    >
                                                         <div className="flex items-center justify-between gap-2">
                                                             <div className="flex items-center gap-2">
-                                                                <span className="w-5 h-5 rounded-full bg-slate-200 dark:bg-[#134426] text-slate-600 dark:text-emerald-300 font-mono text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+                                                                <span className="w-5 h-5 rounded-full bg-slate-200 dark:bg-[#134426] text-slate-700 dark:text-emerald-300 font-mono text-[10px] font-bold flex items-center justify-center flex-shrink-0">
                                                                     {idx + 1}
                                                                 </span>
                                                                 <span className="text-xs font-bold text-slate-900 dark:text-white">
-                                                                    {format(new Date(req.startDate.replace(/-/g, '/')), 'dd MMM yyyy')}
+                                                                    {m.monthName}
+                                                                </span>
+                                                                {m.isCurrentMonth && (
+                                                                    <span className="px-1.5 py-0.2 rounded bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-300 text-[9px] font-extrabold uppercase">
+                                                                        Current
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${m.statusBadgeColor}`}>
+                                                                {m.statusLabel}
+                                                            </span>
+                                                        </div>
+
+                                                        <div className="grid grid-cols-2 gap-2 text-[11px] pt-1 border-t border-slate-200/60 dark:border-white/5">
+                                                            <div>
+                                                                <span className="text-slate-500 dark:text-white/60 block text-[10px]">3rd Saturday:</span>
+                                                                <span className="font-bold text-slate-900 dark:text-white font-mono">
+                                                                    {m.thirdSat ? format(m.thirdSat, 'dd MMM yyyy') : '-'}
                                                                 </span>
                                                             </div>
-                                                            <div className="flex items-center gap-1.5">
-                                                                <span className="text-xs font-black text-rose-600 dark:text-rose-400">
-                                                                    -{days}d
+                                                            <div>
+                                                                <span className="text-slate-500 dark:text-white/60 block text-[10px]">Attendance:</span>
+                                                                {!m.isAllocated ? (
+                                                                    <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                                                                        <Briefcase className="w-3 h-3 text-slate-400" /> Normal Working Day
+                                                                    </span>
+                                                                ) : m.workedOn3rdSat ? (
+                                                                    <span className="font-bold text-emerald-600 dark:text-[#44D62C] flex items-center gap-1">
+                                                                        <Check className="w-3 h-3" /> Worked (+1.0d)
+                                                                    </span>
+                                                                ) : m.thirdSatPassed ? (
+                                                                    <span className="font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                                                                        <XCircle className="w-3 h-3" /> Holiday (-1.0d)
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                                                                        <Clock className="w-3 h-3" /> Upcoming
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <div>
+                                                                <span className="text-slate-500 dark:text-white/60 block text-[10px]">Allowance / Consumed:</span>
+                                                                <span className="font-semibold text-slate-800 dark:text-white">
+                                                                    {m.isAllocated 
+                                                                        ? `+${m.companyProvided.toFixed(1)}d / -${m.consumed.toFixed(1)}d`
+                                                                        : '0.0d / 0.0d'}
                                                                 </span>
-                                                                <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                                                                    req.status === 'approved' || req.status === 'correction_made'
-                                                                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
-                                                                        : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
-                                                                }`}>
-                                                                    {req.status}
+                                                            </div>
+                                                            <div>
+                                                                <span className="text-slate-500 dark:text-white/60 block text-[10px]">Net Month Balance:</span>
+                                                                <span className="font-black text-slate-900 dark:text-white">
+                                                                    {m.isAllocated ? `${m.available.toFixed(1)}d Available` : 'Not Allocated'}
                                                                 </span>
                                                             </div>
                                                         </div>
-                                                        {req.reason && (
-                                                            <p className="text-[11px] text-slate-600 dark:text-white/70 bg-white dark:bg-black/20 p-2 rounded-lg border border-slate-200/50 dark:border-white/5">
-                                                                {req.reason}
-                                                            </p>
-                                                        )}
-                                                        <div className="flex items-center justify-between text-xs pt-1.5 border-t border-slate-200/60 dark:border-[#134426]/60 text-slate-500 dark:text-white/60 text-[11px]">
-                                                            <span>Approver: <strong className="text-slate-900 dark:text-white">{approverName}</strong></span>
-                                                            {approvedDateStr && <span>{approvedDateStr}</span>}
+
+                                                        <div className="flex items-center justify-between pt-2 border-t border-slate-200/60 dark:border-white/5">
+                                                            <span className="text-[10px] text-slate-500 dark:text-white/60">
+                                                                {m.statusDescription}
+                                                            </span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setViewingDate(m.monthDate);
+                                                                    setBlueLeaveModalTab('month');
+                                                                }}
+                                                                className="px-2.5 py-1 rounded-md text-[11px] font-bold text-emerald-700 dark:text-[#44D62C] hover:bg-emerald-50 dark:hover:bg-[#134426] transition-colors border border-emerald-300/60 dark:border-[#134426]"
+                                                            >
+                                                                Details →
+                                                            </button>
                                                         </div>
                                                     </div>
                                                 );
                                             })}
                                         </div>
-                                    </>
-                                ) : (
-                                    <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 text-xs text-slate-500 text-center">
-                                        No Blue / Floating Leave requests applied for {format(viewingDate, 'MMMM yyyy')}.
                                     </div>
-                                )}
-                            </div>
+
+                                    {/* Full Year Policy Notice */}
+                                    <div className="p-3.5 sm:p-4 rounded-xl bg-slate-50 dark:bg-[#041b0f] border border-slate-200 dark:border-[#134426] space-y-2">
+                                        <div className="flex items-center gap-2">
+                                            <Info className="w-4 h-4 text-[#44D62C] flex-shrink-0" />
+                                            <span className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-white">
+                                                Bangalore Office Blue Leave Rules ({targetYear})
+                                            </span>
+                                        </div>
+                                        <ul className="text-xs text-slate-600 dark:text-white/80 space-y-1.5 list-disc pl-4 leading-relaxed">
+                                            <li><strong>Eligibility:</strong> Provided exclusively for male employees in Bangalore office to offset the 3rd Saturday work schedule.</li>
+                                            <li><strong>Configured Months:</strong> Applies only to months active in company Attendance Settings (e.g. Jan, May - Dec {targetYear}). Months without floating holidays (Feb, Mar, Apr) are regular working months without floating leave allocations.</li>
+                                            <li><strong>Accrual Condition:</strong> 1.0 day is earned and unlocked <strong>only upon physically working and punching in</strong> on the 3rd Saturday of an eligible month.</li>
+                                            <li><strong>Strict Monthly Validity:</strong> Blue Leave is <strong>strictly non-cumulative</strong> and cannot carry forward to following months. Unused unlocked leave expires at month end.</li>
+                                            <li><strong>Absent / Holiday Offset:</strong> If an employee does not work on the 3rd Saturday of an eligible month, the 1.0 day allowance is consumed as the holiday itself.</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* TAB 2: MONTHLY ACCOUNTING VIEW */}
+                            {blueLeaveModalTab === 'month' && (
+                                <div className="space-y-5">
+                                    {/* Month Selector Bar */}
+                                    <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-[#041b0f] border border-slate-200 dark:border-[#134426]">
+                                        <div className="flex items-center gap-2">
+                                            <Calendar className="w-4 h-4 text-[#44D62C]" />
+                                            <span className="text-xs font-bold text-slate-700 dark:text-white">
+                                                Select Month:
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                            <select
+                                                value={format(viewingDate, 'yyyy-MM')}
+                                                onChange={(e) => {
+                                                    const [y, m] = e.target.value.split('-').map(Number);
+                                                    setViewingDate(new Date(y, m - 1, 1));
+                                                }}
+                                                className="text-xs font-bold py-1 px-2.5 rounded-lg bg-white dark:bg-[#062615] border border-slate-300 dark:border-[#134426] text-slate-900 dark:text-white focus:outline-hidden focus:ring-1 focus:ring-emerald-500"
+                                            >
+                                                {yearMonthsData.map(m => (
+                                                    <option key={m.monthIndex} value={format(m.monthDate, 'yyyy-MM')}>
+                                                        {m.monthName} {!m.isAllocated ? '(Not Allocated)' : m.isCurrentMonth ? '(Current)' : ''}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    {/* Top KPI Cards for Selected Month */}
+                                    <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                                        <div className="p-3 sm:p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/50 text-center">
+                                            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300 block mb-1">
+                                                Company Provided
+                                            </span>
+                                            <span className="text-lg sm:text-xl md:text-2xl font-black text-emerald-900 dark:text-emerald-100">
+                                                {viewingMonthData.companyProvided.toFixed(1)}d
+                                            </span>
+                                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold block mt-0.5">
+                                                {viewingMonthData.isAllocated ? 'Monthly Policy Allowance' : 'Not Allocated in Settings'}
+                                            </span>
+                                        </div>
+
+                                        <div className="p-3 sm:p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/50 text-center">
+                                            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-rose-700 dark:text-rose-300 block mb-1">
+                                                Consumed / Used
+                                            </span>
+                                            <span className="text-lg sm:text-xl md:text-2xl font-black text-rose-900 dark:text-rose-100">
+                                                {viewingMonthData.consumed.toFixed(1)}d
+                                            </span>
+                                            <span className="text-[10px] text-rose-600 dark:text-rose-400 font-semibold block mt-0.5">
+                                                {!viewingMonthData.isAllocated
+                                                    ? 'No floating leave allocated'
+                                                    : viewingMonthData.workedOn3rdSat
+                                                    ? (viewingMonthData.appliedUsed > 0 ? 'Applied This Month' : '0d Used')
+                                                    : (viewingMonthData.thirdSatPassed ? 'Taken as 3rd Sat Holiday' : 'Pending 3rd Sat')}
+                                            </span>
+                                        </div>
+
+                                        <div className="p-3 sm:p-3.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/50 text-center">
+                                            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300 block mb-1">
+                                                Available Net
+                                            </span>
+                                            <span className="text-lg sm:text-xl md:text-2xl font-black text-blue-900 dark:text-blue-100">
+                                                {viewingMonthData.available.toFixed(1)}d
+                                            </span>
+                                            <span className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold block mt-0.5">
+                                                {!viewingMonthData.isAllocated
+                                                    ? 'Normal working month'
+                                                    : viewingMonthData.available > 0 
+                                                    ? `Expires ${format(endOfMonth(viewingDate), 'dd MMM')}` 
+                                                    : (viewingMonthData.thirdSatPassed && !viewingMonthData.workedOn3rdSat 
+                                                        ? 'All 1.0d Consumed (3rd Sat)' 
+                                                        : (viewingMonthData.isPastMonth ? 'Expired at Month End' : 'Locked (Work 3rd Sat)'))}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* 3rd Saturday Status Banner */}
+                                    <div className="p-3.5 sm:p-4 rounded-xl bg-slate-50 dark:bg-[#041b0f] border border-slate-200 dark:border-[#134426] space-y-3">
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                            <div className="flex items-center gap-2">
+                                                <Calendar className="w-4 h-4 text-[#44D62C] flex-shrink-0" />
+                                                <span className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-white">
+                                                    3rd Saturday Work Status ({format(viewingDate, 'MMMM yyyy')})
+                                                </span>
+                                            </div>
+                                            {viewingMonthData.thirdSat && (
+                                                <span className={`text-[11px] sm:text-xs font-bold px-2.5 py-0.5 rounded-md border w-fit ${viewingMonthData.statusBadgeColor}`}>
+                                                    {viewingMonthData.statusLabel}
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        <div className="text-xs text-slate-600 dark:text-white/80 space-y-2">
+                                            <div className="flex items-center gap-2 text-xs">
+                                                <span className="font-semibold text-slate-500 dark:text-white/60">3rd Saturday Date:</span>
+                                                <span className="font-bold text-slate-900 dark:text-white">
+                                                    {viewingMonthData.thirdSat ? format(viewingMonthData.thirdSat, 'EEEE, dd MMMM yyyy') : 'Not applicable'}
+                                                </span>
+                                            </div>
+                                            <p className="leading-relaxed">
+                                                {!viewingMonthData.isAllocated ? (
+                                                    <>Under company Attendance Settings, <strong>{format(viewingDate, 'MMMM yyyy')} is not configured for floating holidays</strong> (Applicable months: Jan, May - Dec). The 3rd Saturday ({viewingMonthData.thirdSat ? format(viewingMonthData.thirdSat, 'dd MMM yyyy') : ''}) was treated as a <strong>normal working day</strong>.{viewingMonthData.workedOn3rdSat ? ` You recorded attendance on this day${viewingMonthData.punchCount > 0 ? ` (${viewingMonthData.punchCount} punches${viewingMonthData.firstPunchTime ? `, ${viewingMonthData.firstPunchTime} - ${viewingMonthData.lastPunchTime}` : ''})` : ''}.` : ''} No Blue Leave was credited or consumed.</>
+                                                ) : !viewingMonthData.thirdSatPassed ? (
+                                                    <>The 3rd Saturday of {format(viewingDate, 'MMMM yyyy')} has not yet occurred. Under company policy, employees must <strong>physically work and punch in</strong> on the 3rd Saturday to earn 1.0 day of Blue Leave. It cannot be taken in advance.</>
+                                                ) : viewingMonthData.workedOn3rdSat ? (
+                                                    <>Attendance records confirm you <strong>worked on the 3rd Saturday</strong> ({viewingMonthData.thirdSat ? format(viewingMonthData.thirdSat, 'dd MMM') : ''}){viewingMonthData.punchCount > 0 ? ` with ${viewingMonthData.punchCount} biometric punches (${viewingMonthData.firstPunchTime} - ${viewingMonthData.lastPunchTime})` : ''}. Your 1.0 day Blue Leave was unlocked for floating use until <strong>{format(endOfMonth(viewingDate), 'dd MMM yyyy')}</strong>.</>
+                                                ) : (
+                                                    <>You did not work on the 3rd Saturday ({viewingMonthData.thirdSat ? format(viewingMonthData.thirdSat, 'dd MMM') : ''}) or took it as a holiday. As per policy, the 1-day floating allowance is consumed as the holiday itself, so <strong>0 days are available</strong> to take elsewhere.</>
+                                                )}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {/* Blue Leave Usage & Accrual Breakup Table */}
+                                    <div className="p-3.5 sm:p-4 rounded-xl bg-slate-50 dark:bg-[#041b0f] border border-slate-200 dark:border-[#134426] space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <Calculator className="w-4 h-4 text-[#44D62C] flex-shrink-0" />
+                                                <span className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-white">
+                                                    Blue Leave Entitlement & Usage Breakup ({format(viewingDate, 'MMMM yyyy')})
+                                                </span>
+                                            </div>
+                                            <span className="text-[11px] font-bold text-slate-500 dark:text-white/70">
+                                                Monthly Accounting
+                                            </span>
+                                        </div>
+
+                                        <div className="border border-slate-200 dark:border-[#134426] rounded-xl overflow-x-auto shadow-2xs">
+                                            <table className="w-full text-left text-xs border-collapse min-w-[500px]">
+                                                <thead>
+                                                    <tr className="bg-slate-100/80 dark:bg-[#062615] text-slate-600 dark:text-white/80 font-bold border-b border-slate-200 dark:border-[#134426]">
+                                                        <th className="py-2.5 px-3">Item / Event</th>
+                                                        <th className="py-2.5 px-3 whitespace-nowrap">Date</th>
+                                                        <th className="py-2.5 px-3 text-center whitespace-nowrap">Credit / Debit</th>
+                                                        <th className="py-2.5 px-3">Policy Reason / Description</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100 dark:divide-[#134426]/60 text-slate-700 dark:text-slate-200">
+                                                    {/* 1. Company Policy Allowance */}
+                                                    <tr className="hover:bg-slate-50/80 dark:hover:bg-[#062615]/50">
+                                                        <td className="py-2.5 px-3 font-bold text-slate-900 dark:text-white">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${viewingMonthData.isAllocated ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
+                                                                <span>Company Policy Allowance</span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="py-2.5 px-3 text-slate-500 dark:text-white/60 font-mono text-[11px] whitespace-nowrap">
+                                                            {format(startOfMonth(viewingDate), '01 MMM yyyy')}
+                                                        </td>
+                                                        <td className="py-2.5 px-3 text-center font-bold whitespace-nowrap">
+                                                            {viewingMonthData.isAllocated ? (
+                                                                <span className="text-emerald-600 dark:text-emerald-400">+{viewingMonthData.companyProvided.toFixed(1)}d</span>
+                                                            ) : (
+                                                                <span className="text-slate-400 dark:text-slate-500 font-mono">0.0d</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="py-2.5 px-3 text-slate-600 dark:text-white/70 text-[11px]">
+                                                            {viewingMonthData.isAllocated 
+                                                                ? '1 day per month floating holiday entitlement provided by company policy (Bangalore office).'
+                                                                : 'Floating holiday is not allocated for this month in Attendance Settings.'}
+                                                        </td>
+                                                    </tr>
+
+                                                    {/* 2. 3rd Saturday Consumption / Earning */}
+                                                    <tr className="hover:bg-slate-50/80 dark:hover:bg-[#062615]/50">
+                                                        <td className="py-2.5 px-3 font-bold text-slate-900 dark:text-white">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                                                                    !viewingMonthData.isAllocated
+                                                                        ? 'bg-slate-400'
+                                                                        : !viewingMonthData.thirdSatPassed 
+                                                                        ? 'bg-blue-500' 
+                                                                        : viewingMonthData.workedOn3rdSat 
+                                                                        ? 'bg-emerald-500' 
+                                                                        : 'bg-rose-500'
+                                                                }`}></span>
+                                                                <span>3rd Saturday {viewingMonthData.isAllocated ? 'Scheduled Off' : 'Normal Work Day'}</span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="py-2.5 px-3 text-slate-500 dark:text-white/60 font-mono text-[11px] whitespace-nowrap">
+                                                            {viewingMonthData.thirdSat ? format(viewingMonthData.thirdSat, 'dd MMM yyyy') : '-'}
+                                                        </td>
+                                                        <td className={`py-2.5 px-3 text-center font-bold whitespace-nowrap ${
+                                                            !viewingMonthData.isAllocated
+                                                                ? 'text-slate-500 dark:text-slate-400'
+                                                                : !viewingMonthData.thirdSatPassed 
+                                                                ? 'text-blue-600 dark:text-blue-400' 
+                                                                : viewingMonthData.workedOn3rdSat 
+                                                                    ? 'text-emerald-600 dark:text-emerald-400' 
+                                                                    : 'text-rose-600 dark:text-rose-400'
+                                                        }`}>
+                                                            {!viewingMonthData.isAllocated
+                                                                ? '0.0d (Normal Day)'
+                                                                : !viewingMonthData.thirdSatPassed 
+                                                                ? '0.0d' 
+                                                                : viewingMonthData.workedOn3rdSat 
+                                                                    ? '+1.0d (Earned)' 
+                                                                    : '-1.0d (Consumed)'}
+                                                        </td>
+                                                        <td className="py-2.5 px-3 text-slate-600 dark:text-white/70 text-[11px]">
+                                                            {!viewingMonthData.isAllocated ? (
+                                                                viewingMonthData.workedOn3rdSat 
+                                                                    ? 'Employee worked on 3rd Saturday. As this month has no floating holiday allocation, it was treated as a regular working day.'
+                                                                    : '3rd Saturday was a normal working day (not a floating holiday).'
+                                                            ) : !viewingMonthData.thirdSatPassed ? (
+                                                                'Upcoming. 1.0d floating leave will unlock for use only if the employee works and punches in on this day.'
+                                                            ) : viewingMonthData.workedOn3rdSat ? (
+                                                                'Employee worked and punched in on the 3rd Saturday. 1.0d unlocked for floating use this month.'
+                                                            ) : (
+                                                                'Employee was absent / took the 3rd Saturday off. The 1.0d allowance was consumed as the holiday itself.'
+                                                            )}
+                                                        </td>
+                                                    </tr>
+
+                                                    {/* 3. Applied Floating Leaves */}
+                                                    {viewingMonthData.appliedInMonth.map((req, idx) => {
+                                                        const isHalf = req.dayOption === 'half';
+                                                        const days = isHalf ? 0.5 : (differenceInCalendarDays(new Date(req.endDate.replace(/-/g, '/')), new Date(req.startDate.replace(/-/g, '/'))) + 1);
+                                                        return (
+                                                            <tr key={req.id || idx} className="hover:bg-slate-50/80 dark:hover:bg-[#062615]/50">
+                                                                <td className="py-2.5 px-3 font-bold text-slate-900 dark:text-white">
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <span className="w-2 h-2 rounded-full bg-rose-500 flex-shrink-0"></span>
+                                                                        <span>Floating Leave Application</span>
+                                                                    </div>
+                                                                </td>
+                                                                <td className="py-2.5 px-3 text-slate-500 dark:text-white/60 font-mono text-[11px] whitespace-nowrap">
+                                                                    {format(new Date(req.startDate.replace(/-/g, '/')), 'dd MMM yyyy')}
+                                                                </td>
+                                                                <td className="py-2.5 px-3 text-center font-bold text-rose-600 dark:text-rose-400 whitespace-nowrap">
+                                                                    -{days.toFixed(1)}d
+                                                                </td>
+                                                                <td className="py-2.5 px-3 text-slate-600 dark:text-white/70 text-[11px]">
+                                                                    {req.reason || 'Floating leave taken'} ({req.status})
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+
+                                                    {/* 4. Final Balance Summary Row */}
+                                                    <tr className="bg-slate-100/70 dark:bg-[#062615]/80 font-bold border-t border-slate-200 dark:border-[#134426]">
+                                                        <td colSpan={2} className="py-2.5 px-3 text-slate-900 dark:text-white uppercase tracking-wider text-[11px]">
+                                                            Net Available Floating Balance
+                                                        </td>
+                                                        <td className={`py-2.5 px-3 text-center font-black text-sm whitespace-nowrap ${
+                                                            viewingMonthData.available > 0 ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'
+                                                        }`}>
+                                                            {viewingMonthData.available.toFixed(1)}d
+                                                        </td>
+                                                        <td className="py-2.5 px-3 text-slate-500 dark:text-white/60 text-[11px]">
+                                                            {!viewingMonthData.isAllocated
+                                                                ? '0 days available (Month not configured for floating holidays in Attendance Settings)'
+                                                                : viewingMonthData.available > 0
+                                                                ? `Valid to use until ${format(endOfMonth(viewingDate), 'dd MMMM yyyy')}`
+                                                                : (viewingMonthData.thirdSatPassed && !viewingMonthData.workedOn3rdSat
+                                                                    ? '0 days remaining (Consumed on 3rd Saturday scheduled holiday)'
+                                                                    : '0 days available')}
+                                                        </td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+
+                                    {/* Applied Blue Leaves This Month */}
+                                    <div className="space-y-2.5">
+                                        <div className="flex items-center justify-between">
+                                            <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-white">
+                                                Blue Leave Applications ({format(viewingDate, 'MMMM yyyy')})
+                                            </h4>
+                                            <span className="text-[11px] font-bold text-slate-500 dark:text-white/70">
+                                                {viewingMonthData.appliedInMonth.length} request{viewingMonthData.appliedInMonth.length !== 1 ? 's' : ''}
+                                            </span>
+                                        </div>
+
+                                        {viewingMonthData.appliedInMonth.length > 0 ? (
+                                            <>
+                                                <div className="hidden sm:block border border-slate-200 dark:border-[#134426] rounded-xl overflow-x-auto shadow-2xs">
+                                                    <table className="w-full text-left text-xs border-collapse min-w-[560px]">
+                                                        <thead>
+                                                            <tr className="bg-slate-100/80 dark:bg-[#041b0f] text-slate-600 dark:text-white/80 font-bold border-b border-slate-200 dark:border-[#134426]">
+                                                                <th className="py-2.5 px-3 w-10 text-center">#</th>
+                                                                <th className="py-2.5 px-3 whitespace-nowrap">Date</th>
+                                                                <th className="py-2.5 px-3 text-center whitespace-nowrap">Duration</th>
+                                                                <th className="py-2.5 px-3">Reason</th>
+                                                                <th className="py-2.5 px-3 whitespace-nowrap">Status</th>
+                                                                <th className="py-2.5 px-3 whitespace-nowrap">Approved By</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-slate-100 dark:divide-[#134426]/60">
+                                                            {viewingMonthData.appliedInMonth.map((req, idx) => {
+                                                                const { approverName, approverPhoto, approvedDateStr } = getLeaveApprovalInfo(req);
+                                                                const isHalf = req.dayOption === 'half';
+                                                                const days = isHalf ? 0.5 : (differenceInCalendarDays(new Date(req.endDate.replace(/-/g, '/')), new Date(req.startDate.replace(/-/g, '/'))) + 1);
+
+                                                                return (
+                                                                    <tr key={req.id || idx} className="hover:bg-slate-50/80 dark:hover:bg-[#041b0f]/60 transition-colors">
+                                                                        <td className="py-2.5 px-3 text-slate-400 font-mono text-[11px] text-center">{idx + 1}</td>
+                                                                        <td className="py-2.5 px-3 font-semibold text-slate-900 dark:text-white whitespace-nowrap">
+                                                                            {format(new Date(req.startDate.replace(/-/g, '/')), 'dd MMM yyyy')}
+                                                                        </td>
+                                                                        <td className="py-2.5 px-3 text-center font-bold text-rose-600 dark:text-rose-400 whitespace-nowrap">
+                                                                            -{days}d
+                                                                        </td>
+                                                                        <td className="py-2.5 px-3 text-slate-600 dark:text-white/70 max-w-[200px] break-words" title={req.reason}>
+                                                                            {req.reason || '-'}
+                                                                        </td>
+                                                                        <td className="py-2.5 px-3 whitespace-nowrap">
+                                                                            <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                                                                req.status === 'approved' || req.status === 'correction_made'
+                                                                                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                                                                                    : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                                                                            }`}>
+                                                                                {req.status}
+                                                                            </span>
+                                                                        </td>
+                                                                        <td className="py-2.5 px-3 whitespace-nowrap">
+                                                                            <div className="flex items-center gap-2">
+                                                                                {approverPhoto ? (
+                                                                                    <img 
+                                                                                        src={approverPhoto} 
+                                                                                        alt={approverName} 
+                                                                                        className="w-6 h-6 rounded-full object-cover border border-emerald-300 dark:border-[#134426] flex-shrink-0"
+                                                                                        onError={(e) => {
+                                                                                            (e.target as HTMLElement).style.display = 'none';
+                                                                                            const fallback = (e.target as HTMLElement).nextElementSibling;
+                                                                                            if (fallback) (fallback as HTMLElement).classList.remove('hidden');
+                                                                                        }}
+                                                                                    />
+                                                                                ) : null}
+                                                                                <div className={`w-6 h-6 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 font-bold text-[10px] flex items-center justify-center border border-emerald-300 dark:border-[#134426] flex-shrink-0 ${approverPhoto ? 'hidden' : ''}`}>
+                                                                                    {(approverName || 'A').charAt(0).toUpperCase()}
+                                                                                </div>
+                                                                                <div className="flex flex-col min-w-0">
+                                                                                    <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                                                                                        {approverName}
+                                                                                    </span>
+                                                                                    {approvedDateStr && (
+                                                                                        <span className="text-[10px] text-slate-500 dark:text-white/60">
+                                                                                            {approvedDateStr}
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        </td>
+                                                                    </tr>
+                                                                );
+                                                            })}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+
+                                                <div className="sm:hidden space-y-2.5">
+                                                    {viewingMonthData.appliedInMonth.map((req, idx) => {
+                                                        const { approverName, approverPhoto, approvedDateStr } = getLeaveApprovalInfo(req);
+                                                        const isHalf = req.dayOption === 'half';
+                                                        const days = isHalf ? 0.5 : (differenceInCalendarDays(new Date(req.endDate.replace(/-/g, '/')), new Date(req.startDate.replace(/-/g, '/'))) + 1);
+
+                                                        return (
+                                                            <div key={req.id || idx} className="p-3 rounded-xl bg-slate-50/80 dark:bg-[#041b0f]/60 border border-slate-200 dark:border-[#134426] space-y-2">
+                                                                <div className="flex items-center justify-between gap-2">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="w-5 h-5 rounded-full bg-slate-200 dark:bg-[#134426] text-slate-600 dark:text-emerald-300 font-mono text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+                                                                            {idx + 1}
+                                                                        </span>
+                                                                        <span className="text-xs font-bold text-slate-900 dark:text-white">
+                                                                            {format(new Date(req.startDate.replace(/-/g, '/')), 'dd MMM yyyy')}
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <span className="text-xs font-black text-rose-600 dark:text-rose-400">
+                                                                            -{days}d
+                                                                        </span>
+                                                                        <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                                                            req.status === 'approved' || req.status === 'correction_made'
+                                                                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                                                                                : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                                                                        }`}>
+                                                                            {req.status}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                                {req.reason && (
+                                                                    <p className="text-[11px] text-slate-600 dark:text-white/70 bg-white dark:bg-black/20 p-2 rounded-lg border border-slate-200/50 dark:border-white/5">
+                                                                        {req.reason}
+                                                                    </p>
+                                                                )}
+                                                                <div className="flex items-center justify-between text-xs pt-1.5 border-t border-slate-200/60 dark:border-[#134426]/60 text-slate-500 dark:text-white/60 text-[11px]">
+                                                                    <span>Approver: <strong className="text-slate-900 dark:text-white">{approverName}</strong></span>
+                                                                    {approvedDateStr && <span>{approvedDateStr}</span>}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 text-xs text-slate-500 text-center">
+                                                No Blue / Floating Leave requests applied for {format(viewingDate, 'MMMM yyyy')}.
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     );
                 })()}

@@ -262,6 +262,16 @@ const mapPopupStyles = `
   }
 
   /* ── Avatar pin marker ─────────────────────────────────────────── */
+  /* Override Leaflet's default .leaflet-div-icon white box style */
+  .leaflet-div-icon {
+    background: transparent !important;
+    border: none !important;
+  }
+  .avatar-marker-icon {
+    background: transparent !important;
+    border: none !important;
+    overflow: visible !important;
+  }
   .avatar-pin {
     display: flex;
     flex-direction: column;
@@ -288,6 +298,7 @@ const mapPopupStyles = `
     justify-content: center;
     overflow: hidden;
     box-sizing: border-box;
+    flex-shrink: 0;
   }
   .avatar-pin-ring::after {
     content: '';
@@ -300,22 +311,22 @@ const mapPopupStyles = `
     box-sizing: border-box;
   }
   .avatar-pin-img {
-    width: 100% !important;
-    height: 100% !important;
-    min-width: 100% !important;
-    min-height: 100% !important;
+    width: 38px !important;
+    height: 38px !important;
+    min-width: 38px !important;
+    min-height: 38px !important;
     aspect-ratio: 1 / 1 !important;
     object-fit: cover !important;
-    object-position: center !important;
+    object-position: center top !important;
     border-radius: 50% !important;
     display: block !important;
     flex-shrink: 0 !important;
   }
   .avatar-pin-initials {
-    width: 100% !important;
-    height: 100% !important;
-    min-width: 100% !important;
-    min-height: 100% !important;
+    width: 38px !important;
+    height: 38px !important;
+    min-width: 38px !important;
+    min-height: 38px !important;
     aspect-ratio: 1 / 1 !important;
     border-radius: 50% !important;
     display: flex;
@@ -555,6 +566,48 @@ const fetchLandmarkForCoords = async (lat: number, lng: number) => {
   }
 };
 
+// Known coordinates for Indian cities and state centers to guarantee instant, reliable map centering
+const CITY_COORDINATES: Record<string, [number, number]> = {
+  bangalore: [12.9716, 77.5946],
+  bengaluru: [12.9716, 77.5946],
+  hyderabad: [17.3850, 78.4867],
+  secunderabad: [17.4399, 78.4983],
+  chennai: [13.0827, 80.2707],
+  mumbai: [19.0760, 72.8777],
+  pune: [18.5204, 73.8567],
+  delhi: [28.6139, 77.2090],
+  mysore: [12.2958, 76.6394],
+  mysuru: [12.2958, 76.6394],
+  mangalore: [12.9141, 74.8560],
+  mangaluru: [12.9141, 74.8560],
+  hubli: [15.3647, 75.1240],
+  coimbatore: [11.0168, 76.9558],
+  kochi: [9.9312, 76.2673],
+  madurai: [9.9252, 78.1198],
+};
+
+const STATE_COORDINATES: Record<string, [number, number]> = {
+  karnataka: [12.9716, 77.5946],
+  telangana: [17.3850, 78.4867],
+  'tamil nadu': [13.0827, 80.2707],
+  maharashtra: [19.0760, 72.8777],
+  kerala: [9.9312, 76.2673],
+  delhi: [28.6139, 77.2090],
+  andhra: [16.5062, 80.6480],
+  'andhra pradesh': [16.5062, 80.6480],
+};
+
+const getDistanceKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+};
+
 const MAP_STYLES: Record<MapStyleKey, MapStyleOption> = {
   streets: {
     id: 'streets',
@@ -751,7 +804,13 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
 
       const cfg = MAP_STYLES[mapStyle] || MAP_STYLES.streets;
 
-      // Pre-calculate member bounds for initial view
+      // Pre-calculate member bounds for initial view (filtering distant outliers if a specific city is selected)
+      let targetCity: string | null = null;
+      if (selectedLocation && selectedLocation !== 'All' && selectedLocation.startsWith('city:')) {
+        targetCity = selectedLocation.split(':')[2]?.toLowerCase()?.trim() || null;
+      }
+      const cityCoord = targetCity ? CITY_COORDINATES[targetCity] : null;
+
       const validPoints: [number, number][] = [];
       members.forEach(m => {
         const loc = latestLocations[m.id];
@@ -761,6 +820,10 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
           loc.latitude !== 0 && loc.longitude !== 0 &&
           Math.abs(loc.latitude) <= 90 && Math.abs(loc.longitude) <= 180
         ) {
+          if (cityCoord) {
+            const dist = getDistanceKm(cityCoord[0], cityCoord[1], loc.latitude, loc.longitude);
+            if (dist > 80 && (!focusedMemberId || m.id !== focusedMemberId)) return;
+          }
           validPoints.push([loc.latitude, loc.longitude]);
         }
       });
@@ -808,7 +871,8 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
           }
           hasInitiallyFitted.current = true;
         } else {
-          map.setView([12.9716, 77.5946], 12, { animate: false });
+          const fallbackCenter = cityCoord || [12.9716, 77.5946];
+          map.setView(fallbackCenter, 12, { animate: false });
         }
       });
 
@@ -958,6 +1022,25 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
     const loc = latestLocations[m.id];
     if (!loc?.latitude || !loc?.longitude) return false;
     if (onlyActiveToday && !isToday(new Date(loc.timestamp))) return false;
+
+    // If user clicked specifically on this member, always plot them
+    if (focusedMemberId && m.id === focusedMemberId) return true;
+
+    // When a specific city is selected (e.g. Bangalore),
+    // exclude distant outlier pings (>80km from the selected city center).
+    // This prevents stale weekend pings from another state (e.g. Kerala) from
+    // skewing the city view and pulling the map center away to other states.
+    if (selectedLocation && selectedLocation !== 'All' && selectedLocation.startsWith('city:')) {
+      const cityKey = selectedLocation.split(':')[2]?.toLowerCase()?.trim();
+      const cityCenter = cityKey ? CITY_COORDINATES[cityKey] : null;
+      if (cityCenter) {
+        const dist = getDistanceKm(cityCenter[0], cityCenter[1], loc.latitude, loc.longitude);
+        if (dist > 80) {
+          return false;
+        }
+      }
+    }
+
     return true;
   });
 
@@ -1002,15 +1085,15 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
         : `<div class="avatar-pin-initials" style="--initials-bg:${initialsColor}">${initials}</div>`;
 
       const icon = L.divIcon({
-        className: '',
+        className: 'avatar-marker-icon',
         html: `
           <div class="avatar-pin" style="--ring-color:${ringColor}">
             <div class="avatar-pin-ring">${innerHtml}</div>
             <div class="avatar-pin-tail"></div>
           </div>`,
-        iconSize:    [44, 58],
-        iconAnchor:  [22, 58],
-        popupAnchor: [0, -62],
+        iconSize:    [44, 54],
+        iconAnchor:  [22, 54],
+        popupAnchor: [0, -58],
       });
 
       const phone = (member.phone || '').replace(/\D/g, '');
@@ -1124,8 +1207,9 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
           if (Math.abs(ne.lat - sw.lat) < 0.0001 && Math.abs(ne.lng - sw.lng) < 0.0001) {
             mapRef.current.setView(bounds.getCenter(), 14, { animate: false });
           } else {
+            // Note: DO NOT set minZoom here — minZoom clamps zoom when bounds are wide,
+            // which causes Leaflet to forcibly center on the midpoint of distant points.
             mapRef.current.fitBounds(bounds.pad(0.25), {
-              minZoom: 10,
               maxZoom: 15,
               padding: [24, 24],
               animate: false,
@@ -1135,18 +1219,20 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
         }
       }
       setTimeout(() => mapRef.current?.invalidateSize({ animate: false }), 150);
-    } else if (selectedLocation !== 'All' && selectedLocation.startsWith('city:')) {
-      const city = selectedLocation.split(':')[2];
-      if (city) {
-        fetch(`https://nominatim.openstreetmap.org/search?city=${encodeURIComponent(city)}&format=json&limit=1`)
-          .then(r => r.json())
-          .then(d => {
-            if (d?.length > 0 && mapRef.current) {
-              mapRef.current.setView([parseFloat(d[0].lat), parseFloat(d[0].lon)], 13, { animate: true });
-              setTimeout(() => mapRef.current?.invalidateSize({ animate: false }), 200);
-            }
-          })
-          .catch(() => {});
+    } else if (selectedLocation !== 'All') {
+      // Instant fallback to city/state center when no member pins are in that city
+      let targetCenter: [number, number] | null = null;
+      if (selectedLocation.startsWith('city:')) {
+        const cityKey = selectedLocation.split(':')[2]?.toLowerCase()?.trim();
+        if (cityKey && CITY_COORDINATES[cityKey]) targetCenter = CITY_COORDINATES[cityKey];
+      } else if (selectedLocation.startsWith('state:')) {
+        const stateKey = selectedLocation.replace('state:', '').toLowerCase()?.trim();
+        if (stateKey && STATE_COORDINATES[stateKey]) targetCenter = STATE_COORDINATES[stateKey];
+      }
+
+      if (targetCenter && mapRef.current) {
+        mapRef.current.setView(targetCenter, 13, { animate: true });
+        setTimeout(() => mapRef.current?.invalidateSize({ animate: false }), 200);
       }
     }
   }, [membersToPlot, latestLocations, selectedLocation, isMobile, handleSelectMember]);
@@ -1187,11 +1273,16 @@ export const TeamMapView: React.FC<TeamMapViewProps> = ({
     const layers = markersRef.current.getLayers();
     if (layers.length > 0) {
       mapRef.current.fitBounds(
-        LRef.current.featureGroup(layers).getBounds().pad(0.3),
-        { animate: true, duration: 1.0, easeLinearity: 0.25 }
+        LRef.current.featureGroup(layers).getBounds().pad(0.25),
+        { maxZoom: 15, animate: true, duration: 1.0, easeLinearity: 0.25 }
       );
     } else {
-      mapRef.current.setView([12.9716, 77.5946], 5, { animate: true });
+      let defaultCenter: [number, number] = [12.9716, 77.5946];
+      if (selectedLocation?.startsWith('city:')) {
+        const c = selectedLocation.split(':')[2]?.toLowerCase()?.trim();
+        if (c && CITY_COORDINATES[c]) defaultCenter = CITY_COORDINATES[c];
+      }
+      mapRef.current.setView(defaultCenter, 12, { animate: true });
     }
   };
 
