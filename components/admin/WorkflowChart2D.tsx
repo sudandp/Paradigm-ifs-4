@@ -1432,21 +1432,32 @@ export const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
                             const cx = child.x + CARD_WIDTH / 2;
                             const cy = child.y;
 
+                            const isVertical = Math.abs(px - cx) < 0.5;
                             const midY = (py + cy) / 2;
-                            const pathData = `M ${px} ${py} C ${px} ${midY}, ${cx} ${midY}, ${cx} ${cy}`;
+                            const pathData = isVertical
+                                ? `M ${px} ${py} L ${cx} ${cy}`
+                                : `M ${px} ${py} C ${px} ${midY}, ${cx} ${midY}, ${cx} ${cy}`;
 
                             const isHighlighted = selectedNode && (selectedNode.id === child.id || selectedNode.id === parent.id);
+
+                            // Note: SVG linearGradient with default gradientUnits="objectBoundingBox"
+                            // is unpainted by browsers on 0-width paths (purely vertical lines where px === cx).
+                            // Using a direct stroke color on vertical lines ensures they are always rendered.
+                            const strokeColor = isHighlighted
+                                ? (isVertical ? '#059669' : 'url(#activeLineGrad)')
+                                : (isVertical ? '#94a3b8' : 'url(#lineGrad)');
 
                             return (
                                 <g key={id}>
                                     <path
                                         d={pathData}
                                         fill="none"
-                                        stroke={isHighlighted ? 'url(#activeLineGrad)' : 'url(#lineGrad)'}
+                                        stroke={strokeColor}
                                         strokeWidth={isHighlighted ? 2.5 : 1.8}
                                         strokeLinecap="round"
                                     />
                                     {/* Connection joint dots */}
+                                    <circle cx={px} cy={py} r={2} fill={isHighlighted ? '#059669' : '#94a3b8'} />
                                     <circle cx={cx} cy={cy} r={2.5} fill={isHighlighted ? '#059669' : '#94a3b8'} />
                                 </g>
                             );
