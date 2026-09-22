@@ -338,7 +338,7 @@ const PreUpload = () => {
         }
     }, [familyValues]);
 
-    const handleImmediateOcr = async (docType: string, extractedData: any, index?: number) => {
+    const handleImmediateOcr = async (docType: string, extractedData: any, index?: number, uploadedFile?: UploadedFile | null) => {
         try {
             if (extractedData?._documentMismatch || extractedData?._requiredDataMissing) {
                 return;
@@ -792,10 +792,54 @@ const PreUpload = () => {
                 setToast({ message: 'Education details extracted and saved.', type: 'success' });
             }
 
+            // Attach uploaded file to the respective section and form field
+            if (uploadedFile) {
+                if (docType === 'idFront') {
+                    personalUpdate.idProofFront = uploadedFile;
+                    setValue('idProofFront', uploadedFile, { shouldValidate: true });
+                } else if (docType === 'idBack') {
+                    personalUpdate.idProofBack = uploadedFile;
+                    setValue('idProofBack', uploadedFile, { shouldValidate: true });
+                } else if (docType === 'pan') {
+                    personalUpdate.panCard = uploadedFile;
+                    setValue('panCard', uploadedFile, { shouldValidate: true });
+                } else if (docType === 'bank') {
+                    bankUpdate.bankProof = uploadedFile;
+                    setValue('bankProof', uploadedFile, { shouldValidate: true });
+                } else if (docType === 'salary') {
+                    uanUpdate.salarySlip = uploadedFile;
+                    setValue('salarySlip', uploadedFile, { shouldValidate: true });
+                } else if (docType === 'uan') {
+                    uanUpdate.document = uploadedFile;
+                    setValue('uanProof', uploadedFile, { shouldValidate: true });
+                } else if (docType === 'familyAadhaar' && index !== undefined && familyUpdate[index]) {
+                    familyUpdate[index] = { ...familyUpdate[index], idProof: uploadedFile };
+                    setValue(`family.${index}.idProof` as any, uploadedFile, { shouldValidate: true });
+                } else if (docType === 'education' && index !== undefined && educationUpdate[index]) {
+                    educationUpdate[index] = { ...educationUpdate[index], document: uploadedFile };
+                    setValue(`education.${index}.document` as any, uploadedFile, { shouldValidate: true });
+                }
+            }
+
+            const formVals = getValues();
+            const resolvedIdFront = (uploadedFile && docType === 'idFront') ? uploadedFile : (formVals.idProofFront || currentData.personal.idProofFront);
+            const resolvedIdBack = (uploadedFile && docType === 'idBack') ? uploadedFile : (formVals.idProofBack || currentData.personal.idProofBack);
+            const resolvedPan = (uploadedFile && docType === 'pan') ? uploadedFile : (formVals.panCard || currentData.personal.panCard);
+            const resolvedBank = (uploadedFile && docType === 'bank') ? uploadedFile : (formVals.bankProof || currentData.bank.bankProof);
+            const resolvedSalary = (uploadedFile && docType === 'salary') ? uploadedFile : (formVals.salarySlip || currentData.uan.salarySlip);
+            const resolvedUan = (uploadedFile && docType === 'uan') ? uploadedFile : (formVals.uanProof || currentData.uan.document);
+
             const nextData = {
                 ...currentData,
                 personal: {
                     ...currentData.personal,
+                    idProofType: formVals.idProofType || currentData.personal.idProofType,
+                    idProofFront: resolvedIdFront,
+                    idProofBack: resolvedIdBack,
+                    panCard: resolvedPan,
+                    photo: formVals.photo || currentData.personal.photo,
+                    mobile: formVals.aadhaarLinkedMobile || currentData.personal.mobile,
+                    alternateMobile: formVals.alternateMobile || currentData.personal.alternateMobile,
                     ...personalUpdate,
                     verifiedStatus: {
                         ...currentData.personal.verifiedStatus,
@@ -805,6 +849,7 @@ const PreUpload = () => {
                 address: addressUpdate,
                 bank: {
                     ...currentData.bank,
+                    bankProof: resolvedBank,
                     ...bankUpdate,
                     verifiedStatus: {
                         ...currentData.bank.verifiedStatus,
@@ -813,6 +858,8 @@ const PreUpload = () => {
                 },
                 uan: {
                     ...currentData.uan,
+                    document: resolvedUan,
+                    salarySlip: resolvedSalary,
                     ...uanUpdate,
                     verifiedStatus: {
                         ...currentData.uan.verifiedStatus,
@@ -833,9 +880,15 @@ const PreUpload = () => {
 
             store.setData(nextData);
             
-            const { draftId } = await api.saveDraft(nextData);
-            if (draftId !== store.data.id) {
-                store.setData({ ...nextData, id: draftId });
+            try {
+                const { draftId } = await api.saveDraft(nextData);
+                if (draftId && draftId !== store.data.id) {
+                    store.setData({ ...nextData, id: draftId });
+                }
+                setSaveStatus('saved');
+                setLastSavedAt(new Date());
+            } catch (draftErr) {
+                console.warn('[PreUpload] Error saving draft on OCR completion:', draftErr);
             }
 
         } catch (error) {
@@ -1338,7 +1391,7 @@ const PreUpload = () => {
                     </div>
                 </div>
             )}
-            <div className="w-full max-w-md mx-auto px-4 md:max-w-none md:p-6 lg:p-8 md:bg-card md:rounded-xl md:shadow-card md:border md:border-border pb-32 md:pb-8">
+            <div className="w-full max-w-lg mx-auto px-2 sm:px-3 md:max-w-none md:p-6 lg:p-8 md:bg-card md:rounded-xl md:shadow-card md:border md:border-border pb-32 md:pb-8">
                 <MobileTopBar title="DOCUMENT COLLECTION" parentPath="/onboarding/select-organization" />
                 {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
                 <MismatchModal {...mismatchModalState} onClose={() => setMismatchModalState({ isOpen: false, employeeName: '', bankName: '', reason: '' })} onOverride={handleOverride} />
@@ -1449,14 +1502,14 @@ const PreUpload = () => {
                                         <span className="text-xs font-semibold text-white/90 md:text-primary-text">Aadhaar Front Side</span>
                                         <FieldRequirementBadge isMandatory={mandatoryFields.idProofFront} />
                                     </div>
-                                    <Controller name="idProofFront" control={control} render={({ field }) => <UploadDocument label={`Aadhaar (Front Side)${mandatoryFields.idProofFront ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.idProofFront?.message as string} allowCapture verificationStatus={store.data.personal.verifiedStatus?.idProofNumber} ocrSchema={idFrontSchema} onOcrComplete={(data) => handleImmediateOcr('idFront', data)} docType="idFront" setToast={setToast} />} />
+                                    <Controller name="idProofFront" control={control} render={({ field }) => <UploadDocument label={`Aadhaar (Front Side)${mandatoryFields.idProofFront ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.idProofFront?.message as string} allowCapture verificationStatus={store.data.personal.verifiedStatus?.idProofNumber} ocrSchema={idFrontSchema} onOcrComplete={(data, fileData) => handleImmediateOcr('idFront', data, undefined, fileData || field.value)} docType="idFront" setToast={setToast} />} />
                                 </div>
                                 <div className="flex flex-col gap-1.5">
                                     <div className="flex items-center justify-between mb-0.5">
                                         <span className="text-xs font-semibold text-white/90 md:text-primary-text">Aadhaar Back Side</span>
                                         <FieldRequirementBadge isMandatory={mandatoryFields.idProofBack} />
                                     </div>
-                                    <Controller name="idProofBack" control={control} render={({ field }) => <UploadDocument label={`Aadhaar (Back Side)${mandatoryFields.idProofBack ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.idProofBack?.message as string} allowCapture verificationStatus={store.data.personal.verifiedStatus?.idProofNumber} ocrSchema={addressSchema} onOcrComplete={(data) => handleImmediateOcr('idBack', data)} docType="idBack" setToast={setToast} />} />
+                                    <Controller name="idProofBack" control={control} render={({ field }) => <UploadDocument label={`Aadhaar (Back Side)${mandatoryFields.idProofBack ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.idProofBack?.message as string} allowCapture verificationStatus={store.data.personal.verifiedStatus?.idProofNumber} ocrSchema={addressSchema} onOcrComplete={(data, fileData) => handleImmediateOcr('idBack', data, undefined, fileData || field.value)} docType="idBack" setToast={setToast} />} />
                                 </div>
                             </div>
                         </div>
@@ -1472,21 +1525,21 @@ const PreUpload = () => {
                                         <span className="text-xs font-semibold text-white/90 md:text-primary-text">Bank Proof</span>
                                         <FieldRequirementBadge isMandatory={mandatoryFields.bankProof} />
                                     </div>
-                                    <Controller name="bankProof" control={control} render={({ field }) => <UploadDocument label={`Bank Proof (Cheque Book / Cancelled Cheque)${mandatoryFields.bankProof ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.bankProof?.message as string} allowCapture verificationStatus={store.data.bank.verifiedStatus?.accountNumber} ocrSchema={bankProofSchema} onOcrComplete={(data) => handleImmediateOcr('bank', data)} docType="Bank" setToast={setToast} />} />
+                                    <Controller name="bankProof" control={control} render={({ field }) => <UploadDocument label={`Bank Proof (Cheque Book / Cancelled Cheque)${mandatoryFields.bankProof ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.bankProof?.message as string} allowCapture verificationStatus={store.data.bank.verifiedStatus?.accountNumber} ocrSchema={bankProofSchema} onOcrComplete={(data, fileData) => handleImmediateOcr('bank', data, undefined, fileData || field.value)} docType="Bank" setToast={setToast} />} />
                                 </div>
                                 <div className="flex flex-col gap-1.5">
                                     <div className="flex items-center justify-between mb-0.5">
                                         <span className="text-xs font-semibold text-white/90 md:text-primary-text">UAN Proof</span>
                                         <FieldRequirementBadge isMandatory={mandatoryFields.uanProof} />
                                     </div>
-                                    <Controller name="uanProof" control={control} render={({ field }) => <UploadDocument label={`UAN Proof Document${mandatoryFields.uanProof ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.uanProof?.message as string} allowCapture verificationStatus={store.data.uan.verifiedStatus?.uanNumber} ocrSchema={uanProofSchema} onOcrComplete={(data) => handleImmediateOcr('uan', data)} docType="UAN" setToast={setToast} />} />
+                                    <Controller name="uanProof" control={control} render={({ field }) => <UploadDocument label={`UAN Proof Document${mandatoryFields.uanProof ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.uanProof?.message as string} allowCapture verificationStatus={store.data.uan.verifiedStatus?.uanNumber} ocrSchema={uanProofSchema} onOcrComplete={(data, fileData) => handleImmediateOcr('uan', data, undefined, fileData || field.value)} docType="UAN" setToast={setToast} />} />
                                 </div>
                                 <div className="flex flex-col gap-1.5">
                                     <div className="flex items-center justify-between mb-0.5">
                                         <span className="text-xs font-semibold text-white/90 md:text-primary-text">PAN Card</span>
                                         <FieldRequirementBadge isMandatory={mandatoryFields.panCard} />
                                     </div>
-                                    <Controller name="panCard" control={control} render={({ field }) => <UploadDocument label={`PAN Card${mandatoryFields.panCard ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.panCard?.message as string} allowCapture ocrSchema={panSchema} onOcrComplete={(data) => handleImmediateOcr('pan', data)} docType="PAN" setToast={setToast} />} />
+                                    <Controller name="panCard" control={control} render={({ field }) => <UploadDocument label={`PAN Card${mandatoryFields.panCard ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.panCard?.message as string} allowCapture ocrSchema={panSchema} onOcrComplete={(data, fileData) => handleImmediateOcr('pan', data, undefined, fileData || field.value)} docType="PAN" setToast={setToast} />} />
                                 </div>
 
                                 <div className="flex flex-col gap-1.5">
@@ -1494,7 +1547,7 @@ const PreUpload = () => {
                                         <span className="text-xs font-semibold text-white/90 md:text-primary-text">Latest Salary Slip</span>
                                         <FieldRequirementBadge isMandatory={mandatoryFields.salarySlip} />
                                     </div>
-                                    <Controller name="salarySlip" control={control} render={({ field }) => <UploadDocument label={`Latest Salary Slip${mandatoryFields.salarySlip ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.salarySlip?.message as string} allowCapture ocrSchema={salarySlipSchema} onOcrComplete={(data) => handleImmediateOcr('salary', data)} docType="Salary" setToast={setToast} />} />
+                                    <Controller name="salarySlip" control={control} render={({ field }) => <UploadDocument label={`Latest Salary Slip${mandatoryFields.salarySlip ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.salarySlip?.message as string} allowCapture ocrSchema={salarySlipSchema} onOcrComplete={(data, fileData) => handleImmediateOcr('salary', data, undefined, fileData || field.value)} docType="Salary" setToast={setToast} />} />
                                 </div>
                             </div>
                         </div>
@@ -1528,7 +1581,7 @@ const PreUpload = () => {
                                             )} />
                                             <div className="md:col-span-3">
                                                 <Controller name={`education.${index}.document`} control={control} render={({ field: controllerField, fieldState }) => (
-                                                    <UploadDocument label={`Upload Certificate${mandatoryFields.educationCertificate ? ' *' : ' (Optional)'}`} file={controllerField.value} onFileChange={controllerField.onChange} error={fieldState.error?.message} allowCapture ocrSchema={educationSchema} onOcrComplete={(data) => handleImmediateOcr('education', data, index)} docType="Education" setToast={setToast} />
+                                                    <UploadDocument label={`Upload Certificate${mandatoryFields.educationCertificate ? ' *' : ' (Optional)'}`} file={controllerField.value} onFileChange={controllerField.onChange} error={fieldState.error?.message} allowCapture ocrSchema={educationSchema} onOcrComplete={(data, fileData) => handleImmediateOcr('education', data, index, fileData || controllerField.value)} docType="Education" setToast={setToast} />
                                                 )} />
                                             </div>
                                         </div>
@@ -1559,7 +1612,7 @@ const PreUpload = () => {
                                                 <Controller name={`family.${index}.relation`} control={control} render={({ field, fieldState }) => (<Select label="Relation" error={fieldState.error?.message} {...field}> <option value="">Select</option><option>Spouse</option><option>Child</option><option>Father</option><option>Mother</option> </Select>)} />
                                                 <Controller name={`family.${index}.phone`} control={control} render={({ field, fieldState }) => (<Input label={`Phone Number${isChild ? ' (Optional)' : ''}`} type="tel" {...field} error={fieldState.error?.message} />)} />
                                                 <div className="md:col-span-2">
-                                                    <Controller name={`family.${index}.idProof`} control={control} render={({ field, fieldState }) => (<UploadDocument label={`Aadhaar Card${mandatoryFields.familyAadhaar ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={fieldState.error?.message} allowCapture ocrSchema={familyAadhaarSchema} onOcrComplete={(data) => handleImmediateOcr('familyAadhaar', data, index)} docType="Aadhaar" setToast={setToast} />)} />
+                                                    <Controller name={`family.${index}.idProof`} control={control} render={({ field, fieldState }) => (<UploadDocument label={`Aadhaar Card${mandatoryFields.familyAadhaar ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={fieldState.error?.message} allowCapture ocrSchema={familyAadhaarSchema} onOcrComplete={(data, fileData) => handleImmediateOcr('familyAadhaar', data, index, fileData || field.value)} docType="Aadhaar" setToast={setToast} />)} />
                                                 </div>
                                             </div>
                                             <Button type="button" variant="icon" size="sm" onClick={() => removeFamily(index)} className="!absolute top-3 right-3"><Trash2 className="h-4 w-4 text-red-500" /></Button>

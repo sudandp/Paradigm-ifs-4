@@ -118,6 +118,20 @@ app.get(['/', '/health'], (req, res) => {
   });
 });
 
+// ─── Remote Restart (Admin Only) ──────────────────────────────────────────────
+// POST /restart  →  triggers: pm2 restart attendance-api
+// PM2 daemon handles the restart externally; safe to call from within the process.
+app.post('/restart', requireApiKey, (req, res) => {
+  const { exec } = require('child_process');
+  console.log('[Restart] Remote restart triggered by admin at', new Date().toISOString());
+  res.json({ status: 'restarting', message: 'PM2 restart issued. API will be back in ~5s.', time: new Date().toISOString() });
+  setTimeout(() => {
+    exec('pm2 restart attendance-api', (err) => {
+      if (err) console.error('[Restart] pm2 error:', err.message);
+    });
+  }, 300);
+});
+
 // ─── CCTV Camera Proxy ─────────────────────────────────────────────────────
 // Proxies camera frame/snapshot requests from the cctv-attendance Python
 // service on localhost:4100 through this server (port 4000) via ngrok tunnel.

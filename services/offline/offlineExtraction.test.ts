@@ -515,6 +515,76 @@ Mobile: 9008885355`
       expect(result.address?.pincode).toBe('624005');
       expect(result.phone).toBe('9008885355');
     });
+
+    it('accurately extracts Aadhaar number even with OCR substitutions like B for 8 and variable spacing', async () => {
+      const dummyBase64 = 'mock-aadhaar-front-ocr-noise';
+      const { createWorker } = await import('tesseract.js');
+      const worker = await createWorker('eng', 1);
+      (worker.recognize as any).mockResolvedValueOnce({
+        data: {
+          text: `Government of India
+Sudhan M
+DOB: 16/10/1995
+MALE
+Aadhaar is proof of identity, not of citizenship.
+4852 15B7 3813 |`
+        }
+      });
+
+      const result = await extractDataOffline(dummyBase64, 'idFront', 'image/jpeg');
+
+      expect(result._offlineFallback).toBe(true);
+      expect(result.aadhaarNumber).toBe('485215873813');
+      expect(result.name).toBe('Sudhan M');
+      expect(result.dob).toBe('1995-10-16');
+      expect(result.gender).toBe('Male');
+      expect(result._requiredDataMissing).toBe(false);
+    });
+
+    it('rejects Kannada OCR noise like Sq Sy rowSD and correctly extracts Sudhan M', async () => {
+      const dummyBase64 = 'mock-aadhaar-kannada-noise';
+      const { createWorker } = await import('tesseract.js');
+      const worker = await createWorker('eng', 1);
+      (worker.recognize as any).mockResolvedValueOnce({
+        data: {
+          text: `Government of India
+Sq Sy rowSD
+Sudhan M
+DOB: 16/10/1995
+Male
+4852 1587 3813
+VID : 9112 4381 0767 1797`
+        }
+      });
+
+      const result = await extractDataOffline(dummyBase64, 'idFront', 'image/jpeg');
+
+      expect(result._offlineFallback).toBe(true);
+      expect(result.name).toBe('Sudhan M');
+      expect(result.dob).toBe('1995-10-16');
+      expect(result.gender).toBe('Male');
+      expect(result.aadhaarNumber).toBe('485215873813');
+    });
+
+    it('extracts candidate name when combined on same line as DOB', async () => {
+      const dummyBase64 = 'mock-aadhaar-sameline-dob';
+      const { createWorker } = await import('tesseract.js');
+      const worker = await createWorker('eng', 1);
+      (worker.recognize as any).mockResolvedValueOnce({
+        data: {
+          text: `Government of India
+Sudhan M DOB: 16/10/1995
+MALE
+4852 1587 3813`
+        }
+      });
+
+      const result = await extractDataOffline(dummyBase64, 'idFront', 'image/jpeg');
+
+      expect(result.name).toBe('Sudhan M');
+      expect(result.dob).toBe('1995-10-16');
+      expect(result.gender).toBe('Male');
+    });
   });
 });
 

@@ -17,7 +17,7 @@ import {
   Plus, Trash2, Edit3, Copy, Sliders, Save, RotateCcw,
   Lock, ShieldCheck, CheckSquare, Square, UserPlus, FileText, Camera, Eye, X, Video, Moon, Pencil, Check,
   FileDown, Mail, Filter, Download, FileSpreadsheet, Loader2, Send, Cpu, Sparkles, ArrowLeft,
-  LayoutGrid, Table as TableIcon, Fingerprint
+  LayoutGrid, Table as TableIcon, Fingerprint, Power
 } from 'lucide-react';
 import { useDevice } from '../../hooks/useDevice';
 import { supabase } from '../../services/supabase';
@@ -1167,20 +1167,28 @@ const ClientAttendanceDashboard: React.FC = () => {
     } else if (preset === 'This Month') {
       start = startOfMonth(today);
       end = endOfDay(today);
-      setSelectedDate(format(today, 'yyyy-MM-dd'));
+      setSelectedDate(format(start, 'yyyy-MM-dd'));
+      setReportType('monthly');
+      setPendingReportType('monthly');
     } else if (preset === 'Last Month') {
       const lm = subMonths(today, 1);
       start = startOfMonth(lm);
       end = endOfMonth(lm);
       setSelectedDate(format(start, 'yyyy-MM-dd'));
+      // Auto-switch to Monthly Summary — last month is always a full month report
+      setPendingReportType('monthly');
+      setReportType('monthly');
     } else if (preset === 'Last 3 Months') {
       start = startOfMonth(subMonths(today, 2));
       end = endOfDay(today);
-      setSelectedDate(format(subDays(today, 90), 'yyyy-MM-dd'));
+      setSelectedDate(format(start, 'yyyy-MM-dd'));
+      // Auto-switch to Monthly Summary for multi-month ranges
+      setPendingReportType('monthly');
+      setReportType('monthly');
     } else if (preset === 'This Year') {
       start = startOfYear(today);
       end = endOfDay(today);
-      setSelectedDate(format(today, 'yyyy-MM-dd'));
+      setSelectedDate(format(start, 'yyyy-MM-dd'));
     } else if (preset === 'Last Year') {
       const ly = new Date(today.getFullYear() - 1, 0, 1);
       start = startOfYear(ly);
@@ -1995,6 +2003,44 @@ const ClientAttendanceDashboard: React.FC = () => {
   const [isSavingTunnelManual, setIsSavingTunnelManual] = useState(false);
   const [showConnectionInspector, setShowConnectionInspector] = useState(false);
   const [connectionTestResult, setConnectionTestResult] = useState<string | null>(null);
+
+  // Remote server restart (admin only)
+  const [isRestartingApi, setIsRestartingApi] = useState(false);
+  const [restartApiStatus, setRestartApiStatus] = useState<'idle'|'restarting'|'success'|'failed'>('idle');
+
+  const handleRestartAttendanceApi = async () => {
+    setIsRestartingApi(true);
+    setRestartApiStatus('restarting');
+    try {
+      const res = await fetch('https://attendance.cctv.rest/restart', {
+        method: 'POST',
+        headers: { 'x-api-key': 'paradigm-attendance-secret-2024' },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (res.ok) {
+        let attempts = 0;
+        const poll = setInterval(async () => {
+          attempts++;
+          try {
+            const h = await fetch('https://attendance.cctv.rest/health', { signal: AbortSignal.timeout(4000) });
+            if (h.ok) {
+              clearInterval(poll);
+              setRestartApiStatus('success');
+              setIsRestartingApi(false);
+              // Re-fetch dashboard data after server recovery
+              setTimeout(() => fetchData(true), 1000);
+            }
+          } catch { /* still restarting */ }
+          if (attempts >= 8) { clearInterval(poll); setRestartApiStatus('failed'); setIsRestartingApi(false); }
+        }, 4000);
+      } else {
+        throw new Error(`HTTP ${res.status}`);
+      }
+    } catch (e: any) {
+      setRestartApiStatus('failed');
+      setIsRestartingApi(false);
+    }
+  };
 
   const handleSaveManualTunnel = async () => {
     const raw = manualTunnelInput.trim().replace(/\/$/, '');
@@ -4102,6 +4148,8 @@ const DetailedAuditReportView: React.FC<{
       const empCodeNum = empCodeKey.replace(/^0+/, '');
       // Look up live remote MSSQL report days by empCode, numCode, or empName
       const mssqlEmpDays = rangeMssqlReportMap[empCodeKey] || rangeMssqlReportMap[empCodeNum] || rangeMssqlReportMap[empNameKey] || {};
+      // Whether MSSQL returned ANY day data for this employee
+      const hasMssqlDataForEmp = Object.keys(mssqlEmpDays).length > 0;
       // Look up Supabase punch events by empCode or empName
       const empEvents = rangeEventsMap[empCodeKey] || rangeEventsMap[empNameKey] || {};
 
@@ -4409,8 +4457,19 @@ const DetailedAuditReportView: React.FC<{
           };
         }
 
-        // If MSSQL data is still fetching and we have no records yet, keep status neutral
-        if (isFetchingMssqlReport && Object.keys(rangeMssqlReportMap).length === 0) {
+        // If MSSQL data is still fetching (even partial), keep status neutral to avoid false Absents
+        if (isFetchingMssqlReport) {
+          return {
+            dateStr, dayNum, dayFormatted,
+            inTime: '—', outTime: '—', hours: '—',
+            netMins: 0, otMins: 0, lateMinutes: 0,
+            status: '–', shift: empShift, isWeeklyOff: false,
+          };
+        }
+
+        // If the MSSQL report HAS data for this employee on other days but not this one,
+        // it means eTimeTrackLite hasn't synced this date yet — show as unsynced (–) NOT Absent
+        if (hasMssqlDataForEmp) {
           return {
             dateStr, dayNum, dayFormatted,
             inTime: '—', outTime: '—', hours: '—',
@@ -4430,7 +4489,9 @@ const DetailedAuditReportView: React.FC<{
 
       const workingDays = Math.max(1, totalDaysCount - totalWeeklyOffs - totalHolidayDays);
       const futurePendingDays = dailyPunches.filter(dp => dp.status === 'Pending').length;
-      const effectiveWorkingDays = Math.max(1, workingDays - futurePendingDays);
+      // Exclude unsynced days ('–') from effective working days so absent rate isn't inflated
+      const unsyncedDays = dailyPunches.filter(dp => dp.status === '–').length;
+      const effectiveWorkingDays = Math.max(1, workingDays - futurePendingDays - unsyncedDays);
       const attendanceRate = Math.min(100, Math.round((totalPresentDays / effectiveWorkingDays) * 100));
       const payableDays = (totalPresentDays + (isEmpInactive ? 0 : (totalWeeklyOffs + totalHolidayDays))).toFixed(1);
       const overallStatus = attendanceRate >= 80 ? 'Present' : (attendanceRate > 0 ? 'Partial' : 'Absent');
@@ -6743,7 +6804,7 @@ const DetailedAuditReportView: React.FC<{
                 if (status === 'P' || status === 'Present') return 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-bold';
                 if (status === 'Late' || status === 'L') return 'bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 font-bold';
                 if (status === 'A' || status === 'Absent') return 'bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-400 font-bold';
-                if (status === 'Pending' || status === '–') return 'bg-slate-50 dark:bg-[#0d3820]/30 text-slate-300 dark:text-slate-600 font-medium';
+                if (status === 'Pending' || status === '–' || status === '-') return 'bg-slate-100/60 dark:bg-[#0d3820]/30 text-slate-400 dark:text-slate-500 font-medium';
                 if (status === 'S/L' || status === 'SL') return 'bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 font-semibold';
                 return 'bg-white dark:bg-[#072415] text-slate-600 dark:text-emerald-300';
               };
@@ -6899,7 +6960,8 @@ const DetailedAuditReportView: React.FC<{
                                 const dp = punchesByDay[dayN];
                                 const isWO = dp ? (dp.isWeeklyOff || dp.status === 'W/O' || dp.status === 'WO') : false;
                                 const statusLbl = dp ? displayStatus(dp) : '–';
-                                const effectiveStatus = dp?.status || (isWO ? 'W/O' : 'Pending');
+                                // When dp is undefined (safety), treat as unsynced '–' not invisible 'Pending'
+                                const effectiveStatus = dp?.status || '–';
                                 return (
                                   <td key={dayN} className={`px-0.5 py-1 text-center ${cellCls(effectiveStatus, isWO)}`} title={dp?.inTime && dp.inTime !== '—' ? `In: ${dp.inTime}  Out: ${dp.outTime}` : undefined}>
                                     <span className="text-[9px] font-bold leading-none">{statusLbl}</span>
@@ -7498,6 +7560,24 @@ const DetailedAuditReportView: React.FC<{
                 </p>
               </div>
               <div className="flex items-center gap-2">
+                {isAdmin(authUser?.role) && (
+                  <button
+                    type="button"
+                    onClick={handleRestartAttendanceApi}
+                    disabled={isRestartingApi}
+                    title="Restart Attendance API on remote server (Admin only)"
+                    className={`text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1.5 border transition-colors cursor-pointer disabled:opacity-60 ${
+                      restartApiStatus === 'success'
+                        ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                        : restartApiStatus === 'failed'
+                        ? 'bg-red-50 dark:bg-red-950/60 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800'
+                        : 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800 hover:bg-amber-100'
+                    }`}
+                  >
+                    <Power size={14} className={isRestartingApi ? 'animate-pulse' : ''} />
+                    {isRestartingApi ? 'Restarting...' : restartApiStatus === 'success' ? 'Restarted ✓' : restartApiStatus === 'failed' ? 'Restart Failed' : 'Restart API'}
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setShowSqlSchemaModal(s => !s)}

@@ -143,6 +143,106 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const data: any = await response.json();
           const recCount = data?.records ? Object.keys(data.records).length : (data?.totalEmployees || 0);
           if (recCount > 0) {
+            // Validate that returned records cover the entire requested date range
+            const expectedDates: string[] = [];
+            const curD = new Date(String(startDate));
+            const endD = new Date(String(endDate));
+            while (curD <= endD) {
+              expectedDates.push(curD.toISOString().slice(0, 10));
+              curD.setDate(curD.getDate() + 1);
+            }
+
+            const sampleEmpList = Object.values(data.records || {}) as any[];
+            const missingDates = expectedDates.filter(d => {
+              const utopiaSample = sampleEmpList.find(e => {
+                const c = String(e.empCode || '');
+                const dept = String(e.department || '').toLowerCase();
+                return c.startsWith('31') || c.startsWith('32') || dept.includes('utopia');
+              });
+              if (utopiaSample && !utopiaSample.days?.[d]) return true;
+              const countWithDate = sampleEmpList.filter(e => e.days?.[d]).length;
+              return countWithDate === 0 || countWithDate < Math.max(5, sampleEmpList.length * 0.15);
+            });
+
+            if (missingDates.length > 0) {
+              const liveBase = candidateBaseUrls[0] || 'https://attendance.cctv.rest';
+              const missingResults = await Promise.all(missingDates.map(async (d) => {
+                try {
+                  const r = await fetch(`${liveBase}/attendance?date=${d}&siteId=all`, {
+                    headers: { 'x-api-key': apiSecret, 'x-api-secret': apiSecret, 'Bypass-Tunnel-Reminder': '1' },
+                    signal: AbortSignal.timeout(12000),
+                  });
+                  if (r.ok) {
+                    const j: any = await r.json();
+                    return { date: d, employees: j.employees || [] };
+                  }
+                } catch (_) {}
+                return { date: d, employees: [] };
+              }));
+
+              missingResults.forEach(({ date, employees }) => {
+                employees.forEach((emp: any) => {
+                  const code = String(emp.empCode || '').trim();
+                  if (!data.records[code]) {
+                    data.records[code] = {
+                      empCode: code,
+                      empName: emp.empName,
+                      department: emp.department,
+                      designation: emp.designation,
+                      days: {},
+                      summary: { presentDays: 0, absentDays: 0, woDays: 0, lateDays: 0, totalNetMins: 0, totalOtMins: 0 },
+                    };
+                  }
+                  if (!data.records[code].days[date]) {
+                    const isPres = emp.status === 'Present' || (emp.inTime && emp.inTime !== '—');
+                    const isLate = emp.status === 'Late' || (emp.lateMinutes && emp.lateMinutes > 0);
+                    let statusStr = 'A';
+                    if (isPres) statusStr = 'P';
+                    else if (isLate) statusStr = 'L';
+
+                    data.records[code].days[date] = {
+                      dateStr: date,
+                      inTime: emp.inTime || '—',
+                      outTime: emp.outTime || '—',
+                      hours: emp.workingHours && emp.workingHours !== '—' ? emp.workingHours : (isPres ? '9h 00m' : '—'),
+                      status: statusStr,
+                      isWeeklyOff: false,
+                      lateMinutes: emp.lateMinutes || 0,
+                    };
+                  }
+                });
+              });
+
+              Object.values(data.records).forEach((r: any) => {
+                if (r.days) {
+                  const allDays = Object.values(r.days) as any[];
+                  r.summary = {
+                    presentDays: allDays.filter(d => d.status === 'P' || d.status === 'L').length,
+                    absentDays: allDays.filter(d => d.status === 'A').length,
+                    woDays: allDays.filter(d => d.status === 'WO' || d.status === 'W/O' || d.isWeeklyOff).length,
+                    lateDays: allDays.filter(d => d.status === 'L' || d.lateMinutes > 0).length,
+                    totalNetMins: allDays.reduce((acc, d) => acc + (d.durationMins || d.netMins || 0), 0),
+                    totalOtMins: allDays.reduce((acc, d) => acc + (d.otMins || 0), 0),
+                  };
+                }
+              });
+            }
+
+            // Sanitize any truncated '2026-' inTime/outTime using punchRecords
+            Object.values(data.records).forEach((r: any) => {
+              if (r.days) {
+                Object.values(r.days).forEach((d: any) => {
+                  if ((d.inTime === '2026-' || d.outTime === '2026-') && d.punchRecords) {
+                    const punches = [...String(d.punchRecords).matchAll(/(\d{1,2}:\d{2})/g)].map(m => m[1]);
+                    if (punches.length > 0) {
+                      d.inTime = punches[0];
+                      d.outTime = punches[punches.length - 1];
+                    }
+                  }
+                });
+              }
+            });
+
             return res.status(200).json(data);
           }
         }
@@ -268,7 +368,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           'bypass-tunnel-reminder': 'true',
           'Bypass-Tunnel-Reminder': '1',
         },
-        signal: AbortSignal.timeout(8000),
+        signal: AbortSignal.timeout(20000),
       });
 
       if (response.ok) {

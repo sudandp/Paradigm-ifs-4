@@ -234,7 +234,7 @@ const MobileLayout: React.FC = () => {
                         isHeaderVisible ? 'translate-y-0' : '-translate-y-full'
                     }`}
                 >
-                    <div className="bg-transparent pt-[calc(0.75rem+env(safe-area-inset-top))] pb-1 px-4 max-w-md mx-auto">
+                    <div className="bg-transparent pt-[calc(0.75rem+env(safe-area-inset-top))] pb-1 px-2 sm:px-3 max-w-lg mx-auto">
                         <Header />
                     </div>
                 </div>

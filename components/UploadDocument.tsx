@@ -24,7 +24,7 @@ interface UploadDocumentProps {
   allowCapture?: boolean;
   costingItemName?: string;
   verificationStatus?: boolean | null;
-  onOcrComplete?: (data: any) => void;
+  onOcrComplete?: (data: any, fileData?: UploadedFile) => void;
   ocrSchema?: any;
   setToast?: (toast: { message: string; type: 'success' | 'error' } | null) => void;
   docType?: string;
@@ -260,17 +260,19 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                     // Success: Clear any prior error and proceed
                     setUploadError('');
                     setExtractedInfo(extractedData);
-                    onOcrComplete(extractedData);
+                    onOcrComplete(extractedData, localFileData);
 
                     // If OCR detected that a rotated candidate was upright, upgrade local preview & file
                     if (extractedData?._uprightDataUrl && extractedData?._wasRotated) {
                         try {
                             const uprightFile = base64ToFile(extractedData._uprightDataUrl, 'image/jpeg', selectedFile.name);
-                            onFileChange({
+                            const upgradedFileData: UploadedFile = {
                                 ...localFileData,
                                 preview: extractedData._uprightDataUrl,
                                 file: uprightFile,
-                            });
+                            };
+                            onFileChange(upgradedFileData);
+                            onOcrComplete(extractedData, upgradedFileData);
                             console.info('[UploadDocument] Auto-updated preview with OCR-verified upright image.');
                         } catch (e) {
                             console.warn('[UploadDocument] Failed to apply OCR upright image:', e);
@@ -581,8 +583,6 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
 
     return (
         <div className="w-full">
-            <ImagePreviewModal isOpen={isPreviewOpen} onClose={() => setIsPreviewOpen(false)} imageUrl={file?.preview ? getProxyUrl(file.preview) : ''} />
-
             <div className="flex items-center gap-2 mb-2">
                 <label className="block text-sm font-medium text-white/70 md:text-muted" htmlFor={inputId}>{label}</label>
                 {verificationStatus === true && <span title="Verified"><CheckCircle className="h-4 w-4 text-green-400" /></span>}

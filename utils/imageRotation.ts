@@ -128,12 +128,10 @@ export const autoRotateDocumentIfSideways = async (
     const w = img.naturalWidth || img.width;
     const h = img.naturalHeight || img.height;
 
-    // If landscape card is standing in portrait mode (height > width), it is sideways!
-    if (isLandscapeExpected && h > w * 1.05) {
-      console.info(`[AutoRotate] Sideways document detected (${w}x${h} portrait) for ${docType || label}. Auto-rotating 90° CW to landscape.`);
-      const result = await rotateImage(source, 90, filename);
-      return { dataUrl: result.dataUrl, file: result.file, wasRotated: true };
-    }
+    // Note: Do not automatically force vertical/portrait documents to landscape.
+    // Users often upload portrait documents, full-page letters, or upright camera captures.
+    // Converting vertical to horizontal automatically distorts properly oriented uploads.
+    // Manual rotation (Rotate button) is available in the UI when rotation is needed.
 
     // Already in correct aspect ratio or not a card
     let dataUrl: string;

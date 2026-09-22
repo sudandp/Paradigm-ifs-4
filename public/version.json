@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 132,
-  "latestVersionName": "22.2.0",
+  "latestVersionCode": 133,
+  "latestVersionName": "22.3.0",
   "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
   "apkDownloadUrl": "https://play.google.com/store/apps/details?id=com.paradigm.ifs",
-  "releaseNotes": "feat: add offline support UI and advanced document upload with camera capture and OCR\nchore: skip linting in lint-staged and add eslint report\nfeat: implement offline OCR document extraction and onboarding workflow pages\nfeat: add offline onboarding module with Tesseract OCR support and UI components\nfeat: implement offline-first synchronization engine, mobile CI/CD pipeline, database migrations, and UI dashboards",
+  "releaseNotes": "feat: add WorkflowChart2D component for interactive organizational chart management\nfeat: add offline support, leave management pages, and mobile configuration files\nfeat: add offline support UI and advanced document upload with camera capture and OCR\nchore: skip linting in lint-staged and add eslint report\nfeat: implement offline OCR document extraction and onboarding workflow pages",
   "isMandatory": false
 }

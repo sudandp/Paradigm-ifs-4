@@ -2071,9 +2071,29 @@ export const api = {
     const currentActiveUser = useAuthStore.getState().user;
     const userId = session?.user?.id || currentActiveUser?.id || null;
 
-    const submissionId = (data.id && !data.id.startsWith('draft_'))
+    let submissionId = (data.id && !data.id.startsWith('draft_'))
         ? data.id
-        : crypto.randomUUID();
+        : null;
+
+    // If no permanent UUID is present yet, check if a submission already exists for this employee_id
+    if (!submissionId && data.personal?.employeeId) {
+      try {
+        const { data: existing } = await supabase
+          .from('onboarding_submissions')
+          .select('id')
+          .eq('employee_id', data.personal.employeeId)
+          .maybeSingle();
+        if (existing?.id) {
+          submissionId = existing.id;
+        }
+      } catch (err) {
+        console.warn('[API] Failed to check existing employee_id submission:', err);
+      }
+    }
+
+    if (!submissionId) {
+      submissionId = crypto.randomUUID();
+    }
     
     // Resolve current user info for creator defaults
     const currentUserName = currentActiveUser?.name || (currentActiveUser as any)?.full_name || session?.user?.user_metadata?.full_name || session?.user?.user_metadata?.name || session?.user?.email?.split('@')[0] || '';
@@ -2168,7 +2188,29 @@ export const api = {
           .upsert(onlineDbData, { onConflict: 'id' })
           .select('id')
           .single();
-        if (error) throw error;
+        if (error) {
+          if (error.code === '23505' && data.personal?.employeeId) {
+            console.warn('[API] Caught duplicate employee_id constraint (23505) during upsert. Resolving existing submission ID...');
+            const { data: conflictRow } = await supabase
+              .from('onboarding_submissions')
+              .select('id')
+              .eq('employee_id', data.personal.employeeId)
+              .maybeSingle();
+            if (conflictRow?.id) {
+              submissionId = conflictRow.id;
+              onlineDbData.id = conflictRow.id;
+              const { error: retryError } = await supabase
+                .from('onboarding_submissions')
+                .update(onlineDbData)
+                .eq('id', conflictRow.id);
+              if (retryError) throw retryError;
+            } else {
+              throw error;
+            }
+          } else {
+            throw error;
+          }
+        }
         await cacheOnboardingSubmission(toCamelCase(onlineDbData) as OnboardingData).catch(() => {});
       },
     });

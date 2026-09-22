@@ -93,7 +93,7 @@ export interface StoredPhoto {
 // ─── Schema ──────────────────────────────────────────────────────────────────
 
 const DB_NAME = 'paradigmOfflineDB';
-const DB_VERSION = 4;
+export const DB_VERSION = 5;
 
 export interface ParadigmDB {
   snag_audits: {
@@ -140,64 +140,93 @@ let dbPromise: Promise<IDBPDatabase<ParadigmDB>> | null = null;
 
 export function getDb(): Promise<IDBPDatabase<ParadigmDB>> {
   if (!dbPromise) {
-    dbPromise = openDB<ParadigmDB>(DB_NAME, DB_VERSION, {
-      upgrade(db, oldVersion, _newVersion, transaction) {
-        // snag_audits
-        if (!db.objectStoreNames.contains('snag_audits')) {
-          db.createObjectStore('snag_audits', { keyPath: 'id' });
-        }
-
-        // ht_yard_audits
-        if (!db.objectStoreNames.contains('ht_yard_audits')) {
-          db.createObjectStore('ht_yard_audits', { keyPath: 'id' });
-        }
-
-        // ht_master_options (read-through cache)
-        if (!db.objectStoreNames.contains('ht_master_options')) {
-          const store = db.createObjectStore('ht_master_options', { keyPath: 'id' });
-          store.createIndex('by-category', 'category', { unique: false });
-        }
-
-        // ht_custom_field_specs (dynamic field definitions)
-        if (!db.objectStoreNames.contains('ht_custom_field_specs')) {
-          const fieldStore = db.createObjectStore('ht_custom_field_specs', { keyPath: 'id' });
-          fieldStore.createIndex('by-category', 'category', { unique: false });
-        }
-
-        // ppm_executions
-        if (!db.objectStoreNames.contains('ppm_executions')) {
-          db.createObjectStore('ppm_executions', { keyPath: 'id' });
-        }
-
-        // onboarding_submissions
-        if (!db.objectStoreNames.contains('onboarding_submissions')) {
-          db.createObjectStore('onboarding_submissions', { keyPath: 'id' });
-        }
-
-        // outbox — the heart of the offline pattern
-        if (!db.objectStoreNames.contains('outbox')) {
-          const outboxStore = db.createObjectStore('outbox', { keyPath: 'id' });
-          outboxStore.createIndex('by-status', 'status', { unique: false });
-          outboxStore.createIndex('by-table', 'tableName', { unique: false });
-          outboxStore.createIndex('by-user', 'userId', { unique: false });
-        } else if (oldVersion < 4) {
-          const outboxStore = transaction.objectStore('outbox');
-          if (!outboxStore.indexNames.contains('by-user')) {
-            outboxStore.createIndex('by-user', 'userId', { unique: false });
+    dbPromise = (async () => {
+      // If browser supports querying existing IndexedDB databases, detect higher version
+      let effectiveVersion = DB_VERSION;
+      if (typeof indexedDB !== 'undefined' && typeof indexedDB.databases === 'function') {
+        try {
+          const dbs = await indexedDB.databases();
+          const existing = dbs.find(d => d.name === DB_NAME);
+          if (existing?.version && existing.version > effectiveVersion) {
+            effectiveVersion = existing.version;
           }
+        } catch {
+          // Ignore and proceed with DB_VERSION
         }
+      }
 
-        // photos — Blob storage for offline photo attachments
-        if (!db.objectStoreNames.contains('photos')) {
-          const photoStore = db.createObjectStore('photos', { keyPath: 'id' });
-          photoStore.createIndex('by-linked', 'linkedToId', { unique: false });
+      const openWithVersion = (v: number) => {
+        return openDB<ParadigmDB>(DB_NAME, v, {
+          upgrade(db, oldVersion, _newVersion, transaction) {
+            // snag_audits
+            if (!db.objectStoreNames.contains('snag_audits')) {
+              db.createObjectStore('snag_audits', { keyPath: 'id' });
+            }
+
+            // ht_yard_audits
+            if (!db.objectStoreNames.contains('ht_yard_audits')) {
+              db.createObjectStore('ht_yard_audits', { keyPath: 'id' });
+            }
+
+            // ht_master_options (read-through cache)
+            if (!db.objectStoreNames.contains('ht_master_options')) {
+              const store = db.createObjectStore('ht_master_options', { keyPath: 'id' });
+              store.createIndex('by-category', 'category', { unique: false });
+            }
+
+            // ht_custom_field_specs (dynamic field definitions)
+            if (!db.objectStoreNames.contains('ht_custom_field_specs')) {
+              const fieldStore = db.createObjectStore('ht_custom_field_specs', { keyPath: 'id' });
+              fieldStore.createIndex('by-category', 'category', { unique: false });
+            }
+
+            // ppm_executions
+            if (!db.objectStoreNames.contains('ppm_executions')) {
+              db.createObjectStore('ppm_executions', { keyPath: 'id' });
+            }
+
+            // onboarding_submissions
+            if (!db.objectStoreNames.contains('onboarding_submissions')) {
+              db.createObjectStore('onboarding_submissions', { keyPath: 'id' });
+            }
+
+            // outbox — the heart of the offline pattern
+            if (!db.objectStoreNames.contains('outbox')) {
+              const outboxStore = db.createObjectStore('outbox', { keyPath: 'id' });
+              outboxStore.createIndex('by-status', 'status', { unique: false });
+              outboxStore.createIndex('by-table', 'tableName', { unique: false });
+              outboxStore.createIndex('by-user', 'userId', { unique: false });
+            } else {
+              const outboxStore = transaction.objectStore('outbox');
+              if (!outboxStore.indexNames.contains('by-user')) {
+                outboxStore.createIndex('by-user', 'userId', { unique: false });
+              }
+            }
+
+            // photos — Blob storage for offline photo attachments
+            if (!db.objectStoreNames.contains('photos')) {
+              const photoStore = db.createObjectStore('photos', { keyPath: 'id' });
+              photoStore.createIndex('by-linked', 'linkedToId', { unique: false });
+            }
+          },
+        });
+      };
+
+      try {
+        const db = await openWithVersion(effectiveVersion);
+        return db;
+      } catch (err: any) {
+        // Self-healing recovery if browser IndexedDB already has a higher version
+        if (err?.name === 'VersionError' || String(err?.message || '').includes('less than the existing version')) {
+          const match = String(err?.message || '').match(/existing version\s*\((\d+)\)/i);
+          const higherVersion = match ? parseInt(match[1], 10) : effectiveVersion + 1;
+          console.warn(`[OfflineDB] Auto-recovering from VersionError: upgrading to existing version ${higherVersion}`);
+          const db = await openWithVersion(higherVersion);
+          return db;
         }
-      },
-    }).then((db) => {
-      // Request durable (non-evictable) storage.
-      // Without this, iOS Safari / Android Chrome may evict IDB data —
-      // including photo Blobs — under OS memory pressure or when the app
-      // is not installed as a PWA ("best-effort" bucket is evictable).
+        throw err;
+      }
+    })().then((db) => {
       if (typeof navigator !== 'undefined' && navigator.storage?.persist) {
         navigator.storage.persist().then((granted) => {
           _storagePersistGranted = granted;
@@ -206,12 +235,14 @@ export function getDb(): Promise<IDBPDatabase<ParadigmDB>> {
           } else {
             console.debug('[OfflineDB] Durable storage not granted — IDB is best-effort (expected on localhost/non-PWA).');
           }
-        });
+        }).catch(() => {});
       } else {
-        // Storage persistence API not available (e.g. older browser)
         _storagePersistGranted = null;
       }
       return db;
+    }).catch((finalErr) => {
+      dbPromise = null;
+      throw finalErr;
     });
   }
   return dbPromise;

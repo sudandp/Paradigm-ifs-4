@@ -85,6 +85,29 @@ export default defineConfig({
     {
       name: 'mssql-dev-middleware',
       configureServer(server: any) {
+        // Auto-restart: track consecutive full-cycle failures
+        let consecutiveFailures = 0;
+        let lastAutoRestartAt = 0;
+
+        async function triggerAutoRestart() {
+          const now = Date.now();
+          // Cooldown: don't restart more than once every 2 minutes
+          if (now - lastAutoRestartAt < 120_000) return;
+          lastAutoRestartAt = now;
+          console.log('[MSSQL Proxy] 🔄 Auto-restart triggered after 3 consecutive failures...');
+          try {
+            // Try via attendance-api itself first (works if it's up but returning errors)
+            await fetch('https://attendance.cctv.rest/restart', {
+              method: 'POST',
+              headers: { 'x-api-key': 'paradigm-attendance-secret-2024' },
+              signal: AbortSignal.timeout(5000),
+            });
+            console.log('[MSSQL Proxy] ✅ Auto-restart request sent to attendance-api.');
+          } catch {
+            console.warn('[MSSQL Proxy] ⚠️ attendance-api unreachable for restart — server may be fully down.');
+          }
+        }
+
         server.middlewares.use(async (req: any, res: any, next: any) => {
           if (!req.url || !req.url.startsWith('/api/mssql-')) {
             return next();
@@ -151,10 +174,120 @@ export default defineConfig({
                     const recCount = parsed?.records ? Object.keys(parsed.records).length : (parsed?.totalEmployees || 0);
                     if (recCount > 0) {
                       console.log(`[MSSQL Proxy] ✅ Attendance Report direct via ${targetUrl} (${recCount} employees)`);
+
+                      // Validate that returned records cover the entire requested date range
+                      const startDate = urlObj.searchParams.get('startDate') || '2026-09-01';
+                      const endDate = urlObj.searchParams.get('endDate') || new Date().toISOString().slice(0, 10);
+                      const expectedDates: string[] = [];
+                      const cur = new Date(startDate);
+                      const endD = new Date(endDate);
+                      while (cur <= endD) {
+                        expectedDates.push(cur.toISOString().slice(0, 10));
+                        cur.setDate(cur.getDate() + 1);
+                      }
+
+                      const sampleEmpList = Object.values(parsed.records || {}) as any[];
+                      // Detect missing dates (e.g. for Utopia employees or dates where < 15% employees have data)
+                      const missingDates = expectedDates.filter(d => {
+                        const utopiaSample = sampleEmpList.find(e => {
+                          const c = String(e.empCode || '');
+                          const dept = String(e.department || '').toLowerCase();
+                          return c.startsWith('31') || c.startsWith('32') || dept.includes('utopia');
+                        });
+                        if (utopiaSample && !utopiaSample.days?.[d]) return true;
+                        const countWithDate = sampleEmpList.filter(e => e.days?.[d]).length;
+                        return countWithDate === 0 || countWithDate < Math.max(5, sampleEmpList.length * 0.15);
+                      });
+
+                      if (missingDates.length > 0) {
+                        console.log(`[MSSQL Proxy] ⚠️ Detected ${missingDates.length} missing dates (${missingDates[0]} to ${missingDates[missingDates.length - 1]}). Merging live day data...`);
+                        const liveBase = candidateBases.find(b => !b.includes(':3000')) || 'https://attendance.cctv.rest';
+                        const missingResults = await Promise.all(missingDates.map(async (d) => {
+                          try {
+                            const r = await fetch(`${liveBase}/attendance?date=${d}&siteId=all`, {
+                              headers: {
+                                'x-api-key': 'paradigm-attendance-secret-2024',
+                                'x-api-secret': 'paradigm-attendance-secret-2024',
+                                'Bypass-Tunnel-Reminder': '1',
+                              },
+                              signal: AbortSignal.timeout(12000),
+                            });
+                            if (r.ok) {
+                              const j: any = await r.json();
+                              return { date: d, employees: j.employees || [] };
+                            }
+                          } catch (_) {}
+                          return { date: d, employees: [] };
+                        }));
+
+                        missingResults.forEach(({ date, employees }) => {
+                          employees.forEach((emp: any) => {
+                            const code = String(emp.empCode || '').trim();
+                            if (!parsed.records[code]) {
+                              parsed.records[code] = {
+                                empCode: code,
+                                empName: emp.empName,
+                                department: emp.department,
+                                designation: emp.designation,
+                                days: {},
+                                summary: { presentDays: 0, absentDays: 0, woDays: 0, lateDays: 0, totalNetMins: 0, totalOtMins: 0 },
+                              };
+                            }
+                            if (!parsed.records[code].days[date]) {
+                              const isPres = emp.status === 'Present' || (emp.inTime && emp.inTime !== '—');
+                              const isLate = emp.status === 'Late' || (emp.lateMinutes && emp.lateMinutes > 0);
+                              let statusStr = 'A';
+                              if (isPres) statusStr = 'P';
+                              else if (isLate) statusStr = 'L';
+
+                              parsed.records[code].days[date] = {
+                                dateStr: date,
+                                inTime: emp.inTime || '—',
+                                outTime: emp.outTime || '—',
+                                hours: emp.workingHours && emp.workingHours !== '—' ? emp.workingHours : (isPres ? '9h 00m' : '—'),
+                                status: statusStr,
+                                isWeeklyOff: false,
+                                lateMinutes: emp.lateMinutes || 0,
+                              };
+                            }
+                          });
+                        });
+
+                        Object.values(parsed.records).forEach((r: any) => {
+                          if (r.days) {
+                            const allDays = Object.values(r.days) as any[];
+                            r.summary = {
+                              presentDays: allDays.filter(d => d.status === 'P' || d.status === 'L').length,
+                              absentDays: allDays.filter(d => d.status === 'A').length,
+                              woDays: allDays.filter(d => d.status === 'WO' || d.status === 'W/O' || d.isWeeklyOff).length,
+                              lateDays: allDays.filter(d => d.status === 'L' || d.lateMinutes > 0).length,
+                              totalNetMins: allDays.reduce((acc, d) => acc + (d.durationMins || d.netMins || 0), 0),
+                              totalOtMins: allDays.reduce((acc, d) => acc + (d.otMins || 0), 0),
+                            };
+                          }
+                        });
+                        console.log(`[MSSQL Proxy] ✅ Merged ${missingDates.length} missing dates successfully.`);
+                      }
+
+                      // Sanitize any truncated '2026-' inTime/outTime using punchRecords if present
+                      Object.values(parsed.records).forEach((r: any) => {
+                        if (r.days) {
+                          Object.values(r.days).forEach((d: any) => {
+                            if ((d.inTime === '2026-' || d.outTime === '2026-') && d.punchRecords) {
+                              const punches = [...String(d.punchRecords).matchAll(/(\d{1,2}:\d{2})/g)].map(m => m[1]);
+                              if (punches.length > 0) {
+                                d.inTime = punches[0];
+                                d.outTime = punches[punches.length - 1];
+                              }
+                            }
+                          });
+                        }
+                      });
+
                       res.statusCode = 200;
                       res.setHeader('Content-Type', 'application/json');
                       res.setHeader('Access-Control-Allow-Origin', '*');
-                      res.end(data);
+                      res.end(JSON.stringify(parsed));
                       return;
                     } else {
                       console.log(`[MSSQL Proxy] ℹ️ Direct endpoint returned 0 records for site (${targetUrl}), engaging live multi-date aggregator fallback...`);
@@ -295,11 +428,12 @@ export default defineConfig({
                   'Bypass-Tunnel-Reminder': '1',
                   ...(req.headers['authorization'] ? { 'Authorization': req.headers['authorization'] } : {}),
                 },
-                signal: AbortSignal.timeout(8000),
+                signal: AbortSignal.timeout(20000),
               });
               if (fetchRes.ok) {
                 const data = await fetchRes.text();
                 console.log(`[MSSQL Proxy] ✅ Success via ${targetUrl}`);
+                consecutiveFailures = 0; // reset on success
                 res.statusCode = 200;
                 res.setHeader('Content-Type', 'application/json');
                 res.setHeader('Access-Control-Allow-Origin', '*');
@@ -315,6 +449,13 @@ export default defineConfig({
               attemptLogs.push(`${base} (${errNote})`);
               console.warn(`[MSSQL Proxy] ❌ Error ${targetUrl} -> ${errNote}`);
             }
+          }
+
+          // Auto-restart after 3 consecutive full-cycle failures
+          consecutiveFailures++;
+          if (consecutiveFailures >= 3) {
+            consecutiveFailures = 0;
+            triggerAutoRestart();
           }
 
           res.statusCode = 200;

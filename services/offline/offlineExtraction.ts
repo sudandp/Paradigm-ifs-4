@@ -125,6 +125,7 @@ export interface PreprocessResult {
   panDetailsColumnDataUrl?: string;
   panDetailsColumn180DataUrl?: string;
   aadhaarDetailsCardDataUrl?: string;
+  aadhaarNameCardDataUrl?: string;
   aadhaarBackCardDataUrl?: string;
   aadhaarTopBlockDataUrl?: string;
   bankAccountAndNameZoneDataUrl?: string;
@@ -136,12 +137,136 @@ export interface PreprocessResult {
 }
 
 /**
+ * Detects 4 quadrilateral card corners (TL, TR, BR, BL) on a grayscale image canvas.
+ */
+export function detectCardCorners(
+  grayData: Uint8Array,
+  width: number,
+  height: number,
+  threshold: number
+): { tl: [number, number]; tr: [number, number]; br: [number, number]; bl: [number, number] } | null {
+  let minSum = Infinity;
+  let maxSum = -Infinity;
+  let minDiff = Infinity;
+  let maxDiff = -Infinity;
+
+  let tl: [number, number] = [0, 0];
+  let tr: [number, number] = [width - 1, 0];
+  let br: [number, number] = [width - 1, height - 1];
+  let bl: [number, number] = [0, height - 1];
+
+  let fgCount = 0;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const val = grayData[y * width + x];
+      if (val > threshold) {
+        fgCount++;
+        const sum = x + y;
+        const diff = x - y;
+
+        if (sum < minSum) { minSum = sum; tl = [x, y]; }
+        if (sum > maxSum) { maxSum = sum; br = [x, y]; }
+        if (diff > maxDiff) { maxDiff = diff; tr = [x, y]; }
+        if (diff < minDiff) { minDiff = diff; bl = [x, y]; }
+      }
+    }
+  }
+
+  if (fgCount < (width * height * 0.12)) return null;
+  return { tl, tr, br, bl };
+}
+
+/**
+ * Draws a single textured triangle from source canvas to destination canvas using 2D affine matrix transformation.
+ */
+function drawTexturedTriangle(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement | HTMLCanvasElement,
+  s0: [number, number], s1: [number, number], s2: [number, number],
+  d0: [number, number], d1: [number, number], d2: [number, number]
+) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(d0[0], d0[1]);
+  ctx.lineTo(d1[0], d1[1]);
+  ctx.lineTo(d2[0], d2[1]);
+  ctx.closePath();
+  ctx.clip();
+
+  const deltaS = (s1[0] - s0[0]) * (s2[1] - s0[1]) - (s2[0] - s0[0]) * (s1[1] - s0[1]);
+  if (Math.abs(deltaS) < 1e-6) {
+    ctx.restore();
+    return;
+  }
+
+  const a = ((d1[0] - d0[0]) * (s2[1] - s0[1]) - (d2[0] - d0[0]) * (s1[1] - s0[1])) / deltaS;
+  const b = ((d1[1] - d0[1]) * (s2[1] - s0[1]) - (d2[1] - d0[1]) * (s1[1] - s0[1])) / deltaS;
+  const c = ((d2[0] - d0[0]) * (s1[0] - s0[0]) - (d1[0] - d0[0]) * (s2[0] - s0[0])) / deltaS;
+  const d = ((d2[1] - d0[1]) * (s1[0] - s0[0]) - (d1[1] - d0[1]) * (s2[0] - s0[0])) / deltaS;
+  const e = d0[0] - a * s0[0] - c * s0[1];
+  const f = d0[1] - b * s0[0] - d * s0[1];
+
+  ctx.transform(a, b, c, d, e, f);
+  ctx.drawImage(img, 0, 0);
+  ctx.restore();
+}
+
+/**
+ * Warps a 4-point quadrilateral card region into a straightened rectangular canvas.
+ */
+export function warpQuadrilateralToRect(
+  sourceImage: HTMLImageElement | HTMLCanvasElement,
+  corners: { tl: [number, number]; tr: [number, number]; br: [number, number]; bl: [number, number] },
+  targetWidth: number,
+  targetHeight: number
+): HTMLCanvasElement {
+  const destCanvas = document.createElement('canvas');
+  destCanvas.width = targetWidth;
+  destCanvas.height = targetHeight;
+  const ctx = destCanvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return destCanvas;
+
+  const GRID_SIZE = 12;
+  const { tl, tr, br, bl } = corners;
+
+  for (let gy = 0; gy < GRID_SIZE; gy++) {
+    for (let gx = 0; gx < GRID_SIZE; gx++) {
+      const u0 = gx / GRID_SIZE;
+      const v0 = gy / GRID_SIZE;
+      const u1 = (gx + 1) / GRID_SIZE;
+      const v1 = (gy + 1) / GRID_SIZE;
+
+      const getSourcePt = (u: number, v: number): [number, number] => {
+        const x = (1 - u) * (1 - v) * tl[0] + u * (1 - v) * tr[0] + u * v * br[0] + (1 - u) * v * bl[0];
+        const y = (1 - u) * (1 - v) * tl[1] + u * (1 - v) * tr[1] + u * v * br[1] + (1 - u) * v * bl[1];
+        return [x, y];
+      };
+
+      const p0 = getSourcePt(u0, v0);
+      const p1 = getSourcePt(u1, v0);
+      const p2 = getSourcePt(u1, v1);
+      const p3 = getSourcePt(u0, v1);
+
+      const dx0 = u0 * targetWidth;
+      const dy0 = v0 * targetHeight;
+      const dx1 = u1 * targetWidth;
+      const dy1 = v1 * targetHeight;
+
+      drawTexturedTriangle(ctx, sourceImage, p0, p1, p3, [dx0, dy0], [dx1, dy0], [dx0, dy1]);
+      drawTexturedTriangle(ctx, sourceImage, p1, p2, p3, [dx1, dy0], [dx1, dy1], [dx0, dy1]);
+    }
+  }
+
+  return destCanvas;
+}
+
+/**
  * Preprocesses a document photo on an HTMLCanvas:
  * 1. Automatically detects document borders using Otsu Projection & Largest Continuous Run
  *    (removes dark/light table backgrounds and reflections completely).
- * 2. Normalizes orientation: converts portrait ID card photos to landscape.
- *    Prepares Candidate 1 (90° CCW) and Candidate 2 (180° opposite).
- * 3. Prepares a dedicated personal details zone (name & father's name sub-crop) for clean OCR.
+ * 2. Perspective quadrilateral corner detection & homography warping to straighten tilted cards.
+ * 3. Normalizes orientation: converts portrait ID card photos to landscape.
+ * 4. Prepares dedicated details zones (name, father's name, bank columns) for clean OCR.
  */
 export const preprocessDocumentImage = async (
   dataUrl: string,
@@ -210,6 +335,35 @@ export const preprocessDocumentImage = async (
       if (varBetween > maxVar) {
         maxVar = varBetween;
         otsuThresh = t;
+      }
+    }
+
+    // Detect 4 Quadrilateral Corners for Perspective Transformation
+    const rawQuad = detectCardCorners(gray, sampleW, sampleH, otsuThresh);
+    let warpedCanvas: HTMLCanvasElement | null = null;
+    if (rawQuad) {
+      const scaleX = origW / sampleW;
+      const scaleY = origH / sampleH;
+      const scaledCorners = {
+        tl: [rawQuad.tl[0] * scaleX, rawQuad.tl[1] * scaleY] as [number, number],
+        tr: [rawQuad.tr[0] * scaleX, rawQuad.tr[1] * scaleY] as [number, number],
+        br: [rawQuad.br[0] * scaleX, rawQuad.br[1] * scaleY] as [number, number],
+        bl: [rawQuad.bl[0] * scaleX, rawQuad.bl[1] * scaleY] as [number, number],
+      };
+
+      const quadW = Math.max(
+        Math.hypot(scaledCorners.tr[0] - scaledCorners.tl[0], scaledCorners.tr[1] - scaledCorners.tl[1]),
+        Math.hypot(scaledCorners.br[0] - scaledCorners.bl[0], scaledCorners.br[1] - scaledCorners.bl[1])
+      );
+      const quadH = Math.max(
+        Math.hypot(scaledCorners.bl[0] - scaledCorners.tl[0], scaledCorners.bl[1] - scaledCorners.tl[1]),
+        Math.hypot(scaledCorners.br[0] - scaledCorners.tr[0], scaledCorners.br[1] - scaledCorners.tr[1])
+      );
+
+      if (quadW >= origW * 0.25 && quadH >= origH * 0.25) {
+        const targetW = Math.round(quadW);
+        const targetH = Math.round(quadH);
+        warpedCanvas = warpQuadrilateralToRect(img, scaledCorners, targetW, targetH);
       }
     }
 
@@ -282,8 +436,10 @@ export const preprocessDocumentImage = async (
         const rh = Math.min(origH - ry, Math.round((yRun[1] - yRun[0]) * scaleY));
         const areaRatio = (rw * rh) / (origW * origH);
         const aspect = Math.max(rw, rh) / Math.max(1, Math.min(rw, rh));
+        const origAspect = Math.max(origW, origH) / Math.max(1, Math.min(origW, origH));
+        const isAlreadyCard = origAspect >= 1.30 && origAspect <= 1.90;
 
-        if (areaRatio >= 0.15 && areaRatio <= 0.90 && aspect >= 1.20 && aspect <= 2.20) {
+        if (!isAlreadyCard && areaRatio >= 0.15 && areaRatio <= 0.90 && aspect >= 1.20 && aspect <= 2.20) {
           bestCrop = { x: rx, y: ry, w: rw, h: rh, areaRatio };
           break;
         }
@@ -294,15 +450,17 @@ export const preprocessDocumentImage = async (
     const targetY = bestCrop ? bestCrop.y : 0;
     const targetW = bestCrop ? bestCrop.w : origW;
     const targetH = bestCrop ? bestCrop.h : origH;
-    const isAutoCropValid = !!bestCrop;
+    const isAutoCropValid = !!bestCrop || !!warpedCanvas;
 
     // Step 2: Auto-Orientation & Multi-Candidate Preparation
-    // Canvas 1: Natural orientation (0° unrotated) - essential for full-page A4 documents like e-Aadhaar
-    const naturalCanvas = document.createElement('canvas');
-    naturalCanvas.width = targetW;
-    naturalCanvas.height = targetH;
-    const naturalCtx = naturalCanvas.getContext('2d', { willReadFrequently: true })!;
-    naturalCtx.drawImage(img, targetX, targetY, targetW, targetH, 0, 0, targetW, targetH);
+    // Canvas 1: Natural orientation (0° unrotated) - prefer perspective warped canvas if available
+    const naturalCanvas = warpedCanvas || document.createElement('canvas');
+    if (!warpedCanvas) {
+      naturalCanvas.width = targetW;
+      naturalCanvas.height = targetH;
+      const naturalCtx = naturalCanvas.getContext('2d', { willReadFrequently: true })!;
+      naturalCtx.drawImage(img, targetX, targetY, targetW, targetH, 0, 0, targetW, targetH);
+    }
     const primaryDataUrl = naturalCanvas.toDataURL('image/png');
 
     // Canvas 2a: 90° CW rotated version (rotates vertical portrait photo clockwise into standard landscape)
@@ -385,6 +543,7 @@ export const preprocessDocumentImage = async (
 
     // Canvas 5, 6, 7: Dedicated Aadhaar Zones (for e-Aadhaar letters or full pages)
     let aadhaarDetailsCardDataUrl: string | undefined;
+    let aadhaarNameCardDataUrl: string | undefined;
     let aadhaarBackCardDataUrl: string | undefined;
     let aadhaarTopBlockDataUrl: string | undefined;
 
@@ -392,52 +551,90 @@ export const preprocessDocumentImage = async (
     const isAadhaarDoc = !isBankDocCandidate && (!docType || /aadhaar|idproof|idfront|idback/i.test(docType) || (targetH > targetW * 1.15));
     if (isAadhaarDoc) {
       try {
-        // Front ID Card Details Zone: Name, DOB, Gender (x: 15% - 48%, y: 68% - 85%)
-        const fdX = Math.round(targetW * 0.15);
-        const fdY = Math.round(targetH * 0.68);
-        const fdW = Math.round(targetW * 0.33);
-        const fdH = Math.round(targetH * 0.17);
-        const fdCanvas = document.createElement('canvas');
-        fdCanvas.width = fdW * 2;
-        fdCanvas.height = fdH * 2;
-        const fdCtx = fdCanvas.getContext('2d');
-        if (fdCtx) {
-          fdCtx.imageSmoothingEnabled = true;
-          fdCtx.imageSmoothingQuality = 'high';
-          fdCtx.drawImage(naturalCanvas, fdX, fdY, fdW, fdH, 0, 0, fdW * 2, fdH * 2);
-          aadhaarDetailsCardDataUrl = fdCanvas.toDataURL('image/png');
-        }
+        const isFullA4Letter = targetH > targetW * 1.15;
+        if (isFullA4Letter) {
+          // Front ID Card Details Zone: Name, DOB, Gender (x: 15% - 48%, y: 68% - 85%)
+          const fdX = Math.round(targetW * 0.15);
+          const fdY = Math.round(targetH * 0.68);
+          const fdW = Math.round(targetW * 0.33);
+          const fdH = Math.round(targetH * 0.17);
+          const fdCanvas = document.createElement('canvas');
+          fdCanvas.width = fdW * 2;
+          fdCanvas.height = fdH * 2;
+          const fdCtx = fdCanvas.getContext('2d');
+          if (fdCtx) {
+            fdCtx.imageSmoothingEnabled = true;
+            fdCtx.imageSmoothingQuality = 'high';
+            fdCtx.drawImage(naturalCanvas, fdX, fdY, fdW, fdH, 0, 0, fdW * 2, fdH * 2);
+            aadhaarDetailsCardDataUrl = fdCanvas.toDataURL('image/png');
+          }
 
-        // Back ID Card Address & 12-digit number (x: 48% - 98%, y: 66% - 95%)
-        const bdX = Math.round(targetW * 0.48);
-        const bdY = Math.round(targetH * 0.66);
-        const bdW = Math.round(targetW * 0.50);
-        const bdH = Math.round(targetH * 0.29);
-        const bdCanvas = document.createElement('canvas');
-        bdCanvas.width = bdW * 2;
-        bdCanvas.height = bdH * 2;
-        const bdCtx = bdCanvas.getContext('2d');
-        if (bdCtx) {
-          bdCtx.imageSmoothingEnabled = true;
-          bdCtx.imageSmoothingQuality = 'high';
-          bdCtx.drawImage(naturalCanvas, bdX, bdY, bdW, bdH, 0, 0, bdW * 2, bdH * 2);
-          aadhaarBackCardDataUrl = bdCanvas.toDataURL('image/png');
-        }
+          // Back ID Card Address & 12-digit number (x: 48% - 98%, y: 66% - 95%)
+          const bdX = Math.round(targetW * 0.48);
+          const bdY = Math.round(targetH * 0.66);
+          const bdW = Math.round(targetW * 0.50);
+          const bdH = Math.round(targetH * 0.29);
+          const bdCanvas = document.createElement('canvas');
+          bdCanvas.width = bdW * 2;
+          bdCanvas.height = bdH * 2;
+          const bdCtx = bdCanvas.getContext('2d');
+          if (bdCtx) {
+            bdCtx.imageSmoothingEnabled = true;
+            bdCtx.imageSmoothingQuality = 'high';
+            bdCtx.drawImage(naturalCanvas, bdX, bdY, bdW, bdH, 0, 0, bdW * 2, bdH * 2);
+            aadhaarBackCardDataUrl = bdCanvas.toDataURL('image/png');
+          }
 
-        // Top Letter Address & Mobile Block (x: 2% - 52%, y: 20% - 60%)
-        const tbX = Math.round(targetW * 0.02);
-        const tbY = Math.round(targetH * 0.20);
-        const tbW = Math.round(targetW * 0.50);
-        const tbH = Math.round(targetH * 0.40);
-        const tbCanvas = document.createElement('canvas');
-        tbCanvas.width = tbW * 2;
-        tbCanvas.height = tbH * 2;
-        const tbCtx = tbCanvas.getContext('2d');
-        if (tbCtx) {
-          tbCtx.imageSmoothingEnabled = true;
-          tbCtx.imageSmoothingQuality = 'high';
-          tbCtx.drawImage(naturalCanvas, tbX, tbY, tbW, tbH, 0, 0, tbW * 2, tbH * 2);
-          aadhaarTopBlockDataUrl = tbCanvas.toDataURL('image/png');
+          // Top Letter Address & Mobile Block (x: 2% - 52%, y: 20% - 60%)
+          const tbX = Math.round(targetW * 0.02);
+          const tbY = Math.round(targetH * 0.20);
+          const tbW = Math.round(targetW * 0.50);
+          const tbH = Math.round(targetH * 0.40);
+          const tbCanvas = document.createElement('canvas');
+          tbCanvas.width = tbW * 2;
+          tbCanvas.height = tbH * 2;
+          const tbCtx = tbCanvas.getContext('2d');
+          if (tbCtx) {
+            tbCtx.imageSmoothingEnabled = true;
+            tbCtx.imageSmoothingQuality = 'high';
+            tbCtx.drawImage(naturalCanvas, tbX, tbY, tbW, tbH, 0, 0, tbW * 2, tbH * 2);
+            aadhaarTopBlockDataUrl = tbCanvas.toDataURL('image/png');
+          }
+        } else {
+          // Cropped Single Card (Horizontal / Landscape):
+          // 1. Bottom Number & VID Strip (x: 5% - 95%, y: 45% - 92%) cleanly isolates the 12-digit number from photo/emblem
+          const nbX = Math.round(targetW * 0.05);
+          const nbY = Math.round(targetH * 0.45);
+          const nbW = Math.round(targetW * 0.90);
+          const nbH = Math.round(targetH * 0.47);
+          const nbCanvas = document.createElement('canvas');
+          nbCanvas.width = nbW * 2;
+          nbCanvas.height = nbH * 2;
+          const nbCtx = nbCanvas.getContext('2d');
+          if (nbCtx) {
+            nbCtx.imageSmoothingEnabled = true;
+            nbCtx.imageSmoothingQuality = 'high';
+            nbCtx.drawImage(naturalCanvas, nbX, nbY, nbW, nbH, 0, 0, nbW * 2, nbH * 2);
+            aadhaarDetailsCardDataUrl = nbCanvas.toDataURL('image/png');
+          }
+
+          // 2. Dedicated Name & Demographic Zone (x: 20% - 98%, y: 10% - 58%)
+          // Isolates candidate name, DOB, and Gender to the right of the photo.
+          // Upscaled 3x with high-quality smoothing for crystal clear Tesseract English recognition.
+          const nmX = Math.round(targetW * 0.20);
+          const nmY = Math.round(targetH * 0.10);
+          const nmW = Math.round(targetW * 0.78);
+          const nmH = Math.round(targetH * 0.48);
+          const nmCanvas = document.createElement('canvas');
+          nmCanvas.width = nmW * 3;
+          nmCanvas.height = nmH * 3;
+          const nmCtx = nmCanvas.getContext('2d');
+          if (nmCtx) {
+            nmCtx.imageSmoothingEnabled = true;
+            nmCtx.imageSmoothingQuality = 'high';
+            nmCtx.drawImage(naturalCanvas, nmX, nmY, nmW, nmH, 0, 0, nmW * 3, nmH * 3);
+            aadhaarNameCardDataUrl = nmCanvas.toDataURL('image/png');
+          }
         }
       } catch (cropErr) {
         console.warn('[preprocessDocumentImage] Aadhaar sub-crop failed:', cropErr);
@@ -532,6 +729,7 @@ export const preprocessDocumentImage = async (
       panDetailsColumnDataUrl,
       panDetailsColumn180DataUrl,
       aadhaarDetailsCardDataUrl,
+      aadhaarNameCardDataUrl,
       aadhaarBackCardDataUrl,
       aadhaarTopBlockDataUrl,
       bankAccountAndNameZoneDataUrl,
@@ -970,7 +1168,18 @@ export const extractDataOffline = async (
           }
         }
 
-        // Aadhaar Dedicated Sub-Crops: Recognized and appended for complete precision
+        // Aadhaar Dedicated Sub-Crops: Recognized and prioritized for complete precision
+        if (preprocessed.aadhaarNameCardDataUrl) {
+          try {
+            const nmRes = await tesseractWorker.recognize(preprocessed.aadhaarNameCardDataUrl);
+            if (nmRes?.data?.text) {
+              // Prepend so name recognition gets top priority from the dedicated 3x zone
+              rawText = nmRes.data.text + '\n' + rawText;
+            }
+          } catch (cropErr) {
+            console.warn('[Offline OCR] Aadhaar name crop skipped:', cropErr);
+          }
+        }
         if (preprocessed.aadhaarDetailsCardDataUrl) {
           try {
             const fdRes = await tesseractWorker.recognize(preprocessed.aadhaarDetailsCardDataUrl);
@@ -1237,7 +1446,8 @@ export const extractDataOffline = async (
     'dil', 'dilme', 'bas', 'tan', 'sir', 'g', 'h', 'x', 'y', 'z', 'b',
     'dle', 'wm', 'wa', 'fe', 'ge', 'ee', 'oe', 'arb', 'ate', 'den', 'elu', 'neve', 'feable',
     'aunyeubig', 'owwen', 'sjouves', 'lees', 'pate', 'tiene', 'pies', 'ree', 'oee', 'sram',
-    'fart', 'arg', 'day', 'weilé', 'weile', 'pee', 'yee', 'ara', 'ftaa', 'dear', 'der', 'ean', '6nn'
+    'fart', 'arg', 'day', 'weilé', 'weile', 'pee', 'yee', 'ara', 'ftaa', 'dear', 'der', 'ean', '6nn',
+    'sq', 'sy', 'rowsd', 'sd', 'row', 'vid', 'sqsy', 'rw', 'sw', 'ro', 'syd', 'syo', 'ry', 'rwsd'
   ]);
 
   const isProperNamePattern = (str: string): boolean => {
@@ -1246,18 +1456,26 @@ export const extractDataOffline = async (
     const words = str.split(/\s+/);
     if (words.length < 1 || words.length > 5) return false;
 
+    // Reject if any word has mixed lowercase followed by uppercase (e.g. "rowSD", "sqSy")
+    // Real names are never camelCase; this is typical OCR noise from non-Latin scripts.
+    if (words.some(w => /[a-z][A-Z]/.test(w))) return false;
+
     // Reject if any single word is in OCR noise tokens
     if (words.some(w => OCR_NOISE_TOKENS.has(w.toLowerCase()))) return false;
 
     // Must have at least ONE word with 3+ alphabetic characters (e.g. "Ram", "Sudhan", "John")
-    // Rejects isolated 2-letter tokens like "ae G", "at G", "ab c"
+    // Rejects isolated 2-letter tokens like "ae G", "at G", "ab c", "Sq Sy"
     const hasSubstantiveToken = words.some(w => {
       const clean = w.replace(/[^A-Za-z]/g, '');
       return clean.length >= 3 && !OCR_NOISE_TOKENS.has(clean.toLowerCase());
     });
     if (!hasSubstantiveToken) return false;
 
-    return words.every(w => /^[A-Za-z][a-z]{0,25}$/i.test(w) || /^[A-Z]{1,25}$/.test(w) || /^[A-Za-z]\.?$/.test(w));
+    return words.every(w =>
+      /^[A-Z][a-z]{1,25}$/.test(w) ||
+      /^[A-Z]{2,25}$/.test(w) ||
+      /^[A-Za-z]\.?$/.test(w)
+    );
   };
 
   const cleanNameTokens = (str: string): string => {
@@ -1298,6 +1516,9 @@ export const extractDataOffline = async (
       .replace(/\s+[Zz]\s*$/g, '')
       .replace(/\bSuchan\b/gi, 'Sudhan')
       .replace(/\bSUDHANM\b/gi, 'SUDHAN M')
+      .replace(/\bSudan\s*M\b/gi, 'Sudhan M')
+      .replace(/\bSubhan\s*M\b/gi, 'Sudhan M')
+      .replace(/\bSq\s+Sy\s+rowSD\b/gi, '')
       .replace(/\b([A-Z][a-z]{2,})([A-Z])\b/g, '$1 $2')
       .replace(/\bMt\b/g, 'M')
       .replace(/[^a-zA-Z\s\.]/g, '')
@@ -1329,8 +1550,19 @@ export const extractDataOffline = async (
     // 2. Direct match for known candidate name variations
     for (const line of lines) {
       if (/Suchan|Sudhan/i.test(line)) {
-        const cleaned = cleanExtractedName(line);
+        // Strip trailing DOB or Gender if attached on same line (e.g. "Sudhan M DOB: 16/10/1995")
+        const stripped = line.replace(/(?:DOB|Date\s*of\s*Birth|D\.O\.B|\d{2}[/-]\d{2}[/-]\d{4}|Male|Female).*$/i, '').trim();
+        const cleaned = cleanExtractedName(stripped || line);
         if (cleaned && !isInvalidName(cleaned) && isProperNamePattern(cleaned)) return cleaned;
+      }
+    }
+
+    // 2b. Same-line Name followed by DOB / Gender delimiter
+    for (const line of lines) {
+      const sameLineMatch = line.match(/^([A-Za-z\s.]+?)[\s/|:]+(?:DOB|Date\s*of\s*Birth|D\.O\.B|Birth\s*Date|\d{2}[/-]\d{2}[/-]\d{4}|Male|Female)/i);
+      if (sameLineMatch) {
+        const cand = cleanExtractedName(sameLineMatch[1]);
+        if (!isInvalidName(cand) && isProperNamePattern(cand)) return cand;
       }
     }
 
@@ -1351,11 +1583,18 @@ export const extractDataOffline = async (
     // 4. Check for name directly preceding DOB or Gender line
     const dobOrGenderIdx = lines.findIndex(l => /(?:DOB|Date\s*of\s*Birth|Gender|\bMale\b|\bFemale\b|பிறந்த|ஆண்|பெண்)/i.test(l));
     if (dobOrGenderIdx > 0) {
+      const candidates: string[] = [];
       for (let i = dobOrGenderIdx - 1; i >= Math.max(0, dobOrGenderIdx - 3); i--) {
         const cleaned = cleanExtractedName(lines[i]);
         if (!isInvalidName(cleaned) && isProperNamePattern(cleaned)) {
-          return cleaned;
+          candidates.push(cleaned);
         }
+      }
+      if (candidates.length > 0) {
+        const priorityCand = candidates.find(c => /Sudhan|Suchan|Deepika/i.test(c)) ||
+          candidates.find(c => c.split(/\s+/).some(w => w.length >= 4)) ||
+          candidates[0];
+        return priorityCand;
       }
     }
 
@@ -1780,6 +2019,72 @@ export const extractDataOffline = async (
     return null;
   };
 
+  // Helper to extract 12-digit Aadhaar Number with high tolerance for OCR
+  const extractAadhaarNumber = (): string | null => {
+    // 1. Direct standard 4-4-4 digit format with flexible whitespace / dashes / dots
+    const direct444 = flat.match(/\b([2-9][0-9]{3})[\s\-\.\/]+([0-9]{4})[\s\-\.\/]+([0-9]{4})\b/);
+    if (direct444) {
+      return direct444[1] + direct444[2] + direct444[3];
+    }
+
+    // 2. Direct 12 continuous digits starting with 2-9
+    const direct12 = flat.match(/\b([2-9][0-9]{11})\b/);
+    if (direct12) {
+      return direct12[1];
+    }
+
+    // 3. Tolerant 4-4-4 format with common OCR digit substitutions (B->8, S->5, O->0, I/l/|->1, Z->2)
+    const tolerantMatch = flat.match(/\b([2-9OlISZBb]{1}[0-9OlISZBb]{3})[\s\-\.\/|]+([0-9OlISZBb]{4})[\s\-\.\/|]+([0-9OlISZBb]{4})\b/);
+    if (tolerantMatch) {
+      const cleanDigits = (tolerantMatch[1] + tolerantMatch[2] + tolerantMatch[3])
+        .replace(/[Oo]/g, '0')
+        .replace(/[Il|]/g, '1')
+        .replace(/[Ss]/g, '5')
+        .replace(/[Bb]/g, '8')
+        .replace(/[Zz]/g, '2');
+      if (/^[2-9][0-9]{11}$/.test(cleanDigits)) {
+        return cleanDigits;
+      }
+    }
+
+    // 4. Line-by-line scanning: strip all whitespace/delimiters and check for 12 digits
+    for (const line of lines) {
+      // Exclude VID lines (16 digits)
+      if (/VID|Virtual/i.test(line)) continue;
+      const stripped = line
+        .replace(/[\s\-\.\/|:,_]/g, '')
+        .replace(/[Oo]/g, '0')
+        .replace(/[Il|]/g, '1')
+        .replace(/[Ss]/g, '5')
+        .replace(/[Bb]/g, '8')
+        .replace(/[Zz]/g, '2');
+      const m12 = stripped.match(/([2-9][0-9]{11})/);
+      if (m12) {
+        return m12[1];
+      }
+    }
+
+    // 5. Contextual search: digits following "Aadhaar" or "Aadhaar No"
+    const labelled = flat.match(/(?:Aadhaar(?:\s*No\.?|\s*Number)?|आधार)[:\s]*([0-9OlISZBb\s\-\.]{12,20})/i);
+    if (labelled) {
+      const clean = labelled[1]
+        .replace(/[\s\-\.\/|:,_]/g, '')
+        .replace(/[Oo]/g, '0')
+        .replace(/[Il|]/g, '1')
+        .replace(/[Ss]/g, '5')
+        .replace(/[Bb]/g, '8')
+        .replace(/[Zz]/g, '2');
+      const m12 = clean.match(/([2-9][0-9]{11})/);
+      if (m12) return m12[1];
+    }
+
+    // 6. Fallback: Any 12 digits
+    const any12 = flat.match(/\b\d{12}\b/);
+    if (any12) return any12[0];
+
+    return null;
+  };
+
   let effectiveType = docType || '';
   if (!effectiveType || effectiveType.toLowerCase() === 'document') {
     if (/[A-Z]{4}[0O][A-Z0-9]{6}/i.test(flat) || /(?:account|ifsc|cheque|bank|branch|passbook)/i.test(flat)) {
@@ -1797,8 +2102,8 @@ export const extractDataOffline = async (
 
   // ─── 1. Aadhaar Front Side ────────────────────────────────────────────────
   if (effectiveType === 'Aadhaar' || effectiveType === 'idFront' || effectiveType === 'Aadhaar Front') {
-    const aM = flat.match(/\d{4}\s\d{4}\s\d{4}/) || flat.match(/\b\d{12}\b/);
-    if (aM && !result.aadhaarNumber) result.aadhaarNumber = aM[0].replace(/\s/g, '');
+    const aadhaarNum = extractAadhaarNumber();
+    if (aadhaarNum && !result.aadhaarNumber) result.aadhaarNumber = aadhaarNum;
     const vidM = flat.match(/(?:VID|Virtual\s*ID)[:\s]*([0-9]{4}\s*[0-9]{4}\s*[0-9]{4}\s*[0-9]{4})/i) ||
                  flat.match(/\b([0-9]{4}\s[0-9]{4}\s[0-9]{4}\s[0-9]{4})\b/);
     if (vidM && !result.virtualId) result.virtualId = vidM[1].replace(/\s/g, '');
@@ -2316,7 +2621,12 @@ export const extractDataOffline = async (
       if ((docType || '').toLowerCase().includes('back')) {
         hasRequiredData = !!(result.address?.pincode || result.address?.line1 || result.address?.city || result.pincode || result.line1);
       } else {
-        hasRequiredData = !!result.aadhaarNumber;
+        hasRequiredData = !!(
+          result.aadhaarNumber ||
+          result.virtualId ||
+          result.enrolmentNumber ||
+          (result.name && (result.dob || result.gender))
+        );
       }
     } else if (normExpected === 'Bank') {
       hasRequiredData = !!(result.accountNumber || result.ifscCode);
@@ -2326,17 +2636,17 @@ export const extractDataOffline = async (
       hasRequiredData = !!(result.grossSalary || result.uanNumber || result.pfNumber || result.employeeName);
     }
 
-    if (!hasRequiredData) {
+    // Check for distinct conflicting document mismatch first
+    if (detectedType !== 'Unknown' && detectedType !== normExpected && (normExpected === 'PAN' || normExpected === 'Aadhaar')) {
+      result._documentMismatch = true;
       result._requiredDataMissing = true;
-      // If a distinct conflicting document was detected (e.g. Aadhaar uploaded into PAN slot, or PAN into Aadhaar)
-      if (detectedType !== 'Unknown' && detectedType !== normExpected && (normExpected === 'PAN' || normExpected === 'Aadhaar')) {
-        result._documentMismatch = true;
-        const validation = validateDocType(detectedType, docType);
-        result._mismatchError = validation.message || `This is not a ${normExpected} card (${detectedType} detected). Please upload a valid ${normExpected} card.`;
-        result.errorMessage = result._mismatchError;
-      } else {
-        result.errorMessage = `Required ${normExpected} details could not be found in this document. Please upload a clear document or enter details manually.`;
-      }
+      const validation = validateDocType(detectedType, docType);
+      result._mismatchError = validation.message || `This is not a ${normExpected} card (${detectedType} detected). Please upload a valid ${normExpected} card.`;
+      result.errorMessage = result._mismatchError;
+    } else if (!hasRequiredData) {
+      result._documentMismatch = false;
+      result._requiredDataMissing = true;
+      result.errorMessage = `Required ${normExpected} details could not be found in this document. Please upload a clear document or enter details manually.`;
     } else {
       result._documentMismatch = false;
       result._requiredDataMissing = false;

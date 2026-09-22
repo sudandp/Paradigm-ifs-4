@@ -3,6 +3,7 @@ import { supabase, reconnectSupabaseRealtime } from '../../services/supabase';
 import { App as CapApp } from '@capacitor/app';
 import { api } from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
+import { isAdmin } from '../../utils/auth';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
@@ -15,7 +16,7 @@ import {
   Camera, CheckCircle, XCircle, Eye, EyeOff, UserPlus, UserCheck,
   Maximize2, Minimize2, Video, Download, Shield, Cpu, Clock, Search,
   ZoomIn, ZoomOut, RotateCcw, User, Layers, Sparkles, SplitSquareVertical, Sliders,
-  ChevronLeft, ChevronRight, ChevronDown, Edit2, MapPin, Crosshair
+  ChevronLeft, ChevronRight, ChevronDown, Edit2, MapPin, Crosshair, Power
 } from 'lucide-react';
 import { CctvQuickMapModal, UserOptionItem, SiteLocationItem, QuickMapTargetLog } from '../../components/cctv/CctvQuickMapModal';
 import { CctvActionZoneModal, ActionZonePoint, resampleToFixed20Points } from '../../components/cctv/CctvActionZoneModal';
@@ -710,6 +711,44 @@ const CctvDashboard: React.FC = () => {
   const [zoomPhoto, setZoomPhoto] = useState<ZoomPhotoData | null>(null);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [zoomPhotoLoading, setZoomPhotoLoading] = useState(false);
+  const [isRestartingApi, setIsRestartingApi] = useState(false);
+  const [restartStatus, setRestartStatus] = useState<'idle'|'restarting'|'success'|'failed'>('idle');
+
+  const handleRestartAttendanceApi = async () => {
+    setIsRestartingApi(true);
+    setRestartStatus('restarting');
+    try {
+      const res = await fetch('https://attendance.cctv.rest/restart', {
+        method: 'POST',
+        headers: { 'x-api-key': 'paradigm-attendance-secret-2024' },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (res.ok) {
+        setToast({ message: 'Restart command sent — polling for recovery...', type: 'success' });
+        // Poll until server is back (max 30s)
+        let attempts = 0;
+        const poll = setInterval(async () => {
+          attempts++;
+          try {
+            const h = await fetch('https://attendance.cctv.rest/health', { signal: AbortSignal.timeout(4000) });
+            if (h.ok) {
+              clearInterval(poll);
+              setRestartStatus('success');
+              setIsRestartingApi(false);
+              setToast({ message: '✅ Attendance API restarted successfully!', type: 'success' });
+            }
+          } catch { /* still restarting */ }
+          if (attempts >= 8) { clearInterval(poll); setRestartStatus('failed'); setIsRestartingApi(false); }
+        }, 4000);
+      } else {
+        throw new Error(`HTTP ${res.status}`);
+      }
+    } catch (e: any) {
+      setRestartStatus('failed');
+      setIsRestartingApi(false);
+      setToast({ message: `Restart failed: ${e.message}`, type: 'error' });
+    }
+  };
 
   // In-flight guard to prevent stacking concurrent queries & timeout aborts
   const isFetchingLogsRef = useRef(false);
@@ -1563,6 +1602,23 @@ const CctvDashboard: React.FC = () => {
             </p>
           </div>
           <div className="flex items-center gap-3">
+            {isAdmin(user?.role) && (
+              <button
+                onClick={handleRestartAttendanceApi}
+                disabled={isRestartingApi}
+                title="Restart Attendance API on remote server (Admin only)"
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-colors shadow-sm border ${
+                  restartStatus === 'success'
+                    ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
+                    : restartStatus === 'failed'
+                    ? 'bg-red-100 text-red-700 border-red-300'
+                    : 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-300'
+                } disabled:opacity-60`}
+              >
+                <Power className={`h-4 w-4 ${isRestartingApi ? 'animate-pulse' : ''}`} />
+                {isRestartingApi ? 'Restarting...' : restartStatus === 'success' ? 'Restarted ✓' : 'Restart API'}
+              </button>
+            )}
             <Button variant="secondary" onClick={fetchLogs} className="flex items-center gap-2">
               <RefreshCw className="h-4 w-4" /> Refresh Logs
             </Button>

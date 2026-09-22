@@ -35,13 +35,13 @@ describe('imageRotation utils', () => {
   });
 
   describe('autoRotateDocumentIfSideways', () => {
-    it('detects when a landscape card is photographed in portrait and rotates 90° CW', async () => {
+    it('preserves portrait / vertical documents without forcing horizontal rotation', async () => {
       const originalImage = global.Image;
       const originalDoc = (global as any).document;
 
       class MockImage {
         width = 400;
-        height = 800; // Portrait orientation (h > w * 1.05)
+        height = 800; // Portrait orientation
         naturalWidth = 400;
         naturalHeight = 800;
         crossOrigin = '';
@@ -54,34 +54,13 @@ describe('imageRotation utils', () => {
         }
       }
 
-      const mockCanvas = {
-        width: 0,
-        height: 0,
-        getContext: vi.fn().mockReturnValue({
-          save: vi.fn(),
-          translate: vi.fn(),
-          rotate: vi.fn(),
-          drawImage: vi.fn(),
-          restore: vi.fn(),
-        }),
-        toDataURL: vi.fn().mockReturnValue('data:image/jpeg;base64,mockRotatedBase64'),
-      };
-
-      (global as any).document = {
-        createElement: (tag: string) => {
-          if (tag === 'canvas') return mockCanvas;
-          return {};
-        },
-      };
-
       // @ts-ignore
       global.Image = MockImage;
 
       try {
         const dummyDataUrl = 'data:image/jpeg;base64,dummy';
         const res = await autoRotateDocumentIfSideways(dummyDataUrl, 'PAN', 'PAN Card');
-        expect(res.wasRotated).toBe(true);
-        expect(res.dataUrl).toContain('mockRotatedBase64');
+        expect(res.wasRotated).toBe(false);
       } finally {
         global.Image = originalImage;
         (global as any).document = originalDoc;
