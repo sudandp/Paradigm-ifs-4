@@ -441,7 +441,7 @@ const PersonalDetails = () => {
                     <Input label="Alternate Mobile (Optional)" id="alternateMobile" type="tel" registration={register('alternateMobile')} />
                     <Input label="Email Address (Optional)" id="email" type="email" registration={register('email')} error={errors.email?.message} />
                     <div>
-                        <Input label="Monthly Salary (Gross)" id="salary" type="number" registration={register('salary')} error={errors.salary?.message} />
+                        <Input label="Monthly Salary (Net)" id="salary" type="number" registration={register('salary')} error={errors.salary?.message} />
                         {typeof salaryVal === 'number' && (
                             <p className="mt-1 text-xs flex items-center gap-1">
                                 {isEsiEligible ? (

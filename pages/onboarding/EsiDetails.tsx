@@ -1,6 +1,6 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 // Fix: Use inline type import for SubmitHandler
-import { useForm, useWatch, Controller, type SubmitHandler, type Resolver } from 'react-hook-form';
+import { useForm, Controller, type SubmitHandler, type Resolver } from 'react-hook-form';
 import { useOutletContext } from 'react-router-dom';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
@@ -10,13 +10,20 @@ import type { EsiDetails, UploadedFile } from '../../types';
 import Input from '../../components/ui/Input';
 import FormHeader from '../../components/onboarding/FormHeader';
 import DatePicker from '../../components/ui/DatePicker';
-import { Info, Loader2, CheckCircle2, XCircle, ShieldCheck, AlertTriangle } from 'lucide-react';
+import { Info, Loader2, CheckCircle2, XCircle, ShieldCheck, AlertTriangle, ClipboardCheck, PenLine } from 'lucide-react';
 import UploadDocument from '../../components/UploadDocument';
 import VerifiedInput from '../../components/ui/VerifiedInput';
 import { Type } from '@google/genai';
 import { useAuthStore } from '../../store/authStore';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { kycGateway } from '../../services/kyc/kycGateway';
+
+// Pending OCR review data before user confirms
+interface EsiOcrReview {
+    esiNumber: string;
+    esiRegistrationDate: string;
+    esicBranch: string;
+}
 
 // Fix: Removed generic type argument from yup.object
 export const esiDetailsSchema = yup.object({
@@ -51,6 +58,9 @@ const EsiDetails = () => {
     const isMobile = useMediaQuery('(max-width: 767px)');
     const [esicVerifyState, setEsicVerifyState] = useState<ESICVerifyState>('idle');
     const [esicMemberInfo, setEsicMemberInfo] = useState<{ memberName: string | null; dispensary: string | null } | null>(null);
+    // Holds OCR-extracted data pending manual review/correction before applying to form
+    const [ocrReviewData, setOcrReviewData] = useState<EsiOcrReview | null>(null);
+    const [ocrReviewEdits, setOcrReviewEdits] = useState<EsiOcrReview>({ esiNumber: '', esiRegistrationDate: '', esicBranch: '' });
     
     const { register, control, handleSubmit, formState: { errors }, reset, setValue, watch } = useForm<EsiDetails>({
         // FIX: Cast resolver to resolve type incompatibility between yup and react-hook-form.
@@ -146,26 +156,136 @@ const EsiDetails = () => {
     };
 
     const handleOcrComplete = (extractedData: any) => {
-        if (extractedData.esiNumber) {
-            const esi = extractedData.esiNumber.replace(/\D/g, '');
-            if (esi.length === 10 || esi.length === 17) {
-                const esiUpdate: Partial<EsiDetails> = {
-                    esiNumber: esi,
-                    hasEsi: true,
-                };
-                setValue('esiNumber', esi, { shouldValidate: true });
-                setValue('hasEsi', true, { shouldValidate: true });
-                updateEsi(esiUpdate);
-                setEsiVerifiedStatus({ esiNumber: true });
-                setToast({ message: 'ESI Number extracted successfully.', type: 'success' });
+        // Collect all extracted fields and show review panel instead of silently applying
+        const rawEsi = (extractedData.esiNumber || '').replace(/\D/g, '');
+        const rawDate = extractedData.esiRegistrationDate || '';
+        const rawBranch = extractedData.esicBranch || '';
+
+        // Only open review panel if at least the ESI number looks valid
+        if (rawEsi.length === 10 || rawEsi.length === 17) {
+            // Normalise DD/MM/YYYY → YYYY-MM-DD for the date picker
+            let normDate = rawDate;
+            const ddmmyyyy = rawDate.match(/^(\d{2})[\/\-](\d{2})[\/\-](\d{4})$/);
+            if (ddmmyyyy) {
+                normDate = `${ddmmyyyy[3]}-${ddmmyyyy[2]}-${ddmmyyyy[1]}`;
             }
+            const review: EsiOcrReview = {
+                esiNumber: rawEsi,
+                esiRegistrationDate: normDate,
+                esicBranch: rawBranch,
+            };
+            setOcrReviewData(review);
+            setOcrReviewEdits(review);
+            // Auto-switch to "has existing ESI" mode
+            setValue('hasEsi', true, { shouldValidate: true });
+            updateEsi({ hasEsi: true });
+            setToast({ message: 'ESI Card scanned — please review the extracted details below.', type: 'success' });
+        } else {
+            setToast({ message: 'Could not extract a valid ESI number. Please fill in manually.', type: 'error' });
         }
     };
+
+    const handleApplyOcrReview = () => {
+        setValue('esiNumber', ocrReviewEdits.esiNumber, { shouldValidate: true });
+        setValue('esiRegistrationDate', ocrReviewEdits.esiRegistrationDate, { shouldValidate: true });
+        setValue('esicBranch', ocrReviewEdits.esicBranch, { shouldValidate: true });
+        updateEsi({
+            esiNumber: ocrReviewEdits.esiNumber,
+            esiRegistrationDate: ocrReviewEdits.esiRegistrationDate,
+            esicBranch: ocrReviewEdits.esicBranch,
+            hasEsi: true,
+        });
+        setEsiVerifiedStatus({ esiNumber: false }); // require fresh verify after edit
+        setOcrReviewData(null);
+        setToast({ message: 'ESI details applied. Verify the ESI number when ready.', type: 'success' });
+    };
+
+    const handleDiscardOcrReview = () => {
+        setOcrReviewData(null);
+    };
+
+    // ── ESI OCR Review Panel ──────────────────────────────────────────────────
+    const EsiOcrReviewPanel = ocrReviewData ? (
+        <div className="mt-4 rounded-xl border-2 border-accent/40 bg-accent/5 p-4 animate-fade-in-down">
+            <div className="flex items-center gap-2 mb-3">
+                <ClipboardCheck className="h-4 w-4 text-accent flex-shrink-0" />
+                <span className="text-sm font-bold text-accent">Extracted from ESI Card — Please Review & Correct</span>
+            </div>
+            <div className="space-y-3">
+                {/* ESI Number */}
+                <div>
+                    <label className="text-xs font-semibold text-muted block mb-1">ESI Number</label>
+                    <div className="relative">
+                        <input
+                            id="ocr-review-esiNumber"
+                            type="text"
+                            value={ocrReviewEdits.esiNumber}
+                            onChange={(e) => setOcrReviewEdits(prev => ({ ...prev, esiNumber: e.target.value.replace(/\D/g, '') }))}
+                            placeholder="10 or 17-digit ESI number"
+                            maxLength={17}
+                            className="form-input pr-8 font-mono"
+                        />
+                        <PenLine className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted pointer-events-none" />
+                    </div>
+                </div>
+                {/* Registration Date */}
+                <div>
+                    <label className="text-xs font-semibold text-muted block mb-1">Registration Date</label>
+                    <div className="relative">
+                        <input
+                            id="ocr-review-esiDate"
+                            type="date"
+                            value={ocrReviewEdits.esiRegistrationDate}
+                            max={new Date().toISOString().split('T')[0]}
+                            onChange={(e) => setOcrReviewEdits(prev => ({ ...prev, esiRegistrationDate: e.target.value }))}
+                            className="form-input"
+                        />
+                    </div>
+                </div>
+                {/* Branch / Dispensary */}
+                <div>
+                    <label className="text-xs font-semibold text-muted block mb-1">ESIC Branch / Dispensary</label>
+                    <div className="relative">
+                        <input
+                            id="ocr-review-esicBranch"
+                            type="text"
+                            value={ocrReviewEdits.esicBranch}
+                            onChange={(e) => setOcrReviewEdits(prev => ({ ...prev, esicBranch: e.target.value }))}
+                            placeholder="e.g. Marathahalli, KA (ESIS Disp.)"
+                            className="form-input pr-8"
+                        />
+                        <PenLine className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted pointer-events-none" />
+                    </div>
+                </div>
+            </div>
+            <div className="flex items-center gap-3 mt-4 pt-3 border-t border-accent/20">
+                <button
+                    id="ocr-review-apply-btn"
+                    type="button"
+                    onClick={handleApplyOcrReview}
+                    disabled={!ocrReviewEdits.esiNumber || (ocrReviewEdits.esiNumber.length !== 10 && ocrReviewEdits.esiNumber.length !== 17)}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-accent text-white text-sm font-semibold disabled:opacity-40 hover:bg-accent/90 transition-colors"
+                >
+                    <CheckCircle2 className="h-4 w-4" /> Apply to Form
+                </button>
+                <button
+                    id="ocr-review-discard-btn"
+                    type="button"
+                    onClick={handleDiscardOcrReview}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-rose-500/10 text-rose-600 border border-rose-500/30 text-sm font-semibold hover:bg-rose-500/20 transition-colors"
+                >
+                    <XCircle className="h-4 w-4" /> Discard
+                </button>
+            </div>
+        </div>
+    ) : null;
 
     const esiSchema = {
         type: Type.OBJECT,
         properties: {
-            esiNumber: { type: Type.STRING, description: "The 10 or 17-digit ESI number." },
+            esiNumber: { type: Type.STRING, description: "The 10 or 17-digit ESI/Insurance number from the ESIC e-Pehchan card or ESI card." },
+            esiRegistrationDate: { type: Type.STRING, description: "The registration date in DD/MM/YYYY or YYYY-MM-DD format, as shown on the card." },
+            esicBranch: { type: Type.STRING, description: "The Dispensary or ESIC Branch name shown on the card (e.g. Marathahalli, KA (ESIS Disp.))." },
         },
         required: ["esiNumber"],
     };
@@ -229,8 +349,19 @@ const EsiDetails = () => {
                             <input type="date" {...register('esiRegistrationDate')} className="form-input"/>
                             <input placeholder="ESIC Branch (Optional)" {...register('esicBranch')} className="form-input"/>
                             <Controller name="document" control={control} render={({ field }) => (
-                                <UploadDocument label="Upload ESI Card (Optional)" file={field.value} onFileChange={field.onChange} allowCapture costingItemName="ESI Card OCR" />
+                                <UploadDocument
+                                    label="Upload ESI Card (Optional)"
+                                    file={field.value}
+                                    onFileChange={field.onChange}
+                                    allowCapture
+                                    costingItemName="ESI Card OCR"
+                                    onOcrComplete={handleOcrComplete}
+                                    ocrSchema={esiSchema}
+                                    setToast={setToast}
+                                />
                             )}/>
+                            {/* OCR Manual Correction Panel — mobile */}
+                            {EsiOcrReviewPanel}
                         </div>
                     )}
                 </div>
@@ -343,17 +474,21 @@ const EsiDetails = () => {
                                 )}
                             </div>
                         </div>
-                        <Controller name="document" control={control} render={({ field }) => (
-                             <UploadDocument
-                                label="Upload ESI Card (Optional)"
-                                file={field.value}
-                                onFileChange={field.onChange}
-                                onOcrComplete={handleOcrComplete}
-                                ocrSchema={esiSchema}
-                                setToast={setToast}
-                                costingItemName="ESI Card OCR"
-                            />
-                        )}/>
+                        <div className="space-y-0">
+                            <Controller name="document" control={control} render={({ field }) => (
+                                <UploadDocument
+                                    label="Upload ESI Card (Optional)"
+                                    file={field.value}
+                                    onFileChange={field.onChange}
+                                    onOcrComplete={handleOcrComplete}
+                                    ocrSchema={esiSchema}
+                                    setToast={setToast}
+                                    costingItemName="ESI Card OCR"
+                                />
+                            )}/>
+                            {/* OCR Manual Correction Panel — appears below upload after scan */}
+                            {EsiOcrReviewPanel}
+                        </div>
                     </div>
                 )}
             </div>
