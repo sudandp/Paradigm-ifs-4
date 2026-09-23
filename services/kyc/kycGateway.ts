@@ -161,7 +161,14 @@ export const kycGateway = {
   async verifyESIC(req: ESICVerifyRequest, employeeId: string): Promise<ESICVerifyResult> {
     const idempotencyKey = `esic_${employeeId}_${req.esicNumber}`;
     const cached = await checkCache(idempotencyKey);
-    if (cached) return cached.result as ESICVerifyResult;
+    if (cached) {
+      const cachedRes = cached.result as ESICVerifyResult;
+      if (cachedRes?.memberName === 'SUDHAN M' && req.name !== 'SUDHAN M') {
+        // Bypass stale dummy cache
+      } else {
+        return cachedRes;
+      }
+    }
 
     const result = await getAdapter().verifyESIC(req);
     if (result.success) {

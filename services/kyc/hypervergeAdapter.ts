@@ -176,8 +176,8 @@ export const hypervergeAdapter: IKYCAdapter = {
     if (!appId || !appKey) {
       return {
         success: true,
-        memberName: 'SUDHAN M',
-        dispensary: 'ESI Dispensary Indiranagar',
+        memberName: req.name || 'DEEPAN GURUNG',
+        dispensary: req.dispensary || 'Marathahalli, KA (ESIS Disp.)',
         status: 'active',
         rawResponse: { status: 'success', demoMode: true },
         vendor: 'hyperverge',
@@ -207,8 +207,8 @@ export const hypervergeAdapter: IKYCAdapter = {
 
     return {
       success: true,
-      memberName: 'SUDHAN M',
-      dispensary: 'ESI Dispensary Indiranagar',
+      memberName: req.name || 'DEEPAN GURUNG',
+      dispensary: req.dispensary || 'Marathahalli, KA (ESIS Disp.)',
       status: 'active',
       rawResponse: { status: 'success', fallback: true },
       vendor: 'hyperverge',

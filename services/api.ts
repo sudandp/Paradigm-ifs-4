@@ -9874,7 +9874,18 @@ export const api = {
         model: 'gemini-flash-latest',
         contents: {
           parts: [
-            { text: `Extract the structured data from this document image. It is a ${docType || 'document'}.` },
+            {
+              text: docType === 'ESI'
+                ? [
+                    'Extract the structured data from this ESIC e-Pehchan Card (Employee State Insurance Corporation card).',
+                    'IMPORTANT FIELD MAPPING RULES:',
+                    '- "esiNumber" = the value labeled "Insurance No." in the PERSONAL DETAILS section (10-digit number). DO NOT use Mobile Number or UHID.',
+                    '- "esiRegistrationDate" = the value labeled "Registration Date" in the PERSONAL DETAILS section (format DD/MM/YYYY).',
+                    '- "esicBranch" = the value labeled "Dispensary / IMP for IP" in the REGISTRATION DETAILS section.',
+                    'Return ONLY the fields in the schema. Return empty string if a field is not found.',
+                  ].join(' ')
+                : `Extract the structured data from this document image. It is a ${docType || 'document'}.`
+            },
             { inlineData: { data: base64, mimeType } }
           ]
         },

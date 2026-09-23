@@ -65,6 +65,8 @@ export interface UANGenerateResult {
 // --- ESIC Registry ---
 export interface ESICVerifyRequest {
   esicNumber: string;
+  name?: string;
+  dispensary?: string;
 }
 
 export interface ESICVerifyResult {

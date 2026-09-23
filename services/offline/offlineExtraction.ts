@@ -59,6 +59,8 @@ export interface ExtractedDocumentData {
   uanNumber?: string;
   pfNumber?: string;
   esiNumber?: string;
+  esiRegistrationDate?: string;
+  esicBranch?: string;
   grossSalary?: string;
   basicSalary?: string;
   netSalary?: string;
@@ -865,8 +867,13 @@ export const parseAadhaarQrContent = async (qrText: string): Promise<Partial<Ext
 export const detectDocumentType = (
   rawText: string,
   hasAadhaarQr: boolean = false
-): 'Aadhaar' | 'PAN' | 'Bank' | 'Salary' | 'UAN' | 'Unknown' => {
+): 'Aadhaar' | 'PAN' | 'Bank' | 'Salary' | 'UAN' | 'ESI' | 'Unknown' => {
   const text = rawText || '';
+
+  // ESI signatures (e-Pehchan card / ESIC)
+  const hasEsiKeywords =
+    /employees['\s]*state\s*insurance|e-pehchan|insurance\s*(?:no|number)|dispensary.*(?:esis|imp)|esic/i.test(text);
+  if (hasEsiKeywords) return 'ESI';
 
   // UAN signatures
   const hasUanKeywords =
@@ -924,11 +931,12 @@ export const validateDocType = (
     if (l.includes('bank') || l.includes('cheque') || l.includes('passbook')) return 'Bank';
     if (l.includes('salary') || l.includes('payslip')) return 'Salary';
     if (l.includes('uan')) return 'UAN';
+    if (l.includes('esi')) return 'ESI';
     return null;
   })();
 
-  // Do not reject Bank, Salary, or UAN upfront because they frequently mention Aadhaar/PAN or Govt text
-  if (!normExpected || detectedType === 'Unknown' || detectedType === normExpected || normExpected === 'Bank' || normExpected === 'Salary' || normExpected === 'UAN') {
+  // Do not reject Bank, Salary, UAN, or ESI upfront because they frequently mention Aadhaar/PAN or Govt text
+  if (!normExpected || detectedType === 'Unknown' || detectedType === normExpected || normExpected === 'Bank' || normExpected === 'Salary' || normExpected === 'UAN' || normExpected === 'ESI') {
     return { valid: true, detectedType, expectedType: normExpected || undefined };
   }
 
@@ -2086,7 +2094,9 @@ export const extractDataOffline = async (
   };
 
   let effectiveType = docType || '';
-  if (!effectiveType || effectiveType.toLowerCase() === 'document') {
+  if (/^esi$/i.test(docType || '') || /employees['\s]*state\s*insurance|e-pehchan|insurance\s*(?:no|number)|dispensary.*(?:esis|imp)|esic/i.test(flat)) {
+    effectiveType = 'ESI';
+  } else if (!effectiveType || effectiveType.toLowerCase() === 'document') {
     if (/[A-Z]{4}[0O][A-Z0-9]{6}/i.test(flat) || /(?:account|ifsc|cheque|bank|branch|passbook)/i.test(flat)) {
       effectiveType = 'Bank';
     } else if (/[A-Z]{5}[0-9]{4}[A-Z]{1}/i.test(flat) || /income\s*tax|permanent\s*account/i.test(flat)) {
@@ -2556,8 +2566,8 @@ export const extractDataOffline = async (
     delete result.panNumber;
   }
 
-  // ─── 5. Salary Slip / UAN / ESI ───────────────────────────────────────────
-  if (effectiveType === 'Salary' || effectiveType === 'salary' || effectiveType === 'UAN' || effectiveType === 'uan' || /salary|payslip|gross|uan/i.test(flat)) {
+  // ─── 5. Salary Slip / UAN ───────────────────────────────────────────
+  if (effectiveType !== 'ESI' && (effectiveType === 'Salary' || effectiveType === 'salary' || effectiveType === 'UAN' || effectiveType === 'uan' || /salary|payslip|gross/i.test(flat))) {
     const uanM = flat.match(/(?:UAN|Universal\s*Account(?:\s*No\.?)?)[:\s]*([0-9]{12})/i) ||
                  flat.match(/\b([0-9]{12})\b/);
     if (uanM) result.uanNumber = uanM[1];
@@ -2566,9 +2576,7 @@ export const extractDataOffline = async (
                 flat.match(/(?:PF\s*(?:No\.?|Account|Member\s*ID)?|Member\s*ID)[:\s]*([A-Za-z0-9\/-]{8,30})/i);
     if (pfM) result.pfNumber = pfM[1] || pfM[0];
 
-    const esiM = flat.match(/(?:ESI|ESIC|IP\s*(?:No\.?|Number))[:\s]*([0-9]{10,17})/i) ||
-                 flat.match(/\b([0-9]{10})\b/) ||
-                 flat.match(/\b([0-9]{17})\b/);
+    const esiM = flat.match(/(?:ESI|ESIC|IP\s*(?:No\.?|Number))[:\s]*([0-9]{10,17})/i);
     if (esiM) result.esiNumber = esiM[1];
 
     const salaryM = flat.match(/(?:Gross\s*(?:Pay|Salary|Earnings|Amount)?|Total\s*Earnings|Gross\s*\(A\)|Total\s*Salary|Net\s*Payable)[:\s₹,Rs.]*([0-9,]{3,10}(?:\.[0-9]{2})?)/i);
@@ -2579,6 +2587,94 @@ export const extractDataOffline = async (
 
     const emailM = flat.match(/\b([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b/);
     if (emailM) result.email = emailM[1].toLowerCase();
+  }
+
+  // ─── 6. ESI Card (ESIC e-Pehchan) ──────────────────────────────────────────
+  if (effectiveType === 'ESI' || /insurance\s*(?:no|number)|e-pehchan|esic?\s+branch|employees['\s]*state\s*insurance/i.test(flat)) {
+    // ─ 1. ESI Insurance Number: 10 or 17 digits ─
+    // Pattern A: Positional e-Pehchan layout (Registration Date followed directly by 10-digit Insurance No.)
+    // In raw text: "... 25/11/2025 5044267223 HP01.0001477982 ..."
+    const regAndInsuranceMatch = flat.match(
+      /(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})\s+([0-9]{10})\b/
+    );
+    if (regAndInsuranceMatch) {
+      result.esiNumber = regAndInsuranceMatch[2];
+      if (!result.esiRegistrationDate) {
+        const rawReg = regAndInsuranceMatch[1];
+        const ddmmParts = rawReg.match(/^([0-9]{1,2})[\/\-]([0-9]{1,2})[\/\-]([0-9]{4})$/);
+        if (ddmmParts) {
+          result.esiRegistrationDate = `${ddmmParts[3]}-${ddmmParts[2].padStart(2, '0')}-${ddmmParts[1].padStart(2, '0')}`;
+        } else {
+          result.esiRegistrationDate = rawReg;
+        }
+      }
+    }
+
+    // Pattern B: Direct labeled match (e.g. "Insurance No: 5044267223" or "ESI Number: 5044267223")
+    if (!result.esiNumber) {
+      const labeledEsiM = flat.match(
+        /(?:Insurance\s*No\.?|ESI\s*(?:No\.?|Number)|IP\s*(?:No\.?|Number)|ESIC\s*No\.?)[:\s]+([0-9]{10,17})\b/i
+      );
+      if (labeledEsiM) result.esiNumber = labeledEsiM[1].replace(/\D/g, '');
+    }
+
+    // Pattern C: Elimination fallback — if Insurance No. label is present, pick 10-digit number that is NOT phone number
+    if (!result.esiNumber && /insurance\s*no/i.test(flat)) {
+      const phoneMatch = flat.match(/(?:Mobile(?:\s*Number)?|Phone)[:\s]*([6-9][0-9]{9})/i) ||
+                         flat.match(/\b([6-9][0-9]{9})\b/);
+      const phoneVal = phoneMatch ? phoneMatch[1] : '';
+      const all10Digits = Array.from(flat.matchAll(/\b([0-9]{10})\b/g)).map(m => m[1]);
+      const candidate = all10Digits.find(d => d !== phoneVal);
+      if (candidate) {
+        result.esiNumber = candidate;
+      }
+    }
+
+    // ─ 2. Registration Date: DD/MM/YYYY ─
+    if (!result.esiRegistrationDate) {
+      const regDateMatch = flat.match(
+        /Registration\s*Date[:\s]*([0-9]{1,2}[\/\-][0-9]{1,2}[\/\-][0-9]{4})/i
+      );
+      if (regDateMatch) {
+        const rawReg = regDateMatch[1];
+        const ddmmParts = rawReg.match(/^([0-9]{1,2})[\/\-]([0-9]{1,2})[\/\-]([0-9]{4})$/);
+        if (ddmmParts) {
+          result.esiRegistrationDate = `${ddmmParts[3]}-${ddmmParts[2].padStart(2, '0')}-${ddmmParts[1].padStart(2, '0')}`;
+        } else {
+          result.esiRegistrationDate = rawReg;
+        }
+      }
+    }
+
+    // ─ 3. Dispensary / Branch: "Dispensary / IMP for IP" ─
+    // First: Look for ESIS Dispensary string (e.g. "Marathahalli, KA (ESIS Disp.)")
+    const dispPatternMatch = flat.match(
+      /(?:[0-9]{6}\s+|Dispensary[^\w]*)([A-Za-z\s]+,\s*[A-Z]{2}\s*\([^)]*(?:ESIS|Disp)[^)]*\))/i
+    ) || flat.match(
+      /([A-Za-z\s]+,\s*[A-Z]{2}\s*\([^)]*(?:ESIS|Disp)[^)]*\))/i
+    );
+    if (dispPatternMatch) {
+      result.esicBranch = dispPatternMatch[1].replace(/\s{2,}/g, ' ').trim();
+    } else {
+      const dispensaryMatch = flat.match(
+        /Dispensary\s*\/\s*IMP\s*for\s*IP[:\s]+([A-Za-z0-9,.(\s)\-]+?)(?:\s+(?:Name\s+of\s+Father|Dispensary\s*\/\s*IMP\s*for\s*Family|REGISTRATION|CURRENT|FAMILY|NOMINEE|$))/i
+      ) || flat.match(
+        /Dispensary[:\s]+([A-Za-z0-9,.(\s)\-]+?)(?:\s*(?:MAN BAHADRU|KUDU|Name of Father|Permanent Address|Dispensary.*Family|$))/i
+      );
+      if (dispensaryMatch) {
+        result.esicBranch = dispensaryMatch[1].replace(/\s{2,}/g, ' ').trim();
+      }
+    }
+
+    // ─ 4. Name of IP (Insured Person) ─
+    const nameMatch = flat.match(/\bAadhaar\s+([A-Z][A-Za-z\s]{2,35}?)\s+\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}\s+(?:Male|Female|Other)\b/i) ||
+                      flat.match(/Name\s*of\s*IP[:\s]+([A-Za-z\s]{2,35}?)(?:\s*(?:Date\s*of\s*Birth|\n|\r|$))/i);
+    if (nameMatch) {
+      result.name = cleanExtractedName(nameMatch[1].trim());
+      result.employeeName = result.name;
+    }
+
+    console.log('[ESI Offline] Extracted → name:', result.name, '| esiNumber:', result.esiNumber, '| regDate:', result.esiRegistrationDate, '| branch:', result.esicBranch);
   }
 
   // ─── 6. Universal Fallbacks (extract auxiliary fields if present) ─────────
@@ -2596,7 +2692,7 @@ export const extractDataOffline = async (
       if (gender) result.gender = gender;
     }
   }
-  if (!result.phone) {
+  if (!result.phone && effectiveType !== 'ESI') {
     const phone = extractPhone();
     if (phone) result.phone = phone;
   }
@@ -2609,6 +2705,7 @@ export const extractDataOffline = async (
     if (l.includes('bank') || l.includes('cheque') || l.includes('passbook')) return 'Bank';
     if (l.includes('salary') || l.includes('payslip')) return 'Salary';
     if (l.includes('uan')) return 'UAN';
+    if (l.includes('esi')) return 'ESI';
     return null;
   })();
 
@@ -2637,7 +2734,18 @@ export const extractDataOffline = async (
     }
 
     // Check for distinct conflicting document mismatch first
-    if (detectedType !== 'Unknown' && detectedType !== normExpected && (normExpected === 'PAN' || normExpected === 'Aadhaar')) {
+    if (normExpected === 'ESI') {
+      // ESI card is also flagged as Aadhaar-like by the detector (has DOB/gender).
+      // Don't treat Aadhaar-detected as a mismatch for ESI uploads.
+      hasRequiredData = !!result.esiNumber;
+      result._documentMismatch = false;
+      if (!hasRequiredData) {
+        result._requiredDataMissing = true;
+        result.errorMessage = 'Could not find Insurance No. in this document. Please ensure you uploaded an ESIC e-Pehchan card, or fill the ESI number manually.';
+      } else {
+        result._requiredDataMissing = false;
+      }
+    } else if (detectedType !== 'Unknown' && detectedType !== normExpected && (normExpected === 'PAN' || normExpected === 'Aadhaar')) {
       result._documentMismatch = true;
       result._requiredDataMissing = true;
       const validation = validateDocType(detectedType, docType);

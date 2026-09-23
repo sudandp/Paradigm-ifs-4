@@ -10,20 +10,13 @@ import type { EsiDetails, UploadedFile } from '../../types';
 import Input from '../../components/ui/Input';
 import FormHeader from '../../components/onboarding/FormHeader';
 import DatePicker from '../../components/ui/DatePicker';
-import { Info, Loader2, CheckCircle2, XCircle, ShieldCheck, AlertTriangle, ClipboardCheck, PenLine } from 'lucide-react';
+import { Info, Loader2, CheckCircle2, XCircle, ShieldCheck, AlertTriangle } from 'lucide-react';
 import UploadDocument from '../../components/UploadDocument';
 import VerifiedInput from '../../components/ui/VerifiedInput';
 import { Type } from '@google/genai';
 import { useAuthStore } from '../../store/authStore';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { kycGateway } from '../../services/kyc/kycGateway';
-
-// Pending OCR review data before user confirms
-interface EsiOcrReview {
-    esiNumber: string;
-    esiRegistrationDate: string;
-    esicBranch: string;
-}
 
 // Fix: Removed generic type argument from yup.object
 export const esiDetailsSchema = yup.object({
@@ -48,7 +41,18 @@ interface OutletContext {
   setToast: (toast: { message: string; type: 'success' | 'error' } | null) => void;
 }
 
-type ESICVerifyState = 'idle' | 'loading' | 'active' | 'inactive' | 'error';
+type ESICVerifyState = 'idle' | 'loading' | 'active' | 'inactive' | 'error' | 'mismatch';
+
+const checkNameMatch = (name1?: string | null, name2?: string | null): boolean => {
+    if (!name1 || !name2) return false;
+    const clean1 = name1.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+    const clean2 = name2.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+    if (clean1 === clean2) return true;
+    const tokens1 = clean1.split(/\s+/).filter(t => t.length > 0);
+    const tokens2 = clean2.split(/\s+/).filter(t => t.length > 0);
+    if (tokens1.length === 0 || tokens2.length === 0) return false;
+    return tokens1.some(t => tokens2.includes(t)) || tokens2.some(t => tokens1.includes(t));
+};
 
 const EsiDetails = () => {
     const { onValidated, setToast } = useOutletContext<OutletContext>();
@@ -58,9 +62,8 @@ const EsiDetails = () => {
     const isMobile = useMediaQuery('(max-width: 767px)');
     const [esicVerifyState, setEsicVerifyState] = useState<ESICVerifyState>('idle');
     const [esicMemberInfo, setEsicMemberInfo] = useState<{ memberName: string | null; dispensary: string | null } | null>(null);
-    // Holds OCR-extracted data pending manual review/correction before applying to form
-    const [ocrReviewData, setOcrReviewData] = useState<EsiOcrReview | null>(null);
-    const [ocrReviewEdits, setOcrReviewEdits] = useState<EsiOcrReview>({ esiNumber: '', esiRegistrationDate: '', esicBranch: '' });
+    const [cardMemberName, setCardMemberName] = useState<string | null>(null);
+    const [nameMatchStatus, setNameMatchStatus] = useState<'matched' | 'mismatch' | 'none'>('none');
     
     const { register, control, handleSubmit, formState: { errors }, reset, setValue, watch } = useForm<EsiDetails>({
         // FIX: Cast resolver to resolve type incompatibility between yup and react-hook-form.
@@ -123,6 +126,7 @@ const EsiDetails = () => {
         setEsiVerifiedStatus({ esiNumber: false });
         setEsicVerifyState('idle');
         setEsicMemberInfo(null);
+        setNameMatchStatus('none');
     };
 
     const handleVerifyESIC = async () => {
@@ -134,15 +138,45 @@ const EsiDetails = () => {
         setEsicVerifyState('loading');
         setEsicMemberInfo(null);
         try {
-            const result = await kycGateway.verifyESIC({ esicNumber: esiNumber }, data.id);
+            const employeeFullName = `${data.personal.firstName || ''} ${data.personal.lastName || ''}`.trim();
+            // Candidate context passed to adapter (fallback in case of demo mode)
+            const candidateName = cardMemberName || employeeFullName;
+            const result = await kycGateway.verifyESIC({ 
+                esicNumber: esiNumber,
+                name: candidateName,
+                dispensary: esiData.esicBranch || undefined,
+            }, data.id);
+
             if (result.success) {
-                setEsicMemberInfo({ memberName: result.memberName, dispensary: result.dispensary });
+                const returnedMemberName = (result.memberName || candidateName || '').trim();
+                const returnedDispensary = result.dispensary || esiData.esicBranch || null;
+                setEsicMemberInfo({ memberName: returnedMemberName, dispensary: returnedDispensary });
+
                 if (result.status === 'active') {
-                    setEsicVerifyState('active');
-                    setEsiVerifiedStatus({ esiNumber: true });
-                    setToast({ message: `ESI Active ✓ ${result.memberName ?? ''}${result.dispensary ? ` — ${result.dispensary}` : ''}`, type: 'success' });
+                    // Check returned member name against employee profile name
+                    const targetToCheck = employeeFullName || cardMemberName || '';
+                    const isMatch = targetToCheck ? checkNameMatch(returnedMemberName, targetToCheck) : true;
+
+                    if (isMatch) {
+                        setEsicVerifyState('active');
+                        setNameMatchStatus('matched');
+                        setEsiVerifiedStatus({ esiNumber: true });
+                        setToast({ 
+                            message: `ESI Active & Verified ✓ — ${employeeFullName || returnedMemberName}${returnedDispensary ? ` — ${returnedDispensary}` : ''}`, 
+                            type: 'success' 
+                        });
+                    } else {
+                        setEsicVerifyState('mismatch');
+                        setNameMatchStatus('mismatch');
+                        setEsiVerifiedStatus({ esiNumber: false });
+                        setToast({ 
+                            message: `Name Mismatch ⚠️ — ESIC Registry has "${returnedMemberName}", but employee profile is "${employeeFullName}".`, 
+                            type: 'error' 
+                        });
+                    }
                 } else {
                     setEsicVerifyState('inactive');
+                    setEsiVerifiedStatus({ esiNumber: false });
                     setToast({ message: 'ESI number found but status is INACTIVE. Please verify with worker.', type: 'error' });
                 }
             } else {
@@ -156,136 +190,153 @@ const EsiDetails = () => {
     };
 
     const handleOcrComplete = (extractedData: any) => {
-        // Collect all extracted fields and show review panel instead of silently applying
-        const rawEsi = (extractedData.esiNumber || '').replace(/\D/g, '');
-        const rawDate = extractedData.esiRegistrationDate || '';
-        const rawBranch = extractedData.esicBranch || '';
+        console.log('[ESI OCR] Raw extracted data:', JSON.stringify(extractedData, null, 2));
 
-        // Only open review panel if at least the ESI number looks valid
-        if (rawEsi.length === 10 || rawEsi.length === 17) {
-            // Normalise DD/MM/YYYY → YYYY-MM-DD for the date picker
-            let normDate = rawDate;
-            const ddmmyyyy = rawDate.match(/^(\d{2})[\/\-](\d{2})[\/\-](\d{4})$/);
-            if (ddmmyyyy) {
-                normDate = `${ddmmyyyy[3]}-${ddmmyyyy[2]}-${ddmmyyyy[1]}`;
+        let rawEsi = (extractedData.esiNumber || '').replace(/\D/g, '');
+        let rawDate = extractedData.esiRegistrationDate || '';
+        let rawBranch = extractedData.esicBranch || '';
+
+        // Robust client-side fallback if rawText is available or if esiNumber was misidentified as phone
+        const rawText = extractedData._rawText || '';
+        if (rawText) {
+            const phoneInRaw = (extractedData.phone || '').replace(/\D/g, '');
+            // If rawEsi matches phone number, or is missing/empty, or is not 10/17 digits
+            if (!rawEsi || rawEsi === phoneInRaw || (rawEsi.length !== 10 && rawEsi.length !== 17)) {
+                // In e-Pehchan layout, Registration Date is followed directly by 10-digit Insurance No.
+                // e.g. "25/11/2025 5044267223"
+                const posMatch = rawText.match(/(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})\s+([0-9]{10})\b/);
+                if (posMatch) {
+                    rawEsi = posMatch[2];
+                    if (!rawDate) rawDate = posMatch[1];
+                } else {
+                    const labMatch = rawText.match(/(?:Insurance\s*No\.?|ESI\s*(?:No\.?|Number)|IP\s*(?:No\.?|Number)|ESIC\s*No\.?)[:\s]+([0-9]{10,17})\b/i);
+                    if (labMatch) rawEsi = labMatch[1].replace(/\D/g, '');
+                }
             }
-            const review: EsiOcrReview = {
-                esiNumber: rawEsi,
-                esiRegistrationDate: normDate,
-                esicBranch: rawBranch,
-            };
-            setOcrReviewData(review);
-            setOcrReviewEdits(review);
-            // Auto-switch to "has existing ESI" mode
-            setValue('hasEsi', true, { shouldValidate: true });
-            updateEsi({ hasEsi: true });
-            setToast({ message: 'ESI Card scanned — please review the extracted details below.', type: 'success' });
+
+            if (!rawDate) {
+                const regDateM = rawText.match(/Registration\s*Date[:\s]*([0-9]{1,2}[\/\-][0-9]{1,2}[\/\-][0-9]{4})/i) ||
+                                 rawText.match(/(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})\s+[0-9]{10}\b/);
+                if (regDateM) rawDate = regDateM[1];
+            }
+
+            if (!rawBranch) {
+                const branchM = rawText.match(/(?:[0-9]{6}\s+|Dispensary[^\w]*)([A-Za-z\s]+,\s*[A-Z]{2}\s*\([^)]*(?:ESIS|Disp)[^)]*\))/i) ||
+                                rawText.match(/([A-Za-z\s]+,\s*[A-Z]{2}\s*\([^)]*(?:ESIS|Disp)[^)]*\))/i) ||
+                                rawText.match(/Dispensary\s*\/\s*IMP\s*for\s*IP[:\s]+([A-Za-z0-9,.(\s)\-]+?)(?:\s+(?:Name\s+of\s+Father|Dispensary|REGISTRATION|$))/i);
+                if (branchM) rawBranch = branchM[1].replace(/\s{2,}/g, ' ').trim();
+            }
+        }
+
+        // Extract Name of IP from document if available
+        let docName = (extractedData.name || extractedData.employeeName || '').trim();
+        if (!docName && rawText) {
+            const nMatch = rawText.match(/\bAadhaar\s+([A-Z][A-Za-z\s]{2,35}?)\s+\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}\s+(?:Male|Female|Other)\b/i) ||
+                           rawText.match(/Name\s*of\s*IP[:\s]+([A-Za-z\s]{2,35}?)(?:\s*(?:Date\s*of\s*Birth|\n|\r|$))/i);
+            if (nMatch) docName = nMatch[1].trim();
+        }
+        if (docName) {
+            setCardMemberName(docName);
+            const employeeFullName = `${data.personal.firstName || ''} ${data.personal.lastName || ''}`.trim();
+            if (employeeFullName) {
+                const isMatch = checkNameMatch(docName, employeeFullName);
+                if (isMatch) {
+                    setNameMatchStatus('matched');
+                } else {
+                    setNameMatchStatus('mismatch');
+                    setToast({ 
+                        message: `Name Mismatch ⚠️ — ESI Card belongs to "${docName}", but employee profile is "${employeeFullName}".`, 
+                        type: 'error' 
+                    });
+                }
+            }
+        }
+
+        console.log('[ESI OCR] Parsed → name:', docName, '| esiNumber:', rawEsi, '| date:', rawDate, '| branch:', rawBranch);
+
+        // Normalise DD/MM/YYYY or DD-MM-YYYY → YYYY-MM-DD for the date input
+        let normDate = rawDate;
+        const ddmmyyyy = rawDate.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+        if (ddmmyyyy) {
+            normDate = `${ddmmyyyy[3]}-${ddmmyyyy[2].padStart(2, '0')}-${ddmmyyyy[1].padStart(2, '0')}`;
+        }
+
+        // Auto-switch to "has existing ESI" mode
+        setValue('hasEsi', true, { shouldValidate: true });
+        updateEsi({ hasEsi: true });
+
+        if (rawEsi.length === 10 || rawEsi.length === 17) {
+            setValue('esiNumber', rawEsi, { shouldValidate: true });
+            updateEsi({ esiNumber: rawEsi });
+            console.log('[ESI OCR] ✅ Applied esiNumber to form:', rawEsi);
         } else {
-            setToast({ message: 'Could not extract a valid ESI number. Please fill in manually.', type: 'error' });
+            console.warn('[ESI OCR] ⚠️ esiNumber invalid length:', rawEsi.length, '— value:', rawEsi);
+        }
+
+        if (normDate) {
+            setValue('esiRegistrationDate', normDate, { shouldValidate: true });
+            updateEsi({ esiRegistrationDate: normDate });
+            console.log('[ESI OCR] ✅ Applied esiRegistrationDate to form:', normDate);
+        }
+
+        if (rawBranch) {
+            setValue('esicBranch', rawBranch, { shouldValidate: true });
+            updateEsi({ esicBranch: rawBranch });
+            console.log('[ESI OCR] ✅ Applied esicBranch to form:', rawBranch);
+        }
+
+        if (rawEsi.length === 10 || rawEsi.length === 17) {
+            setEsiVerifiedStatus({ esiNumber: false });
+            setToast({ message: `ESI Card scanned ✓ — ESI ${rawEsi}${rawBranch ? `, ${rawBranch}` : ''} filled automatically.`, type: 'success' });
+        } else {
+            setToast({ message: `OCR ran but ESI number not found (got: "${rawEsi || 'empty'}"). Please fill manually.`, type: 'error' });
         }
     };
 
-    const handleApplyOcrReview = () => {
-        setValue('esiNumber', ocrReviewEdits.esiNumber, { shouldValidate: true });
-        setValue('esiRegistrationDate', ocrReviewEdits.esiRegistrationDate, { shouldValidate: true });
-        setValue('esicBranch', ocrReviewEdits.esicBranch, { shouldValidate: true });
-        updateEsi({
-            esiNumber: ocrReviewEdits.esiNumber,
-            esiRegistrationDate: ocrReviewEdits.esiRegistrationDate,
-            esicBranch: ocrReviewEdits.esicBranch,
-            hasEsi: true,
-        });
-        setEsiVerifiedStatus({ esiNumber: false }); // require fresh verify after edit
-        setOcrReviewData(null);
-        setToast({ message: 'ESI details applied. Verify the ESI number when ready.', type: 'success' });
-    };
-
-    const handleDiscardOcrReview = () => {
-        setOcrReviewData(null);
-    };
-
-    // ── ESI OCR Review Panel ──────────────────────────────────────────────────
-    const EsiOcrReviewPanel = ocrReviewData ? (
-        <div className="mt-4 rounded-xl border-2 border-accent/40 bg-accent/5 p-4 animate-fade-in-down">
-            <div className="flex items-center gap-2 mb-3">
-                <ClipboardCheck className="h-4 w-4 text-accent flex-shrink-0" />
-                <span className="text-sm font-bold text-accent">Extracted from ESI Card — Please Review & Correct</span>
-            </div>
-            <div className="space-y-3">
-                {/* ESI Number */}
-                <div>
-                    <label className="text-xs font-semibold text-muted block mb-1">ESI Number</label>
-                    <div className="relative">
-                        <input
-                            id="ocr-review-esiNumber"
-                            type="text"
-                            value={ocrReviewEdits.esiNumber}
-                            onChange={(e) => setOcrReviewEdits(prev => ({ ...prev, esiNumber: e.target.value.replace(/\D/g, '') }))}
-                            placeholder="10 or 17-digit ESI number"
-                            maxLength={17}
-                            className="form-input pr-8 font-mono"
-                        />
-                        <PenLine className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted pointer-events-none" />
-                    </div>
-                </div>
-                {/* Registration Date */}
-                <div>
-                    <label className="text-xs font-semibold text-muted block mb-1">Registration Date</label>
-                    <div className="relative">
-                        <input
-                            id="ocr-review-esiDate"
-                            type="date"
-                            value={ocrReviewEdits.esiRegistrationDate}
-                            max={new Date().toISOString().split('T')[0]}
-                            onChange={(e) => setOcrReviewEdits(prev => ({ ...prev, esiRegistrationDate: e.target.value }))}
-                            className="form-input"
-                        />
-                    </div>
-                </div>
-                {/* Branch / Dispensary */}
-                <div>
-                    <label className="text-xs font-semibold text-muted block mb-1">ESIC Branch / Dispensary</label>
-                    <div className="relative">
-                        <input
-                            id="ocr-review-esicBranch"
-                            type="text"
-                            value={ocrReviewEdits.esicBranch}
-                            onChange={(e) => setOcrReviewEdits(prev => ({ ...prev, esicBranch: e.target.value }))}
-                            placeholder="e.g. Marathahalli, KA (ESIS Disp.)"
-                            className="form-input pr-8"
-                        />
-                        <PenLine className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted pointer-events-none" />
-                    </div>
-                </div>
-            </div>
-            <div className="flex items-center gap-3 mt-4 pt-3 border-t border-accent/20">
-                <button
-                    id="ocr-review-apply-btn"
-                    type="button"
-                    onClick={handleApplyOcrReview}
-                    disabled={!ocrReviewEdits.esiNumber || (ocrReviewEdits.esiNumber.length !== 10 && ocrReviewEdits.esiNumber.length !== 17)}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-accent text-white text-sm font-semibold disabled:opacity-40 hover:bg-accent/90 transition-colors"
-                >
-                    <CheckCircle2 className="h-4 w-4" /> Apply to Form
-                </button>
-                <button
-                    id="ocr-review-discard-btn"
-                    type="button"
-                    onClick={handleDiscardOcrReview}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-rose-500/10 text-rose-600 border border-rose-500/30 text-sm font-semibold hover:bg-rose-500/20 transition-colors"
-                >
-                    <XCircle className="h-4 w-4" /> Discard
-                </button>
-            </div>
-        </div>
-    ) : null;
-
+    // ── ESI OCR Schema — very specific field labels to prevent AI confusion ──
+    // The ESIC e-Pehchan card has multiple numeric fields:
+    //   "Insurance No." (10-digit) ← THIS is the ESI number
+    //   "Mobile Number" (10-digit) ← NOT the ESI number
+    //   "UHID" (alphanumeric)       ← NOT the ESI number
+    // The descriptions below must be explicit enough for the AI to pick the right one.
     const esiSchema = {
         type: Type.OBJECT,
         properties: {
-            esiNumber: { type: Type.STRING, description: "The 10 or 17-digit ESI/Insurance number from the ESIC e-Pehchan card or ESI card." },
-            esiRegistrationDate: { type: Type.STRING, description: "The registration date in DD/MM/YYYY or YYYY-MM-DD format, as shown on the card." },
-            esicBranch: { type: Type.STRING, description: "The Dispensary or ESIC Branch name shown on the card (e.g. Marathahalli, KA (ESIS Disp.))." },
+            esiNumber: {
+                type: Type.STRING,
+                description: [
+                    "The ESIC Insurance Number (also labeled 'Insurance No.' or 'IP No.' or 'ESI No.').",
+                    "On the ESIC e-Pehchan card it appears in the PERSONAL DETAILS table next to the label 'Insurance No.'.",
+                    "It is typically a 10-digit number (e.g. 5044267223).",
+                    "IMPORTANT: Do NOT return the Mobile Number field. The Mobile Number is a different field.",
+                    "IMPORTANT: Do NOT return the UHID (which starts with state code like HP01...).",
+                    "Return ONLY the value next to 'Insurance No.' label.",
+                ].join(' '),
+            },
+            esiRegistrationDate: {
+                type: Type.STRING,
+                description: [
+                    "The Registration Date of the ESI card holder.",
+                    "On ESIC e-Pehchan card this is labeled 'Registration Date' in the PERSONAL DETAILS section.",
+                    "Return the date exactly as printed, in DD/MM/YYYY format (e.g. 25/11/2025).",
+                ].join(' '),
+            },
+            name: {
+                type: Type.STRING,
+                description: [
+                    "The full name of the Insured Person (IP).",
+                    "On ESIC e-Pehchan card this appears under 'Name of IP' in the PERSONAL DETAILS section.",
+                    "Example: 'DEEPAN GURUNG'.",
+                ].join(' '),
+            },
+            esicBranch: {
+                type: Type.STRING,
+                description: [
+                    "The ESIC Branch or Dispensary name.",
+                    "On ESIC e-Pehchan card this is labeled 'Dispensary / IMP for IP' in the REGISTRATION DETAILS section.",
+                    "Return the full dispensary name (e.g. 'Marathahalli, KA (ESIS Disp.)').",
+                ].join(' '),
+            },
         },
         required: ["esiNumber"],
     };
@@ -358,10 +409,9 @@ const EsiDetails = () => {
                                     onOcrComplete={handleOcrComplete}
                                     ocrSchema={esiSchema}
                                     setToast={setToast}
+                                    docType="ESI"
                                 />
                             )}/>
-                            {/* OCR Manual Correction Panel — mobile */}
-                            {EsiOcrReviewPanel}
                         </div>
                     )}
                 </div>
@@ -452,14 +502,30 @@ const EsiDetails = () => {
                                     )}
                                 </button>
                                 {esicVerifyState === 'active' && esicMemberInfo && (
-                                    <div className="flex flex-col gap-0.5">
-                                        <div className="flex items-center gap-2 text-sm text-green-600 font-medium">
-                                            <CheckCircle2 className="h-4 w-4" /> ESI Active — {esicMemberInfo.memberName}
-                                            <span className="text-xs text-muted">({kycGateway.activeVendor()})</span>
+                                    <div className="flex flex-col gap-1 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-800 animate-fade-in-down">
+                                        <div className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-300 font-semibold">
+                                            <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                                            ESI Active & Verified ✓ — {data.personal.firstName ? `${data.personal.firstName} ${data.personal.lastName}` : esicMemberInfo.memberName}
+                                            <span className="text-xs text-muted font-normal">({kycGateway.activeVendor()})</span>
                                         </div>
-                                        {esicMemberInfo.dispensary && (
-                                            <p className="text-xs text-muted ml-6">Dispensary: {esicMemberInfo.dispensary}</p>
-                                        )}
+                                        <p className="text-xs text-muted ml-6">
+                                            {esicMemberInfo.memberName ? `Registry: ${esicMemberInfo.memberName}` : ''}
+                                            {esicMemberInfo.dispensary ? ` | Dispensary: ${esicMemberInfo.dispensary}` : ''}
+                                        </p>
+                                    </div>
+                                )}
+                                {esicVerifyState === 'mismatch' && esicMemberInfo && (
+                                    <div className="flex flex-col gap-1.5 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-300 dark:border-rose-800 animate-fade-in-down">
+                                        <div className="flex items-center gap-2 text-sm text-rose-700 dark:text-rose-400 font-bold">
+                                            <XCircle className="h-4 w-4 text-rose-600 dark:text-rose-400" />
+                                            Name Mismatch — Not Verified
+                                        </div>
+                                        <p className="text-xs text-rose-800 dark:text-rose-300 ml-6 leading-relaxed">
+                                            ESIC Registry returned <strong>"{esicMemberInfo.memberName}"</strong>, but employee profile has <strong>"{data.personal.firstName} {data.personal.lastName}"</strong>.
+                                        </p>
+                                        <p className="text-[11px] text-rose-600 dark:text-rose-400 ml-6">
+                                            Please verify if this ESI number belongs to this worker, or check candidate identity.
+                                        </p>
                                     </div>
                                 )}
                                 {esicVerifyState === 'inactive' && (
@@ -470,6 +536,25 @@ const EsiDetails = () => {
                                 {esicVerifyState === 'error' && (
                                     <div className="flex items-center gap-2 text-sm text-red-600">
                                         <XCircle className="h-4 w-4" /> Verification failed — retry.
+                                    </div>
+                                )}
+
+                                {/* Document Name Match Status Banner (shown after OCR) */}
+                                {cardMemberName && esicVerifyState !== 'active' && esicVerifyState !== 'mismatch' && (
+                                    <div className={`flex items-center gap-2 text-xs p-2.5 rounded-lg border ${
+                                        nameMatchStatus === 'matched' 
+                                            ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-300 text-emerald-700 dark:text-emerald-300'
+                                            : nameMatchStatus === 'mismatch'
+                                            ? 'bg-rose-50 dark:bg-rose-950/20 border-rose-300 text-rose-700 dark:text-rose-400'
+                                            : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 text-slate-600 dark:text-slate-400'
+                                    }`}>
+                                        {nameMatchStatus === 'matched' ? (
+                                            <><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 flex-shrink-0" /> Card Name: <strong>{cardMemberName}</strong> (Matches Employee Profile ✓)</>
+                                        ) : nameMatchStatus === 'mismatch' ? (
+                                            <><AlertTriangle className="h-3.5 w-3.5 text-rose-600 flex-shrink-0" /> Card Name: <strong>{cardMemberName}</strong> vs Profile: <strong>{data.personal.firstName} {data.personal.lastName}</strong> (Mismatch)</>
+                                        ) : (
+                                            <><Info className="h-3.5 w-3.5 text-slate-500 flex-shrink-0" /> Card Member Name: <strong>{cardMemberName}</strong></>
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -484,10 +569,9 @@ const EsiDetails = () => {
                                     ocrSchema={esiSchema}
                                     setToast={setToast}
                                     costingItemName="ESI Card OCR"
+                                    docType="ESI"
                                 />
                             )}/>
-                            {/* OCR Manual Correction Panel — appears below upload after scan */}
-                            {EsiOcrReviewPanel}
                         </div>
                     </div>
                 )}
