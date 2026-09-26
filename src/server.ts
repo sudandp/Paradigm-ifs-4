@@ -731,12 +731,12 @@ app.get('/api/mssql-devices', authMiddleware, async (req: Request, res: Response
  * Updates employee details (site, designation) in local MS SQL database via proxy
  */
 app.post('/api/mssql-update-employee', authMiddleware, async (req: Request, res: Response) => {
-    const { empCode, empName, siteName, designation } = req.body || {};
+    const { empCode, empName, siteName, designation, companyName } = req.body || {};
     if (!empCode) {
         return res.status(400).json({ success: false, error: 'empCode is required' });
     }
     try {
-        const result = await updateMssqlEmployeeDetails(empCode, empName, siteName, designation);
+        const result = await updateMssqlEmployeeDetails(empCode, empName, siteName, designation, companyName);
         return res.status(result.success ? 200 : 500).json(result);
     } catch (err: any) {
         return res.status(500).json({ success: false, error: err.message });

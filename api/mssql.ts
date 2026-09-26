@@ -196,8 +196,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                   if (!data.records[code].days[date]) {
                     const isPres = emp.status === 'Present' || (emp.inTime && emp.inTime !== '—');
                     const isLate = emp.status === 'Late' || (emp.lateMinutes && emp.lateMinutes > 0);
+                    const isDouble = emp.shiftType === 'double' || (emp.shiftName || '').includes('+');
+                    const duties = emp.totalDuties || (isDouble ? 2 : 1);
                     let statusStr = 'A';
-                    if (isPres) statusStr = 'P';
+                    if (isPres) statusStr = isDouble ? 'P' : 'P';
                     else if (isLate) statusStr = 'L';
 
                     data.records[code].days[date] = {
@@ -206,6 +208,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                       outTime: emp.outTime || '—',
                       hours: emp.workingHours && emp.workingHours !== '—' ? emp.workingHours : (isPres ? '9h 00m' : '—'),
                       status: statusStr,
+                      shiftType: isDouble ? 'double' : (emp.shiftType || 'single'),
+                      shiftName: emp.shiftName || null,
+                      totalDuties: duties,
                       isWeeklyOff: false,
                       lateMinutes: emp.lateMinutes || 0,
                     };
@@ -217,7 +222,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 if (r.days) {
                   const allDays = Object.values(r.days) as any[];
                   r.summary = {
-                    presentDays: allDays.filter(d => d.status === 'P' || d.status === 'L').length,
+                    presentDays: allDays.reduce((acc, d) => acc + (d.status === 'P' || d.status === 'L' ? (d.totalDuties || 1) : 0), 0),
                     absentDays: allDays.filter(d => d.status === 'A').length,
                     woDays: allDays.filter(d => d.status === 'WO' || d.status === 'W/O' || d.isWeeklyOff).length,
                     lateDays: allDays.filter(d => d.status === 'L' || d.lateMinutes > 0).length,

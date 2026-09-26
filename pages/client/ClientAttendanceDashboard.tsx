@@ -388,6 +388,9 @@ const ShiftBadge: React.FC<{ shiftName?: string; shiftTiming?: string }> = ({ sh
   // Normalized matching & styles with high-contrast text and dark mode backgrounds
   const getBadgeStyle = (name: string): string => {
     const lower = name.toLowerCase();
+    if (lower.includes('+') || lower.includes('double')) {
+      return 'bg-amber-100 text-amber-950 border-amber-400 dark:bg-amber-950/80 dark:text-amber-200 dark:border-amber-700 shadow-sm font-extrabold';
+    }
     if (lower.includes('gen')) {
       return 'bg-emerald-50 text-emerald-800 border-emerald-300/60 dark:bg-[#062413] dark:text-[#44D62C] dark:border-[#1a5532] shadow-sm';
     }
@@ -400,6 +403,12 @@ const ShiftBadge: React.FC<{ shiftName?: string; shiftTiming?: string }> = ({ sh
     if (lower.includes('c shift')) {
       return 'bg-teal-50 text-teal-900 border-teal-200 dark:bg-teal-950/70 dark:text-teal-300 dark:border-teal-800 shadow-sm';
     }
+    if (lower.includes('hk') || lower.includes('housekeeping')) {
+      return 'bg-teal-50 text-teal-800 border-teal-300 dark:bg-teal-950/70 dark:text-teal-300 dark:border-teal-800 shadow-sm';
+    }
+    if (lower.includes('garden')) {
+      return 'bg-lime-50 text-lime-900 border-lime-300 dark:bg-lime-950/70 dark:text-lime-300 dark:border-lime-800 shadow-sm';
+    }
     if (lower.includes('security day') || lower.includes('day shift') || lower.includes('day duty')) {
       return 'bg-cyan-50 text-cyan-800 border-cyan-300 dark:bg-cyan-950/70 dark:text-cyan-300 dark:border-cyan-800 shadow-sm';
     }
@@ -410,12 +419,20 @@ const ShiftBadge: React.FC<{ shiftName?: string; shiftTiming?: string }> = ({ sh
   };
 
   const badgeStyle = getBadgeStyle(shiftName);
+  const isDouble = (shiftName || '').includes('+') || (shiftName || '').toLowerCase().includes('double');
 
   return (
     <div className="flex flex-col gap-0.5">
-      <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold border ${badgeStyle} w-max`}>
-        {shiftName}
-      </span>
+      <div className="flex items-center gap-1 flex-wrap">
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold border ${badgeStyle} w-max`}>
+          {shiftName}
+        </span>
+        {isDouble && (
+          <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-amber-500 text-slate-950 shadow-xs">
+            2 DUTIES
+          </span>
+        )}
+      </div>
       {shiftTiming && (
         <span className="text-[9px] text-slate-500 dark:text-emerald-400/80 font-mono font-medium">{shiftTiming}</span>
       )}
@@ -546,6 +563,36 @@ const DEFAULT_SHIFT_RULES: ShiftRuleConfig[] = [
     siteName: 'All Sites',
   },
   {
+    id: 'rule-hk-m',
+    groupName: 'HK Morning Shift',
+    shiftCode: 'HK-M',
+    startTimeSlots: '06:30, 07:00, 07:30',
+    displayTiming: '07:00 AM - 04:00 PM',
+    expectedHours: 9,
+    minCompletedHours: 8,
+    siteName: 'All Sites',
+  },
+  {
+    id: 'rule-hk-gen',
+    groupName: 'HK General Shift',
+    shiftCode: 'HK-GEN',
+    startTimeSlots: '07:45, 08:00, 08:30',
+    displayTiming: '08:00 AM - 05:00 PM',
+    expectedHours: 9,
+    minCompletedHours: 8,
+    siteName: 'All Sites',
+  },
+  {
+    id: 'rule-garden',
+    groupName: 'Garden Shift Group',
+    shiftCode: 'GAR',
+    startTimeSlots: '07:45, 08:00, 08:30, 09:00',
+    displayTiming: '08:00 AM - 05:00 PM',
+    expectedHours: 9,
+    minCompletedHours: 8,
+    siteName: 'All Sites',
+  },
+  {
     id: 'rule-day12',
     groupName: 'Security Day Duty (12h)',
     shiftCode: 'DAY-12',
@@ -554,16 +601,18 @@ const DEFAULT_SHIFT_RULES: ShiftRuleConfig[] = [
     expectedHours: 12,
     minCompletedHours: 11,
     siteName: 'All Sites',
+    codePrefix: '32',
   },
   {
     id: 'rule-night12',
-    groupName: 'Night Duty (12h)',
+    groupName: 'Security Night Duty (12h)',
     shiftCode: 'NIGHT-12',
     startTimeSlots: '19:45, 20:00, 20:30',
     displayTiming: '08:00 PM - 08:00 AM',
     expectedHours: 12,
     minCompletedHours: 11,
     siteName: 'All Sites',
+    codePrefix: '32',
   },
 ];
 
@@ -772,6 +821,16 @@ const ClientAttendanceDashboard: React.FC = () => {
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
   const [shiftFilter, setShiftFilter] = useState<string>('all');
   const [selectedDeptCard, setSelectedDeptCard] = useState<DepartmentKey | 'all'>('all');
+
+  // Reset shift filter whenever the active department card changes
+  // so a Security shift is never pre-selected when switching to MEP (and vice versa)
+  const prevDeptCardRef = React.useRef<DepartmentKey | 'all'>('all');
+  useEffect(() => {
+    if (prevDeptCardRef.current !== selectedDeptCard) {
+      setShiftFilter('all');
+      prevDeptCardRef.current = selectedDeptCard;
+    }
+  }, [selectedDeptCard]);
   const [breakdownModalDept, setBreakdownModalDept] = useState<DepartmentKey | null>(null);
   const [deviceStatusFilter, setDeviceStatusFilter] = useState<'all' | 'online' | 'offline'>('all');
   const [showDevicePanel, setShowDevicePanel] = useState(false);
@@ -971,7 +1030,7 @@ const ClientAttendanceDashboard: React.FC = () => {
   };
 
   // ── Employee Field Override State (Name / Site / Shift / Designation / Department inline edits) ──
-  const [empOverrides, setEmpOverrides] = useState<Record<string, { empName?: string; site?: string; shiftName?: string; shiftCode?: string; designation?: string; departmentOverride?: DepartmentKey }>>(() => {
+  const [empOverrides, setEmpOverrides] = useState<Record<string, { empName?: string; site?: string; company?: string; shiftName?: string; shiftCode?: string; designation?: string; departmentOverride?: DepartmentKey }>>(() => {
     if (typeof window === 'undefined') return {};
     try {
       const raw = localStorage.getItem('paradigm_emp_dept_overrides');
@@ -984,6 +1043,7 @@ const ClientAttendanceDashboard: React.FC = () => {
   const [editingEmpName, setEditingEmpName] = useState('');
   const [editEmpName, setEditEmpName] = useState('');
   const [editSite, setEditSite] = useState('');
+  const [editCompany, setEditCompany] = useState('');
   const [editShiftName, setEditShiftName] = useState('');
   const [editDesignation, setEditDesignation] = useState('');
   const [editDepartment, setEditDepartment] = useState<DepartmentKey | ''>('');
@@ -1600,8 +1660,10 @@ const ClientAttendanceDashboard: React.FC = () => {
     const override = empOverrides[emp.empCode] || {};
     const desig = override.designation ?? emp.designation ?? '';
     const site = override.site ?? emp.department ?? '';
+    const comp = override.company ?? emp.company ?? 'PIFS';
     setEditEmpName(override.empName ?? emp.empName ?? '');
     setEditSite(site);
+    setEditCompany(comp);
     setEditShiftName(override.shiftName ?? emp.shiftName ?? '');
     setEditDesignation(desig);
     const initialDept = override.departmentOverride || getEmployeeDepartment({
@@ -1627,6 +1689,7 @@ const ClientAttendanceDashboard: React.FC = () => {
           ...prev[currentEmpCode],
           empName: editEmpName.trim() || undefined,
           site: editSite || undefined,
+          company: editCompany || undefined,
           shiftName: editShiftName || undefined,
           designation: editDesignation || undefined,
           departmentOverride: editDepartment || undefined,
@@ -1650,6 +1713,7 @@ const ClientAttendanceDashboard: React.FC = () => {
         empName: finalEmpName,
         attendanceDate: selectedDate,
         site: editSite || undefined,
+        company: editCompany || undefined,
         shiftName: editShiftName || undefined,
         designation: editDesignation || undefined,
         correctedBy: currentUserEmail,
@@ -1659,7 +1723,7 @@ const ClientAttendanceDashboard: React.FC = () => {
       // Dual save: Supabase (for cross-user cloud sync) & MS SQL (direct database update)
       const [supabaseOk, mssqlOk] = await Promise.all([
         saveCorrectionToSupabase(record),
-        updateMssqlEmployeeDirectly(currentEmpCode, finalEmpName, editSite, editDesignation)
+        updateMssqlEmployeeDirectly(currentEmpCode, finalEmpName, editSite, editDesignation, editCompany)
       ]);
 
       const successMsg = mssqlOk
@@ -1676,7 +1740,7 @@ const ClientAttendanceDashboard: React.FC = () => {
     } finally {
       setIsSavingCorrection(false);
     }
-  }, [editingEmpCode, editingEmpName, editEmpName, editSite, editShiftName, editDesignation, selectedDate, currentUserEmail]);
+  }, [editingEmpCode, editingEmpName, editEmpName, editSite, editCompany, editShiftName, editDesignation, editDepartment, selectedDate, currentUserEmail]);
 
   // Check if a specific top-right header icon module tab is allowed for current user
   const isTabAllowed = useCallback((tab: 'attendance' | 'reports' | 'shiftConfig' | 'userAccess' | 'auditLogs' | 'screenshotAudit'): boolean => {
@@ -2192,73 +2256,285 @@ const ClientAttendanceDashboard: React.FC = () => {
   }, [fetchData]);
 
 // Helper to dynamically evaluate employee shift & late calculation based on Code Series (32xxx for Security, 31xxx for MEP) & Admin Shift Rules
-function evaluateEmployeeShiftAndLate(emp: EmployeeRow, rules: ShiftRuleConfig[]) {
+function evaluateEmployeeShiftAndLate(
+  emp: EmployeeRow,
+  rules: ShiftRuleConfig[],
+  overrides?: Record<string, { shiftName?: string; shiftCode?: string; departmentOverride?: DepartmentKey; designation?: string; site?: string; company?: string; empName?: string }>
+) {
   const cleanCode = (emp.empCode || '').replace(/\D/g, '');
-  const desigLower = (emp.designation || '').toLowerCase().trim();
+  const override = (overrides && emp.empCode ? overrides[emp.empCode] : null) || {};
 
-  // Code series check: 32xxx (Security 12h) vs 31xxx (MEP 7/8h)
-  const isSecurityCode = cleanCode.startsWith('32') || cleanCode.startsWith('320');
-  const isMepCode = cleanCode.startsWith('31') || cleanCode.startsWith('310');
+  // 1. Resolve Functional Department (security, mep, housekeeping, garden, administration, other)
+  const deptKey: DepartmentKey = override.departmentOverride || getEmployeeDepartment({
+    designation: override.designation || emp.designation,
+    empCode: emp.empCode,
+    department: override.site || emp.department,
+  });
 
-  const isSecurityStaff = 
-    isSecurityCode ||
-    desigLower.includes('security') || 
-    desigLower.includes('guard') || 
-    desigLower.includes('lady guard') ||
-    desigLower.includes('head guard') ||
-    desigLower.includes('gunman') ||
-    desigLower.includes('aso') ||
-    desigLower.includes('supervisor');
+  const isSecurity = deptKey === 'security';
+  const isMep = deptKey === 'mep';
+  const isHk = deptKey === 'housekeeping';
+  const isGarden = deptKey === 'garden';
+  const isExpectedNight = Boolean(emp.hadPrevNightShift);
 
-  if (!emp.inTime || emp.inTime === '—') {
-    const isExpectedNight = Boolean(emp.hadPrevNightShift);
+  // If manual shift override exists, respect it!
+  if (override.shiftName) {
+    const matchedRule = rules.find(r => r.groupName === override.shiftName || r.shiftCode === override.shiftCode);
     return {
-      shiftName: isSecurityStaff
-        ? (isExpectedNight ? 'Security Night Duty (12h)' : 'Security Day Duty (12h)')
-        : (isMepCode ? 'A Shift Group' : (emp.shiftName || 'General Shift')),
-      shiftCode: isSecurityStaff
-        ? (isExpectedNight ? 'NIGHT-12' : 'DAY-12')
-        : (isMepCode ? 'A' : (emp.shiftCode || 'GEN')),
-      shiftTiming: isSecurityStaff
-        ? (isExpectedNight ? '08:00 PM - 08:00 AM' : '08:00 AM - 08:00 PM')
-        : (isMepCode ? '07:00 AM - 02:00 PM' : (emp.shiftTiming || '09:00 AM - 06:00 PM')),
-      lateMinutes: 0,
-      status: emp.status === 'Absent'
-        ? (isExpectedNight ? 'Expected Night Shift' : emp.status)
-        : emp.status,
+      shiftName: override.shiftName,
+      shiftCode: override.shiftCode || matchedRule?.shiftCode || 'CUSTOM',
+      shiftTiming: matchedRule?.displayTiming || emp.shiftTiming || '',
+      lateMinutes: emp.lateMinutes || 0,
+      status: emp.status || 'Present',
     };
   }
 
   // Parse IN Time e.g. "08:45 AM" or "02:14 PM"
-  const timeMatch = emp.inTime.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
-  if (!timeMatch) {
+  let totalInMinutes: number | null = null;
+  let period: string = '';
+  if (emp.inTime && emp.inTime !== '—') {
+    const timeMatch = emp.inTime.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+    if (timeMatch) {
+      let hours = parseInt(timeMatch[1], 10);
+      const minutes = parseInt(timeMatch[2], 10);
+      period = timeMatch[3].toUpperCase();
+      if (period === 'PM' && hours < 12) hours += 12;
+      if (period === 'AM' && hours === 12) hours = 0;
+      totalInMinutes = hours * 60 + minutes;
+    }
+  }
+
+  // Parse OUT Time e.g. "02:14 PM", "09:16 PM", or "07:13 AM"
+  let totalOutMinutes: number | null = null;
+  let outPeriod: string = '';
+  if (emp.outTime && emp.outTime !== '—') {
+    const timeMatch = emp.outTime.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+    if (timeMatch) {
+      let hours = parseInt(timeMatch[1], 10);
+      const minutes = parseInt(timeMatch[2], 10);
+      outPeriod = timeMatch[3].toUpperCase();
+      if (outPeriod === 'PM' && hours < 12) hours += 12;
+      if (outPeriod === 'AM' && hours === 12) hours = 0;
+      totalOutMinutes = hours * 60 + minutes;
+    }
+  }
+
+  let elapsedMinutes = (totalInMinutes !== null && totalOutMinutes !== null) ? (totalOutMinutes - totalInMinutes) : 0;
+  const isNextDayOut = Boolean(
+    emp.isNextDayOut || 
+    (totalInMinutes !== null && totalOutMinutes !== null && (
+      (totalInMinutes >= 18 * 60 && totalOutMinutes <= 13 * 60) || 
+      (outPeriod === 'AM' && period === 'PM') ||
+      (totalInMinutes < 12 * 60 && totalOutMinutes <= 12 * 60 && ((emp.shiftName || '').includes('+') || (emp.shiftCode || '').includes('+')))
+    ))
+  );
+  if ((isNextDayOut || elapsedMinutes < 0) && totalInMinutes !== null && totalOutMinutes !== null) {
+    elapsedMinutes += 24 * 60;
+  }
+
+  // ── A. CASE: NO PUNCH TODAY (SHIFT PENDING / ABSENT) ─────────────────────────
+  if (totalInMinutes === null) {
+    if (isSecurity) {
+      return {
+        shiftName: isExpectedNight ? 'Security Night Duty (12h)' : 'Security Day Duty (12h)',
+        shiftCode: isExpectedNight ? 'NIGHT-12' : 'DAY-12',
+        shiftTiming: isExpectedNight ? '08:00 PM - 08:00 AM' : '08:00 AM - 08:00 PM',
+        shiftType: 'single' as const,
+        isNextDayOut: false,
+        lateMinutes: 0,
+        status: emp.status === 'Absent' ? (isExpectedNight ? 'Expected Night Shift' : emp.status) : emp.status,
+      };
+    }
+
+    if (isMep) {
+      return {
+        shiftName: isExpectedNight ? 'C Shift Group' : 'A Shift Group',
+        shiftCode: isExpectedNight ? 'C' : 'A',
+        shiftTiming: isExpectedNight ? '09:00 PM - 07:00 AM' : '07:00 AM - 02:00 PM',
+        shiftType: 'single' as const,
+        isNextDayOut: false,
+        lateMinutes: 0,
+        status: emp.status === 'Absent' ? (isExpectedNight ? 'Expected Night Shift' : emp.status) : emp.status,
+      };
+    }
+
+    if (isHk) {
+      return {
+        shiftName: 'HK General Shift',
+        shiftCode: 'HK-GEN',
+        shiftTiming: '08:00 AM - 05:00 PM',
+        shiftType: 'single' as const,
+        isNextDayOut: false,
+        lateMinutes: 0,
+        status: emp.status,
+      };
+    }
+
+    if (isGarden) {
+      return {
+        shiftName: 'Garden Shift Group',
+        shiftCode: 'GAR',
+        shiftTiming: '08:00 AM - 05:00 PM',
+        shiftType: 'single' as const,
+        isNextDayOut: false,
+        lateMinutes: 0,
+        status: emp.status,
+      };
+    }
+
     return {
-      shiftName: emp.shiftName,
-      shiftCode: emp.shiftCode,
-      shiftTiming: emp.shiftTiming,
-      lateMinutes: emp.lateMinutes,
+      shiftName: emp.shiftName || 'General Shift Group',
+      shiftCode: emp.shiftCode || 'GEN',
+      shiftTiming: emp.shiftTiming || '09:00 AM - 06:00 PM',
+      shiftType: 'single' as const,
+      isNextDayOut: false,
+      lateMinutes: 0,
       status: emp.status,
     };
   }
 
-  let hours = parseInt(timeMatch[1], 10);
-  const minutes = parseInt(timeMatch[2], 10);
-  const period = timeMatch[3].toUpperCase();
+  // ── B. CASE: PUNCHED TODAY — DEPARTMENT-SPECIFIC SHIFT ENGINE ──────────────
 
-  if (period === 'PM' && hours < 12) hours += 12;
-  if (period === 'AM' && hours === 12) hours = 0;
+  // 1. 🛡️ SECURITY GROUP ONLY (Security staff NEVER get assigned A/B/C or HK or Garden)
+  if (isSecurity) {
+    let shiftType: 'single' | 'double' | 'triple' = emp.shiftType || 'single';
+    const is24hDouble = (emp.shiftName && emp.shiftName.includes('24h')) || elapsedMinutes >= 20 * 60;
+    let shiftName = '';
+    let shiftCode = '';
+    let shiftTiming = '';
+    let targetStartMins = 8 * 60;
 
-  const totalInMinutes = hours * 60 + minutes;
+    if (is24hDouble) {
+      shiftName = 'Security Day + Night Duty (24h)';
+      shiftCode = 'DAY+NIGHT';
+      shiftTiming = '08:00 AM - 08:00 AM (+1d)';
+      shiftType = 'double';
+    } else {
+      const isNightShift = period === 'PM' || emp.shiftCompleted || totalInMinutes >= 18 * 60 || totalInMinutes < 5 * 60;
+      targetStartMins = isNightShift ? 20 * 60 : 8 * 60;
+      shiftName = isNightShift ? 'Security Night Duty (12h)' : 'Security Day Duty (12h)';
+      shiftCode = isNightShift ? 'NIGHT-12' : 'DAY-12';
+      shiftTiming = isNightShift ? '08:00 PM - 08:00 AM' : '08:00 AM - 08:00 PM';
+    }
 
-  // ── 1. SECURITY / 32000 SERIES AUTOMATIC 12-HOUR SHIFT ENGINE ──────────────
-  if (isSecurityStaff) {
-    // If shift is already marked completed (e.g. cross-midnight night shift) or punched in PM (evening)
-    const isNightShift = period === 'PM' || emp.shiftCompleted || totalInMinutes >= 1020 || totalInMinutes < 300;
+    const calcLate = totalInMinutes > targetStartMins ? (totalInMinutes - targetStartMins) : 0;
+    const finalStatus = (emp.status === 'Absent') ? 'Absent' : (calcLate > 0 ? 'Late' : (emp.status || 'Present'));
 
-    const targetStartMins = isNightShift ? 20 * 60 : 8 * 60;
-    const shiftName = isNightShift ? 'Security Night Duty (12h)' : 'Security Day Duty (12h)';
-    const shiftCode = isNightShift ? 'NIGHT-12' : 'DAY-12';
-    const shiftTiming = isNightShift ? '08:00 PM - 08:00 AM' : '08:00 AM - 08:00 PM';
+    return {
+      shiftName,
+      shiftCode,
+      shiftTiming,
+      shiftType,
+      isNextDayOut: is24hDouble || Boolean(emp.isNextDayOut),
+      lateMinutes: calcLate,
+      status: finalStatus,
+    };
+  }
+
+  // 2. ⚡ MEP GROUP (A Shift, B Shift, C Shift, or General Shift — NEVER Security Day/Night Duty!)
+  if (isMep) {
+    let shiftName = 'A Shift Group';
+    let shiftCode = 'A';
+    let shiftTiming = '07:00 AM - 02:00 PM';
+    let targetStartMins = 7 * 60;
+    let shiftType: 'single' | 'double' | 'triple' = emp.shiftType || 'single';
+
+    // Double Shift Detection 1: A + C Shift (Morning + Night Duty crossing into next day morning)
+    if (
+      isNextDayOut && (
+        (emp.shiftName && (emp.shiftName.includes('A + C') || emp.shiftName.includes('A+C'))) ||
+        (emp.shiftType === 'double' && totalInMinutes < 10 * 60)
+      )
+    ) {
+      shiftName = 'A + C Shift Group';
+      shiftCode = 'A+C';
+      shiftTiming = '07:00 AM - 02:00 PM | 09:00 PM - 07:00 AM';
+      shiftType = 'double';
+      targetStartMins = 7 * 60;
+    }
+    // Double Shift Detection 2: A + B Shift (Continuous or split morning to evening, on SAME DAY)
+    // e.g. In 07:06 AM, Out 08:00 PM / 09:00 PM, elapsed >= 11h 30m
+    else if (
+      (emp.shiftName && (emp.shiftName.includes('A + B') || emp.shiftName.includes('A+B'))) ||
+      (!isNextDayOut && (emp.shiftName || '').includes('+')) ||
+      (!isNextDayOut && totalInMinutes < 10 * 60 && totalOutMinutes !== null && totalOutMinutes >= 19 * 60 + 30 && elapsedMinutes >= 11 * 60 + 30)
+    ) {
+      shiftName = 'A + B Shift Group';
+      shiftCode = 'A+B';
+      shiftTiming = '07:00 AM - 02:00 PM | 02:00 PM - 09:00 PM';
+      shiftType = 'double';
+      targetStartMins = 7 * 60;
+    }
+    // Double Shift Detection 3: B + C Shift (Afternoon + Night Duty)
+    else if (
+      (emp.shiftName && (emp.shiftName.includes('B + C') || emp.shiftName.includes('B+C'))) ||
+      (totalInMinutes >= 11 * 60 + 30 && totalInMinutes <= 17 * 60 && isNextDayOut)
+    ) {
+      shiftName = 'B + C Shift Group';
+      shiftCode = 'B+C';
+      shiftTiming = '02:00 PM - 09:00 PM | 09:00 PM - 07:00 AM';
+      shiftType = 'double';
+      targetStartMins = 14 * 60;
+    }
+    // Single Shifts:
+    // B Shift (02:00 PM – 09:00 PM): Punches from 11:30 AM up to 18:30 PM (same-day)
+    else if (!isNextDayOut && totalInMinutes >= 11 * 60 + 30 && totalInMinutes < 18 * 60 + 30) {
+      shiftName = 'B Shift Group';
+      shiftCode = 'B';
+      shiftTiming = '02:00 PM - 09:00 PM';
+      targetStartMins = 14 * 60;
+    }
+    // C Shift (09:00 PM – 07:00 AM): Punches from 18:30 PM onwards, early morning before 05:00 AM, or standard overnight
+    else if (totalInMinutes >= 18 * 60 + 30 || totalInMinutes < 5 * 60 || isNextDayOut) {
+      shiftName = 'C Shift Group';
+      shiftCode = 'C';
+      shiftTiming = '09:00 PM - 07:00 AM';
+      targetStartMins = 21 * 60;
+    }
+    // General Shift (09:00 AM – 06:00 PM): Office/Technical Manager/Executive starting 08:45 AM – 10:30 AM
+    else if (totalInMinutes >= 8 * 60 + 45 && totalInMinutes <= 10 * 60 + 30 && (emp.designation || '').toLowerCase().includes('manager')) {
+      shiftName = 'General Shift Group';
+      shiftCode = 'GEN';
+      shiftTiming = '09:00 AM - 06:00 PM';
+      targetStartMins = 9 * 60;
+    }
+    // A Shift (07:00 AM – 02:00 PM): Morning punches (05:00 AM to 12:14 PM, e.g. 07:02 AM, 07:13 AM, 07:40 AM)
+    else {
+      shiftName = 'A Shift Group';
+      shiftCode = 'A';
+      shiftTiming = '07:00 AM - 02:00 PM';
+      targetStartMins = 7 * 60;
+    }
+
+    const calcLate = (totalInMinutes > targetStartMins && totalInMinutes < targetStartMins + 360) 
+      ? (totalInMinutes - targetStartMins) 
+      : 0;
+    const finalStatus = (emp.status === 'Absent') ? 'Absent' : (calcLate > 0 ? 'Late' : (emp.status || 'Present'));
+
+    return {
+      shiftName,
+      shiftCode,
+      shiftTiming,
+      shiftType,
+      isNextDayOut,
+      lateMinutes: calcLate,
+      status: finalStatus,
+    };
+  }
+
+  // 3. 🧹 HOUSEKEEPING GROUP (HK Morning Shift: 07:00-16:00, HK General Shift: 08:00-17:00 — NEVER Security Day Duty!)
+  if (isHk) {
+    let shiftName = 'HK General Shift';
+    let shiftCode = 'HK-GEN';
+    let shiftTiming = '08:00 AM - 05:00 PM';
+    let targetStartMins = 8 * 60;
+
+    if (totalInMinutes < 7 * 60 + 45) {
+      shiftName = 'HK Morning Shift';
+      shiftCode = 'HK-M';
+      shiftTiming = '07:00 AM - 04:00 PM';
+      targetStartMins = 7 * 60;
+    }
 
     const calcLate = totalInMinutes > targetStartMins ? (totalInMinutes - targetStartMins) : 0;
     const finalStatus = (emp.status === 'Absent') ? 'Absent' : (calcLate > 0 ? 'Late' : (emp.status || 'Present'));
@@ -2272,63 +2548,32 @@ function evaluateEmployeeShiftAndLate(emp: EmployeeRow, rules: ShiftRuleConfig[]
     };
   }
 
-  // ── 2. NON-SECURITY STAFF SHIFT RULE MATCHING ENGINE ───────────────────────
-  let matchedRule: ShiftRuleConfig | null = null;
-
-  for (const rule of rules) {
-    if (rule.siteName !== 'All Sites' && rule.siteName !== emp.department) {
-      continue;
-    }
-
-    const slots = rule.startTimeSlots.split(',').map(s => s.trim());
-    for (const slot of slots) {
-      const slotParts = slot.split(':');
-      if (slotParts.length === 2) {
-        const slotMins = parseInt(slotParts[0], 10) * 60 + parseInt(slotParts[1], 10);
-        if (Math.abs(totalInMinutes - slotMins) <= 90) {
-          matchedRule = rule;
-          break;
-        }
-      }
-    }
-    if (matchedRule) break;
-  }
-
-  if (matchedRule) {
-    const slots = matchedRule.startTimeSlots.split(',').map(s => s.trim());
-    let targetStartMins = 9 * 60;
-
-    let minDiff = Infinity;
-    for (const slot of slots) {
-      const parts = slot.split(':');
-      if (parts.length === 2) {
-        const sMins = parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
-        const diff = Math.abs(totalInMinutes - sMins);
-        if (diff < minDiff) {
-          minDiff = diff;
-          targetStartMins = sMins;
-        }
-      }
-    }
-
+  // 4. 🌿 GARDEN GROUP (Garden Shift: 08:00 AM - 05:00 PM — NEVER Security Day Duty!)
+  if (isGarden) {
+    const targetStartMins = 8 * 60;
     const calcLate = totalInMinutes > targetStartMins ? (totalInMinutes - targetStartMins) : 0;
     const finalStatus = (emp.status === 'Absent') ? 'Absent' : (calcLate > 0 ? 'Late' : (emp.status || 'Present'));
 
     return {
-      shiftName: matchedRule.groupName,
-      shiftCode: matchedRule.shiftCode,
-      shiftTiming: matchedRule.displayTiming,
+      shiftName: 'Garden Shift Group',
+      shiftCode: 'GAR',
+      shiftTiming: '08:00 AM - 05:00 PM',
       lateMinutes: calcLate,
       status: finalStatus,
     };
   }
 
+  // 5. 🏢 GENERAL / ADMINISTRATION / OTHER GROUP (09:00 AM - 06:00 PM — NEVER Security Day Duty!)
+  const targetStartMins = 9 * 60;
+  const calcLate = totalInMinutes > targetStartMins ? (totalInMinutes - targetStartMins) : 0;
+  const finalStatus = (emp.status === 'Absent') ? 'Absent' : (calcLate > 0 ? 'Late' : (emp.status || 'Present'));
+
   return {
-    shiftName: emp.shiftName,
-    shiftCode: emp.shiftCode,
-    shiftTiming: emp.shiftTiming,
-    lateMinutes: emp.lateMinutes,
-    status: emp.status,
+    shiftName: 'General Shift Group',
+    shiftCode: 'GEN',
+    shiftTiming: '09:00 AM - 06:00 PM',
+    lateMinutes: calcLate,
+    status: finalStatus,
   };
 }
 
@@ -2370,8 +2615,8 @@ function getSmartSiteFrontend(code: string, dbSite?: string): { site: string; is
   return { site: 'Default', isSmart: false };
 }
 
-function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | null; outTime?: string | null }, selectedDate?: string): string {
-  if (emp.workingHours && emp.workingHours !== '—' && !emp.workingHours.includes('ΓÇö') && !emp.workingHours.includes('rc') && !emp.workingHours.includes('ð')) {
+function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | null; outTime?: string | null; isNextDayOut?: boolean; shiftName?: string }, selectedDate?: string): string {
+  if (emp.workingHours && emp.workingHours !== '-' && emp.workingHours !== '0h 00m' && !emp.workingHours.includes('0h 00m')) {
     return emp.workingHours;
   }
 
@@ -2386,34 +2631,52 @@ function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | 
     return h * 60 + min;
   };
 
+  let diff = -1;
+
   if (emp.inTime && emp.inTime !== '—' && emp.outTime && emp.outTime !== '—') {
     const inM = parseMins(emp.inTime);
     const outM = parseMins(emp.outTime);
     if (inM !== null && outM !== null) {
-      let diff = outM - inM;
-      if (diff < 0) diff += 24 * 60;
-      const hrs = Math.floor(diff / 60);
-      const mins = diff % 60;
-      return `${hrs}h ${String(mins).padStart(2, '0')}m`;
+      let gross = outM - inM;
+      const isNextDay = Boolean(
+        emp.isNextDayOut || 
+        ((emp.shiftName || '').toLowerCase().includes('night') && outM <= inM) ||
+        ((emp.shiftName || '').includes('A + C') && outM <= inM) ||
+        ((emp.shiftName || '').includes('B + C') && outM <= inM) ||
+        gross < 0
+      );
+      if (isNextDay) {
+        if (gross <= 0) {
+          gross += 24 * 60;
+        } else if (emp.isNextDayOut && (inM < 12 * 60 && outM <= 13 * 60)) {
+          gross += 24 * 60;
+        }
+      }
+      diff = Math.max(0, gross - 30); // Deduct 30 min break
     }
-  }
-
-  if (emp.inTime && emp.inTime !== '—' && (!emp.outTime || emp.outTime === '—')) {
+  } else if (emp.inTime && emp.inTime !== '—' && (!emp.outTime || emp.outTime === '—')) {
     const todayStr = new Date().toISOString().slice(0, 10);
     const isToday = !selectedDate || selectedDate === todayStr;
     const inM = parseMins(emp.inTime);
-    if (inM !== null) {
-      if (isToday) {
-        const now = new Date();
-        const nowMins = now.getHours() * 60 + now.getMinutes();
-        const diff = nowMins - inM;
-        if (diff > 0) {
-          const hrs = Math.floor(diff / 60);
-          const mins = diff % 60;
-          return `${hrs}h ${String(mins).padStart(2, '0')}m`;
-        }
+    if (inM !== null && isToday) {
+      const now = new Date();
+      const nowMins = now.getHours() * 60 + now.getMinutes();
+      let gross = nowMins - inM;
+      if (gross < 0) gross += 24 * 60;
+      if (gross > 0) {
+        diff = Math.max(0, gross - 30); // Deduct 30 min break
       }
     }
+  }
+
+  if (diff >= 0) {
+    const hrs = Math.floor(diff / 60);
+    const mins = diff % 60;
+    return `${hrs}h ${String(mins).padStart(2, '0')}m`;
+  }
+
+  if (emp.workingHours && emp.workingHours !== '—' && !emp.workingHours.includes('ΓÇö') && !emp.workingHours.includes('rc') && !emp.workingHours.includes('ð')) {
+    return emp.workingHours;
   }
 
   return '-';
@@ -2455,6 +2718,9 @@ function formatDeviceLastPing(lastPing: string | null | undefined): string {
 
 function formatShiftDisplay(emp: { shiftCode?: string; shiftName?: string }): string {
   const code = (emp.shiftCode || emp.shiftName || 'GEN').trim();
+  if (code.includes('+') || (emp.shiftName || '').includes('+')) {
+    return `${emp.shiftCode || code} (Double Duty)`;
+  }
   if (code === 'GEN' || code === 'Gen' || code === 'GENERAL') {
     return 'GEN (General Shift)';
   }
@@ -3573,7 +3839,15 @@ const DetailedAuditReportView: React.FC<{
         };
         const inMins = parseMinutes(finalInTime);
         const outMins = parseMinutes(finalOutTime);
-        const isNightShift = (emp.shiftName || '').toLowerCase().includes('night') || (emp.shiftCode || '').toLowerCase().includes('night');
+        const isNightShift = Boolean(
+          emp.isNextDayOut ||
+          (emp.shiftName || '').toLowerCase().includes('night') || 
+          (emp.shiftCode || '').toLowerCase().includes('night') ||
+          (emp.shiftName || '').toLowerCase().includes('c shift') ||
+          (emp.shiftCode || '').toLowerCase().includes('c') ||
+          (inMins !== null && inMins >= 17 * 60) ||
+          (inMins !== null && outMins !== null && inMins >= 17 * 60 && outMins <= 13 * 60)
+        );
 
         if (!isNightShift && inMins !== null && outMins !== null && inMins > outMins) {
           finalInTime = emp.outTime;
@@ -3594,7 +3868,14 @@ const DetailedAuditReportView: React.FC<{
           return h * 60 + min;
         };
         const inMins = parseMinutes(finalInTime);
-        const isNightShift = (emp.shiftName || '').toLowerCase().includes('night') || (emp.shiftCode || '').toLowerCase().includes('night');
+        const isNightShift = Boolean(
+          emp.isNextDayOut ||
+          (emp.shiftName || '').toLowerCase().includes('night') || 
+          (emp.shiftCode || '').toLowerCase().includes('night') ||
+          (emp.shiftName || '').toLowerCase().includes('c shift') ||
+          (emp.shiftCode || '').toLowerCase().includes('c') ||
+          (inMins !== null && inMins >= 17 * 60)
+        );
         if (!isNightShift && inMins !== null && inMins >= 15 * 60 + 30) {
           finalOutTime = finalInTime;
           finalInTime = null;
@@ -3602,7 +3883,7 @@ const DetailedAuditReportView: React.FC<{
       }
 
       const empWithTimes = { ...emp, inTime: finalInTime, outTime: finalOutTime };
-      const evalData = evaluateEmployeeShiftAndLate(empWithTimes, shiftRules);
+      const evalData = evaluateEmployeeShiftAndLate(empWithTimes, shiftRules, empOverrides);
       const smartInfo = getSmartSiteFrontend(emp.empCode, emp.department);
 
       // Determine if employee is Active: Punched today OR has active punch record within 14-day (2 week) window
@@ -3613,23 +3894,66 @@ const DetailedAuditReportView: React.FC<{
       const isExplicitlyInactive = emp.status === 'Absent' && daysSince > 14;
       const isActive = hasPunchToday || (!isExplicitlyInactive && (emp.daysSinceLastPunch === undefined || daysSince <= 14));
 
+      // Determine if Double Duty
+      const isDoubleDuty = evalData.shiftType === 'double' || emp.shiftType === 'double' || (evalData.shiftName || '').includes('+');
+      const shiftTypeFinal: 'single' | 'double' | 'triple' = isDoubleDuty ? 'double' : (emp.shiftType || 'single');
+
+      // Calculate OT Hours & Working Hours with overnight awareness
+      const workHrsStr = (isDoubleDuty && emp.workingHours && emp.workingHours !== '-' && emp.workingHours !== '0h 00m' && !emp.workingHours.includes('0h 00m'))
+        ? emp.workingHours
+        : formatLiveWorkingHours({
+            ...empWithTimes,
+            isNextDayOut: evalData.isNextDayOut ?? emp.isNextDayOut,
+            shiftName: evalData.shiftName
+          }, selectedDate);
+
+      let otHoursVal = emp.otHours;
+      if (workHrsStr !== '-') {
+        const parseMinsFromHrs = (h: string) => {
+          const m = h.match(/(\d+)h\s*(\d+)m/);
+          if (m) return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+          const h2 = h.match(/(\d+)h/);
+          if (h2) return parseInt(h2[1], 10) * 60;
+          return 0;
+        };
+        const totalMins = parseMinsFromHrs(workHrsStr);
+        if (isDoubleDuty) {
+          // In Double Duty: Base shift is 7h (or 8h), everything above that is 1 Duty OT
+          const baseShiftMins = 7 * 60;
+          const otMins = Math.max(0, totalMins - baseShiftMins);
+          otHoursVal = `${Math.floor(otMins / 60)}h ${String(otMins % 60).padStart(2, '0')}m (1 Duty OT)`;
+        } else {
+          const shiftExpHrs = (evalData.shiftCode || evalData.shiftName || '').includes('12') ? 12 : 8;
+          const otMins = Math.max(0, totalMins - shiftExpHrs * 60);
+          if (otMins > 0) {
+            otHoursVal = `${Math.floor(otMins / 60)}h ${String(otMins % 60).padStart(2, '0')}m`;
+          }
+        }
+      }
+
       return {
         ...emp,
-        company: emp.company || 'Paradigm Services',
+        company: empOverrides[emp.empCode]?.company || emp.company || 'Paradigm Services',
         location: emp.location || 'Bangalore',
         inTime: finalInTime,
         outTime: finalOutTime,
+        isNextDayOut: evalData.isNextDayOut ?? emp.isNextDayOut,
         department: smartInfo.site,
         isSmartSite: emp.isSmartSite ?? smartInfo.isSmart,
         shiftName: evalData.shiftName,
         shiftCode: evalData.shiftCode,
         shiftTiming: evalData.shiftTiming,
+        shiftType: shiftTypeFinal,
+        totalDuties: isDoubleDuty ? 2 : 1,
         lateMinutes: evalData.lateMinutes,
-        status: evalData.status,
+        status: isDoubleDuty ? 'Present' : evalData.status,
+        shiftCompleted: isDoubleDuty ? true : (evalData.status === 'Present' ? true : emp.shiftCompleted),
         isActiveEmployee: isActive,
+        otHours: otHoursVal,
+        workingHours: workHrsStr !== '-' ? workHrsStr : undefined
       };
     });
-  }, [data, shiftRules, allowedSitesSet]);
+  }, [data, shiftRules, allowedSitesSet, empOverrides]);
 
   // Computed summary reacting to department filter, site access control, and 14-day active workforce filtering
   const summary = useMemo(() => {
@@ -3968,7 +4292,17 @@ const DetailedAuditReportView: React.FC<{
           ? true
           : shiftFilter === 'DoubleTriple'
             ? e.shiftType === 'double' || e.shiftType === 'triple'
-            : e.shiftName === shiftFilter || e.shiftCode === shiftFilter;
+            : e.shiftName === shiftFilter ||
+              e.shiftCode === shiftFilter ||
+              (e.shiftName && e.shiftName.toLowerCase().startsWith(shiftFilter.toLowerCase())) ||
+              (shiftFilter.includes('A Shift') && (e.shiftCode === 'A' || (e.shiftName || '').includes('A Shift'))) ||
+              (shiftFilter.includes('B Shift') && (e.shiftCode === 'B' || (e.shiftName || '').includes('B Shift'))) ||
+              (shiftFilter.includes('C Shift') && (e.shiftCode === 'C' || (e.shiftName || '').includes('C Shift'))) ||
+              (shiftFilter.includes('HK') && ((e.shiftCode || '').includes('HK') || (e.shiftName || '').includes('HK'))) ||
+              (shiftFilter.includes('Garden') && ((e.shiftCode || '').includes('GAR') || (e.shiftName || '').includes('Garden'))) ||
+              (shiftFilter.includes('General') && ((e.shiftCode || '').includes('GEN') || (e.shiftName || '').includes('General'))) ||
+              (shiftFilter.includes('Security Day') && ((e.shiftCode || '').includes('DAY-12') || (e.shiftName || '').includes('Security Day'))) ||
+              (shiftFilter.includes('Security Night') && ((e.shiftCode || '').includes('NIGHT-12') || (e.shiftName || '').includes('Security Night') || (e.shiftName || '').includes('Night Duty')));
 
         // Fast O(1) Set checking for active column filters (applied on live attendance tab, ignored on reports tab)
         if (activeFilterSets && activeTab !== 'reports') {
@@ -4189,6 +4523,21 @@ const DetailedAuditReportView: React.FC<{
       return h * 60 + m;
     };
 
+    // PRE-CALCULATE DAY INFO TO AVOID SLOW DATE-FNS FORMATTING (e.g. 200 emp * 90 days = 18,000 format() calls)
+    const precalculatedDays = daysInRange.map(dayDate => {
+      const dateStr = format(dayDate, 'yyyy-MM-dd');
+      const dayNum = dayDate.getDate();
+      const dayOfWeek = dayDate.getDay(); // 0 = Sunday
+      const dayFormatted = format(dayDate, 'dd MMM (EEE)');
+      const isMssqlDate = dateStr === selectedDate;
+      const isFutureDate = dateStr > today;
+      const isSiteHoliday = holidaysSet.has(dateStr);
+      const vedaDateYear = dayDate.getFullYear();
+      const vedaDateMonth = dayDate.getMonth(); // 0-indexed, Sep = 8
+      
+      return { dayDate, dateStr, dayNum, dayOfWeek, dayFormatted, isMssqlDate, isFutureDate, isSiteHoliday, vedaDateYear, vedaDateMonth };
+    });
+
     return filteredEmployees.map((emp, idx) => {
       const empCodeKey = (emp.empCode || '').toLowerCase().trim();
       const empNameKey = (emp.empName || '').toLowerCase().trim();
@@ -4246,18 +4595,10 @@ const DetailedAuditReportView: React.FC<{
       let totalNetMinsSum = 0;
       let totalOtMinsSum = 0;
 
-      const dailyPunches = daysInRange.map(dayDate => {
-        const dateStr = format(dayDate, 'yyyy-MM-dd');
-        const dayNum = dayDate.getDate();
-        const dayOfWeek = dayDate.getDay(); // 0 = Sunday
-        const dayFormatted = format(dayDate, 'dd MMM (EEE)');
-        // This is the date for which MSSQL single-day data was fetched
-        const isMssqlDate = dateStr === selectedDate;
-        // Future dates (beyond today) are pending — don't mark as absent
-        const isFutureDate = dateStr > today;
+      const dailyPunches = precalculatedDays.map(dayInfo => {
+        const { dateStr, dayNum, dayOfWeek, dayFormatted, isMssqlDate, isFutureDate, isSiteHoliday, vedaDateYear, vedaDateMonth } = dayInfo;
 
         const isFedWO = empFedWODates.has(dateStr);
-        const isSiteHoliday = holidaysSet.has(dateStr);
 
         if (isFutureDate) {
           if (isSiteHoliday && !isEmpInactive) {
@@ -4336,6 +4677,8 @@ const DetailedAuditReportView: React.FC<{
             };
           }
           // Present
+          const isDayDouble = (mssqlDay.shiftType === 'double') || (mssqlDay.totalDuties === 2) || ((mssqlDay.hours || '').includes('+')) || ((mssqlDay.shiftName || '').includes('+')) || ((mssqlDay.shift || '').includes('+'));
+          const dayDuties = mssqlDay.totalDuties || (isDayDouble ? 2 : 1);
           const inT = mssqlDay.inTime && mssqlDay.inTime !== '—' ? mssqlDay.inTime : '10:00';
           const outT = mssqlDay.outTime && mssqlDay.outTime !== '—' ? mssqlDay.outTime : '19:00';
           const inMins = parseTimeToMins(inT) || (10 * 60);
@@ -4346,7 +4689,7 @@ const DetailedAuditReportView: React.FC<{
           const otMins = mssqlDay.otMins || Math.max(0, netMins - shiftExpectedHours * 60);
           const lateMins = mssqlDay.lateMinutes || 0;
 
-          totalPresentDays++;
+          totalPresentDays += dayDuties;
           if (lateMins > 0) totalLateDays++;
           totalNetMinsSum += netMins;
           totalOtMinsSum += otMins;
@@ -4356,8 +4699,9 @@ const DetailedAuditReportView: React.FC<{
             inTime: inT, outTime: outT,
             hours: mssqlDay.hours || `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m`,
             netMins, otMins, lateMinutes: lateMins,
-            status: mssqlDay.status || 'P',
-            shift: empShift, isWeeklyOff: false,
+            status: isDayDouble ? 'P (2D)' : (mssqlDay.status || 'P'),
+            shift: isDayDouble ? (mssqlDay.shiftName || 'A+C') : empShift,
+            isWeeklyOff: false,
           };
         }
 
@@ -4390,8 +4734,6 @@ const DetailedAuditReportView: React.FC<{
         }
 
         // PRIORITY 1.5: Vedamurthy SS hardcoded MSSQL Sep 2026 records (when Supabase has no data)
-        const vedaDateYear = dayDate.getFullYear();
-        const vedaDateMonth = dayDate.getMonth(); // 0-indexed, Sep = 8
         if (isVedamurthyEmp && vedaDateYear === 2026 && vedaDateMonth === 8) {
           const vedaRec = vedamurthySepMap[dayNum];
           if (vedaRec) {
@@ -4438,6 +4780,8 @@ const DetailedAuditReportView: React.FC<{
 
         // PRIORITY 2: MSSQL single-day data — ONLY for the exact selectedDate
         if (isMssqlDate && !isEmpInactive && emp.inTime && emp.inTime !== '—') {
+          const isDayDouble = emp.shiftType === 'double' || (emp.shiftName || '').includes('+');
+          const dayDuties = emp.totalDuties || (isDayDouble ? 2 : 1);
           const inT = emp.inTime;
           const outT = emp.outTime && emp.outTime !== '—' ? emp.outTime : (shiftExpectedHours === 12 ? '08:00 pm' : '06:00 pm');
           const inMins = parseTimeToMins(inT) || (9 * 60);
@@ -4448,7 +4792,7 @@ const DetailedAuditReportView: React.FC<{
           const otMins = Math.max(0, netMins - shiftExpectedHours * 60);
           const lateMins = emp.lateMinutes > 0 ? emp.lateMinutes : 0;
 
-          totalPresentDays++;
+          totalPresentDays += dayDuties;
           if (lateMins > 0) totalLateDays++;
           totalNetMinsSum += netMins;
           totalOtMinsSum += otMins;
@@ -4456,10 +4800,11 @@ const DetailedAuditReportView: React.FC<{
           return {
             dateStr, dayNum, dayFormatted,
             inTime: inT, outTime: outT,
-            hours: `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m`,
+            hours: isDayDouble ? `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m (2 Duties)` : `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m`,
             netMins, otMins, lateMinutes: lateMins,
-            status: (lateMins > 0 || emp.status === 'Late') ? 'Late' : 'P',
-            shift: empShift, isWeeklyOff: false,
+            status: isDayDouble ? 'P (2D)' : ((lateMins > 0 || emp.status === 'Late') ? 'Late' : 'P'),
+            shift: isDayDouble ? (emp.shiftCode || 'A+C') : empShift,
+            isWeeklyOff: false,
           };
         }
 
@@ -4663,28 +5008,32 @@ const DetailedAuditReportView: React.FC<{
         date: reportDateLabel,
       }));
     }
-    return filteredEmployees.map((emp, idx) => ({
-      sno: idx + 1,
-      empCode: emp.empCode,
-      empName: emp.empName,
-      department: emp.department,
-      designation: emp.designation || '',
-      shiftCode: emp.shiftCode || emp.shiftName || 'GEN',
-      shiftName: emp.shiftName || 'General Shift',
-      inTime: emp.inTime || '—',
-      outTime: emp.outTime || '—',
-      workingHours: formatLiveWorkingHours(emp, selectedDate),
-      status: emp.status,
-      lateMinutes: emp.lateMinutes || 0,
-      totalDays: 1,
-      presentDays: emp.inTime && emp.inTime !== '—' ? 1 : 0,
-      absentDays: emp.inTime && emp.inTime !== '—' ? 0 : 1,
-      woDays: 0,
-      otHours: '0.0h',
-      payableDays: emp.inTime && emp.inTime !== '—' ? '1.0' : '0.0',
-      attendanceRate: emp.inTime && emp.inTime !== '—' ? 100 : 0,
-      date: selectedDate,
-    }));
+    return filteredEmployees.map((emp, idx) => {
+      const isDouble = emp.shiftType === 'double' || (emp.shiftName || '').includes('+');
+      const duties = emp.totalDuties || (isDouble ? 2 : 1);
+      return {
+        sno: idx + 1,
+        empCode: emp.empCode,
+        empName: emp.empName,
+        department: emp.department,
+        designation: emp.designation || '',
+        shiftCode: emp.shiftCode || emp.shiftName || 'GEN',
+        shiftName: emp.shiftName || 'General Shift',
+        inTime: emp.inTime || '—',
+        outTime: emp.outTime || '—',
+        workingHours: formatLiveWorkingHours(emp, selectedDate),
+        status: emp.status,
+        lateMinutes: emp.lateMinutes || 0,
+        totalDays: 1,
+        presentDays: emp.inTime && emp.inTime !== '—' ? duties : 0,
+        absentDays: emp.inTime && emp.inTime !== '—' ? 0 : 1,
+        woDays: 0,
+        otHours: emp.otHours || '0.0h',
+        payableDays: emp.inTime && emp.inTime !== '—' ? (isDouble ? '2.0' : '1.0') : '0.0',
+        attendanceRate: emp.inTime && emp.inTime !== '—' ? 100 : 0,
+        date: selectedDate,
+      };
+    });
   }, [isDateRangeActive, filteredReportList, filteredEmployees, selectedDate, reportDateLabel]);
 
   // Work Hours Summary: aggregated per employee from filtered set across the date range
@@ -5606,31 +5955,36 @@ const DetailedAuditReportView: React.FC<{
                                 (filteredEmployees && filteredEmployees.length > 0 && isSecurityEmployee(filteredEmployees[0]));
       const mBranding = getCompanyBranding(isMonthlySecurity);
 
-      const monthlyRows = (isDateRangeActive ? filteredReportList : filteredEmployees.map((emp, idx) => ({
-        sno: idx + 1,
-        empCode: emp.empCode,
-        empName: emp.empName,
-        department: emp.department,
-        designation: emp.designation,
-        shiftCode: emp.shiftCode,
-        presentDays: emp.inTime && emp.inTime !== '—' ? 1 : 0,
-        absentDays: emp.inTime && emp.inTime !== '—' ? 0 : 1,
-        woDays: 0,
-        holidayDays: 0,
-        payableDays: emp.inTime && emp.inTime !== '—' ? '1.0' : '0.0',
-        totalOtHours: '0.0h',
-        dailyPunches: [{
-          dateStr: selectedDate,
-          dayNum: new Date(selectedDate).getDate(),
-          status: emp.inTime && emp.inTime !== '—' ? 'P' : 'A',
-          isWeeklyOff: false,
-          isHoliday: false
-        }]
-      }))).map((emp: any) => {
+      const monthlyRows = (isDateRangeActive ? filteredReportList : filteredEmployees.map((emp, idx) => {
+        const isDouble = emp.shiftType === 'double' || (emp.shiftName || '').includes('+');
+        const duties = emp.totalDuties || (isDouble ? 2 : 1);
+        return {
+          sno: idx + 1,
+          empCode: emp.empCode,
+          empName: emp.empName,
+          department: emp.department,
+          designation: emp.designation,
+          shiftCode: emp.shiftCode,
+          presentDays: emp.inTime && emp.inTime !== '—' ? duties : 0,
+          absentDays: emp.inTime && emp.inTime !== '—' ? 0 : 1,
+          woDays: 0,
+          holidayDays: 0,
+          payableDays: emp.inTime && emp.inTime !== '—' ? (isDouble ? '2.0' : '1.0') : '0.0',
+          totalOtHours: emp.otHours || '0.0h',
+          dailyPunches: [{
+            dateStr: selectedDate,
+            dayNum: new Date(selectedDate).getDate(),
+            status: emp.inTime && emp.inTime !== '—' ? (isDouble ? 'P (2D)' : 'P') : 'A',
+            isWeeklyOff: false,
+            isHoliday: false
+          }]
+        };
+      })).map((emp: any) => {
         const statuses = (emp.dailyPunches || []).map((dp: any) => {
           if (dp.isHoliday || dp.status === 'H' || dp.status === 'Holiday') return 'H';
           if (dp.isWeeklyOff || dp.status === 'W/O' || dp.status === 'WO') return 'W/O';
           if (dp.status === 'Pending' || dp.status === '–') return '–';
+          if (dp.status === 'P (2D)' || (dp.status && dp.status.includes('2D'))) return 'P (2D)';
           if (dp.status === 'P' || dp.status === 'Present') return 'P';
           if (dp.status === 'Late') return 'L';
           if (dp.status === 'A' || dp.status === 'Absent') return 'A';
@@ -7371,168 +7725,52 @@ const DetailedAuditReportView: React.FC<{
             {(reportType === 'basic' || (!['detailed', 'monthly', 'work_hours', 'site_ot', 'log', 'leave_balance'].includes(reportType))) && (
               <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] shadow-xs">
                 {isDateRangeActive ? (
-                  /* ── Multi-Day Date Range Table View (e.g. Last Month, This Month, Custom Range) ── */
+                  /* ── Multi-Day Date Range Table View (Simplified to match Single-Day style) ── */
                   <table className="w-full text-xs text-left">
                     <thead className="bg-slate-100 dark:bg-[#072415]/80 border-b border-slate-200 dark:border-[#134426] text-slate-600 dark:text-emerald-200 uppercase tracking-wider font-extrabold text-[10px]">
                       <tr>
-                        <th className="px-3 py-2.5">S.No</th>
-                        <th className="px-3 py-2.5">Code</th>
+                        <th className="px-3.5 py-2.5">S.No</th>
+                        <th className="px-3.5 py-2.5">Biometric Code</th>
                         <th className="px-3.5 py-2.5">Employee Name</th>
                         <th className="px-3.5 py-2.5">Dept / Site</th>
-                        <th className="px-3 py-2.5">Designation</th>
-                        <th className="px-2.5 py-2.5">Shift</th>
-                        <th className="px-2.5 py-2.5 text-center bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300">Present</th>
-                        <th className="px-2.5 py-2.5 text-center bg-red-50 dark:bg-red-950/40 text-red-800 dark:text-red-300">Absent</th>
-                        <th className="px-2.5 py-2.5 text-center bg-slate-50 dark:bg-[#072415]/60">W/O</th>
-                        <th className="px-3 py-2.5 text-center bg-cyan-50 dark:bg-cyan-950/40 text-cyan-800 dark:text-cyan-300">Total Net Hrs</th>
-                        <th className="px-2.5 py-2.5 text-center bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300">OT Hrs</th>
-                        <th className="px-2.5 py-2.5 text-center bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300">Late</th>
-                        <th className="px-2.5 py-2.5 text-center">Payable</th>
-                        <th className="px-2.5 py-2.5 text-center">Att %</th>
-                        <th className="px-2.5 py-2.5 text-center">Status</th>
-                        <th className="px-3 py-2.5 text-center">Day-by-Day</th>
+                        <th className="px-3.5 py-2.5">Designation</th>
+                        <th className="px-3.5 py-2.5">Shift</th>
+                        <th className="px-3.5 py-2.5">In</th>
+                        <th className="px-3.5 py-2.5">Out</th>
+                        <th className="px-3.5 py-2.5">Hours</th>
+                        <th className="px-3.5 py-2.5">Late (days)</th>
+                        <th className="px-3.5 py-2.5 text-center">Status</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                       {paginatedMultiDayEmployees.length === 0 ? (
                         <tr>
-                          <td colSpan={16} className="py-8 text-center text-slate-400 font-medium">
-                            No employee records match the selected site or filter.
+                          <td colSpan={11} className="py-8 text-center text-slate-400 font-medium">
+                            No records match the selected report filter.
                           </td>
                         </tr>
                       ) : (
-                        paginatedMultiDayEmployees.map((emp, index) => {
-                          const isExpanded = expandedEmpCode === emp.empCode;
-                          return (
-                            <React.Fragment key={`${emp.empCode}-${index}`}>
-                              <tr className={`hover:bg-slate-50 dark:hover:bg-[#0d3820]/50 transition-colors ${isExpanded ? 'bg-emerald-50/20 dark:bg-emerald-950/10' : ''}`}>
-                                <td className="px-3 py-2.5 font-mono text-slate-400">{(currentPage - 1) * pageSize + index + 1}</td>
-                                <td className="px-3 py-2.5 font-mono text-slate-600 dark:text-emerald-200 font-semibold">{emp.empCode}</td>
-                                <td className="px-3.5 py-2.5 font-bold text-slate-900 dark:text-white">{emp.empName}</td>
-                                <td className="px-3.5 py-2.5 text-slate-600 dark:text-emerald-300/70">{emp.department}</td>
-                                <td className="px-3 py-2.5 text-slate-500 text-[10px]">{emp.designation}</td>
-                                <td className="px-2.5 py-2.5 font-mono text-slate-500">{emp.shiftCode}</td>
-                                <td className="px-2.5 py-2.5 text-center font-black text-emerald-700 dark:text-emerald-300 bg-emerald-50/50 dark:bg-emerald-950/20">
-                                  {emp.presentDays} <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-normal">/ {emp.totalDays}d</span>
-                                </td>
-                                <td className="px-2.5 py-2.5 text-center font-bold text-red-700 dark:text-red-300 bg-red-50/50 dark:bg-red-950/20">
-                                  {emp.absentDays}d
-                                </td>
-                                <td className="px-2.5 py-2.5 text-center font-semibold text-slate-600 dark:text-emerald-300/70 bg-slate-50/80 dark:bg-[#072415]/40">
-                                  {emp.woDays}d
-                                </td>
-                                <td className="px-3 py-2.5 text-center font-mono font-bold text-cyan-700 dark:text-cyan-300 bg-cyan-50/50 dark:bg-cyan-950/20">
-                                  {emp.totalNetHours}
-                                </td>
-                                <td className="px-2.5 py-2.5 text-center font-mono font-bold text-amber-700 dark:text-amber-300 bg-amber-50/50 dark:bg-amber-950/20">
-                                  {emp.totalOtHours}
-                                </td>
-                                <td className="px-2.5 py-2.5 text-center font-mono font-bold text-amber-600 dark:text-amber-400">
-                                  {emp.lateDays > 0 ? `${emp.lateDays}d` : '—'}
-                                </td>
-                                <td className="px-2.5 py-2.5 text-center font-black text-slate-900 dark:text-white">
-                                  {emp.payableDays}
-                                </td>
-                                <td className="px-2.5 py-2.5 text-center">
-                                  <span className={`px-2 py-0.5 rounded-md text-[10px] font-black ${
-                                    emp.attendanceRate >= 90 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' :
-                                    emp.attendanceRate >= 75 ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' :
-                                    'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300'
-                                  }`}>
-                                    {emp.attendanceRate}%
-                                  </span>
-                                </td>
-                                <td className="px-2.5 py-2.5 text-center">
-                                  <StatusBadge status={emp.overallStatus} />
-                                </td>
-                                <td className="px-3 py-2.5 text-center">
-                                  <button
-                                    onClick={() => setExpandedEmpCode(prev => prev === emp.empCode ? null : emp.empCode)}
-                                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all border flex items-center gap-1 mx-auto cursor-pointer ${
-                                      isExpanded
-                                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                                        : 'bg-slate-100 hover:bg-slate-200 dark:bg-[#072415] dark:hover:bg-[#134426] text-slate-700 dark:text-emerald-200 border-slate-200 dark:border-[#134426]'
-                                    }`}
-                                    title="Expand Daily Breakdown"
-                                  >
-                                    <Calendar size={11} />
-                                    {isExpanded ? 'Hide' : `${emp.totalDays} Days`}
-                                  </button>
-                                </td>
-                              </tr>
-
-                              {/* Expanded Day-by-Day Punch Logs */}
-                              {isExpanded && (
-                                <tr className="bg-slate-50/80 dark:bg-[#072415]/90">
-                                  <td colSpan={16} className="p-4 border-y border-emerald-200 dark:border-emerald-900/60">
-                                    <div className="space-y-3">
-                                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-[#134426] pb-2">
-                                        <div className="flex items-center gap-2">
-                                          <Calendar size={15} className="text-emerald-600 dark:text-emerald-400" />
-                                          <span className="font-extrabold text-slate-900 dark:text-white">
-                                            {emp.empName} ({emp.empCode}) — Daily Attendance Matrix & Punch Logs
-                                          </span>
-                                          <span className="text-xs text-slate-500 font-medium">({reportDateLabel})</span>
-                                        </div>
-                                        <div className="flex items-center gap-3 text-[11px] font-semibold text-slate-600 dark:text-emerald-200">
-                                          <span className="text-emerald-600 dark:text-emerald-400">Present: {emp.presentDays}d</span>
-                                          <span className="text-red-600 dark:text-red-400">Absent: {emp.absentDays}d</span>
-                                          <span className="text-slate-500">W/O: {emp.woDays}d</span>
-                                          <span className="text-cyan-600 dark:text-cyan-400">Net: {emp.totalNetHours}</span>
-                                          <span className="text-amber-600 dark:text-amber-400">OT: {emp.totalOtHours}</span>
-                                        </div>
-                                      </div>
-
-                                      {/* Daily Punch Cards Grid */}
-                                      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 lg:grid-cols-10 xl:grid-cols-11 gap-1.5 text-center">
-                                        {emp.dailyPunches.map(dp => (
-                                          <div
-                                            key={dp.dateStr}
-                                            className={`p-2 rounded-xl border transition-all text-xs flex flex-col justify-between min-h-[78px] ${
-                                              dp.status === 'W/O'
-                                                ? 'bg-slate-100/80 dark:bg-[#072415]/40 border-slate-200 dark:border-[#134426]/60 text-slate-400'
-                                                : dp.status === 'A'
-                                                ? 'bg-red-50/70 dark:bg-red-950/30 border-red-200 dark:border-red-900/60 text-red-700 dark:text-red-300'
-                                                : dp.status === 'Late'
-                                                ? 'bg-amber-50/70 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900/60 text-amber-800 dark:text-amber-300'
-                                                : 'bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900/60 text-emerald-800 dark:text-emerald-300'
-                                            }`}
-                                          >
-                                            <div className="flex items-center justify-between border-b border-black/5 dark:border-white/5 pb-1">
-                                              <span className="font-extrabold text-[11px]">{dp.dayNum}</span>
-                                              <span className="text-[9px] font-bold uppercase">{dp.dayFormatted.split(' ')[1]}</span>
-                                            </div>
-                                            <div className="my-1">
-                                              <span className={`inline-block px-1.5 py-0.2 rounded text-[9px] font-extrabold ${
-                                                dp.status === 'W/O' ? 'bg-slate-200 dark:bg-[#0d3820] text-slate-600 dark:text-emerald-200' :
-                                                dp.status === 'A' ? 'bg-red-200 dark:bg-red-900 text-red-900 dark:text-red-200' :
-                                                dp.status === 'Late' ? 'bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-200' :
-                                                'bg-emerald-200 dark:bg-emerald-900 text-emerald-900 dark:text-emerald-200'
-                                              }`}>
-                                                {dp.status}
-                                              </span>
-                                            </div>
-                                            <div className="text-[9px] font-mono leading-tight space-y-0.5">
-                                              {dp.inTime && dp.inTime !== '—' ? (
-                                                <>
-                                                  <div className="text-emerald-700 dark:text-emerald-400 font-semibold">{dp.inTime}</div>
-                                                  <div className="text-slate-500">{dp.outTime}</div>
-                                                  <div className="font-bold text-slate-700 dark:text-emerald-200">{dp.hours}</div>
-                                                </>
-                                              ) : (
-                                                <div className="text-slate-400 py-1">—</div>
-                                              )}
-                                            </div>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  </td>
-                                </tr>
-                              )}
-                            </React.Fragment>
-                          );
-                        })
+                        paginatedMultiDayEmployees.map((emp, index) => (
+                          <tr key={`${emp.empCode}-${index}`} className="hover:bg-slate-50 dark:hover:bg-[#0d3820]/50 transition-colors">
+                            <td className="px-3.5 py-2.5 font-mono text-slate-400">{(currentPage - 1) * pageSize + index + 1}</td>
+                            <td className="px-3.5 py-2.5 font-mono text-slate-600 dark:text-emerald-200 font-semibold">{emp.empCode}</td>
+                            <td className="px-3.5 py-2.5 font-bold text-slate-900 dark:text-white">{emp.empName}</td>
+                            <td className="px-3.5 py-2.5 text-slate-600 dark:text-emerald-300/70">{emp.department}</td>
+                            <td className="px-3.5 py-2.5 text-slate-500 text-[10px]">{emp.designation}</td>
+                            <td className="px-3.5 py-2.5 text-slate-500 font-medium">
+                               <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                                 {emp.shiftCode}
+                               </span>
+                            </td>
+                            <td className="px-3.5 py-2.5 font-mono text-emerald-600 dark:text-emerald-400 font-bold">{emp.presentDays} Days Present</td>
+                            <td className="px-3.5 py-2.5 font-mono text-slate-700 dark:text-emerald-200 font-medium">{emp.absentDays} Days Absent</td>
+                            <td className="px-3.5 py-2.5 font-mono text-slate-800 dark:text-emerald-100 font-semibold">{emp.totalNetHours}</td>
+                            <td className="px-3.5 py-2.5 text-center font-mono text-amber-700 dark:text-amber-300">{emp.lateDays > 0 ? `+${emp.lateDays}d` : '—'}</td>
+                            <td className="px-3.5 py-2.5 text-center">
+                              <StatusBadge status={emp.overallStatus} />
+                            </td>
+                          </tr>
+                        ))
                       )}
                     </tbody>
                   </table>
@@ -9055,7 +9293,7 @@ const DetailedAuditReportView: React.FC<{
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Shift filter */}
+            {/* Shift filter — department-aware: only shows shifts relevant to the active department */}
             <select
               value={shiftFilter}
               onChange={e => setShiftFilter(e.target.value)}
@@ -9063,14 +9301,61 @@ const DetailedAuditReportView: React.FC<{
             >
               <option value="all" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">All Shifts</option>
               <option value="DoubleTriple" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">⚠️ Multi-Shift (Double/Triple)</option>
-              <option value="A Shift" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">A Shift (07:00 - 14:00)</option>
-              <option value="B Shift" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">B Shift (14:00 - 21:00)</option>
-              <option value="C Shift" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">C Shift (21:00 - 07:00)</option>
-              <option value="General Shift" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">General (09:00 - 18:00)</option>
-              <option value="Day Shift (12h)" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">Day Shift (08:00 - 20:00)</option>
-              <option value="Night Shift (12h)" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">Night Shift (20:00 - 08:00)</option>
-              <option value="Security Day" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">Security Day (09:00 - 21:00)</option>
-              <option value="Security Night" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">Security Night (21:00 - 09:00)</option>
+
+              {/* Security department shifts — ONLY shown for Security */}
+              {selectedDeptCard === 'security' && (
+                <>
+                  <option value="Security Day Duty (12h)" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">🛡️ Security Day Duty (12h | 08:00 AM - 08:00 PM)</option>
+                  <option value="Security Night Duty (12h)" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">🛡️ Security Night Duty (12h | 08:00 PM - 08:00 AM)</option>
+                </>
+              )}
+
+              {/* MEP shifts — ONLY shown for MEP */}
+              {selectedDeptCard === 'mep' && (
+                <>
+                  <option value="A Shift Group" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">⚡ A Shift (07:00 AM - 02:00 PM)</option>
+                  <option value="B Shift Group" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">⚡ B Shift (02:00 PM - 09:00 PM)</option>
+                  <option value="C Shift Group" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">⚡ C Shift (09:00 PM - 07:00 AM)</option>
+                  <option value="General Shift Group" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">🏢 General Shift (09:00 AM - 06:00 PM)</option>
+                </>
+              )}
+
+              {/* Housekeeping shifts — ONLY shown for Housekeeping */}
+              {selectedDeptCard === 'housekeeping' && (
+                <>
+                  <option value="HK Morning Shift" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">🧹 HK Morning Shift (07:00 AM - 04:00 PM)</option>
+                  <option value="HK General Shift" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">🧹 HK General Shift (08:00 AM - 05:00 PM)</option>
+                </>
+              )}
+
+              {/* Garden shifts — ONLY shown for Garden */}
+              {selectedDeptCard === 'garden' && (
+                <>
+                  <option value="Garden Shift Group" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">🌿 Garden Shift (08:00 AM - 05:00 PM)</option>
+                </>
+              )}
+
+              {/* Admin / General shifts — ONLY shown for Administration or Other */}
+              {(selectedDeptCard === 'administration' || selectedDeptCard === 'other') && (
+                <>
+                  <option value="General Shift Group" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">🏢 General Shift (09:00 AM - 06:00 PM)</option>
+                </>
+              )}
+
+              {/* All Departments selected: Show distinct categorized groups */}
+              {selectedDeptCard === 'all' && (
+                <>
+                  <option value="A Shift Group" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">⚡ MEP: A Shift (07:00 AM - 02:00 PM)</option>
+                  <option value="B Shift Group" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">⚡ MEP: B Shift (02:00 PM - 09:00 PM)</option>
+                  <option value="C Shift Group" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">⚡ MEP: C Shift (09:00 PM - 07:00 AM)</option>
+                  <option value="Security Day Duty (12h)" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">🛡️ Security: Day Duty (12h | 08:00 AM - 08:00 PM)</option>
+                  <option value="Security Night Duty (12h)" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">🛡️ Security: Night Duty (12h | 08:00 PM - 08:00 AM)</option>
+                  <option value="HK Morning Shift" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">🧹 HK: Morning Shift (07:00 AM - 04:00 PM)</option>
+                  <option value="HK General Shift" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">🧹 HK: General Shift (08:00 AM - 05:00 PM)</option>
+                  <option value="Garden Shift Group" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">🌿 Garden Shift (08:00 AM - 05:00 PM)</option>
+                  <option value="General Shift Group" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">🏢 General Shift (09:00 AM - 06:00 PM)</option>
+                </>
+              )}
             </select>
 
             {/* Status filter */}
@@ -9821,7 +10106,7 @@ const DetailedAuditReportView: React.FC<{
         if (!editingEmp) return null;
         return createPortal(
           <div className="fixed inset-0 z-[999999] bg-slate-950/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
-            <div ref={editModalRef} className="bg-white dark:bg-[#072415] rounded-2xl border border-slate-200 dark:border-[#134426] shadow-2xl max-w-md w-full p-6 space-y-5">
+            <div ref={editModalRef} className="bg-white dark:bg-[#072415] rounded-2xl border border-slate-200 dark:border-[#134426] shadow-2xl max-w-lg w-full p-6 space-y-4 max-h-[88vh] overflow-y-auto">
               {/* Header */}
               <div className="flex items-start justify-between border-b border-slate-100 dark:border-[#134426] pb-4">
                 <div className="flex items-center gap-3">
@@ -9829,7 +10114,7 @@ const DetailedAuditReportView: React.FC<{
                     <Pencil size={16} className="text-emerald-600 dark:text-[#44D62C]" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">Correct Auto-Assigned Details</h3>
+                    <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">Edit Employee &amp; Attendance Details</h3>
                     <p className="text-[11px] text-slate-500 dark:text-emerald-300/80 mt-0.5 font-medium">
                       {editingEmp.empName} <span className="font-mono text-slate-400 dark:text-emerald-400/60">({editingEmp.empCode})</span>
                     </p>
@@ -9840,7 +10125,7 @@ const DetailedAuditReportView: React.FC<{
                     )}
                     {isAdminUser && (
                       <p className="text-[10px] text-emerald-600 dark:text-[#44D62C] font-semibold mt-0.5">
-                        🛡 Admin — can edit all sites
+                        🛡 Admin — full update access across all sites &amp; entities
                       </p>
                     )}
                   </div>
@@ -9867,10 +10152,30 @@ const DetailedAuditReportView: React.FC<{
                 />
               </div>
 
+              {/* Employing Company Field */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-emerald-300">
+                  🏢 Employing Company
+                </label>
+                <select
+                  value={editCompany}
+                  onChange={e => setEditCompany(e.target.value)}
+                  className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl border border-slate-200 dark:border-[#1a5532] bg-white dark:bg-[#041b0f] text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-[#44D62C] transition-all cursor-pointer"
+                >
+                  <option value="PIFS" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">PIFS — Paradigm Integrated Facility Services</option>
+                  <option value="PPFMS" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">PPFMS — Paradigm Property &amp; Facility Management</option>
+                  <option value="SWLLP" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">SWLLP — Southwall Security LLP</option>
+                  <option value="Paradigm Services" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">Paradigm Services (General)</option>
+                  {companyList.filter(c => !['PIFS', 'PPFMS', 'SWLLP', 'Paradigm Services'].includes(c)).map(c => (
+                    <option key={c} value={c} className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">{c}</option>
+                  ))}
+                </select>
+              </div>
+
               {/* Site Field */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-emerald-300">
-                  🏢 Site (Auto-Mapped)
+                  📍 Site / Location
                 </label>
                 <select
                   value={editSite}
@@ -9892,7 +10197,7 @@ const DetailedAuditReportView: React.FC<{
               {/* Shift Field */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-emerald-300">
-                  🕐 Shift
+                  🕐 Shift Assignment
                 </label>
                 <select
                   value={editShiftName}
@@ -9900,13 +10205,35 @@ const DetailedAuditReportView: React.FC<{
                   className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl border border-slate-200 dark:border-[#1a5532] bg-white dark:bg-[#041b0f] text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-[#44D62C] transition-all cursor-pointer"
                 >
                   <option value="" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">— Select Correct Shift —</option>
-                  <option value="General Shift" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">General Shift (09:00 AM – 06:00 PM)</option>
-                  <option value="A Shift" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">A Shift (07:00 AM – 02:00 PM)</option>
-                  <option value="B Shift" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">B Shift (02:00 PM – 09:00 PM)</option>
-                  <option value="C Shift" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">C Shift (09:00 PM – 07:00 AM)</option>
-                  <option value="Security Day Duty (12h)" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">Security Day Duty (08:00 AM – 08:00 PM)</option>
-                  <option value="Night Duty (12h)" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">Night Duty (08:00 PM – 08:00 AM)</option>
-                  {shiftRules.filter(r => !['General Shift Group', 'A Shift Group', 'B Shift Group', 'C Shift Group', 'Security Day Duty (12h)', 'Night Duty (12h)'].includes(r.groupName)).map(r => (
+                  {/* Department-aware suggested shifts */}
+                  {editDepartment === 'security' ? (
+                    <>
+                      <option value="Security Day Duty (12h)" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">🛡️ Security Day Duty (12h | 08:00 AM – 08:00 PM)</option>
+                      <option value="Security Night Duty (12h)" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">🛡️ Security Night Duty (12h | 08:00 PM – 08:00 AM)</option>
+                    </>
+                  ) : editDepartment === 'mep' ? (
+                    <>
+                      <option value="A Shift Group" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">⚡ A Shift Group (07:00 AM – 02:00 PM)</option>
+                      <option value="B Shift Group" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">⚡ B Shift Group (02:00 PM – 09:00 PM)</option>
+                      <option value="C Shift Group" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">⚡ C Shift Group (09:00 PM – 07:00 AM)</option>
+                      <option value="General Shift Group" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">🏢 General Shift Group (09:00 AM – 06:00 PM)</option>
+                    </>
+                  ) : editDepartment === 'housekeeping' ? (
+                    <>
+                      <option value="HK Morning Shift" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">🧹 HK Morning Shift (07:00 AM – 04:00 PM)</option>
+                      <option value="HK General Shift" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">🧹 HK General Shift (08:00 AM – 05:00 PM)</option>
+                    </>
+                  ) : editDepartment === 'garden' ? (
+                    <>
+                      <option value="Garden Shift Group" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">🌿 Garden Shift Group (08:00 AM – 05:00 PM)</option>
+                      <option value="General Shift Group" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">🏢 General Shift Group (09:00 AM – 06:00 PM)</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="General Shift Group" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">🏢 General Shift Group (09:00 AM – 06:00 PM)</option>
+                    </>
+                  )}
+                  {shiftRules.filter(r => !['General Shift Group', 'A Shift Group', 'B Shift Group', 'C Shift Group', 'HK Morning Shift', 'HK General Shift', 'Garden Shift Group', 'Security Day Duty (12h)', 'Security Night Duty (12h)', 'Night Duty (12h)'].includes(r.groupName)).map(r => (
                     <option key={r.id} value={r.groupName} className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">{r.groupName} ({r.displayTiming})</option>
                   ))}
                 </select>
@@ -9915,14 +10242,14 @@ const DetailedAuditReportView: React.FC<{
               {/* Designation Field */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-emerald-300">
-                  🏷 Designation
+                  🏷 Designation / Role
                 </label>
                 <input
                   type="text"
                   value={editDesignation}
                   onChange={e => setEditDesignation(e.target.value)}
                   list="designation-suggestions"
-                  placeholder="e.g. Staff, Security, Supervisor..."
+                  placeholder="e.g. Staff, Security, Supervisor, Electrician..."
                   className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl border border-slate-200 dark:border-[#1a5532] bg-white dark:bg-[#041b0f] text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-[#44D62C] transition-all"
                 />
                 <datalist id="designation-suggestions">
@@ -9965,14 +10292,66 @@ const DetailedAuditReportView: React.FC<{
                     );
                   })}
                 </div>
-                <p className="text-[10px] text-slate-400">
-                  Select <strong>Security</strong>, <strong>Admin</strong>, <strong>MEP</strong>, etc. to reassign this employee without modifying backend code.
-                </p>
+              </div>
+
+              {/* Weekly Off & Site Holiday Roster Section */}
+              <div className="p-3.5 rounded-xl bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/60 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-amber-900 dark:text-amber-200">
+                    <Calendar size={14} className="text-amber-600 dark:text-amber-400" />
+                    <span>Weekly Off &amp; Holiday Status</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedEmpForWeeklyOff({
+                        empCode: editingEmp.empCode,
+                        empName: editEmpName.trim() || editingEmp.empName,
+                        department: editSite || editingEmp.department,
+                        designation: editDesignation || (editingEmp.designation || ''),
+                        site: editSite || editingEmp.department,
+                      });
+                      setWoActiveMonth(new Date(selectedDate));
+                      setEditingEmpCode(null);
+                      setIsWeeklyOffModalOpen(true);
+                    }}
+                    className="px-2.5 py-1 text-[11px] font-extrabold bg-amber-500 hover:bg-amber-600 text-white rounded-lg shadow-xs transition-all flex items-center gap-1 cursor-pointer active:scale-95"
+                  >
+                    <Calendar size={11} />
+                    <span>Feed / Edit WO Calendar</span>
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 dark:text-emerald-300/80">
+                  <div className="p-2 rounded-lg bg-white/80 dark:bg-[#041b0f]/80 border border-amber-100 dark:border-amber-900/40">
+                    <span className="font-semibold text-slate-500 dark:text-emerald-400/70 block text-[10px] uppercase">Assigned Weekly Offs</span>
+                    <span className="font-bold text-slate-800 dark:text-white">
+                      {(employeeWeeklyOffsMap[editingEmp.empCode.toLowerCase().trim()] || employeeWeeklyOffsMap[editingEmp.empCode.replace(/^0+/, '').toLowerCase().trim()] || []).length} Days in {format(new Date(selectedDate), 'MMMM yyyy')}
+                    </span>
+                  </div>
+                  <div className="p-2 rounded-lg bg-white/80 dark:bg-[#041b0f]/80 border border-amber-100 dark:border-amber-900/40 flex items-center justify-between">
+                    <div>
+                      <span className="font-semibold text-slate-500 dark:text-emerald-400/70 block text-[10px] uppercase">Declared Site Holidays</span>
+                      <span className="font-bold text-slate-800 dark:text-white">
+                        {siteHolidaysList.length} Active
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingEmpCode(null);
+                        setIsHolidayModalOpen(true);
+                      }}
+                      className="text-[10px] font-bold text-amber-700 dark:text-amber-300 hover:underline cursor-pointer"
+                    >
+                      Manage
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {/* Info note */}
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-[#041b0f] border border-slate-100 dark:border-[#134426] text-[11px] text-slate-500 dark:text-emerald-300/80 font-medium leading-relaxed">
-                💾 Corrections are saved to the database and persist across sessions. They override the auto-assigned biometric mapping for this attendance date.
+                💾 Corrections are saved to MS SQL &amp; Supabase database and persist across sessions. They override auto-assigned biometric mappings.
               </div>
 
               {/* Action Buttons */}

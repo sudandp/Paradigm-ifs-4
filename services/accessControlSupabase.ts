@@ -393,6 +393,7 @@ export interface AttendanceCorrectionDB {
   empName?: string;
   attendanceDate: string;
   site?: string;
+  company?: string;
   shiftName?: string;
   designation?: string;
   correctedBy: string;
@@ -431,6 +432,7 @@ export async function fetchCorrectionsFromSupabase(attendanceDate: string): Prom
         empName: row.emp_name || undefined,
         attendanceDate: row.attendance_date,
         site: row.site || undefined,
+        company: row.company || undefined,
         shiftName: row.shift_name || undefined,
         designation: row.designation || undefined,
         correctedBy: row.corrected_by,
@@ -452,6 +454,7 @@ export async function saveCorrectionToSupabase(correction: AttendanceCorrectionD
       emp_name: correction.empName || null,
       attendance_date: correction.attendanceDate,
       site: correction.site || null,
+      company: correction.company || null,
       shift_name: correction.shiftName || null,
       designation: correction.designation || null,
       corrected_by: correction.correctedBy,
@@ -505,7 +508,8 @@ export async function updateMssqlEmployeeDirectly(
   empCode: string,
   empName?: string,
   siteName?: string,
-  designation?: string
+  designation?: string,
+  companyName?: string
 ): Promise<boolean> {
   try {
     const apiBaseUrl = (
@@ -515,7 +519,7 @@ export async function updateMssqlEmployeeDirectly(
     const res = await fetch(`${apiBaseUrl}/api/mssql-update-employee`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ empCode, empName, siteName, designation })
+      body: JSON.stringify({ empCode, empName, siteName, designation, companyName })
     });
     if (!res.ok) return false;
     const data = await res.json();

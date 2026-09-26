@@ -265,7 +265,8 @@ export async function updateMssqlEmployeeDetails(
   empCode: string,
   empName?: string,
   siteName?: string,
-  designation?: string
+  designation?: string,
+  companyName?: string
 ): Promise<{ success: boolean; rowsAffected?: number; error?: string }> {
   const { urls, secret } = await getCandidateProxyUrls();
 
@@ -281,7 +282,7 @@ export async function updateMssqlEmployeeDetails(
           'bypass-tunnel-reminder': 'true',
           'Bypass-Tunnel-Reminder': '1',
         },
-        body: JSON.stringify({ empCode, empName, siteName, designation }),
+        body: JSON.stringify({ empCode, empName, siteName, designation, companyName }),
         signal: AbortSignal.timeout(3500),
       });
 

@@ -92,6 +92,7 @@ const ManageDevices = lazyWithRetry(() => import('./pages/admin/ManageDevices'))
 const ManageCctvDevices = lazyWithRetry(() => import('./pages/admin/ManageCctvDevices'));
 const CctvDashboard = lazyWithRetry(() => import('./pages/admin/CctvDashboard'));
 const DeviceApprovals = lazyWithRetry(() => import('./pages/admin/DeviceApprovals'));
+const DeviceLogsPage = lazyWithRetry(() => import('./pages/admin/DeviceLogsPage'));
 const KioskManagement = lazyWithRetry(() => import('./pages/admin/KioskManagement'));
 const AdvancedNotificationSettings = lazyWithRetry(() => import('./pages/admin/AdvancedNotificationSettings'));
 const ApiSettings = lazyWithRetry(() => import('./pages/developer/ApiSettings').then(m => ({ default: m.ApiSettings })));
@@ -2228,6 +2229,7 @@ const App: React.FC = () => {
           <Route element={<ProtectedRoute requiredPermission="manage_biometric_devices" />}>
             <Route path="admin/devices" element={<ManageDevices />} />
             <Route path="admin/device-approvals" element={<DeviceApprovals />} />
+            <Route path="admin/device-logs" element={<DeviceLogsPage />} />
             <Route path="admin/kiosks" element={<KioskManagement />} />
             <Route path="admin/cctv-devices" element={<ManageCctvDevices />} />
             <Route path="admin/cctv-dashboard" element={<CctvDashboard />} />

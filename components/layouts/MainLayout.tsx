@@ -136,6 +136,7 @@ export const allNavLinks: NavLinkConfig[] = [
     // Biometric Devices
     { to: '/admin/device-approvals', label: 'Device Approvals', icon: ShieldCheck, permission: 'manage_device_approvals', category: 'Biometric Devices' },
     { to: '/admin/devices', label: 'Biometric Devices', icon: Cpu, permission: 'manage_biometric_devices', category: 'Biometric Devices' },
+    { to: '/admin/device-logs', label: 'Device Logs', icon: FileText, permission: 'manage_biometric_devices', category: 'Biometric Devices' },
     { to: '/admin/kiosks', label: 'Kiosk Monitoring', icon: Smartphone, permission: 'view_kiosk_monitoring', category: 'Biometric Devices' },
     { to: '/settings/devices', label: 'Linked Devices', icon: Smartphone, permission: 'manage_linked_devices', category: 'Biometric Devices' },
     { to: '/admin/cctv-devices', label: 'CCTV Devices', icon: Camera, permission: 'manage_biometric_devices', category: 'Biometric Devices' },

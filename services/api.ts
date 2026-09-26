@@ -10768,6 +10768,179 @@ export const api = {
     if (error) throw error;
     return (data || []).map(toCamelCase);
   },
+  getBiometricDeviceLogs: async (params: {
+    startDate?: string;
+    endDate?: string;
+    date?: string;
+    month?: number;
+    year?: number;
+    fromDay?: number;
+    toDay?: number;
+    empCode?: string;
+    device?: string;
+    verifyMode?: string;
+    raw?: boolean;
+  }) => {
+    const query = new URLSearchParams();
+    if (params.startDate) query.set('startDate', params.startDate);
+    if (params.endDate) query.set('endDate', params.endDate);
+    if (params.date) query.set('date', params.date);
+    if (params.month) query.set('month', String(params.month));
+    if (params.year) query.set('year', String(params.year));
+    if (params.fromDay) query.set('fromDay', String(params.fromDay));
+    if (params.toDay) query.set('toDay', String(params.toDay));
+    if (params.empCode) query.set('empCode', params.empCode);
+    if (params.device) query.set('device', params.device);
+    if (params.verifyMode) query.set('verifyMode', params.verifyMode);
+    if (params.raw) query.set('raw', 'true');
+
+    try {
+      const res = await fetch(`/api/mssql-device-logs?${query.toString()}`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json && Array.isArray(json.punches)) {
+          return json.punches;
+        }
+      }
+    } catch (_) {}
+
+    try {
+      let sbQuery = supabase.from('biometric_device_logs').select('*');
+      if (params.startDate) sbQuery = sbQuery.gte('log_date', `${params.startDate}T00:00:00.000Z`);
+      if (params.endDate) sbQuery = sbQuery.lte('log_date', `${params.endDate}T23:59:59.999Z`);
+      if (params.empCode) sbQuery = sbQuery.eq('emp_code', params.empCode);
+      const { data, error } = await sbQuery.order('log_date', { ascending: false }).limit(500);
+      if (!error && data && data.length > 0) {
+        return data.map((d: any, idx: number) => ({
+          id: d.id || `sb-${idx}`,
+          downloadDate: d.download_date || d.log_date,
+          userId: d.emp_code,
+          logDate: d.log_date,
+          deviceName: d.device_name || 'Biometric Device',
+          serialNo: d.serial_no || '',
+          attState: d.direction ? (d.direction.toLowerCase() === 'in' ? 'Check In' : 'Check Out') : '',
+          verifyMode: d.verify_mode || 'VS_FACE',
+          gps: '',
+          attPhoto: 'View'
+        }));
+      }
+    } catch (_) {}
+
+    return [];
+  },
+
+  // ── Processed Attendance (computed from biometric_device_logs) ────────────
+
+  /** Upsert an array of processed attendance records into public.processed_attendance */
+  saveProcessedAttendance: async (
+    records: Array<{
+      empCode: string;
+      attendanceDate: string;
+      inTime: string | null;
+      outTime: string | null;
+      grossMins: number;
+      netMins: number;
+      otMins: number;
+      lateMinutes: number;
+      earlyExitMins: number;
+      status: string;
+      shiftId: string | null;
+      shiftName: string;
+      siteId: string | null;
+      source: string;
+    }>
+  ): Promise<{ inserted: number; error: string | null }> => {
+    if (!records.length) return { inserted: 0, error: null };
+
+    const rows = records.map(r => ({
+      emp_code:        r.empCode,
+      attendance_date: r.attendanceDate,
+      in_time:         r.inTime,
+      out_time:        r.outTime,
+      gross_mins:      r.grossMins,
+      net_mins:        r.netMins,
+      ot_mins:         r.otMins,
+      late_minutes:    r.lateMinutes,
+      early_exit_mins: r.earlyExitMins,
+      status:          r.status,
+      shift_id:        r.shiftId,
+      shift_name:      r.shiftName,
+      site_id:         r.siteId,
+      source:          r.source,
+      processed_at:    new Date().toISOString(),
+    }));
+
+    const { error } = await supabase
+      .from('processed_attendance')
+      .upsert(rows, { onConflict: 'emp_code,attendance_date' });
+
+    if (error) {
+      console.error('[saveProcessedAttendance] Error:', error.message);
+      return { inserted: 0, error: error.message };
+    }
+    return { inserted: rows.length, error: null };
+  },
+
+  /** Fetch processed attendance records for a given employee + date range */
+  getProcessedAttendance: async (params: {
+    empCode?: string;
+    fromDate: string;   // 'YYYY-MM-DD'
+    toDate: string;     // 'YYYY-MM-DD'
+    siteId?: string;
+    status?: string;
+  }): Promise<Array<{
+    empCode: string;
+    attendanceDate: string;
+    inTime: string | null;
+    outTime: string | null;
+    grossMins: number;
+    netMins: number;
+    otMins: number;
+    lateMinutes: number;
+    earlyExitMins: number;
+    status: string;
+    shiftId: string | null;
+    shiftName: string;
+    siteId: string | null;
+    source: string;
+    processedAt: string;
+  }>> => {
+    let q = supabase
+      .from('processed_attendance')
+      .select('*')
+      .gte('attendance_date', params.fromDate)
+      .lte('attendance_date', params.toDate)
+      .order('attendance_date', { ascending: false });
+
+    if (params.empCode) q = q.eq('emp_code', params.empCode);
+    if (params.siteId)  q = q.eq('site_id', params.siteId);
+    if (params.status)  q = q.eq('status', params.status);
+
+    const { data, error } = await q.limit(5000);
+    if (error) {
+      console.error('[getProcessedAttendance] Error:', error.message);
+      return [];
+    }
+
+    return (data || []).map((d: any) => ({
+      empCode:        d.emp_code,
+      attendanceDate: d.attendance_date,
+      inTime:         d.in_time,
+      outTime:        d.out_time,
+      grossMins:      d.gross_mins ?? 0,
+      netMins:        d.net_mins ?? 0,
+      otMins:         d.ot_mins ?? 0,
+      lateMinutes:    d.late_minutes ?? 0,
+      earlyExitMins:  d.early_exit_mins ?? 0,
+      status:         d.status,
+      shiftId:        d.shift_id,
+      shiftName:      d.shift_name ?? '',
+      siteId:         d.site_id,
+      source:         d.source ?? 'device_log',
+      processedAt:    d.processed_at ?? d.created_at,
+    }));
+  },
+
   addBiometricDevice: async (device: Partial<BiometricDevice>): Promise<BiometricDevice> => {
     const status = await Network.getStatus();
     if (!status.connected) {

@@ -119,6 +119,10 @@ const EXACT_DESIGNATION_MAP: Record<string, DepartmentKey> = {
   'senior electrician': 'mep',
   'senior technician': 'mep',
   'technical executive': 'mep',
+  'technical supervisor': 'mep',
+  'mep supervisor': 'mep',
+  'fire technician': 'mep',
+  'fire fighting technician': 'mep',
   'technician': 'mep',
   'apprentice': 'mep',
   'electrician': 'mep',
@@ -460,10 +464,13 @@ export function getEmployeeDepartment(emp: {
     desig.includes('electri') ||
     desig.includes('plumb') ||
     desig.includes('technician') ||
+    desig.includes('technical') ||
+    desig.includes('mep') ||
     desig.includes('stp') ||
     desig.includes('wtp') ||
     desig.includes('hvac') ||
     desig.includes('fire fighting') ||
+    desig.includes('fire tech') ||
     desig.includes('dg operator') ||
     desig.includes('handyman') ||
     desig.includes('pool') ||

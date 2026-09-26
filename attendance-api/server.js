@@ -323,11 +323,13 @@ app.get('/attendance', requireApiKey, async (req, res) => {
         ${selectDept}                              AS department,
         ISNULL(e.Designation, 'Staff')             AS designation,
         CONVERT(VARCHAR(19), p.FirstInPunchOnDate, 120)  AS firstInPunchStr,
+        CONVERT(VARCHAR(19), p.DayOutPunchOnDate, 120)   AS dayOutPunchStr,
         CONVERT(VARCHAR(19), p.NightInPunchOnDate, 120)  AS nightInPunchStr,
         CONVERT(VARCHAR(19), p.LastOutPunchOnDate, 120)  AS lastOutPunchStr,
         CONVERT(VARCHAR(19), p.NextMorningOutPunch, 120) AS nextMorningOutPunchStr,
         CONVERT(VARCHAR(19), p.PrevNightInPunch, 120)   AS prevNightInPunchStr,
         p.FirstInPunchOnDate                       AS firstInPunch,
+        p.DayOutPunchOnDate                        AS dayOutPunch,
         p.NightInPunchOnDate                       AS nightInPunch,
         p.LastOutPunchOnDate                       AS lastOutPunch,
         p.NextMorningOutPunch                      AS nextMorningOutPunch,
@@ -342,6 +344,7 @@ app.get('/attendance', requireApiKey, async (req, res) => {
         SELECT 
           EmployeeCode,
           MIN(CASE WHEN LogDate >= '${date} 05:30:00' AND LogDate <= '${date} 23:59:59' THEN LogDate END) AS FirstInPunchOnDate,
+          MAX(CASE WHEN LogDate >= '${date} 11:30:00' AND LogDate < '${date} 17:00:00' THEN LogDate END) AS DayOutPunchOnDate,
           MIN(CASE WHEN LogDate >= '${date} 17:00:00' AND LogDate <= '${date} 23:59:59' THEN LogDate END) AS NightInPunchOnDate,
           MAX(CASE WHEN LogDate >= '${date} 00:00:00' AND LogDate <= '${date} 23:59:59' THEN LogDate END) AS LastOutPunchOnDate,
           MIN(CASE WHEN LogDate >= '${nextDateStr} 00:00:00' AND LogDate <= '${nextDateStr} 12:30:00' THEN LogDate END) AS NextMorningOutPunch,
@@ -432,6 +435,7 @@ app.get('/attendance', requireApiKey, async (req, res) => {
       };
 
       const firstIn = parseSqlStr(row.firstInPunchStr);
+      const dayOut = parseSqlStr(row.dayOutPunchStr);
       const nightIn = parseSqlStr(row.nightInPunchStr);
       const lastOut = parseSqlStr(row.lastOutPunchStr);
       const nextMorningOut = parseSqlStr(row.nextMorningOutPunchStr);
@@ -440,8 +444,74 @@ app.get('/attendance', requireApiKey, async (req, res) => {
       // Determine effective IN and OUT punches cleanly
       let effectiveIn = null;
       let effectiveOut = null;
+      let isNextDayOut = false;
+      let shiftType = 'single';
+      let shiftName = null;
+      let shiftCode = null;
+      let shiftTiming = null;
+      let otHoursStr = '0h 00m';
 
-      if (firstIn) {
+      // ── MULTI-SHIFT DOUBLE DUTY DETECTION ──────────────────────
+      // Case 1: Split A + C Shift (Morning In 05:00-11:00 AND Night In >= 17:00 AND Next Morning Out)
+      // e.g. Bir Bahadar Rawal: 07:00 -> 14:37 AND 21:08 -> 07:13 (+1d)
+      if (firstIn && firstIn.hours < 11 && nightIn && nextMorningOut) {
+        const afternoonOut = dayOut || (lastOut && lastOut.hours >= 13 && lastOut.hours <= 16 ? lastOut : null);
+        effectiveIn = firstIn;
+        effectiveOut = nextMorningOut;
+        isNextDayOut = true;
+        shiftType = 'double';
+        shiftName = 'A + C Shift Group';
+        shiftCode = 'A+C';
+        shiftTiming = '07:00 AM - 02:00 PM | 09:00 PM - 07:00 AM';
+
+        // Calculate combined hours
+        const m1 = afternoonOut ? Math.max(0, Math.floor((afternoonOut.timestamp - firstIn.timestamp) / 60000) - 30) : 7 * 60;
+        const m2 = Math.max(0, Math.floor((nextMorningOut.timestamp - nightIn.timestamp) / 60000) - 30);
+        const totalNetMins = m1 + m2;
+        workingHours = `${Math.floor(totalNetMins / 60)}h ${String(totalNetMins % 60).padStart(2, '0')}m`;
+        otHoursStr = `${Math.floor(m2 / 60)}h ${String(m2 % 60).padStart(2, '0')}m (1 Duty OT)`;
+        shiftCompleted = true;
+        status = 'Present';
+      }
+      // Case 2: A + B Shift (Morning In < 11:00, Out >= 19:30 on SAME DAY, elapsed >= 11h 30m)
+      // e.g. Sathish Kumar N: 07:06 AM -> 08:00 PM / 09:00 PM
+      else if (firstIn && firstIn.hours < 11 && lastOut && lastOut.hours >= 19 && Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000) >= 11 * 60 + 30) {
+        effectiveIn = firstIn;
+        effectiveOut = lastOut;
+        isNextDayOut = false;
+        shiftType = 'double';
+        shiftName = 'A + B Shift Group';
+        shiftCode = 'A+B';
+        shiftTiming = '07:00 AM - 02:00 PM | 02:00 PM - 09:00 PM';
+        const diffMins = Math.max(0, Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000) - 30);
+        workingHours = `${Math.floor(diffMins / 60)}h ${String(diffMins % 60).padStart(2, '0')}m`;
+        const otMins = Math.max(0, diffMins - 7 * 60);
+        otHoursStr = `${Math.floor(otMins / 60)}h ${String(otMins % 60).padStart(2, '0')}m (1 Duty OT)`;
+        shiftCompleted = true;
+        status = 'Present';
+      }
+      // Case 3: B + C Shift (Afternoon In 12:00-16:30 AND Next Morning Out)
+      // e.g. Devaraja S: 02:18 PM -> 07:07 AM (+1d)
+      else if (firstIn && firstIn.hours >= 12 && firstIn.hours <= 16 && nextMorningOut) {
+        effectiveIn = firstIn;
+        effectiveOut = nextMorningOut;
+        isNextDayOut = true;
+        shiftType = 'double';
+        shiftName = 'B + C Shift Group';
+        shiftCode = 'B+C';
+        shiftTiming = '02:00 PM - 09:00 PM | 09:00 PM - 07:00 AM';
+        const totalElapsedMs = (nextMorningOut.timestamp - firstIn.timestamp);
+        let grossMins = Math.floor(totalElapsedMs / 60000);
+        if (grossMins < 0) grossMins += 24 * 60;
+        const totalNetMins = Math.max(0, grossMins - 60);
+        workingHours = `${Math.floor(totalNetMins / 60)}h ${String(totalNetMins % 60).padStart(2, '0')}m`;
+        const otMins = Math.max(0, totalNetMins - 7 * 60);
+        otHoursStr = `${Math.floor(otMins / 60)}h ${String(otMins % 60).padStart(2, '0')}m (1 Duty OT)`;
+        shiftCompleted = true;
+        status = 'Present';
+      }
+      // Standard Single Shift Evaluation
+      else if (firstIn) {
         if (firstIn.hours < 15 || (firstIn.hours < 17 && lastOut && lastOut.timestamp > firstIn.timestamp && Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000) > 5)) {
           // Standard Morning / Day Punch IN
           effectiveIn = firstIn;
@@ -457,6 +527,7 @@ app.get('/attendance', requireApiKey, async (req, res) => {
             // Night shift starting today
             effectiveIn = firstIn;
             effectiveOut = nextMorningOut;
+            isNextDayOut = true;
           } else if (lastOut && lastOut.timestamp > firstIn.timestamp) {
             const diffMins = Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000);
             if (diffMins > 5) {
@@ -477,6 +548,7 @@ app.get('/attendance', requireApiKey, async (req, res) => {
         if (nextMorningOut) {
           effectiveIn = nightIn;
           effectiveOut = nextMorningOut;
+          isNextDayOut = true;
         } else {
           effectiveOut = nightIn;
         }
@@ -499,10 +571,13 @@ app.get('/attendance', requireApiKey, async (req, res) => {
           outTimeStr = `${String(displayOutH).padStart(2, '0')}:${String(outM).padStart(2, '0')} ${outAmpm}`;
         }
 
-        if (effectiveIn && effectiveOut) {
-          const diffMs = effectiveOut.timestamp - effectiveIn.timestamp;
+        if (effectiveIn && effectiveOut && shiftType !== 'double') {
+          let diffMs = effectiveOut.timestamp - effectiveIn.timestamp;
+          if (isNextDayOut && diffMs < 0) {
+            diffMs += 24 * 60 * 60 * 1000;
+          }
           if (diffMs > 0) {
-            const totalMins = Math.floor(diffMs / 60000);
+            const totalMins = Math.max(0, Math.floor(diffMs / 60000) - 30);
             const h = Math.floor(totalMins / 60);
             const m = totalMins % 60;
             workingHours = `${h}h ${String(m).padStart(2, '0')}m`;
@@ -513,6 +588,23 @@ app.get('/attendance', requireApiKey, async (req, res) => {
           status = 'Present';
         } else if (!effectiveIn && effectiveOut) {
           status = 'Missed Punch IN';
+        }
+
+        if (shiftType === 'single' && (effectiveIn || effectiveOut)) {
+          const checkH = effectiveIn ? effectiveIn.hours : (effectiveOut ? effectiveOut.hours : 7);
+          if (isNextDayOut || checkH >= 18 || checkH < 5) {
+            shiftName = 'C Shift Group';
+            shiftCode = 'C';
+            shiftTiming = '09:00 PM - 07:00 AM';
+          } else if (checkH >= 11 && checkH < 18) {
+            shiftName = 'B Shift Group';
+            shiftCode = 'B';
+            shiftTiming = '02:00 PM - 09:00 PM';
+          } else {
+            shiftName = 'A Shift Group';
+            shiftCode = 'A';
+            shiftTiming = '07:00 AM - 02:00 PM';
+          }
         }
       }
 
@@ -543,9 +635,16 @@ app.get('/attendance', requireApiKey, async (req, res) => {
         designation: String(row.designation || 'Staff'),
         inTime: inTimeStr,
         outTime: outTimeStr,
+        isNextDayOut,
         workingHours,
         status,
         shiftCompleted,
+        shiftName,
+        shiftCode,
+        shiftTiming,
+        shiftType,
+        totalDuties: shiftType === 'double' ? 2 : 1,
+        otHours: otHoursStr,
         lateMinutes: 0,
         hadPrevNightShift: Boolean(row.prevNightInPunch),
         lifecycleStatus,
@@ -1123,7 +1222,33 @@ app.get('/devices', requireApiKey, async (req, res) => {
     } catch (_) { /* try next query */ }
   }
 
-  res.json({ devices: [], online: 0, offline: 0, total: 0, note: 'Device table not found ΓÇö check /tables' });
+  res.json({ devices: [], online: 0, offline: 0, total: 0, note: 'Device table not found — check /tables' });
+});
+
+// ─── GET /device-logs ────────────────────────────────────────────────────────
+// Returns debounced raw biometric device punch logs for a given date
+app.get(['/device-logs', '/api/device-logs'], requireApiKey, async (req, res) => {
+  const date = (req.query.date || '').match(/^\d{4}-\d{2}-\d{2}$/)
+    ? req.query.date
+    : new Date().toISOString().slice(0, 10);
+  const empCode = (req.query.empCode || req.query.userId || '').trim();
+
+  try {
+    const { debouncedList, logsByEmp } = await fetchRawDeviceLogsForDate(date);
+    if (empCode) {
+      const empLogs = logsByEmp.get(empCode) || [];
+      return res.json({ date, empCode, count: empLogs.length, punches: empLogs });
+    }
+    return res.json({
+      date,
+      totalPunches: debouncedList.length,
+      totalEmployees: logsByEmp.size,
+      punches: debouncedList.slice(0, 200),
+      note: debouncedList.length > 200 ? 'Showing first 200 punches. Filter by empCode for specific logs.' : undefined,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
 });
 
 
@@ -1197,7 +1322,7 @@ app.get('/columns/:table', requireApiKey, async (req, res) => {
 // ΓöÇΓöÇΓöÇ Start ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // ─── POST /update-employee — Update employee details in MS SQL ───────
 app.post('/update-employee', requireApiKey, async (req, res) => {
-  const { empCode, empName, siteName, designation } = req.body;
+  const { empCode, empName, siteName, designation, companyName } = req.body;
   if (!empCode) {
     return res.status(400).json({ error: 'empCode is required' });
   }
@@ -1209,12 +1334,28 @@ app.post('/update-employee', requireApiKey, async (req, res) => {
     r.input('empName', sql.VarChar, String(empName || '').trim());
     r.input('siteName', sql.VarChar, String(siteName || '').trim());
     r.input('desig', sql.VarChar, String(designation || '').trim());
+    r.input('compName', sql.VarChar, String(companyName || '').trim());
+
+    // Check if Companies table exists
+    let hasCompanies = false;
+    try {
+      const chkC = await p.request().query(`SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Companies'`);
+      hasCompanies = (chkC.recordset && chkC.recordset.length > 0);
+    } catch (_) {}
+
+    const companyUpdateSql = hasCompanies
+      ? `e.CompanyId = CASE WHEN @compName <> '' THEN ISNULL(
+           (SELECT TOP 1 CompanyId FROM dbo.Companies WHERE CompanyFName LIKE '%' + @compName + '%' OR CompanySName LIKE '%' + @compName + '%'),
+           e.CompanyId
+         ) ELSE e.CompanyId END,`
+      : ``;
 
     const query = `
       UPDATE e
       SET 
         e.EmployeeName = CASE WHEN @empName <> '' THEN @empName ELSE e.EmployeeName END,
         e.Designation = CASE WHEN @desig <> '' THEN @desig ELSE e.Designation END,
+        ${companyUpdateSql}
         e.DepartmentId = ISNULL(
           (SELECT TOP 1 DepartmentId FROM dbo.Departments WHERE DepartmentFName = @siteName OR DepartmentSName = @siteName),
           e.DepartmentId
@@ -1303,6 +1444,189 @@ async function logSync(syncDate, recordsSynced, status, errorMsg, durationMs, tr
   } catch (e) {
     console.warn('[Sync] Failed to write sync log:', e.message);
   }
+}
+
+/** Push an array of raw biometric device logs to Supabase biometric_device_logs (Batches of 300) */
+async function upsertBiometricDeviceLogs(rows) {
+  if (!SUPABASE_SERVICE_KEY) return { count: 0, skipped: true };
+  if (!rows || rows.length === 0) return { count: 0 };
+
+  const CHUNK_SIZE = 300;
+  let totalUpserted = 0;
+
+  for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+    const chunk = rows.slice(i, i + CHUNK_SIZE);
+    try {
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/biometric_device_logs?on_conflict=emp_code,log_date`, {
+        method: 'POST',
+        headers: {
+          apikey:          SUPABASE_SERVICE_KEY,
+          Authorization:   `Bearer ${SUPABASE_SERVICE_KEY}`,
+          'Content-Type':  'application/json',
+          Prefer:          'resolution=merge-duplicates,return=minimal',
+        },
+        body: JSON.stringify(chunk),
+        signal: AbortSignal.timeout(30000),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text().catch(() => '');
+        if (response.status === 404 || errText.includes('biometric_device_logs')) {
+          console.warn('[Sync] Note: biometric_device_logs table not found in Supabase yet. Run sql/create_biometric_device_logs.sql in Supabase SQL Editor.');
+          return { count: 0, missingTable: true };
+        }
+        console.warn(`[Sync] biometric_device_logs upsert warning (${response.status}):`, errText);
+      } else {
+        totalUpserted += chunk.length;
+      }
+    } catch (err) {
+      console.warn('[Sync] Device log chunk sync error:', err.message);
+    }
+  }
+
+  return { count: totalUpserted };
+}
+
+/** Automatically purge biometric device logs older than specified retention (default: 90 days) */
+async function purgeOldBiometricDeviceLogs(retentionDays = 90) {
+  if (!SUPABASE_SERVICE_KEY) return;
+  try {
+    const cutoffDate = new Date(Date.now() - retentionDays * 86400000).toISOString();
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/biometric_device_logs?log_date=lt.${cutoffDate}`, {
+      method: 'DELETE',
+      headers: {
+        apikey:         SUPABASE_SERVICE_KEY,
+        Authorization:  `Bearer ${SUPABASE_SERVICE_KEY}`,
+      },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (res.ok) {
+      console.log(`[Cleanup] 🧹 Purged biometric device logs older than ${retentionDays} days (before ${cutoffDate})`);
+    }
+  } catch (err) {
+    console.warn('[Cleanup] Error purging old biometric device logs:', err.message);
+  }
+}
+
+/** Fetch and debounce raw device logs for a date with a 5-minute window */
+async function fetchRawDeviceLogsForDate(date, debounceMs = 5 * 60 * 1000) {
+  const p = await getPool();
+  const [yStr, mStr] = date.split('-');
+  const mNum = parseInt(mStr, 10);
+  const mPad = mNum < 10 ? `0${mNum}` : `${mNum}`;
+
+  const tblCheck = await p.request()
+    .input('t1', sql.VarChar, `DeviceLogs_${mNum}_${yStr}`)
+    .input('t2', sql.VarChar, `DeviceLogs_${mPad}_${yStr}`)
+    .query(`SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME IN (@t1, @t2)`)
+    .catch(() => ({ recordset: [] }));
+
+  const logTable = (tblCheck.recordset && tblCheck.recordset.length > 0)
+    ? tblCheck.recordset[0].TABLE_NAME
+    : 'DeviceLogs';
+
+  const tablesToQuery = Array.from(new Set([logTable, 'DeviceLogs']));
+  const validTablesRes = await p.request().query(`
+    SELECT DISTINCT TABLE_NAME 
+    FROM INFORMATION_SCHEMA.TABLES 
+    WHERE TABLE_NAME IN ('${tablesToQuery.join("','")}')
+  `).catch(() => ({ recordset: [{ TABLE_NAME: logTable }] }));
+
+  const validTables = (validTablesRes.recordset && validTablesRes.recordset.length > 0)
+    ? validTablesRes.recordset.map(r => r.TABLE_NAME)
+    : [logTable];
+
+  let hasDevices = false;
+  try {
+    const devChk = await p.request().query(`SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Devices'`);
+    hasDevices = (devChk.recordset && devChk.recordset.length > 0);
+  } catch (_) {}
+
+  const selectDevice = hasDevices
+    ? `ISNULL(dev.DeviceFName, 'Device-' + CAST(d.DeviceId AS VARCHAR)) AS deviceName, ISNULL(dev.SerialNumber, '') AS serialNo`
+    : `'Device-' + CAST(d.DeviceId AS VARCHAR) AS deviceName, '' AS serialNo`;
+  const joinDevice = hasDevices
+    ? `LEFT JOIN dbo.Devices dev WITH (NOLOCK) ON d.DeviceId = dev.DeviceId`
+    : ``;
+
+  const unionSql = validTables.map(t => `
+    SELECT 
+      d.DownloadDate,
+      d.DeviceId,
+      LTRIM(RTRIM(CAST(d.UserId AS VARCHAR(50)))) AS empCode,
+      d.LogDate,
+      ISNULL(d.Direction, 'in') AS direction,
+      ISNULL(d.C1, 'VS_FACE') AS verifyMode,
+      ${selectDevice}
+    FROM dbo.[${t}] d WITH (NOLOCK)
+    ${joinDevice}
+    WHERE d.LogDate >= '${date} 00:00:00' AND d.LogDate <= '${date} 23:59:59'
+  `).join(' UNION ALL ');
+
+  const queryRes = await p.request().query(`
+    SELECT * FROM (
+      ${unionSql}
+    ) AllLogs
+    ORDER BY empCode, LogDate ASC
+  `).catch(err => {
+    console.warn('[DeviceLogs] Query error:', err.message);
+    return { recordset: [] };
+  });
+
+  const rawRows = queryRes.recordset || [];
+  const logsByEmp = new Map();
+  const debouncedList = [];
+
+  const fmtSimpleTime = (d) => {
+    if (!d) return null;
+    const dt = new Date(d);
+    if (isNaN(dt.getTime())) return null;
+    let h = dt.getHours();
+    const m = dt.getMinutes();
+    const ampm = h >= 12 ? 'pm' : 'am';
+    h = h % 12 === 0 ? 12 : h % 12;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')} ${ampm}`;
+  };
+
+  // 5-Minute Debounce Algorithm per employee
+  for (const row of rawRows) {
+    const emp = row.empCode;
+    if (!emp) continue;
+    const punchTime = new Date(row.LogDate).getTime();
+    if (isNaN(punchTime)) continue;
+
+    if (!logsByEmp.has(emp)) {
+      logsByEmp.set(emp, []);
+    }
+
+    const empLogs = logsByEmp.get(emp);
+    const lastAccepted = empLogs.length > 0 ? empLogs[empLogs.length - 1] : null;
+
+    if (!lastAccepted || (punchTime - new Date(lastAccepted.rawIso).getTime()) >= debounceMs) {
+      const logIso = new Date(row.LogDate).toISOString();
+      const cleanPunch = {
+        emp_code: emp,
+        log_date: logIso,
+        download_date: row.DownloadDate ? new Date(row.DownloadDate).toISOString() : logIso,
+        device_name: row.deviceName,
+        serial_no: row.serialNo,
+        direction: row.direction,
+        verify_mode: row.verifyMode,
+        source: 'etimetracklite'
+      };
+      empLogs.push({
+        time: fmtSimpleTime(row.LogDate),
+        rawIso: logIso,
+        device: row.deviceName,
+        serial: row.serialNo,
+        direction: row.direction,
+        verify: row.verifyMode
+      });
+      debouncedList.push(cleanPunch);
+    }
+  }
+
+  return { debouncedList, logsByEmp };
 }
 
 /** Fetch single-day attendance from MS SQL and return formatted rows ready for Supabase */
@@ -1427,7 +1751,18 @@ async function fetchAttendanceRowsForDate(date) {
     return `${String(dh).padStart(2,'0')}:${String(m).padStart(2,'0')} ${ampm}`;
   };
 
-  return (result.recordset || []).map(row => {
+  // Get debounced raw device logs for punch audit trail
+  let rawLogsMap = new Map();
+  let rawPunchesList = [];
+  try {
+    const rawRes = await fetchRawDeviceLogsForDate(date);
+    rawLogsMap = rawRes.logsByEmp;
+    rawPunchesList = rawRes.debouncedList;
+  } catch (rawErr) {
+    console.warn('[Sync] Could not attach raw device logs:', rawErr.message);
+  }
+
+  const mappedRows = (result.recordset || []).map(row => {
     const inTime  = fmtTime(row.firstInPunchStr) || fmtTime(row.alInTime);
     const outTime = fmtTime(row.lastOutPunchStr)  || fmtTime(row.alOutTime);
     let status = 'Absent'; let statusCode = 'A'; let durationMins = 0;
@@ -1437,6 +1772,8 @@ async function fetchAttendanceRowsForDate(date) {
     else if (inTime)             { status = 'Present'; statusCode = 'P'; }
 
     if (row.duration && row.duration > 0) durationMins = row.duration;
+
+    const empPunches = rawLogsMap.get(String(row.empCode || '')) || [];
 
     return {
       emp_code:        String(row.empCode || ''),
@@ -1454,9 +1791,13 @@ async function fetchAttendanceRowsForDate(date) {
       ot_mins:         row.overTime ? Number(row.overTime) : 0,
       data_year:       dataYear,
       source:          'mssql',
+      raw_punches:     empPunches.length > 0 ? empPunches : null,
       synced_at:       new Date().toISOString(),
     };
   });
+
+  mappedRows.rawDeviceLogs = rawPunchesList;
+  return mappedRows;
 }
 
 // ─── POST /sync/today ───────────────────────────────────────────────────────
@@ -1652,31 +1993,41 @@ async function runAutoSync() {
     // 1. Sync Today's live punches (real-time updates)
     const rows = await fetchAttendanceRowsForDate(today);
     await upsertToSupabase(rows);
+    if (rows.rawDeviceLogs && rows.rawDeviceLogs.length > 0) {
+      await upsertBiometricDeviceLogs(rows.rawDeviceLogs);
+    }
     await logSync(today, rows.length, 'ok', null, 0, 'auto');
-    console.log(`[AutoSync] ✅ ${today} — ${rows.length} records synced to Supabase`);
+    console.log(`[AutoSync] ✅ ${today} — ${rows.length} records & ${rows.rawDeviceLogs?.length || 0} device punches synced to Supabase`);
 
     // 2. Automatically sync Yesterday every cycle to finalize night-shift out-punches and completed daily records
     try {
       const rowsYesterday = await fetchAttendanceRowsForDate(yesterday);
       await upsertToSupabase(rowsYesterday);
+      if (rowsYesterday.rawDeviceLogs && rowsYesterday.rawDeviceLogs.length > 0) {
+        await upsertBiometricDeviceLogs(rowsYesterday.rawDeviceLogs);
+      }
       await logSync(yesterday, rowsYesterday.length, 'ok', null, 0, 'auto');
-      console.log(`[AutoSync] ✅ ${yesterday} — ${rowsYesterday.length} records finalized in Supabase`);
+      console.log(`[AutoSync] ✅ ${yesterday} — ${rowsYesterday.length} records & ${rowsYesterday.rawDeviceLogs?.length || 0} device punches finalized in Supabase`);
     } catch (yErr) {
       console.warn('[AutoSync] Note on yesterday auto-sync:', yErr.message);
     }
 
-    // 3. Once every 12 cycles (~1 hour), run safety reconciliation for 2 days ago + prune old sync logs
+    // 3. Once every 12 cycles (~1 hour), run safety reconciliation for 2 days ago + prune old sync logs & device logs older than 90 days
     autoSyncCycleCounter++;
     if (autoSyncCycleCounter % 12 === 0) {
       try {
         const twoDaysAgo = new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10);
         const rowsPast = await fetchAttendanceRowsForDate(twoDaysAgo);
         await upsertToSupabase(rowsPast);
+        if (rowsPast.rawDeviceLogs && rowsPast.rawDeviceLogs.length > 0) {
+          await upsertBiometricDeviceLogs(rowsPast.rawDeviceLogs);
+        }
         await logSync(twoDaysAgo, rowsPast.length, 'ok', null, 0, 'auto');
         console.log(`[AutoSync] 🔄 Reconciled ${twoDaysAgo} (${rowsPast.length} records)`);
       } catch (_) {}
 
       pruneOldSyncLogs().catch(() => {});
+      purgeOldBiometricDeviceLogs(90).catch(() => {});
     }
   } catch (err) {
     console.warn('[AutoSync] ⚠️  Sync failed (will retry in 5 min):', err.message);
