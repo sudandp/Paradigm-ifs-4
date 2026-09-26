@@ -16,6 +16,11 @@ export interface BulkRosterTargetEmployee {
   department?: string;
   designation?: string;
   site?: string;
+  status?: string;
+  lifecycleStatus?: string;
+  employmentStatus?: string;
+  isActiveEmployee?: boolean | string;
+  isActive?: boolean;
 }
 
 export interface BulkRosterAssignmentResult {
@@ -109,6 +114,24 @@ const DEPT_CATEGORIES: CategoryOption[] = [
 
 const WEEKDAY_SHORT = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 
+export const isBulkEmployeeInactive = (emp: BulkRosterTargetEmployee): boolean => {
+  if (!emp) return false;
+  const s = String(emp.status || '').toLowerCase().trim();
+  const l = String(emp.lifecycleStatus || '').toLowerCase().trim();
+  const es = String(emp.employmentStatus || '').toLowerCase().trim();
+  const inactiveStatuses = [
+    'inactive', 'discontinued', 'discontinued / left', 'left',
+    'resigned', 'terminated', 'absconded', 'not joined yet',
+    'not joined', 'exit', 'relieved', 'separated', 'disabled', 'deactivated'
+  ];
+  if (inactiveStatuses.includes(s) || inactiveStatuses.includes(l) || inactiveStatuses.includes(es)) {
+    return true;
+  }
+  if (emp.isActiveEmployee === false || emp.isActiveEmployee === 'false') return true;
+  if (emp.isActive === false || (emp as any).is_active === false || (emp as any).active === false) return true;
+  return false;
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 export const BulkRosterModal: React.FC<BulkRosterModalProps> = ({
   isOpen, onClose, employees, departmentList, existingWeeklyOffsMap, onSave,
@@ -134,15 +157,17 @@ export const BulkRosterModal: React.FC<BulkRosterModalProps> = ({
   const padDays = Array.from({ length: getDay(monthStart) });
 
   const scopedEmployees = useMemo(() => {
+    // Exclude inactive / separated employees so week off is never assigned to them
+    const activeEmployees = employees.filter(e => !isBulkEmployeeInactive(e));
     if (scopeType === "site") {
-      if (selectedSite === "all") return employees;
-      return employees.filter(e =>
+      if (selectedSite === "all") return activeEmployees;
+      return activeEmployees.filter(e =>
         (e.department||"").toLowerCase().trim() === selectedSite.toLowerCase().trim() ||
         (e.site||"").toLowerCase().trim() === selectedSite.toLowerCase().trim()
       );
     }
     const cat = DEPT_CATEGORIES.find(c => c.key === selectedCategory);
-    return cat ? employees.filter(cat.matchFn) : employees;
+    return cat ? activeEmployees.filter(cat.matchFn) : activeEmployees;
   }, [employees, scopeType, selectedCategory, selectedSite]);
 
   const woDateStrings = useMemo(() => {
@@ -317,11 +342,15 @@ export const BulkRosterModal: React.FC<BulkRosterModalProps> = ({
                 </div>
               )}
 
-              {/* Next button */}
-              <div className="flex justify-end pt-1">
+              {/* Inactive Exclusion Notice & Next button */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-[#134426]">
+                <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-emerald-300/70">
+                  <Shield size={13} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <span>Inactive and separated staff are automatically excluded.</span>
+                </div>
                 <button onClick={() => setStep(2)} disabled={scopedEmployees.length === 0}
-                  className="px-5 py-2.5 text-xs font-bold text-white bg-[#006B3F] hover:bg-[#005632] disabled:opacity-50 rounded-xl cursor-pointer shadow flex items-center gap-1.5">
-                  Configure Roster <ChevronRight size={14} />
+                  className="w-full sm:w-auto px-5 py-2.5 text-xs font-bold text-white bg-[#006B3F] hover:bg-[#005632] disabled:opacity-50 rounded-xl cursor-pointer shadow flex items-center justify-center gap-1.5">
+                  Configure Roster ({scopedEmployees.length} Staff) <ChevronRight size={14} />
                 </button>
               </div>
             </div>

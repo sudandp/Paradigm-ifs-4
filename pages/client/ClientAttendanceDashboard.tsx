@@ -77,6 +77,126 @@ import {
 } from '../../data/siteDeploymentData';
 import { getSiteDesignationBreakdown } from '../../data/siteDesignationDeployment';
 
+// Master list of authentic client sites with physical biometric hardware (MSSQL dbo.Devices / eTimeTrackLite)
+export const KNOWN_BIOMETRIC_SITES: string[] = [
+  '42 Queens Square',
+  'Aratt Milano',
+  'Artisane Forest Breeze',
+  'Birla Alokya',
+  'Blue Jay Aster',
+  'Brigade Bricklane',
+  'Brigade Cornerstone Utopia',
+  'Dsr Eden Greens',
+  'Elita Promenade',
+  'Fame India Campus',
+  'Godrej Ecity',
+  'GR Sankalpa',
+  'Head Office',
+  'Kolte Patil - Mirabilis',
+  'Kolte Patil I Towers',
+  'Mahendra Aarna',
+  'Maratt Pimento',
+  'Nagarjuna Aster Park',
+  'Nhaoa',
+  'Nikoo Homes',
+  'Prestige Gulmohar',
+  'Prestige Oasis',
+  'Purva Venezia',
+  'Raja Ritz Avenue',
+  'Shriram Smrithi',
+  'SJR Bluewaters by Prime Corp',
+  'SNN Raj Spiritua',
+  'Sobha Silicon Oasis',
+  'Sterling Terraces 1',
+  'Sumadhura Silver Ripples',
+  'Tata Promont',
+  'The Lake View Address',
+  'Uber Verdant',
+];
+
+export const isEmployeeInactive = (emp: any): boolean => {
+  if (!emp) return false;
+  const s = String(emp.status || '').toLowerCase().trim();
+  const l = String(emp.lifecycleStatus || '').toLowerCase().trim();
+  const es = String(emp.employmentStatus || '').toLowerCase().trim();
+  const inactiveStatuses = [
+    'inactive', 'discontinued', 'discontinued / left', 'left',
+    'resigned', 'terminated', 'absconded', 'not joined yet',
+    'not joined', 'exit', 'relieved', 'separated', 'disabled', 'deactivated'
+  ];
+  if (inactiveStatuses.includes(s) || inactiveStatuses.includes(l) || inactiveStatuses.includes(es)) {
+    return true;
+  }
+  if (emp.isActiveEmployee === false || emp.isActiveEmployee === 'false') return true;
+  if (emp.isActive === false || emp.isActive === 'false') return true;
+  if (emp.is_active === false || emp.is_active === 'false') return true;
+  if (emp.active === false || emp.active === 'false') return true;
+  return false;
+};
+
+// Helper to normalize diverse MSSQL / eTimeTrack department strings into canonical biometric site names
+export function normalizeBiometricSiteName(raw: string): string {
+  if (!raw) return '';
+  const clean = raw.trim();
+  const l = clean.toLowerCase();
+  if (l.includes('utopia')) return 'Brigade Cornerstone Utopia';
+  if (l.includes('bricklane') || l.includes('briclane')) return 'Brigade Bricklane';
+  if (l.includes('alokya') || l.includes('alokiya')) return 'Birla Alokya';
+  if (l.includes('silicon')) return 'Sobha Silicon Oasis';
+  if (l.includes('venezia')) return 'Purva Venezia';
+  if (l.includes('aarna')) return 'Mahendra Aarna';
+  if (l.includes('dsr') || (l.includes('eden') && !l.includes('habitat'))) return 'Dsr Eden Greens';
+  if (l.includes('mirabilis')) return 'Kolte Patil - Mirabilis';
+  if (l.includes('i tower') || l.includes('i towers')) return 'Kolte Patil I Towers';
+  if (l.includes('spiritua') || l.includes('spiripua')) return 'SNN Raj Spiritua';
+  if (l.includes('smrithi') || l.includes('ramsmriti')) return 'Shriram Smrithi';
+  if (l.includes('aster park') || l.includes('nagarjuna aster') || (l.includes('aster') && !l.includes('blue jay'))) return 'Nagarjuna Aster Park';
+  if (l.includes('nikoo')) return 'Nikoo Homes';
+  if (l.includes('sankalpa')) return 'GR Sankalpa';
+  if (l.includes('milano')) return 'Aratt Milano';
+  if (l.includes('forest breeze')) return 'Artisane Forest Breeze';
+  if (l.includes('fame india')) return 'Fame India Campus';
+  if (l.includes('godrej ecity') || l.includes('ecity')) return 'Godrej Ecity';
+  if (l.includes('maratt pimento') || l.includes('pimento')) return 'Maratt Pimento';
+  if (l.includes('prestige oasis')) return 'Prestige Oasis';
+  if (l.includes('gulmoh')) return 'Prestige Gulmohar';
+  if (l.includes('ritz')) return 'Raja Ritz Avenue';
+  if (l.includes('bluewaters')) return 'SJR Bluewaters by Prime Corp';
+  if (l.includes('sterling terraces')) return 'Sterling Terraces 1';
+  if (l.includes('silver ripples')) return 'Sumadhura Silver Ripples';
+  if (l.includes('promont')) return 'Tata Promont';
+  if (l.includes('lake view')) return 'The Lake View Address';
+  if (l.includes('uber verdant') || l.includes('verdant')) return 'Uber Verdant';
+  if (l.includes('queens square')) return '42 Queens Square';
+  if (l.includes('elita')) return 'Elita Promenade';
+  if (l.includes('blue jay')) return 'Blue Jay Aster';
+  if (l.includes('head office')) return 'Head Office';
+  if (l.includes('nhaoa')) return 'Nhaoa';
+  return clean;
+}
+
+// Checks if a candidate site has registered biometric hardware or is a known biometric installation
+export function isBiometricSiteName(siteName: string, deviceList?: DeviceRow[]): boolean {
+  if (!siteName) return false;
+  const s = siteName.trim().toLowerCase();
+  if (s === 'default' || s === 'general') return false;
+
+  if (KNOWN_BIOMETRIC_SITES.some(k => k.toLowerCase() === s || matchSiteName(s, k))) {
+    return true;
+  }
+
+  if (deviceList && Array.isArray(deviceList)) {
+    const virtualDevices = new Set(['manual entry(attendance)', 'manual entry(canteen)', 'mobile', 'head office exit']);
+    return deviceList.some(d => {
+      const devName = (d.deviceName || '').trim().toLowerCase();
+      if (!devName || virtualDevices.has(devName)) return false;
+      return devName === s || matchSiteName(s, devName);
+    });
+  }
+
+  return false;
+}
+
 // Helper to check if an employee department/site string matches a matrix site name
 function matchSiteName(dept: string, matrixSiteName: string): boolean {
   if (!dept || !matrixSiteName) return false;
@@ -88,8 +208,11 @@ function matchSiteName(dept: string, matrixSiteName: string): boolean {
   if (d.includes('utopia') || m.includes('utopia')) {
     return d.includes('utopia') && m.includes('utopia');
   }
-  if (d.includes('bricklane') || m.includes('bricklane')) {
-    return d.includes('bricklane') && m.includes('bricklane');
+  if (d.includes('bricklane') || m.includes('bricklane') || d.includes('briclane') || m.includes('briclane')) {
+    return (d.includes('bricklane') || d.includes('briclane')) && (m.includes('bricklane') || m.includes('briclane'));
+  }
+  if (d.includes('alokya') || m.includes('alokya') || d.includes('alokiya') || m.includes('alokiya')) {
+    return (d.includes('alokya') || d.includes('alokya') || d.includes('alokiya')) && (m.includes('alokya') || m.includes('alokiya'));
   }
   if (d.includes('meadows') || m.includes('meadows')) {
     return d.includes('meadows') && m.includes('meadows');
@@ -106,8 +229,86 @@ function matchSiteName(dept: string, matrixSiteName: string): boolean {
   if (d.includes('aarna') || m.includes('aarna')) {
     return d.includes('aarna') && m.includes('aarna');
   }
-  if (d.includes('eden') || m.includes('eden')) {
-    return d.includes('eden') && m.includes('eden');
+  if (d.includes('habitat') || m.includes('habitat')) {
+    return d.includes('habitat') && m.includes('habitat');
+  }
+  if (d.includes('dsr') || m.includes('dsr') || d.includes('eden') || m.includes('eden')) {
+    return (d.includes('dsr') || d.includes('eden')) && (m.includes('dsr') || m.includes('eden')) && !d.includes('habitat') && !m.includes('habitat');
+  }
+  if (d.includes('mirabilis') || m.includes('mirabilis')) {
+    return d.includes('mirabilis') && m.includes('mirabilis');
+  }
+  if (d.includes('i tower') || d.includes('i tower') || d.includes('i towers') || m.includes('i towers')) {
+    return (d.includes('i tower') || d.includes('i towers')) && (m.includes('i tower') || m.includes('i towers'));
+  }
+  if (d.includes('spiritua') || d.includes('spiritua') || d.includes('spiripua') || m.includes('spiripua')) {
+    return (d.includes('spiritua') || d.includes('spiripua')) && (m.includes('spiritua') || m.includes('spiripua'));
+  }
+  if (d.includes('smrithi') || d.includes('smrithi') || d.includes('ramsmriti') || m.includes('ramsmriti')) {
+    return (d.includes('smrithi') || d.includes('ramsmriti')) && (m.includes('smrithi') || m.includes('ramsmriti'));
+  }
+  if (d.includes('aster') || m.includes('aster')) {
+    return (d.includes('aster') && m.includes('aster'));
+  }
+  if (d.includes('gulmoh') || m.includes('gulmoh')) {
+    return d.includes('gulmoh') && m.includes('gulmoh');
+  }
+  if (d.includes('queens square') || m.includes('queens square')) {
+    return d.includes('queens square') && m.includes('queens square');
+  }
+  if (d.includes('milano') || m.includes('milano')) {
+    return d.includes('milano') && m.includes('milano');
+  }
+  if (d.includes('forest breeze') || m.includes('forest breeze')) {
+    return d.includes('forest breeze') && m.includes('forest breeze');
+  }
+  if (d.includes('ecity') || m.includes('ecity')) {
+    return d.includes('ecity') && m.includes('ecity');
+  }
+  if (d.includes('sankalpa') || m.includes('sankalpa')) {
+    return d.includes('sankalpa') && m.includes('sankalpa');
+  }
+  if (d.includes('pimento') || m.includes('pimento')) {
+    return d.includes('pimento') && m.includes('pimento');
+  }
+  if (d.includes('prestige oasis') || m.includes('prestige oasis')) {
+    return d.includes('prestige oasis') && m.includes('prestige oasis');
+  }
+  if (d.includes('ritz') || m.includes('ritz')) {
+    return d.includes('ritz') && m.includes('ritz');
+  }
+  if (d.includes('bluewaters') || m.includes('bluewaters')) {
+    return d.includes('bluewaters') && m.includes('bluewaters');
+  }
+  if (d.includes('sterling terraces') || m.includes('sterling terraces')) {
+    return d.includes('sterling terraces') && m.includes('sterling terraces');
+  }
+  if (d.includes('silver ripples') || m.includes('silver ripples')) {
+    return d.includes('silver ripples') && m.includes('silver ripples');
+  }
+  if (d.includes('promont') || m.includes('promont')) {
+    return d.includes('promont') && m.includes('promont');
+  }
+  if (d.includes('lake view') || m.includes('lake view')) {
+    return d.includes('lake view') && m.includes('lake view');
+  }
+  if (d.includes('verdant') || m.includes('verdant')) {
+    return d.includes('verdant') && m.includes('verdant');
+  }
+  if (d.includes('elita') || m.includes('elita')) {
+    return d.includes('elita') && m.includes('elita');
+  }
+  if (d.includes('blue jay') || m.includes('blue jay')) {
+    return d.includes('blue jay') && m.includes('blue jay');
+  }
+  if (d.includes('fame india') || m.includes('fame india')) {
+    return d.includes('fame india') && m.includes('fame india');
+  }
+  if (d.includes('head office') || m.includes('head office')) {
+    return d.includes('head office') && m.includes('head office');
+  }
+  if (d.includes('nhaoa') || m.includes('nhaoa')) {
+    return d.includes('nhaoa') && m.includes('nhaoa');
   }
 
   // Nikoo Homes vs Nikoo Paradigm
@@ -2881,13 +3082,7 @@ const DetailedAuditReportView: React.FC<{
     const empNameKey = (emp.empName || '').toLowerCase().trim();
     const dbUserMonthEvents = dbMonthEventsMap[empCodeKey] || dbMonthEventsMap[empNameKey] || {};
 
-    const isEmpInactive = emp.status === 'Discontinued / Left' || 
-                          emp.status === 'Discontinued' ||
-                          emp.status === 'Not Joined Yet' || 
-                          emp.lifecycleStatus === 'Discontinued' || 
-                          emp.lifecycleStatus === 'Left' ||
-                          emp.isActiveEmployee === false || 
-                          emp.isActiveEmployee === 'false';
+    const isEmpInactive = isEmployeeInactive(emp);
     const isEmpAbsent = emp.status === 'Absent' || isEmpInactive;
     const fallbackInTime = emp.inTime && emp.inTime !== '—' ? emp.inTime : (isEmpAbsent ? null : '09:15 am');
     const fallbackOutTime = emp.outTime && emp.outTime !== '—' ? emp.outTime : (isEmpAbsent ? null : '06:40 pm');
@@ -3396,10 +3591,27 @@ const DetailedAuditReportView: React.FC<{
       };
     });
 
+    if (isEmpInactive || totalPresentDays === 0) {
+      dayRecords.forEach(dr => {
+        if (dr.status === 'W/O' || dr.status === 'WO') {
+          dr.status = '-';
+          dr.shift = '-';
+        }
+        if (dr.status === 'HOL' || dr.shift === 'HOL') {
+          dr.status = '-';
+          dr.shift = '-';
+        }
+      });
+      totalWeeklyOffs = 0;
+      totalHolidayDays = 0;
+    }
+
     const netWorkHrsNum = (totalNetMinsSum / 60).toFixed(2);
     const totalOtHrsNum = (totalOtMinsSum / 60).toFixed(2);
     const avgHrsPerDayNum = totalPresentDays > 0 ? (totalNetMinsSum / 60 / totalPresentDays).toFixed(2) : '0.00';
-    const payableDaysNum = (totalPresentDays + (isEmpInactive ? 0 : (totalWeeklyOffs + totalHolidayDays))).toFixed(2);
+    const payableDaysNum = (isEmpInactive || totalPresentDays === 0)
+      ? '0.00'
+      : (totalPresentDays + totalWeeklyOffs + totalHolidayDays).toFixed(2);
     const grossHrsNum = (totalGrossMinsSum / 60).toFixed(1);
     const breakHrsNum = (totalBreakMinsSum / 60).toFixed(1);
     const presenceScorePct = daysInMonth > 0 ? Math.round((totalPresentDays / daysInMonth) * 100) : 0;
@@ -4015,20 +4227,21 @@ const DetailedAuditReportView: React.FC<{
     };
   }, [processedEmployees, departmentFilter, selectedDate, data]);
 
-  // Computed site breakdown reacting to site access control
+  // Computed site breakdown reacting to site access control (Restricted Strictly to Biometric Sites)
   const accessibleDepartments = useMemo(() => {
     if (!processedEmployees.length) return [];
     const deptMap = new Map<string, { total: number; present: number }>();
 
     processedEmployees.forEach(e => {
-      let site = e.department || 'General';
-      if (site.toLowerCase().includes('purva') && site.toLowerCase().includes('venezia')) {
-        site = 'Purva Venezia';
+      const rawDept = (empOverrides[e.empCode]?.site ?? e.department ?? '').trim();
+      if (!rawDept || rawDept.toLowerCase() === 'default' || rawDept.toLowerCase() === 'general') return;
+      const norm = normalizeBiometricSiteName(rawDept);
+      if (!norm || !isBiometricSiteName(norm, deviceData?.devices)) return;
+
+      if (!deptMap.has(norm)) {
+        deptMap.set(norm, { total: 0, present: 0 });
       }
-      if (!deptMap.has(site)) {
-        deptMap.set(site, { total: 0, present: 0 });
-      }
-      const item = deptMap.get(site)!;
+      const item = deptMap.get(norm)!;
       item.total += 1;
       if (e.inTime !== null && e.inTime !== '—') {
         item.present += 1;
@@ -4051,32 +4264,79 @@ const DetailedAuditReportView: React.FC<{
         };
       })
       .sort((a, b) => b.total - a.total);
-  }, [processedEmployees, summary]);
+  }, [processedEmployees, summary, empOverrides, deviceData]);
 
-  // Extract department list dynamically
+  // Extract department/site list dynamically — RESTRICTED STRICTLY TO SITES WITH BIOMETRIC DEVICES / PUNCHES ONLY
   const departmentList = useMemo(() => {
-    if (!processedEmployees.length) return [];
-    const set = new Set<string>();
-    processedEmployees.forEach(e => {
-      if (e.department) {
-        const clean = e.department.trim();
-        const lower = clean.toLowerCase();
-        const norm = (lower.includes('purva') && lower.includes('venezia')) ? 'Purva Venezia' : clean;
-        set.add(norm);
+    const virtualDevices = new Set(['manual entry(attendance)', 'manual entry(canteen)', 'mobile', 'head office exit']);
+    const siteSet = new Set<string>();
+
+    // 1. Collect all real physical biometric devices reported from MSSQL Device Table (dbo.Devices)
+    if (deviceData?.devices && Array.isArray(deviceData.devices)) {
+      deviceData.devices.forEach(d => {
+        const rawName = (d.deviceName || '').trim();
+        if (rawName && !virtualDevices.has(rawName.toLowerCase())) {
+          const norm = normalizeBiometricSiteName(rawName);
+          if (norm && norm.toLowerCase() !== 'default') {
+            siteSet.add(norm);
+          }
+        }
+      });
+    }
+
+    // 2. Also register any site where employees have actual recorded biometric punch logs
+    if (processedEmployees.length > 0) {
+      processedEmployees.forEach(e => {
+        const rawDept = (empOverrides[e.empCode]?.site ?? e.department ?? '').trim();
+        if (!rawDept || rawDept.toLowerCase() === 'default' || rawDept.toLowerCase() === 'general') return;
+        
+        const hasBiometricPunches = (e.inTime && e.inTime !== '—') ||
+          (e.outTime && e.outTime !== '—') ||
+          Boolean(e.firstEverPunchDate) ||
+          (e.daysSinceLastPunch !== undefined && e.daysSinceLastPunch <= 30);
+
+        if (hasBiometricPunches) {
+          const norm = normalizeBiometricSiteName(rawDept);
+          if (norm && norm.toLowerCase() !== 'default') {
+            siteSet.add(norm);
+          }
+        }
+      });
+    }
+
+    // 3. Fallback: seed with known physical biometric sites if device query hasn't returned yet
+    if (siteSet.size === 0) {
+      KNOWN_BIOMETRIC_SITES.forEach(s => siteSet.add(s));
+    }
+
+    // 4. Scoping for user permissions (e.g. Operations Manager or Restricted User)
+    const allowed = Array.from(siteSet).filter(siteName => {
+      if (allowedSitesSet !== null) {
+        let isAllowed = false;
+        for (const allowedSite of allowedSitesSet) {
+          if (matchSiteName(siteName, allowedSite)) {
+            isAllowed = true;
+            break;
+          }
+        }
+        if (!isAllowed) return false;
       }
+      return true;
     });
-    return Array.from(set).sort();
-  }, [processedEmployees]);
+
+    return allowed.sort((a, b) => a.localeCompare(b));
+  }, [deviceData, processedEmployees, empOverrides, allowedSitesSet]);
 
   // Computed department-wise attendance stats (Option A matrix) reacting to site filter, overrides, and Excel deployment records
   const departmentStats = useMemo(() => {
     if (!processedEmployees.length) return null;
-    const targetEmps = departmentFilter === 'all'
+    const activeSite = departmentFilter !== 'all' ? departmentFilter : (siteFilter !== 'all' ? siteFilter : pendingSite);
+    const targetEmps = activeSite === 'all'
       ? processedEmployees
       : processedEmployees.filter(e => {
           const override = empOverrides[e.empCode];
           const site = override?.site ?? e.department;
-          return site === departmentFilter || site.toLowerCase().trim() === departmentFilter.toLowerCase().trim();
+          return site === activeSite || site?.toLowerCase().trim() === activeSite.toLowerCase().trim() || matchSiteName(site, activeSite);
         });
 
     const empsWithOverrides = targetEmps.map(e => {
@@ -4090,14 +4350,14 @@ const DetailedAuditReportView: React.FC<{
       };
     });
 
-    const siteDeployment = departmentFilter === 'all'
+    const siteDeployment = activeSite === 'all'
       ? (selectedOpsManager !== 'all' ? calculateDynamicDeployment(departmentList) : ALL_SITES_DEPLOYMENT)
-      : getSiteDeployment(departmentFilter);
+      : getSiteDeployment(activeSite);
 
-    const designationDeployments = getSiteDesignationBreakdown(departmentFilter);
+    const designationDeployments = getSiteDesignationBreakdown(activeSite);
 
     return calculateDepartmentStats(empsWithOverrides, siteDeployment?.departments, designationDeployments);
-  }, [processedEmployees, departmentFilter, empOverrides, selectedOpsManager, departmentList, roleMappingVersion]);
+  }, [processedEmployees, departmentFilter, siteFilter, pendingSite, empOverrides, selectedOpsManager, departmentList, roleMappingVersion]);
 
   // Reset page when filters/search/date/department-card change
   useEffect(() => {
@@ -4124,31 +4384,76 @@ const DetailedAuditReportView: React.FC<{
     });
   }, [data, allowedSitesSet, processedEmployees]);
 
-  // ── Dynamic Options derived directly from MS SQL DB records ─────────────
+  // ── Cascading Filter Scope: Employees scoped to active/pending Site ──────
+  const siteScopedEmployees = useMemo(() => {
+    if (!processedEmployees.length) return [];
+    const targetSite = pendingSite !== 'all' ? pendingSite : (siteFilter !== 'all' ? siteFilter : departmentFilter);
+    if (!targetSite || targetSite === 'all') return processedEmployees;
+
+    return processedEmployees.filter(e => {
+      const effectiveSite = empOverrides[e.empCode]?.site ?? e.department ?? '';
+      return (
+        effectiveSite === targetSite ||
+        effectiveSite.toLowerCase().trim() === targetSite.toLowerCase().trim() ||
+        matchSiteName(effectiveSite, targetSite)
+      );
+    });
+  }, [processedEmployees, pendingSite, siteFilter, departmentFilter, empOverrides]);
+
+  // ── Dynamic Options derived directly from MS SQL DB records (Site-Scoped) ───
   const locationList = useMemo(() => {
     const set = new Set<string>();
-    processedEmployees.forEach(e => {
+    siteScopedEmployees.forEach(e => {
       if (e.location && e.location !== '—') set.add(e.location);
     });
     return set.size > 0 ? Array.from(set).sort() : ['Bangalore', 'Hyderabad'];
-  }, [processedEmployees]);
+  }, [siteScopedEmployees]);
 
   const companyList = useMemo(() => {
     const set = new Set<string>();
-    processedEmployees.forEach(e => {
-      if (e.company && e.company !== '—') set.add(e.company);
+    siteScopedEmployees.forEach(e => {
+      const comp = empOverrides[e.empCode]?.company || e.company;
+      if (comp && comp !== '—') set.add(comp);
       else set.add('Paradigm Services');
     });
     return Array.from(set).sort();
-  }, [processedEmployees]);
+  }, [siteScopedEmployees, empOverrides]);
 
   const roleList = useMemo(() => {
     const set = new Set<string>();
-    processedEmployees.forEach(e => {
-      if (e.designation && e.designation !== '—') set.add(e.designation);
+    const targetCompany = pendingCompany !== 'all' ? pendingCompany : companyFilter;
+    const targetLocation = pendingLocation !== 'all' ? pendingLocation : locationFilter;
+
+    siteScopedEmployees.forEach(e => {
+      const effectiveCompany = empOverrides[e.empCode]?.company ?? e.company ?? 'Paradigm Services';
+      const effectiveLocation = e.location ?? 'Bangalore';
+
+      const matchCompany = targetCompany === 'all' ||
+        effectiveCompany.toLowerCase().trim() === targetCompany.toLowerCase().trim() ||
+        effectiveCompany.toLowerCase().includes(targetCompany.toLowerCase().trim()) ||
+        targetCompany.toLowerCase().includes(effectiveCompany.toLowerCase().trim());
+
+      const matchLocation = targetLocation === 'all' ||
+        effectiveLocation.toLowerCase().trim() === targetLocation.toLowerCase().trim() ||
+        effectiveLocation.toLowerCase().includes(targetLocation.toLowerCase().trim());
+
+      if (matchCompany && matchLocation) {
+        const desig = empOverrides[e.empCode]?.designation || e.designation;
+        if (desig && desig !== '—') set.add(desig);
+      }
     });
     return set.size > 0 ? Array.from(set).sort() : ['Staff', 'Security', 'MEP', 'Housekeeping'];
-  }, [processedEmployees]);
+  }, [siteScopedEmployees, pendingCompany, companyFilter, pendingLocation, locationFilter, empOverrides]);
+
+  // Full role list across all employees (used for inline edit suggestions)
+  const allRolesList = useMemo(() => {
+    const set = new Set<string>();
+    processedEmployees.forEach(e => {
+      const desig = empOverrides[e.empCode]?.designation || e.designation;
+      if (desig && desig !== '—') set.add(desig);
+    });
+    return set.size > 0 ? Array.from(set).sort() : ['Staff', 'Security', 'MEP', 'Housekeeping'];
+  }, [processedEmployees, empOverrides]);
 
   // Pre-compute fast O(1) lookup Sets for active column filters
   const activeFilterSets = useMemo(() => {
@@ -4186,35 +4491,71 @@ const DetailedAuditReportView: React.FC<{
     return map;
   }, [processedEmployees, empOverrides]);
 
-  // ── Deduplicated Selectable Employees for the Filters Dropdown ─────────
+  // ── Deduplicated Selectable Employees for the Filters Dropdown (Site-Scoped) ───
   const selectableEmployees = useMemo(() => {
-    if (!processedEmployees.length) return [];
-    const targetSite = pendingSite !== 'all' ? pendingSite : siteFilter !== 'all' ? siteFilter : departmentFilter;
+    if (!siteScopedEmployees.length) return [];
     const targetRole = pendingRole !== 'all' ? pendingRole : roleFilter;
+    const targetCompany = pendingCompany !== 'all' ? pendingCompany : companyFilter;
+    const targetLocation = pendingLocation !== 'all' ? pendingLocation : locationFilter;
+
     const seen = new Set<string>();
     const list: EmployeeRow[] = [];
-    processedEmployees.forEach(e => {
+    siteScopedEmployees.forEach(e => {
       const code = String(e.empCode || '').trim();
       if (!code || seen.has(code)) return;
 
       const effectiveDesignation = empOverrides[e.empCode]?.designation ?? e.designation;
-      const effectiveSite = empOverrides[e.empCode]?.site ?? e.department;
-
-      const matchSite = targetSite === 'all' ||
-        effectiveSite === targetSite ||
-        effectiveSite.toLowerCase().trim() === targetSite.toLowerCase().trim() ||
-        matchSiteName(effectiveSite, targetSite);
+      const effectiveCompany = empOverrides[e.empCode]?.company ?? e.company ?? 'Paradigm Services';
+      const effectiveLocation = e.location ?? 'Bangalore';
 
       const matchRole = targetRole === 'all' ||
         (effectiveDesignation || '').toLowerCase().trim() === targetRole.toLowerCase().trim();
 
-      if (matchSite && matchRole) {
+      const matchCompany = targetCompany === 'all' ||
+        effectiveCompany.toLowerCase().trim() === targetCompany.toLowerCase().trim() ||
+        effectiveCompany.toLowerCase().includes(targetCompany.toLowerCase().trim()) ||
+        targetCompany.toLowerCase().includes(effectiveCompany.toLowerCase().trim());
+
+      const matchLocation = targetLocation === 'all' ||
+        effectiveLocation.toLowerCase().trim() === targetLocation.toLowerCase().trim() ||
+        effectiveLocation.toLowerCase().includes(targetLocation.toLowerCase().trim());
+
+      if (matchRole && matchCompany && matchLocation) {
         seen.add(code);
         list.push(e);
       }
     });
     return list.sort((a, b) => (a.empName || '').localeCompare(b.empName || ''));
-  }, [processedEmployees, pendingSite, siteFilter, departmentFilter, pendingRole, roleFilter, empOverrides]);
+  }, [siteScopedEmployees, pendingRole, roleFilter, pendingCompany, companyFilter, pendingLocation, locationFilter, empOverrides]);
+
+  // Synchronize dependent dropdown filter selections when available options change
+  useEffect(() => {
+    if (pendingLocation !== 'all' && !locationList.includes(pendingLocation)) {
+      setPendingLocation('all');
+      setLocationFilter('all');
+    }
+  }, [locationList, pendingLocation]);
+
+  useEffect(() => {
+    if (pendingCompany !== 'all' && !companyList.includes(pendingCompany)) {
+      setPendingCompany('all');
+      setCompanyFilter('all');
+    }
+  }, [companyList, pendingCompany]);
+
+  useEffect(() => {
+    if (pendingRole !== 'all' && !roleList.includes(pendingRole)) {
+      setPendingRole('all');
+      setRoleFilter('all');
+    }
+  }, [roleList, pendingRole]);
+
+  useEffect(() => {
+    if (pendingEmployee !== 'all' && !selectableEmployees.some(e => e.empCode === pendingEmployee)) {
+      setPendingEmployee('all');
+      setEmployeeFilter('all');
+    }
+  }, [selectableEmployees, pendingEmployee]);
 
   // ── Filtered Employees & Re-calculated Summary per Department Filter ───
   const filteredEmployees = useMemo(() => {
@@ -4235,19 +4576,24 @@ const DetailedAuditReportView: React.FC<{
         // For Reports tab: status & recordType are evaluated comprehensively across date range in filteredReportList
         const matchStatus = activeTab === 'reports' || isSearching || statusFilter === 'all'
           ? true
-          : statusFilter === 'Present'
-            ? e.status === 'Present' || e.status === 'Late' || e.status === 'Half Day'
-                || e.status === 'Missed Punch OUT' || e.status === 'Missed Punch IN'
-                || Boolean(e.shiftCompleted)
-            : statusFilter === 'OnDuty'
-              ? (e.status === 'Present' || e.status === 'Late') && (!e.outTime || e.outTime === '—') && !e.shiftCompleted
-              : statusFilter === 'Completed'
-                ? Boolean(e.shiftCompleted || (e.outTime && e.outTime !== '—'))
-                : statusFilter === 'Late'
-                  ? e.lateMinutes > 0 || e.status === 'Late'
-                  : statusFilter === 'Absent'
-                    ? e.isActiveEmployee !== false && (e.status === 'Absent' || e.status === 'Shift Pending' || e.status === 'Expected Night Shift')
-                    : e.status === statusFilter;
+          : statusFilter === 'Inactive'
+            ? isEmployeeInactive(e) || e.isActiveEmployee === false
+            : statusFilter === 'Present'
+              ? e.status === 'Present' || e.status === 'Late' || e.status === 'Half Day'
+                  || e.status === 'Missed Punch OUT' || e.status === 'Missed Punch IN'
+                  || Boolean(e.shiftCompleted)
+              : statusFilter === 'EarlyGoing'
+                // Early Going: has punched out BUT shift not yet completed (left before shift end)
+                ? (e.outTime && e.outTime !== '—' && !e.shiftCompleted && e.status !== 'Absent')
+                : statusFilter === 'OnDuty'
+                  ? (e.status === 'Present' || e.status === 'Late') && (!e.outTime || e.outTime === '—') && !e.shiftCompleted
+                  : statusFilter === 'Completed'
+                    ? Boolean(e.shiftCompleted || (e.outTime && e.outTime !== '—'))
+                    : statusFilter === 'Late'
+                      ? e.lateMinutes > 0 || e.status === 'Late'
+                      : statusFilter === 'Absent'
+                        ? e.isActiveEmployee !== false && (e.status === 'Absent' || e.status === 'Shift Pending' || e.status === 'Expected Night Shift')
+                        : e.status === statusFilter;
 
         // Site match: respect both top-bar site filter and advanced toolbar site filter with fuzzy normalization
         const targetSite = siteFilter !== 'all' ? siteFilter : departmentFilter;
@@ -4321,8 +4667,8 @@ const DetailedAuditReportView: React.FC<{
           }
         }
 
-        // Department card match (applied on live attendance tab, bypassed on reports tab)
-        const matchDeptCard = (activeTab === 'reports' || selectedDeptCard === 'all')
+        // Department card match (applied across both live attendance and reports views)
+        const matchDeptCard = selectedDeptCard === 'all'
           ? true
           : getEmployeeDepartment({ designation: effectiveDesignation, empCode: e.empCode, department: effectiveSite, departmentOverride: effectiveDeptOverride }) === selectedDeptCard;
 
@@ -4549,13 +4895,7 @@ const DetailedAuditReportView: React.FC<{
       // Look up Supabase punch events by empCode or empName
       const empEvents = rangeEventsMap[empCodeKey] || rangeEventsMap[empNameKey] || {};
 
-      const isEmpInactive = emp.status === 'Discontinued / Left' || 
-                            emp.status === 'Discontinued' ||
-                            emp.status === 'Not Joined Yet' || 
-                            emp.lifecycleStatus === 'Discontinued' || 
-                            emp.lifecycleStatus === 'Left' ||
-                            emp.isActiveEmployee === false || 
-                            emp.isActiveEmployee === 'false';
+      const isEmpInactive = isEmployeeInactive(emp);
       const empShift = emp.shiftCode || emp.shiftName || 'GEN';
       const shiftExpectedHours = empShift.includes('12') ? 12 : 8;
 
@@ -4879,13 +5219,33 @@ const DetailedAuditReportView: React.FC<{
         };
       });
 
+      // If employee is inactive OR has ZERO presence in the period, DO NOT assign Weekly Off (WO) or Holiday (H)
+      if (isEmpInactive || totalPresentDays === 0) {
+        dailyPunches.forEach(dp => {
+          if (dp.isWeeklyOff || dp.status === 'WO' || dp.status === 'W/O') {
+            dp.isWeeklyOff = false;
+            dp.status = '–';
+            dp.shift = empShift;
+          }
+          if (dp.isHoliday || dp.status === 'H') {
+            dp.isHoliday = false;
+            dp.status = '–';
+            dp.shift = empShift;
+          }
+        });
+        totalWeeklyOffs = 0;
+        totalHolidayDays = 0;
+      }
+
       const workingDays = Math.max(1, totalDaysCount - totalWeeklyOffs - totalHolidayDays);
       const futurePendingDays = dailyPunches.filter(dp => dp.status === 'Pending').length;
       // Exclude unsynced days ('–') from effective working days so absent rate isn't inflated
       const unsyncedDays = dailyPunches.filter(dp => dp.status === '–').length;
       const effectiveWorkingDays = Math.max(1, workingDays - futurePendingDays - unsyncedDays);
       const attendanceRate = Math.min(100, Math.round((totalPresentDays / effectiveWorkingDays) * 100));
-      const payableDays = (totalPresentDays + (isEmpInactive ? 0 : (totalWeeklyOffs + totalHolidayDays))).toFixed(1);
+      const payableDays = (isEmpInactive || totalPresentDays === 0) 
+        ? '0.0' 
+        : (totalPresentDays + totalWeeklyOffs + totalHolidayDays).toFixed(1);
       const overallStatus = attendanceRate >= 80 ? 'Present' : (attendanceRate > 0 ? 'Partial' : 'Absent');
 
       return {
@@ -4894,6 +5254,10 @@ const DetailedAuditReportView: React.FC<{
         empName: emp.empName,
         department: emp.department,
         designation: emp.designation || 'Staff',
+        status: emp.status,
+        lifecycleStatus: emp.lifecycleStatus,
+        isActiveEmployee: emp.isActiveEmployee,
+        isActive: (emp as any).isActive,
         shiftCode: emp.shiftCode || 'GEN',
         shiftName: emp.shiftName || 'General Shift',
         totalDays: totalDaysCount,
@@ -4923,17 +5287,27 @@ const DetailedAuditReportView: React.FC<{
       // 1. Status Filter
       const matchStatus = statusFilter === 'all'
         ? true
-        : statusFilter === 'Present'
-          ? e.presentDays > 0 || e.overallStatus === 'Present'
-          : statusFilter === 'Absent'
-            ? e.presentDays === 0 || e.absentDays > 0
-            : statusFilter === 'Late'
-              ? e.lateDays > 0
-              : statusFilter === 'Completed'
-                ? e.presentDays > 0 && e.dailyPunches.some(dp => dp.outTime && dp.outTime !== '—')
-                : statusFilter === 'OnDuty'
-                  ? e.dailyPunches.some(dp => dp.inTime && dp.inTime !== '—' && (!dp.outTime || dp.outTime === '—'))
-                  : true;
+        : statusFilter === 'Inactive'
+          // Inactive: employee flagged as inactive OR has zero present days (0 duty)
+          ? (e.isActiveEmployee === false || isEmployeeInactive(e) || e.presentDays === 0)
+          : statusFilter === 'EarlyGoing'
+            // Early Going: at least one day they punched out but netMins < expected shift hours
+            ? e.dailyPunches.some(dp =>
+                dp.outTime && dp.outTime !== '—' &&
+                dp.inTime && dp.inTime !== '—' &&
+                dp.netMins > 0 && dp.netMins < (7 * 60) // left before 7h threshold
+              )
+            : statusFilter === 'Present'
+              ? e.presentDays > 0 || e.overallStatus === 'Present'
+              : statusFilter === 'Absent'
+                ? e.presentDays === 0 || e.absentDays > 0
+                : statusFilter === 'Late'
+                  ? e.lateDays > 0
+                  : statusFilter === 'Completed'
+                    ? e.presentDays > 0 && e.dailyPunches.some(dp => dp.outTime && dp.outTime !== '—')
+                    : statusFilter === 'OnDuty'
+                      ? e.dailyPunches.some(dp => dp.inTime && dp.inTime !== '—' && (!dp.outTime || dp.outTime === '—'))
+                      : true;
 
       // 2. Record Type Filter
       const matchRecordType = recordTypeFilter === 'all'
@@ -5483,7 +5857,8 @@ const DetailedAuditReportView: React.FC<{
       const mssqlRecMap = isMehant ? mehantRecordMap : isVedamurthy ? vedaRecordMap : {};
       const hasMssqlPreset = isMehant || isVedamurthy;
 
-      const isEmpAbsent = emp.status === 'Absent' || (!emp.inTime && !hasMssqlPreset && Object.keys(mssqlEmpDays).length === 0);
+      const isEmpInactive = isEmployeeInactive(emp);
+      const isEmpAbsent = emp.status === 'Absent' || isEmpInactive || (!emp.inTime && !hasMssqlPreset && Object.keys(mssqlEmpDays).length === 0);
       const fallbackInTime = emp.inTime && emp.inTime !== '—' ? emp.inTime : null;
       const fallbackOutTime = emp.outTime && emp.outTime !== '—' ? emp.outTime : null;
       const empShift = emp.shiftCode || 'GS';
@@ -5618,7 +5993,7 @@ const DetailedAuditReportView: React.FC<{
         }
 
         const rec = mssqlRecMap[dayNum];
-        const isWO = rec?.isWO || (!hasMssqlPreset && dayNum % 7 === 0);
+        const isWO = !isEmpInactive && (rec?.isWO || (!hasMssqlPreset && dayNum % 7 === 0));
 
         if (isWO) {
           weeklyOffs++;
@@ -5700,6 +6075,16 @@ const DetailedAuditReportView: React.FC<{
         };
       });
 
+      if (isEmpInactive || presentDays === 0) {
+        dailyData.forEach(d => {
+          if (d.status === 'W/O' || d.status === 'WO') {
+            d.status = '-';
+            d.shift = '-';
+          }
+        });
+        weeklyOffs = 0;
+      }
+
       const netWorkHrsVal = hasMssqlPreset && startDayNum === 1 && endDayNum === 31 
         ? (isVedamurthy ? '211:03' : '243:29') 
         : (netMinsSum / 60).toFixed(2);
@@ -5725,10 +6110,10 @@ const DetailedAuditReportView: React.FC<{
         avgHrsPerDay: avgHrsPerDayVal,
         grossHrs: (grossMinsSum / 60).toFixed(1),
         breakHrs: (breakMinsSum / 60).toFixed(1),
-        paidDays: String(presentDays),
+        paidDays: (isEmpInactive || presentDays === 0) ? '0' : String(presentDays),
         absentDays: String(absentDays),
-        weeklyOffs: String(weeklyOffs),
-        payableDays: String(presentDays + weeklyOffs),
+        weeklyOffs: (isEmpInactive || presentDays === 0) ? '0' : String(weeklyOffs),
+        payableDays: (isEmpInactive || presentDays === 0) ? '0' : String(presentDays + weeklyOffs),
         presenceScorePct: daysInMonth > 0 ? Math.round((presentDays / daysInMonth) * 100) : 0,
         shiftGsCount: gsCount,
         shiftNsCount: nsCount,
@@ -6528,6 +6913,179 @@ const DetailedAuditReportView: React.FC<{
     }
   };
 
+  // ── Department-wise Workforce & Attendance Breakdown Component ─────────────
+  const renderDepartmentBreakdown = (embedded = false) => (
+    <div className={embedded 
+      ? "px-4 py-2.5 sm:px-5 sm:py-3 space-y-2 border-t border-slate-100 dark:border-[#134426]" 
+      : "bg-white dark:bg-[#072415] rounded-2xl border border-slate-200/80 dark:border-[#134426] px-4 py-2.5 sm:px-5 sm:py-3 shadow-xs space-y-2"
+    }>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100 dark:border-[#134426]">
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded-lg bg-emerald-100 dark:bg-[#0d3820] flex items-center justify-center text-emerald-700 dark:text-[#44D62C] font-bold text-xs shrink-0 border border-emerald-200 dark:border-[#1a5532]">
+            <Building2 size={13} />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="font-extrabold text-slate-900 dark:text-white text-xs uppercase tracking-wider">
+                Department-wise Attendance Breakdown
+              </h2>
+              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-[#44D62C] border border-emerald-200 dark:border-emerald-800">
+                Present Day vs Deployment
+              </span>
+            </div>
+            <p className="text-[10px] text-slate-500 dark:text-emerald-300/70">
+              Present Day Count against Deployed Staff Strength. Click any department card below to filter the employee list.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+          <button
+            type="button"
+            onClick={() => setIsRoleMappingModalOpen(true)}
+            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[11px] font-bold bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-950/60 dark:text-blue-300 dark:hover:bg-blue-900 border border-blue-200 dark:border-blue-800 transition-all cursor-pointer shadow-xs active:scale-95"
+            title="Assign or reassign any job role to a department without editing code"
+          >
+            <Sliders size={12} className="text-blue-600 dark:text-blue-400" />
+            <span>Assign Roles</span>
+          </button>
+
+          {selectedDeptCard !== 'all' && (
+            <button
+              type="button"
+              onClick={() => setSelectedDeptCard('all')}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-[#0d3820] dark:text-emerald-200 dark:hover:bg-[#1a5532] border border-slate-200 dark:border-[#1a5532] transition-all cursor-pointer shadow-xs active:scale-95"
+            >
+              <X size={12} className="text-slate-500 dark:text-emerald-400" />
+              <span>Reset ({DEPARTMENT_METAS[selectedDeptCard]?.shortLabel})</span>
+            </button>
+          )}
+          <span className="text-[10px] font-semibold text-slate-400 dark:text-emerald-400/60 hidden sm:inline">
+            6 Core Departments
+          </span>
+        </div>
+      </div>
+
+      {/* 6 Department Cards (Compact 50% footprint) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+        {(['mep', 'housekeeping', 'garden', 'security', 'administration', 'other'] as DepartmentKey[]).map(k => {
+          const stat = departmentStats ? departmentStats[k] : null;
+          const meta = DEPARTMENT_METAS[k];
+          const isSelected = selectedDeptCard === k;
+          const presentCount = stat ? stat.present : 0;
+          const deploymentCount = stat ? (stat.deployment || stat.totalActive) : 0;
+          const enrolledCount = stat ? stat.enrolled : 0;
+          const enrollmentRate = stat ? stat.enrollmentRate : 0;
+          const absentCount = stat ? stat.absent : 0;
+          const rate = stat ? stat.attendanceRate : 0;
+          const lateCount = stat ? stat.late : 0;
+
+          return (
+            <div
+              key={k}
+              onClick={() => {
+                setSelectedDeptCard(prev => (prev === k ? 'all' : k));
+                if (tableRef.current) {
+                  tableRef.current.scrollIntoView({ behavior: 'smooth' });
+                }
+              }}
+              className={`text-left p-2 sm:p-2.5 rounded-xl border transition-all cursor-pointer relative overflow-hidden group flex flex-col justify-between ${
+                isSelected
+                  ? 'border-[#006B3F] dark:border-[#44D62C] ring-2 ring-[#006B3F]/25 dark:ring-[#44D62C]/30 shadow-md bg-emerald-50/50 dark:bg-[#0c3821]'
+                  : 'border-slate-200/80 dark:border-[#134426] bg-slate-50/70 dark:bg-[#051c11]/70 hover:bg-slate-100/90 dark:hover:bg-[#0d3820] hover:border-slate-300 dark:hover:border-[#1a5532]'
+              }`}
+              title={`Click to filter table or view breakdown for ${meta.label}`}
+            >
+              <div>
+                {/* Header: Icon + Name + Attendance Rate */}
+                <div className="flex items-center justify-between gap-1 mb-1">
+                  <div className="flex items-center gap-1 min-w-0">
+                    <span className="text-sm shrink-0">{meta.icon}</span>
+                    <span className="text-xs font-bold text-slate-800 dark:text-emerald-100 truncate">
+                      {meta.shortLabel}
+                    </span>
+                  </div>
+                  <span className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded-md ${meta.badgeBg} ${meta.badgeText} shrink-0`}>
+                    {rate}%
+                  </span>
+                </div>
+
+                {/* Present / Deployed Counter */}
+                <div className="flex items-baseline justify-between gap-1">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-base sm:text-lg font-black text-slate-900 dark:text-white leading-none">
+                      {presentCount}
+                    </span>
+                    <span className="text-[11px] font-bold text-slate-400 dark:text-emerald-300/60">
+                      / {deploymentCount}
+                    </span>
+                  </div>
+                  <span className="text-[8px] font-extrabold text-slate-400 dark:text-emerald-400/70 uppercase">
+                    Present / Deployed
+                  </span>
+                </div>
+
+                {/* Biometric Enrolled Ratio & Percentage */}
+                <div className="mt-1 flex items-center justify-between text-[9px] font-semibold bg-blue-50/90 dark:bg-blue-950/40 px-1.5 py-0.5 rounded border border-blue-200/70 dark:border-blue-800/60">
+                  <span className="flex items-center gap-0.5 text-blue-700 dark:text-blue-300 font-bold">
+                    <Fingerprint size={10} className="text-blue-600 dark:text-blue-400 shrink-0" />
+                    <span>Enrolled:</span>
+                  </span>
+                  <span className="font-mono text-blue-950 dark:text-blue-100 font-bold">
+                    {enrolledCount}/{deploymentCount}
+                    <span className="ml-1 text-[8px] px-1 py-0.2 rounded bg-blue-200/80 dark:bg-blue-900 text-blue-800 dark:text-blue-200 font-extrabold">
+                      {enrollmentRate}%
+                    </span>
+                  </span>
+                </div>
+
+                {/* Slim Progress bar */}
+                <div className="w-full bg-slate-200/80 dark:bg-slate-800/80 h-1 rounded-full overflow-hidden mt-1.5">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      rate >= 80
+                        ? 'bg-emerald-500'
+                        : rate >= 50
+                        ? 'bg-amber-500'
+                        : 'bg-red-500'
+                    }`}
+                    style={{ width: `${Math.min(100, Math.max(presentCount > 0 ? 5 : 0, rate))}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Card Footer: Absent & Late + Plan & Users button */}
+              <div className="flex items-center justify-between text-[9px] font-semibold text-slate-500 dark:text-emerald-300/60 mt-1.5 pt-1 border-t border-slate-200/60 dark:border-[#134426]/70 gap-1">
+                <div className="flex items-center gap-1 truncate">
+                  <span className="text-red-500 dark:text-red-400 font-medium">
+                    {absentCount} Absent
+                  </span>
+                  {lateCount > 0 && (
+                    <span className="text-amber-600 dark:text-amber-400 font-bold">
+                      {lateCount} Late
+                    </span>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setBreakdownModalDept(k);
+                  }}
+                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-extrabold bg-blue-600 hover:bg-blue-500 text-white shadow-xs transition-transform active:scale-95 cursor-pointer shrink-0"
+                  title="View Designation-wise Breakup Plan & Enrolled Users"
+                >
+                  <span>Plan & Users ▾</span>
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className={`min-h-screen bg-slate-50/60 dark:bg-[#041b0f] space-y-4 sm:space-y-6 p-3 sm:p-6 lg:p-8 pb-24 sm:pb-8 relative ${isScreenProtected && showScreenshotModal ? 'select-none filter blur-xs transition-all' : ''}`}>
@@ -6565,18 +7123,18 @@ const DetailedAuditReportView: React.FC<{
       {/* ── Page Header (Standard Web App Dashboard Style) ────────────────── */}
       {/* ── Page Header & Integrated Controls Card (Single Unified Container) ── */}
       <div className="bg-white dark:bg-[#072415] border-l-4 border-l-[#006B3F] dark:border-l-[#44D62C] border-y border-r border-slate-200/80 dark:border-[#134426] rounded-2xl shadow-xs overflow-visible">
-        <div className="p-4 sm:p-5">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="px-4 py-2.5 sm:px-5 sm:py-3">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
             <div>
-              <h1 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-white uppercase">
+              <h1 className="text-base sm:text-lg font-extrabold tracking-tight text-slate-900 dark:text-white uppercase">
                 Site Attendance Dashboard
               </h1>
-              <p className="text-xs text-slate-500 dark:text-emerald-300/70 font-medium mt-0.5">
+              <p className="text-[11px] text-slate-500 dark:text-emerald-300/70 font-medium">
                 Real-time site attendance overview & employee tracking
               </p>
               {selectedOpsManager !== 'all' && (
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[11px] font-bold mt-2">
-                  <ShieldCheck size={13} className="text-emerald-600 shrink-0" />
+                <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[10px] font-bold mt-1">
+                  <ShieldCheck size={12} className="text-emerald-600 shrink-0" />
                   <span>
                     Scoped to Operations Manager: <strong>{selectedOpsManager}</strong> ({allowedSitesForOpsManager?.length || 0} mapped sites in Responsibility Matrix)
                   </span>
@@ -6584,12 +7142,12 @@ const DetailedAuditReportView: React.FC<{
               )}
             </div>
 
-            <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2.5 sm:gap-3 w-full lg:w-auto">
+            <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2 sm:gap-2.5 w-full lg:w-auto">
               {/* Filters Row: Ops Manager, Department, Date */}
               <div className="grid grid-cols-1 sm:grid-cols-3 lg:flex items-center gap-2 sm:gap-2.5 w-full sm:w-auto">
                 {/* Operations Manager Filter */}
-                <div className="flex items-center gap-2 bg-slate-100 dark:bg-[#0d3820] border border-slate-200 dark:border-[#1a5532] rounded-xl px-3 py-2 min-h-[38px]">
-                  <ShieldCheck size={16} className="text-emerald-600 dark:text-[#44D62C] shrink-0" />
+                <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-[#0d3820] border border-slate-200 dark:border-[#1a5532] rounded-lg px-2.5 py-1.5 min-h-[32px]">
+                  <ShieldCheck size={14} className="text-emerald-600 dark:text-[#44D62C] shrink-0" />
                   <select
                     value={selectedOpsManager}
                     onChange={e => {
@@ -6611,8 +7169,8 @@ const DetailedAuditReportView: React.FC<{
 
                 {/* Department / Site Filter (Rendered on live attendance; reports tab uses its dedicated Advanced Filter) */}
                 {activeTab !== 'reports' && (
-                  <div className="flex items-center gap-2 bg-slate-100 dark:bg-[#0d3820] border border-slate-200 dark:border-[#1a5532] rounded-xl px-3 py-2 min-h-[38px]">
-                    <Building2 size={16} className="text-emerald-600 dark:text-[#44D62C] shrink-0" />
+                  <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-[#0d3820] border border-slate-200 dark:border-[#1a5532] rounded-lg px-2.5 py-1.5 min-h-[32px]">
+                    <Building2 size={14} className="text-emerald-600 dark:text-[#44D62C] shrink-0" />
                     <select
                       value={departmentFilter}
                       onChange={e => {
@@ -6620,6 +7178,8 @@ const DetailedAuditReportView: React.FC<{
                         setDepartmentFilter(val);
                         setPendingSite(val);
                         setSiteFilter(val);
+                        setPendingEmployee('all');
+                        setEmployeeFilter('all');
                       }}
                       className="bg-transparent text-slate-800 dark:text-emerald-100 text-xs font-semibold outline-none cursor-pointer w-full"
                     >
@@ -6637,8 +7197,8 @@ const DetailedAuditReportView: React.FC<{
 
                 {/* Date Picker (Rendered on live attendance; reports tab uses dedicated date range presets bar) */}
                 {activeTab !== 'reports' && (
-                  <div className="flex items-center gap-2 bg-slate-100 dark:bg-[#0d3820] border border-slate-200 dark:border-[#1a5532] rounded-xl px-3 py-2 min-h-[38px]">
-                    <Calendar size={16} className="text-emerald-600 dark:text-[#44D62C] shrink-0" />
+                  <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-[#0d3820] border border-slate-200 dark:border-[#1a5532] rounded-lg px-2.5 py-1.5 min-h-[32px]">
+                    <Calendar size={14} className="text-emerald-600 dark:text-[#44D62C] shrink-0" />
                     <input
                       type="date"
                       value={selectedDate}
@@ -6651,96 +7211,96 @@ const DetailedAuditReportView: React.FC<{
               </div>
 
               {/* Actions Row: Debug, Tabs, Refresh */}
-              <div className="flex items-center justify-between sm:justify-start gap-2 flex-wrap sm:flex-nowrap w-full sm:w-auto">
+              <div className="flex items-center justify-between sm:justify-start gap-1.5 flex-wrap sm:flex-nowrap w-full sm:w-auto">
                 {/* Admin Debug Toggle button */}
                 <button
                   onClick={() => setShowDebug(v => !v)}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all border cursor-pointer min-h-[38px] ${
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all border cursor-pointer min-h-[32px] ${
                     showDebug 
                       ? 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800' 
                       : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-200 dark:border-[#134426] dark:hover:bg-[#0d3820]'
                   }`}
                   title="Toggle Admin Technical Debugging"
                 >
-                  <Bug size={14} />
+                  <Bug size={13} />
                   <span className="hidden xs:inline">{showDebug ? 'Debug: ON' : 'Debug: OFF'}</span>
                   <span className="xs:hidden">{showDebug ? 'ON' : 'OFF'}</span>
                 </button>
 
                 {/* Sub-page Navigation Tabs - Icon Only (Controlled by User Permission Rules) */}
-                <div className="flex items-center gap-1.5 px-1.5 py-0.5 overflow-x-auto no-scrollbar border-l border-r sm:border-r-0 border-slate-200 dark:border-[#134426] shrink-0">
+                <div className="flex items-center gap-1 px-1 py-0.5 overflow-x-auto no-scrollbar border-l border-r sm:border-r-0 border-slate-200 dark:border-[#134426] shrink-0">
                   {isTabAllowed('attendance') && (
                     <button
                       onClick={() => setActiveTab('attendance')}
-                      className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all border cursor-pointer shrink-0 ${
+                      className={`w-7 h-7 flex items-center justify-center rounded-lg transition-all border cursor-pointer shrink-0 ${
                         activeTab === 'attendance'
                           ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
                           : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-200 dark:border-[#134426] dark:hover:bg-[#0d3820] dark:hover:text-white'
                       }`}
                       title="Live Attendance Dashboard"
                     >
-                      <BarChart3 size={16} className="shrink-0" />
+                      <BarChart3 size={14} className="shrink-0" />
                     </button>
                   )}
 
                   {isTabAllowed('reports') && (
                     <button
                       onClick={() => setActiveTab('reports')}
-                      className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all border cursor-pointer relative shrink-0 ${
+                      className={`w-7 h-7 flex items-center justify-center rounded-lg transition-all border cursor-pointer relative shrink-0 ${
                         activeTab === 'reports'
                           ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
                           : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-200 dark:border-[#134426] dark:hover:bg-[#0d3820] dark:hover:text-white'
                       }`}
                       title="Attendance Reports & Multi-Format Export Center"
                     >
-                      <FileSpreadsheet size={16} className="shrink-0" />
-                      <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-emerald-500 rounded-full" title="Reports & Generator" />
+                      <FileSpreadsheet size={14} className="shrink-0" />
+                      <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-emerald-500 rounded-full" title="Reports & Generator" />
                     </button>
                   )}
 
                   {isTabAllowed('shiftConfig') && (
                     <button
                       onClick={() => setActiveTab('shiftConfig')}
-                      className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all border cursor-pointer relative shrink-0 ${
+                      className={`w-7 h-7 flex items-center justify-center rounded-lg transition-all border cursor-pointer relative shrink-0 ${
                         activeTab === 'shiftConfig'
                           ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
                           : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-200 dark:border-[#134426] dark:hover:bg-[#0d3820] dark:hover:text-white'
                       }`}
                       title="Shift Rule & Group Config Sub-Page (Admin)"
                     >
-                      <Sliders size={16} className="shrink-0" />
-                      <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-500 rounded-full" title="Shift Config" />
+                      <Sliders size={14} className="shrink-0" />
+                      <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-amber-500 rounded-full" title="Shift Config" />
                     </button>
                   )}
 
                   {isTabAllowed('userAccess') && (
                     <button
                       onClick={() => setActiveTab('userAccess')}
-                      className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all border cursor-pointer relative shrink-0 ${
+                      className={`w-7 h-7 flex items-center justify-center rounded-lg transition-all border cursor-pointer relative shrink-0 ${
                         activeTab === 'userAccess'
                           ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
                           : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-200 dark:border-[#134426] dark:hover:bg-[#0d3820] dark:hover:text-white'
                       }`}
                       title="User Site Access Control Sub-Page (Admin)"
                     >
-                      <Lock size={16} className="shrink-0" />
-                      <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-blue-500 rounded-full" title="User Access Config" />
+                      <Lock size={14} className="shrink-0" />
+                      <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-blue-500 rounded-full" title="User Access Config" />
                     </button>
                   )}
 
                   {isTabAllowed('auditLogs') && (
                     <button
                       onClick={() => setActiveTab('auditLogs')}
-                      className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all border cursor-pointer relative shrink-0 ${
+                      className={`w-7 h-7 flex items-center justify-center rounded-lg transition-all border cursor-pointer relative shrink-0 ${
                         activeTab === 'auditLogs'
                           ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
                           : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-200 dark:border-[#134426] dark:hover:bg-[#0d3820] dark:hover:text-white'
                       }`}
                       title="Screenshot Security Audit Logs Sub-Page (Admin)"
                     >
-                      <FileText size={16} className="shrink-0" />
+                      <FileText size={14} className="shrink-0" />
                       {unreadLogsCount > 0 && (
-                        <span className="absolute -top-1 -right-1 px-1 py-0.2 bg-red-500 text-white text-[9px] font-extrabold rounded-full animate-pulse">
+                        <span className="absolute -top-1 -right-1 px-1 py-0.2 bg-red-500 text-white text-[8px] font-extrabold rounded-full animate-pulse">
                           {unreadLogsCount}
                         </span>
                       )}
@@ -6750,10 +7310,10 @@ const DetailedAuditReportView: React.FC<{
                   {isTabAllowed('screenshotAudit') && (
                     <button
                       onClick={() => setShowScreenshotModal(true)}
-                      className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-300 border border-slate-200 dark:border-[#134426] dark:hover:bg-[#0d3820] cursor-pointer shrink-0"
+                      className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-300 border border-slate-200 dark:border-[#134426] dark:hover:bg-[#0d3820] cursor-pointer shrink-0"
                       title="Simulate Screenshot Security Capture Reason"
                     >
-                      <Camera size={16} className="text-emerald-600 dark:text-[#44D62C] shrink-0" />
+                      <Camera size={14} className="text-emerald-600 dark:text-[#44D62C] shrink-0" />
                     </button>
                   )}
                 </div>
@@ -6762,9 +7322,9 @@ const DetailedAuditReportView: React.FC<{
                 <button
                   onClick={() => fetchData(true)}
                   disabled={refreshing}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer shrink-0 min-h-[38px] active:scale-95"
+                  className="flex items-center gap-1 px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer shrink-0 min-h-[32px] active:scale-95"
                 >
-                  <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+                  <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
                   <span className="hidden xs:inline">{refreshing ? 'Refreshing...' : 'Refresh'}</span>
                 </button>
               </div>
@@ -6772,7 +7332,7 @@ const DetailedAuditReportView: React.FC<{
           </div>
 
           {/* Connection status + last updated */}
-          <div className="flex flex-wrap items-center gap-4 mt-3 pt-3 border-t border-slate-100 dark:border-[#134426] text-xs">
+          <div className="flex flex-wrap items-center gap-3 mt-2 pt-2 border-t border-slate-100 dark:border-[#134426] text-[11px]">
             <div className={`flex items-center gap-1.5 font-semibold ${data?.connectionStatus === 'error' ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
               <span className={`w-2 h-2 rounded-full ${data?.connectionStatus === 'error' ? 'bg-amber-500 animate-ping' : 'bg-emerald-500 animate-pulse'}`} />
               {data?.connectionStatus === 'error' ? 'Database Disconnected' : 'Live Connection'}
@@ -6790,13 +7350,13 @@ const DetailedAuditReportView: React.FC<{
         {activeTab === 'reports' && (
           <div className="border-t border-slate-100 dark:border-[#134426]">
             {/* 1. DATE RANGE BAR */}
-            <div className="px-4 py-3 sm:px-5 sm:py-3.5 bg-slate-50/60 dark:bg-[#051c11]/50 border-b border-slate-100 dark:border-[#134426]">
-              <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto py-0.5">
+            <div className="px-4 py-2 sm:px-5 sm:py-2.5 bg-slate-50/60 dark:bg-[#051c11]/50 border-b border-slate-100 dark:border-[#134426]">
+              <div className="flex flex-wrap items-center gap-1 overflow-x-auto py-0.5">
                 {['Today', 'Yesterday', 'Last 3 Days', 'Last 7 Days', 'This Month', 'Last Month', 'Last 3 Months', 'This Year', 'Last Year'].map(preset => (
                   <button
                     key={preset}
                     onClick={() => handlePresetDateChange(preset)}
-                    className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                    className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
                       activeDateFilter === preset
                         ? 'bg-[#006B3F] text-white shadow-xs'
                         : 'bg-white dark:bg-[#072415] text-slate-600 dark:text-emerald-200 border border-slate-200/80 dark:border-[#134426] hover:bg-slate-100 dark:hover:bg-[#134426]'
@@ -6810,13 +7370,13 @@ const DetailedAuditReportView: React.FC<{
                 <div className="relative" ref={datePickerRef}>
                   <button
                     onClick={() => setIsDatePickerOpen(v => !v)}
-                    className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5 border ${
+                    className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1 border ${
                       activeDateFilter === 'Custom'
                         ? 'bg-[#006B3F] text-white border-transparent shadow-xs'
                         : 'bg-white dark:bg-[#072415] text-slate-600 dark:text-emerald-200 border-slate-200 dark:border-[#134426] hover:bg-slate-100 dark:hover:bg-[#134426]'
                     }`}
                   >
-                    <Calendar size={13} />
+                    <Calendar size={12} />
                     {activeDateFilter === 'Custom'
                       ? reportDateLabel
                       : 'Custom Range'}
@@ -6835,8 +7395,8 @@ const DetailedAuditReportView: React.FC<{
                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-2 mt-2 text-xs font-semibold text-slate-500 dark:text-emerald-300/70">
-                <Calendar size={13} className="text-emerald-600" />
+              <div className="flex items-center gap-2 mt-1 text-[11px] font-semibold text-slate-500 dark:text-emerald-300/70">
+                <Calendar size={12} className="text-emerald-600" />
                 <span>Report Period: <strong className="text-slate-900 dark:text-white">{reportDateLabel}</strong></span>
                 <span className="text-slate-300 dark:text-emerald-300/40">|</span>
                 <span>{activeReportCount} records loaded</span>
@@ -6845,21 +7405,21 @@ const DetailedAuditReportView: React.FC<{
             </div>
 
             {/* 2. COMPREHENSIVE MULTI-FILTER TOOLBAR */}
-            <div className="p-4 sm:p-5 space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-100 dark:border-[#134426] pb-3">
-                <div className="flex items-center gap-2">
-                  <Filter size={18} className="text-emerald-600 dark:text-emerald-400" />
-                  <h2 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+            <div className="px-4 py-2 sm:px-5 sm:py-2.5 space-y-2">
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-[#134426] pb-1.5">
+                <div className="flex items-center gap-1.5">
+                  <Filter size={15} className="text-emerald-600 dark:text-emerald-400" />
+                  <h2 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
                     Advanced Filters & Report Generator
                   </h2>
                 </div>
-                <span className="text-[11px] font-semibold text-slate-400">Select options and click Apply Filters</span>
+                <span className="text-[10px] font-semibold text-slate-400">Select options and click Apply Filters</span>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9 gap-2">
                 {/* Report Type */}
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Report Type</label>
+                  <label className="block text-[10px] font-bold text-slate-500 dark:text-emerald-300/70 mb-0.5">Report Type</label>
                   <select
                     value={pendingReportType}
                     onChange={e => {
@@ -6867,7 +7427,7 @@ const DetailedAuditReportView: React.FC<{
                       setPendingReportType(val);
                       setReportType(val);
                     }}
-                    className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    className="w-full text-[11px] font-semibold px-2 py-1.5 rounded-lg border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
                   >
                     <option value="basic">Basic Report</option>
                     <option value="monthly">Monthly Summary</option>
@@ -6881,7 +7441,7 @@ const DetailedAuditReportView: React.FC<{
 
                 {/* Location */}
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Location</label>
+                  <label className="block text-[10px] font-bold text-slate-500 dark:text-emerald-300/70 mb-0.5">Location</label>
                   <select
                     value={pendingLocation}
                     onChange={e => {
@@ -6889,7 +7449,7 @@ const DetailedAuditReportView: React.FC<{
                       setPendingLocation(val);
                       setLocationFilter(val);
                     }}
-                    className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    className="w-full text-[11px] font-semibold px-2 py-1.5 rounded-lg border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
                   >
                     <option value="all">All Locations ({locationList.length})</option>
                     {locationList.map(loc => (<option key={loc} value={loc}>{loc}</option>))}
@@ -6898,7 +7458,7 @@ const DetailedAuditReportView: React.FC<{
 
                 {/* Company */}
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Company</label>
+                  <label className="block text-[10px] font-bold text-slate-500 dark:text-emerald-300/70 mb-0.5">Company</label>
                   <select
                     value={pendingCompany}
                     onChange={e => {
@@ -6906,7 +7466,7 @@ const DetailedAuditReportView: React.FC<{
                       setPendingCompany(val);
                       setCompanyFilter(val);
                     }}
-                    className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    className="w-full text-[11px] font-semibold px-2 py-1.5 rounded-lg border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
                   >
                     <option value="all">All Companies ({companyList.length})</option>
                     {companyList.map(comp => (<option key={comp} value={comp}>{comp}</option>))}
@@ -6915,7 +7475,7 @@ const DetailedAuditReportView: React.FC<{
 
                 {/* Site */}
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Site</label>
+                  <label className="block text-[10px] font-bold text-slate-500 dark:text-emerald-300/70 mb-0.5">Site</label>
                   <select
                     value={pendingSite}
                     onChange={e => {
@@ -6923,8 +7483,10 @@ const DetailedAuditReportView: React.FC<{
                       setPendingSite(val);
                       setSiteFilter(val);
                       setDepartmentFilter(val);
+                      setPendingEmployee('all');
+                      setEmployeeFilter('all');
                     }}
-                    className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    className="w-full text-[11px] font-semibold px-2 py-1.5 rounded-lg border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
                   >
                     <option value="all">All Sites ({departmentList.length})</option>
                     {departmentList.map(dept => (<option key={dept} value={dept}>{dept}</option>))}
@@ -6933,7 +7495,7 @@ const DetailedAuditReportView: React.FC<{
 
                 {/* Role */}
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Role</label>
+                  <label className="block text-[10px] font-bold text-slate-500 dark:text-emerald-300/70 mb-0.5">Role</label>
                   <select
                     value={pendingRole}
                     onChange={e => {
@@ -6941,7 +7503,7 @@ const DetailedAuditReportView: React.FC<{
                       setPendingRole(val);
                       setRoleFilter(val);
                     }}
-                    className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    className="w-full text-[11px] font-semibold px-2 py-1.5 rounded-lg border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
                   >
                     <option value="all">All Roles ({roleList.length})</option>
                     {roleList.map(role => (<option key={role} value={role}>{role}</option>))}
@@ -6950,7 +7512,7 @@ const DetailedAuditReportView: React.FC<{
 
                 {/* Employee */}
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Employee</label>
+                  <label className="block text-[10px] font-bold text-slate-500 dark:text-emerald-300/70 mb-0.5">Employee</label>
                   <select
                     value={pendingEmployee}
                     onChange={e => {
@@ -6958,7 +7520,7 @@ const DetailedAuditReportView: React.FC<{
                       setPendingEmployee(val);
                       setEmployeeFilter(val);
                     }}
-                    className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    className="w-full text-[11px] font-semibold px-2 py-1.5 rounded-lg border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
                   >
                     <option value="all">All Employees ({selectableEmployees.length})</option>
                     {selectableEmployees.map(e => (<option key={e.empCode} value={e.empCode}>{e.empName} ({e.empCode})</option>))}
@@ -6967,7 +7529,7 @@ const DetailedAuditReportView: React.FC<{
 
                 {/* Status */}
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Status</label>
+                  <label className="block text-[10px] font-bold text-slate-500 dark:text-emerald-300/70 mb-0.5">Status</label>
                   <select
                     value={pendingStatus}
                     onChange={e => {
@@ -6975,20 +7537,22 @@ const DetailedAuditReportView: React.FC<{
                       setPendingStatus(val);
                       setStatusFilter(val);
                     }}
-                    className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    className="w-full text-[11px] font-semibold px-2 py-1.5 rounded-lg border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
                   >
                     <option value="all">All Status</option>
                     <option value="Present">Present</option>
                     <option value="Absent">Absent</option>
                     <option value="Late">Late</option>
+                    <option value="EarlyGoing">Early Going</option>
                     <option value="Completed">Completed</option>
                     <option value="OnDuty">On Duty</option>
+                    <option value="Inactive">Inactive (0 Duty)</option>
                   </select>
                 </div>
 
                 {/* Record Type */}
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Record Type</label>
+                  <label className="block text-[10px] font-bold text-slate-500 dark:text-emerald-300/70 mb-0.5">Record Type</label>
                   <select
                     value={pendingRecordType}
                     onChange={e => {
@@ -6996,7 +7560,7 @@ const DetailedAuditReportView: React.FC<{
                       setPendingRecordType(val);
                       setRecordTypeFilter(val);
                     }}
-                    className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    className="w-full text-[11px] font-semibold px-2 py-1.5 rounded-lg border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
                   >
                     <option value="all">All Records</option>
                     <option value="complete">Complete (In + Out)</option>
@@ -7007,7 +7571,7 @@ const DetailedAuditReportView: React.FC<{
 
                 {/* Show Records */}
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Show Records</label>
+                  <label className="block text-[10px] font-bold text-slate-500 dark:text-emerald-300/70 mb-0.5">Show Records</label>
                   <select
                     value={pendingPageSize}
                     onChange={e => {
@@ -7015,7 +7579,7 @@ const DetailedAuditReportView: React.FC<{
                       setPendingPageSize(val);
                       setPageSize(val);
                     }}
-                    className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    className="w-full text-[11px] font-semibold px-2 py-1.5 rounded-lg border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
                   >
                     <option value={20}>20 Records</option>
                     <option value={50}>50 Records</option>
@@ -7026,12 +7590,15 @@ const DetailedAuditReportView: React.FC<{
                 </div>
               </div>
 
-              <div className="flex justify-end pt-1">
-                <button onClick={handleApplyFilters} className="flex items-center gap-2 px-6 py-2.5 bg-[#006B3F] hover:bg-[#005632] text-white text-xs font-black rounded-xl shadow-md transition-all cursor-pointer active:scale-95">
-                  <Filter size={15} /> Apply Filters
+              <div className="flex justify-end pt-0.5">
+                <button onClick={handleApplyFilters} className="flex items-center gap-1.5 px-4 py-1.5 bg-[#006B3F] hover:bg-[#005632] text-white text-xs font-bold rounded-lg shadow-sm transition-all cursor-pointer active:scale-95">
+                  <Filter size={13} /> Apply Filters
                 </button>
               </div>
             </div>
+
+            {/* 3. DEPARTMENT-WISE ATTENDANCE BREAKDOWN (Integrated directly inside Card 2) */}
+            {renderDepartmentBreakdown(true)}
           </div>
         )}
       </div>
@@ -7473,6 +8040,10 @@ const DetailedAuditReportView: React.FC<{
                                         department: row.department,
                                         designation: row.designation,
                                         site: row.department,
+                                        status: (row as any).status,
+                                        lifecycleStatus: (row as any).lifecycleStatus,
+                                        isActiveEmployee: (row as any).isActiveEmployee,
+                                        isActive: (row as any).isActive,
                                       });
                                       // Open calendar on the first day of the report date range
                                       setWoActiveMonth(dateRange?.startDate ? new Date(dateRange.startDate) : new Date(selectedDate));
@@ -8815,183 +9386,7 @@ const DetailedAuditReportView: React.FC<{
       </div>
 
       {/* ── DEPARTMENT-WISE WORKFORCE & ATTENDANCE SUMMARY (Option A Matrix) ── */}
-      <div className="bg-white dark:bg-[#072415] rounded-2xl border border-slate-200/80 dark:border-[#134426] p-4 sm:p-5 shadow-xs space-y-3.5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-slate-100 dark:border-[#134426]">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-[#0d3820] flex items-center justify-center text-emerald-700 dark:text-[#44D62C] font-bold text-sm shrink-0 border border-emerald-200 dark:border-[#1a5532]">
-              <Building2 size={16} />
-            </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="font-extrabold text-slate-900 dark:text-white text-xs sm:text-sm uppercase tracking-wider">
-                  Department-wise Attendance Breakdown
-                </h2>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-[#44D62C] border border-emerald-200 dark:border-emerald-800">
-                  Present Day vs Deployment
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-500 dark:text-emerald-300/70">
-                Present Day Count against Deployed Staff Strength. Click any department card below to filter the employee list.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
-            <button
-              type="button"
-              onClick={() => setIsRoleMappingModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-950/60 dark:text-blue-300 dark:hover:bg-blue-900 border border-blue-200 dark:border-blue-800 transition-all cursor-pointer shadow-xs active:scale-95"
-              title="Assign or reassign any job role to a department without editing code"
-            >
-              <Sliders size={13} className="text-blue-600 dark:text-blue-400" />
-              <span>Assign Roles</span>
-            </button>
-
-            {selectedDeptCard !== 'all' && (
-              <button
-                type="button"
-                onClick={() => setSelectedDeptCard('all')}
-                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-[#0d3820] dark:text-emerald-200 dark:hover:bg-[#1a5532] border border-slate-200 dark:border-[#1a5532] transition-all cursor-pointer shadow-xs active:scale-95"
-              >
-                <X size={13} className="text-slate-500 dark:text-emerald-400" />
-                <span>Reset ({DEPARTMENT_METAS[selectedDeptCard]?.shortLabel})</span>
-              </button>
-            )}
-            <span className="text-[11px] font-semibold text-slate-400 dark:text-emerald-400/60 hidden sm:inline">
-              6 Core Departments
-            </span>
-          </div>
-        </div>
-
-        {/* 6 Department Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
-          {(['mep', 'housekeeping', 'garden', 'security', 'administration', 'other'] as DepartmentKey[]).map(k => {
-            const stat = departmentStats ? departmentStats[k] : null;
-            const meta = DEPARTMENT_METAS[k];
-            const isSelected = selectedDeptCard === k;
-            const presentCount = stat ? stat.present : 0;
-            const deploymentCount = stat ? (stat.deployment || stat.totalActive) : 0;
-            const enrolledCount = stat ? stat.enrolled : 0;
-            const enrollmentRate = stat ? stat.enrollmentRate : 0;
-            const absentCount = stat ? stat.absent : 0;
-            const rate = stat ? stat.attendanceRate : 0;
-            const lateCount = stat ? stat.late : 0;
-
-            return (
-              <div
-                key={k}
-                onClick={() => {
-                  setSelectedDeptCard(prev => (prev === k ? 'all' : k));
-                  if (tableRef.current) {
-                    tableRef.current.scrollIntoView({ behavior: 'smooth' });
-                  }
-                }}
-                className={`text-left p-3 sm:p-3.5 rounded-xl border transition-all cursor-pointer relative overflow-hidden group flex flex-col justify-between ${
-                  isSelected
-                    ? 'border-[#006B3F] dark:border-[#44D62C] ring-2 ring-[#006B3F]/25 dark:ring-[#44D62C]/30 shadow-md bg-emerald-50/50 dark:bg-[#0c3821]'
-                    : 'border-slate-200/80 dark:border-[#134426] bg-slate-50/70 dark:bg-[#051c11]/70 hover:bg-slate-100/90 dark:hover:bg-[#0d3820] hover:border-slate-300 dark:hover:border-[#1a5532]'
-                }`}
-                title={`Click to filter table or view breakdown for ${meta.label}`}
-              >
-                <div>
-                  <div className="flex items-center justify-between gap-1.5 mb-1.5">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="text-base sm:text-lg shrink-0">{meta.icon}</span>
-                      <span className="text-xs font-bold text-slate-800 dark:text-emerald-100 truncate">
-                        {meta.shortLabel}
-                      </span>
-                    </div>
-                    <span className={`text-[10px] font-extrabold px-1.5 py-0.2 rounded-md ${meta.badgeBg} ${meta.badgeText} shrink-0`}>
-                      {rate}%
-                    </span>
-                  </div>
-
-                  {/* Main Present / Deployed Counter */}
-                  <div className="mt-1">
-                    <div className="flex items-baseline justify-between gap-1">
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white leading-none">
-                          {presentCount}
-                        </span>
-                        <span className="text-xs font-bold text-slate-400 dark:text-emerald-300/60">
-                          / {deploymentCount}
-                        </span>
-                      </div>
-                      <span className="text-[9px] font-extrabold text-slate-400 dark:text-emerald-400/70 uppercase tracking-tight">
-                        Present / Deployed
-                      </span>
-                    </div>
-
-                    {/* Biometric Enrolled Ratio & Percentage */}
-                    <div className="mt-1.5 flex items-center justify-between text-[10px] font-semibold bg-blue-50/90 dark:bg-blue-950/40 px-2 py-0.5 rounded-md border border-blue-200/70 dark:border-blue-800/60">
-                      <span className="flex items-center gap-1 text-blue-700 dark:text-blue-300 font-bold">
-                        <Fingerprint size={11} className="text-blue-600 dark:text-blue-400 shrink-0" />
-                        <span>Enrolled:</span>
-                      </span>
-                      <span className="font-mono text-blue-950 dark:text-blue-100 font-bold">
-                        <strong>{enrolledCount}</strong>/{deploymentCount}
-                        <span className="ml-1 text-[9px] px-1 py-0.2 rounded bg-blue-200/80 dark:bg-blue-900 text-blue-800 dark:text-blue-200 font-extrabold">
-                          {enrollmentRate}%
-                        </span>
-                      </span>
-                    </div>
-
-                    {/* Explicit Present Day vs Deployment count badges */}
-                    <div className="mt-1 flex items-center justify-between text-[10px] font-medium bg-slate-100/90 dark:bg-[#041b0f] px-2 py-0.5 rounded-md border border-slate-200/60 dark:border-[#134426]">
-                      <span className="text-emerald-700 dark:text-[#44D62C] font-bold">
-                        Present: <strong>{presentCount}</strong>
-                      </span>
-                      <span className="text-slate-300 dark:text-emerald-400/30 font-bold">•</span>
-                      <span className="text-slate-700 dark:text-emerald-200 font-bold">
-                        Target: <strong>{deploymentCount}</strong>
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Progress bar */}
-                  <div className="w-full bg-slate-200/80 dark:bg-slate-800/80 h-1.5 rounded-full overflow-hidden mt-2">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ${
-                        rate >= 80
-                          ? 'bg-emerald-500'
-                          : rate >= 50
-                          ? 'bg-amber-500'
-                          : 'bg-red-500'
-                      }`}
-                      style={{ width: `${Math.min(100, Math.max(presentCount > 0 ? 5 : 0, rate))}%` }}
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between text-[10px] font-semibold text-slate-500 dark:text-emerald-300/60 mt-2.5 pt-1.5 border-t border-slate-200/60 dark:border-[#134426]/70 gap-1">
-                  <div className="flex items-center gap-1.5 truncate">
-                    <span className="text-red-500 dark:text-red-400 font-medium">
-                      {absentCount} Absent
-                    </span>
-                    {lateCount > 0 && (
-                      <span className="text-amber-600 dark:text-amber-400 font-bold">
-                        {lateCount} Late
-                      </span>
-                    )}
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setBreakdownModalDept(k);
-                    }}
-                    className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md text-[9px] font-extrabold bg-blue-600 hover:bg-blue-500 text-white shadow-xs transition-transform active:scale-95 cursor-pointer shrink-0"
-                    title="View Designation-wise Breakup Plan & Enrolled Users"
-                  >
-                    <span>Plan & Users ▾</span>
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      {renderDepartmentBreakdown()}
 
       {/* ── PRESENT MONTH ATTENDANCE DETAILS PANEL (collapsible) ───────────────────────── */}
       {showMonthDetailsPanel && (
@@ -9562,6 +9957,10 @@ const DetailedAuditReportView: React.FC<{
                                 department: displaySite,
                                 designation: (emp.designation || ''),
                                 site: displaySite,
+                                status: emp.status,
+                                lifecycleStatus: emp.lifecycleStatus,
+                                isActiveEmployee: emp.isActiveEmployee,
+                                isActive: (emp as any).isActive,
                               });
                               setWoActiveMonth(new Date(selectedDate));
                               setIsWeeklyOffModalOpen(true);
@@ -10253,7 +10652,7 @@ const DetailedAuditReportView: React.FC<{
                   className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl border border-slate-200 dark:border-[#1a5532] bg-white dark:bg-[#041b0f] text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-[#44D62C] transition-all"
                 />
                 <datalist id="designation-suggestions">
-                  {roleList.map(r => <option key={r} value={r} />)}
+                  {allRolesList.map(r => <option key={r} value={r} />)}
                   <option value="Staff" />
                   <option value="Security" />
                   <option value="Supervisor" />
@@ -10701,6 +11100,11 @@ MSSQL_PORT=1433`}
             department: e.department,
             designation: e.designation,
             site: e.department,
+            status: e.status,
+            lifecycleStatus: e.lifecycleStatus,
+            employmentStatus: (e as any).employmentStatus,
+            isActiveEmployee: e.isActiveEmployee,
+            isActive: (e as any).isActive,
           }))}
           departmentList={departmentList}
           existingWeeklyOffsMap={employeeWeeklyOffsMap}

@@ -9,7 +9,7 @@ import {
   subMonths,
   getDay,
 } from 'date-fns';
-import { X, Calendar, Check, RotateCcw, Sparkles, UserCheck, Shield } from 'lucide-react';
+import { X, Calendar, Check, RotateCcw, Sparkles, UserCheck, Shield, AlertTriangle } from 'lucide-react';
 
 interface WeeklyOffFeedingModalProps {
   isOpen: boolean;
@@ -20,6 +20,10 @@ interface WeeklyOffFeedingModalProps {
     department?: string;
     designation?: string;
     site?: string;
+    status?: string;
+    lifecycleStatus?: string;
+    isActiveEmployee?: boolean | string;
+    isActive?: boolean;
   } | null;
   activeMonth?: Date;
   initialWeeklyOffs?: string[]; // e.g. ['2026-09-06', '2026-09-13']
@@ -54,7 +58,23 @@ export const WeeklyOffFeedingModal: React.FC<WeeklyOffFeedingModalProps> = ({
   const startDayOfWeek = getDay(monthStart); // 0 = Sun, 1 = Mon ...
   const padDays = Array.from({ length: startDayOfWeek });
 
+  const isInactive = useMemo(() => {
+    if (!employee) return false;
+    const s = String(employee.status || '').toLowerCase().trim();
+    const l = String(employee.lifecycleStatus || '').toLowerCase().trim();
+    const inactiveStatuses = [
+      'inactive', 'discontinued', 'discontinued / left', 'left',
+      'resigned', 'terminated', 'absconded', 'not joined yet',
+      'not joined', 'exit', 'relieved', 'separated', 'disabled', 'deactivated'
+    ];
+    if (inactiveStatuses.includes(s) || inactiveStatuses.includes(l)) return true;
+    if (employee.isActiveEmployee === false || employee.isActiveEmployee === 'false') return true;
+    if (employee.isActive === false) return true;
+    return false;
+  }, [employee]);
+
   const toggleDate = (dateStr: string) => {
+    if (isInactive) return;
     setSelectedDates(prev => {
       const next = new Set(prev);
       if (next.has(dateStr)) {
@@ -68,6 +88,7 @@ export const WeeklyOffFeedingModal: React.FC<WeeklyOffFeedingModalProps> = ({
 
   // Quick preset: Mark all of a specific weekday in current month
   const markAllWeekday = (targetDay: number) => {
+    if (isInactive) return;
     setSelectedDates(prev => {
       const next = new Set(prev);
       monthDays.forEach(d => {
@@ -80,6 +101,7 @@ export const WeeklyOffFeedingModal: React.FC<WeeklyOffFeedingModalProps> = ({
   };
 
   const clearCurrentMonth = () => {
+    if (isInactive) return;
     setSelectedDates(prev => {
       const next = new Set(prev);
       monthDays.forEach(d => {
@@ -90,7 +112,7 @@ export const WeeklyOffFeedingModal: React.FC<WeeklyOffFeedingModalProps> = ({
   };
 
   const handleSave = async () => {
-    if (!employee) return;
+    if (!employee || isInactive) return;
     setIsSaving(true);
     try {
       await onSave(employee.empCode, Array.from(selectedDates));
@@ -157,6 +179,14 @@ export const WeeklyOffFeedingModal: React.FC<WeeklyOffFeedingModalProps> = ({
             </div>
           </div>
         </div>
+
+        {/* Inactive Notice Banner */}
+        {isInactive && (
+          <div className="mx-5 mt-3 p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 flex items-center gap-2.5 text-xs text-rose-700 dark:text-rose-300 font-bold">
+            <AlertTriangle size={16} className="text-rose-600 shrink-0" />
+            <span>This employee is inactive or separated. Weekly offs cannot be assigned to inactive staff.</span>
+          </div>
+        )}
 
         {/* Month Navigation & Presets */}
         <div className="p-4 space-y-3 overflow-y-auto flex-1">
@@ -275,10 +305,10 @@ export const WeeklyOffFeedingModal: React.FC<WeeklyOffFeedingModalProps> = ({
             </button>
             <button
               onClick={handleSave}
-              disabled={isSaving}
-              className="px-5 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 rounded-xl transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+              disabled={isSaving || isInactive}
+              className="px-5 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
             >
-              {isSaving ? 'Saving...' : 'Save Weekly Offs'}
+              {isSaving ? 'Saving...' : isInactive ? 'Inactive Staff' : 'Save Weekly Offs'}
             </button>
           </div>
         </div>
