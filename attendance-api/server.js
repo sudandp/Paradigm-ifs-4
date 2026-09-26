@@ -410,7 +410,7 @@ app.get('/attendance', requireApiKey, async (req, res) => {
       let inTimeStr = null;
       let outTimeStr = null;
       let status = 'Absent';
-      let workingHours = 'ΓÇö';
+      let workingHours = '-';
       let shiftCompleted = false;
 
       const parseSqlStr = (str) => {
@@ -1232,7 +1232,487 @@ app.post('/update-employee', requireApiKey, async (req, res) => {
   }
 });
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  SUPABASE SYNC SYSTEM — MS SQL → Supabase Attendance Cache
+//  Keeps current-year records hot in Supabase so frontend works even
+//  when the Cloudflare tunnel to this machine is offline.
+//  Auto-syncs every 5 minutes. Cleans up old years on Jan 1.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const SUPABASE_URL         = process.env.SUPABASE_URL         || 'https://fmyafuhxlorbafbacywa.supabase.co';
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+
+/** Push an array of row objects to Supabase attendance_cache with UPSERT (Chunked in batches of 300) */
+async function upsertToSupabase(rows) {
+  if (!SUPABASE_SERVICE_KEY) {
+    console.warn('[Sync] SUPABASE_SERVICE_ROLE_KEY not set — skipping Supabase upsert');
+    return { count: 0, skipped: true };
+  }
+  if (!rows || rows.length === 0) return { count: 0 };
+
+  const CHUNK_SIZE = 300;
+  let totalUpserted = 0;
+
+  for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+    const chunk = rows.slice(i, i + CHUNK_SIZE);
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/attendance_cache?on_conflict=emp_code,attendance_date`, {
+      method: 'POST',
+      headers: {
+        apikey:          SUPABASE_SERVICE_KEY,
+        Authorization:   `Bearer ${SUPABASE_SERVICE_KEY}`,
+        'Content-Type':  'application/json',
+        Prefer:          'resolution=merge-duplicates,return=minimal',
+      },
+      body: JSON.stringify(chunk),
+      signal: AbortSignal.timeout(30000),
+    });
+
+    if (!response.ok) {
+      const err = await response.text().catch(() => response.statusText);
+      throw new Error(`Supabase upsert failed (${response.status}): ${err}`);
+    }
+    totalUpserted += chunk.length;
+  }
+
+  return { count: totalUpserted };
+}
+
+/** Log a sync run to attendance_sync_log */
+async function logSync(syncDate, recordsSynced, status, errorMsg, durationMs, triggeredBy) {
+  if (!SUPABASE_SERVICE_KEY) return;
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/attendance_sync_log`, {
+      method: 'POST',
+      headers: {
+        apikey:         SUPABASE_SERVICE_KEY,
+        Authorization:  `Bearer ${SUPABASE_SERVICE_KEY}`,
+        'Content-Type': 'application/json',
+        Prefer:         'return=minimal',
+      },
+      body: JSON.stringify({
+        sync_date:       syncDate,
+        records_synced:  recordsSynced,
+        status:          status,
+        error_msg:       errorMsg || null,
+        duration_ms:     durationMs,
+        triggered_by:    triggeredBy || 'auto',
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+  } catch (e) {
+    console.warn('[Sync] Failed to write sync log:', e.message);
+  }
+}
+
+/** Fetch single-day attendance from MS SQL and return formatted rows ready for Supabase */
+async function fetchAttendanceRowsForDate(date) {
+  const p = await getPool();
+
+  const [yStr, mStr] = date.split('-');
+  const mNum = parseInt(mStr, 10);
+  const mPad = mNum < 10 ? `0${mNum}` : `${mNum}`;
+
+  // Find the right partition table
+  const tblCheck = await p.request()
+    .input('t1', sql.VarChar, `DeviceLogs_${mNum}_${yStr}`)
+    .input('t2', sql.VarChar, `DeviceLogs_${mPad}_${yStr}`)
+    .query(`SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME IN (@t1, @t2)`)
+    .catch(() => ({ recordset: [] }));
+
+  const logTable = (tblCheck.recordset && tblCheck.recordset.length > 0)
+    ? tblCheck.recordset[0].TABLE_NAME
+    : 'DeviceLogs';
+
+  // Check if Departments table exists
+  const deptCheck = await p.request()
+    .query(`SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Departments'`)
+    .catch(() => ({ recordset: [] }));
+  const hasDepts = deptCheck.recordset && deptCheck.recordset.length > 0;
+
+  const selectDept = hasDepts ? `ISNULL(d.DepartmentFName, 'General')` : `'General'`;
+  const joinDept   = hasDepts ? `LEFT JOIN dbo.Departments d WITH (NOLOCK) ON e.DepartmentId = d.DepartmentId` : ``;
+
+  const nextDateStr = new Date(new Date(date).getTime() + 86400000).toISOString().slice(0, 10);
+  const prevDateStr = new Date(new Date(date).getTime() - 86400000).toISOString().slice(0, 10);
+
+  // Check if AttendanceLogs table exists
+  const alCheck = await p.request()
+    .query(`SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'AttendanceLogs'`)
+    .catch(() => ({ recordset: [] }));
+  const hasAttendanceLogs = alCheck.recordset && alCheck.recordset.length > 0;
+
+  const selectAl = hasAttendanceLogs
+    ? `al.InTime AS alInTime, al.OutTime AS alOutTime, al.Duration AS duration, al.LateBy AS lateBy, al.OverTime AS overTime, al.Status AS alStatus`
+    : `NULL AS alInTime, NULL AS alOutTime, 0 AS duration, 0 AS lateBy, 0 AS overTime, NULL AS alStatus`;
+
+  const joinAl = hasAttendanceLogs
+    ? `LEFT JOIN dbo.AttendanceLogs al WITH (NOLOCK) ON al.EmployeeId = e.EmployeeId AND CONVERT(date, al.AttendanceDate) = '${date}'`
+    : ``;
+
+  const candidateLpTables = Array.from(new Set([logTable, 'DeviceLogs']));
+  const tblCheckLp = await p.request().query(`
+    SELECT DISTINCT TABLE_NAME 
+    FROM INFORMATION_SCHEMA.TABLES 
+    WHERE TABLE_NAME IN ('${candidateLpTables.join("','")}')
+  `).catch(() => ({ recordset: [{ TABLE_NAME: logTable }] }));
+
+  const validLpTables = (tblCheckLp.recordset && tblCheckLp.recordset.length > 0)
+    ? tblCheckLp.recordset.map(r => r.TABLE_NAME)
+    : [logTable];
+
+  const lpUnionSql = validLpTables.map(t => `
+    SELECT LTRIM(RTRIM(CAST(UserId AS VARCHAR(50)))) AS EmployeeCode, LogDate 
+    FROM dbo.[${t}] WITH (NOLOCK)
+  `).join(' UNION ALL ');
+
+  const req1 = p.request();
+  req1.timeout = 60000;
+
+  const result = await req1.query(`
+    SELECT
+      LTRIM(RTRIM(CAST(e.EmployeeCode AS VARCHAR(50)))) AS empCode,
+      e.EmployeeName                                     AS empName,
+      ${selectDept}                                      AS department,
+      ISNULL(e.Designation, 'Staff')                     AS designation,
+      CONVERT(VARCHAR(19), p.FirstInPunchOnDate, 120)    AS firstInPunchStr,
+      CONVERT(VARCHAR(19), p.NightInPunchOnDate, 120)    AS nightInPunchStr,
+      CONVERT(VARCHAR(19), p.LastOutPunchOnDate, 120)    AS lastOutPunchStr,
+      CONVERT(VARCHAR(19), p.NextMorningOutPunch, 120)   AS nextMorningOutPunchStr,
+      ${selectAl}
+    FROM dbo.Employees e WITH (NOLOCK)
+    ${joinDept}
+    LEFT JOIN (
+      SELECT
+        EmployeeCode,
+        MIN(CASE WHEN LogDate >= '${date} 05:30:00' AND LogDate <= '${date} 23:59:59' THEN LogDate END) AS FirstInPunchOnDate,
+        MIN(CASE WHEN LogDate >= '${date} 17:00:00' AND LogDate <= '${date} 23:59:59' THEN LogDate END) AS NightInPunchOnDate,
+        MAX(CASE WHEN LogDate >= '${date} 00:00:00' AND LogDate <= '${date} 23:59:59' THEN LogDate END) AS LastOutPunchOnDate,
+        MIN(CASE WHEN LogDate >= '${nextDateStr} 00:00:00' AND LogDate <= '${nextDateStr} 12:30:00' THEN LogDate END) AS NextMorningOutPunch
+      FROM (${lpUnionSql}) AllPunches
+      WHERE LogDate >= '${prevDateStr} 17:00:00' AND LogDate <= '${nextDateStr} 12:30:00'
+      GROUP BY EmployeeCode
+    ) p ON LTRIM(RTRIM(CAST(e.EmployeeCode AS VARCHAR(50)))) = p.EmployeeCode
+    ${joinAl}
+    WHERE ISNULL(e.RecordStatus, 1) = 1
+      AND ISNULL(e.Status, 'Working') NOT IN ('Resigned', 'Deleted', 'Inactive')
+  `);
+
+  const dataYear = parseInt(yStr, 10);
+
+  // Site prefix map (same as in /attendance)
+  const prefixSiteMap = {
+    '17': 'Mahendra Aarna', '31': 'Brigade Cornerstone Utopia', '32': 'Brigade Cornerstone Utopia',
+    '42': 'Purva Venezia', '77': 'Nikoo Homes', '78': 'Nikoo Homes',
+    '70': 'Sobha Silicon Oasis', '79': 'Nikoo Paradigm', '80': 'Nikoo Paradigm',
+    '99': 'Dsr Eden Greens',
+  };
+
+  const getSmartSite = (code) => {
+    const c = String(code || '').trim();
+    if (prefixSiteMap[c.slice(0, 2)]) return prefixSiteMap[c.slice(0, 2)];
+    if (prefixSiteMap[c.slice(0, 3)]) return prefixSiteMap[c.slice(0, 3)];
+    return 'Default';
+  };
+
+  const fmtTime = (sqlStr) => {
+    if (!sqlStr) return null;
+    const parts = String(sqlStr).trim().split(' ');
+    if (parts.length < 2) return null;
+    const tParts = parts[1].split(':').map(Number);
+    if (tParts.length < 2) return null;
+    const h = tParts[0]; const m = tParts[1];
+    const ampm = h >= 12 ? 'pm' : 'am';
+    const dh = h % 12 === 0 ? 12 : h % 12;
+    return `${String(dh).padStart(2,'0')}:${String(m).padStart(2,'0')} ${ampm}`;
+  };
+
+  return (result.recordset || []).map(row => {
+    const inTime  = fmtTime(row.firstInPunchStr) || fmtTime(row.alInTime);
+    const outTime = fmtTime(row.lastOutPunchStr)  || fmtTime(row.alOutTime);
+    let status = 'Absent'; let statusCode = 'A'; let durationMins = 0;
+
+    const alStatus = (row.alStatus || '').trim();
+    if (alStatus === 'Present ') { status = 'Present'; statusCode = 'P'; }
+    else if (inTime)             { status = 'Present'; statusCode = 'P'; }
+
+    if (row.duration && row.duration > 0) durationMins = row.duration;
+
+    return {
+      emp_code:        String(row.empCode || ''),
+      emp_name:        String(row.empName || ''),
+      department:      String(row.department || 'General'),
+      designation:     String(row.designation || 'Staff'),
+      site:            getSmartSite(row.empCode),
+      attendance_date: date,
+      in_time:         inTime,
+      out_time:        outTime,
+      status:          status,
+      status_code:     statusCode,
+      duration_mins:   durationMins,
+      late_mins:       row.lateBy  ? Number(row.lateBy)  : 0,
+      ot_mins:         row.overTime ? Number(row.overTime) : 0,
+      data_year:       dataYear,
+      source:          'mssql',
+      synced_at:       new Date().toISOString(),
+    };
+  });
+}
+
+// ─── POST /sync/today ───────────────────────────────────────────────────────
+// Syncs a single date (default: today) from MS SQL → Supabase
+app.post('/sync/today', requireApiKey, async (req, res) => {
+  const date = (req.query.date || '').match(/^\d{4}-\d{2}-\d{2}$/)
+    ? req.query.date
+    : new Date().toISOString().slice(0, 10);
+
+  const triggeredBy = String(req.query.by || 'manual');
+  const t0 = Date.now();
+  console.log(`[Sync] Starting sync for ${date} (triggered by: ${triggeredBy})`);
+
+  try {
+    const rows = await fetchAttendanceRowsForDate(date);
+    const result = await upsertToSupabase(rows);
+    const durationMs = Date.now() - t0;
+
+    await logSync(date, rows.length, 'ok', null, durationMs, triggeredBy);
+    console.log(`[Sync] ✅ ${date} — ${rows.length} records upserted in ${durationMs}ms`);
+    res.json({ success: true, date, records: rows.length, duration_ms: durationMs, skipped: result.skipped || false });
+  } catch (err) {
+    const durationMs = Date.now() - t0;
+    console.error(`[Sync] ❌ ${date} failed:`, err.message);
+    await logSync(date, 0, 'failed', err.message, durationMs, triggeredBy);
+    res.status(500).json({ success: false, date, error: err.message, duration_ms: durationMs });
+  }
+});
+
+// ─── POST /sync/backfill ────────────────────────────────────────────────────
+// Backfills a full year (or date range) from MS SQL → Supabase
+// Runs in background — responds immediately, logs to console
+app.post('/sync/backfill', requireApiKey, async (req, res) => {
+  const year      = parseInt(req.query.year || new Date().getFullYear(), 10);
+  const startDate = req.query.startDate || `${year}-01-01`;
+  const endDate   = req.query.endDate   || (year === new Date().getFullYear()
+    ? new Date().toISOString().slice(0, 10)
+    : `${year}-12-31`);
+
+  console.log(`[Backfill] Starting backfill for ${startDate} → ${endDate}`);
+  res.json({ status: 'backfill_started', year, startDate, endDate, message: 'Running in background — check server logs' });
+
+  // Run in background after response is sent
+  setImmediate(async () => {
+    const cur = new Date(startDate);
+    const end = new Date(endDate);
+    let totalSynced = 0; let totalFailed = 0;
+
+    while (cur <= end) {
+      const dateStr = cur.toISOString().slice(0, 10);
+      try {
+        const rows = await fetchAttendanceRowsForDate(dateStr);
+        await upsertToSupabase(rows);
+        totalSynced += rows.length;
+        console.log(`[Backfill] ✅ ${dateStr} — ${rows.length} records`);
+        await logSync(dateStr, rows.length, 'ok', null, 0, 'backfill');
+      } catch (err) {
+        totalFailed++;
+        console.warn(`[Backfill] ⚠️  ${dateStr} failed:`, err.message);
+        await logSync(dateStr, 0, 'failed', err.message, 0, 'backfill');
+      }
+      // 800ms pause between days to avoid overloading SQL Server
+      await new Promise(r => setTimeout(r, 800));
+      cur.setDate(cur.getDate() + 1);
+    }
+
+    console.log(`[Backfill] 🎉 Complete — ${totalSynced} total records synced, ${totalFailed} days failed`);
+  });
+});
+
+// ─── Helper: Chunked Year Delete (Protects PostgreSQL from massive table locks) ─
+async function deleteYearFromSupabaseSafely(yearToDelete) {
+  if (!SUPABASE_SERVICE_KEY) return { success: false, error: 'Key not set' };
+
+  console.log(`[Cleanup] Safely deleting year ${yearToDelete} in monthly batches...`);
+  let totalDeletedMonths = 0;
+
+  // Delete month-by-month (Jan to Dec) with 200ms pauses between months
+  for (let m = 1; m <= 12; m++) {
+    const mPad = m < 10 ? `0${m}` : `${m}`;
+    const startMonth = `${yearToDelete}-${mPad}-01`;
+    // Last day of month
+    const endMonth = new Date(yearToDelete, m, 0).toISOString().slice(0, 10);
+
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/attendance_cache?attendance_date=gte.${startMonth}&attendance_date=lte.${endMonth}`,
+      {
+        method: 'DELETE',
+        headers: {
+          apikey:        SUPABASE_SERVICE_KEY,
+          Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+          Prefer:        'return=minimal',
+        },
+        signal: AbortSignal.timeout(30000),
+      }
+    );
+
+    if (res.ok) {
+      totalDeletedMonths++;
+    } else {
+      console.warn(`[Cleanup] Month ${startMonth} delete response: ${res.status}`);
+    }
+    // 200ms micro-pause to release table locks & let Postgres autovacuum breathe
+    await new Promise(r => setTimeout(r, 200));
+  }
+
+  // Also clean up any logs older than 30 days
+  await pruneOldSyncLogs().catch(() => {});
+
+  return { success: true, deletedMonths: totalDeletedMonths };
+}
+
+/** Prune sync logs older than 30 days to keep Supabase storage lightweight */
+async function pruneOldSyncLogs() {
+  if (!SUPABASE_SERVICE_KEY) return;
+  try {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString();
+    await fetch(`${SUPABASE_URL}/rest/v1/attendance_sync_log?synced_at=lt.${thirtyDaysAgo}`, {
+      method: 'DELETE',
+      headers: {
+        apikey:        SUPABASE_SERVICE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+        Prefer:        'return=minimal',
+      },
+      signal: AbortSignal.timeout(10000),
+    });
+    console.log('[Cleanup] 🧹 Pruned sync logs older than 30 days');
+  } catch (err) {
+    // Non-fatal
+  }
+}
+
+// ─── POST /sync/auto-delete ─────────────────────────────────────────────────
+// Deletes data older than (currentYear - 2) from Supabase safely in chunks
+app.post('/sync/auto-delete', requireApiKey, async (req, res) => {
+  const currentYear  = new Date().getFullYear();
+  const deleteUpToYear = parseInt(req.query.year || (currentYear - 2), 10);
+
+  if (!SUPABASE_SERVICE_KEY) {
+    return res.status(400).json({ success: false, error: 'SUPABASE_SERVICE_ROLE_KEY not configured' });
+  }
+
+  try {
+    const result = await deleteYearFromSupabaseSafely(deleteUpToYear);
+    res.json({ success: true, deleted_up_to_year: deleteUpToYear, current_year: currentYear, result });
+  } catch (err) {
+    console.error('[Cleanup] ❌ Auto-delete failed:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ─── GET /sync/status ───────────────────────────────────────────────────────
+// Returns recent sync log entries from Supabase
+app.get('/sync/status', requireApiKey, async (req, res) => {
+  if (!SUPABASE_SERVICE_KEY) {
+    return res.json({ configured: false, message: 'SUPABASE_SERVICE_ROLE_KEY not set' });
+  }
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/attendance_sync_log?select=*&order=synced_at.desc&limit=10`,
+      {
+        headers: { apikey: SUPABASE_SERVICE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
+        signal: AbortSignal.timeout(8000),
+      }
+    );
+    const data = r.ok ? await r.json() : [];
+    res.json({ configured: true, recent_syncs: data });
+  } catch (err) {
+    res.status(500).json({ configured: true, error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  AUTO-SYNC SCHEDULER — Every 5 minutes, syncs today to Supabase
+//  Equipped with Concurrency Mutex Lock + Hourly Log Rotation
+// ═══════════════════════════════════════════════════════════════════════════
+
+const SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+let isAutoSyncRunning = false;
+let autoSyncCycleCounter = 0;
+
+async function runAutoSync() {
+  if (isAutoSyncRunning) {
+    console.log('[AutoSync] ⏳ Previous sync is still in progress. Skipping this cycle to prevent overlap.');
+    return;
+  }
+
+  isAutoSyncRunning = true;
+  const today = new Date().toISOString().slice(0, 10);
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+
+  try {
+    // 1. Sync Today's live punches (real-time updates)
+    const rows = await fetchAttendanceRowsForDate(today);
+    await upsertToSupabase(rows);
+    await logSync(today, rows.length, 'ok', null, 0, 'auto');
+    console.log(`[AutoSync] ✅ ${today} — ${rows.length} records synced to Supabase`);
+
+    // 2. Automatically sync Yesterday every cycle to finalize night-shift out-punches and completed daily records
+    try {
+      const rowsYesterday = await fetchAttendanceRowsForDate(yesterday);
+      await upsertToSupabase(rowsYesterday);
+      await logSync(yesterday, rowsYesterday.length, 'ok', null, 0, 'auto');
+      console.log(`[AutoSync] ✅ ${yesterday} — ${rowsYesterday.length} records finalized in Supabase`);
+    } catch (yErr) {
+      console.warn('[AutoSync] Note on yesterday auto-sync:', yErr.message);
+    }
+
+    // 3. Once every 12 cycles (~1 hour), run safety reconciliation for 2 days ago + prune old sync logs
+    autoSyncCycleCounter++;
+    if (autoSyncCycleCounter % 12 === 0) {
+      try {
+        const twoDaysAgo = new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10);
+        const rowsPast = await fetchAttendanceRowsForDate(twoDaysAgo);
+        await upsertToSupabase(rowsPast);
+        await logSync(twoDaysAgo, rowsPast.length, 'ok', null, 0, 'auto');
+        console.log(`[AutoSync] 🔄 Reconciled ${twoDaysAgo} (${rowsPast.length} records)`);
+      } catch (_) {}
+
+      pruneOldSyncLogs().catch(() => {});
+    }
+  } catch (err) {
+    console.warn('[AutoSync] ⚠️  Sync failed (will retry in 5 min):', err.message);
+    await logSync(today, 0, 'failed', err.message, 0, 'auto').catch(() => {});
+  } finally {
+    isAutoSyncRunning = false;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  JAN 1 YEARLY CLEANUP — Auto-deletes data older than 1 year from Supabase
+// ═══════════════════════════════════════════════════════════════════════════
+
+function scheduleYearlyCleanup() {
+  const now   = new Date();
+  const jan1  = new Date(now.getFullYear() + 1, 0, 1, 2, 0, 0); // Jan 1 next year at 02:00 AM (off-peak)
+  const msUntil = jan1.getTime() - now.getTime();
+
+  console.log(`[Cleanup] Next yearly auto-delete scheduled for ${jan1.toISOString()} (in ${Math.round(msUntil / 3600000)}h)`);
+
+  setTimeout(async () => {
+    console.log('[Cleanup] 🗑️  Jan 1 (02:00 AM) — running safe yearly auto-delete from Supabase...');
+    try {
+      const currentYear = new Date().getFullYear();
+      const delYear = currentYear - 2;
+      await deleteYearFromSupabaseSafely(delYear);
+      console.log(`[Cleanup] ✅ Safely purged records for year <= ${delYear}`);
+    } catch (err) {
+      console.error('[Cleanup] ❌ Yearly cleanup error:', err.message);
+    }
+    scheduleYearlyCleanup(); // schedule for NEXT year
+  }, msUntil);
+}
+
 app.listen(PORT, '0.0.0.0', () => {
+
   console.log('');
   console.log('ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ');
   console.log('  Paradigm Attendance API');
@@ -1244,7 +1724,18 @@ app.listen(PORT, '0.0.0.0', () => {
 
   // Warm up the DB connection on startup
   getPool().catch(err => console.error('[Startup] DB connection failed:', err.message));
+
+  // Start Supabase auto-sync after 30s (let DB connection stabilize first)
+  setTimeout(() => {
+    console.log('[AutoSync] Starting 5-minute sync loop to Supabase...');
+    runAutoSync(); // run immediately
+    setInterval(runAutoSync, SYNC_INTERVAL_MS);
+  }, 30_000);
+
+  // Schedule yearly Jan-1 auto-delete
+  scheduleYearlyCleanup();
 });
+
 
 // ΓöÇΓöÇΓöÇ Helper ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 function calcHours(inTime, outTime) {

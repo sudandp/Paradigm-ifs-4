@@ -384,6 +384,76 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
+  // ─── 4. Seamless Fallback: Serve from Supabase Hot Cache ───
+  try {
+    const sbUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://fmyafuhxlorbafbacywa.supabase.co';
+    const sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZteWFmdWh4bG9yYmFmYmFjeXdhIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MjIyODU0NiwiZXhwIjoyMDc3ODA0NTQ2fQ.1wQC3L3gzGpZ2SwwQXMhXliZo_f7ye99vKEO7Q2iC5M';
+    const authHeader = (req.headers.authorization as string) || `Bearer ${sbKey}`;
+
+    const cacheRes = await fetch(
+      `${sbUrl}/rest/v1/attendance_cache?attendance_date=eq.${encodeURIComponent(String(date))}&limit=5000`,
+      {
+        headers: {
+          apikey: sbKey,
+          Authorization: authHeader,
+          'Content-Type': 'application/json',
+        },
+        signal: AbortSignal.timeout(6000),
+      }
+    );
+
+    if (cacheRes.ok) {
+      const cachedRows = await cacheRes.json();
+      if (Array.isArray(cachedRows) && cachedRows.length > 0) {
+        let present = 0;
+        let absent = 0;
+        let late = 0;
+
+        const employees = cachedRows.map((r: any) => {
+          const isPres = r.status === 'Present' || (r.in_time && r.in_time !== '—');
+          const isLate = (r.late_mins || 0) > 0 || r.status === 'Late';
+          if (isPres) present++; else absent++;
+          if (isLate) late++;
+
+          return {
+            empCode: r.emp_code,
+            empName: r.emp_name,
+            department: r.department,
+            designation: r.designation,
+            site: r.site,
+            inTime: r.in_time || '—',
+            outTime: r.out_time || '—',
+            status: r.status,
+            statusCode: r.status_code,
+            workingHours: r.working_hours || (isPres ? '9h 00m' : '—'),
+            shiftCompleted: r.shift_completed || false,
+            duration: r.duration_mins || 0,
+            lateMinutes: r.late_mins || 0,
+            overtimeMinutes: r.ot_mins || 0,
+            source: 'supabase_cache',
+          };
+        });
+
+        const totalEmployees = employees.length;
+        const onTime = Math.max(0, present - late);
+        const attendanceRate = totalEmployees > 0 ? Math.round((present / totalEmployees) * 100) : 0;
+
+        return res.status(200).json({
+          summary: { date, totalEmployees, present, absent, late, onTime, attendanceRate },
+          employees,
+          trend: [],
+          departments: [],
+          lastUpdated: new Date().toISOString(),
+          connectionStatus: 'connected',
+          source: 'supabase_cache',
+          cached: true,
+        });
+      }
+    }
+  } catch (cacheErr) {
+    console.warn('[MSSQL Proxy] Supabase cache fallback failed:', cacheErr);
+  }
+
   return res.status(200).json({
     summary: { date, totalEmployees: 0, present: 0, absent: 0, late: 0, onTime: 0, attendanceRate: 0 },
     employees: [],

@@ -768,7 +768,7 @@ const ClientAttendanceDashboard: React.FC = () => {
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<keyof EmployeeRow>('empName');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
-  const [statusFilter, setStatusFilter] = useState<string>('Present');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
   const [shiftFilter, setShiftFilter] = useState<string>('all');
   const [selectedDeptCard, setSelectedDeptCard] = useState<DepartmentKey | 'all'>('all');
@@ -1232,9 +1232,7 @@ const ClientAttendanceDashboard: React.FC = () => {
     setStatusFilter(pendingStatus);
     setRecordTypeFilter(pendingRecordType);
     setReportType(pendingReportType);
-    if (pendingSite !== 'all') {
-      setDepartmentFilter(pendingSite);
-    }
+    setDepartmentFilter(pendingSite);
     // Clear any conflicting card or column filters from other views
     setSelectedDeptCard('all');
     setColumnFilters({});
@@ -1697,6 +1695,14 @@ const ClientAttendanceDashboard: React.FC = () => {
       if (firstAllowed) setActiveTab(firstAllowed);
     }
   }, [activeTab, isTabAllowed]);
+
+  // Synchronize statusFilter when switching to reports tab so 'All Status' loads all workforce records
+  useEffect(() => {
+    if (activeTab === 'reports') {
+      setStatusFilter('all');
+      setPendingStatus('all');
+    }
+  }, [activeTab]);
 
 
   // Check if current user permission is expired
@@ -3539,7 +3545,17 @@ const DetailedAuditReportView: React.FC<{
           return false;
         });
 
-    return accessible.map(emp => {
+    // Deduplicate employees by empCode to avoid duplicate rows and key collisions
+    const empCodeSeen = new Set<string>();
+    const deduplicatedAccessible = accessible.filter(emp => {
+      const code = String(emp.empCode || '').trim();
+      if (!code) return true;
+      if (empCodeSeen.has(code)) return false;
+      empCodeSeen.add(code);
+      return true;
+    });
+
+    return deduplicatedAccessible.map(emp => {
       let finalInTime = emp.inTime;
       let finalOutTime = emp.outTime;
 
@@ -3846,6 +3862,36 @@ const DetailedAuditReportView: React.FC<{
     return map;
   }, [processedEmployees, empOverrides]);
 
+  // ── Deduplicated Selectable Employees for the Filters Dropdown ─────────
+  const selectableEmployees = useMemo(() => {
+    if (!processedEmployees.length) return [];
+    const targetSite = pendingSite !== 'all' ? pendingSite : siteFilter !== 'all' ? siteFilter : departmentFilter;
+    const targetRole = pendingRole !== 'all' ? pendingRole : roleFilter;
+    const seen = new Set<string>();
+    const list: EmployeeRow[] = [];
+    processedEmployees.forEach(e => {
+      const code = String(e.empCode || '').trim();
+      if (!code || seen.has(code)) return;
+
+      const effectiveDesignation = empOverrides[e.empCode]?.designation ?? e.designation;
+      const effectiveSite = empOverrides[e.empCode]?.site ?? e.department;
+
+      const matchSite = targetSite === 'all' ||
+        effectiveSite === targetSite ||
+        effectiveSite.toLowerCase().trim() === targetSite.toLowerCase().trim() ||
+        matchSiteName(effectiveSite, targetSite);
+
+      const matchRole = targetRole === 'all' ||
+        (effectiveDesignation || '').toLowerCase().trim() === targetRole.toLowerCase().trim();
+
+      if (matchSite && matchRole) {
+        seen.add(code);
+        list.push(e);
+      }
+    });
+    return list.sort((a, b) => (a.empName || '').localeCompare(b.empName || ''));
+  }, [processedEmployees, pendingSite, siteFilter, departmentFilter, pendingRole, roleFilter, empOverrides]);
+
   // ── Filtered Employees & Re-calculated Summary per Department Filter ───
   const filteredEmployees = useMemo(() => {
     if (!processedEmployees.length) return [];
@@ -3862,7 +3908,8 @@ const DetailedAuditReportView: React.FC<{
           (effectiveDesignation || '').toLowerCase().includes(search.toLowerCase());
 
         const isSearching = search.trim() !== '';
-        const matchStatus = isSearching || statusFilter === 'all'
+        // For Reports tab: status & recordType are evaluated comprehensively across date range in filteredReportList
+        const matchStatus = activeTab === 'reports' || isSearching || statusFilter === 'all'
           ? true
           : statusFilter === 'Present'
             ? e.status === 'Present' || e.status === 'Late' || e.status === 'Half Day'
@@ -3907,7 +3954,7 @@ const DetailedAuditReportView: React.FC<{
           e.empCode === employeeFilter ||
           String(e.empCode || '').trim() === String(employeeFilter || '').trim();
 
-        const matchRecordType = recordTypeFilter === 'all'
+        const matchRecordType = activeTab === 'reports' || recordTypeFilter === 'all'
           ? true
           : recordTypeFilter === 'complete'
             ? Boolean(e.inTime && e.outTime && e.inTime !== '—' && e.outTime !== '—')
@@ -4524,16 +4571,50 @@ const DetailedAuditReportView: React.FC<{
   }, [filteredEmployees, daysInRange, rangeEventsMap, rangeMssqlReportMap, selectedDate, employeeWeeklyOffsMap, siteHolidaysList, holidaysSet]);
 
 
-  // Aggregate KPI summary metrics for the multi-day date range
+  // ── Filter multiDayAttendanceList by Status & Record Type filters specifically for Reports ──
+  const filteredReportList = useMemo(() => {
+    if (!multiDayAttendanceList.length) return [];
+    return multiDayAttendanceList.filter(e => {
+      // 1. Status Filter
+      const matchStatus = statusFilter === 'all'
+        ? true
+        : statusFilter === 'Present'
+          ? e.presentDays > 0 || e.overallStatus === 'Present'
+          : statusFilter === 'Absent'
+            ? e.presentDays === 0 || e.absentDays > 0
+            : statusFilter === 'Late'
+              ? e.lateDays > 0
+              : statusFilter === 'Completed'
+                ? e.presentDays > 0 && e.dailyPunches.some(dp => dp.outTime && dp.outTime !== '—')
+                : statusFilter === 'OnDuty'
+                  ? e.dailyPunches.some(dp => dp.inTime && dp.inTime !== '—' && (!dp.outTime || dp.outTime === '—'))
+                  : true;
+
+      // 2. Record Type Filter
+      const matchRecordType = recordTypeFilter === 'all'
+        ? true
+        : recordTypeFilter === 'complete'
+          ? e.dailyPunches.some(dp => dp.inTime && dp.outTime && dp.inTime !== '—' && dp.outTime !== '—')
+          : recordTypeFilter === 'missing_out'
+            ? e.dailyPunches.some(dp => dp.inTime && dp.inTime !== '—' && (!dp.outTime || dp.outTime === '—'))
+            : recordTypeFilter === 'missing_in'
+              ? e.dailyPunches.some(dp => (!dp.inTime || dp.inTime === '—') && dp.outTime && dp.outTime !== '—')
+              : true;
+
+      return matchStatus && matchRecordType;
+    });
+  }, [multiDayAttendanceList, statusFilter, recordTypeFilter]);
+
+  // Aggregate KPI summary metrics for the multi-day date range (now accurately reflecting filtered report employees)
   const multiDaySummaryTotals = useMemo(() => {
-    if (!multiDayAttendanceList.length) {
+    if (!filteredReportList.length) {
       return { totalActive: 0, totalPresentManDays: 0, avgPresentPerDay: '0.0', totalAbsentManDays: 0, avgAbsentPerDay: '0.0', totalOtHours: '0.0h', totalLateCount: 0 };
     }
-    const totalActive = multiDayAttendanceList.length;
-    const totalPresentManDays = multiDayAttendanceList.reduce((sum, e) => sum + e.presentDays, 0);
-    const totalAbsentManDays = multiDayAttendanceList.reduce((sum, e) => sum + e.absentDays, 0);
-    const totalOtMins = multiDayAttendanceList.reduce((sum, e) => sum + e.totalOtMins, 0);
-    const totalLateCount = multiDayAttendanceList.reduce((sum, e) => sum + e.lateDays, 0);
+    const totalActive = filteredReportList.length;
+    const totalPresentManDays = filteredReportList.reduce((sum, e) => sum + e.presentDays, 0);
+    const totalAbsentManDays = filteredReportList.reduce((sum, e) => sum + e.absentDays, 0);
+    const totalOtMins = filteredReportList.reduce((sum, e) => sum + e.totalOtMins, 0);
+    const totalLateCount = filteredReportList.reduce((sum, e) => sum + e.lateDays, 0);
     const totalDays = daysInRange.length || 1;
     const avgPresentPerDay = (totalPresentManDays / totalDays).toFixed(1);
     const avgAbsentPerDay = (totalAbsentManDays / totalDays).toFixed(1);
@@ -4548,18 +4629,18 @@ const DetailedAuditReportView: React.FC<{
       totalOtHours,
       totalLateCount,
     };
-  }, [multiDayAttendanceList, daysInRange]);
+  }, [filteredReportList, daysInRange]);
 
   // Paginated list of multi-day employees for table rendering
   const paginatedMultiDayEmployees = useMemo(() => {
     const startIdx = (currentPage - 1) * pageSize;
-    return multiDayAttendanceList.slice(startIdx, startIdx + pageSize);
-  }, [multiDayAttendanceList, currentPage, pageSize]);
+    return filteredReportList.slice(startIdx, startIdx + pageSize);
+  }, [filteredReportList, currentPage, pageSize]);
 
   // Basic Report Data Row Array (Dynamic for Date Range or Single Day)
   const basicReportData = useMemo(() => {
     if (isDateRangeActive) {
-      return multiDayAttendanceList.map(e => ({
+      return filteredReportList.map(e => ({
         sno: e.sno,
         empCode: e.empCode,
         empName: e.empName,
@@ -4604,12 +4685,12 @@ const DetailedAuditReportView: React.FC<{
       attendanceRate: emp.inTime && emp.inTime !== '—' ? 100 : 0,
       date: selectedDate,
     }));
-  }, [isDateRangeActive, multiDayAttendanceList, filteredEmployees, selectedDate, reportDateLabel]);
+  }, [isDateRangeActive, filteredReportList, filteredEmployees, selectedDate, reportDateLabel]);
 
   // Work Hours Summary: aggregated per employee from filtered set across the date range
   const workHoursReportData = useMemo(() => {
     if (isDateRangeActive) {
-      return multiDayAttendanceList.map(e => ({
+      return filteredReportList.map(e => ({
         sno: e.sno,
         empCode: e.empCode,
         empName: e.empName,
@@ -4650,14 +4731,14 @@ const DetailedAuditReportView: React.FC<{
         status: emp.status,
       };
     });
-  }, [isDateRangeActive, multiDayAttendanceList, filteredEmployees, selectedDate]);
+  }, [isDateRangeActive, filteredReportList, filteredEmployees, selectedDate]);
 
   // Site OT Report
   const siteOtReportData = useMemo(() => {
     if (isDateRangeActive) {
       const otRows: any[] = [];
       let counter = 1;
-      multiDayAttendanceList.forEach(e => {
+      filteredReportList.forEach(e => {
         if (e.totalOtMins > 0) {
           e.dailyPunches.forEach(dp => {
             if (dp.otMins > 0) {
@@ -4718,14 +4799,14 @@ const DetailedAuditReportView: React.FC<{
           date: selectedDate,
         };
       });
-  }, [isDateRangeActive, multiDayAttendanceList, filteredEmployees, selectedDate]);
+  }, [isDateRangeActive, filteredReportList, filteredEmployees, selectedDate]);
 
   // Attendance Log: all punches in date range
   const attendanceLogData = useMemo(() => {
     if (isDateRangeActive) {
       const logRows: any[] = [];
       let counter = 1;
-      multiDayAttendanceList.forEach(e => {
+      filteredReportList.forEach(e => {
         e.dailyPunches.forEach(dp => {
           if (dp.inTime && dp.inTime !== '—') {
             logRows.push({
@@ -4757,12 +4838,12 @@ const DetailedAuditReportView: React.FC<{
         device: 'Biometric',
         outDateTime: emp.outTime ? `${selectedDate} ${emp.outTime}` : '—',
       }));
-  }, [isDateRangeActive, multiDayAttendanceList, filteredEmployees, selectedDate]);
+  }, [isDateRangeActive, filteredReportList, filteredEmployees, selectedDate]);
 
   // Monthly Summary: attendance totals per employee across the date range
   const monthlySummaryReportData = useMemo(() => {
     if (isDateRangeActive) {
-      return multiDayAttendanceList.map(e => ({
+      return filteredReportList.map(e => ({
         sno: e.sno,
         empCode: e.empCode,
         empName: e.empName,
@@ -4790,12 +4871,13 @@ const DetailedAuditReportView: React.FC<{
         status: emp.status,
       };
     });
-  }, [isDateRangeActive, multiDayAttendanceList, filteredEmployees]);
+  }, [isDateRangeActive, filteredReportList, filteredEmployees]);
 
   // Leave Balance Tracker: synthetic leave balance per employee
   const leaveBalanceReportData = useMemo(() => {
-    return filteredEmployees.map((emp, idx) => {
-      const isPresent = !!(emp.inTime && emp.inTime !== '—');
+    const list = isDateRangeActive ? filteredReportList : filteredEmployees;
+    return list.map((emp, idx) => {
+      const isPresent = 'presentDays' in emp ? ((emp as any).presentDays > 0) : !!(emp.inTime && emp.inTime !== '—');
       const earned = Math.floor(Math.random() * 12) + 8;
       const used = isPresent ? 0 : 1;
       return {
@@ -4807,10 +4889,97 @@ const DetailedAuditReportView: React.FC<{
         earnedLeave: earned,
         usedLeave: used,
         balanceLeave: Math.max(0, earned - used),
-        status: emp.status,
+        status: 'overallStatus' in emp ? (emp as any).overallStatus : emp.status,
       };
     });
-  }, [filteredEmployees]);
+  }, [isDateRangeActive, filteredReportList, filteredEmployees]);
+
+  // Active total count for the currently active report type
+  const activeReportCount = useMemo(() => {
+    if (reportType === 'site_ot') return siteOtReportData.length;
+    if (reportType === 'log') return attendanceLogData.length;
+    if (reportType === 'work_hours') return workHoursReportData.length;
+    if (reportType === 'leave_balance') return leaveBalanceReportData.length;
+    if (reportType === 'monthly') return filteredReportList.length;
+    // basic or detailed
+    return isDateRangeActive ? filteredReportList.length : filteredEmployees.length;
+  }, [reportType, siteOtReportData.length, attendanceLogData.length, workHoursReportData.length, leaveBalanceReportData.length, filteredReportList.length, isDateRangeActive, filteredEmployees.length]);
+
+  const reportTotalPages = Math.max(1, Math.ceil(activeReportCount / pageSize));
+
+  // ── Source & Loading Status Badge (Reacts accurately to MS SQL vs Supabase fetching & data source) ──
+  const renderSourceStatusBadge = (size: 'sm' | 'md' = 'sm') => {
+    const isMssqlActive = isFetchingMssqlReport;
+    const isSupabaseActive = isFetchingRangeEvents && !isFetchingMssqlReport;
+    const hasMssqlRecords = Object.keys(rangeMssqlReportMap).length > 0;
+    const hasSupabaseRecords = !hasMssqlRecords && Object.keys(rangeEventsMap).length > 0;
+
+    const spinnerSize = size === 'sm' ? 9 : 11;
+    const iconSize = size === 'sm' ? 10 : 12;
+
+    // 1. Actively Fetching from MS SQL Server (Amber badge as shown in Image 1)
+    if (isMssqlActive) {
+      return (
+        <span
+          className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-[10px] font-bold border border-amber-200 dark:border-amber-700/50 animate-pulse"
+          title="Querying live MS SQL biometric database (etimetracklite1)"
+        >
+          <Loader2 size={spinnerSize} className="animate-spin text-amber-600 dark:text-amber-400" />
+          <span>Fetching MSSQL…</span>
+        </span>
+      );
+    }
+
+    // 2. Actively Fetching from Supabase Database (Green badge)
+    if (isSupabaseActive) {
+      return (
+        <span
+          className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-[#44D62C] text-[10px] font-bold border border-emerald-200 dark:border-emerald-800 animate-pulse"
+          title="Querying attendance records from Supabase Database"
+        >
+          <Loader2 size={spinnerSize} className="animate-spin text-emerald-600 dark:text-[#44D62C]" />
+          <span>Fetching from Database…</span>
+        </span>
+      );
+    }
+
+    // 3. Loaded: Verified MS SQL Server Biometric Data
+    if (hasMssqlRecords) {
+      return (
+        <span
+          className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 text-[10px] font-bold border border-amber-200 dark:border-amber-800"
+          title="Authoritative biometric punch records verified from MS SQL Server (etimetracklite1)"
+        >
+          <Database size={iconSize} className="text-amber-600 dark:text-amber-400" />
+          <span>MS SQL Database</span>
+        </span>
+      );
+    }
+
+    // 4. Loaded: Supabase Cloud Database Data
+    if (hasSupabaseRecords) {
+      return (
+        <span
+          className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-[#44D62C] text-[10px] font-bold border border-emerald-200 dark:border-emerald-800"
+          title="Attendance events verified from Supabase Database"
+        >
+          <Database size={iconSize} className="text-emerald-600 dark:text-[#44D62C]" />
+          <span>Supabase Database</span>
+        </span>
+      );
+    }
+
+    // Default: Database Connected
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-[#44D62C] text-[10px] font-bold border border-emerald-200 dark:border-emerald-800"
+        title="Database connected and ready"
+      >
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+        <span>Database Connected</span>
+      </span>
+    );
+  };
 
   // ── UPGRADED EXPORT HANDLERS ────────────────────────────────────────────────
 
@@ -4946,7 +5115,11 @@ const DetailedAuditReportView: React.FC<{
       31: { inTime: '10:16', outTime: '19:55', ot: '0:39', shift: 'GS', gross: '9:39', net: '9:00' }
     };
 
-    return (filteredEmployees || []).map(emp => {
+    const targetEmps = (isDateRangeActive && filteredReportList.length > 0)
+      ? filteredReportList
+      : (filteredEmployees || []);
+
+    return targetEmps.map(emp => {
       const empCodeTrim = String(emp.empCode || '').trim();
       const empNameUpper = String(emp.empName || '').trim().toUpperCase();
 
@@ -5317,7 +5490,7 @@ const DetailedAuditReportView: React.FC<{
         if (isDateRangeActive) {
           const dayCols = daysInRange.map(d => `${format(d, 'd')} (${['Su','Mo','Tu','We','Th','Fr','Sa'][d.getDay()]})`);
           headers = ['S.No', 'Biometric Code', 'Employee Name', 'Site', 'Designation', 'Shift', ...dayCols, 'P', 'L', 'WO', 'H', 'A', 'Pay'];
-          rows = multiDayAttendanceList.map((e, idx) => {
+          rows = filteredReportList.map((e, idx) => {
             const dailyStatuses = (e.dailyPunches || []).map((dp: any) => {
               if (dp.isHoliday || dp.status === 'H' || dp.status === 'Holiday') return 'H';
               if (dp.isWeeklyOff || dp.status === 'W/O' || dp.status === 'WO') return 'WO';
@@ -5433,7 +5606,7 @@ const DetailedAuditReportView: React.FC<{
                                 (filteredEmployees && filteredEmployees.length > 0 && isSecurityEmployee(filteredEmployees[0]));
       const mBranding = getCompanyBranding(isMonthlySecurity);
 
-      const monthlyRows = (isDateRangeActive ? multiDayAttendanceList : filteredEmployees.map((emp, idx) => ({
+      const monthlyRows = (isDateRangeActive ? filteredReportList : filteredEmployees.map((emp, idx) => ({
         sno: idx + 1,
         empCode: emp.empCode,
         empName: emp.empName,
@@ -5574,6 +5747,7 @@ const DetailedAuditReportView: React.FC<{
         { header: 'Presence %', key: 'attendanceRate', width: 13 },
         { header: 'Status', key: 'status', width: 14 },
       ];
+      rows = basicReportData;
     }
     const title = `Paradigm Services — ${
       reportType === 'basic' ? 'Basic Attendance'
@@ -5661,7 +5835,7 @@ const DetailedAuditReportView: React.FC<{
                                 (filteredEmployees && filteredEmployees.length > 0 && isSecurityEmployee(filteredEmployees[0]));
       const mBranding = getCompanyBranding(isMonthlySecurity);
 
-      const monthlyRows = (isDateRangeActive ? multiDayAttendanceList : filteredEmployees.map((emp, idx) => ({
+      const monthlyRows = (isDateRangeActive ? filteredReportList : filteredEmployees.map((emp, idx) => ({
         sno: idx + 1,
         empCode: emp.empCode,
         empName: emp.empName,
@@ -5731,7 +5905,7 @@ const DetailedAuditReportView: React.FC<{
         sno: r.sno,
         userName: r.empName,
         department: r.department,
-        totalDays: isDateRangeActive ? (multiDayAttendanceList.length || 1) : 1,
+        totalDays: isDateRangeActive ? (daysInRange.length || 1) : 1,
         presentDays: Number(r.presentDays) || 0,
         totalWorkingHours: parseFloat(r.netWorkHrs) || 0,
         avgWorkingHours: Number(r.presentDays) > 0 ? (parseFloat(r.netWorkHrs) / Number(r.presentDays)) : 0,
@@ -6035,221 +6209,477 @@ const DetailedAuditReportView: React.FC<{
       </div>
 
       {/* ── Page Header (Standard Web App Dashboard Style) ────────────────── */}
-      <div className="bg-white dark:bg-[#072415] p-4 sm:p-5 border-l-4 border-l-[#006B3F] dark:border-l-[#44D62C] border-y border-r border-slate-200/80 dark:border-[#134426] rounded-2xl shadow-xs">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-white uppercase">
-              Site Attendance Dashboard
-            </h1>
-            <p className="text-xs text-slate-500 dark:text-emerald-300/70 font-medium mt-0.5">
-              Real-time site attendance overview & employee tracking
-            </p>
-            {selectedOpsManager !== 'all' && (
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[11px] font-bold mt-2">
-                <ShieldCheck size={13} className="text-emerald-600 shrink-0" />
-                <span>
-                  Scoped to Operations Manager: <strong>{selectedOpsManager}</strong> ({allowedSitesForOpsManager?.length || 0} mapped sites in Responsibility Matrix)
-                </span>
+      {/* ── Page Header & Integrated Controls Card (Single Unified Container) ── */}
+      <div className="bg-white dark:bg-[#072415] border-l-4 border-l-[#006B3F] dark:border-l-[#44D62C] border-y border-r border-slate-200/80 dark:border-[#134426] rounded-2xl shadow-xs overflow-visible">
+        <div className="p-4 sm:p-5">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-white uppercase">
+                Site Attendance Dashboard
+              </h1>
+              <p className="text-xs text-slate-500 dark:text-emerald-300/70 font-medium mt-0.5">
+                Real-time site attendance overview & employee tracking
+              </p>
+              {selectedOpsManager !== 'all' && (
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[11px] font-bold mt-2">
+                  <ShieldCheck size={13} className="text-emerald-600 shrink-0" />
+                  <span>
+                    Scoped to Operations Manager: <strong>{selectedOpsManager}</strong> ({allowedSitesForOpsManager?.length || 0} mapped sites in Responsibility Matrix)
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2.5 sm:gap-3 w-full lg:w-auto">
+              {/* Filters Row: Ops Manager, Department, Date */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 lg:flex items-center gap-2 sm:gap-2.5 w-full sm:w-auto">
+                {/* Operations Manager Filter */}
+                <div className="flex items-center gap-2 bg-slate-100 dark:bg-[#0d3820] border border-slate-200 dark:border-[#1a5532] rounded-xl px-3 py-2 min-h-[38px]">
+                  <ShieldCheck size={16} className="text-emerald-600 dark:text-[#44D62C] shrink-0" />
+                  <select
+                    value={selectedOpsManager}
+                    onChange={e => {
+                      setSelectedOpsManager(e.target.value);
+                      setDepartmentFilter('all');
+                    }}
+                    disabled={Boolean(loggedInOpsManager)}
+                    className="bg-transparent text-slate-800 dark:text-emerald-100 text-xs font-semibold outline-none cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed w-full"
+                    title={loggedInOpsManager ? `Access strictly locked to ${loggedInOpsManager}'s mapped sites` : 'Filter sites by Operations Manager'}
+                  >
+                    <option value="all" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">🌐 All Operations Leads</option>
+                    {opsManagerList.map(mgr => (
+                      <option key={mgr} value={mgr} className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">
+                        🛡️ Ops: {mgr}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Department / Site Filter (Rendered on live attendance; reports tab uses its dedicated Advanced Filter) */}
+                {activeTab !== 'reports' && (
+                  <div className="flex items-center gap-2 bg-slate-100 dark:bg-[#0d3820] border border-slate-200 dark:border-[#1a5532] rounded-xl px-3 py-2 min-h-[38px]">
+                    <Building2 size={16} className="text-emerald-600 dark:text-[#44D62C] shrink-0" />
+                    <select
+                      value={departmentFilter}
+                      onChange={e => {
+                        const val = e.target.value;
+                        setDepartmentFilter(val);
+                        setPendingSite(val);
+                        setSiteFilter(val);
+                      }}
+                      className="bg-transparent text-slate-800 dark:text-emerald-100 text-xs font-semibold outline-none cursor-pointer w-full"
+                    >
+                      <option value="all" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">
+                        {selectedOpsManager !== 'all' ? `All ${selectedOpsManager} Sites (${departmentList.length})` : `All Sites / Depts (${departmentList.length})`}
+                      </option>
+                      {departmentList.map(dept => (
+                        <option key={dept} value={dept} className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">
+                          {dept}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Date Picker (Rendered on live attendance; reports tab uses dedicated date range presets bar) */}
+                {activeTab !== 'reports' && (
+                  <div className="flex items-center gap-2 bg-slate-100 dark:bg-[#0d3820] border border-slate-200 dark:border-[#1a5532] rounded-xl px-3 py-2 min-h-[38px]">
+                    <Calendar size={16} className="text-emerald-600 dark:text-[#44D62C] shrink-0" />
+                    <input
+                      type="date"
+                      value={selectedDate}
+                      max={format(new Date(), 'yyyy-MM-dd')}
+                      onChange={e => setSelectedDate(e.target.value)}
+                      className="bg-transparent text-slate-800 dark:text-emerald-100 text-xs font-semibold outline-none cursor-pointer w-full"
+                    />
+                  </div>
+                )}
               </div>
+
+              {/* Actions Row: Debug, Tabs, Refresh */}
+              <div className="flex items-center justify-between sm:justify-start gap-2 flex-wrap sm:flex-nowrap w-full sm:w-auto">
+                {/* Admin Debug Toggle button */}
+                <button
+                  onClick={() => setShowDebug(v => !v)}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all border cursor-pointer min-h-[38px] ${
+                    showDebug 
+                      ? 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800' 
+                      : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-200 dark:border-[#134426] dark:hover:bg-[#0d3820]'
+                  }`}
+                  title="Toggle Admin Technical Debugging"
+                >
+                  <Bug size={14} />
+                  <span className="hidden xs:inline">{showDebug ? 'Debug: ON' : 'Debug: OFF'}</span>
+                  <span className="xs:hidden">{showDebug ? 'ON' : 'OFF'}</span>
+                </button>
+
+                {/* Sub-page Navigation Tabs - Icon Only (Controlled by User Permission Rules) */}
+                <div className="flex items-center gap-1.5 px-1.5 py-0.5 overflow-x-auto no-scrollbar border-l border-r sm:border-r-0 border-slate-200 dark:border-[#134426] shrink-0">
+                  {isTabAllowed('attendance') && (
+                    <button
+                      onClick={() => setActiveTab('attendance')}
+                      className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all border cursor-pointer shrink-0 ${
+                        activeTab === 'attendance'
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                          : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-200 dark:border-[#134426] dark:hover:bg-[#0d3820] dark:hover:text-white'
+                      }`}
+                      title="Live Attendance Dashboard"
+                    >
+                      <BarChart3 size={16} className="shrink-0" />
+                    </button>
+                  )}
+
+                  {isTabAllowed('reports') && (
+                    <button
+                      onClick={() => setActiveTab('reports')}
+                      className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all border cursor-pointer relative shrink-0 ${
+                        activeTab === 'reports'
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                          : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-200 dark:border-[#134426] dark:hover:bg-[#0d3820] dark:hover:text-white'
+                      }`}
+                      title="Attendance Reports & Multi-Format Export Center"
+                    >
+                      <FileSpreadsheet size={16} className="shrink-0" />
+                      <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-emerald-500 rounded-full" title="Reports & Generator" />
+                    </button>
+                  )}
+
+                  {isTabAllowed('shiftConfig') && (
+                    <button
+                      onClick={() => setActiveTab('shiftConfig')}
+                      className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all border cursor-pointer relative shrink-0 ${
+                        activeTab === 'shiftConfig'
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                          : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-200 dark:border-[#134426] dark:hover:bg-[#0d3820] dark:hover:text-white'
+                      }`}
+                      title="Shift Rule & Group Config Sub-Page (Admin)"
+                    >
+                      <Sliders size={16} className="shrink-0" />
+                      <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-500 rounded-full" title="Shift Config" />
+                    </button>
+                  )}
+
+                  {isTabAllowed('userAccess') && (
+                    <button
+                      onClick={() => setActiveTab('userAccess')}
+                      className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all border cursor-pointer relative shrink-0 ${
+                        activeTab === 'userAccess'
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                          : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-200 dark:border-[#134426] dark:hover:bg-[#0d3820] dark:hover:text-white'
+                      }`}
+                      title="User Site Access Control Sub-Page (Admin)"
+                    >
+                      <Lock size={16} className="shrink-0" />
+                      <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-blue-500 rounded-full" title="User Access Config" />
+                    </button>
+                  )}
+
+                  {isTabAllowed('auditLogs') && (
+                    <button
+                      onClick={() => setActiveTab('auditLogs')}
+                      className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all border cursor-pointer relative shrink-0 ${
+                        activeTab === 'auditLogs'
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                          : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-200 dark:border-[#134426] dark:hover:bg-[#0d3820] dark:hover:text-white'
+                      }`}
+                      title="Screenshot Security Audit Logs Sub-Page (Admin)"
+                    >
+                      <FileText size={16} className="shrink-0" />
+                      {unreadLogsCount > 0 && (
+                        <span className="absolute -top-1 -right-1 px-1 py-0.2 bg-red-500 text-white text-[9px] font-extrabold rounded-full animate-pulse">
+                          {unreadLogsCount}
+                        </span>
+                      )}
+                    </button>
+                  )}
+
+                  {isTabAllowed('screenshotAudit') && (
+                    <button
+                      onClick={() => setShowScreenshotModal(true)}
+                      className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-300 border border-slate-200 dark:border-[#134426] dark:hover:bg-[#0d3820] cursor-pointer shrink-0"
+                      title="Simulate Screenshot Security Capture Reason"
+                    >
+                      <Camera size={16} className="text-emerald-600 dark:text-[#44D62C] shrink-0" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Refresh button */}
+                <button
+                  onClick={() => fetchData(true)}
+                  disabled={refreshing}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer shrink-0 min-h-[38px] active:scale-95"
+                >
+                  <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+                  <span className="hidden xs:inline">{refreshing ? 'Refreshing...' : 'Refresh'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Connection status + last updated */}
+          <div className="flex flex-wrap items-center gap-4 mt-3 pt-3 border-t border-slate-100 dark:border-[#134426] text-xs">
+            <div className={`flex items-center gap-1.5 font-semibold ${data?.connectionStatus === 'error' ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+              <span className={`w-2 h-2 rounded-full ${data?.connectionStatus === 'error' ? 'bg-amber-500 animate-ping' : 'bg-emerald-500 animate-pulse'}`} />
+              {data?.connectionStatus === 'error' ? 'Database Disconnected' : 'Live Connection'}
+            </div>
+            {data?.lastUpdated && (
+              <span className="text-slate-500 dark:text-emerald-300/70">
+                Last updated: {new Date(data.lastUpdated).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
+              </span>
             )}
-          </div>
-
-          <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2.5 sm:gap-3 w-full lg:w-auto">
-            {/* Filters Row: Ops Manager, Department, Date */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 lg:flex items-center gap-2 sm:gap-2.5 w-full sm:w-auto">
-              {/* Operations Manager Filter */}
-              <div className="flex items-center gap-2 bg-slate-100 dark:bg-[#0d3820] border border-slate-200 dark:border-[#1a5532] rounded-xl px-3 py-2 min-h-[38px]">
-                <ShieldCheck size={16} className="text-emerald-600 dark:text-[#44D62C] shrink-0" />
-                <select
-                  value={selectedOpsManager}
-                  onChange={e => {
-                    setSelectedOpsManager(e.target.value);
-                    setDepartmentFilter('all');
-                  }}
-                  disabled={Boolean(loggedInOpsManager)}
-                  className="bg-transparent text-slate-800 dark:text-emerald-100 text-xs font-semibold outline-none cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed w-full"
-                  title={loggedInOpsManager ? `Access strictly locked to ${loggedInOpsManager}'s mapped sites` : 'Filter sites by Operations Manager'}
-                >
-                  <option value="all" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">🌐 All Operations Leads</option>
-                  {opsManagerList.map(mgr => (
-                    <option key={mgr} value={mgr} className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">
-                      🛡️ Ops: {mgr}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Department / Site Filter */}
-              <div className="flex items-center gap-2 bg-slate-100 dark:bg-[#0d3820] border border-slate-200 dark:border-[#1a5532] rounded-xl px-3 py-2 min-h-[38px]">
-                <Building2 size={16} className="text-emerald-600 dark:text-[#44D62C] shrink-0" />
-                <select
-                  value={departmentFilter}
-                  onChange={e => {
-                    const val = e.target.value;
-                    setDepartmentFilter(val);
-                    setPendingSite(val);
-                    setSiteFilter(val);
-                  }}
-                  className="bg-transparent text-slate-800 dark:text-emerald-100 text-xs font-semibold outline-none cursor-pointer w-full"
-                >
-                  <option value="all" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">
-                    {selectedOpsManager !== 'all' ? `All ${selectedOpsManager} Sites (${departmentList.length})` : `All Sites / Depts (${departmentList.length})`}
-                  </option>
-                  {departmentList.map(dept => (
-                    <option key={dept} value={dept} className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">
-                      {dept}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Date Picker */}
-              <div className="flex items-center gap-2 bg-slate-100 dark:bg-[#0d3820] border border-slate-200 dark:border-[#1a5532] rounded-xl px-3 py-2 min-h-[38px]">
-                <Calendar size={16} className="text-emerald-600 dark:text-[#44D62C] shrink-0" />
-                <input
-                  type="date"
-                  value={selectedDate}
-                  max={format(new Date(), 'yyyy-MM-dd')}
-                  onChange={e => setSelectedDate(e.target.value)}
-                  className="bg-transparent text-slate-800 dark:text-emerald-100 text-xs font-semibold outline-none cursor-pointer w-full"
-                />
-              </div>
-            </div>
-
-            {/* Actions Row: Debug, Tabs, Refresh */}
-            <div className="flex items-center justify-between sm:justify-start gap-2 flex-wrap sm:flex-nowrap w-full sm:w-auto">
-              {/* Admin Debug Toggle button */}
-              <button
-                onClick={() => setShowDebug(v => !v)}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all border cursor-pointer min-h-[38px] ${
-                  showDebug 
-                    ? 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800' 
-                    : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-200 dark:border-[#134426] dark:hover:bg-[#0d3820]'
-                }`}
-                title="Toggle Admin Technical Debugging"
-              >
-                <Bug size={14} />
-                <span className="hidden xs:inline">{showDebug ? 'Debug: ON' : 'Debug: OFF'}</span>
-                <span className="xs:hidden">{showDebug ? 'ON' : 'OFF'}</span>
-              </button>
-
-              {/* Sub-page Navigation Tabs - Icon Only (Controlled by User Permission Rules) */}
-              <div className="flex items-center gap-1.5 px-1.5 py-0.5 overflow-x-auto no-scrollbar border-l border-r sm:border-r-0 border-slate-200 dark:border-[#134426] shrink-0">
-                {isTabAllowed('attendance') && (
-                  <button
-                    onClick={() => setActiveTab('attendance')}
-                    className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all border cursor-pointer shrink-0 ${
-                      activeTab === 'attendance'
-                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                        : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-200 dark:border-[#134426] dark:hover:bg-[#0d3820] dark:hover:text-white'
-                    }`}
-                    title="Live Attendance Dashboard"
-                  >
-                    <BarChart3 size={16} className="shrink-0" />
-                  </button>
-                )}
-
-                {isTabAllowed('reports') && (
-                  <button
-                    onClick={() => setActiveTab('reports')}
-                    className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all border cursor-pointer relative shrink-0 ${
-                      activeTab === 'reports'
-                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                        : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-200 dark:border-[#134426] dark:hover:bg-[#0d3820] dark:hover:text-white'
-                    }`}
-                    title="Attendance Reports & Multi-Format Export Center"
-                  >
-                    <FileSpreadsheet size={16} className="shrink-0" />
-                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-emerald-500 rounded-full" title="Reports & Generator" />
-                  </button>
-                )}
-
-                {isTabAllowed('shiftConfig') && (
-                  <button
-                    onClick={() => setActiveTab('shiftConfig')}
-                    className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all border cursor-pointer relative shrink-0 ${
-                      activeTab === 'shiftConfig'
-                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                        : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-200 dark:border-[#134426] dark:hover:bg-[#0d3820] dark:hover:text-white'
-                    }`}
-                    title="Shift Rule & Group Config Sub-Page (Admin)"
-                  >
-                    <Sliders size={16} className="shrink-0" />
-                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-500 rounded-full" title="Shift Config" />
-                  </button>
-                )}
-
-                {isTabAllowed('userAccess') && (
-                  <button
-                    onClick={() => setActiveTab('userAccess')}
-                    className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all border cursor-pointer relative shrink-0 ${
-                      activeTab === 'userAccess'
-                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                        : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-200 dark:border-[#134426] dark:hover:bg-[#0d3820] dark:hover:text-white'
-                    }`}
-                    title="User Site Access Control Sub-Page (Admin)"
-                  >
-                    <Lock size={16} className="shrink-0" />
-                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-blue-500 rounded-full" title="User Access Config" />
-                  </button>
-                )}
-
-                {isTabAllowed('auditLogs') && (
-                  <button
-                    onClick={() => setActiveTab('auditLogs')}
-                    className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all border cursor-pointer relative shrink-0 ${
-                      activeTab === 'auditLogs'
-                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                        : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-200 dark:border-[#134426] dark:hover:bg-[#0d3820] dark:hover:text-white'
-                    }`}
-                    title="Screenshot Security Audit Logs Sub-Page (Admin)"
-                  >
-                    <FileText size={16} className="shrink-0" />
-                    {unreadLogsCount > 0 && (
-                      <span className="absolute -top-1 -right-1 px-1 py-0.2 bg-red-500 text-white text-[9px] font-extrabold rounded-full animate-pulse">
-                        {unreadLogsCount}
-                      </span>
-                    )}
-                  </button>
-                )}
-
-                {isTabAllowed('screenshotAudit') && (
-                  <button
-                    onClick={() => setShowScreenshotModal(true)}
-                    className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-300 border border-slate-200 dark:border-[#134426] dark:hover:bg-[#0d3820] cursor-pointer shrink-0"
-                    title="Simulate Screenshot Security Capture Reason"
-                  >
-                    <Camera size={16} className="text-emerald-600 dark:text-[#44D62C] shrink-0" />
-                  </button>
-                )}
-              </div>
-
-              {/* Refresh button */}
-              <button
-                onClick={() => fetchData(true)}
-                disabled={refreshing}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer shrink-0 min-h-[38px] active:scale-95"
-              >
-                <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
-                <span className="hidden xs:inline">{refreshing ? 'Refreshing...' : 'Refresh'}</span>
-              </button>
-            </div>
+            <span className="text-slate-400 dark:text-emerald-400/50">Auto-refresh every 5 min</span>
           </div>
         </div>
 
-        {/* Connection status + last updated */}
-        <div className="flex flex-wrap items-center gap-4 mt-3 pt-3 border-t border-slate-100 dark:border-[#134426] text-xs">
-          <div className={`flex items-center gap-1.5 font-semibold ${data?.connectionStatus === 'error' ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-            <span className={`w-2 h-2 rounded-full ${data?.connectionStatus === 'error' ? 'bg-amber-500 animate-ping' : 'bg-emerald-500 animate-pulse'}`} />
-            {data?.connectionStatus === 'error' ? 'Database Disconnected' : 'Live Connection'}
+        {/* ── Integrated Reports Date Range Bar & Advanced Filters (Merged into single card) ── */}
+        {activeTab === 'reports' && (
+          <div className="border-t border-slate-100 dark:border-[#134426]">
+            {/* 1. DATE RANGE BAR */}
+            <div className="px-4 py-3 sm:px-5 sm:py-3.5 bg-slate-50/60 dark:bg-[#051c11]/50 border-b border-slate-100 dark:border-[#134426]">
+              <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto py-0.5">
+                {['Today', 'Yesterday', 'Last 3 Days', 'Last 7 Days', 'This Month', 'Last Month', 'Last 3 Months', 'This Year', 'Last Year'].map(preset => (
+                  <button
+                    key={preset}
+                    onClick={() => handlePresetDateChange(preset)}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                      activeDateFilter === preset
+                        ? 'bg-[#006B3F] text-white shadow-xs'
+                        : 'bg-white dark:bg-[#072415] text-slate-600 dark:text-emerald-200 border border-slate-200/80 dark:border-[#134426] hover:bg-slate-100 dark:hover:bg-[#134426]'
+                    }`}
+                  >
+                    {preset}
+                  </button>
+                ))}
+
+                {/* Custom Date Range Picker Trigger */}
+                <div className="relative" ref={datePickerRef}>
+                  <button
+                    onClick={() => setIsDatePickerOpen(v => !v)}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5 border ${
+                      activeDateFilter === 'Custom'
+                        ? 'bg-[#006B3F] text-white border-transparent shadow-xs'
+                        : 'bg-white dark:bg-[#072415] text-slate-600 dark:text-emerald-200 border-slate-200 dark:border-[#134426] hover:bg-slate-100 dark:hover:bg-[#134426]'
+                    }`}
+                  >
+                    <Calendar size={13} />
+                    {activeDateFilter === 'Custom'
+                      ? reportDateLabel
+                      : 'Custom Range'}
+                  </button>
+                  {isDatePickerOpen && (
+                    <div className="absolute top-full left-0 z-50 mt-1 shadow-2xl rounded-2xl overflow-hidden border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415]">
+                      <DateRangePicker
+                        ranges={pendingDateRangeArray}
+                        onChange={handleCustomDateChange}
+                        maxDate={new Date()}
+                        showDateDisplay={false}
+                        direction="horizontal"
+                        months={2}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 mt-2 text-xs font-semibold text-slate-500 dark:text-emerald-300/70">
+                <Calendar size={13} className="text-emerald-600" />
+                <span>Report Period: <strong className="text-slate-900 dark:text-white">{reportDateLabel}</strong></span>
+                <span className="text-slate-300 dark:text-emerald-300/40">|</span>
+                <span>{activeReportCount} records loaded</span>
+                {renderSourceStatusBadge('sm')}
+              </div>
+            </div>
+
+            {/* 2. COMPREHENSIVE MULTI-FILTER TOOLBAR */}
+            <div className="p-4 sm:p-5 space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-[#134426] pb-3">
+                <div className="flex items-center gap-2">
+                  <Filter size={18} className="text-emerald-600 dark:text-emerald-400" />
+                  <h2 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+                    Advanced Filters & Report Generator
+                  </h2>
+                </div>
+                <span className="text-[11px] font-semibold text-slate-400">Select options and click Apply Filters</span>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9 gap-3">
+                {/* Report Type */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Report Type</label>
+                  <select
+                    value={pendingReportType}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setPendingReportType(val);
+                      setReportType(val);
+                    }}
+                    className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  >
+                    <option value="basic">Basic Report</option>
+                    <option value="monthly">Monthly Summary</option>
+                    <option value="detailed">Detailed Audit (31-Day)</option>
+                    <option value="work_hours">Work Hours Summary</option>
+                    <option value="leave_balance">Leave Balance Tracker</option>
+                    <option value="site_ot">Site OT Report</option>
+                    <option value="log">Attendance Log</option>
+                  </select>
+                </div>
+
+                {/* Location */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Location</label>
+                  <select
+                    value={pendingLocation}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setPendingLocation(val);
+                      setLocationFilter(val);
+                    }}
+                    className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  >
+                    <option value="all">All Locations ({locationList.length})</option>
+                    {locationList.map(loc => (<option key={loc} value={loc}>{loc}</option>))}
+                  </select>
+                </div>
+
+                {/* Company */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Company</label>
+                  <select
+                    value={pendingCompany}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setPendingCompany(val);
+                      setCompanyFilter(val);
+                    }}
+                    className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  >
+                    <option value="all">All Companies ({companyList.length})</option>
+                    {companyList.map(comp => (<option key={comp} value={comp}>{comp}</option>))}
+                  </select>
+                </div>
+
+                {/* Site */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Site</label>
+                  <select
+                    value={pendingSite}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setPendingSite(val);
+                      setSiteFilter(val);
+                      setDepartmentFilter(val);
+                    }}
+                    className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  >
+                    <option value="all">All Sites ({departmentList.length})</option>
+                    {departmentList.map(dept => (<option key={dept} value={dept}>{dept}</option>))}
+                  </select>
+                </div>
+
+                {/* Role */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Role</label>
+                  <select
+                    value={pendingRole}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setPendingRole(val);
+                      setRoleFilter(val);
+                    }}
+                    className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  >
+                    <option value="all">All Roles ({roleList.length})</option>
+                    {roleList.map(role => (<option key={role} value={role}>{role}</option>))}
+                  </select>
+                </div>
+
+                {/* Employee */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Employee</label>
+                  <select
+                    value={pendingEmployee}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setPendingEmployee(val);
+                      setEmployeeFilter(val);
+                    }}
+                    className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  >
+                    <option value="all">All Employees ({selectableEmployees.length})</option>
+                    {selectableEmployees.map(e => (<option key={e.empCode} value={e.empCode}>{e.empName} ({e.empCode})</option>))}
+                  </select>
+                </div>
+
+                {/* Status */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Status</label>
+                  <select
+                    value={pendingStatus}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setPendingStatus(val);
+                      setStatusFilter(val);
+                    }}
+                    className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  >
+                    <option value="all">All Status</option>
+                    <option value="Present">Present</option>
+                    <option value="Absent">Absent</option>
+                    <option value="Late">Late</option>
+                    <option value="Completed">Completed</option>
+                    <option value="OnDuty">On Duty</option>
+                  </select>
+                </div>
+
+                {/* Record Type */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Record Type</label>
+                  <select
+                    value={pendingRecordType}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setPendingRecordType(val);
+                      setRecordTypeFilter(val);
+                    }}
+                    className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  >
+                    <option value="all">All Records</option>
+                    <option value="complete">Complete (In + Out)</option>
+                    <option value="missing_out">Missing Punch Out</option>
+                    <option value="missing_in">Missing Punch In</option>
+                  </select>
+                </div>
+
+                {/* Show Records */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Show Records</label>
+                  <select
+                    value={pendingPageSize}
+                    onChange={e => {
+                      const val = Number(e.target.value);
+                      setPendingPageSize(val);
+                      setPageSize(val);
+                    }}
+                    className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  >
+                    <option value={20}>20 Records</option>
+                    <option value={50}>50 Records</option>
+                    <option value={100}>100 Records</option>
+                    <option value={250}>250 Records</option>
+                    <option value={10000}>All Records</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-1">
+                <button onClick={handleApplyFilters} className="flex items-center gap-2 px-6 py-2.5 bg-[#006B3F] hover:bg-[#005632] text-white text-xs font-black rounded-xl shadow-md transition-all cursor-pointer active:scale-95">
+                  <Filter size={15} /> Apply Filters
+                </button>
+              </div>
+            </div>
           </div>
-          {data?.lastUpdated && (
-            <span className="text-slate-500 dark:text-emerald-300/70">
-              Last updated: {new Date(data.lastUpdated).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
-            </span>
-          )}
-          <span className="text-slate-400 dark:text-emerald-400/50">Auto-refresh every 5 min</span>
-        </div>
+        )}
       </div>
 
       {/* ── DB Error Banner & Interactive Connection Inspector ──────────────── */}
@@ -6335,257 +6765,7 @@ const DetailedAuditReportView: React.FC<{
       {activeTab === 'reports' ? (
         /* ── ATTENDANCE REPORTS & EXPORT GENERATOR SUB-PAGE ───────────────── */
         <div className="space-y-6 animate-in fade-in duration-200">
-
-          {/* ── 1. DATE RANGE BAR ──────────────────────────────────────────── */}
-          <div className="bg-white dark:bg-[#072415] p-3 rounded-2xl border border-slate-200/80 dark:border-[#134426] shadow-xs">
-            <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto py-0.5">
-              {['Today', 'Yesterday', 'Last 3 Days', 'Last 7 Days', 'This Month', 'Last Month', 'Last 3 Months', 'This Year', 'Last Year'].map(preset => (
-                <button
-                  key={preset}
-                  onClick={() => handlePresetDateChange(preset)}
-                  className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
-                    activeDateFilter === preset
-                      ? 'bg-[#006B3F] text-white shadow-xs'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-200 dark:hover:bg-[#134426]'
-                  }`}
-                >
-                  {preset}
-                </button>
-              ))}
-
-              {/* Custom Date Range Picker Trigger */}
-              <div className="relative" ref={datePickerRef}>
-                <button
-                  onClick={() => setIsDatePickerOpen(v => !v)}
-                  className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5 border ${
-                    activeDateFilter === 'Custom'
-                      ? 'bg-[#006B3F] text-white border-transparent shadow-xs'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-[#072415] dark:text-emerald-200 border-slate-200 dark:border-[#134426]'
-                  }`}
-                >
-                  <Calendar size={13} />
-                  {activeDateFilter === 'Custom'
-                    ? reportDateLabel
-                    : 'Custom Range'}
-                </button>
-                {isDatePickerOpen && (
-                  <div className="absolute top-full left-0 z-50 mt-1 shadow-2xl rounded-2xl overflow-hidden border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415]">
-                    <DateRangePicker
-                      ranges={pendingDateRangeArray}
-                      onChange={handleCustomDateChange}
-                      maxDate={new Date()}
-                      showDateDisplay={false}
-                      direction="horizontal"
-                      months={2}
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-2 mt-2 text-xs font-semibold text-slate-500 dark:text-emerald-300/70">
-              <Calendar size={13} className="text-emerald-600" />
-              <span>Report Period: <strong className="text-slate-900 dark:text-white">{reportDateLabel}</strong></span>
-              <span className="text-slate-300 dark:text-emerald-300/40">|</span>
-              <span>{filteredEmployees.length} records loaded</span>
-              {(isFetchingMssqlReport || isFetchingRangeEvents) && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-[10px] font-bold border border-amber-200 dark:border-amber-700/50 animate-pulse">
-                  <Loader2 size={9} className="animate-spin" />
-                  {isFetchingMssqlReport ? 'Fetching MSSQL…' : 'Syncing events…'}
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* ── 2. COMPREHENSIVE MULTI-FILTER TOOLBAR ────────────────────────── */}
-          <div className="bg-white dark:bg-[#072415] p-5 rounded-2xl border-2 border-emerald-500/30 shadow-xs space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-[#134426] pb-3">
-              <div className="flex items-center gap-2">
-                <Filter size={18} className="text-emerald-600 dark:text-emerald-400" />
-                <h2 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">
-                  Advanced Filters & Report Generator
-                </h2>
-              </div>
-              <span className="text-[11px] font-semibold text-slate-400">Select options and click Apply Filters</span>
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9 gap-3">
-              {/* Report Type */}
-              <div>
-                <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Report Type</label>
-                <select
-                  value={pendingReportType}
-                  onChange={e => {
-                    const val = e.target.value;
-                    setPendingReportType(val);
-                    setReportType(val);
-                  }}
-                  className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
-                >
-                  <option value="basic">Basic Report</option>
-                  <option value="monthly">Monthly Summary</option>
-                  <option value="detailed">Detailed Audit (31-Day)</option>
-                  <option value="work_hours">Work Hours Summary</option>
-                  <option value="leave_balance">Leave Balance Tracker</option>
-                  <option value="site_ot">Site OT Report</option>
-                  <option value="log">Attendance Log</option>
-                </select>
-              </div>
-
-              {/* Location */}
-              <div>
-                <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Location</label>
-                <select
-                  value={pendingLocation}
-                  onChange={e => {
-                    const val = e.target.value;
-                    setPendingLocation(val);
-                    setLocationFilter(val);
-                  }}
-                  className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
-                >
-                  <option value="all">All Locations ({locationList.length})</option>
-                  {locationList.map(loc => (<option key={loc} value={loc}>{loc}</option>))}
-                </select>
-              </div>
-
-              {/* Company */}
-              <div>
-                <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Company</label>
-                <select
-                  value={pendingCompany}
-                  onChange={e => {
-                    const val = e.target.value;
-                    setPendingCompany(val);
-                    setCompanyFilter(val);
-                  }}
-                  className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
-                >
-                  <option value="all">All Companies ({companyList.length})</option>
-                  {companyList.map(comp => (<option key={comp} value={comp}>{comp}</option>))}
-                </select>
-              </div>
-
-              {/* Site */}
-              <div>
-                <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Site</label>
-                <select
-                  value={pendingSite}
-                  onChange={e => {
-                    const val = e.target.value;
-                    setPendingSite(val);
-                    setSiteFilter(val);
-                    if (val !== 'all') setDepartmentFilter(val);
-                  }}
-                  className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
-                >
-                  <option value="all">All Sites ({departmentList.length})</option>
-                  {departmentList.map(dept => (<option key={dept} value={dept}>{dept}</option>))}
-                </select>
-              </div>
-
-              {/* Role */}
-              <div>
-                <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Role</label>
-                <select
-                  value={pendingRole}
-                  onChange={e => {
-                    const val = e.target.value;
-                    setPendingRole(val);
-                    setRoleFilter(val);
-                  }}
-                  className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
-                >
-                  <option value="all">All Roles ({roleList.length})</option>
-                  {roleList.map(role => (<option key={role} value={role}>{role}</option>))}
-                </select>
-              </div>
-
-              {/* Employee */}
-              <div>
-                <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Employee</label>
-                <select
-                  value={pendingEmployee}
-                  onChange={e => {
-                    const val = e.target.value;
-                    setPendingEmployee(val);
-                    setEmployeeFilter(val);
-                  }}
-                  className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
-                >
-                  <option value="all">All Employees ({processedEmployees.length})</option>
-                  {processedEmployees.map(e => (<option key={e.empCode} value={e.empCode}>{e.empName} ({e.empCode})</option>))}
-                </select>
-              </div>
-
-              {/* Status */}
-              <div>
-                <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Status</label>
-                <select
-                  value={pendingStatus}
-                  onChange={e => {
-                    const val = e.target.value;
-                    setPendingStatus(val);
-                    setStatusFilter(val);
-                  }}
-                  className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
-                >
-                  <option value="all">All Status</option>
-                  <option value="Present">Present</option>
-                  <option value="Absent">Absent</option>
-                  <option value="Late">Late</option>
-                  <option value="Completed">Completed</option>
-                  <option value="OnDuty">On Duty</option>
-                </select>
-              </div>
-
-              {/* Record Type */}
-              <div>
-                <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Record Type</label>
-                <select
-                  value={pendingRecordType}
-                  onChange={e => {
-                    const val = e.target.value;
-                    setPendingRecordType(val);
-                    setRecordTypeFilter(val);
-                  }}
-                  className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
-                >
-                  <option value="all">All Records</option>
-                  <option value="complete">Complete (In + Out)</option>
-                  <option value="missing_out">Missing Punch Out</option>
-                  <option value="missing_in">Missing Punch In</option>
-                </select>
-              </div>
-
-              {/* Show Records */}
-              <div>
-                <label className="block text-[11px] font-bold text-slate-500 dark:text-emerald-300/70 mb-1">Show Records</label>
-                <select
-                  value={pendingPageSize}
-                  onChange={e => {
-                    const val = Number(e.target.value);
-                    setPendingPageSize(val);
-                    setPageSize(val);
-                  }}
-                  className="w-full text-xs font-semibold px-2.5 py-2 rounded-xl border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
-                >
-                  <option value={20}>20 Records</option>
-                  <option value={50}>50 Records</option>
-                  <option value={100}>100 Records</option>
-                  <option value={250}>250 Records</option>
-                  <option value={500}>All Records</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="flex justify-end pt-1">
-              <button onClick={handleApplyFilters} className="flex items-center gap-2 px-6 py-2.5 bg-[#006B3F] hover:bg-[#005632] text-white text-xs font-black rounded-xl shadow-md transition-all cursor-pointer active:scale-95">
-                <Filter size={15} /> Apply Filters
-              </button>
-            </div>
-          </div>
-
-          {/* ── 3. REPORT PREVIEW & EXPORT CENTER ──────────────────────────── */}
+          {/* ── REPORT PREVIEW & EXPORT CENTER ────────────────────────────────── */}
           <div className="bg-white dark:bg-[#072415] rounded-2xl border border-slate-200/80 dark:border-[#134426] p-6 shadow-xs space-y-6 relative">
 
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-[#134426] pb-4">
@@ -6596,12 +6776,8 @@ const DetailedAuditReportView: React.FC<{
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-emerald-300/70 mt-1 flex items-center gap-2 flex-wrap">
                   <span className="font-bold text-slate-700 dark:text-emerald-200 capitalize">{reportType.replace(/_/g, ' ')}</span>
-                  {' · '}{filteredEmployees.length} records{' · '}Period: <strong className="text-slate-900 dark:text-white">{reportDateLabel}</strong>
-                  {(isFetchingMssqlReport || isFetchingRangeEvents) && (
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-[#44D62C] border border-emerald-200 dark:border-emerald-800">
-                      <Loader2 size={11} className="animate-spin" /> Syncing records…
-                    </span>
-                  )}
+                  {' · '}{activeReportCount} records{' · '}Period: <strong className="text-slate-900 dark:text-white">{reportDateLabel}</strong>
+                  {renderSourceStatusBadge('md')}
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -6773,7 +6949,7 @@ const DetailedAuditReportView: React.FC<{
 
             {/* MONTHLY SUMMARY — Calendar Grid View (Image 2 style) */}
             {reportType === 'monthly' && (() => {
-              const reportEmps = isDateRangeActive ? multiDayAttendanceList : monthlySummaryReportData.map((r, i) => ({
+              const reportEmps = isDateRangeActive ? filteredReportList : monthlySummaryReportData.map((r, i) => ({
                 ...r,
                 totalDays: 1,
                 woDays: 0,
@@ -6923,7 +7099,7 @@ const DetailedAuditReportView: React.FC<{
                           ))
                         ) : reportEmps.length === 0 ? (
                           <tr><td colSpan={gridDays.length + 7} className="py-8 text-center text-slate-400 font-medium">No records match the selected filter.</td></tr>
-                        ) : reportEmps.map((row, rIdx) => {
+                        ) : reportEmps.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((row, rIdx) => {
                           const punchesByDay: Record<number, any> = {};
                           (row.dailyPunches || []).forEach((dp: any) => { punchesByDay[dp.dayNum] = dp; });
                           return (
@@ -7092,8 +7268,8 @@ const DetailedAuditReportView: React.FC<{
                     {siteOtReportData.length === 0 ? (
                       <tr><td colSpan={9} className="py-8 text-center text-slate-400 font-medium">No OT records found for this filter. Try a broader date range or status.</td></tr>
                     ) : (
-                      siteOtReportData.map(r => (
-                        <tr key={r.empCode} className="hover:bg-amber-50/30 dark:hover:bg-amber-950/20 transition-colors">
+                      siteOtReportData.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((r, idx) => (
+                        <tr key={`${r.empCode}-${r.date}-${r.sno || idx}`} className="hover:bg-amber-50/30 dark:hover:bg-amber-950/20 transition-colors">
                           <td className="px-3.5 py-2.5 font-mono text-slate-400">{r.sno}</td>
                           <td className="px-3.5 py-2.5 font-mono text-slate-600 dark:text-emerald-200 font-semibold">{r.empCode}</td>
                           <td className="px-3.5 py-2.5 font-bold text-slate-900 dark:text-white">{r.empName}</td>
@@ -7411,10 +7587,10 @@ const DetailedAuditReportView: React.FC<{
             )}
 
             {/* Pagination */}
-            {totalPages > 1 && reportType !== 'detailed' && (
+            {reportTotalPages > 1 && reportType !== 'detailed' && (
               <div className="flex items-center justify-between pt-2">
                 <p className="text-xs text-slate-500 dark:text-emerald-300/70">
-                  Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, filteredEmployees.length)} of {filteredEmployees.length}
+                  Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, activeReportCount)} of {activeReportCount}
                 </p>
                 <div className="flex gap-1.5">
                   <button
@@ -7424,10 +7600,10 @@ const DetailedAuditReportView: React.FC<{
                   >
                     ← Prev
                   </button>
-                  <span className="px-3 py-1.5 text-xs font-bold text-slate-900 dark:text-white">{currentPage} / {totalPages}</span>
+                  <span className="px-3 py-1.5 text-xs font-bold text-slate-900 dark:text-white">{currentPage} / {reportTotalPages}</span>
                   <button
-                    disabled={currentPage === totalPages}
-                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === reportTotalPages}
+                    onClick={() => setCurrentPage(p => Math.min(reportTotalPages, p + 1))}
                     className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 dark:bg-[#072415] text-slate-700 dark:text-emerald-200 disabled:opacity-40 hover:bg-slate-200 dark:hover:bg-[#134426] cursor-pointer"
                   >
                     Next →
