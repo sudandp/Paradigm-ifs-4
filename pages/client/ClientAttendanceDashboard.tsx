@@ -1168,6 +1168,10 @@ const ClientAttendanceDashboard: React.FC = () => {
     department?: string;
     designation?: string;
     site?: string;
+    status?: string;
+    lifecycleStatus?: string;
+    isActiveEmployee?: boolean | string;
+    isActive?: boolean;
   } | null>(null);
   const [woActiveMonth, setWoActiveMonth] = useState<Date>(new Date());
   const [isHolidayModalOpen, setIsHolidayModalOpen] = useState(false);
@@ -3592,7 +3596,7 @@ const DetailedAuditReportView: React.FC<{
     });
 
     if (isEmpInactive || totalPresentDays === 0) {
-      dayRecords.forEach(dr => {
+      dailyData.forEach(dr => {
         if (dr.status === 'W/O' || dr.status === 'WO') {
           dr.status = '-';
           dr.shift = '-';
