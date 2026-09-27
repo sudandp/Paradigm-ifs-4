@@ -193,7 +193,9 @@ export default defineConfig({
             let allPunches: any[] = [];
             try {
               const dayResults = await Promise.all(dates.map(async (d) => {
-                const queryStr = empCodeParam ? `?date=${d}&empCode=${encodeURIComponent(empCodeParam)}` : `?date=${d}`;
+                let queryStr = `?date=${d}`;
+                if (empCodeParam) queryStr += `&empCode=${encodeURIComponent(empCodeParam)}`;
+                if (isRaw) queryStr += `&raw=true`;
                 try {
                   const r = await fetch(`${liveBase}/device-logs${queryStr}`, {
                     headers: {
@@ -404,6 +406,7 @@ export default defineConfig({
                                 empName: emp.empName,
                                 department: emp.department,
                                 designation: emp.designation,
+                                company: emp.company || (code.startsWith('32') ? 'Southwall Security LLP' : 'PIFS'),
                                 days: {},
                                 summary: { presentDays: 0, absentDays: 0, woDays: 0, lateDays: 0, totalNetMins: 0, totalOtMins: 0 },
                               };
@@ -537,6 +540,7 @@ export default defineConfig({
                     empName: emp.empName,
                     department: site,
                     designation: emp.designation,
+                    company: emp.company || (code.startsWith('32') ? 'Southwall Security LLP' : 'PIFS'),
                     days: {},
                     summary: { presentDays: 0, absentDays: 0, woDays: 0, lateDays: 0, totalNetMins: 0, totalOtMins: 0 },
                   };

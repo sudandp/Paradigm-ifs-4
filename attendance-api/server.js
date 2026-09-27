@@ -273,6 +273,16 @@ app.get('/attendance', requireApiKey, async (req, res) => {
     const selectDept = hasDepts ? `ISNULL(d.DepartmentFName, 'General')` : `'General'`;
     const joinDept   = hasDepts ? `LEFT JOIN dbo.Departments d WITH (NOLOCK) ON e.DepartmentId = d.DepartmentId` : ``;
 
+    // Check if Companies table exists
+    let hasCompanies = false;
+    try {
+      const chkC = await p.request().query(`SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Companies'`);
+      hasCompanies = (chkC.recordset && chkC.recordset.length > 0);
+    } catch (_) {}
+
+    const selectCompany = hasCompanies ? `ISNULL(c.CompanyName, 'PIFS')` : `'PIFS'`;
+    const joinCompany   = hasCompanies ? `LEFT JOIN dbo.Companies c WITH (NOLOCK) ON e.CompanyId = c.CompanyId` : ``;
+
     // Build multi-table UNION for finding LastPunchDate across recent monthly tables & main DeviceLogs
     const yNum = parseInt(yStr, 10);
     const prevMNum = mNum === 1 ? 12 : mNum - 1;
@@ -321,6 +331,7 @@ app.get('/attendance', requireApiKey, async (req, res) => {
         LTRIM(RTRIM(CAST(e.EmployeeCode AS VARCHAR(50)))) AS empCode,
         e.EmployeeName                             AS empName,
         ${selectDept}                              AS department,
+        ${selectCompany}                           AS company,
         ISNULL(e.Designation, 'Staff')             AS designation,
         CONVERT(VARCHAR(19), p.FirstInPunchOnDate, 120)  AS firstInPunchStr,
         CONVERT(VARCHAR(19), p.DayOutPunchOnDate, 120)   AS dayOutPunchStr,
@@ -340,6 +351,7 @@ app.get('/attendance', requireApiKey, async (req, res) => {
         DATEDIFF(day, lp.LastPunchDate, '${date}') AS daysSinceLastPunch
       FROM dbo.Employees e WITH (NOLOCK)
       ${joinDept}
+      ${joinCompany}
       LEFT JOIN (
         SELECT 
           EmployeeCode,
@@ -641,6 +653,7 @@ app.get('/attendance', requireApiKey, async (req, res) => {
         empName: String(row.empName || 'Employee'),
         department: smartSiteInfo.site,
         designation: String(row.designation || 'Staff'),
+        company: row.company || (String(row.empCode || '').startsWith('32') ? 'Southwall Security LLP' : 'PIFS'),
         inTime: inTimeStr,
         outTime: outTimeStr,
         isNextDayOut,
@@ -1241,9 +1254,34 @@ app.get(['/device-logs', '/api/device-logs'], requireApiKey, async (req, res) =>
     ? req.query.date
     : new Date().toISOString().slice(0, 10);
   const empCode = (req.query.empCode || req.query.userId || '').trim();
+  const isRaw = req.query.raw === 'true' || req.query.raw === '1';
 
   try {
-    const { debouncedList, logsByEmp } = await fetchRawDeviceLogsForDate(date);
+    const { debouncedList, logsByEmp, rawAllList } = await fetchRawDeviceLogsForDate(date);
+
+    if (isRaw) {
+      // Return ALL raw punches exactly as stored in eSSL — no debounce, no collapsing
+      const allForDisplay = rawAllList.map((p, idx) => ({
+        id: `raw-${idx}-${p.emp_code}-${p.log_date}`,
+        downloadDate: p.download_date,
+        userId: p.emp_code,
+        logDate: p.log_date,
+        deviceName: p.device_name,
+        serialNo: p.serial_no,
+        attState: p.direction ? (p.direction.toLowerCase() === 'in' ? 'Check In' : 'Check Out') : '',
+        verifyMode: p.verify_mode || 'VS_FACE',
+        gps: '',
+        attPhoto: 'View',
+      }));
+      const filtered = empCode
+        ? allForDisplay.filter(p => p.userId === empCode)
+        : allForDisplay;
+      return res.json({
+        date, empCode: empCode || null, count: filtered.length,
+        totalRaw: filtered.length, punches: filtered,
+      });
+    }
+
     if (empCode) {
       const empLogs = logsByEmp.get(empCode) || [];
       return res.json({ date, empCode, count: empLogs.length, punches: empLogs });
@@ -1460,11 +1498,21 @@ async function upsertBiometricDeviceLogs(rows) {
   if (!SUPABASE_SERVICE_KEY) return { count: 0, skipped: true };
   if (!rows || rows.length === 0) return { count: 0 };
 
+  // Deduplicate by emp_code + log_date to prevent Postgres batch conflict error
+  const uniqueMap = new Map();
+  for (const r of rows) {
+    const k = `${r.emp_code}_${r.log_date}`;
+    if (!uniqueMap.has(k)) {
+      uniqueMap.set(k, r);
+    }
+  }
+  const uniqueRows = Array.from(uniqueMap.values());
+
   const CHUNK_SIZE = 300;
   let totalUpserted = 0;
 
-  for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
-    const chunk = rows.slice(i, i + CHUNK_SIZE);
+  for (let i = 0; i < uniqueRows.length; i += CHUNK_SIZE) {
+    const chunk = uniqueRows.slice(i, i + CHUNK_SIZE);
     try {
       const response = await fetch(`${SUPABASE_URL}/rest/v1/biometric_device_logs?on_conflict=emp_code,log_date`, {
         method: 'POST',
@@ -1635,7 +1683,24 @@ async function fetchRawDeviceLogsForDate(date, debounceMs = 5 * 60 * 1000) {
     }
   }
 
-  return { debouncedList, logsByEmp };
+  // Build rawAllList — all raw punches without any debounce, for Supabase storage and raw view
+  const rawAllList = rawRows
+    .filter(row => row.empCode && !isNaN(new Date(row.LogDate).getTime()))
+    .map(row => {
+      const logIso = new Date(row.LogDate).toISOString();
+      return {
+        emp_code: String(row.empCode),
+        log_date: logIso,
+        download_date: row.DownloadDate ? new Date(row.DownloadDate).toISOString() : logIso,
+        device_name: row.deviceName || 'Device',
+        serial_no: row.serialNo || '',
+        direction: row.direction || 'in',
+        verify_mode: row.verifyMode || 'VS_FACE',
+        source: 'etimetracklite'
+      };
+    });
+
+  return { debouncedList, logsByEmp, rawAllList };
 }
 
 /** Fetch single-day attendance from MS SQL and return formatted rows ready for Supabase */
@@ -1760,13 +1825,15 @@ async function fetchAttendanceRowsForDate(date) {
     return `${String(dh).padStart(2,'0')}:${String(m).padStart(2,'0')} ${ampm}`;
   };
 
-  // Get debounced raw device logs for punch audit trail
+  // Get raw device logs: rawAllList = all punches (for Supabase), debouncedList = attendance-grade
   let rawLogsMap = new Map();
   let rawPunchesList = [];
+  let rawAllPunchesList = [];
   try {
     const rawRes = await fetchRawDeviceLogsForDate(date);
     rawLogsMap = rawRes.logsByEmp;
     rawPunchesList = rawRes.debouncedList;
+    rawAllPunchesList = rawRes.rawAllList; // All raw burst punches — matches eSSL count
   } catch (rawErr) {
     console.warn('[Sync] Could not attach raw device logs:', rawErr.message);
   }
@@ -1805,7 +1872,8 @@ async function fetchAttendanceRowsForDate(date) {
     };
   });
 
-  mappedRows.rawDeviceLogs = rawPunchesList;
+  mappedRows.rawDeviceLogs = rawAllPunchesList; // store ALL raw punches to Supabase (matches eSSL count)
+  mappedRows.debouncedDeviceLogs = rawPunchesList; // debounced list for attendance logic
   return mappedRows;
 }
 
@@ -1860,8 +1928,11 @@ app.post('/sync/backfill', requireApiKey, async (req, res) => {
       try {
         const rows = await fetchAttendanceRowsForDate(dateStr);
         await upsertToSupabase(rows);
+        if (rows.rawDeviceLogs && rows.rawDeviceLogs.length > 0) {
+          await upsertBiometricDeviceLogs(rows.rawDeviceLogs);
+        }
         totalSynced += rows.length;
-        console.log(`[Backfill] ✅ ${dateStr} — ${rows.length} records`);
+        console.log(`[Backfill] ✅ ${dateStr} — ${rows.length} records & ${rows.rawDeviceLogs?.length || 0} device punches`);
         await logSync(dateStr, rows.length, 'ok', null, 0, 'backfill');
       } catch (err) {
         totalFailed++;

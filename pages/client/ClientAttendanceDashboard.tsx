@@ -14,7 +14,7 @@ import {
   Users, UserCheck, UserX, Clock, RefreshCw, Database,
   AlertTriangle, TrendingUp, Search, ChevronUp, ChevronDown,
   Calendar, WifiOff, BarChart3, Building2, Shield, Radio, Bug, CheckCircle2,
-  Plus, Trash2, Edit3, Copy, Sliders, Save, RotateCcw,
+  Plus, Trash2, Edit3, Copy, Sliders, Save, RotateCcw, DollarSign,
   Lock, ShieldCheck, CheckSquare, Square, UserPlus, FileText, Camera, Eye, X, Video, Moon, Pencil, Check,
   FileDown, Mail, Filter, Download, FileSpreadsheet, Loader2, Send, Cpu, Sparkles, ArrowLeft,
   LayoutGrid, Table as TableIcon, Fingerprint, Power
@@ -1016,6 +1016,65 @@ function getLocalDevicesCache(): DeviceData {
   return DEFAULT_DEVICES_SNAPSHOT;
 }
 
+// ── Dynamic Attendance & Payroll Policy Configuration ──────────────────────
+export interface AttendancePolicySettings {
+  multiplierWP: number;          // Double pay for worked weekly off (e.g. 2.0)
+  multiplierHP: number;          // Double pay for worked holiday (e.g. 2.0)
+  multiplierP: number;           // Normal present (e.g. 1.0)
+  multiplierDoubleDuty: number;  // Double shift P (2D) (e.g. 2.0)
+  multiplierTripleDuty: number;  // Triple shift P (3D) (e.g. 3.0)
+  multiplierWO: number;          // Weekly off base pay (e.g. 1.0)
+  multiplierHoliday: number;     // Holiday base pay (e.g. 1.0)
+  multiplierHalfDay: number;     // 0.5P (e.g. 0.5)
+  multiplierThreeQuarterDay: number; // 0.75P (e.g. 0.75)
+  multiplierQuarterDay: number;  // 0.25P (e.g. 0.25)
+
+  enableSixDayCycleWO: boolean;  // Automatically provision WO after consecutive duties
+  dutiesRequiredForWO: number;   // Duties required for earned WO (default 6)
+  maxAbsentsInCycleForWO: number;// Max absents in cycle before losing earned WO (default 2)
+  enableSandwichRule: boolean;   // Forfeit WO if sandwiched by absents
+  sandwichPreAndPost: boolean;   // Forfeit if absent on both sides
+  consecutiveAbsentThreshold: number; // 2+ consecutive absents forfeits WO
+
+  defaultShiftExpectedHours: number; // Standard expected hours (default 8.0)
+  defaultBreakDeductionMins: number; // Break deduction in mins (default 30)
+  doubleDutyGrossHoursThreshold: number; // Minimum gross hours for double duty (default 12.0)
+  otGracePeriodMins: number;     // Grace period for late / OT (default 15)
+  enableIntermediateBreakBiometrics: boolean; // Use 4+ punches to calculate real break
+
+  securityGuardsReceiveWeekOff: boolean; // Security guards week-off entitlement
+  customNoWORoles: string;       // Additional roles with no weekly off (comma-separated)
+}
+
+export const DEFAULT_ATTENDANCE_POLICY_SETTINGS: AttendancePolicySettings = {
+  multiplierWP: 2.0,
+  multiplierHP: 2.0,
+  multiplierP: 1.0,
+  multiplierDoubleDuty: 2.0,
+  multiplierTripleDuty: 3.0,
+  multiplierWO: 1.0,
+  multiplierHoliday: 1.0,
+  multiplierHalfDay: 0.5,
+  multiplierThreeQuarterDay: 0.75,
+  multiplierQuarterDay: 0.25,
+
+  enableSixDayCycleWO: true,
+  dutiesRequiredForWO: 6,
+  maxAbsentsInCycleForWO: 2,
+  enableSandwichRule: true,
+  sandwichPreAndPost: true,
+  consecutiveAbsentThreshold: 2,
+
+  defaultShiftExpectedHours: 8.0,
+  defaultBreakDeductionMins: 30,
+  doubleDutyGrossHoursThreshold: 12.0,
+  otGracePeriodMins: 15,
+  enableIntermediateBreakBiometrics: true,
+
+  securityGuardsReceiveWeekOff: false,
+  customNoWORoles: 'security guard, guard, security, patrol'
+};
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 const ClientAttendanceDashboard: React.FC = () => {
@@ -1401,6 +1460,7 @@ const ClientAttendanceDashboard: React.FC = () => {
             site: c.site || merged[c.empCode]?.site,
             shiftName: effShiftName,
             designation: c.designation || merged[c.empCode]?.designation,
+            company: c.company || merged[c.empCode]?.company,
           };
         }
         return merged;
@@ -1507,8 +1567,11 @@ const ClientAttendanceDashboard: React.FC = () => {
       start = startOfMonth(today);
       end = endOfDay(today);
       setSelectedDate(format(start, 'yyyy-MM-dd'));
-      setReportType('monthly');
-      setPendingReportType('monthly');
+      // Only auto-switch to monthly if the user hasn't explicitly chosen another type
+      if (pendingReportType === 'basic' || pendingReportType === 'monthly') {
+        setReportType('monthly');
+        setPendingReportType('monthly');
+      }
     } else if (preset === 'Last Month') {
       const lm = subMonths(today, 1);
       start = startOfMonth(lm);
@@ -1577,9 +1640,15 @@ const ClientAttendanceDashboard: React.FC = () => {
     setColumnFilters({});
     setPageSize(pendingPageSize);
     setCurrentPage(1);
-    // Apply the date range — Monthly Summary & Detailed Audit are month-based reports, auto-switch to This Month if on Today/Yesterday
+    // For month-based reports (detailed/monthly), auto-switch to This Month date range
+    // if user is on Today/Yesterday — but preserve the chosen reportType
     if ((pendingReportType === 'monthly' || pendingReportType === 'detailed') && (pendingActiveDateFilter === 'Today' || pendingActiveDateFilter === 'Yesterday')) {
-      handlePresetDateChange('This Month');
+      const today = new Date();
+      const monthStart = startOfMonth(today);
+      const monthEnd = endOfDay(today);
+      setDateRange({ startDate: monthStart, endDate: monthEnd, key: 'selection' });
+      setActiveDateFilter('This Month');
+      setPendingActiveDateFilter('This Month');
     } else {
       setDateRange(pendingDateRange);
       setActiveDateFilter(pendingActiveDateFilter);
@@ -1923,9 +1992,38 @@ const ClientAttendanceDashboard: React.FC = () => {
     });
   }, [userSitePermissions, currentUserEmail]);
 
-  // ── Permission: can current user edit a specific employee's fields? ──
-  const isAdminUser = currentUserEmail === 'admin@paradigmfms.com' ||
-    (currentUserPermission?.accessType === 'all');
+  // ── Permission: can current user edit a specific employee's fields and access admin features? ──
+  const isAdminUser = useMemo(() => {
+    if (!authUser) return false;
+    const role = (authUser.role || '').toLowerCase().trim();
+    const email = (authUser.email || '').toLowerCase().trim();
+    if (
+      email === 'admin@paradigmfms.com' ||
+      email === 'sudhan@paradigm.com' ||
+      currentUserEmail === 'admin@paradigmfms.com' ||
+      currentUserEmail === 'sudhan@paradigm.com'
+    ) {
+      return true;
+    }
+    if (currentUserPermission?.accessType === 'all') return true;
+    return (
+      isAdmin(role) ||
+      role === 'admin' ||
+      role === 'super_admin' ||
+      role === 'super admin' ||
+      role === 'superadmin' ||
+      role === 'management' ||
+      role === 'developer'
+    );
+  }, [authUser, currentUserEmail, currentUserPermission]);
+
+  // Fallback report type to 'basic' if non-admin user has selected an admin-only report type
+  useEffect(() => {
+    if (!isAdminUser && ['work_hours', 'leave_balance', 'site_ot', 'log'].includes(pendingReportType)) {
+      setPendingReportType('basic');
+      setReportType('basic');
+    }
+  }, [isAdminUser, pendingReportType]);
 
   const canEditEmployee = useCallback((empSite: string): boolean => {
     if (isAdminUser) return true; // admin can edit anyone
@@ -1943,7 +2041,7 @@ const ClientAttendanceDashboard: React.FC = () => {
     const override = empOverrides[emp.empCode] || {};
     const desig = override.designation ?? emp.designation ?? '';
     const site = override.site ?? emp.department ?? '';
-    const comp = override.company ?? emp.company ?? 'PIFS';
+    const comp = getEffectiveCompany(emp, override.company);
     setEditEmpName(override.empName ?? emp.empName ?? '');
     setEditSite(site);
     setEditCompany(comp);
@@ -2228,6 +2326,7 @@ const ClientAttendanceDashboard: React.FC = () => {
     );
   };
 
+
   // Shift Rule Configurations (LocalStorage persisted)
   const [shiftRules, setShiftRules] = useState<ShiftRuleConfig[]>(() => {
     try {
@@ -2237,6 +2336,47 @@ const ClientAttendanceDashboard: React.FC = () => {
       return DEFAULT_SHIFT_RULES;
     }
   });
+
+  // Dynamic Attendance Policy State
+  const [attendancePolicySettings, setAttendancePolicySettings] = useState<AttendancePolicySettings>(() => {
+    try {
+      const saved = localStorage.getItem('paradigm_attendance_policy_settings');
+      return saved ? { ...DEFAULT_ATTENDANCE_POLICY_SETTINGS, ...JSON.parse(saved) } : DEFAULT_ATTENDANCE_POLICY_SETTINGS;
+    } catch {
+      return DEFAULT_ATTENDANCE_POLICY_SETTINGS;
+    }
+  });
+
+  const [shiftConfigSubTab, setShiftConfigSubTab] = useState<'slots' | 'payable' | 'weeklyOff' | 'dutyBreak' | 'roles'>('slots');
+  const [policyForm, setPolicyForm] = useState<AttendancePolicySettings>(() => attendancePolicySettings);
+
+  useEffect(() => {
+    setPolicyForm(attendancePolicySettings);
+  }, [attendancePolicySettings]);
+
+  const handleSaveAttendancePolicy = (newPolicy: AttendancePolicySettings) => {
+    setAttendancePolicySettings(newPolicy);
+    try {
+      localStorage.setItem('paradigm_attendance_policy_settings', JSON.stringify(newPolicy));
+    } catch (e) {
+      console.warn('Failed to save attendance policy settings to localStorage:', e);
+    }
+    // Cross-user persistence in Supabase
+    supabase.from('attendance_corrections').upsert({
+      id: 'system_attendance_policy_settings',
+      emp_code: 'SYSTEM_CONFIG',
+      attendance_date: '2099-01-01',
+      shift_name: JSON.stringify(newPolicy),
+      corrected_by: currentUserEmail,
+      corrected_at: new Date().toISOString()
+    }).then(() => {}, () => {});
+    setCorrectionToast({ type: 'success', msg: '✓ Attendance policy updated! All reports recalculated.' });
+  };
+
+  const handleResetAttendancePolicy = () => {
+    handleSaveAttendancePolicy(DEFAULT_ATTENDANCE_POLICY_SETTINGS);
+    setCorrectionToast({ type: 'success', msg: '✓ Attendance policies reset to company defaults.' });
+  };
 
   // Shift Rule Form State
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
@@ -2956,6 +3096,74 @@ function getSmartSiteFrontend(code: string, dbSite?: string): { site: string; is
   return { site: 'Default', isSmart: false };
 }
 
+function normalizeCompanyName(comp?: string | null): string {
+  if (!comp) return '';
+  const c = comp.trim();
+  const cLower = c.toLowerCase();
+  if (
+    cLower.includes('southwall') ||
+    cLower.includes('south wall') ||
+    cLower.includes('south-wall') ||
+    cLower === 'swllp' ||
+    cLower.startsWith('sw-') ||
+    cLower === 'sw'
+  ) {
+    return 'Southwall Security LLP';
+  }
+  if (cLower === 'pifs' || cLower.includes('paradigm integrated')) return 'PIFS';
+  if (cLower === 'ppfms' || cLower.includes('paradigm property')) return 'PPFMS';
+  if (cLower === 'paradigm services' || cLower.includes('paradigm')) return 'PIFS';
+  return c;
+}
+
+function getEffectiveCompany(
+  emp: { empCode?: string; designation?: string; role?: string; department?: string; company?: string } | null | undefined,
+  overrideCompany?: string | null
+): string {
+  if (!emp) return 'PIFS';
+  if (overrideCompany && overrideCompany.trim() && overrideCompany !== '—') {
+    return normalizeCompanyName(overrideCompany);
+  }
+  if (
+    emp.company &&
+    emp.company.trim() &&
+    !['—', 'Default', 'General', 'null', 'undefined', 'Paradigm Services', 'Paradigm Services (General)'].includes(emp.company.trim())
+  ) {
+    return normalizeCompanyName(emp.company);
+  }
+  const code = String(emp.empCode || '').trim();
+  if (code.startsWith('32') || isSecurityEmployee(emp)) {
+    return 'Southwall Security LLP';
+  }
+  return 'PIFS';
+}
+
+function isCompanyMatch(empComp: string | undefined | null, targetComp: string | undefined | null): boolean {
+  if (!targetComp || targetComp === 'all') return true;
+  const targetNorm = normalizeCompanyName(targetComp);
+  const empNorm = normalizeCompanyName(empComp);
+  if (!empNorm) return false;
+  if (empNorm === targetNorm) return true;
+
+  const target = targetComp.trim().toLowerCase();
+  const emp = (empComp || '').trim().toLowerCase();
+  if (emp === target) return true;
+
+  const isTargetSouthwall = target.includes('southwall') || target.includes('south wall') || target === 'swllp' || target.includes('sw-');
+  const isEmpSouthwall = emp.includes('southwall') || emp.includes('south wall') || emp === 'swllp' || emp.includes('sw-');
+  if (isTargetSouthwall && isEmpSouthwall) return true;
+
+  const isTargetPifs = target === 'pifs' || target.includes('paradigm integrated') || target === 'paradigm services';
+  const isEmpPifs = emp === 'pifs' || emp.includes('paradigm integrated') || emp === 'paradigm services';
+  if (isTargetPifs && isEmpPifs) return true;
+
+  const isTargetPpfms = target === 'ppfms' || target.includes('paradigm property');
+  const isEmpPpfms = emp === 'ppfms' || emp.includes('paradigm property');
+  if (isTargetPpfms && isEmpPpfms) return true;
+
+  return emp.includes(target) || target.includes(emp);
+}
+
 function formatLiveWorkingHours(emp: { workingHours?: string; inTime?: string | null; outTime?: string | null; isNextDayOut?: boolean; shiftName?: string }, selectedDate?: string): string {
   if (emp.workingHours && emp.workingHours !== '-' && emp.workingHours !== '0h 00m' && !emp.workingHours.includes('0h 00m')) {
     return emp.workingHours;
@@ -3081,6 +3289,150 @@ function formatMinsToHMM(mins: number): string {
   return `${h}:${String(m).padStart(2, '0')}`;
 }
 
+/**
+ * Returns shift-appropriate break times based on InTime.
+ * A shift  (05:00–11:30): break at 10:30–11:00
+ * GS       (07:30–09:30, gross 7.5–10.5h): break at 13:00–13:30
+ * B shift  (11:30–18:30): break at 17:30–18:00
+ * C shift  (18:30+ or <05:00): break at 01:00–01:30
+ */
+function getShiftBreakTimes(inTimeStr: string | null | undefined, outTimeStr?: string | null, grossMins?: number): { breakIn: string; breakOut: string } {
+  const noBrk = { breakIn: '-', breakOut: '-' };
+  if (!inTimeStr || inTimeStr === '-' || inTimeStr === '—' || (grossMins !== undefined && grossMins <= 0)) return noBrk;
+
+  const cleanIn = inTimeStr.replace(/\n/g, ' ').trim().toLowerCase();
+  const matchIn = cleanIn.match(/(\d{1,2}):(\d{2})/);
+  if (!matchIn) return noBrk;
+  let inH = parseInt(matchIn[1], 10);
+  const inM = parseInt(matchIn[2], 10);
+  if (cleanIn.includes('pm') && inH < 12) inH += 12;
+  if (cleanIn.includes('am') && inH === 12) inH = 0;
+  const inMins = inH * 60 + inM;
+
+  // Parse outTime for GS detection
+  let outMins = 0;
+  if (outTimeStr && outTimeStr !== '-' && outTimeStr !== '—') {
+    const cleanOut = outTimeStr.replace(/\n/g, ' ').trim().toLowerCase();
+    const matchOut = cleanOut.match(/(\d{1,2}):(\d{2})/);
+    if (matchOut) {
+      let outH = parseInt(matchOut[1], 10);
+      const outM = parseInt(matchOut[2], 10);
+      if (cleanOut.includes('pm') && outH < 12) outH += 12;
+      if (cleanOut.includes('am') && outH === 12) outH = 0;
+      outMins = outH * 60 + outM;
+    }
+  }
+
+  // GS: in 07:30–09:30, out 16:00–19:30, gross 7.5–10.5h → lunch break 13:00–13:30
+  if (
+    inMins >= 7 * 60 + 30 && inMins <= 9 * 60 + 30 &&
+    outMins >= 16 * 60 && outMins <= 19 * 60 + 30 &&
+    grossMins && grossMins >= 7 * 60 + 30 && grossMins <= 10 * 60 + 30
+  ) {
+    return { breakIn: '13:00', breakOut: '13:30' };
+  }
+
+  // C shift: inTime >= 18:30 or early morning < 05:00 → midnight break 01:00
+  if (inMins >= 18 * 60 + 30 || inMins < 5 * 60) {
+    return { breakIn: '01:00', breakOut: '01:30' };
+  }
+  // B shift: inTime 11:30–18:30 → evening break 17:30
+  if (inMins >= 11 * 60 + 30 && inMins < 18 * 60 + 30) {
+    return { breakIn: '17:30', breakOut: '18:00' };
+  }
+  // A shift: inTime 05:00–11:30 → mid-morning break 10:30
+  if (inMins >= 5 * 60 && inMins < 11 * 60 + 30) {
+    return { breakIn: '10:30', breakOut: '11:00' };
+  }
+
+  return noBrk;
+}
+
+function getDynamicDayShift(
+  inTimeStr: string | null | undefined,
+  outTimeStr: string | null | undefined,
+  grossMins?: number,
+  fallbackShift: string = 'A',
+  isSecurity: boolean = false
+): string {
+  if (!inTimeStr || inTimeStr === '-' || inTimeStr === '—') return '-';
+
+  const cleanIn = inTimeStr.replace(/\n/g, ' ').trim().toLowerCase();
+  const matchIn = cleanIn.match(/(\d{1,2}):(\d{2})/);
+  if (!matchIn) return fallbackShift || 'A';
+  let inH = parseInt(matchIn[1], 10);
+  const inM = parseInt(matchIn[2], 10);
+  if (cleanIn.includes('pm') && inH < 12) inH += 12;
+  if (cleanIn.includes('am') && inH === 12) inH = 0;
+  const inTotalMins = inH * 60 + inM;
+
+  // Parse outTime for span-based detection
+  let outTotalMins = 0;
+  if (outTimeStr && outTimeStr !== '-' && outTimeStr !== '—') {
+    const cleanOut = outTimeStr.replace(/\n/g, ' ').trim().toLowerCase();
+    const matchOut = cleanOut.match(/(\d{1,2}):(\d{2})/);
+    if (matchOut) {
+      let outH = parseInt(matchOut[1], 10);
+      const outM = parseInt(matchOut[2], 10);
+      if (cleanOut.includes('pm') && outH < 12) outH += 12;
+      if (cleanOut.includes('am') && outH === 12) outH = 0;
+      outTotalMins = outH * 60 + outM;
+    }
+  }
+
+  // ── PRIORITY 1: Double duty detection (always overrides registered shift) ──
+  const isDoubleDutyByGross = grossMins && grossMins >= 12 * 60;
+  const isDoubleDutyBySpan = (
+    outTotalMins > 0 &&
+    inTotalMins < 11 * 60 + 30 &&          // started in A shift
+    outTotalMins >= 19 * 60                 // ended in B/C territory (19:00+)
+  ) || (
+    outTotalMins > 0 &&
+    inTotalMins >= 11 * 60 + 30 &&          // started in B shift
+    outTotalMins >= 22 * 60                 // ended in C territory (22:00+)
+  );
+
+  if (isDoubleDutyByGross || isDoubleDutyBySpan) {
+    if (inTotalMins < 11 * 60 + 30) return 'A+B';
+    return 'B+C';
+  }
+
+  // ── PRIORITY 2: Security guard 12-hour shift detection ──
+  if (isSecurity) {
+    if (inTotalMins >= 17 * 60 || inTotalMins < 4 * 60) return 'NIGHT-12';
+    return 'DAY-12';
+  }
+
+  // ── PRIORITY 3: GS fingerprint (in 07:30–09:30, out 16:00–19:30, gross 7.5–10.5h) ──
+  // Only override a registered A/B shift with GS if the punch signature strongly matches
+  if (
+    inTotalMins >= 7 * 60 + 30 &&
+    inTotalMins <= 9 * 60 + 30 &&
+    outTotalMins >= 16 * 60 &&
+    outTotalMins <= 19 * 60 + 30 &&
+    grossMins && grossMins >= 7 * 60 + 30 && grossMins <= 10 * 60 + 30
+  ) {
+    return 'GS';
+  }
+
+  // ── PRIORITY 4: Dynamic Shift Detection Based on Actual Punch In/Out ──
+  // C Shift (Night Duty): inTime >= 18:30 or early morning < 05:00
+  if (inTotalMins >= 18 * 60 + 30 || inTotalMins < 5 * 60) {
+    return 'C';
+  }
+  // B Shift (Afternoon Duty): inTime >= 11:30 and < 18:30
+  if (inTotalMins >= 11 * 60 + 30 && inTotalMins < 18 * 60 + 30) {
+    return 'B';
+  }
+  // A Shift (Morning Duty): inTime >= 05:00 and < 11:30
+  if (inTotalMins >= 5 * 60 && inTotalMins < 11 * 60 + 30) {
+    return 'A';
+  }
+
+  return fallbackShift || 'A';
+}
+
+
 // ── Detailed Audit Attendance Report View (Matching Image 3 Format) ───────────
 const DetailedAuditReportView: React.FC<{
   employees: EmployeeRow[];
@@ -3092,7 +3444,9 @@ const DetailedAuditReportView: React.FC<{
   siteHolidaysList?: SiteHoliday[];
   employeeWeeklyOffsMap?: Record<string, string[]>;
   isFetchingMssqlReport?: boolean;
-}> = ({ employees, selectedDate, currentUserEmail, departmentFilter, dateRange, rangeMssqlReportMap, siteHolidaysList, employeeWeeklyOffsMap, isFetchingMssqlReport }) => {
+  attendancePolicySettings?: AttendancePolicySettings;
+}> = ({ employees, selectedDate, currentUserEmail, departmentFilter, dateRange, rangeMssqlReportMap, siteHolidaysList, employeeWeeklyOffsMap, isFetchingMssqlReport, attendancePolicySettings }) => {
+  const policy = attendancePolicySettings || DEFAULT_ATTENDANCE_POLICY_SETTINGS;
   const [selectedEmpIndex, setSelectedEmpIndex] = useState<number | 'all'>(0);
   const [viewMode, setViewMode] = useState<'single' | 'all'>('single');
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -3347,7 +3701,9 @@ const DetailedAuditReportView: React.FC<{
     let totalPresentDays = 0;
     let totalAbsentDays = 0;
     let totalWeeklyOffs = 0;
+    let totalWorkedWeekOffs = 0;
     let totalHolidayDays = 0;
+    let totalWorkedHolidays = 0;
     let totalNetMinsSum = 0;
     let totalOtMinsSum = 0;
     let totalGrossMinsSum = 0;
@@ -3359,6 +3715,46 @@ const DetailedAuditReportView: React.FC<{
     const empFedWODates = new Set(
       (employeeWeeklyOffsMap && (employeeWeeklyOffsMap[empCodeKey] || employeeWeeklyOffsMap[empCodeNum])) || []
     );
+
+    const isCustomNoWO = policy.customNoWORoles
+      ? policy.customNoWORoles.toLowerCase().split(',').map(r => r.trim()).filter(Boolean).some(r =>
+          (emp.designation || '').toLowerCase().includes(r) ||
+          (emp.role || '').toLowerCase().includes(r)
+        )
+      : false;
+
+    const isSecGuardNoWO = policy.securityGuardsReceiveWeekOff
+      ? isCustomNoWO
+      : isCustomNoWO || isSecurityGuardWithoutWeekOff({
+          designation: emp.designation,
+          role: emp.role,
+          shiftName: emp.shiftName,
+          department: emp.department
+        });
+
+    // Deducing employee's recurring weekly off weekday (e.g. Monday = 1) from existing fed or MSSQL records
+    const empWeeklyOffWeekdays = new Set<number>();
+    empFedWODates.forEach(dateStr => {
+      const parts = dateStr.split('-');
+      if (parts.length === 3) {
+        const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+        if (!isNaN(d.getTime())) empWeeklyOffWeekdays.add(d.getDay());
+      }
+    });
+    const mssqlEmpDaysAll = (rangeMssqlReportMap && (rangeMssqlReportMap[empCodeKey] || rangeMssqlReportMap[empCodeNum] || rangeMssqlReportMap[empNameKey])) || {};
+    Object.keys(mssqlEmpDaysAll).forEach(dateStr => {
+      const dayRec = mssqlEmpDaysAll[dateStr];
+      if (dayRec && (dayRec.isWeeklyOff || dayRec.status === 'WO' || dayRec.status === 'W/O' || dayRec.status === 'W/P')) {
+        const parts = dateStr.split('-');
+        if (parts.length === 3) {
+          const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+          if (!isNaN(d.getTime())) empWeeklyOffWeekdays.add(d.getDay());
+        }
+      }
+    });
+    if (empWeeklyOffWeekdays.size === 0 && !isSecGuardNoWO) {
+      empWeeklyOffWeekdays.add(0); // Standard Sunday default for regular non-security staff
+    }
 
     const dailyData = daysArray.map(dayNum => {
       // Check if dayNum falls within the user-selected date range filter
@@ -3383,23 +3779,84 @@ const DetailedAuditReportView: React.FC<{
 
       // PRIORITY 0: Live Remote MSSQL Report Data from etimetracklite1
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
-      const empCodeNum = empCodeKey.replace(/^0+/, '');
+      const dayDate = new Date(year, month, dayNum);
+      const isRecurringWO = !isSecGuardNoWO && empWeeklyOffWeekdays.has(dayDate.getDay());
+      const isFedWO = !isSecGuardNoWO && (empFedWODates.has(dateStr) || isRecurringWO);
+      const isSiteHoliday = holidaysSet.has(dateStr);
+
       const mssqlEmpDays = (rangeMssqlReportMap && (rangeMssqlReportMap[empCodeKey] || rangeMssqlReportMap[empCodeNum] || rangeMssqlReportMap[empNameKey])) || {};
       const liveMssqlDay = mssqlEmpDays[dateStr];
 
-      const isSecGuardNoWO = isSecurityGuardWithoutWeekOff({
-        designation: emp.designation,
-        role: emp.role,
-        shiftName: emp.shiftName,
-        department: emp.department
-      });
-
-      const isFedWO = !isSecGuardNoWO && empFedWODates.has(dateStr);
-      const isSiteHoliday = holidaysSet.has(dateStr);
-
       if (liveMssqlDay) {
-        const isLiveWO = !isSecGuardNoWO && (liveMssqlDay.isWeeklyOff || liveMssqlDay.status === 'WO' || liveMssqlDay.status === 'W/O');
-        if (isLiveWO) {
+        // Extract punch in/out times safely
+        let rawIn = liveMssqlDay.inTime && !['—', '-', 'null', 'undefined', '2026-'].includes(liveMssqlDay.inTime.trim()) ? liveMssqlDay.inTime : null;
+        let rawOut = liveMssqlDay.outTime && !['—', '-', 'null', 'undefined', '2026-'].includes(liveMssqlDay.outTime.trim()) ? liveMssqlDay.outTime : null;
+
+        // Detect artificial Shift End (:out(SE)) fabricated by eTimeTrackLite
+        const hasOutSE = String(liveMssqlDay.punchRecords || '').includes('out(SE)');
+
+        if ((!rawIn || !rawOut) && liveMssqlDay.punchRecords) {
+          const validPunchesText = String(liveMssqlDay.punchRecords).replace(/\d{1,2}:\d{2}:out\(SE\),?/gi, '');
+          const matchedPunches = [...validPunchesText.matchAll(/(\d{1,2}:\d{2})/g)].map(m => m[1]);
+          if (matchedPunches.length >= 2) {
+            rawIn = rawIn || matchedPunches[0];
+            rawOut = rawOut || matchedPunches[matchedPunches.length - 1];
+          } else if (matchedPunches.length === 1) {
+            rawIn = rawIn || matchedPunches[0];
+          }
+        }
+
+        // Night-shift handover / double duty reconciliation:
+        // If yesterday was a night shift (Shift C) whose out punch landed on this morning (e.g. 07:20/07:23),
+        // and today has an afternoon punch (e.g. 14:44), while today's out punch was missing/SE:
+        // The employee worked Day shift from the morning handover (07:20) to afternoon (14:44)!
+        let wasHandoverReconciled = false;
+        if (rawIn) {
+          const inM = parseTimeToMins(rawIn) || 0;
+          if (inM >= 11 * 60 + 30 && inM <= 16 * 60) {
+            const prevD = new Date(year, month, dayNum - 1);
+            const prevDateKey = format(prevD, 'yyyy-MM-dd');
+            const prevDayRec = mssqlEmpDays[prevDateKey];
+            if (prevDayRec) {
+              const prevOutM = parseTimeToMins(prevDayRec.outTime) || 0;
+              if (prevOutM >= 5 * 60 && prevOutM <= 10 * 60) {
+                let morningPunch = prevDayRec.outTime;
+                const prevMorningMatches = [...String(prevDayRec.punchRecords || '').matchAll(/(0[5-9]:\d{2}|10:\d{2})/g)].map(m => m[1]);
+                if (prevMorningMatches.length > 0) {
+                  morningPunch = prevMorningMatches[0];
+                }
+                rawOut = rawIn;
+                rawIn = morningPunch;
+                wasHandoverReconciled = true;
+              }
+            }
+          }
+        }
+
+        // If not reconciled by handover, preserve official MSSQL outTime / duration
+        if (!wasHandoverReconciled && !rawOut) {
+          const officialOut = liveMssqlDay.outTime && !['—', '-', 'null', 'undefined', '2026-'].includes(liveMssqlDay.outTime.trim()) ? liveMssqlDay.outTime.trim() : null;
+          if (officialOut) {
+            rawOut = officialOut;
+          } else if (rawIn && liveMssqlDay.durationMins && liveMssqlDay.durationMins > 0) {
+            const inMinsVal = parseTimeToMins(rawIn);
+            if (inMinsVal !== null) {
+              const outMinsVal = inMinsVal + liveMssqlDay.durationMins;
+              rawOut = `${String(Math.floor((outMinsVal % 1440) / 60)).padStart(2, '0')}:${String(outMinsVal % 60).padStart(2, '0')}`;
+            }
+          }
+        }
+
+        const isLiveWO = !isSecGuardNoWO && (liveMssqlDay.isWeeklyOff || liveMssqlDay.status === 'WO' || liveMssqlDay.status === 'W/O' || liveMssqlDay.status === 'W/P' || isFedWO);
+        const hasWorkedPunches = Boolean(
+          (rawIn && rawIn !== '-' && rawIn !== '—') ||
+          (rawOut && rawOut !== '-' && rawOut !== '—') ||
+          (liveMssqlDay.status === 'P' || liveMssqlDay.status === 'W/P' || liveMssqlDay.status === 'H/P') ||
+          (liveMssqlDay.durationMins && liveMssqlDay.durationMins > 0) ||
+          (liveMssqlDay.otMins && liveMssqlDay.otMins > 0)
+        );
+
+        if (isLiveWO && !hasWorkedPunches) {
           totalWeeklyOffs++;
           shiftNsCount++;
           return {
@@ -3413,11 +3870,11 @@ const DetailedAuditReportView: React.FC<{
             breakDur: '-',
             netWorked: '-',
             ot: '-',
-            shift: 'NS',
+            shift: '-',
             lateBy: '-'
           };
         }
-        if (liveMssqlDay.status === 'A' || liveMssqlDay.isAbsent) {
+        if ((liveMssqlDay.status === 'A' || liveMssqlDay.isAbsent) && !hasWorkedPunches) {
           if (isSiteHoliday && !isEmpInactive) {
             totalHolidayDays++;
             return {
@@ -3449,7 +3906,7 @@ const DetailedAuditReportView: React.FC<{
               breakDur: '-',
               netWorked: '-',
               ot: '-',
-              shift: 'NS',
+              shift: '-',
               lateBy: '-'
             };
           }
@@ -3486,44 +3943,87 @@ const DetailedAuditReportView: React.FC<{
           };
         }
 
-        // Present from live remote MSSQL report
-        const rawIn = liveMssqlDay.inTime && liveMssqlDay.inTime !== '—' ? liveMssqlDay.inTime : '10:00';
-        const rawOut = liveMssqlDay.outTime && liveMssqlDay.outTime !== '—' ? liveMssqlDay.outTime : '19:00';
-        const dayInTime = formatDisplayTime(rawIn) !== '-' ? formatDisplayTime(rawIn) : '10:00';
-        const dayOutTime = formatDisplayTime(rawOut) !== '-' ? formatDisplayTime(rawOut) : '19:00';
-        const inMins = parseTimeToMins(dayInTime) || (10 * 60);
-        const outMins = parseTimeToMins(dayOutTime) || (19 * 60);
-        let grossMins = outMins - inMins;
+        // Present or Worked on WO/Holiday (W/P or H/P)
+        // Only use actual punch data — no dummy fallback times
+        const dayInTime = (rawIn && formatDisplayTime(rawIn) !== '-') ? formatDisplayTime(rawIn) : '-';
+        const dayOutTime = (rawOut && formatDisplayTime(rawOut) !== '-') ? formatDisplayTime(rawOut) : '-';
+        const inMins = parseTimeToMins(dayInTime) || 0;
+        const outMins = parseTimeToMins(dayOutTime) || 0;
+        let grossMins = (inMins > 0 && outMins > 0) ? (outMins - inMins) : 0;
         if (grossMins < 0) grossMins += 24 * 60;
-        const breakMins = 30;
-        const netMins = liveMssqlDay.durationMins || Math.max(0, grossMins - breakMins);
-        const otMins = liveMssqlDay.otMins || Math.max(0, netMins - shiftExpectedHours * 60);
-        const dayLateBy = liveMssqlDay.lateMinutes > 0 ? formatMinsToHMM(liveMssqlDay.lateMinutes) : '-';
+
+        // Check if there are real intermediate biometric punches for break (e.g. 4+ punches in punchRecords)
+        let dayBreakIn = '-';
+        let dayBreakOut = '-';
+        let dayBreakDur = '-';
+        let dayBreakMins = 0;
+
+        if (liveMssqlDay.punchRecords) {
+          const validPunchesText = String(liveMssqlDay.punchRecords).replace(/\d{1,2}:\d{2}:out\(SE\),?/gi, '');
+          const allPunches = [...validPunchesText.matchAll(/(\d{1,2}:\d{2})/g)].map(m => m[1]);
+          if (allPunches.length >= 4) {
+            dayBreakOut = allPunches[1];
+            dayBreakIn = allPunches[2];
+            const boM = parseTimeToMins(dayBreakOut) || 0;
+            const biM = parseTimeToMins(dayBreakIn) || 0;
+            if (biM > boM) {
+              dayBreakMins = biM - boM;
+              dayBreakDur = formatMinsToHMM(dayBreakMins);
+            }
+          }
+        }
+
+        const breakMins = dayBreakMins;
+        const netMins = wasHandoverReconciled
+          ? Math.max(0, grossMins - breakMins)
+          : (liveMssqlDay.durationMins || (grossMins > 0 ? Math.max(0, grossMins - breakMins) : 0));
+        const otMins = liveMssqlDay.otMins || (isLiveWO ? netMins : Math.max(0, netMins - shiftExpectedHours * 60));
+        const calcLateMins = wasHandoverReconciled && inMins >= 7 * 60 && inMins < 11 * 60 + 30
+          ? Math.max(0, inMins - 7 * 60)
+          : (liveMssqlDay.lateMinutes || 0);
+        const dayLateBy = (!isLiveWO && calcLateMins > 0) ? formatMinsToHMM(calcLateMins) : '-';
         const dayOt = otMins > 0 ? formatMinsToHMM(otMins) : '-';
 
-        totalPresentDays++;
-        shiftGsCount++;
-        totalGrossMinsSum += grossMins;
-        totalBreakMinsSum += breakMins;
-        totalNetMinsSum += netMins;
-        totalOtMinsSum += otMins;
+        if (netMins > 0 || dayInTime !== '-') {
+          totalPresentDays++;
+          totalGrossMinsSum += grossMins;
+          totalBreakMinsSum += breakMins;
+          totalNetMinsSum += netMins;
+          totalOtMinsSum += otMins;
+        }
 
-        const liveHoursClean = liveMssqlDay.hours && !['—', '-', 'null', 'undefined'].includes(liveMssqlDay.hours.trim())
-          ? liveMssqlDay.hours.trim().replace(/[\u2013\u2014]/g, '-')
-          : formatMinsToHMM(netMins);
+        const liveHoursClean = wasHandoverReconciled
+          ? formatMinsToHMM(netMins)
+          : (liveMssqlDay.hours && !['—', '-', 'null', 'undefined'].includes(liveMssqlDay.hours.trim())
+            ? liveMssqlDay.hours.trim().replace(/[\u2013\u2014]/g, '-')
+            : (netMins > 0 ? formatMinsToHMM(netMins) : '-'));
+
+        const dynamicDayShift = (dayInTime !== '-')
+          ? getDynamicDayShift(dayInTime, dayOutTime, grossMins, empShift, isSecGuardNoWO)
+          : '-';
+        const dayStatus = isLiveWO ? (dayInTime !== '-' ? 'W/P' : 'W/O') : (isSiteHoliday ? (dayInTime !== '-' ? 'H/P' : 'H') : 'P');
+
+        if (dayStatus === 'W/P') totalWorkedWeekOffs++;
+        if (dayStatus === 'H/P') totalWorkedHolidays++;
+
+        // Increment W/O counter if no punches on a weekly off day
+        if (isLiveWO && dayInTime === '-') {
+          totalWeeklyOffs++;
+          shiftNsCount++;
+        }
 
         return {
           dayNum,
-          status: dayLateBy !== '-' ? '0.75P' : 'P',
+          status: dayStatus,
           inTime: dayInTime,
           outTime: dayOutTime,
-          grossDur: formatMinsToHMM(grossMins),
-          breakIn: '13:00',
-          breakOut: '13:30',
-          breakDur: '0:30',
+          grossDur: grossMins > 0 ? formatMinsToHMM(grossMins) : '-',
+          breakIn: dayBreakIn,
+          breakOut: dayBreakOut,
+          breakDur: dayBreakDur,
           netWorked: liveHoursClean,
           ot: dayOt,
-          shift: empShift,
+          shift: dynamicDayShift,
           lateBy: dayLateBy
         };
       }
@@ -3545,7 +4045,7 @@ const DetailedAuditReportView: React.FC<{
           breakDur: '-',
           netWorked: '-',
           ot: '-',
-          shift: mssqlRec?.shift || 'NS',
+          shift: '-',
           lateBy: '-'
         };
       }
@@ -3587,7 +4087,7 @@ const DetailedAuditReportView: React.FC<{
             breakDur: '-',
             netWorked: '-',
             ot: '-',
-            shift: 'NS',
+            shift: '-',
             lateBy: '-'
           };
         }
@@ -3609,38 +4109,42 @@ const DetailedAuditReportView: React.FC<{
 
       // Check for Supabase punch or specific manual override punch
       if (dbDayRec?.inTime || mssqlRec?.inTime) {
-        const rawIn = dbDayRec?.inTime || mssqlRec?.inTime;
-        const rawOut = dbDayRec?.outTime || mssqlRec?.outTime;
-        const dayInTime = formatDisplayTime(rawIn) !== '-' ? formatDisplayTime(rawIn) : '09:00';
-        const dayOutTime = formatDisplayTime(rawOut) !== '-' ? formatDisplayTime(rawOut) : '18:00';
-        const dayOt = mssqlRec?.ot || '-';
-        const dayShift = mssqlRec?.shift || empShift;
-        const dayLateBy = mssqlRec?.lateBy || '-';
-
-        totalPresentDays++;
-        shiftGsCount++;
-
-        const inMins = parseTimeToMins(dayInTime) || (9 * 60);
-        const outMins = parseTimeToMins(dayOutTime) || (18 * 60);
-        let grossMins = outMins - inMins;
+        const rawInDb = dbDayRec?.inTime || mssqlRec?.inTime;
+        const rawOutDb = dbDayRec?.outTime || mssqlRec?.outTime;
+        const dayInTime = formatDisplayTime(rawInDb) !== '-' ? formatDisplayTime(rawInDb) : '-';
+        const dayOutTime = formatDisplayTime(rawOutDb) !== '-' ? formatDisplayTime(rawOutDb) : '-';
+        const inMins = parseTimeToMins(dayInTime) || 0;
+        const outMins = parseTimeToMins(dayOutTime) || 0;
+        let grossMins = (inMins > 0 && outMins > 0) ? (outMins - inMins) : 0;
         if (grossMins < 0) grossMins += 24 * 60;
-        const breakMins = 30;
+        const breakMins = grossMins > 0 ? 30 : 0;
         const netMins = Math.max(0, grossMins - breakMins);
 
-        totalGrossMinsSum += grossMins;
-        totalBreakMinsSum += breakMins;
-        totalNetMinsSum += netMins;
+        if (grossMins > 0) {
+          totalGrossMinsSum += grossMins;
+          totalBreakMinsSum += breakMins;
+          totalNetMinsSum += netMins;
+        }
 
+        const dayOt = mssqlRec?.ot || '-';
+        const dayShift = mssqlRec?.shift || getDynamicDayShift(dayInTime, dayOutTime, grossMins, empShift, isSecGuardNoWO);
+        const dayLateBy = mssqlRec?.lateBy || '-';
+
+        const dayStatus = isFedWO ? 'W/P' : (isSiteHoliday ? 'H/P' : 'P');
+        if (dayStatus === 'W/P') totalWorkedWeekOffs++;
+        if (dayStatus === 'H/P') totalWorkedHolidays++;
+
+        const breakTimes = getShiftBreakTimes(dayInTime, dayOutTime, grossMins);
         return {
           dayNum,
-          status: dayLateBy !== '-' ? '0.75P' : 'P',
+          status: dayStatus,
           inTime: dayInTime,
           outTime: dayOutTime,
-          grossDur: mssqlRec?.gross || formatMinsToHMM(grossMins),
-          breakIn: '13:00',
-          breakOut: '13:30',
-          breakDur: '0:30',
-          netWorked: mssqlRec?.net || formatMinsToHMM(netMins),
+          grossDur: grossMins > 0 ? (mssqlRec?.gross || formatMinsToHMM(grossMins)) : '-',
+          breakIn: breakTimes.breakIn,
+          breakOut: breakTimes.breakOut,
+          breakDur: grossMins > 0 ? '0:30' : '-',
+          netWorked: mssqlRec?.net || (netMins > 0 ? formatMinsToHMM(netMins) : '-'),
           ot: dayOt,
           shift: dayShift,
           lateBy: dayLateBy
@@ -3680,7 +4184,7 @@ const DetailedAuditReportView: React.FC<{
           breakDur: '-',
           netWorked: '-',
           ot: '-',
-          shift: 'NS',
+          shift: '-',
           lateBy: '-'
         };
       }
@@ -3765,23 +4269,29 @@ const DetailedAuditReportView: React.FC<{
       for (let i = 0; i < dailyData.length; i++) {
         const dr = dailyData[i];
         const isWO = dr.status === 'W/O' || dr.status === 'WO';
-        const isWorked = dr.status === 'P' || dr.status === '0.75P' || dr.status === '0.5P' || dr.status === 'P (2D)' || dr.status === 'P (3D)' || (dr.inTime && dr.inTime !== '-' && dr.inTime !== '—');
+        const isWorked = dr.status === 'P' || dr.status === 'W/P' || dr.status === 'H/P' || dr.status === '0.75P' || dr.status === '0.5P' || dr.status === 'P (2D)' || dr.status === 'P (3D)' || (dr.inTime && dr.inTime !== '-' && dr.inTime !== '—');
 
         if (isWO) {
           workedDutiesSinceLastWO = 0;
           absentDaysInCycle = 0;
         } else if (isWorked) {
-          const dutiesInDay = dr.status === 'P (3D)' ? 3 : (dr.status === 'P (2D)' ? 2 : 1);
+          const dutiesInDay = dr.status === 'P (3D)' ? (policy.multiplierTripleDuty || 3) : (dr.status === 'P (2D)' ? (policy.multiplierDoubleDuty || 2) : 1);
           workedDutiesSinceLastWO += dutiesInDay;
-        } else if (dr.status === 'A') {
-          if (workedDutiesSinceLastWO >= 6 && absentDaysInCycle < 3 && dr.shift !== 'HOL') {
+        } else if (dr.status === 'A' || dr.status === '-') {
+          const cycleEnabled = policy.enableSixDayCycleWO !== false;
+          const reqDuties = policy.dutiesRequiredForWO || 6;
+          const maxAbs = policy.maxAbsentsInCycleForWO ?? 2;
+          if (cycleEnabled && workedDutiesSinceLastWO >= reqDuties && absentDaysInCycle <= maxAbs && dr.shift !== 'HOL') {
+            const wasAbsent = dr.status === 'A';
             dr.status = 'W/O';
-            dr.shift = 'NS';
+            dr.shift = '-';
             totalWeeklyOffs++;
-            totalAbsentDays = Math.max(0, totalAbsentDays - 1);
+            if (wasAbsent) {
+              totalAbsentDays = Math.max(0, totalAbsentDays - 1);
+            }
             workedDutiesSinceLastWO = 0;
             absentDaysInCycle = 0;
-          } else {
+          } else if (dr.status === 'A') {
             absentDaysInCycle++;
           }
         }
@@ -3789,58 +4299,85 @@ const DetailedAuditReportView: React.FC<{
     }
 
     // ── WO Forfeiture Rule ─────────────────────────────────────────────────
-    // A Weekly Off is forfeited (→ Absent) when ANY of these conditions hold:
-    //   A) Classic sandwich: Absent on BOTH the preceding AND succeeding working day
-    //   B) 2+ consecutive Absent days on the PRECEDING side alone  (Thu-Fri-Sat A → Sun WO = A)
-    //   C) 2+ consecutive Absent days on the SUCCEEDING side alone
-    // Holidays and other WOs are skipped transparently when scanning.
-    for (let i = 0; i < dailyData.length; i++) {
-      const dr = dailyData[i];
-      if (dr.status !== 'W/O' && dr.status !== 'WO') continue;
+    // A Weekly Off is forfeited (→ Absent) when sandwich or consecutive absent conditions hold
+    if (policy.enableSandwichRule !== false) {
+      for (let i = 0; i < dailyData.length; i++) {
+        const dr = dailyData[i];
+        if (dr.status !== 'W/O' && dr.status !== 'WO') continue;
 
-      // Count consecutive Absent days going BACKWARDS (skip WO/H/-)
-      let prevAbsentCount = 0;
-      for (let j = i - 1; j >= 0; j--) {
-        const s = dailyData[j].status;
-        if (s === 'W/O' || s === 'WO' || s === 'H' || s === 'HOL' || s === '-') continue;
-        if (s === 'A') prevAbsentCount++;
-        else break;
-      }
+        // Count consecutive Absent days going BACKWARDS (skip WO/H/-)
+        let prevAbsentCount = 0;
+        for (let j = i - 1; j >= 0; j--) {
+          const s = dailyData[j].status;
+          if (s === 'W/O' || s === 'WO' || s === 'H' || s === 'HOL' || s === '-') continue;
+          if (s === 'A') prevAbsentCount++;
+          else break;
+        }
 
-      // Count consecutive Absent days going FORWARDS (skip WO/H/-)
-      let nextAbsentCount = 0;
-      for (let j = i + 1; j < dailyData.length; j++) {
-        const s = dailyData[j].status;
-        if (s === 'W/O' || s === 'WO' || s === 'H' || s === 'HOL' || s === '-') continue;
-        if (s === 'A') nextAbsentCount++;
-        else break;
-      }
+        // Count consecutive Absent days going FORWARDS (skip WO/H/-)
+        let nextAbsentCount = 0;
+        for (let j = i + 1; j < dailyData.length; j++) {
+          const s = dailyData[j].status;
+          if (s === 'W/O' || s === 'WO' || s === 'H' || s === 'HOL' || s === '-') continue;
+          if (s === 'A') nextAbsentCount++;
+          else break;
+        }
 
-      const forfeit =
-        (prevAbsentCount > 0 && nextAbsentCount > 0) || // A: sandwich
-        prevAbsentCount >= 2 ||                          // B: 2+ before
-        nextAbsentCount >= 2;                            // C: 2+ after
+        const consecLimit = policy.consecutiveAbsentThreshold || 2;
+        const forfeit =
+          (policy.sandwichPreAndPost !== false && prevAbsentCount > 0 && nextAbsentCount > 0) || // A: sandwich
+          prevAbsentCount >= consecLimit ||                                                       // B: consecutive before
+          nextAbsentCount >= consecLimit;                                                         // C: consecutive after
 
-      if (forfeit) {
-        dr.status = 'A';
-        dr.shift = '-';
-        totalWeeklyOffs = Math.max(0, totalWeeklyOffs - 1);
-        totalAbsentDays++;
+        if (forfeit) {
+          dr.status = 'A';
+          dr.shift = '-';
+          totalWeeklyOffs = Math.max(0, totalWeeklyOffs - 1);
+          totalAbsentDays++;
+        }
       }
     }
 
     const netWorkHrsNum = (totalNetMinsSum / 60).toFixed(2);
     const totalOtHrsNum = (totalOtMinsSum / 60).toFixed(2);
     const avgHrsPerDayNum = totalPresentDays > 0 ? (totalNetMinsSum / 60 / totalPresentDays).toFixed(2) : '0.00';
+
+    const resolvePayableValue = (s: string): number => {
+      if (['W/P', 'WP', 'BL/P', 'BLP', 'PL/P', 'PLP'].includes(s)) return policy.multiplierWP ?? 2.0;
+      if (['H/P', 'HP'].includes(s)) return policy.multiplierHP ?? 2.0;
+      if (s === 'P (3D)' || s === '3D') return policy.multiplierTripleDuty ?? 3.0;
+      if (s === 'P (2D)' || s === '2D' || s === 'W/P (2D)' || s === 'H/P (2D)') return policy.multiplierDoubleDuty ?? 2.0;
+      if (['W/O', 'WO'].includes(s)) return policy.multiplierWO ?? 1.0;
+      if (['H', 'HOL'].includes(s)) return policy.multiplierHoliday ?? 1.0;
+      if (['P', 'SL', 'EL', 'CL', 'C/O', 'CO'].includes(s)) return policy.multiplierP ?? 1.0;
+      if (s === '0.5P' || s === 'Half Day' || s === '0.5SL' || s === '0.5EL' || s === '0.5CL') return policy.multiplierHalfDay ?? 0.5;
+      if (s === '0.75P' || s === '3/4P') return policy.multiplierThreeQuarterDay ?? 0.75;
+      if (s === '0.25P' || s === '1/4P') return policy.multiplierQuarterDay ?? 0.25;
+      return 0;
+    };
+
+    const totalPayableDaysSum = dailyData.reduce((sum, d) => sum + resolvePayableValue(d.status), 0);
     const payableDaysNum = (isEmpInactive || totalPresentDays === 0)
       ? '0.00'
-      : (totalPresentDays + totalWeeklyOffs + totalHolidayDays).toFixed(2);
+      : totalPayableDaysSum.toFixed(2);
     const grossHrsNum = (totalGrossMinsSum / 60).toFixed(1);
     const breakHrsNum = (totalBreakMinsSum / 60).toFixed(1);
     const presenceScorePct = daysInMonth > 0 ? Math.round((totalPresentDays / daysInMonth) * 100) : 0;
 
+    // Calculate dynamic shift distribution
+    const shiftCounts: Record<string, number> = {};
+    dailyData.forEach(d => {
+      if (d.shift && d.shift !== '-' && d.shift !== '—') {
+        shiftCounts[d.shift] = (shiftCounts[d.shift] || 0) + 1;
+      }
+    });
+    const shiftDistributionStr = Object.entries(shiftCounts)
+      .map(([sName, count]) => `Shift ${sName}(${count})`)
+      .join(' ') || (shiftGsCount || shiftNsCount ? `Shift GS(${shiftGsCount}) Shift NS(${shiftNsCount})` : 'Shift GS(0)');
+
     const isEmpSecurity = isSecurityEmployee(emp);
     const branding = getCompanyBranding(isEmpSecurity);
+    const hasBreakData = dailyData.some(d => d.breakDur && d.breakDur !== '-' && d.breakDur !== '0:00' && d.breakDur !== '0');
 
     return (
       <div key={`${emp.empCode}-${idx}`} className="border border-slate-200 dark:border-[#134426] rounded-2xl p-5 bg-white dark:bg-[#072415] space-y-4 shadow-xs">
@@ -3904,9 +4441,11 @@ const DetailedAuditReportView: React.FC<{
             <p className="text-xl font-black text-amber-900 dark:text-amber-200 mt-0.5">{avgHrsPerDayNum} <span className="text-xs font-semibold">Hrs</span></p>
           </div>
           <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-[#072415] border border-slate-200 dark:border-[#134426]">
-            <p className="text-[10px] font-extrabold text-slate-500 dark:text-emerald-300/70 uppercase tracking-wider">GROSS / BREAK</p>
+            <p className="text-[10px] font-extrabold text-slate-500 dark:text-emerald-300/70 uppercase tracking-wider">{hasBreakData ? 'GROSS / BREAK' : 'TOTAL GROSS'}</p>
             <p className="text-xs font-bold text-slate-800 dark:text-emerald-100 mt-1">GROSS: <span className="font-mono font-black">{grossHrsNum} h</span></p>
-            <p className="text-xs font-bold text-slate-600 dark:text-emerald-300/70">BREAK: <span className="font-mono font-black">{breakHrsNum} h</span></p>
+            {hasBreakData && (
+              <p className="text-xs font-bold text-slate-600 dark:text-emerald-300/70">BREAK: <span className="font-mono font-black">{breakHrsNum} h</span></p>
+            )}
           </div>
           <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-[#072415] border border-slate-200 dark:border-[#134426] col-span-2 flex flex-col justify-between">
             <p className="text-[10px] font-extrabold text-slate-500 dark:text-emerald-300/70 uppercase tracking-wider">ATTENDANCE DISTRIBUTION</p>
@@ -3914,7 +4453,13 @@ const DetailedAuditReportView: React.FC<{
               <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">Paid Days: {payableDaysNum}</span>
               <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300">Absent: {totalAbsentDays}</span>
               <span className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-800 dark:bg-[#0d3820] dark:text-emerald-100">W/O: {totalWeeklyOffs}</span>
-              <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300">Holiday: 0</span>
+              {totalWorkedWeekOffs > 0 && (
+                <span className="px-1.5 py-0.5 rounded bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300">W/P: {totalWorkedWeekOffs}</span>
+              )}
+              <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300">Holiday: {totalHolidayDays}</span>
+              {totalWorkedHolidays > 0 && (
+                <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">H/P: {totalWorkedHolidays}</span>
+              )}
             </div>
             <div className="mt-1.5 pt-1 border-t border-slate-200 dark:border-[#134426] flex justify-between items-center text-xs">
               <span className="font-bold text-slate-600 dark:text-emerald-300/70">PAYABLE DAYS:</span>
@@ -3942,8 +4487,11 @@ const DetailedAuditReportView: React.FC<{
                 <td className="px-3 py-1.5 font-bold text-left sticky left-0 bg-slate-100 dark:bg-[#072415] text-slate-900 dark:text-white z-10">Status</td>
                 {dailyData.map(d => {
                   const st = d.status;
-                  const bg = st === 'P' ? 'bg-emerald-100 text-emerald-800 font-bold'
+                  const bg = st === 'P' || st === 'P (2D)' || st === 'P (3D)' ? 'bg-emerald-100 text-emerald-800 font-bold'
+                           : st === 'W/P' ? 'bg-teal-100 text-teal-800 font-bold'
+                           : st === 'H/P' ? 'bg-amber-100 text-amber-800 font-bold'
                            : st === 'A' ? 'bg-red-100 text-red-800 font-bold'
+                           : st === 'W/O' || st === 'WO' ? 'bg-slate-200 text-slate-700 font-medium'
                            : st.includes('+') ? 'bg-teal-100 text-teal-900 font-bold'
                            : st === '0.25P' || st === '0.5P' || st === '0.75P' ? 'bg-cyan-100 text-cyan-800 font-bold'
                            : 'bg-slate-200 text-slate-700 font-medium';
@@ -3995,35 +4543,40 @@ const DetailedAuditReportView: React.FC<{
                 ))}
               </tr>
 
-              {/* Break In Row */}
-              <tr>
-                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-[#072415] font-semibold text-slate-400 z-10">Break In</td>
-                {dailyData.map(d => (
-                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-slate-400 border-r border-slate-100 dark:border-[#134426]">
-                    {d.breakIn}
-                  </td>
-                ))}
-              </tr>
+              {/* Break In, Break Out, Break Dur Rows (Hidden if not recorded) */}
+              {hasBreakData && (
+                <>
+                  {/* Break In Row */}
+                  <tr>
+                    <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-[#072415] font-semibold text-slate-400 z-10">Break In</td>
+                    {dailyData.map(d => (
+                      <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-slate-400 border-r border-slate-100 dark:border-[#134426]">
+                        {d.breakIn}
+                      </td>
+                    ))}
+                  </tr>
 
-              {/* Break Out Row */}
-              <tr>
-                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-[#072415] font-semibold text-slate-400 z-10">Break Out</td>
-                {dailyData.map(d => (
-                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-slate-400 border-r border-slate-100 dark:border-[#134426]">
-                    {d.breakOut}
-                  </td>
-                ))}
-              </tr>
+                  {/* Break Out Row */}
+                  <tr>
+                    <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-[#072415] font-semibold text-slate-400 z-10">Break Out</td>
+                    {dailyData.map(d => (
+                      <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-slate-400 border-r border-slate-100 dark:border-[#134426]">
+                        {d.breakOut}
+                      </td>
+                    ))}
+                  </tr>
 
-              {/* Break Dur Row */}
-              <tr>
-                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-[#072415] font-semibold text-slate-400 z-10">Break Dur</td>
-                {dailyData.map(d => (
-                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-slate-400 border-r border-slate-100 dark:border-[#134426]">
-                    {d.breakDur}
-                  </td>
-                ))}
-              </tr>
+                  {/* Break Dur Row */}
+                  <tr>
+                    <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-[#072415] font-semibold text-slate-400 z-10">Break Dur</td>
+                    {dailyData.map(d => (
+                      <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-slate-400 border-r border-slate-100 dark:border-[#134426]">
+                        {d.breakDur}
+                      </td>
+                    ))}
+                  </tr>
+                </>
+              )}
 
               {/* Net Worked Row */}
               <tr className="bg-emerald-50/40 dark:bg-emerald-950/20 font-bold">
@@ -4031,16 +4584,6 @@ const DetailedAuditReportView: React.FC<{
                 {dailyData.map(d => (
                   <td key={d.dayNum} className="px-0.5 py-1 text-[10px] text-emerald-700 dark:text-emerald-300 border-r border-slate-100 dark:border-[#134426]">
                     {d.netWorked}
-                  </td>
-                ))}
-              </tr>
-
-              {/* Travel (KM) Row */}
-              <tr>
-                <td className="px-3 py-1 text-left sticky left-0 bg-white dark:bg-[#072415] font-semibold text-teal-600 dark:text-teal-400 z-10">Travel (KM)</td>
-                {daysArray.map(d => (
-                  <td key={d} className="px-0.5 py-1 text-[10px] text-teal-600 dark:text-teal-400 border-r border-slate-100 dark:border-[#134426]">
-                    -
                   </td>
                 ))}
               </tr>
@@ -4078,11 +4621,24 @@ const DetailedAuditReportView: React.FC<{
               {/* Shift Row */}
               <tr className="bg-slate-100/60 dark:bg-[#072415]/60">
                 <td className="px-3 py-1 text-left sticky left-0 bg-slate-100 dark:bg-[#072415] font-bold text-slate-700 dark:text-emerald-200 z-10">Shift</td>
-                {dailyData.map(d => (
-                  <td key={d.dayNum} className="px-0.5 py-1 text-[10px] font-bold border-r border-slate-200 dark:border-[#134426]">
-                    {d.shift}
-                  </td>
-                ))}
+                {dailyData.map(d => {
+                  const sh = d.shift || '-';
+                  const shColor = sh === '-' ? 'text-slate-300 dark:text-slate-600'
+                    : sh === 'HOL' ? 'text-blue-600 dark:text-blue-400'
+                    : sh.includes('+') ? 'text-amber-700 dark:text-amber-400 font-extrabold'
+                    : sh === 'GS' ? 'text-teal-700 dark:text-teal-400 font-extrabold'
+                    : sh === 'DAY-12' ? 'text-emerald-700 dark:text-emerald-400 font-extrabold'
+                    : sh === 'NIGHT-12' ? 'text-indigo-700 dark:text-indigo-400 font-extrabold'
+                    : sh.startsWith('A') ? 'text-emerald-700 dark:text-emerald-400 font-extrabold'
+                    : sh.startsWith('B') ? 'text-cyan-700 dark:text-cyan-400 font-extrabold'
+                    : sh.startsWith('C') ? 'text-indigo-700 dark:text-indigo-400 font-extrabold'
+                    : 'text-slate-600 dark:text-emerald-200';
+                  return (
+                    <td key={d.dayNum} className={`px-0.5 py-1 text-[10px] font-bold border-r border-slate-200 dark:border-[#134426] ${shColor}`}>
+                      {sh}
+                    </td>
+                  );
+                })}
               </tr>
             </tbody>
           </table>
@@ -4092,7 +4648,7 @@ const DetailedAuditReportView: React.FC<{
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-slate-600 dark:text-emerald-300/70 pt-2 border-t border-slate-100 dark:border-[#134426]">
           <span>AVG WORKING HOURS: <strong className="text-slate-900 dark:text-white font-mono">{avgHrsPerDayNum}H</strong></span>
           <span>SITE PRESENCE SCORE: <strong className="text-emerald-600 font-mono">{presenceScorePct}%</strong></span>
-          <span>SHIFT DISTRIBUTION: <strong className="text-slate-900 dark:text-white font-mono">Shift GS({shiftGsCount}) Shift NS({shiftNsCount})</strong></span>
+          <span>SHIFT DISTRIBUTION: <strong className="text-slate-900 dark:text-white font-mono">{shiftDistributionStr}</strong></span>
         </div>
 
         {/* Notation Reference Footer */}
@@ -4525,7 +5081,7 @@ const DetailedAuditReportView: React.FC<{
       return {
         ...emp,
         role: (emp as any).role || emp.designation,
-        company: empOverrides[emp.empCode]?.company || emp.company || 'Paradigm Services',
+        company: getEffectiveCompany(emp, empOverrides[emp.empCode]?.company),
         location: emp.location || 'Bangalore',
         inTime: finalInTime,
         outTime: finalOutTime,
@@ -4796,11 +5352,19 @@ const DetailedAuditReportView: React.FC<{
   const companyList = useMemo(() => {
     const set = new Set<string>();
     siteScopedEmployees.forEach(e => {
-      const comp = empOverrides[e.empCode]?.company || e.company;
+      const comp = getEffectiveCompany(e, empOverrides[e.empCode]?.company);
       if (comp && comp !== '—') set.add(comp);
-      else set.add('Paradigm Services');
     });
-    return Array.from(set).sort();
+    const priority = ['PIFS', 'Southwall Security LLP', 'PPFMS', 'Paradigm Services'];
+    const result = Array.from(set).sort((a, b) => {
+      const idxA = priority.indexOf(a);
+      const idxB = priority.indexOf(b);
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
+      return a.localeCompare(b);
+    });
+    return result.length > 0 ? result : ['PIFS', 'Southwall Security LLP'];
   }, [siteScopedEmployees, empOverrides]);
 
   const roleList = useMemo(() => {
@@ -4809,13 +5373,10 @@ const DetailedAuditReportView: React.FC<{
     const targetLocation = pendingLocation !== 'all' ? pendingLocation : locationFilter;
 
     siteScopedEmployees.forEach(e => {
-      const effectiveCompany = empOverrides[e.empCode]?.company ?? e.company ?? 'Paradigm Services';
+      const effectiveCompany = getEffectiveCompany(e, empOverrides[e.empCode]?.company);
       const effectiveLocation = e.location ?? 'Bangalore';
 
-      const matchCompany = targetCompany === 'all' ||
-        effectiveCompany.toLowerCase().trim() === targetCompany.toLowerCase().trim() ||
-        effectiveCompany.toLowerCase().includes(targetCompany.toLowerCase().trim()) ||
-        targetCompany.toLowerCase().includes(effectiveCompany.toLowerCase().trim());
+      const matchCompany = isCompanyMatch(effectiveCompany, targetCompany);
 
       const matchLocation = targetLocation === 'all' ||
         effectiveLocation.toLowerCase().trim() === targetLocation.toLowerCase().trim() ||
@@ -4889,16 +5450,13 @@ const DetailedAuditReportView: React.FC<{
       if (!code || seen.has(code)) return;
 
       const effectiveDesignation = empOverrides[e.empCode]?.designation ?? e.designation;
-      const effectiveCompany = empOverrides[e.empCode]?.company ?? e.company ?? 'Paradigm Services';
+      const effectiveCompany = getEffectiveCompany(e, empOverrides[e.empCode]?.company);
       const effectiveLocation = e.location ?? 'Bangalore';
 
       const matchRole = targetRole === 'all' ||
         (effectiveDesignation || '').toLowerCase().trim() === targetRole.toLowerCase().trim();
 
-      const matchCompany = targetCompany === 'all' ||
-        effectiveCompany.toLowerCase().trim() === targetCompany.toLowerCase().trim() ||
-        effectiveCompany.toLowerCase().includes(targetCompany.toLowerCase().trim()) ||
-        targetCompany.toLowerCase().includes(effectiveCompany.toLowerCase().trim());
+      const matchCompany = isCompanyMatch(effectiveCompany, targetCompany);
 
       const matchLocation = targetLocation === 'all' ||
         effectiveLocation.toLowerCase().trim() === targetLocation.toLowerCase().trim() ||
@@ -4987,12 +5545,9 @@ const DetailedAuditReportView: React.FC<{
           effectiveSite.toLowerCase().trim() === targetSite.toLowerCase().trim() ||
           matchSiteName(effectiveSite, targetSite);
 
-        // Company match: supports exact or contains match
-        const effectiveCompany = e.company || 'Paradigm Services';
-        const matchCompany = companyFilter === 'all' ||
-          effectiveCompany.toLowerCase().trim() === companyFilter.toLowerCase().trim() ||
-          effectiveCompany.toLowerCase().includes(companyFilter.toLowerCase().trim()) ||
-          companyFilter.toLowerCase().includes(effectiveCompany.toLowerCase().trim());
+        // Company match: supports normalized match
+        const effectiveCompany = getEffectiveCompany(e, empOverrides[e.empCode]?.company);
+        const matchCompany = isCompanyMatch(effectiveCompany, companyFilter);
 
         // Location match
         const effectiveLocation = e.location || 'Bangalore';
@@ -5360,7 +5915,7 @@ const DetailedAuditReportView: React.FC<{
               dateStr, dayNum, dayFormatted,
               inTime: '—', outTime: '—', hours: '—',
               netMins: 0, otMins: 0, lateMinutes: 0,
-              status: 'W/O', shift: 'NS', isWeeklyOff: true,
+              status: 'W/O', shift: '-', isWeeklyOff: true,
             };
           }
           // Future working day or inactive — show as pending / neutral
@@ -5418,7 +5973,7 @@ const DetailedAuditReportView: React.FC<{
                 dateStr, dayNum, dayFormatted,
                 inTime: '—', outTime: '—', hours: '—',
                 netMins: 0, otMins: 0, lateMinutes: 0,
-                status: 'W/O', shift: 'NS', isWeeklyOff: true,
+                status: 'W/O', shift: '-', isWeeklyOff: true,
               };
             }
           }
@@ -5439,7 +5994,7 @@ const DetailedAuditReportView: React.FC<{
                 dateStr, dayNum, dayFormatted,
                 inTime: '—', outTime: '—', hours: '—',
                 netMins: 0, otMins: 0, lateMinutes: 0,
-                status: 'W/O', shift: 'NS', isWeeklyOff: true,
+                status: 'W/O', shift: '-', isWeeklyOff: true,
               };
             }
             if (isEmpInactive) {
@@ -5572,7 +6127,7 @@ const DetailedAuditReportView: React.FC<{
                 dateStr, dayNum, dayFormatted,
                 inTime: '—', outTime: '—', hours: '—',
                 netMins: 0, otMins: 0, lateMinutes: 0,
-                status: 'W/O', shift: 'NS', isWeeklyOff: true,
+                status: 'W/O', shift: '-', isWeeklyOff: true,
               };
             }
             if (vedaRec.isAbs) {
@@ -5692,7 +6247,7 @@ const DetailedAuditReportView: React.FC<{
             dateStr, dayNum, dayFormatted,
             inTime: '—', outTime: '—', hours: '—',
             netMins: 0, otMins: 0, lateMinutes: 0,
-            status: 'W/O', shift: 'NS', isWeeklyOff: true,
+            status: 'W/O', shift: '-', isWeeklyOff: true,
           };
         }
 
@@ -5817,7 +6372,7 @@ const DetailedAuditReportView: React.FC<{
             if (workedDutiesSinceLastWO >= 6 && absentDaysInCycle < 3 && !dp.isHoliday && !weekAlreadyHasWO) {
               dp.isWeeklyOff = true;
               dp.status = 'W/O';
-              dp.shift = 'NS';
+              dp.shift = '-';
               totalWeeklyOffs++;
               totalAbsentDays = Math.max(0, totalAbsentDays - 1);
               workedDutiesSinceLastWO = 0;
@@ -6556,7 +7111,55 @@ const DetailedAuditReportView: React.FC<{
 
         if (liveMssqlDay) {
           const isLiveWO = liveMssqlDay.isWeeklyOff || liveMssqlDay.status === 'WO' || liveMssqlDay.status === 'W/O';
-          if (isLiveWO) {
+          const isLiveAbsent = liveMssqlDay.status === 'A' || liveMssqlDay.isAbsent;
+
+          let rawIn = liveMssqlDay.inTime && liveMssqlDay.inTime !== '—' && !liveMssqlDay.inTime.startsWith('2026-') ? liveMssqlDay.inTime : null;
+          let rawOut = liveMssqlDay.outTime && liveMssqlDay.outTime !== '—' && !liveMssqlDay.outTime.startsWith('2026-') ? liveMssqlDay.outTime : null;
+
+          const hasOutSE = String(liveMssqlDay.punchRecords || '').includes('out(SE)');
+          if (hasOutSE) {
+            rawOut = null;
+          }
+
+          if ((!rawIn || !rawOut) && liveMssqlDay.punchRecords) {
+            const validPunchesText = String(liveMssqlDay.punchRecords).replace(/\d{1,2}:\d{2}:out\(SE\),?/gi, '');
+            const matchedPunches = [...validPunchesText.matchAll(/(\d{1,2}:\d{2})/g)].map(m => m[1]);
+            if (matchedPunches.length >= 2) {
+              rawIn = rawIn || matchedPunches[0];
+              rawOut = rawOut || matchedPunches[matchedPunches.length - 1];
+            } else if (matchedPunches.length === 1) {
+              rawIn = rawIn || matchedPunches[0];
+            }
+          }
+
+          let wasHandoverReconciled = false;
+          if ((!rawOut || hasOutSE) && rawIn) {
+            const inM = parseTimeToMins(rawIn) || 0;
+            if (inM >= 11 * 60 + 30 && inM <= 16 * 60) {
+              const prevD = new Date(year, month, dayNum - 1);
+              const prevDateKey = format(prevD, 'yyyy-MM-dd');
+              const prevDayRec = mssqlEmpDays[prevDateKey];
+              if (prevDayRec) {
+                const prevOutM = parseTimeToMins(prevDayRec.outTime) || 0;
+                if (prevOutM >= 5 * 60 && prevOutM <= 10 * 60) {
+                  let morningPunch = prevDayRec.outTime;
+                  const prevMorningMatches = [...String(prevDayRec.punchRecords || '').matchAll(/(0[5-9]:\d{2}|10:\d{2})/g)].map(m => m[1]);
+                  if (prevMorningMatches.length > 0) {
+                    morningPunch = prevMorningMatches[0];
+                  }
+                  rawOut = rawIn;
+                  rawIn = morningPunch;
+                  wasHandoverReconciled = true;
+                }
+              }
+            }
+          }
+
+          const hasWorkedPunches = (rawIn && rawIn !== '-' && rawIn !== '—') ||
+            (rawOut && rawOut !== '-' && rawOut !== '—') ||
+            (liveMssqlDay.durationMins && liveMssqlDay.durationMins > 0);
+
+          if (isLiveWO && !hasWorkedPunches) {
             weeklyOffs++;
             nsCount++;
             return {
@@ -6570,11 +7173,12 @@ const DetailedAuditReportView: React.FC<{
               breakDur: '-',
               netWorked: '-',
               ot: '-',
-              shift: 'NS',
+              shift: '-',
               lateBy: '-'
             };
           }
-          if (liveMssqlDay.status === 'A' || liveMssqlDay.isAbsent) {
+
+          if (isLiveAbsent && !hasWorkedPunches) {
             absentDays++;
             return {
               dayNum,
@@ -6594,41 +7198,62 @@ const DetailedAuditReportView: React.FC<{
 
           presentDays++;
           gsCount++;
-          const rawIn = liveMssqlDay.inTime && liveMssqlDay.inTime !== '—' ? liveMssqlDay.inTime : '10:00';
-          const rawOut = liveMssqlDay.outTime && liveMssqlDay.outTime !== '—' ? liveMssqlDay.outTime : '19:00';
-          const dayInTime = formatDisplayTime(rawIn) !== '-' ? formatDisplayTime(rawIn) : '10:00';
-          const dayOutTime = formatDisplayTime(rawOut) !== '-' ? formatDisplayTime(rawOut) : '19:00';
-          const inMins = parseTimeToMins(dayInTime) || (10 * 60);
-          const outMins = parseTimeToMins(dayOutTime) || (19 * 60);
-          let grossMins = outMins - inMins;
+          const dayInTime = (rawIn && formatDisplayTime(rawIn) !== '-') ? formatDisplayTime(rawIn) : '-';
+          const dayOutTime = (rawOut && formatDisplayTime(rawOut) !== '-') ? formatDisplayTime(rawOut) : '-';
+          const inMins = parseTimeToMins(dayInTime) || 0;
+          const outMins = parseTimeToMins(dayOutTime) || 0;
+          let grossMins = (inMins > 0 && outMins > 0) ? (outMins - inMins) : 0;
           if (grossMins < 0) grossMins += 24 * 60;
-          const breakMins = 30;
-          const netMins = liveMssqlDay.durationMins || Math.max(0, grossMins - breakMins);
-          const otMins = liveMssqlDay.otMins || Math.max(0, netMins - shiftExpectedHours * 60);
-          const dayLateBy = liveMssqlDay.lateMinutes > 0 ? formatMinsToHMM(liveMssqlDay.lateMinutes) : '-';
+          const breakMins = grossMins > 0 ? 30 : 0;
+          const netMins = wasHandoverReconciled
+            ? Math.max(0, grossMins - breakMins)
+            : (liveMssqlDay.durationMins || (grossMins > 0 ? Math.max(0, grossMins - breakMins) : 0));
+          const otMins = liveMssqlDay.otMins || (isLiveWO ? netMins : Math.max(0, netMins - shiftExpectedHours * 60));
+          const calcLateMins = wasHandoverReconciled && inMins >= 7 * 60 && inMins < 11 * 60 + 30
+            ? Math.max(0, inMins - 7 * 60)
+            : (liveMssqlDay.lateMinutes || 0);
+          const dayLateBy = (!isLiveWO && calcLateMins > 0) ? formatMinsToHMM(calcLateMins) : '-';
           const dayOt = otMins > 0 ? formatMinsToHMM(otMins) : '-';
 
-          grossMinsSum += grossMins;
-          breakMinsSum += breakMins;
-          netMinsSum += netMins;
-          otMinsSum += otMins;
+          if (grossMins > 0 || netMins > 0) {
+            grossMinsSum += grossMins;
+            breakMinsSum += breakMins;
+            netMinsSum += netMins;
+            otMinsSum += otMins;
+          }
 
-          const liveHoursClean = liveMssqlDay.hours && !['—', '-', 'null', 'undefined'].includes(liveMssqlDay.hours.trim())
-            ? liveMssqlDay.hours.trim().replace(/[\u2013\u2014]/g, '-')
-            : formatMinsToHMM(netMins);
+          const liveHoursClean = wasHandoverReconciled
+            ? formatMinsToHMM(netMins)
+            : (liveMssqlDay.hours && !['—', '-', 'null', 'undefined'].includes(liveMssqlDay.hours.trim())
+              ? liveMssqlDay.hours.trim().replace(/[\u2013\u2014]/g, '-')
+              : (netMins > 0 ? formatMinsToHMM(netMins) : '-'));
 
+          const dynamicDayShift = (dayInTime !== '-')
+            ? getDynamicDayShift(dayInTime, dayOutTime, grossMins, empShift, false)
+            : '-';
+          const dayStatus = isLiveWO ? (dayInTime !== '-' ? 'W/P' : 'W/O') : 'P';
+
+          // W/O with no punches → count as weekly off, not present
+          if (isLiveWO && dayInTime === '-') {
+            presentDays--;
+            gsCount--;
+            weeklyOffs++;
+            nsCount++;
+          }
+
+          const breakTimes = getShiftBreakTimes(dayInTime, dayOutTime, grossMins);
           return {
             dayNum,
-            status: dayLateBy !== '-' ? '0.75P' : 'P',
+            status: dayStatus,
             inTime: dayInTime,
             outTime: dayOutTime,
-            grossDur: formatMinsToHMM(grossMins),
-            breakIn: '13:00',
-            breakOut: '13:30',
-            breakDur: '0:30',
+            grossDur: grossMins > 0 ? formatMinsToHMM(grossMins) : '-',
+            breakIn: breakTimes.breakIn,
+            breakOut: breakTimes.breakOut,
+            breakDur: grossMins > 0 ? '0:30' : '-',
             netWorked: liveHoursClean,
             ot: dayOt,
-            shift: empShift,
+            shift: dynamicDayShift,
             lateBy: dayLateBy
           };
         }
@@ -6650,7 +7275,7 @@ const DetailedAuditReportView: React.FC<{
             breakDur: '-',
             netWorked: '-',
             ot: '-',
-            shift: rec?.shift || 'NS',
+            shift: '-',
             lateBy: '-'
           };
         }
@@ -6680,16 +7305,16 @@ const DetailedAuditReportView: React.FC<{
         const rawOut = rec?.outTime || fallbackOutTime;
         const dayInTime = formatDisplayTime(rawIn) !== '-' ? formatDisplayTime(rawIn) : '09:10';
         const dayOutTime = formatDisplayTime(rawOut) !== '-' ? formatDisplayTime(rawOut) : '18:40';
-        const dayOt = rec?.ot || (shiftExpectedHours === 8 ? '1:00' : '0:00');
-        const dayShift = rec?.shift || empShift;
-        const dayLateBy = rec?.lateBy || '-';
-
         const inMins = parseTimeToMins(dayInTime) || (9 * 60 + 10);
         const outMins = parseTimeToMins(dayOutTime) || (18 * 60 + 40);
         let grossMins = outMins - inMins;
         if (grossMins < 0) grossMins += 24 * 60;
         const breakMins = 30;
         const netMins = Math.max(0, grossMins - breakMins);
+
+        const dayOt = rec?.ot || (shiftExpectedHours === 8 ? '1:00' : '0:00');
+        const dayShift = getDynamicDayShift(dayInTime, dayOutTime, grossMins, rec?.shift || empShift, false);
+        const dayLateBy = rec?.lateBy || '-';
 
         grossMinsSum += grossMins;
         breakMinsSum += breakMins;
@@ -6700,15 +7325,16 @@ const DetailedAuditReportView: React.FC<{
           otMinsSum += otH * 60 + otM;
         }
 
+        const breakTimes = getShiftBreakTimes(dayInTime, dayOutTime, grossMins);
         return {
           dayNum,
-          status: rec?.status || (dayLateBy !== '-' ? '0.75P' : 'P'),
+          status: rec?.status && rec.status !== 'A' ? rec.status : 'P',
           inTime: dayInTime,
           outTime: dayOutTime,
           grossDur: rec?.gross || `${Math.floor(grossMins / 60)}:${String(grossMins % 60).padStart(2, '0')}`,
-          breakIn: '13:00',
-          breakOut: '13:30',
-          breakDur: '0:30',
+          breakIn: breakTimes.breakIn,
+          breakOut: breakTimes.breakOut,
+          breakDur: grossMins > 0 ? '0:30' : '-',
           netWorked: rec?.net || `${Math.floor(netMins / 60)}:${String(netMins % 60).padStart(2, '0')}`,
           ot: dayOt,
           shift: dayShift,
@@ -6738,6 +7364,22 @@ const DetailedAuditReportView: React.FC<{
         ? (isVedamurthy ? '9:28' : '10:41') 
         : (presentDays > 0 ? (netMinsSum / 60 / presentDays).toFixed(2) : '0.00');
 
+      const resolvePayableDays = (s: string): number => {
+        const pol = attendancePolicySettings || DEFAULT_ATTENDANCE_POLICY_SETTINGS;
+        if (['W/P', 'WP', 'BL/P', 'BLP', 'PL/P', 'PLP'].includes(s)) return pol.multiplierWP ?? 2.0;
+        if (['H/P', 'HP'].includes(s)) return pol.multiplierHP ?? 2.0;
+        if (s === 'P (3D)' || s === '3D') return pol.multiplierTripleDuty ?? 3.0;
+        if (s === 'P (2D)' || s === '2D' || s === 'W/P (2D)' || s === 'H/P (2D)') return pol.multiplierDoubleDuty ?? 2.0;
+        if (['W/O', 'WO'].includes(s)) return pol.multiplierWO ?? 1.0;
+        if (['H', 'HOL'].includes(s)) return pol.multiplierHoliday ?? 1.0;
+        if (['P', 'SL', 'EL', 'CL', 'C/O', 'CO'].includes(s)) return pol.multiplierP ?? 1.0;
+        if (s === '0.5P' || s === 'Half Day' || s === '0.5SL' || s === '0.5EL' || s === '0.5CL') return pol.multiplierHalfDay ?? 0.5;
+        if (s === '0.75P' || s === '3/4P') return pol.multiplierThreeQuarterDay ?? 0.75;
+        if (s === '0.25P' || s === '1/4P') return pol.multiplierQuarterDay ?? 0.25;
+        return 0;
+      };
+      const totalPayableCalc = (isEmpInactive || presentDays === 0) ? '0.00' : dailyData.reduce((acc, d) => acc + resolvePayableDays(d.status), 0).toFixed(2);
+
       return {
         empCode: emp.empCode,
         empName: emp.empName,
@@ -6751,10 +7393,10 @@ const DetailedAuditReportView: React.FC<{
         avgHrsPerDay: avgHrsPerDayVal,
         grossHrs: (grossMinsSum / 60).toFixed(1),
         breakHrs: (breakMinsSum / 60).toFixed(1),
-        paidDays: (isEmpInactive || presentDays === 0) ? '0' : String(presentDays),
+        paidDays: totalPayableCalc,
         absentDays: String(absentDays),
         weeklyOffs: (isEmpInactive || presentDays === 0) ? '0' : String(weeklyOffs),
-        payableDays: (isEmpInactive || presentDays === 0) ? '0' : String(presentDays + weeklyOffs),
+        payableDays: totalPayableCalc,
         presenceScorePct: daysInMonth > 0 ? Math.round((presentDays / daysInMonth) * 100) : 0,
         shiftGsCount: gsCount,
         shiftNsCount: nsCount,
@@ -6804,11 +7446,13 @@ const DetailedAuditReportView: React.FC<{
           csvLines.push([`"OutTime"`, ...getDayVal('outTime')].join(','));
           csvLines.push([`"Perm Duration"`, ...Array.from({ length: 31 }, () => `"-"`)].join(','));
           csvLines.push([`"Gross Dur"`, ...getDayVal('grossDur')].join(','));
-          csvLines.push([`"Break In"`, ...getDayVal('breakIn')].join(','));
-          csvLines.push([`"Break Out"`, ...getDayVal('breakOut')].join(','));
-          csvLines.push([`"Break Dur"`, ...getDayVal('breakDur')].join(','));
+          const empHasBreak = emp.dailyData?.some(d => d.breakDur && d.breakDur !== '-' && d.breakDur !== '0:00' && d.breakDur !== '0');
+          if (empHasBreak) {
+            csvLines.push([`"Break In"`, ...getDayVal('breakIn')].join(','));
+            csvLines.push([`"Break Out"`, ...getDayVal('breakOut')].join(','));
+            csvLines.push([`"Break Dur"`, ...getDayVal('breakDur')].join(','));
+          }
           csvLines.push([`"Net worked"`, ...getDayVal('netWorked')].join(','));
-          csvLines.push([`"Travel KM"`, ...Array.from({ length: 31 }, () => `"-"`)].join(','));
           csvLines.push([`"Late By"`, ...getDayVal('lateBy')].join(','));
           csvLines.push([`"OT"`, ...getDayVal('ot')].join(','));
           csvLines.push([`"Shift"`, ...getDayVal('shift')].join(','));
@@ -8140,10 +8784,14 @@ const DetailedAuditReportView: React.FC<{
                     <option value="basic">Basic Report</option>
                     <option value="monthly">Monthly Summary</option>
                     <option value="detailed">Detailed Audit (31-Day)</option>
-                    <option value="work_hours">Work Hours Summary</option>
-                    <option value="leave_balance">Leave Balance Tracker</option>
-                    <option value="site_ot">Site OT Report</option>
-                    <option value="log">Attendance Log</option>
+                    {isAdminUser && (
+                      <>
+                        <option value="work_hours">Work Hours Summary</option>
+                        <option value="leave_balance">Leave Balance Tracker</option>
+                        <option value="site_ot">Site OT Report</option>
+                        <option value="log">Attendance Log</option>
+                      </>
+                    )}
                   </select>
                 </div>
 
@@ -8173,6 +8821,10 @@ const DetailedAuditReportView: React.FC<{
                       const val = e.target.value;
                       setPendingCompany(val);
                       setCompanyFilter(val);
+                      setPendingRole('all');
+                      setRoleFilter('all');
+                      setPendingEmployee('all');
+                      setEmployeeFilter('all');
                     }}
                     className="w-full text-[11px] font-semibold px-2 py-1.5 rounded-lg border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
                   >
@@ -8193,6 +8845,8 @@ const DetailedAuditReportView: React.FC<{
                       setDepartmentFilter(val);
                       setPendingEmployee('all');
                       setEmployeeFilter('all');
+                      setPendingRole('all');
+                      setRoleFilter('all');
                     }}
                     className="w-full text-[11px] font-semibold px-2 py-1.5 rounded-lg border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
                   >
@@ -8839,6 +9493,7 @@ const DetailedAuditReportView: React.FC<{
                 siteHolidaysList={siteHolidaysList}
                 employeeWeeklyOffsMap={employeeWeeklyOffsMap}
                 isFetchingMssqlReport={isFetchingMssqlReport}
+                attendancePolicySettings={attendancePolicySettings}
               />
             )}
 
@@ -9726,14 +10381,14 @@ const DetailedAuditReportView: React.FC<{
               <div>
                 <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                   <Sliders size={20} className="text-emerald-500" />
-                  Admin Shift Group & Multi-Slot Configurator
+                  Admin Shift & Attendance Policy Studio
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-emerald-300/70 mt-1">
-                  Feed custom shift groups and multiple start time slots (e.g. 06:30, 07:00, 07:30, 08:00 for A Shift) per site.
+                  Feed custom shift groups, payable multipliers, weekly off rules, and role entitlements dynamically.
                 </p>
               </div>
               <button
-                onClick={handleResetDefaultRules}
+                onClick={shiftConfigSubTab === 'slots' ? handleResetDefaultRules : handleResetAttendancePolicy}
                 className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 dark:bg-[#072415] hover:bg-slate-200 text-slate-700 dark:text-emerald-200 rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-[#134426]"
               >
                 <RotateCcw size={14} />
@@ -9741,6 +10396,77 @@ const DetailedAuditReportView: React.FC<{
               </button>
             </div>
 
+            {/* Sub-Tabs Navigation */}
+            <div className="flex items-center gap-2 overflow-x-auto py-3 border-b border-slate-100 dark:border-[#134426] scrollbar-none">
+              <button
+                type="button"
+                onClick={() => setShiftConfigSubTab('slots')}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  shiftConfigSubTab === 'slots'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-600 dark:bg-[#0d3820] dark:text-emerald-200'
+                }`}
+              >
+                <Clock size={14} />
+                Shift Groups & Slots
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShiftConfigSubTab('payable')}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  shiftConfigSubTab === 'payable'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-600 dark:bg-[#0d3820] dark:text-emerald-200'
+                }`}
+              >
+                <DollarSign size={14} />
+                Payable Multipliers Matrix
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShiftConfigSubTab('weeklyOff')}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  shiftConfigSubTab === 'weeklyOff'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-600 dark:bg-[#0d3820] dark:text-emerald-200'
+                }`}
+              >
+                <Calendar size={14} />
+                Weekly Off & Sandwich Rules
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShiftConfigSubTab('dutyBreak')}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  shiftConfigSubTab === 'dutyBreak'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-600 dark:bg-[#0d3820] dark:text-emerald-200'
+                }`}
+              >
+                <Sliders size={14} />
+                Duty & Break Rules
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShiftConfigSubTab('roles')}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  shiftConfigSubTab === 'roles'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-600 dark:bg-[#0d3820] dark:text-emerald-200'
+                }`}
+              >
+                <Shield size={14} />
+                Role Entitlements
+              </button>
+            </div>
+
+            {/* Sub-Tab 1: Shift Rule Slots Section */}
+            {shiftConfigSubTab === 'slots' && (
+              <>
             {/* Form Section */}
             <div className="mt-6 bg-slate-50 dark:bg-[#072415]/50 p-5 rounded-2xl border border-slate-200/60 dark:border-[#134426]/60 space-y-4">
               <h3 className="text-xs font-extrabold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
@@ -9965,6 +10691,626 @@ const DetailedAuditReportView: React.FC<{
                 ))}
               </div>
             </div>
+            </>
+            )}
+
+            {/* Sub-Tab 2: Payable Multipliers */}
+            {shiftConfigSubTab === 'payable' && (
+              <div className="mt-6 space-y-6">
+                <div className="bg-slate-50 dark:bg-[#072415]/50 p-6 rounded-2xl border border-slate-200/60 dark:border-[#134426]/60 space-y-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 dark:border-[#134426] pb-4">
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        <DollarSign size={16} className="text-emerald-600 dark:text-emerald-400" />
+                        Payable Days Status Multiplier Matrix
+                      </h3>
+                      <p className="text-xs text-slate-500 dark:text-emerald-300/70 mt-0.5">
+                        Configure how many payable day credits are awarded for each attendance status code. Changes apply dynamically across report calculations, matrix views, and CSV exports.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleResetAttendancePolicy}
+                        className="px-3 py-1.5 bg-slate-200 dark:bg-[#0d3820] hover:bg-slate-300 text-slate-700 dark:text-emerald-200 text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5"
+                      >
+                        <RotateCcw size={13} />
+                        Reset Defaults
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSaveAttendancePolicy(policyForm)}
+                        className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold rounded-xl shadow transition cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Save size={13} />
+                        Save Multipliers
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Overtime & Worked Offs */}
+                  <div>
+                    <h4 className="text-xs font-extrabold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 mb-3">
+                      ⚡ Overtime & Special Worked Days
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                      <div className="bg-white dark:bg-[#072415] p-3.5 rounded-xl border border-slate-200 dark:border-[#134426]">
+                        <label className="block text-xs font-bold text-slate-800 dark:text-emerald-200 mb-1">
+                          Worked Weekly Off (W/P, BL/P)
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            step="0.25"
+                            min="0"
+                            max="5"
+                            value={policyForm.multiplierWP}
+                            onChange={e => setPolicyForm(prev => ({ ...prev, multiplierWP: parseFloat(e.target.value) || 0 }))}
+                            className="w-full text-xs font-bold px-3 py-2 rounded-lg border border-slate-200 dark:border-[#134426] bg-slate-50 dark:bg-[#0d3820] text-slate-900 dark:text-white"
+                          />
+                          <span className="text-xs font-bold text-slate-500">days</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 dark:text-emerald-300/60 mt-1">Default 2.00 (double pay credit for working on weekly off)</p>
+                      </div>
+
+                      <div className="bg-white dark:bg-[#072415] p-3.5 rounded-xl border border-slate-200 dark:border-[#134426]">
+                        <label className="block text-xs font-bold text-slate-800 dark:text-emerald-200 mb-1">
+                          Worked Holiday (H/P, HP)
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            step="0.25"
+                            min="0"
+                            max="5"
+                            value={policyForm.multiplierHP}
+                            onChange={e => setPolicyForm(prev => ({ ...prev, multiplierHP: parseFloat(e.target.value) || 0 }))}
+                            className="w-full text-xs font-bold px-3 py-2 rounded-lg border border-slate-200 dark:border-[#134426] bg-slate-50 dark:bg-[#0d3820] text-slate-900 dark:text-white"
+                          />
+                          <span className="text-xs font-bold text-slate-500">days</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 dark:text-emerald-300/60 mt-1">Default 2.00 (double pay credit for working on festival/holiday)</p>
+                      </div>
+
+                      <div className="bg-white dark:bg-[#072415] p-3.5 rounded-xl border border-slate-200 dark:border-[#134426]">
+                        <label className="block text-xs font-bold text-slate-800 dark:text-emerald-200 mb-1">
+                          Double Duty Shift (P 2D, 2D)
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            step="0.5"
+                            min="0"
+                            max="5"
+                            value={policyForm.multiplierDoubleDuty}
+                            onChange={e => setPolicyForm(prev => ({ ...prev, multiplierDoubleDuty: parseFloat(e.target.value) || 0 }))}
+                            className="w-full text-xs font-bold px-3 py-2 rounded-lg border border-slate-200 dark:border-[#134426] bg-slate-50 dark:bg-[#0d3820] text-slate-900 dark:text-white"
+                          />
+                          <span className="text-xs font-bold text-slate-500">days</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 dark:text-emerald-300/60 mt-1">Default 2.00 (two full duty shifts completed in 24h)</p>
+                      </div>
+
+                      <div className="bg-white dark:bg-[#072415] p-3.5 rounded-xl border border-slate-200 dark:border-[#134426]">
+                        <label className="block text-xs font-bold text-slate-800 dark:text-emerald-200 mb-1">
+                          Triple Duty Shift (P 3D, 3D)
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            step="0.5"
+                            min="0"
+                            max="5"
+                            value={policyForm.multiplierTripleDuty}
+                            onChange={e => setPolicyForm(prev => ({ ...prev, multiplierTripleDuty: parseFloat(e.target.value) || 0 }))}
+                            className="w-full text-xs font-bold px-3 py-2 rounded-lg border border-slate-200 dark:border-[#134426] bg-slate-50 dark:bg-[#0d3820] text-slate-900 dark:text-white"
+                          />
+                          <span className="text-xs font-bold text-slate-500">days</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 dark:text-emerald-300/60 mt-1">Default 3.00 (three shifts completed in 24h)</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Standard Base Days */}
+                  <div>
+                    <h4 className="text-xs font-extrabold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 mb-3">
+                      📅 Standard Base Day Credits
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div className="bg-white dark:bg-[#072415] p-3.5 rounded-xl border border-slate-200 dark:border-[#134426]">
+                        <label className="block text-xs font-bold text-slate-800 dark:text-emerald-200 mb-1">
+                          Present Standard Duty (P, SL, EL, CL)
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            max="2"
+                            value={policyForm.multiplierP}
+                            onChange={e => setPolicyForm(prev => ({ ...prev, multiplierP: parseFloat(e.target.value) || 0 }))}
+                            className="w-full text-xs font-bold px-3 py-2 rounded-lg border border-slate-200 dark:border-[#134426] bg-slate-50 dark:bg-[#0d3820] text-slate-900 dark:text-white"
+                          />
+                          <span className="text-xs font-bold text-slate-500">days</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 dark:text-emerald-300/60 mt-1">Default 1.00 (full day standard attendance credit)</p>
+                      </div>
+
+                      <div className="bg-white dark:bg-[#072415] p-3.5 rounded-xl border border-slate-200 dark:border-[#134426]">
+                        <label className="block text-xs font-bold text-slate-800 dark:text-emerald-200 mb-1">
+                          Weekly Off Credit (W/O, WO)
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            max="2"
+                            value={policyForm.multiplierWO}
+                            onChange={e => setPolicyForm(prev => ({ ...prev, multiplierWO: parseFloat(e.target.value) || 0 }))}
+                            className="w-full text-xs font-bold px-3 py-2 rounded-lg border border-slate-200 dark:border-[#134426] bg-slate-50 dark:bg-[#0d3820] text-slate-900 dark:text-white"
+                          />
+                          <span className="text-xs font-bold text-slate-500">days</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 dark:text-emerald-300/60 mt-1">Default 1.00 (earned paid weekly off day)</p>
+                      </div>
+
+                      <div className="bg-white dark:bg-[#072415] p-3.5 rounded-xl border border-slate-200 dark:border-[#134426]">
+                        <label className="block text-xs font-bold text-slate-800 dark:text-emerald-200 mb-1">
+                          Paid Holiday Credit (H, HOL)
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            max="2"
+                            value={policyForm.multiplierHoliday}
+                            onChange={e => setPolicyForm(prev => ({ ...prev, multiplierHoliday: parseFloat(e.target.value) || 0 }))}
+                            className="w-full text-xs font-bold px-3 py-2 rounded-lg border border-slate-200 dark:border-[#134426] bg-slate-50 dark:bg-[#0d3820] text-slate-900 dark:text-white"
+                          />
+                          <span className="text-xs font-bold text-slate-500">days</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 dark:text-emerald-300/60 mt-1">Default 1.00 (gazetted / site paid holiday)</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Fractional Days */}
+                  <div>
+                    <h4 className="text-xs font-extrabold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 mb-3">
+                      ⏳ Fractional Shift Credits
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div className="bg-white dark:bg-[#072415] p-3.5 rounded-xl border border-slate-200 dark:border-[#134426]">
+                        <label className="block text-xs font-bold text-slate-800 dark:text-emerald-200 mb-1">
+                          Half Day (0.5P, Half Day)
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            step="0.05"
+                            min="0"
+                            max="1"
+                            value={policyForm.multiplierHalfDay}
+                            onChange={e => setPolicyForm(prev => ({ ...prev, multiplierHalfDay: parseFloat(e.target.value) || 0 }))}
+                            className="w-full text-xs font-bold px-3 py-2 rounded-lg border border-slate-200 dark:border-[#134426] bg-slate-50 dark:bg-[#0d3820] text-slate-900 dark:text-white"
+                          />
+                          <span className="text-xs font-bold text-slate-500">days</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 dark:text-emerald-300/60 mt-1">Default 0.50 (half shift credit)</p>
+                      </div>
+
+                      <div className="bg-white dark:bg-[#072415] p-3.5 rounded-xl border border-slate-200 dark:border-[#134426]">
+                        <label className="block text-xs font-bold text-slate-800 dark:text-emerald-200 mb-1">
+                          Three-Quarter Day (0.75P)
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            step="0.05"
+                            min="0"
+                            max="1"
+                            value={policyForm.multiplierThreeQuarterDay}
+                            onChange={e => setPolicyForm(prev => ({ ...prev, multiplierThreeQuarterDay: parseFloat(e.target.value) || 0 }))}
+                            className="w-full text-xs font-bold px-3 py-2 rounded-lg border border-slate-200 dark:border-[#134426] bg-slate-50 dark:bg-[#0d3820] text-slate-900 dark:text-white"
+                          />
+                          <span className="text-xs font-bold text-slate-500">days</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 dark:text-emerald-300/60 mt-1">Default 0.75 (6 hours of 8h duty)</p>
+                      </div>
+
+                      <div className="bg-white dark:bg-[#072415] p-3.5 rounded-xl border border-slate-200 dark:border-[#134426]">
+                        <label className="block text-xs font-bold text-slate-800 dark:text-emerald-200 mb-1">
+                          Quarter Day (0.25P)
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            step="0.05"
+                            min="0"
+                            max="1"
+                            value={policyForm.multiplierQuarterDay}
+                            onChange={e => setPolicyForm(prev => ({ ...prev, multiplierQuarterDay: parseFloat(e.target.value) || 0 }))}
+                            className="w-full text-xs font-bold px-3 py-2 rounded-lg border border-slate-200 dark:border-[#134426] bg-slate-50 dark:bg-[#0d3820] text-slate-900 dark:text-white"
+                          />
+                          <span className="text-xs font-bold text-slate-500">days</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 dark:text-emerald-300/60 mt-1">Default 0.25 (short partial attendance)</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Sub-Tab 3: Weekly Off Rules */}
+            {shiftConfigSubTab === 'weeklyOff' && (
+              <div className="mt-6 space-y-6">
+                <div className="bg-slate-50 dark:bg-[#072415]/50 p-6 rounded-2xl border border-slate-200/60 dark:border-[#134426]/60 space-y-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 dark:border-[#134426] pb-4">
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        <Calendar size={16} className="text-emerald-600 dark:text-emerald-400" />
+                        Weekly Off & Sandwich Forfeiture Engine
+                      </h3>
+                      <p className="text-xs text-slate-500 dark:text-emerald-300/70 mt-0.5">
+                        Define how weekly offs are accrued based on consecutive working duties, and configure absent sandwich penalty rules.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleResetAttendancePolicy}
+                        className="px-3 py-1.5 bg-slate-200 dark:bg-[#0d3820] hover:bg-slate-300 text-slate-700 dark:text-emerald-200 text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5"
+                      >
+                        <RotateCcw size={13} />
+                        Reset Defaults
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSaveAttendancePolicy(policyForm)}
+                        className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold rounded-xl shadow transition cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Save size={13} />
+                        Save Weekly Off Policy
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* 6-Day Duty Cycle */}
+                    <div className="bg-white dark:bg-[#072415] p-5 rounded-xl border border-slate-200 dark:border-[#134426] space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="text-xs font-extrabold text-slate-900 dark:text-white">
+                            Automatic Duty Cycle Accrual
+                          </h4>
+                          <p className="text-[11px] text-slate-500 dark:text-emerald-300/70 mt-0.5">
+                            Automatically schedule and award a paid Weekly Off after completed working duties.
+                          </p>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={policyForm.enableSixDayCycleWO}
+                            onChange={e => setPolicyForm(prev => ({ ...prev, enableSixDayCycleWO: e.target.checked }))}
+                            className="sr-only peer"
+                          />
+                          <div className="w-9 h-5 bg-slate-200 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                        </label>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100 dark:border-[#134426]">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 dark:text-emerald-200 mb-1">
+                            Duties Required for 1 W/O
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min="1"
+                              max="14"
+                              value={policyForm.dutiesRequiredForWO}
+                              onChange={e => setPolicyForm(prev => ({ ...prev, dutiesRequiredForWO: parseInt(e.target.value, 10) || 6 }))}
+                              className="w-full text-xs font-bold px-3 py-2 rounded-lg border border-slate-200 dark:border-[#134426] bg-slate-50 dark:bg-[#0d3820] text-slate-900 dark:text-white"
+                            />
+                            <span className="text-xs text-slate-500 font-bold">duties</span>
+                          </div>
+                          <p className="text-[10px] text-slate-400 mt-1">Default 6 duties (6 days on, 1 day off)</p>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 dark:text-emerald-200 mb-1">
+                            Absent Days Tolerance
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min="0"
+                              max="10"
+                              value={policyForm.maxAbsentsInCycleForWO}
+                              onChange={e => setPolicyForm(prev => ({ ...prev, maxAbsentsInCycleForWO: parseInt(e.target.value, 10) || 0 }))}
+                              className="w-full text-xs font-bold px-3 py-2 rounded-lg border border-slate-200 dark:border-[#134426] bg-slate-50 dark:bg-[#0d3820] text-slate-900 dark:text-white"
+                            />
+                            <span className="text-xs text-slate-500 font-bold">absents</span>
+                          </div>
+                          <p className="text-[10px] text-slate-400 mt-1">Max absents in cycle before losing earned W/O (default 2)</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Sandwich Rules */}
+                    <div className="bg-white dark:bg-[#072415] p-5 rounded-xl border border-slate-200 dark:border-[#134426] space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="text-xs font-extrabold text-slate-900 dark:text-white">
+                            Sandwich & Absent Penalties
+                          </h4>
+                          <p className="text-[11px] text-slate-500 dark:text-emerald-300/70 mt-0.5">
+                            Forfeit weekly offs to Absent (A) when surrounded or flanked by employee absents.
+                          </p>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={policyForm.enableSandwichRule}
+                            onChange={e => setPolicyForm(prev => ({ ...prev, enableSandwichRule: e.target.checked }))}
+                            className="sr-only peer"
+                          />
+                          <div className="w-9 h-5 bg-slate-200 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                        </label>
+                      </div>
+
+                      <div className="space-y-3 pt-2 border-t border-slate-100 dark:border-[#134426]">
+                        <label className="flex items-center justify-between cursor-pointer">
+                          <span className="text-xs text-slate-700 dark:text-emerald-200">
+                            Strict Sandwich: Forfeit if Absent immediately before AND after W/O
+                          </span>
+                          <input
+                            type="checkbox"
+                            checked={policyForm.sandwichPreAndPost}
+                            disabled={!policyForm.enableSandwichRule}
+                            onChange={e => setPolicyForm(prev => ({ ...prev, sandwichPreAndPost: e.target.checked }))}
+                            className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                          />
+                        </label>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 dark:text-emerald-200 mb-1">
+                            Consecutive Absents Threshold (Flanked Forfeiture)
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min="1"
+                              max="7"
+                              disabled={!policyForm.enableSandwichRule}
+                              value={policyForm.consecutiveAbsentThreshold}
+                              onChange={e => setPolicyForm(prev => ({ ...prev, consecutiveAbsentThreshold: parseInt(e.target.value, 10) || 2 }))}
+                              className="w-full text-xs font-bold px-3 py-2 rounded-lg border border-slate-200 dark:border-[#134426] bg-slate-50 dark:bg-[#0d3820] text-slate-900 dark:text-white"
+                            />
+                            <span className="text-xs text-slate-500 font-bold">days</span>
+                          </div>
+                          <p className="text-[10px] text-slate-400 mt-1">Default 2 days (e.g. 2 consecutive absents preceding or following a W/O forfeits the W/O)</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Sub-Tab 4: Duty & Break Rules */}
+            {shiftConfigSubTab === 'dutyBreak' && (
+              <div className="mt-6 space-y-6">
+                <div className="bg-slate-50 dark:bg-[#072415]/50 p-6 rounded-2xl border border-slate-200/60 dark:border-[#134426]/60 space-y-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 dark:border-[#134426] pb-4">
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        <Sliders size={16} className="text-emerald-600 dark:text-emerald-400" />
+                        Duty Timing, Break Deduction & Overtime Rules
+                      </h3>
+                      <p className="text-xs text-slate-500 dark:text-emerald-300/70 mt-0.5">
+                        Define expected duty hours, meal / tea break deductions, and thresholds for triggering double shifts or overtime.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleResetAttendancePolicy}
+                        className="px-3 py-1.5 bg-slate-200 dark:bg-[#0d3820] hover:bg-slate-300 text-slate-700 dark:text-emerald-200 text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5"
+                      >
+                        <RotateCcw size={13} />
+                        Reset Defaults
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSaveAttendancePolicy(policyForm)}
+                        className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold rounded-xl shadow transition cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Save size={13} />
+                        Save Duty Rules
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="bg-white dark:bg-[#072415] p-4 rounded-xl border border-slate-200 dark:border-[#134426]">
+                      <label className="block text-xs font-bold text-slate-800 dark:text-emerald-200 mb-1">
+                        Standard Expected Duty
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          step="0.5"
+                          min="4"
+                          max="16"
+                          value={policyForm.defaultShiftExpectedHours}
+                          onChange={e => setPolicyForm(prev => ({ ...prev, defaultShiftExpectedHours: parseFloat(e.target.value) || 8 }))}
+                          className="w-full text-xs font-bold px-3 py-2 rounded-lg border border-slate-200 dark:border-[#134426] bg-slate-50 dark:bg-[#0d3820] text-slate-900 dark:text-white"
+                        />
+                        <span className="text-xs text-slate-500 font-bold">hours</span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-1">Default 8.0 hours per regular shift</p>
+                    </div>
+
+                    <div className="bg-white dark:bg-[#072415] p-4 rounded-xl border border-slate-200 dark:border-[#134426]">
+                      <label className="block text-xs font-bold text-slate-800 dark:text-emerald-200 mb-1">
+                        Mandatory Break Deduction
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          step="5"
+                          min="0"
+                          max="120"
+                          value={policyForm.defaultBreakDeductionMins}
+                          onChange={e => setPolicyForm(prev => ({ ...prev, defaultBreakDeductionMins: parseInt(e.target.value, 10) || 0 }))}
+                          className="w-full text-xs font-bold px-3 py-2 rounded-lg border border-slate-200 dark:border-[#134426] bg-slate-50 dark:bg-[#0d3820] text-slate-900 dark:text-white"
+                        />
+                        <span className="text-xs text-slate-500 font-bold">mins</span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-1">Default 30 mins deducted from gross time</p>
+                    </div>
+
+                    <div className="bg-white dark:bg-[#072415] p-4 rounded-xl border border-slate-200 dark:border-[#134426]">
+                      <label className="block text-xs font-bold text-slate-800 dark:text-emerald-200 mb-1">
+                        Double Duty Trigger Threshold
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          step="0.5"
+                          min="10"
+                          max="24"
+                          value={policyForm.doubleDutyGrossHoursThreshold}
+                          onChange={e => setPolicyForm(prev => ({ ...prev, doubleDutyGrossHoursThreshold: parseFloat(e.target.value) || 12 }))}
+                          className="w-full text-xs font-bold px-3 py-2 rounded-lg border border-slate-200 dark:border-[#134426] bg-slate-50 dark:bg-[#0d3820] text-slate-900 dark:text-white"
+                        />
+                        <span className="text-xs text-slate-500 font-bold">hours</span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-1">Default 12.0 gross hours qualifies as 2D</p>
+                    </div>
+
+                    <div className="bg-white dark:bg-[#072415] p-4 rounded-xl border border-slate-200 dark:border-[#134426]">
+                      <label className="block text-xs font-bold text-slate-800 dark:text-emerald-200 mb-1">
+                        OT / Late Grace Period
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          step="5"
+                          min="0"
+                          max="60"
+                          value={policyForm.otGracePeriodMins}
+                          onChange={e => setPolicyForm(prev => ({ ...prev, otGracePeriodMins: parseInt(e.target.value, 10) || 0 }))}
+                          className="w-full text-xs font-bold px-3 py-2 rounded-lg border border-slate-200 dark:border-[#134426] bg-slate-50 dark:bg-[#0d3820] text-slate-900 dark:text-white"
+                        />
+                        <span className="text-xs text-slate-500 font-bold">mins</span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-1">Default 15 mins grace before penalty/OT</p>
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-white dark:bg-[#072415] border border-slate-200 dark:border-[#134426] flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-900 dark:text-white">
+                        Biometric Intermediate Punch Break Detection
+                      </h4>
+                      <p className="text-[11px] text-slate-500 dark:text-emerald-300/70 mt-0.5">
+                        When an employee has 4 or more punches on a day (In 1, Out 1, In 2, Out 2), automatically calculate the actual break interval rather than using a static deduction.
+                      </p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={policyForm.enableIntermediateBreakBiometrics}
+                        onChange={e => setPolicyForm(prev => ({ ...prev, enableIntermediateBreakBiometrics: e.target.checked }))}
+                        className="sr-only peer"
+                      />
+                      <div className="w-9 h-5 bg-slate-200 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Sub-Tab 5: Role Entitlements */}
+            {shiftConfigSubTab === 'roles' && (
+              <div className="mt-6 space-y-6">
+                <div className="bg-slate-50 dark:bg-[#072415]/50 p-6 rounded-2xl border border-slate-200/60 dark:border-[#134426]/60 space-y-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 dark:border-[#134426] pb-4">
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        <Shield size={16} className="text-emerald-600 dark:text-emerald-400" />
+                        Role & Designation Week-Off Entitlements
+                      </h3>
+                      <p className="text-xs text-slate-500 dark:text-emerald-300/70 mt-0.5">
+                        Configure which designations and roles are entitled to scheduled weekly offs vs working on a 30/31-day continuous duty roster.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleResetAttendancePolicy}
+                        className="px-3 py-1.5 bg-slate-200 dark:bg-[#0d3820] hover:bg-slate-300 text-slate-700 dark:text-emerald-200 text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5"
+                      >
+                        <RotateCcw size={13} />
+                        Reset Defaults
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSaveAttendancePolicy(policyForm)}
+                        className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold rounded-xl shadow transition cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Save size={13} />
+                        Save Role Entitlements
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="bg-white dark:bg-[#072415] p-5 rounded-xl border border-slate-200 dark:border-[#134426] space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="text-xs font-extrabold text-slate-900 dark:text-white">
+                          Security Guards Weekly Off Entitlement
+                        </h4>
+                        <p className="text-[11px] text-slate-500 dark:text-emerald-300/70 mt-0.5">
+                          When OFF (company default), Security Guards work continuous 30/31-day rosters and do not receive automatic weekly offs. When turned ON, Security Guards receive weekly offs just like General staff.
+                        </p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={policyForm.securityGuardsReceiveWeekOff}
+                          onChange={e => setPolicyForm(prev => ({ ...prev, securityGuardsReceiveWeekOff: e.target.checked }))}
+                          className="sr-only peer"
+                        />
+                        <div className="w-9 h-5 bg-slate-200 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                      </label>
+                    </div>
+
+                    <div className="pt-4 border-t border-slate-100 dark:border-[#134426]">
+                      <label className="block text-xs font-bold text-slate-800 dark:text-emerald-200 mb-1">
+                        Custom Excluded Designations (Comma-Separated)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. security guard, guard, patrol, bouncer"
+                        value={policyForm.customNoWORoles}
+                        onChange={e => setPolicyForm(prev => ({ ...prev, customNoWORoles: e.target.value }))}
+                        className="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-200 dark:border-[#134426] bg-slate-50 dark:bg-[#0d3820] text-slate-900 dark:text-white"
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        Employees whose designation or role matches any of these keywords will be treated as continuous roster workers with no automatic weekly offs.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       ) : (
@@ -11340,10 +12686,10 @@ const DetailedAuditReportView: React.FC<{
                   className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl border border-slate-200 dark:border-[#1a5532] bg-white dark:bg-[#041b0f] text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/25 focus:border-[#44D62C] transition-all cursor-pointer"
                 >
                   <option value="PIFS" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">PIFS — Paradigm Integrated Facility Services</option>
+                  <option value="Southwall Security LLP" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">Southwall Security LLP (SWLLP)</option>
                   <option value="PPFMS" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">PPFMS — Paradigm Property &amp; Facility Management</option>
-                  <option value="SWLLP" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">SWLLP — Southwall Security LLP</option>
                   <option value="Paradigm Services" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">Paradigm Services (General)</option>
-                  {companyList.filter(c => !['PIFS', 'PPFMS', 'SWLLP', 'Paradigm Services'].includes(c)).map(c => (
+                  {companyList.filter(c => !['PIFS', 'Southwall Security LLP', 'PPFMS', 'Paradigm Services', 'SWLLP'].includes(c)).map(c => (
                     <option key={c} value={c} className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">{c}</option>
                   ))}
                 </select>
