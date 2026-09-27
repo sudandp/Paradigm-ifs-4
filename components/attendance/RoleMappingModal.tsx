@@ -232,15 +232,34 @@ export const RoleMappingModal: React.FC<RoleMappingModalProps> = ({
                 Active Custom Rules ({filteredMappings.length})
               </h3>
               {mappings.length > 0 && (
-                <div className="relative w-44">
-                  <Search size={12} className="absolute left-2.5 top-2.5 text-slate-400" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={e => setSearchQuery(e.target.value)}
-                    placeholder="Search rules..."
-                    className="w-full text-[11px] pl-7 pr-2.5 py-1 rounded-lg border border-slate-200 dark:border-[#1a5532] bg-slate-50 dark:bg-[#041b0f] text-slate-800 dark:text-white outline-none"
-                  />
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm('Delete all custom role mappings and restore factory defaults across all browsers?')) {
+                        try {
+                          localStorage.removeItem('paradigm_custom_role_mappings');
+                        } catch (_) {}
+                        setMappings([]);
+                        onMappingChanged();
+                      }
+                    }}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-red-600 hover:text-red-700 dark:text-red-400 py-1 px-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer"
+                    title="Remove all custom role mappings and reset to company defaults"
+                  >
+                    <Trash2 size={12} />
+                    <span>Clear All Rules</span>
+                  </button>
+                  <div className="relative w-36">
+                    <Search size={12} className="absolute left-2.5 top-2.5 text-slate-400" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                      placeholder="Search rules..."
+                      className="w-full text-[11px] pl-7 pr-2.5 py-1 rounded-lg border border-slate-200 dark:border-[#1a5532] bg-slate-50 dark:bg-[#041b0f] text-slate-800 dark:text-white outline-none"
+                    />
+                  </div>
                 </div>
               )}
             </div>

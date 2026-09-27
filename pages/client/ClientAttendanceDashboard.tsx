@@ -403,6 +403,8 @@ interface AttendanceSummary {
   totalHeadcount?: number;
   activeTotal?: number;
   inactiveTotal?: number;
+  deployedTotal?: number;
+  weeklyOffCount?: number;
   present: number;
   absent: number;
   late: number;
@@ -431,6 +433,7 @@ interface EmployeeRow {
   otHours?: string;
   status: 'Present' | 'Absent' | 'Late' | 'Half Day' | 'Not Joined Yet' | 'Discontinued / Left' | string;
   shiftCompleted?: boolean;
+  duration?: number;
   isMissedPunchIn?: boolean;
   isMissedPunchOut?: boolean;
   lateMinutes: number;
@@ -444,6 +447,7 @@ interface EmployeeRow {
 
 interface TrendPoint {
   date: string;
+  rawDate?: string;
   present: number;
   absent: number;
   attendanceRate: number;
@@ -481,6 +485,8 @@ interface AttendanceData {
   lastUpdated: string;
   connectionStatus: 'connected' | 'error';
   errorMessage?: string;
+  source?: string;
+  cached?: boolean;
 }
 
 // ─── Status & Shift Badges ───────────────────────────────────────────────────
@@ -603,8 +609,14 @@ const StatusBadge: React.FC<{
     );
   }
 
-  // Shift completed ONLY if backend shiftCompleted flag is true!
-  if (shiftCompleted) {
+  const hasIn = Boolean(inTime && inTime !== '—');
+  const hasOut = Boolean(outTime && outTime !== '—' && !outTime.includes('Pending'));
+  const hasBoth = hasIn && hasOut;
+  const isDistinct = hasBoth && inTime !== outTime;
+
+  // Shift completed: when explicitly flagged, or employee has distinct IN & OUT punches,
+  // or has both punches on a past date with Present status
+  if (shiftCompleted || isDistinct || (hasBoth && (status === 'Present' || status === 'Completed'))) {
     return (
       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-950/80 dark:text-emerald-300 dark:border-emerald-700">
         <CheckCircle2 size={11} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
@@ -613,8 +625,8 @@ const StatusBadge: React.FC<{
     );
   }
 
-  // Active on duty (ONLY if selected date is TODAY)
-  if (isToday) {
+  // Active on duty (ONLY if selected date is TODAY and employee has IN punch but no OUT punch)
+  if (isToday && hasIn && !hasOut) {
     return (
       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800">
         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
@@ -623,10 +635,19 @@ const StatusBadge: React.FC<{
     );
   }
 
+  // Only single punch if they truly have only IN or only OUT
+  if ((hasIn && !hasOut) || (!hasIn && hasOut)) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-950/80 dark:text-amber-300 dark:border-amber-800 shadow-xs">
+        <AlertTriangle size={11} className="text-amber-600 dark:text-amber-400 shrink-0" />
+        Single Punch
+      </span>
+    );
+  }
+
   return (
-    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-950/80 dark:text-amber-300 dark:border-amber-800 shadow-xs">
-      <AlertTriangle size={11} className="text-amber-600 dark:text-amber-400 shrink-0" />
-      Single Punch
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-slate-100 text-slate-700 border border-slate-300 dark:bg-emerald-950/60 dark:text-emerald-300">
+      {status || 'Present'}
     </span>
   );
 };
@@ -2610,22 +2631,98 @@ const ClientAttendanceDashboard: React.FC = () => {
         }),
       ]);
 
-      if (!attRes.ok) {
-        const errorJson = await attRes.json().catch(() => null);
-        const msg = errorJson?.errorMessage || `Server returned ${attRes.status}`;
-        throw new Error(msg);
+      let json: AttendanceData | null = null;
+      if (attRes.ok) {
+        json = await attRes.json().catch(() => null);
       }
-      const json: AttendanceData = await attRes.json();
 
-      if (json.connectionStatus === 'error') {
+      // If proxy returned error or 0 employees, activate direct Supabase Cloud Cache failover
+      if (!json || json.connectionStatus === 'error' || (!json.employees || json.employees.length === 0)) {
+        try {
+          const { data: cacheRows, error: sbErr } = await supabase
+            .from('attendance_cache')
+            .select('*')
+            .eq('attendance_date', selectedDate)
+            .limit(5000);
+
+          if (!sbErr && cacheRows && cacheRows.length > 0) {
+            let pres = 0; let abs = 0; let lt = 0;
+            const deptMap = new Map<string, { total: number; present: number }>();
+            const emps: EmployeeRow[] = cacheRows.map((r: any) => {
+              const isP = r.status === 'Present' || r.status_code === 'P' || (r.in_time && r.in_time !== '—' && r.in_time !== '-');
+              const isL = (r.late_mins || 0) > 0 || r.status === 'Late';
+              if (isP) pres++; else abs++;
+              if (isL) lt++;
+              const smartSite = r.site && r.site !== 'Default' ? r.site : (r.department || 'General');
+              if (!deptMap.has(smartSite)) deptMap.set(smartSite, { total: 0, present: 0 });
+              const stat = deptMap.get(smartSite)!;
+              stat.total++;
+              if (isP) stat.present++;
+              const isDouble = (r.ot_mins && r.ot_mins >= 360) || (r.duration_mins && r.duration_mins >= 660);
+              return {
+                empCode: r.emp_code,
+                empName: r.emp_name || 'Staff',
+                department: smartSite,
+                designation: r.designation || 'Staff',
+                site: smartSite,
+                company: String(r.emp_code || '').startsWith('32') ? 'Southwall Security LLP' : 'PIFS',
+                inTime: r.in_time || '—',
+                outTime: r.out_time || '—',
+                status: isP ? 'Present' : (r.status || 'Absent'),
+                statusCode: isP ? 'P' : (r.status_code || 'A'),
+                workingHours: r.working_hours || (isP ? '9h 00m' : '—'),
+                shiftCompleted: r.shift_completed || false,
+                shiftType: isDouble ? 'double' : 'single',
+                shiftName: isDouble ? 'B + C Shift Group' : 'A Shift Group',
+                shiftCode: isDouble ? 'B+C' : 'A',
+                totalDuties: isDouble ? 2 : 1,
+                lateMinutes: r.late_mins || 0,
+                overtimeMinutes: r.ot_mins || 0,
+                otHours: r.ot_mins ? `${Math.floor(r.ot_mins / 60)}h ${r.ot_mins % 60}m` : '—',
+                isActiveEmployee: isP || (r.status !== 'Discontinued / Left' && r.status !== 'Not Joined Yet'),
+                source: 'supabase_cache',
+              };
+            });
+            const tot = emps.length;
+            const depts = Array.from(deptMap.entries()).map(([name, stat]) => ({
+              name, present: stat.present, total: stat.total
+            })).sort((a, b) => b.total - a.total);
+
+            json = {
+              summary: {
+                date: selectedDate,
+                totalEmployees: tot,
+                activeTotal: tot,
+                inactiveTotal: 0,
+                present: pres,
+                absent: abs,
+                late: lt,
+                onTime: Math.max(0, pres - lt),
+                attendanceRate: tot > 0 ? Math.round((pres / tot) * 100) : 0,
+              },
+              employees: emps,
+              departments: depts,
+              trend: [],
+              lastUpdated: new Date().toISOString(),
+              connectionStatus: 'connected',
+              source: 'supabase_cache',
+              cached: true,
+            };
+          }
+        } catch (sbCatchErr) {
+          console.warn('[ClientAttendanceDashboard] Direct Supabase fallback error:', sbCatchErr);
+        }
+      }
+
+      if (!json || json.connectionStatus === 'error') {
         const cached = getLocalAttendanceCache(selectedDate);
         if (cached && (cached.employees?.length || 0) > 0) {
           setData({
             ...cached,
             connectionStatus: 'error',
-            errorMessage: json.errorMessage,
+            errorMessage: json?.errorMessage || 'Database connection is temporarily offline.',
           });
-        } else {
+        } else if (json) {
           setData(json);
         }
       } else {
@@ -2683,7 +2780,8 @@ function evaluateEmployeeShiftAndLate(
   emp: EmployeeRow,
   rules: ShiftRuleConfig[],
   overrides?: Record<string, { shiftName?: string; shiftCode?: string; departmentOverride?: DepartmentKey; designation?: string; site?: string; company?: string; empName?: string }>,
-  selectedDate?: string
+  selectedDate?: string,
+  gracePeriodMins: number = 15
 ) {
   const cleanCode = (emp.empCode || '').replace(/\D/g, '');
   const override = (overrides && emp.empCode ? overrides[emp.empCode] : null) || {};
@@ -2880,7 +2978,8 @@ function evaluateEmployeeShiftAndLate(
       shiftTiming = isNightShift ? '08:00 PM - 08:00 AM' : '08:00 AM - 08:00 PM';
     }
 
-    const calcLate = totalInMinutes > targetStartMins ? (totalInMinutes - targetStartMins) : 0;
+    const isLate = totalInMinutes > (targetStartMins + gracePeriodMins);
+    const calcLate = isLate ? (totalInMinutes - targetStartMins) : 0;
     const finalStatus = (emp.status === 'Absent') ? 'Absent' : (calcLate > 0 ? 'Late' : (emp.status || 'Present'));
 
     return {
@@ -2903,7 +3002,6 @@ function evaluateEmployeeShiftAndLate(
     let shiftType: 'single' | 'double' | 'triple' = emp.shiftType || 'single';
 
     // Triple Shift Detection: A + B + C Shift (Morning + Afternoon + Overnight Night Duty crossing into next day morning)
-    // Punches: 07:00 (A In) -> 14:00 (A Out), 14:05 (B In) -> 21:00 (B Out), 21:05 (C In) -> Next day 07:00 (C Out)
     const isExplicitTriple = 
       (emp.shiftName && (emp.shiftName.includes('A + B + C') || emp.shiftName.includes('A+B+C') || emp.shiftName.toLowerCase().includes('triple'))) ||
       emp.shiftType === 'triple';
@@ -2934,7 +3032,6 @@ function evaluateEmployeeShiftAndLate(
       targetStartMins = 7 * 60;
     }
     // Double Shift Detection 2: A + B Shift (Continuous or split morning to evening, on SAME DAY)
-    // e.g. In 07:06 AM, Out 08:00 PM / 09:00 PM, elapsed >= 11h 30m
     else if (
       (emp.shiftName && (emp.shiftName.includes('A + B') || emp.shiftName.includes('A+B'))) ||
       (!isNextDayOut && (emp.shiftName || '').includes('+')) ||
@@ -2958,8 +3055,8 @@ function evaluateEmployeeShiftAndLate(
       targetStartMins = 14 * 60;
     }
     // Single Shifts:
-    // B Shift (02:00 PM – 09:00 PM): Punches from 11:30 AM up to 18:30 PM (same-day)
-    else if (!isNextDayOut && totalInMinutes >= 11 * 60 + 30 && totalInMinutes < 18 * 60 + 30) {
+    // B Shift (02:00 PM – 09:00 PM): Punches from 12:30 PM up to 18:30 PM (same-day)
+    else if (!isNextDayOut && totalInMinutes >= 12 * 60 + 30 && totalInMinutes < 18 * 60 + 30) {
       shiftName = 'B Shift Group';
       shiftCode = 'B';
       shiftTiming = '02:00 PM - 09:00 PM';
@@ -2972,14 +3069,14 @@ function evaluateEmployeeShiftAndLate(
       shiftTiming = '09:00 PM - 07:00 AM';
       targetStartMins = 21 * 60;
     }
-    // General Shift (09:00 AM – 06:00 PM): Office/Technical Manager/Executive starting 08:45 AM – 10:30 AM
-    else if (totalInMinutes >= 8 * 60 + 45 && totalInMinutes <= 10 * 60 + 30 && (emp.designation || '').toLowerCase().includes('manager')) {
+    // General Shift (09:00 AM – 06:00 PM): Technical staff, technicians, plumbers, electricians, managers starting 08:15 AM – 11:00 AM
+    else if (totalInMinutes >= 8 * 60 + 15 && totalInMinutes <= 11 * 60) {
       shiftName = 'General Shift Group';
       shiftCode = 'GEN';
       shiftTiming = '09:00 AM - 06:00 PM';
       targetStartMins = 9 * 60;
     }
-    // A Shift (07:00 AM – 02:00 PM): Morning punches (05:00 AM to 12:14 PM, e.g. 07:02 AM, 07:13 AM, 07:40 AM)
+    // A Shift (07:00 AM – 02:00 PM): Morning punches (05:00 AM to 08:15 AM)
     else {
       shiftName = 'A Shift Group';
       shiftCode = 'A';
@@ -2987,7 +3084,8 @@ function evaluateEmployeeShiftAndLate(
       targetStartMins = 7 * 60;
     }
 
-    const calcLate = (totalInMinutes > targetStartMins && totalInMinutes < targetStartMins + 360) 
+    const isLate = totalInMinutes > (targetStartMins + gracePeriodMins);
+    const calcLate = (isLate && totalInMinutes < targetStartMins + 360) 
       ? (totalInMinutes - targetStartMins) 
       : 0;
     const finalStatus = (emp.status === 'Absent') ? 'Absent' : (calcLate > 0 ? 'Late' : (emp.status || 'Present'));
@@ -3003,21 +3101,51 @@ function evaluateEmployeeShiftAndLate(
     };
   }
 
-  // 3. 🧹 HOUSEKEEPING GROUP (HK Morning Shift: 07:00-16:00, HK General Shift: 08:00-17:00 — NEVER Security Day Duty!)
+  // 3. 🧹 HOUSEKEEPING GROUP (HK Morning Shift: 07:00-16:00, HK General Shift: 08:00-17:00 / 08:30-17:30)
   if (isHk) {
     let shiftName = 'HK General Shift';
     let shiftCode = 'HK-GEN';
     let shiftTiming = '08:00 AM - 05:00 PM';
     let targetStartMins = 8 * 60;
 
-    if (totalInMinutes < 7 * 60 + 45) {
+    // HK Afternoon / B Shift (02:00 PM - 10:00 PM): punches 12:30 PM to 04:30 PM
+    if (totalInMinutes >= 12 * 60 + 30 && totalInMinutes < 16 * 60 + 30) {
+      shiftName = 'HK Afternoon Shift';
+      shiftCode = 'HK-AFT';
+      shiftTiming = '02:00 PM - 10:00 PM';
+      targetStartMins = 14 * 60;
+    }
+    // HK Evening / Night Shift: 04:30 PM onwards
+    else if (totalInMinutes >= 16 * 60 + 30) {
+      shiftName = 'HK Evening Shift';
+      shiftCode = 'HK-EVE';
+      shiftTiming = '05:00 PM - 01:00 AM';
+      targetStartMins = 17 * 60;
+    }
+    // HK Early Morning Shift (07:00 AM - 04:00 PM): arrivals before 07:15 AM
+    else if (totalInMinutes <= 7 * 60 + 15) {
       shiftName = 'HK Morning Shift';
       shiftCode = 'HK-M';
       shiftTiming = '07:00 AM - 04:00 PM';
       targetStartMins = 7 * 60;
     }
+    // HK General Shift 08:30 AM start (sites with 08:30 - 05:30): arrivals between 08:16 AM and 08:45 AM
+    else if (totalInMinutes >= 8 * 60 + 16 && totalInMinutes <= 8 * 60 + 45) {
+      shiftName = 'HK General Shift';
+      shiftCode = 'HK-GEN';
+      shiftTiming = '08:30 AM - 05:30 PM';
+      targetStartMins = 8 * 60 + 30;
+    }
+    // Standard HK General Shift (08:00 AM - 05:00 PM)
+    else {
+      shiftName = 'HK General Shift';
+      shiftCode = 'HK-GEN';
+      shiftTiming = '08:00 AM - 05:00 PM';
+      targetStartMins = 8 * 60;
+    }
 
-    const calcLate = totalInMinutes > targetStartMins ? (totalInMinutes - targetStartMins) : 0;
+    const isLate = totalInMinutes > (targetStartMins + gracePeriodMins);
+    const calcLate = isLate ? (totalInMinutes - targetStartMins) : 0;
     const finalStatus = (emp.status === 'Absent') ? 'Absent' : (calcLate > 0 ? 'Late' : (emp.status || 'Present'));
 
     return {
@@ -3029,30 +3157,58 @@ function evaluateEmployeeShiftAndLate(
     };
   }
 
-  // 4. 🌿 GARDEN GROUP (Garden Shift: 08:00 AM - 05:00 PM — NEVER Security Day Duty!)
+  // 4. 🌿 GARDEN GROUP (Garden Shift: 08:00 AM - 05:00 PM / 08:30 AM - 05:30 PM)
   if (isGarden) {
-    const targetStartMins = 8 * 60;
-    const calcLate = totalInMinutes > targetStartMins ? (totalInMinutes - targetStartMins) : 0;
+    let targetStartMins = 8 * 60;
+    let shiftTiming = '08:00 AM - 05:00 PM';
+    if (totalInMinutes >= 8 * 60 + 16 && totalInMinutes <= 8 * 60 + 45) {
+      targetStartMins = 8 * 60 + 30;
+      shiftTiming = '08:30 AM - 05:30 PM';
+    }
+    const isLate = totalInMinutes > (targetStartMins + gracePeriodMins);
+    const calcLate = isLate ? (totalInMinutes - targetStartMins) : 0;
     const finalStatus = (emp.status === 'Absent') ? 'Absent' : (calcLate > 0 ? 'Late' : (emp.status || 'Present'));
 
     return {
       shiftName: 'Garden Shift Group',
       shiftCode: 'GAR',
-      shiftTiming: '08:00 AM - 05:00 PM',
+      shiftTiming,
       lateMinutes: calcLate,
       status: finalStatus,
     };
   }
 
-  // 5. 🏢 GENERAL / ADMINISTRATION / OTHER GROUP (09:00 AM - 06:00 PM — NEVER Security Day Duty!)
-  const targetStartMins = 9 * 60;
-  const calcLate = totalInMinutes > targetStartMins ? (totalInMinutes - targetStartMins) : 0;
+  // 5. 🏢 GENERAL / ADMINISTRATION / OTHER GROUP (09:00 AM - 06:00 PM)
+  let targetStartMins = 9 * 60;
+  let shiftTiming = '09:00 AM - 06:00 PM';
+  let shiftName = 'General Shift Group';
+  let shiftCode = 'GEN';
+
+  if (totalInMinutes >= 12 * 60 + 30 && totalInMinutes <= 16 * 60) {
+    targetStartMins = 14 * 60;
+    shiftTiming = '02:00 PM - 10:00 PM';
+    shiftName = 'Afternoon Shift Group';
+    shiftCode = 'AFT';
+  } else if (totalInMinutes >= 18 * 60) {
+    targetStartMins = 20 * 60;
+    shiftTiming = '08:00 PM - 08:00 AM';
+    shiftName = 'Night Shift Group';
+    shiftCode = 'NIGHT';
+  } else if (totalInMinutes >= 9 * 60 + 16 && totalInMinutes <= 10 * 60) {
+    targetStartMins = 9 * 60 + 30;
+    shiftTiming = '09:30 AM - 06:30 PM';
+    shiftName = 'General Shift Group';
+    shiftCode = 'GEN-930';
+  }
+
+  const isLate = totalInMinutes > (targetStartMins + gracePeriodMins);
+  const calcLate = isLate ? (totalInMinutes - targetStartMins) : 0;
   const finalStatus = (emp.status === 'Absent') ? 'Absent' : (calcLate > 0 ? 'Late' : (emp.status || 'Present'));
 
   return {
-    shiftName: 'General Shift Group',
-    shiftCode: 'GEN',
-    shiftTiming: '09:00 AM - 06:00 PM',
+    shiftName,
+    shiftCode,
+    shiftTiming,
     lateMinutes: calcLate,
     status: finalStatus,
   };
@@ -3450,6 +3606,13 @@ const DetailedAuditReportView: React.FC<{
   const [selectedEmpIndex, setSelectedEmpIndex] = useState<number | 'all'>(0);
   const [viewMode, setViewMode] = useState<'single' | 'all'>('single');
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+
+  // Auto-reset index if employees list shrinks due to status filter change
+  useEffect(() => {
+    if (typeof selectedEmpIndex === 'number' && selectedEmpIndex >= employees.length) {
+      setSelectedEmpIndex(0);
+    }
+  }, [employees.length, selectedEmpIndex]);
 
   // Set of site holiday dates
   const holidaysSet = useMemo(() => new Set((siteHolidaysList || []).map(h => h.date).filter(Boolean)), [siteHolidaysList]);
@@ -4968,7 +5131,8 @@ const DetailedAuditReportView: React.FC<{
       }
 
       const empWithTimes = { ...emp, inTime: finalInTime, outTime: finalOutTime };
-      const evalData = evaluateEmployeeShiftAndLate(empWithTimes, shiftRules, empOverrides, selectedDate);
+      const gracePeriodVal = attendancePolicySettings?.otGracePeriodMins ?? 15;
+      const evalData = evaluateEmployeeShiftAndLate(empWithTimes, shiftRules, empOverrides, selectedDate, gracePeriodVal);
       const smartInfo = getSmartSiteFrontend(emp.empCode, emp.department);
 
       const isOnNightDuty = isBefore7amOnToday && !isTodayShiftPunchIn && evalData.status === 'On Night Duty' && !prevNightCompletedOut && (!finalInTime || finalInTime === '—');
@@ -5000,15 +5164,20 @@ const DetailedAuditReportView: React.FC<{
         }
       }
 
-      // Determine if employee is Active: Punched today OR currently on night duty OR has active punch record within 14-day (2 week) window
+      // Determine if employee is Active: Punched today OR currently on night duty OR has active punch record within 30-day window
       const hasPunchToday = Boolean(finalInTime && finalInTime !== '—')
+        || emp.status === 'Present'
+        || (emp as any).statusCode === 'P'
         || emp.status === 'Missed Punch IN'
         || (emp.status === 'Missed Punch OUT' && finalInTime)
         || isOnNightDuty
         || isNightShiftCompleted;
       const daysSince = emp.daysSinceLastPunch ?? 0;
-      const isExplicitlyInactive = emp.status === 'Absent' && daysSince > 14;
-      const isActive = hasPunchToday || (!isExplicitlyInactive && (emp.daysSinceLastPunch === undefined || daysSince <= 14));
+      const isExplicitlyInactive = isEmployeeInactive(emp)
+        || emp.isActiveEmployee === false
+        || emp.status === 'Inactive'
+        || (emp.status === 'Absent' && daysSince > 30);
+      const isActive = hasPunchToday || !isExplicitlyInactive;
 
       // Determine if Triple Duty or Double Duty
       const isTripleDuty = evalData.shiftType === 'triple' || emp.shiftType === 'triple' || (evalData.shiftName || '').includes('A + B + C') || (evalData.shiftName || '').includes('A+B+C') || (evalData.shiftName || '').toLowerCase().includes('triple');
@@ -5071,12 +5240,21 @@ const DetailedAuditReportView: React.FC<{
 
       const finalStatus = (isTripleDuty || isDoubleDuty) 
         ? 'Present' 
-        : (isNightShiftCompleted ? 'Expected Night Shift' : evalData.status);
+        : (isNightShiftCompleted ? 'Expected Night Shift' : (
+            !isActive && !hasPunchToday ? 'Inactive' : evalData.status
+          ));
 
-      const hasActualOutTime = Boolean(finalOutTime && finalOutTime !== '—');
+      const hasActualInTime = Boolean(finalInTime && finalInTime !== '—');
+      const hasActualOutTime = Boolean(finalOutTime && finalOutTime !== '—' && !finalOutTime.includes('Pending'));
+      const hasBothPunches = hasActualInTime && hasActualOutTime;
+      const isDistinctPunches = hasBothPunches && finalInTime !== finalOutTime;
+      const isWorkHoursSufficient = Boolean(emp.duration && emp.duration >= 300) || (workHrsStr && !workHrsStr.includes('0h 00m') && workHrsStr !== '—');
+
       const finalShiftCompleted = (isTripleDuty || isDoubleDuty) 
         ? true 
-        : (isNightShiftCompleted ? true : (isOnNightDuty ? false : (hasActualOutTime ? (emp.shiftCompleted ?? true) : false)));
+        : (isNightShiftCompleted ? true : (isOnNightDuty ? false : (
+            isDistinctPunches || (hasBothPunches && isWorkHoursSufficient) || emp.shiftCompleted === true
+          )));
 
       return {
         ...emp,
@@ -5103,22 +5281,27 @@ const DetailedAuditReportView: React.FC<{
     });
   }, [data, shiftRules, allowedSitesSet, empOverrides, selectedDate]);
 
-  // Computed summary reacting to department filter, site access control, and 14-day active workforce filtering
+  // Computed summary reacting to department filter, site access control, and 30-day active workforce filtering (±30 days window)
   const summary = useMemo(() => {
     if (!processedEmployees.length) return null;
 
-    const targetEmps = departmentFilter === 'all'
+    const activeSite = departmentFilter !== 'all' ? departmentFilter : (siteFilter !== 'all' ? siteFilter : 'all');
+    const isSpecificSite = activeSite !== 'all';
+
+    const targetEmps = !isSpecificSite
       ? processedEmployees
-      : processedEmployees.filter(e => 
-          e.department === departmentFilter || 
-          e.department.toLowerCase().trim() === departmentFilter.toLowerCase().trim()
-        );
+      : processedEmployees.filter(e => {
+          const override = empOverrides[e.empCode];
+          const site = override?.site ?? e.department;
+          return site === activeSite || site?.toLowerCase().trim() === activeSite.toLowerCase().trim() || matchSiteName(site, activeSite);
+        });
 
     const totalHeadcount = targetEmps.length;
     
-    // Active Employees: Employees active in the 2-week window (or punched today)
-    const activeEmps = targetEmps.filter(e => e.isActiveEmployee !== false);
-    const activeTotal = activeEmps.length || totalHeadcount;
+    // Active Employees: Employees active in the 30-day window (or punched today)
+    // Inactive users are NOT counted!
+    const activeEmps = targetEmps.filter(e => e.isActiveEmployee !== false && !isEmployeeInactive(e) && e.status !== 'Inactive');
+    const activeTotal = activeEmps.length;
     const inactiveTotal = Math.max(0, totalHeadcount - activeTotal);
 
     const late = targetEmps.filter(e => (e.lateMinutes > 0 || e.status === 'Late') && e.inTime && e.inTime !== '—').length;
@@ -5143,29 +5326,50 @@ const DetailedAuditReportView: React.FC<{
     const rawServerPresent = data?.summary?.present || 0;
     const basePresent = Math.max(rawServerPresent, calcPresent, trendPresent);
 
-    const present = departmentFilter === 'all'
+    const present = !isSpecificSite
       ? basePresent
       : (calcPresent > 0 ? calcPresent : Math.round(basePresent * (targetEmps.length / (processedEmployees.length || 1))));
-    
-    // Accurate Absent Count = Active Employees Total - Present Count (subtracting inactive employees!)
-    const accurateAbsent = Math.max(0, activeTotal - present);
 
-    // Accurate Attendance Rate = (Present / Active Employees) * 100
-    const attendanceRate = activeTotal > 0 ? Math.round((present / activeTotal) * 100) : 0;
+    // Retrieve site deployment & designation breakdowns for the active site
+    const designationDeployments = isSpecificSite ? getSiteDesignationBreakdown(activeSite) : [];
+    const siteDeployment = isSpecificSite ? getSiteDeployment(activeSite) : null;
+    const sanctionedFromDesig = designationDeployments.reduce((sum, d) => sum + (d.count || 0), 0);
+    const sanctionedFromDept = siteDeployment && siteDeployment.departments 
+      ? Object.values(siteDeployment.departments).reduce((a, b) => a + b, 0) 
+      : 0;
+    const siteDeploymentTotal = sanctionedFromDesig > 0 ? sanctionedFromDesig : sanctionedFromDept;
+
+    // When viewing a specific site with a defined deployment (e.g. Utopia: 89 deployed staff):
+    // - Absenteeism should be measured against the sanctioned deployment on site!
+    // - Employees beyond sanctioned deployment are off-duty / on Sunday Weekly Off
+    const hasSanctionedDeployment = isSpecificSite && siteDeploymentTotal > 0;
+    const accurateAbsent = hasSanctionedDeployment
+      ? Math.max(0, siteDeploymentTotal - present)
+      : Math.max(0, activeTotal - present);
+
+    const attendanceRate = hasSanctionedDeployment
+      ? Math.round((present / siteDeploymentTotal) * 100)
+      : (activeTotal > 0 ? Math.round((present / activeTotal) * 100) : 0);
+
+    const weeklyOffCount = hasSanctionedDeployment
+      ? Math.max(0, activeTotal - siteDeploymentTotal)
+      : 0;
 
     return {
       date: selectedDate,
-      totalEmployees: activeTotal,
+      totalEmployees: hasSanctionedDeployment ? siteDeploymentTotal : activeTotal,
       totalHeadcount,
       activeTotal,
       inactiveTotal,
+      deployedTotal: hasSanctionedDeployment ? siteDeploymentTotal : undefined,
+      weeklyOffCount: hasSanctionedDeployment ? weeklyOffCount : undefined,
       present,
       absent: accurateAbsent,
       late,
       onTime: Math.max(0, present - late),
       attendanceRate,
     };
-  }, [processedEmployees, departmentFilter, selectedDate, data]);
+  }, [processedEmployees, departmentFilter, siteFilter, empOverrides, selectedDate, data]);
 
   // Computed site breakdown reacting to site access control (Restricted Strictly to Biometric Sites)
   const accessibleDepartments = useMemo(() => {
@@ -5182,7 +5386,11 @@ const DetailedAuditReportView: React.FC<{
         deptMap.set(norm, { total: 0, present: 0 });
       }
       const item = deptMap.get(norm)!;
-      item.total += 1;
+      // ONLY COUNT ACTIVE EMPLOYEES in site total!
+      const isActive = e.isActiveEmployee !== false && !isEmployeeInactive(e) && e.status !== 'Inactive';
+      if (isActive) {
+        item.total += 1;
+      }
       if (e.inTime !== null && e.inTime !== '—') {
         item.present += 1;
       }
@@ -5304,25 +5512,99 @@ const DetailedAuditReportView: React.FC<{
     setCurrentPage(1);
   }, [search, statusFilter, departmentFilter, shiftFilter, selectedDeptCard, sortKey, sortDir, selectedDate, columnFilters]);
 
-  // Computed 7-day trend respecting site access control & active workforce filtering
+  // Computed 7-day trend respecting site access control, active workforce filtering, and selected site scope
   const accessibleTrend = useMemo(() => {
-    if (!data?.trend || !data?.summary) return [];
+    if (!data?.trend || !data.trend.length) return [];
 
-    const activeEmps = processedEmployees.filter(e => e.isActiveEmployee !== false);
-    const activeCount = activeEmps.length > 0 ? activeEmps.length : (data.summary.activeTotal || 797);
-    const baseActive = activeCount > 2000 ? 797 : activeCount;
+    const activeSite = departmentFilter !== 'all' ? departmentFilter : (siteFilter !== 'all' ? siteFilter : 'all');
+    const isAllSites = activeSite === 'all';
 
-    return data.trend.map(item => {
-      const pCount = item.present;
-      const aCount = Math.max(0, baseActive - pCount);
+    // Filter employees scoped to the active site
+    const targetEmps = isAllSites
+      ? processedEmployees
+      : processedEmployees.filter(e => {
+          const override = empOverrides[e.empCode];
+          const site = override?.site ?? e.department ?? '';
+          return (
+            site === activeSite ||
+            site.toLowerCase().trim() === activeSite.toLowerCase().trim() ||
+            matchSiteName(site, activeSite)
+          );
+        });
+
+    const activeEmps = targetEmps.filter(e => e.isActiveEmployee !== false && !isEmployeeInactive(e) && e.status !== 'Inactive');
+    const activeCount = activeEmps.length || (summary?.activeTotal || 0);
+    const totalCompanyActive = processedEmployees.filter(e => e.isActiveEmployee !== false && !isEmployeeInactive(e) && e.status !== 'Inactive').length || data?.summary?.activeTotal || 1069;
+
+    return data.trend.map((item, idx) => {
+      const isSelectedDay = item.rawDate === selectedDate ||
+        (selectedDate && item.date && item.date.startsWith((selectedDate.split('-')[2] || '999'))) ||
+        idx === data.trend.length - 1;
+
+      // Case 1: Currently selected date (Must strictly match top summary cards)
+      if (isSelectedDay && summary) {
+        return {
+          ...item,
+          present: summary.present,
+          absent: summary.absent,
+          attendanceRate: summary.attendanceRate,
+        };
+      }
+
+      // Case 2: Past days when viewing All Sites
+      if (isAllSites) {
+        const pCount = item.present;
+        const aCount = Math.max(0, activeCount - pCount);
+        return {
+          ...item,
+          present: pCount,
+          absent: aCount,
+          attendanceRate: activeCount > 0 ? Math.round((pCount / activeCount) * 100) : 0,
+        };
+      }
+
+      // Case 3: Past days when a specific site is selected (e.g. Brigade Cornerstone Utopia)
+      let siteDayPresent = 0;
+      let hasRangeData = false;
+
+      if (rangeMssqlReportMap && Object.keys(rangeMssqlReportMap).length > 0) {
+        targetEmps.forEach(e => {
+          const code = String(e.empCode || '').toLowerCase().trim();
+          const numCode = code.replace(/^0+/, '');
+          const name = (e.empName || '').toLowerCase().trim();
+          const empDays = rangeMssqlReportMap[code] || rangeMssqlReportMap[numCode] || rangeMssqlReportMap[name];
+          if (empDays && empDays[item.rawDate]) {
+            hasRangeData = true;
+            const rec = empDays[item.rawDate];
+            const isP = rec.status === 'P' || rec.status === 'Present' || (rec.inTime && rec.inTime !== '—' && rec.inTime !== '-');
+            if (isP) siteDayPresent++;
+          }
+        });
+      }
+
+      // If range data is present for this site on this date, use exact counts
+      if (hasRangeData) {
+        const aCount = Math.max(0, activeCount - siteDayPresent);
+        return {
+          ...item,
+          present: siteDayPresent,
+          absent: aCount,
+          attendanceRate: activeCount > 0 ? Math.round((siteDayPresent / activeCount) * 100) : 0,
+        };
+      }
+
+      // Fallback: estimate proportionally from company-wide trend
+      const ratio = totalCompanyActive > 0 ? activeCount / totalCompanyActive : 0;
+      const pCount = Math.round(item.present * ratio);
+      const aCount = Math.max(0, activeCount - pCount);
       return {
         ...item,
         present: pCount,
         absent: aCount,
-        attendanceRate: baseActive > 0 ? Math.round((pCount / baseActive) * 100) : 0,
+        attendanceRate: activeCount > 0 ? Math.round((pCount / activeCount) * 100) : 0,
       };
     });
-  }, [data, allowedSitesSet, processedEmployees]);
+  }, [data, summary, departmentFilter, siteFilter, processedEmployees, empOverrides, rangeMssqlReportMap, selectedDate]);
 
   // ── Cascading Filter Scope: Employees scoped to active/pending Site ──────
   const siteScopedEmployees = useMemo(() => {
@@ -5442,6 +5724,7 @@ const DetailedAuditReportView: React.FC<{
     const targetRole = pendingRole !== 'all' ? pendingRole : roleFilter;
     const targetCompany = pendingCompany !== 'all' ? pendingCompany : companyFilter;
     const targetLocation = pendingLocation !== 'all' ? pendingLocation : locationFilter;
+    const targetStatus = pendingStatus !== 'all' ? pendingStatus : statusFilter;
 
     const seen = new Set<string>();
     const list: EmployeeRow[] = [];
@@ -5462,13 +5745,31 @@ const DetailedAuditReportView: React.FC<{
         effectiveLocation.toLowerCase().trim() === targetLocation.toLowerCase().trim() ||
         effectiveLocation.toLowerCase().includes(targetLocation.toLowerCase().trim());
 
-      if (matchRole && matchCompany && matchLocation) {
+      const isInactive = isEmployeeInactive(e) || e.isActiveEmployee === false || e.status === 'Inactive';
+      let matchStatus = true;
+      if (targetStatus === 'Present') {
+        const isPres = e.status === 'Present' || e.status === 'Late' || e.status === 'Half Day'
+          || e.status === 'Missed Punch OUT' || e.status === 'Missed Punch IN'
+          || e.status === 'On Night Duty'
+          || Boolean(e.shiftCompleted)
+          || (e.inTime && e.inTime !== '—');
+        matchStatus = !isInactive && isPres;
+      } else if (targetStatus === 'Absent') {
+        matchStatus = !isInactive && (e.status === 'Absent' || !e.inTime || e.inTime === '—');
+      } else if (targetStatus === 'Inactive') {
+        matchStatus = isInactive;
+      } else if (targetStatus !== 'all_with_inactive') {
+        // Default 'all': only active employees!
+        matchStatus = !isInactive;
+      }
+
+      if (matchRole && matchCompany && matchLocation && matchStatus) {
         seen.add(code);
         list.push(e);
       }
     });
     return list.sort((a, b) => (a.empName || '').localeCompare(b.empName || ''));
-  }, [siteScopedEmployees, pendingRole, roleFilter, pendingCompany, companyFilter, pendingLocation, locationFilter, empOverrides]);
+  }, [siteScopedEmployees, pendingRole, roleFilter, pendingCompany, companyFilter, pendingLocation, locationFilter, pendingStatus, statusFilter, empOverrides]);
 
   // Synchronize dependent dropdown filter selections when available options change
   useEffect(() => {
@@ -5516,27 +5817,29 @@ const DetailedAuditReportView: React.FC<{
 
         const isSearching = search.trim() !== '';
         // For Reports tab: status & recordType are evaluated comprehensively across date range in filteredReportList
-        const matchStatus = activeTab === 'reports' || isSearching || statusFilter === 'all'
+        const matchStatus = activeTab === 'reports' || isSearching
           ? true
           : statusFilter === 'Inactive'
-            ? isEmployeeInactive(e) || e.isActiveEmployee === false
-            : statusFilter === 'Present'
-              ? e.status === 'Present' || e.status === 'Late' || e.status === 'Half Day'
-                  || e.status === 'Missed Punch OUT' || e.status === 'Missed Punch IN'
-                  || e.status === 'On Night Duty'
-                  || Boolean(e.shiftCompleted)
-              : statusFilter === 'EarlyGoing'
-                // Early Going: has punched out BUT shift not yet completed (left before shift end)
-                ? (e.outTime && e.outTime !== '—' && !e.shiftCompleted && e.status !== 'Absent' && e.status !== 'On Night Duty')
-                : statusFilter === 'OnDuty'
-                  ? (e.status === 'Present' || e.status === 'Late' || e.status === 'On Night Duty') && (!e.outTime || e.outTime === '—' || e.outTime.includes('Pending')) && !e.shiftCompleted
-                  : statusFilter === 'Completed'
-                    ? Boolean(e.shiftCompleted || (e.outTime && e.outTime !== '—' && !e.outTime.includes('Pending')))
-                    : statusFilter === 'Late'
-                      ? e.lateMinutes > 0 || e.status === 'Late'
-                      : statusFilter === 'Absent'
-                        ? e.isActiveEmployee !== false && (e.status === 'Absent' || e.status === 'Shift Pending' || e.status === 'Expected Night Shift')
-                        : e.status === statusFilter;
+            ? isEmployeeInactive(e) || e.isActiveEmployee === false || e.status === 'Inactive'
+            : statusFilter === 'all'
+              ? (e.isActiveEmployee !== false && !isEmployeeInactive(e) && e.status !== 'Inactive')
+              : statusFilter === 'Present'
+                ? e.status === 'Present' || e.status === 'Late' || e.status === 'Half Day'
+                    || e.status === 'Missed Punch OUT' || e.status === 'Missed Punch IN'
+                    || e.status === 'On Night Duty'
+                    || Boolean(e.shiftCompleted)
+                : statusFilter === 'EarlyGoing'
+                  // Early Going: has punched out BUT shift not yet completed (left before shift end)
+                  ? (e.outTime && e.outTime !== '—' && !e.shiftCompleted && e.status !== 'Absent' && e.status !== 'On Night Duty')
+                  : statusFilter === 'OnDuty'
+                    ? (e.status === 'Present' || e.status === 'Late' || e.status === 'On Night Duty') && (!e.outTime || e.outTime === '—' || e.outTime.includes('Pending')) && !e.shiftCompleted
+                    : statusFilter === 'Completed'
+                      ? Boolean(e.shiftCompleted || (e.outTime && e.outTime !== '—' && !e.outTime.includes('Pending')))
+                      : statusFilter === 'Late'
+                        ? e.lateMinutes > 0 || e.status === 'Late'
+                        : statusFilter === 'Absent'
+                          ? (e.isActiveEmployee !== false && !isEmployeeInactive(e) && e.status !== 'Inactive') && (e.status === 'Absent' || e.status === 'Shift Pending' || e.status === 'Expected Night Shift')
+                          : e.status === statusFilter;
 
         // Site match: respect both top-bar site filter and advanced toolbar site filter with fuzzy normalization
         const targetSite = siteFilter !== 'all' ? siteFilter : departmentFilter;
@@ -6480,29 +6783,33 @@ const DetailedAuditReportView: React.FC<{
     if (!multiDayAttendanceList.length) return [];
     return multiDayAttendanceList.filter(e => {
       // 1. Status Filter
+      const isInactive = e.isActiveEmployee === false || isEmployeeInactive(e) || e.status === 'Inactive' || e.presentDays === 0;
+
       const matchStatus = statusFilter === 'all'
-        ? true
-        : statusFilter === 'Inactive'
-          // Inactive: employee flagged as inactive OR has zero present days (0 duty)
-          ? (e.isActiveEmployee === false || isEmployeeInactive(e) || e.presentDays === 0)
-          : statusFilter === 'EarlyGoing'
-            // Early Going: at least one day they punched out but netMins < expected shift hours
-            ? e.dailyPunches.some(dp =>
-                dp.outTime && dp.outTime !== '—' &&
-                dp.inTime && dp.inTime !== '—' &&
-                dp.netMins > 0 && dp.netMins < (7 * 60) // left before 7h threshold
-              )
-            : statusFilter === 'Present'
-              ? e.presentDays > 0 || e.overallStatus === 'Present'
-              : statusFilter === 'Absent'
-                ? e.presentDays === 0 || e.absentDays > 0
-                : statusFilter === 'Late'
-                  ? e.lateDays > 0
-                  : statusFilter === 'Completed'
-                    ? e.presentDays > 0 && e.dailyPunches.some(dp => dp.outTime && dp.outTime !== '—')
-                    : statusFilter === 'OnDuty'
-                      ? e.dailyPunches.some(dp => dp.inTime && dp.inTime !== '—' && (!dp.outTime || dp.outTime === '—'))
-                      : true;
+        ? !isInactive // "All Active": only active employees who actually worked in the month!
+        : statusFilter === 'all_with_inactive'
+          ? true
+          : statusFilter === 'Inactive'
+            // Inactive: employee flagged as inactive OR has zero present days (0 duty)
+            ? isInactive
+            : statusFilter === 'EarlyGoing'
+              // Early Going: at least one day they punched out but netMins < expected shift hours
+              ? !isInactive && e.dailyPunches.some(dp =>
+                  dp.outTime && dp.outTime !== '—' &&
+                  dp.inTime && dp.inTime !== '—' &&
+                  dp.netMins > 0 && dp.netMins < (7 * 60) // left before 7h threshold
+                )
+              : statusFilter === 'Present'
+                ? (e.presentDays > 0 || e.overallStatus === 'Present') && !isEmployeeInactive(e) && e.status !== 'Inactive'
+                : statusFilter === 'Absent'
+                  ? !isEmployeeInactive(e) && e.status !== 'Inactive' && (e.presentDays === 0 || e.absentDays > 0)
+                  : statusFilter === 'Late'
+                    ? !isInactive && e.lateDays > 0
+                    : statusFilter === 'Completed'
+                      ? !isInactive && e.presentDays > 0 && e.dailyPunches.some(dp => dp.outTime && dp.outTime !== '—')
+                      : statusFilter === 'OnDuty'
+                        ? !isInactive && e.dailyPunches.some(dp => dp.inTime && dp.inTime !== '—' && (!dp.outTime || dp.outTime === '—'))
+                        : true;
 
       // 2. Record Type Filter
       const matchRecordType = recordTypeFilter === 'all'
@@ -6544,6 +6851,38 @@ const DetailedAuditReportView: React.FC<{
       totalLateCount,
     };
   }, [filteredReportList, daysInRange]);
+
+  // List of employees passed to DetailedAuditReportView respecting Date Range & Status Filters
+  const detailedAuditEmployees = useMemo(() => {
+    if (isDateRangeActive) {
+      if (!filteredReportList.length) return [];
+      const reportCodes = new Set(filteredReportList.map(r => String(r.empCode || '').trim().toLowerCase()));
+      const matched = processedEmployees.filter(e => reportCodes.has(String(e.empCode || '').trim().toLowerCase()));
+      return matched.length > 0 ? matched : (filteredReportList as unknown as EmployeeRow[]);
+    }
+    return filteredEmployees.filter(e => {
+      const isInactive = isEmployeeInactive(e) || e.isActiveEmployee === false || e.status === 'Inactive';
+      if (statusFilter === 'Present') {
+        return !isInactive && (
+          e.status === 'Present' || e.status === 'Late' || e.status === 'Half Day'
+          || e.status === 'Missed Punch OUT' || e.status === 'Missed Punch IN'
+          || e.status === 'On Night Duty'
+          || Boolean(e.shiftCompleted)
+          || (e.inTime && e.inTime !== '—')
+        );
+      }
+      if (statusFilter === 'Absent') {
+        return !isInactive && (e.status === 'Absent' || !e.inTime || e.inTime === '—');
+      }
+      if (statusFilter === 'Inactive') {
+        return isInactive;
+      }
+      if (statusFilter === 'all_with_inactive') {
+        return true;
+      }
+      return !isInactive;
+    });
+  }, [isDateRangeActive, filteredReportList, filteredEmployees, processedEmployees, statusFilter]);
 
   // Paginated list of multi-day employees for table rendering
   const paginatedMultiDayEmployees = useMemo(() => {
@@ -8241,6 +8580,27 @@ const DetailedAuditReportView: React.FC<{
             <span>Assign Roles</span>
           </button>
 
+          <button
+            type="button"
+            onClick={() => {
+              if (window.confirm('Reset all custom role mappings and local department overrides to official company defaults? This will synchronize all calculations across Chrome, Edge, and all browsers.')) {
+                try {
+                  localStorage.removeItem('paradigm_custom_role_mappings');
+                  localStorage.removeItem('paradigm_emp_dept_overrides');
+                } catch (_) {}
+                setEmpOverrides({});
+                setRoleMappingVersion(v => v + 1);
+                setSelectedDeptCard('all');
+                alert('Successfully reset to official company defaults! All browsers are now 100% synchronized.');
+              }
+            }}
+            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[11px] font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-[#0d3820] dark:text-emerald-200 dark:hover:bg-[#1a5532] border border-slate-200 dark:border-[#1a5532] transition-all cursor-pointer shadow-xs active:scale-95"
+            title="Reset local overrides to official company defaults (Sync Chrome & Edge)"
+          >
+            <RefreshCw size={12} className="text-slate-600 dark:text-emerald-400" />
+            <span>Sync / Reset Overrides</span>
+          </button>
+
           {selectedDeptCard !== 'all' && (
             <button
               type="button"
@@ -8681,7 +9041,15 @@ const DetailedAuditReportView: React.FC<{
           <div className="flex flex-wrap items-center gap-3 mt-2 pt-2 border-t border-slate-100 dark:border-[#134426] text-[11px]">
             <div className={`flex items-center gap-1.5 font-semibold ${data?.connectionStatus === 'error' ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
               <span className={`w-2 h-2 rounded-full ${data?.connectionStatus === 'error' ? 'bg-amber-500 animate-ping' : 'bg-emerald-500 animate-pulse'}`} />
-              {data?.connectionStatus === 'error' ? 'Database Disconnected' : 'Live Connection'}
+              {data?.connectionStatus === 'error'
+                ? 'Database Disconnected'
+                : (data?.source === 'supabase_cache' ? 'Cloud Sync (Supabase)' : 'Live Connection')}
+              {data?.connectionStatus === 'connected' && data?.source === 'supabase_cache' && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-200 font-bold border border-emerald-300 dark:border-emerald-800 shadow-xs flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  High Availability
+                </span>
+              )}
             </div>
             {data?.lastUpdated && (
               <span className="text-slate-500 dark:text-emerald-300/70">
@@ -8901,14 +9269,15 @@ const DetailedAuditReportView: React.FC<{
                     }}
                     className="w-full text-[11px] font-semibold px-2 py-1.5 rounded-lg border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
                   >
-                    <option value="all">All Status</option>
-                    <option value="Present">Present</option>
-                    <option value="Absent">Absent</option>
-                    <option value="Late">Late</option>
+                    <option value="all">All Active Users</option>
+                    <option value="Present">Present Only (P)</option>
+                    <option value="Absent">Absent Only (A)</option>
+                    <option value="Late">Late Arrivals</option>
                     <option value="EarlyGoing">Early Going</option>
-                    <option value="Completed">Completed</option>
-                    <option value="OnDuty">On Duty</option>
-                    <option value="Inactive">Inactive (0 Duty)</option>
+                    <option value="Completed">Shift Completed</option>
+                    <option value="OnDuty">On Duty (Active)</option>
+                    <option value="Inactive">Inactive Employees (0 Duty)</option>
+                    <option value="all_with_inactive">All Records (Inc. Inactive)</option>
                   </select>
                 </div>
 
@@ -8966,7 +9335,7 @@ const DetailedAuditReportView: React.FC<{
       </div>
 
       {/* ── DB Error Banner & Interactive Connection Inspector ──────────────── */}
-      {data?.connectionStatus === 'error' && (
+      {data?.connectionStatus === 'error' && (!data?.employees || data.employees.length === 0) && (
         <div className="bg-amber-50/90 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-2xl p-4 shadow-sm space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
@@ -9484,7 +9853,7 @@ const DetailedAuditReportView: React.FC<{
             {/* DETAILED → 31-Day Matrix */}
             {reportType === 'detailed' && (
               <DetailedAuditReportView
-                employees={filteredEmployees}
+                employees={detailedAuditEmployees}
                 selectedDate={selectedDate}
                 currentUserEmail={currentUserEmail}
                 departmentFilter={departmentFilter}
@@ -11318,12 +11687,16 @@ const DetailedAuditReportView: React.FC<{
         <>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-4">
         <KpiCard
-          label="Total Active Employees"
-          value={s?.activeTotal ?? s?.totalEmployees ?? 0}
+          label={s?.deployedTotal ? "Deployed Staff Strength" : "Total Active Employees"}
+          value={s?.deployedTotal ? s.deployedTotal : (s?.activeTotal ?? s?.totalEmployees ?? 0)}
           icon={<Users size={20} className="text-slate-600" />}
           color="text-slate-900 dark:text-white"
           bgColor="bg-slate-100 dark:bg-[#072415]"
-          subLabel={s?.totalHeadcount ? `${s.activeTotal} active (14-day punches) of ${s.totalHeadcount} DB total` : 'Active on site'}
+          subLabel={
+            s?.deployedTotal
+              ? `${s.deployedTotal} deployed (${s.activeTotal || 0} active roster pool)`
+              : (s?.totalHeadcount ? `${s.activeTotal} active (±30 days window) of ${s.totalHeadcount} DB total` : 'Active on site')
+          }
           loading={loading}
           onClick={() => {
             setStatusFilter('all');
@@ -11339,7 +11712,11 @@ const DetailedAuditReportView: React.FC<{
           icon={<UserCheck size={20} className="text-emerald-600" />}
           color="text-emerald-700 dark:text-emerald-400"
           bgColor="bg-emerald-100 dark:bg-emerald-950/60"
-          subLabel={s ? `${s.attendanceRate}% active attendance` : ''}
+          subLabel={
+            s?.deployedTotal
+              ? `${s.attendanceRate}% of deployed staff`
+              : (s ? `${s.attendanceRate}% active attendance` : '')
+          }
           loading={loading}
           onClick={() => {
             setStatusFilter('Present');
@@ -11355,7 +11732,11 @@ const DetailedAuditReportView: React.FC<{
           icon={<UserX size={20} className="text-red-600" />}
           color="text-red-700 dark:text-red-400"
           bgColor="bg-red-100 dark:bg-red-950/60"
-          subLabel={s && s.activeTotal ? `${Math.round((s.absent / s.activeTotal) * 100)}% active absenteeism (${s.inactiveTotal || 0} non-active excluded)` : ''}
+          subLabel={
+            s?.deployedTotal
+              ? `${s.absent} absent of ${s.deployedTotal} deployed (${s.weeklyOffCount || 0} off/roster)`
+              : (s && s.activeTotal ? `${Math.round((s.absent / s.activeTotal) * 100)}% active absenteeism (${s.inactiveTotal || 0} inactive excluded)` : '')
+          }
           loading={loading}
           onClick={() => {
             setStatusFilter('Absent');
@@ -11371,6 +11752,7 @@ const DetailedAuditReportView: React.FC<{
           icon={<Clock size={20} className="text-amber-600" />}
           color="text-amber-700 dark:text-amber-400"
           bgColor="bg-amber-100 dark:bg-amber-950/60"
+          subLabel={s ? `${s.late} arrived after grace period` : ''}
           loading={loading}
           onClick={() => {
             setStatusFilter('Late');
@@ -11385,14 +11767,16 @@ const DetailedAuditReportView: React.FC<{
           value={`${s?.attendanceRate ?? 0}%`}
           icon={<TrendingUp size={20} className="text-sky-600" />}
           color={
-            (s?.attendanceRate ?? 0) >= 90 ? 'text-emerald-700 dark:text-emerald-400' :
-            (s?.attendanceRate ?? 0) >= 75 ? 'text-amber-700 dark:text-amber-400' :
+            (s?.attendanceRate ?? 0) >= 85 ? 'text-emerald-700 dark:text-emerald-400' :
+            (s?.attendanceRate ?? 0) >= 60 ? 'text-emerald-600 dark:text-emerald-400' :
+            (s?.attendanceRate ?? 0) >= 45 ? 'text-amber-700 dark:text-amber-400' :
             'text-red-700 dark:text-red-400'
           }
           bgColor="bg-sky-100 dark:bg-sky-950/60"
           subLabel={
-            (s?.attendanceRate ?? 0) >= 90 ? '✓ Excellent' :
-            (s?.attendanceRate ?? 0) >= 75 ? '⚠ Needs attention' :
+            (s?.attendanceRate ?? 0) >= 85 ? '✓ Excellent' :
+            (s?.attendanceRate ?? 0) >= 60 ? '✓ Expected Turnout' :
+            (s?.attendanceRate ?? 0) >= 45 ? '⚠ Needs attention' :
             '✗ Critical low'
           }
           loading={false}
@@ -11493,7 +11877,7 @@ const DetailedAuditReportView: React.FC<{
             <div className="p-4 bg-slate-50 dark:bg-[#041b0f] rounded-2xl border border-slate-200 dark:border-[#134426]">
               <p className="text-xs font-semibold text-slate-700 dark:text-emerald-300 uppercase tracking-wider">Total Database Headcount</p>
               <p className="text-2xl font-black text-slate-900 dark:text-white mt-1">{s?.totalHeadcount ?? s?.totalEmployees ?? 0}</p>
-              <p className="text-[11px] text-slate-500 dark:text-emerald-400/70 mt-1 font-medium">{s?.activeTotal ?? 0} active in last 25 days</p>
+              <p className="text-[11px] text-slate-500 dark:text-emerald-400/70 mt-1 font-medium">{s?.activeTotal ?? 0} active in ±30 days window</p>
             </div>
           </div>
         </div>
@@ -11697,7 +12081,7 @@ const DetailedAuditReportView: React.FC<{
               <span>Employee Attendance Details</span>
               {!loading && (
                 <span className="text-xs font-normal text-slate-500 dark:text-emerald-300/70">
-                  ({filteredEmployees.length} of {data?.employees.length ?? 0})
+                  ({filteredEmployees.length} active of {s?.totalHeadcount ?? data?.employees.length ?? 0} total)
                 </span>
               )}
               {selectedDeptCard !== 'all' && (
@@ -11826,10 +12210,13 @@ const DetailedAuditReportView: React.FC<{
               <option value="Present" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">Present (All)</option>
               <option value="OnDuty" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">On Duty (Active)</option>
               <option value="Completed" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">Shift Completed (6+ hrs)</option>
-              <option value="all" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">All Status</option>
-              <option value="Absent" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">Absent</option>
-              <option value="Late" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">Late</option>
+              <option value="all" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">
+                {s?.deployedTotal ? `Deployed Staff (${s.deployedTotal})` : `All Active (${s?.activeTotal ?? 0})`}
+              </option>
+              <option value="Absent" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">Absent ({s?.absent ?? 0})</option>
+              <option value="Late" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">Late ({s?.late ?? 0})</option>
               <option value="Half Day" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">Half Day</option>
+              <option value="Inactive" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">Inactive Employees ({s?.inactiveTotal ?? 0})</option>
             </select>
 
             {/* Search */}

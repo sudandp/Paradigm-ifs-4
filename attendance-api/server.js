@@ -109,7 +109,7 @@ async function getPool() {
 }
 
 // ΓöÇΓöÇΓöÇ Health Check ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-app.get(['/', '/health'], (req, res) => {
+app.get(['/', '/health', '/api/health'], (req, res) => {
   res.json({
     service: 'Paradigm Attendance API',
     status: 'running',
@@ -236,7 +236,7 @@ app.post('/camera/enroll', (req, res) => {
 
 // ─── GET /attendance ──────────────────────────────────────────────────────
 // ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-app.get('/attendance', requireApiKey, async (req, res) => {
+app.get(['/attendance', '/api/attendance'], requireApiKey, async (req, res) => {
   const date = (req.query.date || '').match(/^\d{4}-\d{2}-\d{2}$/)
     ? req.query.date
     : new Date().toISOString().slice(0, 10);
@@ -280,7 +280,7 @@ app.get('/attendance', requireApiKey, async (req, res) => {
       hasCompanies = (chkC.recordset && chkC.recordset.length > 0);
     } catch (_) {}
 
-    const selectCompany = hasCompanies ? `ISNULL(c.CompanyName, 'PIFS')` : `'PIFS'`;
+    const selectCompany = hasCompanies ? `ISNULL(c.CompanyFName, 'PIFS')` : `'PIFS'`;
     const joinCompany   = hasCompanies ? `LEFT JOIN dbo.Companies c WITH (NOLOCK) ON e.CompanyId = c.CompanyId` : ``;
 
     // Build multi-table UNION for finding LastPunchDate across recent monthly tables & main DeviceLogs
@@ -1151,7 +1151,7 @@ app.get(['/attendance-report', '/api/attendance-report'], requireApiKey, async (
 });
 
 // ΓöÇΓöÇΓöÇ GET /tables ΓÇö helper to discover your DB schema ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-app.get('/tables', requireApiKey, async (req, res) => {
+app.get(['/tables', '/api/tables'], requireApiKey, async (req, res) => {
   try {
     const p = await getPool();
     const result = await p.request().query(`
@@ -1169,7 +1169,7 @@ app.get('/tables', requireApiKey, async (req, res) => {
 
 // ΓöÇΓöÇΓöÇ GET /devices ΓÇö biometric device status ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // Tries multiple table names used by different eTimeTrack versions (dbo.Devices, dbo.iclock_Device, etc.)
-app.get('/devices', requireApiKey, async (req, res) => {
+app.get(['/devices', '/api/devices'], requireApiKey, async (req, res) => {
   const p = await getPool();
 
   const queries = [
@@ -1368,7 +1368,7 @@ app.get('/columns/:table', requireApiKey, async (req, res) => {
 
 // ΓöÇΓöÇΓöÇ Start ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // ─── POST /update-employee — Update employee details in MS SQL ───────
-app.post('/update-employee', requireApiKey, async (req, res) => {
+app.post(['/update-employee', '/api/update-employee'], requireApiKey, async (req, res) => {
   const { empCode, empName, siteName, designation, companyName } = req.body;
   if (!empCode) {
     return res.status(400).json({ error: 'empCode is required' });
@@ -1774,9 +1774,12 @@ async function fetchAttendanceRowsForDate(date) {
       ${selectDept}                                      AS department,
       ISNULL(e.Designation, 'Staff')                     AS designation,
       CONVERT(VARCHAR(19), p.FirstInPunchOnDate, 120)    AS firstInPunchStr,
+      CONVERT(VARCHAR(19), p.DayOutPunchOnDate, 120)     AS dayOutPunchStr,
       CONVERT(VARCHAR(19), p.NightInPunchOnDate, 120)    AS nightInPunchStr,
       CONVERT(VARCHAR(19), p.LastOutPunchOnDate, 120)    AS lastOutPunchStr,
       CONVERT(VARCHAR(19), p.NextMorningOutPunch, 120)   AS nextMorningOutPunchStr,
+      CONVERT(VARCHAR(19), p.PrevNightInPunch, 120)      AS prevNightInPunchStr,
+      p.PrevNightInPunch                                 AS prevNightInPunch,
       ${selectAl}
     FROM dbo.Employees e WITH (NOLOCK)
     ${joinDept}
@@ -1784,9 +1787,11 @@ async function fetchAttendanceRowsForDate(date) {
       SELECT
         EmployeeCode,
         MIN(CASE WHEN LogDate >= '${date} 05:30:00' AND LogDate <= '${date} 23:59:59' THEN LogDate END) AS FirstInPunchOnDate,
+        MAX(CASE WHEN LogDate >= '${date} 11:30:00' AND LogDate < '${date} 17:00:00' THEN LogDate END) AS DayOutPunchOnDate,
         MIN(CASE WHEN LogDate >= '${date} 17:00:00' AND LogDate <= '${date} 23:59:59' THEN LogDate END) AS NightInPunchOnDate,
         MAX(CASE WHEN LogDate >= '${date} 00:00:00' AND LogDate <= '${date} 23:59:59' THEN LogDate END) AS LastOutPunchOnDate,
-        MIN(CASE WHEN LogDate >= '${nextDateStr} 00:00:00' AND LogDate <= '${nextDateStr} 12:30:00' THEN LogDate END) AS NextMorningOutPunch
+        MIN(CASE WHEN LogDate >= '${nextDateStr} 00:00:00' AND LogDate <= '${nextDateStr} 12:30:00' THEN LogDate END) AS NextMorningOutPunch,
+        MAX(CASE WHEN LogDate >= '${prevDateStr} 17:00:00' AND LogDate <= '${prevDateStr} 23:59:59' THEN LogDate END) AS PrevNightInPunch
       FROM (${lpUnionSql}) AllPunches
       WHERE LogDate >= '${prevDateStr} 17:00:00' AND LogDate <= '${nextDateStr} 12:30:00'
       GROUP BY EmployeeCode
@@ -1798,18 +1803,26 @@ async function fetchAttendanceRowsForDate(date) {
 
   const dataYear = parseInt(yStr, 10);
 
-  // Site prefix map (same as in /attendance)
-  const prefixSiteMap = {
-    '17': 'Mahendra Aarna', '31': 'Brigade Cornerstone Utopia', '32': 'Brigade Cornerstone Utopia',
-    '42': 'Purva Venezia', '77': 'Nikoo Homes', '78': 'Nikoo Homes',
-    '70': 'Sobha Silicon Oasis', '79': 'Nikoo Paradigm', '80': 'Nikoo Paradigm',
-    '99': 'Dsr Eden Greens',
-  };
+  // 5-Tier Smart Site Engine + Shift Detection Helpers (matches live /attendance)
+  const prefixSiteMap = new Map([
+    ['17', 'Mahendra Aarna'], ['31', 'Brigade Cornerstone Utopia'], ['32', 'Brigade Cornerstone Utopia'],
+    ['42', 'Purva Venezia'], ['77', 'Nikoo Homes'], ['78', 'Nikoo Homes'],
+    ['70', 'Sobha Silicon Oasis'], ['79', 'Nikoo Paradigm'], ['80', 'Nikoo Paradigm'],
+    ['99', 'Dsr Eden Greens'],
+  ]);
 
-  const getSmartSite = (code) => {
+  const getSmartSite = (code, dbSite) => {
+    const siteStr = String(dbSite || '').trim();
+    if (siteStr && siteStr !== 'General' && siteStr !== 'Default' && siteStr !== '—') return siteStr;
     const c = String(code || '').trim();
-    if (prefixSiteMap[c.slice(0, 2)]) return prefixSiteMap[c.slice(0, 2)];
-    if (prefixSiteMap[c.slice(0, 3)]) return prefixSiteMap[c.slice(0, 3)];
+    if (c.startsWith('31') || c.startsWith('32')) return 'Brigade Cornerstone Utopia';
+    if (c.length >= 3 && prefixSiteMap.has(c.slice(0, 3))) return prefixSiteMap.get(c.slice(0, 3));
+    if (c.startsWith('17')) return 'Mahendra Aarna';
+    if (c.startsWith('42')) return 'Purva Venezia';
+    if (c.startsWith('77') || c.startsWith('78')) return 'Nikoo Homes';
+    if (c.startsWith('70')) return 'Sobha Silicon Oasis';
+    if (c.startsWith('79') || c.startsWith('80')) return 'Nikoo Paradigm';
+    if (c.startsWith('99')) return 'Dsr Eden Greens';
     return 'Default';
   };
 
@@ -1825,6 +1838,20 @@ async function fetchAttendanceRowsForDate(date) {
     return `${String(dh).padStart(2,'0')}:${String(m).padStart(2,'0')} ${ampm}`;
   };
 
+  /** Parse "YYYY-MM-DD HH:MM:SS" SQL string into timestamp object for shift math */
+  const parseSqlStr = (str) => {
+    if (!str) return null;
+    const parts = String(str).trim().split(' ');
+    if (parts.length < 2) return null;
+    const dParts = parts[0].split('-').map(Number);
+    const tParts = parts[1].split(':').map(Number);
+    if (dParts.length < 3 || tParts.length < 3) return null;
+    return {
+      hours: tParts[0], minutes: tParts[1], seconds: tParts[2],
+      timestamp: Date.UTC(dParts[0], dParts[1] - 1, dParts[2], tParts[0], tParts[1], tParts[2]),
+    };
+  };
+
   // Get raw device logs: rawAllList = all punches (for Supabase), debouncedList = attendance-grade
   let rawLogsMap = new Map();
   let rawPunchesList = [];
@@ -1838,16 +1865,146 @@ async function fetchAttendanceRowsForDate(date) {
     console.warn('[Sync] Could not attach raw device logs:', rawErr.message);
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FULL SHIFT DETECTION ENGINE — matches live /attendance endpoint exactly
+  // Replaces old simple mapping so Supabase cache has same quality as MS SQL
+  // ═══════════════════════════════════════════════════════════════════════════
   const mappedRows = (result.recordset || []).map(row => {
-    const inTime  = fmtTime(row.firstInPunchStr) || fmtTime(row.alInTime);
-    const outTime = fmtTime(row.lastOutPunchStr)  || fmtTime(row.alOutTime);
-    let status = 'Absent'; let statusCode = 'A'; let durationMins = 0;
+    let inTimeStr = null;
+    let outTimeStr = null;
+    let status = 'Absent';
+    let statusCode = 'A';
+    let workingHours = null;
+    let shiftCompleted = false;
+    let durationMins = 0;
+    let otMins = 0;
 
-    const alStatus = (row.alStatus || '').trim();
-    if (alStatus === 'Present ') { status = 'Present'; statusCode = 'P'; }
-    else if (inTime)             { status = 'Present'; statusCode = 'P'; }
+    const firstIn = parseSqlStr(row.firstInPunchStr);
+    const dayOut = parseSqlStr(row.dayOutPunchStr);
+    const nightIn = parseSqlStr(row.nightInPunchStr);
+    const lastOut = parseSqlStr(row.lastOutPunchStr);
+    const nextMorningOut = parseSqlStr(row.nextMorningOutPunchStr);
 
-    if (row.duration && row.duration > 0) durationMins = row.duration;
+    let effectiveIn = null;
+    let effectiveOut = null;
+    let isNextDayOut = false;
+
+    // ── MULTI-SHIFT DOUBLE DUTY DETECTION ──────────────────────
+    // Case 1: A + C Shift (Morning In < 11 AND Night In >= 17 AND Next Morning Out)
+    if (firstIn && firstIn.hours < 11 && nightIn && nextMorningOut) {
+      const afternoonOut = dayOut || (lastOut && lastOut.hours >= 13 && lastOut.hours <= 16 ? lastOut : null);
+      effectiveIn = firstIn;
+      effectiveOut = nextMorningOut;
+      isNextDayOut = true;
+      const m1 = afternoonOut ? Math.max(0, Math.floor((afternoonOut.timestamp - firstIn.timestamp) / 60000) - 30) : 7 * 60;
+      const m2 = Math.max(0, Math.floor((nextMorningOut.timestamp - nightIn.timestamp) / 60000) - 30);
+      durationMins = m1 + m2;
+      workingHours = `${Math.floor(durationMins / 60)}h ${String(durationMins % 60).padStart(2, '0')}m`;
+      otMins = m2;
+      shiftCompleted = true;
+      status = 'Present';
+    }
+    // Case 2: A + B Shift (Morning In < 11, Out >= 19:30 same day, elapsed >= 11h 30m)
+    else if (firstIn && firstIn.hours < 11 && lastOut && lastOut.hours >= 19 && Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000) >= 11 * 60 + 30) {
+      effectiveIn = firstIn;
+      effectiveOut = lastOut;
+      durationMins = Math.max(0, Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000) - 30);
+      workingHours = `${Math.floor(durationMins / 60)}h ${String(durationMins % 60).padStart(2, '0')}m`;
+      otMins = Math.max(0, durationMins - 7 * 60);
+      shiftCompleted = true;
+      status = 'Present';
+    }
+    // Case 3: B + C Shift (Afternoon In 12-16:30 AND Next Morning Out)
+    else if (firstIn && firstIn.hours >= 12 && firstIn.hours <= 16 && nextMorningOut) {
+      effectiveIn = firstIn;
+      effectiveOut = nextMorningOut;
+      isNextDayOut = true;
+      let grossMins = Math.floor((nextMorningOut.timestamp - firstIn.timestamp) / 60000);
+      if (grossMins < 0) grossMins += 24 * 60;
+      durationMins = Math.max(0, grossMins - 60);
+      workingHours = `${Math.floor(durationMins / 60)}h ${String(durationMins % 60).padStart(2, '0')}m`;
+      otMins = Math.max(0, durationMins - 7 * 60);
+      shiftCompleted = true;
+      status = 'Present';
+    }
+    // ── STANDARD SINGLE SHIFT EVALUATION ──────────────────────
+    else if (firstIn) {
+      if (firstIn.hours < 15 || (firstIn.hours < 17 && lastOut && lastOut.timestamp > firstIn.timestamp && Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000) > 5)) {
+        // Previous night shift OUT detected as today's first punch — use lastOut as real IN
+        if (row.prevNightInPunch && lastOut && lastOut.timestamp > firstIn.timestamp && firstIn.hours < 11 && lastOut.hours < 12 && Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000) <= 180) {
+          effectiveIn = lastOut;
+          effectiveOut = null;
+        } else {
+          effectiveIn = firstIn;
+          if (lastOut && lastOut.timestamp > firstIn.timestamp) {
+            const diffMins = Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000);
+            if (diffMins >= 60) effectiveOut = lastOut;
+          }
+        }
+      } else if (firstIn.hours >= 15) {
+        if (nextMorningOut) {
+          effectiveIn = firstIn;
+          effectiveOut = nextMorningOut;
+          isNextDayOut = true;
+        } else if (lastOut && lastOut.timestamp > firstIn.timestamp) {
+          const diffMins = Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000);
+          if (diffMins > 5) { effectiveIn = firstIn; effectiveOut = lastOut; }
+          else { effectiveOut = firstIn; }
+        } else {
+          effectiveOut = firstIn;
+        }
+      } else {
+        effectiveIn = firstIn;
+      }
+    } else if (nightIn) {
+      if (nextMorningOut) {
+        effectiveIn = nightIn; effectiveOut = nextMorningOut; isNextDayOut = true;
+      } else {
+        effectiveOut = nightIn;
+      }
+    }
+
+    // ── Format effective IN/OUT times and calculate working hours ──
+    if (effectiveIn || effectiveOut) {
+      if (effectiveIn) {
+        const inH = effectiveIn.hours; const inM = effectiveIn.minutes;
+        const inAmpm = inH >= 12 ? 'pm' : 'am';
+        const displayInH = inH % 12 === 0 ? 12 : inH % 12;
+        inTimeStr = `${String(displayInH).padStart(2, '0')}:${String(inM).padStart(2, '0')} ${inAmpm}`;
+      }
+      if (effectiveOut) {
+        const outH = effectiveOut.hours; const outM = effectiveOut.minutes;
+        const outAmpm = outH >= 12 ? 'pm' : 'am';
+        const displayOutH = outH % 12 === 0 ? 12 : outH % 12;
+        outTimeStr = `${String(displayOutH).padStart(2, '0')}:${String(outM).padStart(2, '0')} ${outAmpm}`;
+      }
+
+      if (effectiveIn && effectiveOut && durationMins === 0) {
+        let diffMs = effectiveOut.timestamp - effectiveIn.timestamp;
+        if (isNextDayOut && diffMs < 0) diffMs += 24 * 60 * 60 * 1000;
+        if (diffMs > 0) {
+          durationMins = Math.max(0, Math.floor(diffMs / 60000) - 30);
+          workingHours = `${Math.floor(durationMins / 60)}h ${String(durationMins % 60).padStart(2, '0')}m`;
+          if (durationMins >= 360) shiftCompleted = true;
+        }
+        status = 'Present';
+      } else if (effectiveIn && !effectiveOut) {
+        status = 'Present';
+      } else if (!effectiveIn && effectiveOut) {
+        status = 'Missed Punch IN';
+      }
+    }
+
+    // ── AttendanceLogs fallback values ──
+    if (row.duration && row.duration > 0 && durationMins === 0) durationMins = row.duration;
+    const lateMins = row.lateBy ? Number(row.lateBy) : 0;
+    if (row.overTime && Number(row.overTime) > 0 && otMins === 0) otMins = Number(row.overTime);
+    if (status === 'Absent') {
+      const alStatus = (row.alStatus || '').trim();
+      if (alStatus === 'Present ') { status = 'Present'; statusCode = 'P'; }
+      else if (fmtTime(row.alInTime)) { status = 'Present'; statusCode = 'P'; }
+    }
+    if (status === 'Present') statusCode = 'P';
 
     const empPunches = rawLogsMap.get(String(row.empCode || '')) || [];
 
@@ -1856,15 +2013,17 @@ async function fetchAttendanceRowsForDate(date) {
       emp_name:        String(row.empName || ''),
       department:      String(row.department || 'General'),
       designation:     String(row.designation || 'Staff'),
-      site:            getSmartSite(row.empCode),
+      site:            getSmartSite(row.empCode, row.department),
       attendance_date: date,
-      in_time:         inTime,
-      out_time:        outTime,
+      in_time:         inTimeStr,
+      out_time:        outTimeStr,
       status:          status,
       status_code:     statusCode,
       duration_mins:   durationMins,
-      late_mins:       row.lateBy  ? Number(row.lateBy)  : 0,
-      ot_mins:         row.overTime ? Number(row.overTime) : 0,
+      late_mins:       lateMins,
+      ot_mins:         otMins,
+      working_hours:   workingHours,
+      shift_completed: shiftCompleted,
       data_year:       dataYear,
       source:          'mssql',
       raw_punches:     empPunches.length > 0 ? empPunches : null,

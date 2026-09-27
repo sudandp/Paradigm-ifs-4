@@ -80,10 +80,9 @@ async function getCandidateProxyUrls(): Promise<{ urls: string[]; secret: string
   const secret = process.env.MSSQL_API_SECRET?.trim() || 'paradigm-attendance-secret-2024';
   const urls: string[] = [
     'https://attendance.cctv.rest',
-    'https://attendance.paradigmfms.com',
-    process.env.MSSQL_PROXY_URL?.trim() || '',
     'http://localhost:4000',
     'http://127.0.0.1:4000',
+    process.env.MSSQL_PROXY_URL?.trim() || '',
   ].filter(Boolean);
 
   // Dynamic fallback: auto-detect live tunnel URL from Supabase cctv_devices heartbeat
