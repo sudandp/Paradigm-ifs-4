@@ -514,11 +514,19 @@ app.get('/attendance', requireApiKey, async (req, res) => {
       else if (firstIn) {
         if (firstIn.hours < 15 || (firstIn.hours < 17 && lastOut && lastOut.timestamp > firstIn.timestamp && Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000) > 5)) {
           // Standard Morning / Day Punch IN
-          effectiveIn = firstIn;
-          if (lastOut && lastOut.timestamp > firstIn.timestamp) {
-            const diffMins = Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000);
-            if (diffMins > 5) {
-              effectiveOut = lastOut;
+          // If employee worked overnight yesterday and has two morning punches within 3 hours:
+          // firstIn was yesterday's OUT punch, and lastOut is TODAY'S IN PUNCH!
+          if (row.prevNightInPunch && lastOut && lastOut.timestamp > firstIn.timestamp && firstIn.hours < 11 && lastOut.hours < 12 && Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000) <= 180) {
+            effectiveIn = lastOut;
+            effectiveOut = null;
+          } else {
+            effectiveIn = firstIn;
+            if (lastOut && lastOut.timestamp > firstIn.timestamp) {
+              const diffMins = Math.floor((lastOut.timestamp - firstIn.timestamp) / 60000);
+              // Shift cannot be < 60 minutes
+              if (diffMins >= 60) {
+                effectiveOut = lastOut;
+              }
             }
           }
         } else if (firstIn.hours >= 15) {
@@ -647,6 +655,7 @@ app.get('/attendance', requireApiKey, async (req, res) => {
         otHours: otHoursStr,
         lateMinutes: 0,
         hadPrevNightShift: Boolean(row.prevNightInPunch),
+        prevNightInPunch: row.prevNightInPunchStr || (row.prevNightInPunch ? String(row.prevNightInPunch) : null),
         lifecycleStatus,
         firstEverPunchDate: firstEverDateStr,
         isSmartSite: smartSiteInfo.isSmart,

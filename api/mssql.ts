@@ -196,10 +196,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                   if (!data.records[code].days[date]) {
                     const isPres = emp.status === 'Present' || (emp.inTime && emp.inTime !== '—');
                     const isLate = emp.status === 'Late' || (emp.lateMinutes && emp.lateMinutes > 0);
-                    const isDouble = emp.shiftType === 'double' || (emp.shiftName || '').includes('+');
-                    const duties = emp.totalDuties || (isDouble ? 2 : 1);
+                    const isTriple = emp.shiftType === 'triple' || (emp.shiftName || '').includes('A + B + C') || (emp.shiftName || '').includes('A+B+C') || (emp.shiftName || '').toLowerCase().includes('triple');
+                    const isDouble = !isTriple && (emp.shiftType === 'double' || (emp.shiftName || '').includes('+'));
+                    const duties = emp.totalDuties || (isTriple ? 3 : (isDouble ? 2 : 1));
                     let statusStr = 'A';
-                    if (isPres) statusStr = isDouble ? 'P' : 'P';
+                    if (isPres) statusStr = isTriple ? 'P' : (isDouble ? 'P' : 'P');
                     else if (isLate) statusStr = 'L';
 
                     data.records[code].days[date] = {
@@ -208,7 +209,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                       outTime: emp.outTime || '—',
                       hours: emp.workingHours && emp.workingHours !== '—' ? emp.workingHours : (isPres ? '9h 00m' : '—'),
                       status: statusStr,
-                      shiftType: isDouble ? 'double' : (emp.shiftType || 'single'),
+                      shiftType: isTriple ? 'triple' : (isDouble ? 'double' : (emp.shiftType || 'single')),
                       shiftName: emp.shiftName || null,
                       totalDuties: duties,
                       isWeeklyOff: false,

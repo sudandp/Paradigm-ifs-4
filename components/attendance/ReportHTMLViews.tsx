@@ -380,6 +380,15 @@ export const MonthlyStatusView: React.FC<{
         }));
     }, [data, resolvedDays]);
 
+    const hasAdminEmployees = React.useMemo(() => {
+        return recalculatedRows.some((row: any) => {
+            const roleStr = String(row.role || (row as any).designation || '').toLowerCase();
+            const isAdm = /admin|super_admin|management|director|hr/i.test(roleStr);
+            const hasLeaves = ((row.earnedLeaves || 0) > 0) || ((row.compOffs || 0) > 0) || ((row.sickLeaves || 0) > 0) || ((row.workFromHomeDays || 0) > 0);
+            return isAdm || hasLeaves;
+        });
+    }, [recalculatedRows]);
+
     if (!data.length) return <EmptyState message="No monthly status records found." />;
 
     const getStatusColor = (s: string) => {
@@ -494,11 +503,16 @@ export const MonthlyStatusView: React.FC<{
                             })}
                             <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-l border-gray-200 font-bold text-center text-[#059669] bg-green-50/30 align-middle ${layout.statColWidth || 'min-w-[15px]'}`}>P</th>
                             <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#2563EB] bg-blue-50/30 align-middle ${layout.statColWidth || 'min-w-[16px]'}`}>0.5P</th>
-                            <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#0D9488] bg-teal-50/30 align-middle ${layout.statColWidth || 'min-w-[16px]'}`}>WH</th>
-                            <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#0D9488] bg-teal-50/30 align-middle ${layout.statColWidth || 'min-w-[18px]'}`}>OT</th>
-                            <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#0891B2] bg-cyan-50/30 align-middle ${layout.statColWidth || 'min-w-[16px]'}`}>C/O</th>
-                            <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#4F46E5] bg-indigo-50/30 align-middle ${layout.statColWidth || 'min-w-[16px]'}`}>E/L</th>
-                            <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#9333EA] bg-purple-50/30 align-middle ${layout.statColWidth || 'min-w-[16px]'}`}>S/L</th>
+                            <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#15803D] bg-emerald-50/40 align-middle ${layout.statColWidth || 'min-w-[16px]'}`} title="Week Off Present">W/P</th>
+                            {hasAdminEmployees && (
+                                <>
+                                    <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#0D9488] bg-teal-50/30 align-middle ${layout.statColWidth || 'min-w-[16px]'}`}>WH</th>
+                                    <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#0D9488] bg-teal-50/30 align-middle ${layout.statColWidth || 'min-w-[18px]'}`}>OT</th>
+                                    <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#0891B2] bg-cyan-50/30 align-middle ${layout.statColWidth || 'min-w-[16px]'}`}>C/O</th>
+                                    <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#4F46E5] bg-indigo-50/30 align-middle ${layout.statColWidth || 'min-w-[16px]'}`}>E/L</th>
+                                    <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#9333EA] bg-purple-50/30 align-middle ${layout.statColWidth || 'min-w-[16px]'}`}>S/L</th>
+                                </>
+                            )}
                             <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#DC2626] bg-red-50/30 align-middle ${layout.statColWidth || 'min-w-[14px]'}`}>A</th>
                             <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#6B7280] bg-gray-50/50 align-middle ${layout.statColWidth || 'min-w-[16px]'}`}>W/O</th>
                             <th rowSpan={2} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#EA580C] bg-orange-50/30 align-middle ${layout.statColWidth || 'min-w-[14px]'}`}>H</th>
@@ -624,11 +638,16 @@ export const MonthlyStatusView: React.FC<{
                                         ))}
                                         <td className={`px-0 ${layout.paddingY} border-b border-l border-gray-100 text-center font-bold text-[#059669] bg-green-50/10`}>{row.presentDays}</td>
                                         <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#2563EB] bg-blue-50/10`}>{row.halfDays}</td>
-                                        <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#0D9488] bg-teal-50/10`}>{row.workFromHomeDays || 0}</td>
-                                        <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#0D9488] bg-teal-50/10`}>{row.overtimeDays || 0}</td>
-                                        <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#0891B2] bg-cyan-50/10`}>{row.compOffs || 0}</td>
-                                        <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#4F46E5] bg-indigo-50/10`}>{row.earnedLeaves || 0}</td>
-                                        <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#9333EA] bg-purple-50/10`}>{row.sickLeaves || 0}</td>
+                                        <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#15803D] bg-emerald-50/20`}>{row.workedWeekOffDays || 0}</td>
+                                        {hasAdminEmployees && (
+                                            <>
+                                                <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#0D9488] bg-teal-50/10`}>{row.workFromHomeDays || 0}</td>
+                                                <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#0D9488] bg-teal-50/10`}>{row.overtimeDays || 0}</td>
+                                                <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#0891B2] bg-cyan-50/10`}>{row.compOffs || 0}</td>
+                                                <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#4F46E5] bg-indigo-50/10`}>{row.earnedLeaves || 0}</td>
+                                                <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#9333EA] bg-purple-50/10`}>{row.sickLeaves || 0}</td>
+                                            </>
+                                        )}
                                         <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#DC2626] bg-red-50/10`}>{row.absentDays}</td>
                                         <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center text-[#6B7280] font-medium`}>{row.weekOffs}</td>
                                         <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center text-[#EA580C] font-medium`}>{row.holidays}</td>
@@ -663,11 +682,16 @@ export const MonthlyStatusView: React.FC<{
                                         ))}
                                         <td className="border-b border-l border-gray-100 bg-green-50/5"></td>
                                         <td className="border-b border-gray-100 bg-blue-50/5"></td>
-                                        <td className="border-b border-gray-100 bg-teal-50/5"></td>
-                                        <td className="border-b border-gray-100 bg-teal-50/5"></td>
-                                        <td className="border-b border-gray-100 bg-cyan-50/5"></td>
-                                        <td className="border-b border-gray-100 bg-indigo-50/5"></td>
-                                        <td className="border-b border-gray-100 bg-purple-50/5"></td>
+                                        <td className="border-b border-gray-100 bg-emerald-50/5"></td>
+                                        {hasAdminEmployees && (
+                                            <>
+                                                <td className="border-b border-gray-100 bg-teal-50/5"></td>
+                                                <td className="border-b border-gray-100 bg-teal-50/5"></td>
+                                                <td className="border-b border-gray-100 bg-cyan-50/5"></td>
+                                                <td className="border-b border-gray-100 bg-indigo-50/5"></td>
+                                                <td className="border-b border-gray-100 bg-purple-50/5"></td>
+                                            </>
+                                        )}
                                         <td className="border-b border-gray-100 bg-red-50/5"></td>
                                         <td className="border-b border-gray-100 bg-gray-50/5"></td>
                                         <td className="border-b border-gray-100 bg-orange-50/5"></td>

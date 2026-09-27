@@ -94,7 +94,7 @@ function punchDirection(attState: string): 'in' | 'out' | 'unknown' {
  */
 function resolveAttendanceDate(punchDate: Date, direction: 'in' | 'out' | 'unknown'): string {
   const d = new Date(punchDate);
-  if (direction === 'out' && d.getHours() < 7) {
+  if (direction === 'out' && d.getHours() <= 8) {
     d.setDate(d.getDate() - 1);
   }
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;

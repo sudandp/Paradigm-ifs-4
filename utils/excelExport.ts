@@ -9,6 +9,8 @@ export { isSecurityEmployee, getCompanyBranding };
 
 export interface MonthlyReportRow {
     userName: string;
+    role?: string;
+    workedWeekOffDays?: number;
     statuses: string[];
     presentDays: number;
     halfDays: number;

@@ -1608,6 +1608,8 @@ export const BasicReportDocument: React.FC<{
 
 export interface MonthlyReportRow {
   userName: string;
+  role?: string;
+  workedWeekOffDays?: number;
   statuses: string[];
   presentDays: number;
   halfDays: number;
@@ -2455,6 +2457,7 @@ export const MonthlyMatrixReportDocument: React.FC<{
 }> = ({ monthlyData, generatedBy, generatedByRole, targetUserName, targetUserRole, logoUrl, globalDateRange, filters, userHolidaysPool }) => {
   const getStatusColor = (s: string) => {
     if (s.includes('+')) return '#0D9488';
+    if (s.startsWith('W/P') || s.startsWith('H/P')) return '#059669';
     if (s === 'P' || s === 'Present' || s === 'H/P' || s === 'W/P' || s === 'BL/P' || s === 'PL/P') return '#059669';
     if (s === 'A' || s === 'Absent') return '#DC2626';
     if (s === 'W/O' || s === 'Weekly Off') return '#64748B';
@@ -2472,6 +2475,7 @@ export const MonthlyMatrixReportDocument: React.FC<{
 
   const getStatusBg = (s: string) => {
     if (s.includes('+')) return '#F0FDFA';
+    if (s.startsWith('W/P') || s.startsWith('H/P')) return '#DCFCE7';
     if (s === 'P' || s === 'Present' || s === 'H/P' || s === 'W/P' || s === 'BL/P' || s === 'PL/P') return '#ECFDF5';
     if (s === 'A' || s === 'Absent') return '#FEF2F2';
     if (s === 'W/O' || s === 'Weekly Off') return '#F8FAFC';
@@ -2493,22 +2497,7 @@ export const MonthlyMatrixReportDocument: React.FC<{
   // Mathematical column layout on A3 Landscape (1150 pt printable width)
   const snoWidth = 24;
   const empColWidth = 196;
-  const summaryCols = [
-    { key: 'P', label: 'P', sub: 'DAYS', prop: 'presentDays', width: 24, color: '#059669', bg: '#ECFDF5', cellBg: '#F0FDF4' },
-    { key: '0.5P', label: '0.5P', sub: 'HALF', prop: 'halfDays', width: 26, color: '#2563EB', bg: '#EFF6FF', cellBg: 'transparent' },
-    { key: 'WH', label: 'WH', sub: 'WFH', prop: 'workFromHomeDays', width: 22, color: '#0D9488', bg: '#F0FDFA', cellBg: 'transparent' },
-    { key: 'OT', label: 'OT', sub: 'HRS', prop: 'overtimeDays', width: 22, color: '#0D9488', bg: '#F0FDFA', cellBg: 'transparent' },
-    { key: 'C/O', label: 'C/O', sub: 'OFF', prop: 'compOffs', width: 24, color: '#0891B2', bg: '#ECFEFF', cellBg: 'transparent' },
-    { key: 'E/L', label: 'E/L', sub: 'EARN', prop: 'earnedLeaves', width: 22, color: '#4F46E5', bg: '#EEF2FF', cellBg: 'transparent' },
-    { key: 'S/L', label: 'S/L', sub: 'SICK', prop: 'sickLeaves', width: 22, color: '#9333EA', bg: '#FAF5FF', cellBg: 'transparent' },
-    { key: 'A', label: 'A', sub: 'ABS', prop: 'absentDays', width: 22, color: '#DC2626', bg: '#FEF2F2', cellBg: '#FEF2F2' },
-    { key: 'W/O', label: 'W/O', sub: 'OFF', prop: 'weekOffs', width: 24, color: '#64748B', bg: '#F8FAFC', cellBg: 'transparent' },
-    { key: 'H', label: 'H', sub: 'HOL', prop: 'holidays', width: 22, color: '#EA580C', bg: '#FFF7ED', cellBg: 'transparent' },
-    { key: 'Pay', label: 'Pay', sub: 'TOT', prop: 'totalPayableDays', width: 28, color: '#065F46', bg: '#D1FAE5', cellBg: '#ECFDF5' },
-  ];
-  const totalSummaryWidth = summaryCols.reduce((sum, c) => sum + c.width, 0); // 258 pt
   const totalAvailableWidth = 1150; // A3 width 1190.55 - 40 padding
-  const remainingForDays = totalAvailableWidth - snoWidth - empColWidth - totalSummaryWidth; // 672 pt
 
   return (
     <Document>
@@ -2526,12 +2515,48 @@ export const MonthlyMatrixReportDocument: React.FC<{
         }
         const monthDays = eachDayOfInterval({ start: displayStart, end: displayEnd });
         const numDays = monthDays.length || 1;
-        const dayColWidth = Number((remainingForDays / numDays).toFixed(2));
 
         const recalculatedMonthData = monthData.map((emp: any) => ({
           ...emp,
           ...calculateStatsForDateRange(emp.statuses || [], monthDays)
         }));
+
+        // Role-based summary columns:
+        // Admin / HR roles have EL, C/O, S/L, WH.
+        // Roles below Admin (site staff, technicians, security, HK) have P, 0.5P, W/P, W/O, H, A, Pay.
+        const hasAdminEmployees = recalculatedMonthData.some((emp: any) => {
+          const roleStr = String(emp.role || emp.designation || '').toLowerCase();
+          const isAdm = /admin|super_admin|management|director|hr/i.test(roleStr);
+          const hasAdminLeaves = (emp.earnedLeaves > 0) || (emp.compOffs > 0) || (emp.sickLeaves > 0) || (emp.workFromHomeDays > 0);
+          return isAdm || hasAdminLeaves;
+        });
+
+        const summaryCols = hasAdminEmployees ? [
+          { key: 'P', label: 'P', sub: 'DAYS', prop: 'presentDays', width: 24, color: '#059669', bg: '#ECFDF5', cellBg: '#F0FDF4' },
+          { key: '0.5P', label: '0.5P', sub: 'HALF', prop: 'halfDays', width: 26, color: '#2563EB', bg: '#EFF6FF', cellBg: 'transparent' },
+          { key: 'W/P', label: 'W/P', sub: 'W/O', prop: 'workedWeekOffDays', width: 24, color: '#15803D', bg: '#DCFCE7', cellBg: '#F0FDF4' },
+          { key: 'WH', label: 'WH', sub: 'WFH', prop: 'workFromHomeDays', width: 22, color: '#0D9488', bg: '#F0FDFA', cellBg: 'transparent' },
+          { key: 'OT', label: 'OT', sub: 'HRS', prop: 'overtimeDays', width: 22, color: '#0D9488', bg: '#F0FDFA', cellBg: 'transparent' },
+          { key: 'C/O', label: 'C/O', sub: 'OFF', prop: 'compOffs', width: 24, color: '#0891B2', bg: '#ECFEFF', cellBg: 'transparent' },
+          { key: 'E/L', label: 'E/L', sub: 'EARN', prop: 'earnedLeaves', width: 22, color: '#4F46E5', bg: '#EEF2FF', cellBg: 'transparent' },
+          { key: 'S/L', label: 'S/L', sub: 'SICK', prop: 'sickLeaves', width: 22, color: '#9333EA', bg: '#FAF5FF', cellBg: 'transparent' },
+          { key: 'A', label: 'A', sub: 'ABS', prop: 'absentDays', width: 22, color: '#DC2626', bg: '#FEF2F2', cellBg: '#FEF2F2' },
+          { key: 'W/O', label: 'W/O', sub: 'OFF', prop: 'weekOffs', width: 24, color: '#64748B', bg: '#F8FAFC', cellBg: 'transparent' },
+          { key: 'H', label: 'H', sub: 'HOL', prop: 'holidays', width: 22, color: '#EA580C', bg: '#FFF7ED', cellBg: 'transparent' },
+          { key: 'Pay', label: 'Pay', sub: 'TOT', prop: 'totalPayableDays', width: 28, color: '#065F46', bg: '#D1FAE5', cellBg: '#ECFDF5' },
+        ] : [
+          { key: 'P', label: 'P', sub: 'DAYS', prop: 'presentDays', width: 26, color: '#059669', bg: '#ECFDF5', cellBg: '#F0FDF4' },
+          { key: '0.5P', label: '0.5P', sub: 'HALF', prop: 'halfDays', width: 26, color: '#2563EB', bg: '#EFF6FF', cellBg: 'transparent' },
+          { key: 'W/P', label: 'W/P', sub: 'W/O', prop: 'workedWeekOffDays', width: 26, color: '#15803D', bg: '#DCFCE7', cellBg: '#F0FDF4' },
+          { key: 'W/O', label: 'W/O', sub: 'OFF', prop: 'weekOffs', width: 26, color: '#64748B', bg: '#F8FAFC', cellBg: 'transparent' },
+          { key: 'H', label: 'H', sub: 'HOL', prop: 'holidays', width: 24, color: '#EA580C', bg: '#FFF7ED', cellBg: 'transparent' },
+          { key: 'A', label: 'A', sub: 'ABS', prop: 'absentDays', width: 24, color: '#DC2626', bg: '#FEF2F2', cellBg: '#FEF2F2' },
+          { key: 'Pay', label: 'Pay', sub: 'TOT', prop: 'totalPayableDays', width: 30, color: '#065F46', bg: '#D1FAE5', cellBg: '#ECFDF5' },
+        ];
+
+        const totalSummaryWidth = summaryCols.reduce((sum, c) => sum + c.width, 0);
+        const remainingForDays = totalAvailableWidth - snoWidth - empColWidth - totalSummaryWidth;
+        const dayColWidth = Number((remainingForDays / numDays).toFixed(2));
 
         // Resolve exact holidays using shared algorithm (guarantees 100% match with HTML view)
         const dayHeaders = resolveMonthlyDayHeaders(monthDays, userHolidaysPool);

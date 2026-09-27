@@ -520,6 +520,79 @@ export function isBangaloreLocation(location?: string): boolean {
   return /\b(bangalore|bengaluru|blr|bgl)\b/.test(loc) || loc.includes('bangalore') || loc.includes('bengaluru');
 }
 
+/**
+ * Evaluates whether an employee is a standard Security Guard who receives NO weekly off.
+ * Rule: Standard Security Guards get NO weekly off.
+ * Exception:
+ *   - General Shift Security (shift or designation is General / GEN) -> WILL get week off
+ *   - Security Officers / Supervisors (Officer, SO, Supervisor, Field Officer, ASO, CSO, CCTV) -> WILL get week off
+ * Non-security staff (HK, MEP, Admin, etc.) receive normal weekly off eligibility.
+ */
+export function isSecurityGuardWithoutWeekOff(emp?: {
+  designation?: string;
+  role?: string;
+  shiftName?: string;
+  shiftCode?: string;
+  department?: string;
+  company?: string;
+  empCode?: string;
+} | null): boolean {
+  if (!emp) return false;
+  const des = (emp.designation || '').toLowerCase().trim();
+  const role = (emp.role || '').toLowerCase().trim();
+  const shift = (emp.shiftName || emp.shiftCode || '').toLowerCase().trim();
+  const dept = (emp.department || '').toLowerCase().trim();
+  const comp = (emp.company || '').toLowerCase().trim();
+  const code = (emp.empCode || '').trim();
+
+  // Check if this is a security department/role/company or 32xxx code or security shift
+  const isSecurity =
+    comp.includes('southwall') ||
+    comp.includes('security') ||
+    dept.includes('security') ||
+    dept.includes('southwall') ||
+    des.includes('security') ||
+    des.includes('guard') ||
+    role.includes('security') ||
+    shift.includes('security') ||
+    shift.includes('night-12') ||
+    shift.includes('day-12') ||
+    code.startsWith('32') ||
+    des.includes('patrol') ||
+    des.includes('gunman') ||
+    des.includes('bouncer');
+  if (!isSecurity) return false;
+
+  // 1. General shift security WILL get week off
+  const isGeneralShift =
+    shift.includes('gen') ||
+    shift.includes('general') ||
+    des.includes('general') ||
+    role.includes('general');
+  if (isGeneralShift) return false;
+
+  // 2. Security officer / supervisor / field officer / ASO / CCTV WILL get week off
+  const isOfficerOrSupervisor =
+    /\b(so|aso|cso)\b/i.test(des) ||
+    /\b(so|aso|cso)\b/i.test(role) ||
+    des.includes('officer') ||
+    role.includes('officer') ||
+    des.includes('supervisor') ||
+    role.includes('supervisor') ||
+    des.includes('cctv') ||
+    role.includes('cctv') ||
+    des.includes('controller') ||
+    des.includes('incharge') ||
+    des.includes('in-charge') ||
+    des.includes('field officer') ||
+    des.includes('head guard') ||
+    role.includes('head guard');
+  if (isOfficerOrSupervisor) return false;
+
+  // 3. Standard Security Guard (Day Duty 12h, Night Duty 12h, standard SG / Guard) -> NO WEEK OFF!
+  return true;
+}
+
 export function evaluateAttendanceStatus(params: {
   day: Date;
   userId: string;
@@ -1004,6 +1077,16 @@ export function evaluateAttendanceStatus(params: {
               if (hrs >= halfDayHrs) return `0.5${baseType}/P`;
               return baseType;
           }
+          const isSecGuardNoWO = isSecurityGuardWithoutWeekOff({
+              role: userRole,
+              designation: userRole,
+              shiftName: resolvedShift?.name || resolvedShift?.code
+          });
+          if (isSecGuardNoWO) {
+              if (hrs >= full) return 'P';
+              if (hrs >= halfDayHrs) return '0.5P';
+              return 'A'; // Security Guard gets NO week off!
+          }
           if (hrs >= full) return 'W/P';
           if (hrs >= halfDayHrs) return '0.5W/P';
           return isEligible ? 'W/O' : 'A';
@@ -1128,7 +1211,16 @@ export function evaluateAttendanceStatus(params: {
                       const baseType = recurringHolidayType;
                       status = hrs >= full ? `${baseType}/P` : (hrs >= halfDayHrs ? `0.5${baseType}/P` : baseType);
                   } else {
-                      status = hrs >= full ? 'W/P' : (hrs >= halfDayHrs ? '0.5W/P' : (isEligible ? 'W/O' : 'A'));
+                      const isSecGuardNoWO = isSecurityGuardWithoutWeekOff({
+                          role: userRole,
+                          designation: userRole,
+                          shiftName: resolvedShift?.name || resolvedShift?.code
+                      });
+                      if (isSecGuardNoWO) {
+                          status = hrs >= full ? 'P' : (hrs >= halfDayHrs ? '0.5P' : 'A');
+                      } else {
+                          status = hrs >= full ? 'W/P' : (hrs >= halfDayHrs ? '0.5W/P' : (isEligible ? 'W/O' : 'A'));
+                      }
                   }
               }
               else status = workStatus;
@@ -1140,7 +1232,16 @@ export function evaluateAttendanceStatus(params: {
       if (isConfiguredHoliday || isPoolHoliday || isFixedHoliday) {
           status = 'H';
       } else if ((isWeekend || isRecurringHoliday) && isEligible) {
-          status = isRecurringHoliday ? recurringHolidayType : 'W/O';
+          const isSecGuardNoWO = isSecurityGuardWithoutWeekOff({
+              role: userRole,
+              designation: userRole,
+              shiftName: resolvedShift?.name || resolvedShift?.code
+          });
+          if (isSecGuardNoWO) {
+              status = 'A';
+          } else {
+              status = isRecurringHoliday ? recurringHolidayType : 'W/O';
+          }
       } else {
           status = 'A';
       }
@@ -1350,6 +1451,7 @@ export function calculateDailyPathTravelKm(
 export interface RangeStats {
   presentDays: number;
   halfDays: number;
+  workedWeekOffDays: number;
   overtimeDays: number;
   compOffs: number;
   earnedLeaves: number;
@@ -1367,6 +1469,7 @@ export interface RangeStats {
 export function calculateStatsForDateRange(statuses: string[], days: Date[]): RangeStats {
   let presentDays = 0;
   let halfDays = 0;
+  let workedWeekOffDays = 0;
   let overtimeDays = 0;
   let compOffs = 0;
   let earnedLeaves = 0;
@@ -1387,7 +1490,8 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
     if (s.includes('LOP') || s === 'LOP') return 0;
     if (s === '1.00+0.00' || s === '1.00' || s === '1.0' || s === '1') return 1.0;
     if (s.includes('+')) return s.split('+').reduce((acc, part) => acc + resolvePayableValue(part.trim()), 0);
-    if (['W/P', 'WP', 'H/P', 'HP', 'BL/P', 'BLP', 'PL/P', 'PLP'].includes(s)) return 1.5; 
+    // Working on a Weekly Off (W/P) or Holiday (H/P) awards 2.0 payable days (1 worked duty + 1 baseline entitlement)
+    if (['W/P', 'WP', 'H/P', 'HP', 'BL/P', 'BLP', 'PL/P', 'PLP'].includes(s)) return 2.0; 
     if (['P', 'W/O', 'WO', 'WOP', 'H', 'SL', 'S/L', 'EL', 'E/L', 'CL', 'C/L', 'C/O', 'CO', 'W/H', 'WH', 'BL', 'F/H', 'FH', 'PL', 'P/L', 'ML', 'M/L', 'CC', 'C/C', 'CCL'].includes(s)) return 1;
     // Handle half-day leave types explicitly (e.g. '0.5SL', '0.5WH', '0.5EL', '0.5CL')
     if (s.startsWith('0.5') && (s.includes('SL') || s.includes('S/L') || s.includes('EL') || s.includes('E/L') || s.includes('CL') || s.includes('C/L') || s.includes('WH') || s.includes('W/H') || s.includes('BL') || s.includes('PL') || s.includes('ML') || s.includes('CCL') || s.includes('CO') || s.includes('C/O'))) return 0.5;
@@ -1433,14 +1537,14 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
       const inc = isHalf ? 0.5 : 1;
 
       if (part === 'P') presentDays++;
-      else if (part === 'W/P' || part === 'BL/P' || part === 'PL/P') {
+      else if (part === 'W/P' || part === 'WP') {
           presentDays++;
-          if (part === 'W/P') {
-              weekOffs++;
-          } else {
-              floatingHolidays += inc;
-              if (part === 'PL/P') pinkLeaves += inc;
-          }
+          workedWeekOffDays++;
+      }
+      else if (part === 'BL/P' || part === 'PL/P') {
+          presentDays++;
+          floatingHolidays += inc;
+          if (part === 'PL/P') pinkLeaves += inc;
       }
       else if (part.endsWith('RP') && part !== 'RP') {
           const val = parseFloat(part.slice(0, -2));
@@ -1471,7 +1575,7 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
       else if (part === 'PL' || part === '0.5PL' || part.includes('PL') || part.includes('P/L')) { pinkLeaves += inc; floatingHolidays += inc; }
       else if (part === 'WOP') { weekOffs++; }
       else if (part === 'H') holidays++;
-      else if (part === 'H/P') { holidays++; presentDays++; }
+      else if (part === 'H/P' || part === 'HP') { holidays++; presentDays++; }
       else if (part.includes('SL') || part.includes('S/L')) { sickLeaves += inc; }
       else if (part.includes('EL') || part.includes('E/L')) { earnedLeaves += inc; }
       else if (part.includes('CL') || part.includes('C/L')) { casualLeaves += inc; }
@@ -1496,6 +1600,7 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
   return {
     presentDays,
     halfDays,
+    workedWeekOffDays,
     overtimeDays,
     compOffs,
     earnedLeaves,
@@ -1507,7 +1612,7 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
     weekOffs,
     holidays,
     floatingHolidays,
-    totalPayableDays: Math.min(days.length, totalPayableDays)
+    totalPayableDays: Number(totalPayableDays.toFixed(2))
   };
 }
 

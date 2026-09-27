@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { isSecurityGuardWithoutWeekOff } from '../utils/attendanceCalculations';
 
 export interface SiteHoliday {
   id: string;
@@ -11,7 +12,7 @@ const STORAGE_KEY_WEEKLY_OFFS = 'paradigm_employee_weekly_offs';
 const STORAGE_KEY_SITE_HOLIDAYS = 'paradigm_site_holidays';
 
 /**
- * Load all employee weekly offs from localStorage.
+ * Load all employee weekly offs from localStorage, merging any stored records.
  * Returns a Record<empCode, string[] of date strings>
  */
 export const getStoredEmployeeWeeklyOffs = (): Record<string, string[]> => {
@@ -26,12 +27,110 @@ export const getStoredEmployeeWeeklyOffs = (): Record<string, string[]> => {
 };
 
 /**
- * Save an employee's weekly off dates to localStorage.
- * Supabase backup is fire-and-forget (non-blocking).
+ * Record a weekly off in attendance_corrections table (non-blocking).
+ * Security Guards get NO weekly off — only General Shift Security & Security Officers get week off.
+ */
+export const recordWeeklyOffInCorrections = async (
+  empCode: string,
+  dateStr: string,
+  empName?: string,
+  site?: string,
+  designation?: string,
+  company?: string
+): Promise<void> => {
+  try {
+    // Standard Security Guards receive NO weekly off!
+    if (isSecurityGuardWithoutWeekOff({ designation, department: site, company, empCode })) {
+      return;
+    }
+    const cleanCode = empCode.toLowerCase().trim();
+    const payload = {
+      id: `corr-wo-${cleanCode}-${dateStr}`,
+      emp_code: cleanCode,
+      emp_name: empName || null,
+      attendance_date: dateStr,
+      site: site || null,
+      shift_name: 'W/O',
+      corrected_by: '6-day cycle policy',
+      corrected_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    supabase
+      .from('attendance_corrections')
+      .upsert(payload, { onConflict: 'emp_code,attendance_date' })
+      .then(() => {}, () => {});
+  } catch {
+    // Non-blocking
+  }
+};
+
+/**
+ * Load remote weekly offs from Supabase (employee_weekly_offs and attendance_corrections)
+ * and merge them with local storage cache.
+ */
+export const loadRemoteWeeklyOffs = async (): Promise<Record<string, string[]>> => {
+  const localMap = getStoredEmployeeWeeklyOffs();
+  try {
+    // 1. Check employee_weekly_offs table
+    const { data: woData } = await supabase
+      .from('employee_weekly_offs')
+      .select('emp_code, weekly_offs');
+
+    if (woData && Array.isArray(woData)) {
+      woData.forEach((row: any) => {
+        const c = String(row.emp_code || '').toLowerCase().trim();
+        const dates: string[] = Array.isArray(row.weekly_offs) ? row.weekly_offs : [];
+        if (c && dates.length > 0) {
+          const existing = localMap[c] || [];
+          const merged = Array.from(new Set([...existing, ...dates]));
+          localMap[c] = merged;
+          localMap[c.replace(/^0+/, '')] = merged;
+        }
+      });
+    }
+
+    // 2. Also check attendance_corrections for W/O shifts
+    const { data: corrData } = await supabase
+      .from('attendance_corrections')
+      .select('emp_code, attendance_date')
+      .eq('shift_name', 'W/O');
+
+    if (corrData && Array.isArray(corrData)) {
+      corrData.forEach((row: any) => {
+        const c = String(row.emp_code || '').toLowerCase().trim();
+        const d = String(row.attendance_date || '').trim();
+        if (c && d) {
+          const existing = localMap[c] || [];
+          if (!existing.includes(d)) {
+            existing.push(d);
+            localMap[c] = existing;
+            localMap[c.replace(/^0+/, '')] = existing;
+          }
+        }
+      });
+    }
+
+    try {
+      localStorage.setItem(STORAGE_KEY_WEEKLY_OFFS, JSON.stringify(localMap));
+    } catch {
+      // Storage error fallback
+    }
+  } catch (err) {
+    console.warn('[attendanceRosterService] Error loading remote weekly offs:', err);
+  }
+
+  return localMap;
+};
+
+/**
+ * Save an employee's weekly off dates to localStorage, employee_weekly_offs,
+ * and attendance_corrections in Supabase.
  */
 export const saveEmployeeWeeklyOffs = async (
   empCode: string,
-  dates: string[]
+  dates: string[],
+  empName?: string,
+  siteName?: string
 ): Promise<Record<string, string[]>> => {
   const current = getStoredEmployeeWeeklyOffs();
   const cleanCode = empCode.toLowerCase().trim();
@@ -47,11 +146,16 @@ export const saveEmployeeWeeklyOffs = async (
     console.warn('[attendanceRosterService] Error writing weekly offs to localStorage:', err);
   }
 
-  // Fire-and-forget Supabase sync
+  // 1. Sync to employee_weekly_offs table in Supabase
   supabase.from('employee_weekly_offs').upsert(
     { emp_code: cleanCode, weekly_offs: dates, updated_at: new Date().toISOString() },
     { onConflict: 'emp_code' }
   ).then(() => {}, () => {});
+
+  // 2. Sync each date to attendance_corrections table in Supabase
+  dates.forEach(d => {
+    recordWeeklyOffInCorrections(cleanCode, d, empName, siteName);
+  });
 
   return next;
 };

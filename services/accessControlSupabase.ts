@@ -462,6 +462,7 @@ export async function saveCorrectionToSupabase(correction: AttendanceCorrectionD
       updated_at: new Date().toISOString(),
     };
 
+
     const { error } = await supabase
       .from('attendance_corrections')
       .upsert(payload, { onConflict: 'emp_code,attendance_date' });
@@ -512,11 +513,19 @@ export async function updateMssqlEmployeeDirectly(
   companyName?: string
 ): Promise<boolean> {
   try {
-    const apiBaseUrl = (
-      import.meta.env.VITE_API_URL || 
+    // When VITE_API_URL is empty (local dev), call same-origin Vercel API route.
+    // In production (Vercel / app.paradigmfms.com) the env var is set.
+    const configuredBase = (
+      import.meta.env.VITE_API_URL ||
       (Capacitor.isNativePlatform() ? 'https://app.paradigmfms.com' : '')
     ).replace(/\/$/, '');
-    const res = await fetch(`${apiBaseUrl}/api/mssql-update-employee`, {
+
+    // Local dev: use relative path so it hits the Vite/Vercel dev server correctly
+    const apiUrl = configuredBase
+      ? `${configuredBase}/api/mssql?action=update-employee`
+      : `/api/mssql?action=update-employee`;
+
+    const res = await fetch(apiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ empCode, empName, siteName, designation, companyName })
@@ -529,3 +538,4 @@ export async function updateMssqlEmployeeDirectly(
     return false;
   }
 }
+

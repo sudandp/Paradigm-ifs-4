@@ -4065,6 +4065,8 @@ const AttendanceDashboard: React.FC = () => {
     // Helper to map high-precision monthly data to the simple status grid format
     const mapToMonthlyReportRow = (emp: any): MonthlyReportRow => ({
         userName: emp.employeeName || emp.userName || 'Unknown',
+        role: emp.role || emp.designation || emp.department,
+        workedWeekOffDays: emp.workedWeekOffDays || emp.weekendPresents || 0,
         statuses: emp.statuses || [],
         presentDays: emp.presentDays || 0,
         halfDays: emp.halfDays || 0,

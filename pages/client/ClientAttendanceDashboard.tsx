@@ -44,6 +44,7 @@ import {
 } from 'recharts';
 import { exportGenericReportToExcel, exportDetailedAuditReportToExcel, exportMonthlyMatrixToExcel, GenericReportColumn } from '../../utils/excelExport';
 import { isSecurityEmployee, getCompanyBranding } from '../../utils/reportLogos';
+import { isSecurityGuardWithoutWeekOff } from '../../utils/attendanceCalculations';
 import { createPasswordProtectedZip } from '../../utils/zipCrypto';
 import type { DetailedAuditPdfEmployee, DetailedAuditPdfDataRow, BasicReportDataRow } from '../attendance/PDFReports';
 import Logo from '../../components/ui/Logo';
@@ -56,6 +57,8 @@ import { SiteHolidayFeedingModal } from '../../components/attendance/SiteHoliday
 import { BulkRosterModal, BulkRosterAssignmentResult } from '../../components/attendance/BulkRosterModal';
 import {
   getStoredEmployeeWeeklyOffs,
+  loadRemoteWeeklyOffs,
+  recordWeeklyOffInCorrections,
   saveEmployeeWeeklyOffs,
   getStoredSiteHolidays,
   saveSiteHoliday,
@@ -355,6 +358,25 @@ export function formatDisplayTime(timeStr: string | null | undefined): string {
   return clean;
 }
 
+export function formatDisplayTime12(timeStr: string | null | undefined): string {
+  if (!timeStr || timeStr === '—' || timeStr === '-' || timeStr === 'null' || timeStr === 'undefined') return '-';
+  const clean = String(timeStr).replace(/\n/g, ' ').trim();
+  if (clean === '-' || clean === '—' || clean === '') return '-';
+
+  const match = clean.match(/(?:^|[\sT])(\d{1,2}):(\d{2})(?::\d{2})?(?:\s*(am|pm))?/i);
+  if (match) {
+    let h = parseInt(match[1], 10);
+    const m = match[2];
+    const ap = match[3]?.toUpperCase();
+    if (ap === 'PM' && h < 12) h += 12;
+    if (ap === 'AM' && h === 12) h = 0;
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const h12 = h % 12 === 0 ? 12 : h % 12;
+    return `${String(h12).padStart(2, '0')}:${m} ${ampm}`;
+  }
+  return clean;
+}
+
 // ─── Types ─────────────────────────────────────────────────────────────────
 
 export interface ShiftRuleConfig {
@@ -395,6 +417,7 @@ interface EmployeeRow {
   isSmartSite?: boolean;
   originalDept?: string;
   designation: string;
+  role?: string;
   company?: string;
   location?: string;
   inTime: string | null;
@@ -416,6 +439,7 @@ interface EmployeeRow {
   lifecycleStatus?: string;
   firstEverPunchDate?: string | null;
   hadPrevNightShift?: boolean;
+  prevNightInPunch?: string | null;
 }
 
 interface TrendPoint {
@@ -467,11 +491,13 @@ const StatusBadge: React.FC<{
   inTime?: string | null;
   outTime?: string | null;
   shiftType?: 'single' | 'double' | 'triple';
+  shiftName?: string;
+  shiftTiming?: string;
   selectedDate?: string;
   lifecycleStatus?: string;
   isMissedPunchIn?: boolean;
   isMissedPunchOut?: boolean;
-}> = ({ status, shiftCompleted, inTime, outTime, shiftType, selectedDate, lifecycleStatus, isMissedPunchIn, isMissedPunchOut }) => {
+}> = ({ status, shiftCompleted, inTime, outTime, shiftType, shiftName, shiftTiming, selectedDate, lifecycleStatus, isMissedPunchIn, isMissedPunchOut }) => {
   const todayStr = new Date().toISOString().slice(0, 10);
   const isToday = !selectedDate || selectedDate === todayStr;
 
@@ -528,20 +554,42 @@ const StatusBadge: React.FC<{
     );
   }
 
-  if (status === 'Expected Night Shift' || status === 'Night Shift Pending') {
+  if (status === 'On Night Duty' || status === 'Active Night Shift' || status === 'Prev Day Night Duty' || status === 'Prev Night Duty') {
+    const isMepShift = Boolean((shiftName && (shiftName.includes('C Shift') || shiftName.includes('A Shift') || shiftName.includes('B Shift') || shiftName === 'C')) || (shiftTiming && shiftTiming.includes('07:00 AM')));
+    const endStr = (outTime && outTime.includes('08:00')) ? '08:00 AM' : '07:00 AM';
+    const badgeText = isMepShift ? `Prev C Shift Duty (Until ${endStr})` : `Prev Day Night Duty (Until ${endStr})`;
     return (
-      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-teal-100 text-teal-900 border border-teal-300 dark:bg-[#072415] dark:text-teal-300 dark:border-[#134426]">
-        <Moon size={11} className="text-teal-600 dark:text-[#44D62C] shrink-0 animate-pulse" />
-        Expected Night Shift (08:00 PM)
+      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-emerald-100 text-emerald-950 border border-emerald-400 dark:bg-[#072415] dark:text-[#44D62C] dark:border-[#134426] shadow-xs">
+        <Moon size={11} className="text-emerald-700 dark:text-[#44D62C] shrink-0 animate-pulse" />
+        {badgeText}
       </span>
+    );
+  }
+
+  if (status === 'Expected Night Shift' || status === 'Night Shift Pending' || status === 'Expected C Shift') {
+    const isMepShift = Boolean((shiftName && (shiftName.includes('C Shift') || shiftName === 'C')) || (shiftTiming && (shiftTiming.includes('09:00') || shiftTiming.includes('07:00'))));
+    const label = isMepShift ? 'Expected C Shift (09:00 PM)' : 'Expected Night Shift (08:00 PM)';
+    const completedText = isMepShift ? 'Prev C Shift Completed' : 'Prev Night Completed';
+    return (
+      <div className="flex flex-col items-center gap-0.5">
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-teal-100 text-teal-900 border border-teal-300 dark:bg-[#072415] dark:text-teal-300 dark:border-[#134426]">
+          <Moon size={11} className="text-teal-600 dark:text-[#44D62C] shrink-0 animate-pulse" />
+          {label}
+        </span>
+        {shiftCompleted && (
+          <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+            {completedText}
+          </span>
+        )}
+      </div>
     );
   }
 
   if (shiftType === 'triple') {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-red-600 text-white border border-red-700 shadow-xs animate-pulse">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-rose-600 text-white border border-rose-700 shadow-xs">
         <AlertTriangle size={11} className="shrink-0" />
-        Triple Duty (A+B+C)
+        TRIPLE DUTY (3 SHIFTS)
       </span>
     );
   }
@@ -589,6 +637,9 @@ const ShiftBadge: React.FC<{ shiftName?: string; shiftTiming?: string }> = ({ sh
   // Normalized matching & styles with high-contrast text and dark mode backgrounds
   const getBadgeStyle = (name: string): string => {
     const lower = name.toLowerCase();
+    if (lower.includes('a + b + c') || lower.includes('a+b+c') || lower.includes('triple')) {
+      return 'bg-rose-100 text-rose-950 border-rose-400 dark:bg-rose-950/80 dark:text-rose-200 dark:border-rose-700 shadow-sm font-black';
+    }
     if (lower.includes('+') || lower.includes('double')) {
       return 'bg-amber-100 text-amber-950 border-amber-400 dark:bg-amber-950/80 dark:text-amber-200 dark:border-amber-700 shadow-sm font-extrabold';
     }
@@ -620,7 +671,8 @@ const ShiftBadge: React.FC<{ shiftName?: string; shiftTiming?: string }> = ({ sh
   };
 
   const badgeStyle = getBadgeStyle(shiftName);
-  const isDouble = (shiftName || '').includes('+') || (shiftName || '').toLowerCase().includes('double');
+  const isTriple = (shiftName || '').includes('A + B + C') || (shiftName || '').includes('A+B+C') || (shiftName || '').toLowerCase().includes('triple');
+  const isDouble = !isTriple && ((shiftName || '').includes('+') || (shiftName || '').toLowerCase().includes('double'));
 
   return (
     <div className="flex flex-col gap-0.5">
@@ -628,11 +680,15 @@ const ShiftBadge: React.FC<{ shiftName?: string; shiftTiming?: string }> = ({ sh
         <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold border ${badgeStyle} w-max`}>
           {shiftName}
         </span>
-        {isDouble && (
+        {isTriple ? (
+          <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-black bg-rose-600 text-white shadow-xs">
+            3 DUTIES
+          </span>
+        ) : isDouble ? (
           <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-amber-500 text-slate-950 shadow-xs">
             2 DUTIES
           </span>
-        )}
+        ) : null}
       </div>
       {shiftTiming && (
         <span className="text-[9px] text-slate-500 dark:text-emerald-400/80 font-mono font-medium">{shiftTiming}</span>
@@ -1183,6 +1239,11 @@ const ClientAttendanceDashboard: React.FC = () => {
 
   useEffect(() => {
     getStoredSiteHolidays(activeRosterSite).then(res => setSiteHolidaysList(res || []));
+    loadRemoteWeeklyOffs().then(res => {
+      if (res && Object.keys(res).length > 0) {
+        setEmployeeWeeklyOffsMap(res);
+      }
+    });
   }, [activeRosterSite]);
 
   const handleSaveWeeklyOffs = async (empCode: string, dates: string[]) => {
@@ -1322,17 +1383,30 @@ const ClientAttendanceDashboard: React.FC = () => {
       setEmpOverrides(prev => {
         const merged = { ...prev };
         for (const c of corrections) {
+          const empInList = data?.employees?.find(e => String(e.empCode).trim() === String(c.empCode).trim());
+          const desig = c.designation || empInList?.designation;
+          const isSecGuard = isSecurityGuardWithoutWeekOff({
+            designation: desig,
+            department: c.site || empInList?.department,
+            shiftName: c.shiftName
+          });
+          const isWOShift = c.shiftName === 'W/O' || c.shiftName === 'WO';
+          // Security Guards get NO week off — ignore W/O shift corrections for them
+          const effShiftName = (isSecGuard && isWOShift)
+            ? (merged[c.empCode]?.shiftName && merged[c.empCode]?.shiftName !== 'W/O' && merged[c.empCode]?.shiftName !== 'WO' ? merged[c.empCode]?.shiftName : undefined)
+            : (c.shiftName || merged[c.empCode]?.shiftName);
+
           merged[c.empCode] = {
             empName: c.empName || merged[c.empCode]?.empName,
             site: c.site || merged[c.empCode]?.site,
-            shiftName: c.shiftName || merged[c.empCode]?.shiftName,
+            shiftName: effShiftName,
             designation: c.designation || merged[c.empCode]?.designation,
           };
         }
         return merged;
       });
     });
-  }, [selectedDate]);
+  }, [selectedDate, data?.employees]);
 
   // ── Fetch system users for Mail Report modal recipient selector ───────────
   useEffect(() => {
@@ -1503,9 +1577,13 @@ const ClientAttendanceDashboard: React.FC = () => {
     setColumnFilters({});
     setPageSize(pendingPageSize);
     setCurrentPage(1);
-    // Apply the date range
-    setDateRange(pendingDateRange);
-    setActiveDateFilter(pendingActiveDateFilter);
+    // Apply the date range — Monthly Summary & Detailed Audit are month-based reports, auto-switch to This Month if on Today/Yesterday
+    if ((pendingReportType === 'monthly' || pendingReportType === 'detailed') && (pendingActiveDateFilter === 'Today' || pendingActiveDateFilter === 'Yesterday')) {
+      handlePresetDateChange('This Month');
+    } else {
+      setDateRange(pendingDateRange);
+      setActiveDateFilter(pendingActiveDateFilter);
+    }
     if (tableRef.current) {
       tableRef.current.scrollIntoView({ behavior: 'smooth' });
     }
@@ -2464,7 +2542,8 @@ const ClientAttendanceDashboard: React.FC = () => {
 function evaluateEmployeeShiftAndLate(
   emp: EmployeeRow,
   rules: ShiftRuleConfig[],
-  overrides?: Record<string, { shiftName?: string; shiftCode?: string; departmentOverride?: DepartmentKey; designation?: string; site?: string; company?: string; empName?: string }>
+  overrides?: Record<string, { shiftName?: string; shiftCode?: string; departmentOverride?: DepartmentKey; designation?: string; site?: string; company?: string; empName?: string }>,
+  selectedDate?: string
 ) {
   const cleanCode = (emp.empCode || '').replace(/\D/g, '');
   const override = (overrides && emp.empCode ? overrides[emp.empCode] : null) || {};
@@ -2482,8 +2561,15 @@ function evaluateEmployeeShiftAndLate(
   const isGarden = deptKey === 'garden';
   const isExpectedNight = Boolean(emp.hadPrevNightShift);
 
-  // If manual shift override exists, respect it!
-  if (override.shiftName) {
+  const isSecGuardNoWO = isSecurityGuardWithoutWeekOff({
+    designation: override.designation || emp.designation,
+    role: emp.role,
+    shiftName: override.shiftName || emp.shiftName,
+    department: override.site || emp.department
+  });
+
+  // If manual shift override exists, respect it (except W/O for Security Guards who get no week off)!
+  if (override.shiftName && !(isSecGuardNoWO && (override.shiftName === 'W/O' || override.shiftName === 'WO'))) {
     const matchedRule = rules.find(r => r.groupName === override.shiftName || r.shiftCode === override.shiftCode);
     return {
       shiftName: override.shiftName,
@@ -2530,7 +2616,12 @@ function evaluateEmployeeShiftAndLate(
     (totalInMinutes !== null && totalOutMinutes !== null && (
       (totalInMinutes >= 18 * 60 && totalOutMinutes <= 13 * 60) || 
       (outPeriod === 'AM' && period === 'PM') ||
-      (totalInMinutes < 12 * 60 && totalOutMinutes <= 12 * 60 && ((emp.shiftName || '').includes('+') || (emp.shiftCode || '').includes('+')))
+      (totalInMinutes < 12 * 60 && totalOutMinutes <= 12 * 60 && (
+        (emp.shiftName || '').includes('+') || 
+        (emp.shiftCode || '').includes('+') || 
+        (emp.shiftName || '').toLowerCase().includes('triple') ||
+        (emp.workingHours && parseFloat(emp.workingHours) >= 18)
+      ))
     ))
   );
   if ((isNextDayOut || elapsedMinutes < 0) && totalInMinutes !== null && totalOutMinutes !== null) {
@@ -2539,27 +2630,54 @@ function evaluateEmployeeShiftAndLate(
 
   // ── A. CASE: NO PUNCH TODAY (SHIFT PENDING / ABSENT) ─────────────────────────
   if (totalInMinutes === null) {
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    const isViewingToday = !selectedDate || selectedDate === todayStr;
+    const now = new Date();
+    const currentHour = now.getHours() + now.getMinutes() / 60;
+    // Early morning overnight duty window: ONLY BEFORE 07:00 AM (e.g. 6:00 AM)
+    // After 07:00 AM, the new day starts (7:00 AM to next day 6:59 AM) so previous night duty is closed
+    const isEarlyMorningDuty = isViewingToday && currentHour < 7.0;
+    const isOvernightDuty = isExpectedNight && isEarlyMorningDuty;
+
     if (isSecurity) {
+      const showNight = isExpectedNight && isEarlyMorningDuty;
       return {
-        shiftName: isExpectedNight ? 'Security Night Duty (12h)' : 'Security Day Duty (12h)',
-        shiftCode: isExpectedNight ? 'NIGHT-12' : 'DAY-12',
-        shiftTiming: isExpectedNight ? '08:00 PM - 08:00 AM' : '08:00 AM - 08:00 PM',
+        shiftName: showNight ? 'Security Night Duty (12h)' : 'Security Day Duty (12h)',
+        shiftCode: showNight ? 'NIGHT-12' : 'DAY-12',
+        shiftTiming: showNight ? '08:00 PM - 08:00 AM' : '08:00 AM - 08:00 PM',
         shiftType: 'single' as const,
         isNextDayOut: false,
         lateMinutes: 0,
-        status: emp.status === 'Absent' ? (isExpectedNight ? 'Expected Night Shift' : emp.status) : emp.status,
+        status: isOvernightDuty
+          ? 'On Night Duty'
+          : (showNight ? 'Expected Night Shift' : emp.status),
       };
     }
 
     if (isMep) {
+      const showNight = isExpectedNight && isEarlyMorningDuty;
       return {
-        shiftName: isExpectedNight ? 'C Shift Group' : 'A Shift Group',
-        shiftCode: isExpectedNight ? 'C' : 'A',
-        shiftTiming: isExpectedNight ? '09:00 PM - 07:00 AM' : '07:00 AM - 02:00 PM',
+        shiftName: showNight ? 'C Shift Group' : 'A Shift Group',
+        shiftCode: showNight ? 'C' : 'A',
+        shiftTiming: showNight ? '09:00 PM - 07:00 AM' : '07:00 AM - 02:00 PM',
         shiftType: 'single' as const,
         isNextDayOut: false,
         lateMinutes: 0,
-        status: emp.status === 'Absent' ? (isExpectedNight ? 'Expected Night Shift' : emp.status) : emp.status,
+        status: isOvernightDuty
+          ? 'On Night Duty'
+          : (showNight ? 'Expected Night Shift' : emp.status),
+      };
+    }
+
+    if (isExpectedNight && isEarlyMorningDuty) {
+      return {
+        shiftName: 'C Shift Group',
+        shiftCode: 'C',
+        shiftTiming: '09:00 PM - 07:00 AM',
+        shiftType: 'single' as const,
+        isNextDayOut: false,
+        lateMinutes: 0,
+        status: isOvernightDuty ? 'On Night Duty' : 'Expected Night Shift',
       };
     }
 
@@ -2644,8 +2762,26 @@ function evaluateEmployeeShiftAndLate(
     let targetStartMins = 7 * 60;
     let shiftType: 'single' | 'double' | 'triple' = emp.shiftType || 'single';
 
+    // Triple Shift Detection: A + B + C Shift (Morning + Afternoon + Overnight Night Duty crossing into next day morning)
+    // Punches: 07:00 (A In) -> 14:00 (A Out), 14:05 (B In) -> 21:00 (B Out), 21:05 (C In) -> Next day 07:00 (C Out)
+    const isExplicitTriple = 
+      (emp.shiftName && (emp.shiftName.includes('A + B + C') || emp.shiftName.includes('A+B+C') || emp.shiftName.toLowerCase().includes('triple'))) ||
+      emp.shiftType === 'triple';
+
+    const isCalculatedTriple = 
+      isNextDayOut && 
+      totalInMinutes < 10 * 60 && 
+      (elapsedMinutes >= 18 * 60 || (emp.workingHours && parseFloat(emp.workingHours) >= 18));
+
+    if (isExplicitTriple || isCalculatedTriple) {
+      shiftName = 'A + B + C Shift Group';
+      shiftCode = 'A+B+C';
+      shiftTiming = '07:00 AM - 02:00 PM | 02:00 PM - 09:00 PM | 09:00 PM - 07:00 AM';
+      shiftType = 'triple';
+      targetStartMins = 7 * 60;
+    }
     // Double Shift Detection 1: A + C Shift (Morning + Night Duty crossing into next day morning)
-    if (
+    else if (
       isNextDayOut && (
         (emp.shiftName && (emp.shiftName.includes('A + C') || emp.shiftName.includes('A+C'))) ||
         (emp.shiftType === 'double' && totalInMinutes < 10 * 60)
@@ -3251,11 +3387,18 @@ const DetailedAuditReportView: React.FC<{
       const mssqlEmpDays = (rangeMssqlReportMap && (rangeMssqlReportMap[empCodeKey] || rangeMssqlReportMap[empCodeNum] || rangeMssqlReportMap[empNameKey])) || {};
       const liveMssqlDay = mssqlEmpDays[dateStr];
 
-      const isFedWO = empFedWODates.has(dateStr);
+      const isSecGuardNoWO = isSecurityGuardWithoutWeekOff({
+        designation: emp.designation,
+        role: emp.role,
+        shiftName: emp.shiftName,
+        department: emp.department
+      });
+
+      const isFedWO = !isSecGuardNoWO && empFedWODates.has(dateStr);
       const isSiteHoliday = holidaysSet.has(dateStr);
 
       if (liveMssqlDay) {
-        const isLiveWO = liveMssqlDay.isWeeklyOff || liveMssqlDay.status === 'WO' || liveMssqlDay.status === 'W/O';
+        const isLiveWO = !isSecGuardNoWO && (liveMssqlDay.isWeeklyOff || liveMssqlDay.status === 'WO' || liveMssqlDay.status === 'W/O');
         if (isLiveWO) {
           totalWeeklyOffs++;
           shiftNsCount++;
@@ -3608,6 +3751,82 @@ const DetailedAuditReportView: React.FC<{
       });
       totalWeeklyOffs = 0;
       totalHolidayDays = 0;
+    }
+
+    // ── 6-Day Duty Cycle Weekly Off Provision Rule ────────────────────────
+    // An active employee who completes 6 working duties since their last Weekly Off
+    // earns a Weekly Off (W/O). On the next unworked day (status 'A'), provide 'W/O' unless:
+    //   - Employee took 3 or more unexcused absent days in that cycle/week
+    //   - The day is a holiday
+    if (!isEmpInactive && totalPresentDays > 0) {
+      let workedDutiesSinceLastWO = 0;
+      let absentDaysInCycle = 0;
+
+      for (let i = 0; i < dailyData.length; i++) {
+        const dr = dailyData[i];
+        const isWO = dr.status === 'W/O' || dr.status === 'WO';
+        const isWorked = dr.status === 'P' || dr.status === '0.75P' || dr.status === '0.5P' || dr.status === 'P (2D)' || dr.status === 'P (3D)' || (dr.inTime && dr.inTime !== '-' && dr.inTime !== '—');
+
+        if (isWO) {
+          workedDutiesSinceLastWO = 0;
+          absentDaysInCycle = 0;
+        } else if (isWorked) {
+          const dutiesInDay = dr.status === 'P (3D)' ? 3 : (dr.status === 'P (2D)' ? 2 : 1);
+          workedDutiesSinceLastWO += dutiesInDay;
+        } else if (dr.status === 'A') {
+          if (workedDutiesSinceLastWO >= 6 && absentDaysInCycle < 3 && dr.shift !== 'HOL') {
+            dr.status = 'W/O';
+            dr.shift = 'NS';
+            totalWeeklyOffs++;
+            totalAbsentDays = Math.max(0, totalAbsentDays - 1);
+            workedDutiesSinceLastWO = 0;
+            absentDaysInCycle = 0;
+          } else {
+            absentDaysInCycle++;
+          }
+        }
+      }
+    }
+
+    // ── WO Forfeiture Rule ─────────────────────────────────────────────────
+    // A Weekly Off is forfeited (→ Absent) when ANY of these conditions hold:
+    //   A) Classic sandwich: Absent on BOTH the preceding AND succeeding working day
+    //   B) 2+ consecutive Absent days on the PRECEDING side alone  (Thu-Fri-Sat A → Sun WO = A)
+    //   C) 2+ consecutive Absent days on the SUCCEEDING side alone
+    // Holidays and other WOs are skipped transparently when scanning.
+    for (let i = 0; i < dailyData.length; i++) {
+      const dr = dailyData[i];
+      if (dr.status !== 'W/O' && dr.status !== 'WO') continue;
+
+      // Count consecutive Absent days going BACKWARDS (skip WO/H/-)
+      let prevAbsentCount = 0;
+      for (let j = i - 1; j >= 0; j--) {
+        const s = dailyData[j].status;
+        if (s === 'W/O' || s === 'WO' || s === 'H' || s === 'HOL' || s === '-') continue;
+        if (s === 'A') prevAbsentCount++;
+        else break;
+      }
+
+      // Count consecutive Absent days going FORWARDS (skip WO/H/-)
+      let nextAbsentCount = 0;
+      for (let j = i + 1; j < dailyData.length; j++) {
+        const s = dailyData[j].status;
+        if (s === 'W/O' || s === 'WO' || s === 'H' || s === 'HOL' || s === '-') continue;
+        if (s === 'A') nextAbsentCount++;
+        else break;
+      }
+
+      const forfeit =
+        (prevAbsentCount > 0 && nextAbsentCount > 0) || // A: sandwich
+        prevAbsentCount >= 2 ||                          // B: 2+ before
+        nextAbsentCount >= 2;                            // C: 2+ after
+
+      if (forfeit) {
+        dr.status = 'A';
+        dr.shift = '-';
+        totalWeeklyOffs = Math.max(0, totalWeeklyOffs - 1);
+        totalAbsentDays++;
+      }
     }
 
     const netWorkHrsNum = (totalNetMinsSum / 60).toFixed(2);
@@ -4098,24 +4317,150 @@ const DetailedAuditReportView: React.FC<{
         }
       }
 
+      // Check if employee completed previous night duty via early morning punch OUT (05:00 AM - 11:00 AM)
+      const parseMinutesHelper = (tStr: string | null | undefined) => {
+        if (!tStr || tStr === '—') return null;
+        const m = tStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+        if (!m) return null;
+        let h = parseInt(m[1], 10);
+        const min = parseInt(m[2], 10);
+        const ap = m[3].toUpperCase();
+        if (ap === 'PM' && h < 12) h += 12;
+        if (ap === 'AM' && h === 12) h = 0;
+        return h * 60 + min;
+      };
+
+      const inMinsCheck = parseMinutesHelper(finalInTime);
+      const outMinsCheck = parseMinutesHelper(finalOutTime);
+
+      // ── Transition Case 1: Employee worked overnight/night/triple shift yesterday (hadPrevNightShift = true)
+      // and has TWO early morning punches (e.g. In: 06:46 am, Out: 06:55 am):
+      // The first punch (06:46 am) is yesterday's OUT punch!
+      // The second punch (06:55 am) is TODAY'S IN PUNCH!
+      // Since they just clocked IN for today's morning shift, they are currently working on site (On Duty)!
+      let hasTransitionedToTodayIn = false;
+      if (
+        emp.hadPrevNightShift &&
+        inMinsCheck !== null &&
+        outMinsCheck !== null &&
+        inMinsCheck >= 5 * 60 &&
+        inMinsCheck <= 11 * 60 &&
+        outMinsCheck >= 5 * 60 &&
+        outMinsCheck <= 12 * 60 &&
+        outMinsCheck > inMinsCheck &&
+        (outMinsCheck - inMinsCheck <= 180)
+      ) {
+        finalInTime = finalOutTime; // '06:55 am' is today's IN punch!
+        finalOutTime = null;        // Currently on duty on site, no out punch yet today
+        hasTransitionedToTodayIn = true;
+      }
+      // ── Transition Case 2: General debounce / short morning interval (< 45 minutes)
+      // Nobody works a 9-minute shift. If an employee has two morning punches close together:
+      else if (
+        inMinsCheck !== null &&
+        outMinsCheck !== null &&
+        inMinsCheck >= 5 * 60 &&
+        inMinsCheck <= 11 * 60 &&
+        outMinsCheck > inMinsCheck &&
+        (outMinsCheck - inMinsCheck <= 45)
+      ) {
+        finalInTime = emp.hadPrevNightShift ? finalOutTime : finalInTime;
+        finalOutTime = null;
+        if (emp.hadPrevNightShift) hasTransitionedToTodayIn = true;
+      }
+
+      // Check if employee is punched in for TODAY'S morning shift (A Shift Group / Day Shift)
+      // When 07:00 AM arrives, the new day starts and any morning punch (06:30 AM onwards) is today's IN punch!
+      const isTodayShiftPunchIn = Boolean(
+        hasTransitionedToTodayIn ||
+        emp.shiftCode === 'A' || 
+        emp.shiftName === 'A Shift Group' || 
+        (emp.shiftName || '').includes('A Shift') ||
+        (emp.status === 'Present' && finalInTime && !finalOutTime) ||
+        (inMinsCheck !== null && inMinsCheck >= 6 * 60 + 30 && inMinsCheck <= 11 * 60 && (!emp.isNextDayOut || emp.shiftType === 'single'))
+      );
+
+      // 7:00 AM Attendance Day Boundary:
+      // An attendance day for Date X runs from 7:00 AM on Date X to 6:59 AM on Date X+1.
+      // - BEFORE 7:00 AM on today (e.g. 6:00 AM): previous night duty is still active/completing, so show night duty details.
+      // - AFTER 7:00 AM on today: previous night duty is closed and belongs to yesterday's record ("preview records").
+      //   Do NOT show previous night completed shift on the present day!
+      const todayStr = format(new Date(), 'yyyy-MM-dd');
+      const isViewingToday = !selectedDate || selectedDate === todayStr;
+      const now = new Date();
+      const currentHour = now.getHours() + now.getMinutes() / 60;
+      const isBefore7amOnToday = isViewingToday && currentHour < 7.0;
+
+      // Check if employee completed previous night duty via early morning punch OUT (05:00 AM - 11:00 AM) with NO second punch
+      // This ONLY applies BEFORE 07:00 AM on today and if the employee did NOT punch in for today's morning shift!
+      const isMorningOutPunchForPrevNight = Boolean(
+        isBefore7amOnToday &&
+        !isTodayShiftPunchIn &&
+        emp.hadPrevNightShift &&
+        finalInTime &&
+        parseMinutesHelper(finalInTime) !== null &&
+        parseMinutesHelper(finalInTime)! >= 5 * 60 &&
+        parseMinutesHelper(finalInTime)! <= 11 * 60 &&
+        (!finalOutTime || finalOutTime === '—')
+      );
+
+      let prevNightCompletedOut: string | null = null;
+      if (isMorningOutPunchForPrevNight && finalInTime) {
+        prevNightCompletedOut = finalInTime;
+        finalInTime = null;
+        finalOutTime = prevNightCompletedOut;
+      }
+
       const empWithTimes = { ...emp, inTime: finalInTime, outTime: finalOutTime };
-      const evalData = evaluateEmployeeShiftAndLate(empWithTimes, shiftRules, empOverrides);
+      const evalData = evaluateEmployeeShiftAndLate(empWithTimes, shiftRules, empOverrides, selectedDate);
       const smartInfo = getSmartSiteFrontend(emp.empCode, emp.department);
 
-      // Determine if employee is Active: Punched today OR has active punch record within 14-day (2 week) window
+      const isOnNightDuty = isBefore7amOnToday && !isTodayShiftPunchIn && evalData.status === 'On Night Duty' && !prevNightCompletedOut && (!finalInTime || finalInTime === '—');
+      const isNightShiftCompleted = Boolean(
+        isBefore7amOnToday &&
+        !isTodayShiftPunchIn && (
+          (emp.hadPrevNightShift && prevNightCompletedOut) ||
+          (emp.hadPrevNightShift && (!finalInTime || finalInTime === '—') && evalData.status === 'Expected Night Shift')
+        )
+      );
+
+      if (isOnNightDuty) {
+        if (!finalInTime || finalInTime === '—') {
+          finalInTime = emp.prevNightInPunch 
+            ? `${formatDisplayTime12(emp.prevNightInPunch)} (Prev Night)` 
+            : (evalData.shiftCode === 'NIGHT-12' ? '08:00 PM (Prev Night)' : '09:00 PM (Prev Night)');
+        }
+        if (!finalOutTime || finalOutTime === '—') {
+          finalOutTime = evalData.shiftCode === 'NIGHT-12' ? 'Pending (08:00 AM)' : 'Pending (07:00 AM)';
+        }
+      } else if (isNightShiftCompleted) {
+        if (!finalInTime || finalInTime === '—') {
+          finalInTime = emp.prevNightInPunch 
+            ? `${formatDisplayTime12(emp.prevNightInPunch)} (Prev Night)` 
+            : (evalData.shiftCode === 'NIGHT-12' ? '08:00 PM (Prev Night)' : '09:00 PM (Prev Night)');
+        }
+        if (!finalOutTime || finalOutTime === '—') {
+          finalOutTime = prevNightCompletedOut || (evalData.shiftCode === 'NIGHT-12' ? '08:00 AM' : '07:00 AM');
+        }
+      }
+
+      // Determine if employee is Active: Punched today OR currently on night duty OR has active punch record within 14-day (2 week) window
       const hasPunchToday = Boolean(finalInTime && finalInTime !== '—')
         || emp.status === 'Missed Punch IN'
-        || (emp.status === 'Missed Punch OUT' && finalInTime);
+        || (emp.status === 'Missed Punch OUT' && finalInTime)
+        || isOnNightDuty
+        || isNightShiftCompleted;
       const daysSince = emp.daysSinceLastPunch ?? 0;
       const isExplicitlyInactive = emp.status === 'Absent' && daysSince > 14;
       const isActive = hasPunchToday || (!isExplicitlyInactive && (emp.daysSinceLastPunch === undefined || daysSince <= 14));
 
-      // Determine if Double Duty
-      const isDoubleDuty = evalData.shiftType === 'double' || emp.shiftType === 'double' || (evalData.shiftName || '').includes('+');
-      const shiftTypeFinal: 'single' | 'double' | 'triple' = isDoubleDuty ? 'double' : (emp.shiftType || 'single');
+      // Determine if Triple Duty or Double Duty
+      const isTripleDuty = evalData.shiftType === 'triple' || emp.shiftType === 'triple' || (evalData.shiftName || '').includes('A + B + C') || (evalData.shiftName || '').includes('A+B+C') || (evalData.shiftName || '').toLowerCase().includes('triple');
+      const isDoubleDuty = !isTripleDuty && (evalData.shiftType === 'double' || emp.shiftType === 'double' || (evalData.shiftName || '').includes('+'));
+      const shiftTypeFinal: 'single' | 'double' | 'triple' = isTripleDuty ? 'triple' : (isDoubleDuty ? 'double' : (emp.shiftType || 'single'));
 
       // Calculate OT Hours & Working Hours with overnight awareness
-      const workHrsStr = (isDoubleDuty && emp.workingHours && emp.workingHours !== '-' && emp.workingHours !== '0h 00m' && !emp.workingHours.includes('0h 00m'))
+      const workHrsStr = ((isTripleDuty || isDoubleDuty) && emp.workingHours && emp.workingHours !== '-' && emp.workingHours !== '0h 00m' && !emp.workingHours.includes('0h 00m'))
         ? emp.workingHours
         : formatLiveWorkingHours({
             ...empWithTimes,
@@ -4133,7 +4478,12 @@ const DetailedAuditReportView: React.FC<{
           return 0;
         };
         const totalMins = parseMinsFromHrs(workHrsStr);
-        if (isDoubleDuty) {
+        if (isTripleDuty) {
+          // In Triple Duty: Base shift is 7h (or 8h), everything above that is 2 Duties OT
+          const baseShiftMins = 7 * 60;
+          const otMins = Math.max(0, totalMins - baseShiftMins);
+          otHoursVal = `${Math.floor(otMins / 60)}h ${String(otMins % 60).padStart(2, '0')}m (2 Duties OT)`;
+        } else if (isDoubleDuty) {
           // In Double Duty: Base shift is 7h (or 8h), everything above that is 1 Duty OT
           const baseShiftMins = 7 * 60;
           const otMins = Math.max(0, totalMins - baseShiftMins);
@@ -4147,8 +4497,34 @@ const DetailedAuditReportView: React.FC<{
         }
       }
 
+      const isSecGuardNoWO = isSecurityGuardWithoutWeekOff({
+        designation: empOverrides[emp.empCode]?.designation || emp.designation,
+        role: emp.role,
+        shiftName: evalData.shiftName,
+        department: smartInfo.site || emp.department
+      });
+      const finalShiftName = (isSecGuardNoWO && (evalData.shiftName === 'W/O' || evalData.shiftName === 'WO'))
+        ? (isBefore7amOnToday && emp.hadPrevNightShift && !isTodayShiftPunchIn ? 'Security Night Duty (12h)' : 'Security Day Duty (12h)')
+        : evalData.shiftName;
+      const finalShiftCode = (isSecGuardNoWO && (evalData.shiftName === 'W/O' || evalData.shiftName === 'WO'))
+        ? (isBefore7amOnToday && emp.hadPrevNightShift && !isTodayShiftPunchIn ? 'NIGHT-12' : 'DAY-12')
+        : evalData.shiftCode;
+      const finalShiftTiming = (isSecGuardNoWO && (evalData.shiftName === 'W/O' || evalData.shiftName === 'WO'))
+        ? (isBefore7amOnToday && emp.hadPrevNightShift && !isTodayShiftPunchIn ? '08:00 PM - 08:00 AM' : '08:00 AM - 08:00 PM')
+        : evalData.shiftTiming;
+
+      const finalStatus = (isTripleDuty || isDoubleDuty) 
+        ? 'Present' 
+        : (isNightShiftCompleted ? 'Expected Night Shift' : evalData.status);
+
+      const hasActualOutTime = Boolean(finalOutTime && finalOutTime !== '—');
+      const finalShiftCompleted = (isTripleDuty || isDoubleDuty) 
+        ? true 
+        : (isNightShiftCompleted ? true : (isOnNightDuty ? false : (hasActualOutTime ? (emp.shiftCompleted ?? true) : false)));
+
       return {
         ...emp,
+        role: (emp as any).role || emp.designation,
         company: empOverrides[emp.empCode]?.company || emp.company || 'Paradigm Services',
         location: emp.location || 'Bangalore',
         inTime: finalInTime,
@@ -4156,20 +4532,20 @@ const DetailedAuditReportView: React.FC<{
         isNextDayOut: evalData.isNextDayOut ?? emp.isNextDayOut,
         department: smartInfo.site,
         isSmartSite: emp.isSmartSite ?? smartInfo.isSmart,
-        shiftName: evalData.shiftName,
-        shiftCode: evalData.shiftCode,
-        shiftTiming: evalData.shiftTiming,
+        shiftName: finalShiftName,
+        shiftCode: finalShiftCode,
+        shiftTiming: finalShiftTiming,
         shiftType: shiftTypeFinal,
-        totalDuties: isDoubleDuty ? 2 : 1,
+        totalDuties: isTripleDuty ? 3 : (isDoubleDuty ? 2 : 1),
         lateMinutes: evalData.lateMinutes,
-        status: isDoubleDuty ? 'Present' : evalData.status,
-        shiftCompleted: isDoubleDuty ? true : (evalData.status === 'Present' ? true : emp.shiftCompleted),
+        status: finalStatus,
+        shiftCompleted: finalShiftCompleted,
         isActiveEmployee: isActive,
         otHours: otHoursVal,
         workingHours: workHrsStr !== '-' ? workHrsStr : undefined
       };
     });
-  }, [data, shiftRules, allowedSitesSet, empOverrides]);
+  }, [data, shiftRules, allowedSitesSet, empOverrides, selectedDate]);
 
   // Computed summary reacting to department filter, site access control, and 14-day active workforce filtering
   const summary = useMemo(() => {
@@ -4191,11 +4567,15 @@ const DetailedAuditReportView: React.FC<{
 
     const late = targetEmps.filter(e => (e.lateMinutes > 0 || e.status === 'Late') && e.inTime && e.inTime !== '—').length;
     // Count as present: employees with inTime set, OR Missed Punch OUT (inTime set, no out),
-    // OR Missed Punch IN (single evening punch — they did show up, just wrong punch direction)
+    // OR Missed Punch IN (single evening punch — they did show up, just wrong punch direction),
+    // OR On Night Duty (overnight active shift from previous night),
+    // OR Expected Night Shift (completed previous night duty ending this morning)
     const calcPresent = targetEmps.filter(e =>
       (e.inTime !== null && e.inTime !== '—') ||
       e.status === 'Missed Punch IN' ||
-      e.status === 'Missed Punch OUT'
+      e.status === 'Missed Punch OUT' ||
+      e.status === 'On Night Duty' ||
+      Boolean(e.shiftCompleted && e.hadPrevNightShift)
     ).length;
 
     // Find matching present count from 7-day trend (real raw DeviceLogs punch counts)
@@ -4585,14 +4965,15 @@ const DetailedAuditReportView: React.FC<{
             : statusFilter === 'Present'
               ? e.status === 'Present' || e.status === 'Late' || e.status === 'Half Day'
                   || e.status === 'Missed Punch OUT' || e.status === 'Missed Punch IN'
+                  || e.status === 'On Night Duty'
                   || Boolean(e.shiftCompleted)
               : statusFilter === 'EarlyGoing'
                 // Early Going: has punched out BUT shift not yet completed (left before shift end)
-                ? (e.outTime && e.outTime !== '—' && !e.shiftCompleted && e.status !== 'Absent')
+                ? (e.outTime && e.outTime !== '—' && !e.shiftCompleted && e.status !== 'Absent' && e.status !== 'On Night Duty')
                 : statusFilter === 'OnDuty'
-                  ? (e.status === 'Present' || e.status === 'Late') && (!e.outTime || e.outTime === '—') && !e.shiftCompleted
+                  ? (e.status === 'Present' || e.status === 'Late' || e.status === 'On Night Duty') && (!e.outTime || e.outTime === '—' || e.outTime.includes('Pending')) && !e.shiftCompleted
                   : statusFilter === 'Completed'
-                    ? Boolean(e.shiftCompleted || (e.outTime && e.outTime !== '—'))
+                    ? Boolean(e.shiftCompleted || (e.outTime && e.outTime !== '—' && !e.outTime.includes('Pending')))
                     : statusFilter === 'Late'
                       ? e.lateMinutes > 0 || e.status === 'Late'
                       : statusFilter === 'Absent'
@@ -4644,10 +5025,17 @@ const DetailedAuditReportView: React.FC<{
             ? e.shiftType === 'double' || e.shiftType === 'triple'
             : e.shiftName === shiftFilter ||
               e.shiftCode === shiftFilter ||
+              (shiftFilter.includes('A + B + C') && (e.shiftCode === 'A+B+C' || (e.shiftName || '').includes('A + B + C') || (e.shiftName || '').includes('A+B+C') || e.shiftType === 'triple')) ||
+              (shiftFilter.includes('A + B') && !shiftFilter.includes('A + B + C') && (e.shiftCode === 'A+B' || (e.shiftName || '').includes('A + B') || (e.shiftName || '').includes('A+B'))) ||
+              (shiftFilter.includes('B + C') && (e.shiftCode === 'B+C' || (e.shiftName || '').includes('B + C') || (e.shiftName || '').includes('B+C'))) ||
+              (shiftFilter.includes('A + C') && (e.shiftCode === 'A+C' || (e.shiftName || '').includes('A + C') || (e.shiftName || '').includes('A+C'))) ||
+              (shiftFilter === 'A Shift Group' && (e.shiftCode === 'A' || (e.shiftName || '').startsWith('A Shift'))) ||
+              (shiftFilter === 'B Shift Group' && (e.shiftCode === 'B' || (e.shiftName || '').startsWith('B Shift'))) ||
+              (shiftFilter === 'C Shift Group' && (e.shiftCode === 'C' || (e.shiftName || '').startsWith('C Shift'))) ||
               (e.shiftName && e.shiftName.toLowerCase().startsWith(shiftFilter.toLowerCase())) ||
-              (shiftFilter.includes('A Shift') && (e.shiftCode === 'A' || (e.shiftName || '').includes('A Shift'))) ||
-              (shiftFilter.includes('B Shift') && (e.shiftCode === 'B' || (e.shiftName || '').includes('B Shift'))) ||
-              (shiftFilter.includes('C Shift') && (e.shiftCode === 'C' || (e.shiftName || '').includes('C Shift'))) ||
+              (shiftFilter.includes('A Shift') && !shiftFilter.includes('+') && (e.shiftCode === 'A' || (e.shiftName || '').includes('A Shift'))) ||
+              (shiftFilter.includes('B Shift') && !shiftFilter.includes('+') && (e.shiftCode === 'B' || (e.shiftName || '').includes('B Shift'))) ||
+              (shiftFilter.includes('C Shift') && !shiftFilter.includes('+') && (e.shiftCode === 'C' || (e.shiftName || '').includes('C Shift'))) ||
               (shiftFilter.includes('HK') && ((e.shiftCode || '').includes('HK') || (e.shiftName || '').includes('HK'))) ||
               (shiftFilter.includes('Garden') && ((e.shiftCode || '').includes('GAR') || (e.shiftName || '').includes('Garden'))) ||
               (shiftFilter.includes('General') && ((e.shiftCode || '').includes('GEN') || (e.shiftName || '').includes('General'))) ||
@@ -4935,6 +5323,8 @@ const DetailedAuditReportView: React.FC<{
       let totalAbsentDays = 0;
       let totalWeeklyOffs = 0;
       let totalHolidayDays = 0;
+      let totalWorkedWeekOffs = 0;
+      let totalWorkedHolidays = 0;
       let totalLateDays = 0;
       let totalNetMinsSum = 0;
       let totalOtMinsSum = 0;
@@ -4942,7 +5332,17 @@ const DetailedAuditReportView: React.FC<{
       const dailyPunches = precalculatedDays.map(dayInfo => {
         const { dateStr, dayNum, dayOfWeek, dayFormatted, isMssqlDate, isFutureDate, isSiteHoliday, vedaDateYear, vedaDateMonth } = dayInfo;
 
-        const isFedWO = empFedWODates.has(dateStr);
+        const isSecGuardNoWO = isSecurityGuardWithoutWeekOff({
+          designation: emp.designation,
+          role: emp.role,
+          shiftName: empShift,
+          shiftCode: emp.shiftCode,
+          department: emp.department,
+          company: emp.company,
+          empCode: emp.empCode
+        });
+
+        const isFedWO = !isSecGuardNoWO && empFedWODates.has(dateStr);
 
         if (isFutureDate) {
           if (isSiteHoliday && !isEmpInactive) {
@@ -4975,16 +5375,54 @@ const DetailedAuditReportView: React.FC<{
         // PRIORITY 0: Direct live remote MSSQL report data from etimetracklite1 (Authoritative)
         const mssqlDay = mssqlEmpDays[dateStr];
         if (mssqlDay) {
-          const isDayWO = mssqlDay.isWeeklyOff || mssqlDay.status === 'WO' || mssqlDay.status === 'W/O';
+          const hasMssqlPunch = Boolean(
+            (mssqlDay.inTime && mssqlDay.inTime !== '—' && mssqlDay.inTime !== '-') ||
+            (mssqlDay.outTime && mssqlDay.outTime !== '—' && mssqlDay.outTime !== '-')
+          );
+          const isDayWO = !isSecGuardNoWO && Boolean(mssqlDay.isWeeklyOff || mssqlDay.status === 'WO' || mssqlDay.status === 'W/O' || isFedWO);
+
+          // Weekly Off handling: check if punches exist -> Allocate W/P
           if (isDayWO && !isEmpInactive) {
-            totalWeeklyOffs++;
-            return {
-              dateStr, dayNum, dayFormatted,
-              inTime: '—', outTime: '—', hours: '—',
-              netMins: 0, otMins: 0, lateMinutes: 0,
-              status: 'W/O', shift: 'NS', isWeeklyOff: true,
-            };
+            if (hasMssqlPunch) {
+              const isDayTriple = (mssqlDay.shiftType === 'triple') || (mssqlDay.totalDuties === 3) || ((mssqlDay.shiftName || '').includes('A + B + C')) || ((mssqlDay.shiftName || '').includes('A+B+C')) || ((mssqlDay.shift || '').includes('A+B+C'));
+              const isDayDouble = !isDayTriple && ((mssqlDay.shiftType === 'double') || (mssqlDay.totalDuties === 2) || ((mssqlDay.hours || '').includes('+')) || ((mssqlDay.shiftName || '').includes('+')) || ((mssqlDay.shift || '').includes('+')));
+              const dayDuties = mssqlDay.totalDuties || (isDayTriple ? 3 : (isDayDouble ? 2 : 1));
+              const inT = mssqlDay.inTime && mssqlDay.inTime !== '—' ? mssqlDay.inTime : '10:00';
+              const outT = mssqlDay.outTime && mssqlDay.outTime !== '—' ? mssqlDay.outTime : '19:00';
+              const inMins = parseTimeToMins(inT) || (10 * 60);
+              const outMins = parseTimeToMins(outT) || (19 * 60);
+              let grossMins = outMins - inMins;
+              if (grossMins < 0) grossMins += 24 * 60;
+              const netMins = mssqlDay.durationMins || Math.max(0, grossMins - 30);
+              const otMins = mssqlDay.otMins || Math.max(0, netMins - shiftExpectedHours * 60);
+              const lateMins = mssqlDay.lateMinutes || 0;
+
+              totalWorkedWeekOffs++;
+              totalPresentDays += dayDuties;
+              if (lateMins > 0) totalLateDays++;
+              totalNetMinsSum += netMins;
+              totalOtMinsSum += otMins;
+
+              return {
+                dateStr, dayNum, dayFormatted,
+                inTime: inT, outTime: outT,
+                hours: mssqlDay.hours || `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m`,
+                netMins, otMins, lateMinutes: lateMins,
+                status: isDayTriple ? 'W/P (3D)' : (isDayDouble ? 'W/P (2D)' : 'W/P'),
+                shift: isDayTriple ? (mssqlDay.shiftName || 'A+B+C') : (isDayDouble ? (mssqlDay.shiftName || 'A+C') : empShift),
+                isWeeklyOff: true,
+              };
+            } else {
+              totalWeeklyOffs++;
+              return {
+                dateStr, dayNum, dayFormatted,
+                inTime: '—', outTime: '—', hours: '—',
+                netMins: 0, otMins: 0, lateMinutes: 0,
+                status: 'W/O', shift: 'NS', isWeeklyOff: true,
+              };
+            }
           }
+
           if (mssqlDay.status === 'A' || mssqlDay.isAbsent) {
             if (isSiteHoliday && !isEmpInactive) {
               totalHolidayDays++;
@@ -5020,9 +5458,11 @@ const DetailedAuditReportView: React.FC<{
               status: 'A', shift: empShift, isWeeklyOff: false,
             };
           }
-          // Present
-          const isDayDouble = (mssqlDay.shiftType === 'double') || (mssqlDay.totalDuties === 2) || ((mssqlDay.hours || '').includes('+')) || ((mssqlDay.shiftName || '').includes('+')) || ((mssqlDay.shift || '').includes('+'));
-          const dayDuties = mssqlDay.totalDuties || (isDayDouble ? 2 : 1);
+
+          // Present branch
+          const isDayTriple = (mssqlDay.shiftType === 'triple') || (mssqlDay.totalDuties === 3) || ((mssqlDay.shiftName || '').includes('A + B + C')) || ((mssqlDay.shiftName || '').includes('A+B+C')) || ((mssqlDay.shift || '').includes('A+B+C'));
+          const isDayDouble = !isDayTriple && ((mssqlDay.shiftType === 'double') || (mssqlDay.totalDuties === 2) || ((mssqlDay.hours || '').includes('+')) || ((mssqlDay.shiftName || '').includes('+')) || ((mssqlDay.shift || '').includes('+')));
+          const dayDuties = mssqlDay.totalDuties || (isDayTriple ? 3 : (isDayDouble ? 2 : 1));
           const inT = mssqlDay.inTime && mssqlDay.inTime !== '—' ? mssqlDay.inTime : '10:00';
           const outT = mssqlDay.outTime && mssqlDay.outTime !== '—' ? mssqlDay.outTime : '19:00';
           const inMins = parseTimeToMins(inT) || (10 * 60);
@@ -5032,6 +5472,25 @@ const DetailedAuditReportView: React.FC<{
           const netMins = mssqlDay.durationMins || Math.max(0, grossMins - 30);
           const otMins = mssqlDay.otMins || Math.max(0, netMins - shiftExpectedHours * 60);
           const lateMins = mssqlDay.lateMinutes || 0;
+
+          if (isSiteHoliday && !isEmpInactive) {
+            totalWorkedHolidays++;
+            totalPresentDays += dayDuties;
+            if (lateMins > 0) totalLateDays++;
+            totalNetMinsSum += netMins;
+            totalOtMinsSum += otMins;
+
+            return {
+              dateStr, dayNum, dayFormatted,
+              inTime: inT, outTime: outT,
+              hours: mssqlDay.hours || `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m`,
+              netMins, otMins, lateMinutes: lateMins,
+              status: isDayTriple ? 'H/P (3D)' : (isDayDouble ? 'H/P (2D)' : 'H/P'),
+              shift: isDayTriple ? (mssqlDay.shiftName || 'A+B+C') : (isDayDouble ? (mssqlDay.shiftName || 'A+C') : empShift),
+              isWeeklyOff: false,
+              isHoliday: true,
+            };
+          }
 
           totalPresentDays += dayDuties;
           if (lateMins > 0) totalLateDays++;
@@ -5043,8 +5502,8 @@ const DetailedAuditReportView: React.FC<{
             inTime: inT, outTime: outT,
             hours: mssqlDay.hours || `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m`,
             netMins, otMins, lateMinutes: lateMins,
-            status: isDayDouble ? 'P (2D)' : (mssqlDay.status || 'P'),
-            shift: isDayDouble ? (mssqlDay.shiftName || 'A+C') : empShift,
+            status: isDayTriple ? 'P (3D)' : (isDayDouble ? 'P (2D)' : (mssqlDay.status || 'P')),
+            shift: isDayTriple ? (mssqlDay.shiftName || 'A+B+C') : (isDayDouble ? (mssqlDay.shiftName || 'A+C') : empShift),
             isWeeklyOff: false,
           };
         }
@@ -5062,11 +5521,37 @@ const DetailedAuditReportView: React.FC<{
           const otMins = Math.max(0, netMins - shiftExpectedHours * 60);
           const lateMins = (inMins > (9 * 60 + 15)) ? (inMins - 9 * 60) : 0;
 
-          totalPresentDays++;
           if (lateMins > 0) totalLateDays++;
           totalNetMinsSum += netMins;
           totalOtMinsSum += otMins;
 
+          if (isFedWO && !isEmpInactive) {
+            totalWorkedWeekOffs++;
+            totalPresentDays++;
+            return {
+              dateStr, dayNum, dayFormatted,
+              inTime: inT, outTime: outT,
+              hours: `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m`,
+              netMins, otMins, lateMinutes: lateMins,
+              status: 'W/P',
+              shift: empShift, isWeeklyOff: true,
+            };
+          }
+
+          if (isSiteHoliday && !isEmpInactive) {
+            totalWorkedHolidays++;
+            totalPresentDays++;
+            return {
+              dateStr, dayNum, dayFormatted,
+              inTime: inT, outTime: outT,
+              hours: `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m`,
+              netMins, otMins, lateMinutes: lateMins,
+              status: 'H/P',
+              shift: 'HOL', isWeeklyOff: false, isHoliday: true,
+            };
+          }
+
+          totalPresentDays++;
           return {
             dateStr, dayNum, dayFormatted,
             inTime: inT, outTime: outT,
@@ -5124,8 +5609,9 @@ const DetailedAuditReportView: React.FC<{
 
         // PRIORITY 2: MSSQL single-day data — ONLY for the exact selectedDate
         if (isMssqlDate && !isEmpInactive && emp.inTime && emp.inTime !== '—') {
-          const isDayDouble = emp.shiftType === 'double' || (emp.shiftName || '').includes('+');
-          const dayDuties = emp.totalDuties || (isDayDouble ? 2 : 1);
+          const isDayTriple = emp.shiftType === 'triple' || (emp.shiftName || '').includes('A + B + C') || (emp.shiftName || '').includes('A+B+C') || (emp.shiftName || '').toLowerCase().includes('triple');
+          const isDayDouble = !isDayTriple && (emp.shiftType === 'double' || (emp.shiftName || '').includes('+'));
+          const dayDuties = emp.totalDuties || (isDayTriple ? 3 : (isDayDouble ? 2 : 1));
           const inT = emp.inTime;
           const outT = emp.outTime && emp.outTime !== '—' ? emp.outTime : (shiftExpectedHours === 12 ? '08:00 pm' : '06:00 pm');
           const inMins = parseTimeToMins(inT) || (9 * 60);
@@ -5141,13 +5627,40 @@ const DetailedAuditReportView: React.FC<{
           totalNetMinsSum += netMins;
           totalOtMinsSum += otMins;
 
+          if (isFedWO) {
+            totalWorkedWeekOffs++;
+            return {
+              dateStr, dayNum, dayFormatted,
+              inTime: inT, outTime: outT,
+              hours: isDayTriple ? `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m (3 Duties)` : (isDayDouble ? `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m (2 Duties)` : `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m`),
+              netMins, otMins, lateMinutes: lateMins,
+              status: isDayTriple ? 'W/P (3D)' : (isDayDouble ? 'W/P (2D)' : 'W/P'),
+              shift: isDayTriple ? (emp.shiftCode || 'A+B+C') : (isDayDouble ? (emp.shiftCode || 'A+C') : empShift),
+              isWeeklyOff: true,
+            };
+          }
+
+          if (isSiteHoliday) {
+            totalWorkedHolidays++;
+            return {
+              dateStr, dayNum, dayFormatted,
+              inTime: inT, outTime: outT,
+              hours: isDayTriple ? `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m (3 Duties)` : (isDayDouble ? `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m (2 Duties)` : `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m`),
+              netMins, otMins, lateMinutes: lateMins,
+              status: isDayTriple ? 'H/P (3D)' : (isDayDouble ? 'H/P (2D)' : 'H/P'),
+              shift: isDayTriple ? (emp.shiftCode || 'A+B+C') : (isDayDouble ? (emp.shiftCode || 'A+C') : empShift),
+              isWeeklyOff: false,
+              isHoliday: true,
+            };
+          }
+
           return {
             dateStr, dayNum, dayFormatted,
             inTime: inT, outTime: outT,
-            hours: isDayDouble ? `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m (2 Duties)` : `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m`,
+            hours: isDayTriple ? `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m (3 Duties)` : (isDayDouble ? `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m (2 Duties)` : `${Math.floor(netMins / 60)}h ${String(netMins % 60).padStart(2, '0')}m`),
             netMins, otMins, lateMinutes: lateMins,
-            status: isDayDouble ? 'P (2D)' : ((lateMins > 0 || emp.status === 'Late') ? 'Late' : 'P'),
-            shift: isDayDouble ? (emp.shiftCode || 'A+C') : empShift,
+            status: isDayTriple ? 'P (3D)' : (isDayDouble ? 'P (2D)' : ((lateMins > 0 || emp.status === 'Late') ? 'Late' : 'P')),
+            shift: isDayTriple ? (emp.shiftCode || 'A+B+C') : (isDayDouble ? (emp.shiftCode || 'A+C') : empShift),
             isWeeklyOff: false,
           };
         }
@@ -5241,6 +5754,127 @@ const DetailedAuditReportView: React.FC<{
         totalHolidayDays = 0;
       }
 
+      // ── 6-Day Duty Cycle Weekly Off Provision Rule ──────────────────────
+      // An active employee who completes 6 working duties since their last Weekly Off
+      // earns a Weekly Off (W/O). On the next unworked day (status 'A'), provide 'W/O' unless:
+      //   - Employee took 3 or more unexcused absent days in that cycle/week
+      //   - The day is a holiday
+      //   - STRICT RULE: An employee is ONLY eligible for ONE weekly off per calendar week (Mon–Sun)!
+      // NOTE: Standard Security Guards get NO weekly off! Only General Shift Security & Security Officers get week off.
+      const isSecGuardNoWO = isSecurityGuardWithoutWeekOff({
+        designation: emp.designation,
+        role: emp.role,
+        shiftName: empShift,
+        shiftCode: emp.shiftCode,
+        department: emp.department,
+        company: emp.company,
+        empCode: emp.empCode
+      });
+
+      if (!isEmpInactive && totalPresentDays > 0 && !isSecGuardNoWO) {
+        let workedDutiesSinceLastWO = 0;
+        let absentDaysInCycle = 0;
+
+        // Helper to get Monday-aligned week identifier (YYYY-MM-DD for the Monday of that week)
+        const getWeekStartKey = (dStr: string) => {
+          const d = new Date(dStr);
+          const day = d.getDay();
+          const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+          const mon = new Date(d.getFullYear(), d.getMonth(), diff);
+          return `${mon.getFullYear()}-${String(mon.getMonth() + 1).padStart(2, '0')}-${String(mon.getDate()).padStart(2, '0')}`;
+        };
+
+        // Pre-track weeks that ALREADY have a weekly off (WO, W/O, or worked W/P)
+        // STRICT RULE: Only ONE Weekly Off is eligible in a single calendar week!
+        const weeksWithWeeklyOff = new Set<string>();
+        dailyPunches.forEach(dp => {
+          if (dp.status === 'W/O' || dp.status === 'WO' || dp.status === 'W/P' || dp.status?.startsWith('W/P') || dp.isWeeklyOff) {
+            weeksWithWeeklyOff.add(getWeekStartKey(dp.dateStr));
+          }
+        });
+
+        for (let i = 0; i < dailyPunches.length; i++) {
+          const dp = dailyPunches[i];
+          // Any weekly off (including worked weekly off W/P) represents the weekly off for that duty cycle!
+          const isWO = dp.status === 'W/O' || dp.status === 'WO' || dp.status === 'W/P' || dp.status?.startsWith('W/P') || dp.isWeeklyOff;
+          const isWorked = dp.status === 'P' || dp.status === 'Late' || dp.status === 'P (2D)' || dp.status === 'P (3D)' || dp.status === 'W/P' || dp.status?.includes('W/P') || dp.status === 'H/P' || dp.status?.includes('H/P') || (dp.inTime && dp.inTime !== '—' && dp.inTime !== '-');
+
+          if (isWO) {
+            workedDutiesSinceLastWO = 0;
+            absentDaysInCycle = 0;
+          } else if (isWorked) {
+            const dutiesInDay = dp.status === 'P (3D)' || dp.status === 'W/P (3D)' || dp.status === 'H/P (3D)' ? 3 : ((dp.status === 'P (2D)' || dp.status === 'W/P (2D)' || dp.status === 'H/P (2D)') ? 2 : 1);
+            workedDutiesSinceLastWO += dutiesInDay;
+          } else if (dp.status === 'A') {
+            const weekKey = getWeekStartKey(dp.dateStr);
+            const weekAlreadyHasWO = weeksWithWeeklyOff.has(weekKey);
+
+            // Grant weekly off ONLY if:
+            // 1. Completed 6 duties
+            // 2. Less than 3 unexcused absences
+            // 3. Not a holiday
+            // 4. That calendar week DOES NOT ALREADY HAVE A WEEKLY OFF! (One only eligible in a week)
+            if (workedDutiesSinceLastWO >= 6 && absentDaysInCycle < 3 && !dp.isHoliday && !weekAlreadyHasWO) {
+              dp.isWeeklyOff = true;
+              dp.status = 'W/O';
+              dp.shift = 'NS';
+              totalWeeklyOffs++;
+              totalAbsentDays = Math.max(0, totalAbsentDays - 1);
+              workedDutiesSinceLastWO = 0;
+              absentDaysInCycle = 0;
+              weeksWithWeeklyOff.add(weekKey);
+
+              // Persist earned Weekly Off to Supabase attendance_corrections
+              recordWeeklyOffInCorrections(emp.empCode, dp.dateStr, emp.empName, emp.department, emp.designation, emp.company);
+            } else {
+              absentDaysInCycle++;
+            }
+          }
+        }
+      }
+
+      // ── WO Forfeiture Rule ───────────────────────────────────────────────
+      // WO is forfeited if:
+      //   A) Absent on BOTH preceding AND succeeding working day (sandwich)
+      //   B) 2+ consecutive Absent days on PRECEDING side alone
+      //   C) 2+ consecutive Absent days on SUCCEEDING side alone
+      for (let i = 0; i < dailyPunches.length; i++) {
+        const dp = dailyPunches[i];
+        if (dp.status === 'W/P' || dp.status?.includes('W/P') || dp.status === 'H/P') continue;
+        if (!dp.isWeeklyOff && dp.status !== 'W/O' && dp.status !== 'WO') continue;
+
+        // Count consecutive Absent days going BACKWARDS
+        let prevAbsentCount = 0;
+        for (let j = i - 1; j >= 0; j--) {
+          const s = dailyPunches[j].status;
+          if (s === 'W/O' || s === 'WO' || s === 'H' || s === '–' || s === 'Pending') continue;
+          if (s === 'A') prevAbsentCount++;
+          else break;
+        }
+
+        // Count consecutive Absent days going FORWARDS
+        let nextAbsentCount = 0;
+        for (let j = i + 1; j < dailyPunches.length; j++) {
+          const s = dailyPunches[j].status;
+          if (s === 'W/O' || s === 'WO' || s === 'H' || s === '–' || s === 'Pending') continue;
+          if (s === 'A') nextAbsentCount++;
+          else break;
+        }
+
+        const forfeit =
+          (prevAbsentCount > 0 && nextAbsentCount > 0) || // A: sandwich
+          prevAbsentCount >= 2 ||                          // B: 2+ before
+          nextAbsentCount >= 2;                            // C: 2+ after
+
+        if (forfeit) {
+          dp.isWeeklyOff = false;
+          dp.status = 'A';
+          dp.shift = empShift;
+          totalWeeklyOffs = Math.max(0, totalWeeklyOffs - 1);
+          totalAbsentDays++;
+        }
+      }
+
       const workingDays = Math.max(1, totalDaysCount - totalWeeklyOffs - totalHolidayDays);
       const futurePendingDays = dailyPunches.filter(dp => dp.status === 'Pending').length;
       // Exclude unsynced days ('–') from effective working days so absent rate isn't inflated
@@ -5249,7 +5883,7 @@ const DetailedAuditReportView: React.FC<{
       const attendanceRate = Math.min(100, Math.round((totalPresentDays / effectiveWorkingDays) * 100));
       const payableDays = (isEmpInactive || totalPresentDays === 0) 
         ? '0.0' 
-        : (totalPresentDays + totalWeeklyOffs + totalHolidayDays).toFixed(1);
+        : (totalPresentDays + totalWeeklyOffs + (totalWorkedWeekOffs * 1) + totalHolidayDays + (totalWorkedHolidays * 1)).toFixed(1);
       const overallStatus = attendanceRate >= 80 ? 'Present' : (attendanceRate > 0 ? 'Partial' : 'Absent');
 
       return {
@@ -5268,7 +5902,9 @@ const DetailedAuditReportView: React.FC<{
         presentDays: totalPresentDays,
         absentDays: totalAbsentDays,
         woDays: totalWeeklyOffs,
+        workedWeekOffDays: totalWorkedWeekOffs,
         holidayDays: totalHolidayDays,
+        workedHolidayDays: totalWorkedHolidays,
         lateDays: totalLateDays,
         totalNetMins: totalNetMinsSum,
         totalNetHours: `${(totalNetMinsSum / 60).toFixed(1)}h`,
@@ -5387,8 +6023,9 @@ const DetailedAuditReportView: React.FC<{
       }));
     }
     return filteredEmployees.map((emp, idx) => {
-      const isDouble = emp.shiftType === 'double' || (emp.shiftName || '').includes('+');
-      const duties = emp.totalDuties || (isDouble ? 2 : 1);
+      const isTriple = emp.shiftType === 'triple' || (emp.shiftName || '').includes('A + B + C') || (emp.shiftName || '').includes('A+B+C') || (emp.shiftName || '').toLowerCase().includes('triple');
+      const isDouble = !isTriple && (emp.shiftType === 'double' || (emp.shiftName || '').includes('+'));
+      const duties = emp.totalDuties || (isTriple ? 3 : (isDouble ? 2 : 1));
       return {
         sno: idx + 1,
         empCode: emp.empCode,
@@ -5407,7 +6044,7 @@ const DetailedAuditReportView: React.FC<{
         absentDays: emp.inTime && emp.inTime !== '—' ? 0 : 1,
         woDays: 0,
         otHours: emp.otHours || '0.0h',
-        payableDays: emp.inTime && emp.inTime !== '—' ? (isDouble ? '2.0' : '1.0') : '0.0',
+        payableDays: emp.inTime && emp.inTime !== '—' ? (isTriple ? '3.0' : (isDouble ? '2.0' : '1.0')) : '0.0',
         attendanceRate: emp.inTime && emp.inTime !== '—' ? 100 : 0,
         date: selectedDate,
       };
@@ -6345,8 +6982,9 @@ const DetailedAuditReportView: React.FC<{
       const mBranding = getCompanyBranding(isMonthlySecurity);
 
       const monthlyRows = (isDateRangeActive ? filteredReportList : filteredEmployees.map((emp, idx) => {
-        const isDouble = emp.shiftType === 'double' || (emp.shiftName || '').includes('+');
-        const duties = emp.totalDuties || (isDouble ? 2 : 1);
+        const isTriple = emp.shiftType === 'triple' || (emp.shiftName || '').includes('A + B + C') || (emp.shiftName || '').includes('A+B+C') || (emp.shiftName || '').toLowerCase().includes('triple');
+        const isDouble = !isTriple && (emp.shiftType === 'double' || (emp.shiftName || '').includes('+'));
+        const duties = emp.totalDuties || (isTriple ? 3 : (isDouble ? 2 : 1));
         return {
           sno: idx + 1,
           empCode: emp.empCode,
@@ -6358,12 +6996,12 @@ const DetailedAuditReportView: React.FC<{
           absentDays: emp.inTime && emp.inTime !== '—' ? 0 : 1,
           woDays: 0,
           holidayDays: 0,
-          payableDays: emp.inTime && emp.inTime !== '—' ? (isDouble ? '2.0' : '1.0') : '0.0',
+          payableDays: emp.inTime && emp.inTime !== '—' ? (isTriple ? '3.0' : (isDouble ? '2.0' : '1.0')) : '0.0',
           totalOtHours: emp.otHours || '0.0h',
           dailyPunches: [{
             dateStr: selectedDate,
             dayNum: new Date(selectedDate).getDate(),
-            status: emp.inTime && emp.inTime !== '—' ? (isDouble ? 'P (2D)' : 'P') : 'A',
+            status: emp.inTime && emp.inTime !== '—' ? (isTriple ? 'P (3D)' : (isDouble ? 'P (2D)' : 'P')) : 'A',
             isWeeklyOff: false,
             isHoliday: false
           }]
@@ -6373,6 +7011,7 @@ const DetailedAuditReportView: React.FC<{
           if (dp.isHoliday || dp.status === 'H' || dp.status === 'Holiday') return 'H';
           if (dp.isWeeklyOff || dp.status === 'W/O' || dp.status === 'WO') return 'W/O';
           if (dp.status === 'Pending' || dp.status === '–') return '–';
+          if (dp.status === 'P (3D)' || (dp.status && dp.status.includes('3D'))) return 'P (3D)';
           if (dp.status === 'P (2D)' || (dp.status && dp.status.includes('2D'))) return 'P (2D)';
           if (dp.status === 'P' || dp.status === 'Present') return 'P';
           if (dp.status === 'Late') return 'L';
@@ -6600,6 +7239,8 @@ const DetailedAuditReportView: React.FC<{
         }]
       }))).map((emp: any) => {
         const statuses = (emp.dailyPunches || []).map((dp: any) => {
+          if (dp.status === 'W/P' || dp.status === 'WP' || dp.status?.startsWith('W/P')) return 'W/P';
+          if (dp.status === 'H/P' || dp.status === 'HP' || dp.status?.startsWith('H/P')) return 'H/P';
           if (dp.isHoliday || dp.status === 'H' || dp.status === 'Holiday') return 'H';
           if (dp.isWeeklyOff || dp.status === 'W/O' || dp.status === 'WO') return 'W/O';
           if (dp.status === 'Pending' || dp.status === '–') return '–';
@@ -6614,9 +7255,11 @@ const DetailedAuditReportView: React.FC<{
           userName: `${emp.empName} (${emp.empCode})`,
           employeeName: emp.empName,
           employeeId: emp.empCode,
+          role: emp.designation || emp.department || 'Staff',
           statuses,
           presentDays: emp.presentDays || 0,
           halfDays: 0,
+          workedWeekOffDays: emp.workedWeekOffDays || 0,
           workFromHomeDays: 0,
           overtimeDays: parseFloat(emp.totalOtHours) || 0,
           compOffs: 0,
@@ -6970,20 +7613,69 @@ const DetailedAuditReportView: React.FC<{
         </div>
       </div>
 
-      {/* 6 Department Cards (Compact 50% footprint) */}
+      {/* 6 Department Cards — shimmer while MSSQL is loading */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
         {(['mep', 'housekeeping', 'garden', 'security', 'administration', 'other'] as DepartmentKey[]).map(k => {
           const stat = departmentStats ? departmentStats[k] : null;
           const meta = DEPARTMENT_METAS[k];
           const isSelected = selectedDeptCard === k;
-          const presentCount = stat ? stat.present : 0;
-          const deploymentCount = stat ? (stat.deployment || stat.totalActive) : 0;
-          const enrolledCount = stat ? stat.enrolled : 0;
-          const enrollmentRate = stat ? stat.enrollmentRate : 0;
-          const absentCount = stat ? stat.absent : 0;
-          const rate = stat ? stat.attendanceRate : 0;
-          const lateCount = stat ? stat.late : 0;
+          const isLoading = isFetchingMssqlReport && !stat;
 
+          const presentCount   = stat ? stat.present : 0;
+          const deploymentCount = stat ? (stat.deployment || stat.totalActive) : 0;
+          const enrolledCount  = stat ? stat.enrolled : 0;
+          const enrollmentRate = stat ? stat.enrollmentRate : 0;
+          const absentCount    = stat ? stat.absent : 0;
+          const rate           = stat ? stat.attendanceRate : 0;
+          const lateCount      = stat ? stat.late : 0;
+
+          // ── Shimmer skeleton card ──────────────────────────────────────────
+          if (isLoading) {
+            return (
+              <div
+                key={k}
+                className="text-left p-2 sm:p-2.5 rounded-xl border border-slate-200/80 dark:border-[#134426] bg-slate-50/70 dark:bg-[#051c11]/70 flex flex-col justify-between gap-1.5 overflow-hidden relative"
+              >
+                {/* Shimmer sweep overlay */}
+                <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/20 dark:via-white/5 to-transparent pointer-events-none" />
+
+                {/* Row 1: icon + name + badge */}
+                <div className="flex items-center justify-between gap-1 mb-0.5">
+                  <div className="flex items-center gap-1 min-w-0">
+                    <span className="text-sm shrink-0 opacity-40">{meta.icon}</span>
+                    <span className="text-xs font-bold text-slate-800 dark:text-emerald-100 truncate opacity-60">{meta.shortLabel}</span>
+                  </div>
+                  {/* Pulsing "Processing…" pill */}
+                  <span className="inline-flex items-center gap-0.5 text-[8px] font-extrabold px-1.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 animate-pulse shrink-0">
+                    <span className="w-1 h-1 rounded-full bg-amber-500 dark:bg-amber-400 inline-block animate-pulse" />
+                    Processing
+                  </span>
+                </div>
+
+                {/* Row 2: skeleton counter */}
+                <div className="flex items-baseline justify-between gap-1">
+                  <div className="h-5 w-10 rounded-md bg-slate-200 dark:bg-[#1a4428] animate-pulse" />
+                  <div className="h-3 w-16 rounded bg-slate-100 dark:bg-[#134426] animate-pulse" />
+                </div>
+
+                {/* Row 3: enrolled bar skeleton */}
+                <div className="mt-1 h-5 w-full rounded bg-blue-100/60 dark:bg-blue-950/30 animate-pulse border border-blue-200/40 dark:border-blue-800/40" />
+
+                {/* Row 4: progress bar skeleton */}
+                <div className="w-full bg-slate-200/80 dark:bg-slate-800/80 h-1 rounded-full overflow-hidden mt-0.5">
+                  <div className="h-full w-1/3 rounded-full bg-slate-300 dark:bg-slate-700 animate-pulse" />
+                </div>
+
+                {/* Row 5: footer skeleton */}
+                <div className="flex items-center justify-between mt-1 pt-1 border-t border-slate-200/60 dark:border-[#134426]/70 gap-1">
+                  <div className="h-3 w-14 rounded bg-slate-200 dark:bg-[#1a4428] animate-pulse" />
+                  <div className="h-4 w-16 rounded bg-blue-200 dark:bg-blue-900/50 animate-pulse" />
+                </div>
+              </div>
+            );
+          }
+
+          // ── Real data card ─────────────────────────────────────────────────
           return (
             <div
               key={k}
@@ -7076,6 +7768,7 @@ const DetailedAuditReportView: React.FC<{
                   onClick={(e) => {
                     e.stopPropagation();
                     setBreakdownModalDept(k);
+
                   }}
                   className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-extrabold bg-blue-600 hover:bg-blue-500 text-white shadow-xs transition-transform active:scale-95 cursor-pointer shrink-0"
                   title="View Designation-wise Breakup Plan & Enrolled Users"
@@ -7249,7 +7942,12 @@ const DetailedAuditReportView: React.FC<{
 
                   {isTabAllowed('reports') && (
                     <button
-                      onClick={() => setActiveTab('reports')}
+                      onClick={() => {
+                        setActiveTab('reports');
+                        if ((reportType === 'monthly' || pendingReportType === 'monthly' || reportType === 'detailed' || pendingReportType === 'detailed') && (activeDateFilter === 'Today' || activeDateFilter === 'Yesterday')) {
+                          handlePresetDateChange('This Month');
+                        }
+                      }}
                       className={`w-7 h-7 flex items-center justify-center rounded-lg transition-all border cursor-pointer relative shrink-0 ${
                         activeTab === 'reports'
                           ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
@@ -7430,6 +8128,12 @@ const DetailedAuditReportView: React.FC<{
                       const val = e.target.value;
                       setPendingReportType(val);
                       setReportType(val);
+                      // Month-based reports: automatically select "This Month" if date preset was on single-day (Today/Yesterday)
+                      if (val === 'monthly' || val === 'detailed') {
+                        if (activeDateFilter === 'Today' || activeDateFilter === 'Yesterday' || activeDateFilter === 'Last 3 Days' || activeDateFilter === 'Last 7 Days') {
+                          handlePresetDateChange('This Month');
+                        }
+                      }
                     }}
                     className="w-full text-[11px] font-semibold px-2 py-1.5 rounded-lg border border-slate-200 dark:border-[#134426] bg-white dark:bg-[#072415] text-slate-800 dark:text-emerald-100 outline-none focus:ring-2 focus:ring-emerald-500/20"
                   >
@@ -7900,6 +8604,8 @@ const DetailedAuditReportView: React.FC<{
 
               // Colour coding for daily status cells
               const cellCls = (status: string, isWO: boolean) => {
+                if (status === 'W/P' || status === 'WP' || status?.startsWith('W/P')) return 'bg-emerald-200 dark:bg-emerald-900/80 text-emerald-950 dark:text-emerald-100 font-black border border-emerald-400 dark:border-emerald-600';
+                if (status === 'H/P' || status === 'HP' || status?.startsWith('H/P')) return 'bg-sky-200 dark:bg-sky-900/80 text-sky-950 dark:text-sky-100 font-black border border-sky-400 dark:border-sky-600';
                 if (status === 'H' || status === 'Holiday') return 'bg-sky-100 dark:bg-sky-950/60 text-sky-800 dark:text-sky-300 font-bold';
                 if (isWO || status === 'W/O' || status === 'WO') return 'bg-amber-100 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 font-bold';
                 if (status === 'P' || status === 'Present') return 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-bold';
@@ -7911,6 +8617,8 @@ const DetailedAuditReportView: React.FC<{
               };
 
               const displayStatus = (dp: any) => {
+                if (dp.status === 'W/P' || dp.status === 'WP' || dp.status?.startsWith('W/P')) return 'W/P';
+                if (dp.status === 'H/P' || dp.status === 'HP' || dp.status?.startsWith('H/P')) return 'H/P';
                 if (dp.isHoliday || dp.status === 'H' || dp.status === 'Holiday') return 'H';
                 if (dp.isWeeklyOff || dp.status === 'W/O' || dp.status === 'WO') return 'WO';
                 if (dp.status === 'Pending' || dp.status === '–') return '–';
@@ -7918,7 +8626,7 @@ const DetailedAuditReportView: React.FC<{
                 if (dp.status === 'Late') return 'L';
                 if (dp.status === 'A' || dp.status === 'Absent') return 'A';
                 if (dp.status === 'S/L' || dp.status === 'SL') return 'SL';
-                return dp.status?.slice(0, 2) || '–';
+                return dp.status?.slice(0, 3) || '–';
               };
 
               return (
@@ -8063,7 +8771,7 @@ const DetailedAuditReportView: React.FC<{
                               {gridDays.map(day => {
                                 const dayN = day.getDate();
                                 const dp = punchesByDay[dayN];
-                                const isWO = dp ? (dp.isWeeklyOff || dp.status === 'W/O' || dp.status === 'WO') : false;
+                                const isWO = dp ? (dp.status === 'W/O' || dp.status === 'WO' || (dp.isWeeklyOff && !dp.status?.includes('W/P'))) : false;
                                 const statusLbl = dp ? displayStatus(dp) : '–';
                                 // When dp is undefined (safety), treat as unsynced '–' not invisible 'Pending'
                                 const effectiveStatus = dp?.status || '–';
@@ -8093,6 +8801,8 @@ const DetailedAuditReportView: React.FC<{
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-x-6 gap-y-1">
                       {[
                         ['P', 'Present – Full day attendance'],
+                        ['W/P', 'Week Off Present – Worked on weekly off (2.0 Pay Days)'],
+                        ['H/P', 'Holiday Present – Worked on public holiday (2.0 Pay Days)'],
                         ['L', 'Late – Arrived after grace period'],
                         ['A', 'Absent – No attendance recorded'],
                         ['WO', 'Weekly Off – Scheduled day off'],
@@ -9716,6 +10426,10 @@ const DetailedAuditReportView: React.FC<{
                   <option value="B Shift Group" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">⚡ B Shift (02:00 PM - 09:00 PM)</option>
                   <option value="C Shift Group" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">⚡ C Shift (09:00 PM - 07:00 AM)</option>
                   <option value="General Shift Group" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">🏢 General Shift (09:00 AM - 06:00 PM)</option>
+                  <option value="A + B Shift Group" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">⚡ A + B Shift (07:00 AM - 09:00 PM | 2 Duties)</option>
+                  <option value="B + C Shift Group" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">⚡ B + C Shift (02:00 PM - 07:00 AM | 2 Duties)</option>
+                  <option value="A + C Shift Group" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">⚡ A + C Shift (07:00 AM - 07:00 AM | 2 Duties)</option>
+                  <option value="A + B + C Shift Group" className="bg-white dark:bg-[#072415] text-slate-900 dark:text-white">⚡ A + B + C Shift (07:00 AM - 07:00 AM | 3 Duties)</option>
                 </>
               )}
 
@@ -9866,6 +10580,10 @@ const DetailedAuditReportView: React.FC<{
                 const displayDesignation = override.designation ?? emp.designation;
                 const isEditable = canEditEmployee(emp.department);
                 const isBeingEdited = editingEmpCode === emp.empCode;
+                const isEmpNameCorrectedCard = Boolean(
+                  override.empName &&
+                  override.empName.trim().toLowerCase() !== (emp.empName || '').trim().toLowerCase()
+                );
 
                 const cardBorder = emp.shiftType === 'triple'
                   ? 'border-l-4 border-l-red-600 border-red-200 dark:border-red-900/60 bg-red-50/20 dark:bg-red-950/20'
@@ -9884,7 +10602,7 @@ const DetailedAuditReportView: React.FC<{
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className={`text-sm font-extrabold text-slate-900 dark:text-white truncate ${override.empName ? 'text-emerald-700 dark:text-[#44D62C]' : ''}`}>
+                          <span className={`text-sm font-extrabold text-slate-900 dark:text-white truncate ${isEmpNameCorrectedCard ? 'text-emerald-700 dark:text-[#44D62C]' : ''}`}>
                             {displayEmpName}
                           </span>
                           <span className="font-mono text-[11px] font-bold text-slate-500 dark:text-emerald-300 bg-slate-100 dark:bg-[#0d3820] border border-transparent dark:border-[#1a5532] px-1.5 py-0.5 rounded">
@@ -9895,7 +10613,7 @@ const DetailedAuditReportView: React.FC<{
                               <UserPlus size={9} /> New Joinee
                             </span>
                           )}
-                          {override.empName && (
+                          {isEmpNameCorrectedCard && (
                             <span className="text-[9px] text-emerald-600 dark:text-[#44D62C] font-bold uppercase">✏ Corrected</span>
                           )}
                         </div>
@@ -9931,6 +10649,8 @@ const DetailedAuditReportView: React.FC<{
                           inTime={emp.inTime}
                           outTime={emp.outTime}
                           shiftType={emp.shiftType}
+                          shiftName={emp.shiftName}
+                          shiftTiming={emp.shiftTiming}
                           selectedDate={selectedDate}
                           isMissedPunchIn={emp.isMissedPunchIn}
                           isMissedPunchOut={emp.isMissedPunchOut}
@@ -9992,7 +10712,15 @@ const DetailedAuditReportView: React.FC<{
                         {emp.inTime ? (
                           <div className="mt-0.5">
                             <p className="font-mono font-bold text-emerald-600 dark:text-[#44D62C] text-xs">{emp.inTime}</p>
-                            <p className="text-[10px] text-slate-400 dark:text-emerald-400/60 font-medium">{new Date(selectedDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</p>
+                            <p className="text-[10px] text-slate-400 dark:text-emerald-400/60 font-medium">
+                              {emp.inTime.includes('Prev Night')
+                                ? (() => {
+                                    const d = new Date(selectedDate);
+                                    d.setDate(d.getDate() - 1);
+                                    return `${d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} (Overnight)`;
+                                  })()
+                                : new Date(selectedDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                            </p>
                           </div>
                         ) : emp.isMissedPunchIn ? (
                           <p className="font-bold text-amber-600 dark:text-amber-400 text-xs mt-0.5">Missed IN</p>
@@ -10012,6 +10740,9 @@ const DetailedAuditReportView: React.FC<{
                             </p>
                             <p className="text-[10px] text-emerald-600 dark:text-emerald-300/70 font-medium">
                               {(() => {
+                                if (emp.outTime && emp.outTime.includes('Pending')) {
+                                  return 'Active Shift';
+                                }
                                 if (isNextDay) {
                                   const d = new Date(selectedDate);
                                   d.setDate(d.getDate() + 1);
@@ -10249,10 +10980,40 @@ const DetailedAuditReportView: React.FC<{
                   const override = empOverrides[emp.empCode] || {};
                   const displayEmpName = override.empName ?? emp.empName;
                   const displaySite = override.site ?? emp.department;
-                  const displayShift = override.shiftName ?? emp.shiftName;
                   const displayDesignation = override.designation ?? emp.designation;
+                  const isSecGuardNoWO = isSecurityGuardWithoutWeekOff({
+                    designation: displayDesignation,
+                    role: emp.role,
+                    shiftName: override.shiftName ?? emp.shiftName,
+                    department: displaySite
+                  });
+                  const rawDisplayShift = override.shiftName ?? emp.shiftName;
+                  // Security Guard gets NO week off! If an override or record was set to W/O, revert to standard duty shift
+                  const displayShift = (isSecGuardNoWO && (rawDisplayShift === 'W/O' || rawDisplayShift === 'WO'))
+                    ? (emp.hadPrevNightShift ? 'Security Night Duty (12h)' : 'Security Day Duty (12h)')
+                    : rawDisplayShift;
+                  const hasShiftCorrection = Boolean(override.shiftName && !(isSecGuardNoWO && (override.shiftName === 'W/O' || override.shiftName === 'WO')));
                   const isEditable = canEditEmployee(emp.department);
                   const isBeingEdited = editingEmpCode === emp.empCode;
+
+                  // Diff-only flags: only show "✏ Corrected" if field actually differs from database
+                  const isEmpNameCorrected = Boolean(
+                    override.empName &&
+                    override.empName.trim().toLowerCase() !== (emp.empName || '').trim().toLowerCase()
+                  );
+                  const isSiteCorrected = Boolean(
+                    override.site &&
+                    override.site.trim().toLowerCase() !== (emp.originalDept || emp.department || '').trim().toLowerCase()
+                  );
+                  const isShiftCorrected = Boolean(
+                    hasShiftCorrection &&
+                    displayShift &&
+                    displayShift.trim().toLowerCase() !== (emp.shiftName || '').trim().toLowerCase()
+                  );
+                  const isDesignationCorrected = Boolean(
+                    override.designation &&
+                    override.designation.trim().toLowerCase() !== (emp.designation || '').trim().toLowerCase()
+                  );
 
                   return (
                     <tr
@@ -10265,10 +11026,10 @@ const DetailedAuditReportView: React.FC<{
                       <td className="px-4 py-3 font-semibold text-slate-900 dark:text-white max-w-[180px]">
                         <div className="flex items-center gap-1.5 group/empname">
                           <div className="flex flex-col gap-0.5 min-w-0">
-                            <span className={`truncate ${override.empName ? 'text-emerald-700 dark:text-[#44D62C] font-extrabold' : ''}`}>
+                            <span className={`truncate ${isEmpNameCorrected ? 'text-emerald-700 dark:text-[#44D62C] font-extrabold' : ''}`}>
                               {displayEmpName}
                             </span>
-                            {override.empName && (
+                            {isEmpNameCorrected && (
                               <span className="text-[9px] text-emerald-600 dark:text-[#44D62C] font-bold uppercase tracking-wide">✏ Corrected</span>
                             )}
                             {emp.lifecycleStatus === 'New Joinee' && (
@@ -10312,10 +11073,10 @@ const DetailedAuditReportView: React.FC<{
                       <td className="px-4 py-3 text-slate-600 dark:text-emerald-100">
                         <div className="flex items-center gap-1.5 group/site">
                           <div className="flex flex-col gap-0.5">
-                            <span className={override.site ? 'text-emerald-700 dark:text-[#44D62C] font-semibold' : ''}>
+                            <span className={isSiteCorrected ? 'text-emerald-700 dark:text-[#44D62C] font-semibold' : ''}>
                               {displaySite}
                             </span>
-                            {override.site && (
+                            {isSiteCorrected && (
                               <span className="text-[9px] text-emerald-600 dark:text-[#44D62C] font-bold uppercase tracking-wide">✏ Corrected</span>
                             )}
                           </div>
@@ -10342,7 +11103,7 @@ const DetailedAuditReportView: React.FC<{
                         <div className="flex items-center gap-1 group/shift">
                           <div className="flex flex-col gap-0.5">
                             <ShiftBadge shiftName={displayShift} shiftTiming={override.shiftName ? undefined : emp.shiftTiming} />
-                            {override.shiftName && (
+                            {isShiftCorrected && (
                               <span className="text-[9px] text-emerald-600 dark:text-[#44D62C] font-bold uppercase tracking-wide">✏ Corrected</span>
                             )}
                           </div>
@@ -10369,10 +11130,10 @@ const DetailedAuditReportView: React.FC<{
                                 <span>{deptMeta.icon}</span>
                                 <span>{deptMeta.shortLabel}</span>
                               </span>
-                              <span className={`truncate font-medium text-slate-700 dark:text-emerald-100 ${override.designation ? 'text-emerald-700 dark:text-[#44D62C] font-semibold' : ''}`}>
+                              <span className={`truncate font-medium text-slate-700 dark:text-emerald-100 ${isDesignationCorrected ? 'text-emerald-700 dark:text-[#44D62C] font-semibold' : ''}`}>
                                 {displayDesignation}
                               </span>
-                              {override.designation && (
+                              {isDesignationCorrected && (
                                 <span className="text-[9px] text-emerald-600 font-bold">✏</span>
                               )}
                               {isEditable && (
@@ -10393,7 +11154,13 @@ const DetailedAuditReportView: React.FC<{
                           <div className="flex flex-col">
                             <span className="text-emerald-600 dark:text-[#44D62C] font-semibold">{emp.inTime}</span>
                             <span className="text-[10px] text-slate-400 dark:text-emerald-400/60 font-medium">
-                              {new Date(selectedDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                              {emp.inTime.includes('Prev Night')
+                                ? (() => {
+                                    const d = new Date(selectedDate);
+                                    d.setDate(d.getDate() - 1);
+                                    return `${d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} (Overnight)`;
+                                  })()
+                                : new Date(selectedDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
                             </span>
                           </div>
                         ) : emp.isMissedPunchIn ? (
@@ -10410,9 +11177,14 @@ const DetailedAuditReportView: React.FC<{
                       <td className="px-4 py-3 font-mono">
                         {emp.outTime ? (
                           <div className="flex flex-col">
-                            <span className="text-slate-700 dark:text-emerald-100 font-semibold">{emp.outTime}</span>
+                            <span className={emp.outTime.includes('Pending') ? "text-amber-600 dark:text-amber-400 font-semibold" : "text-slate-700 dark:text-emerald-100 font-semibold"}>
+                              {emp.outTime}
+                            </span>
                             <span className="text-[10px] text-emerald-600 dark:text-emerald-300/80 font-medium">
                               {(() => {
+                                if (emp.outTime.includes('Pending')) {
+                                  return 'Active Shift';
+                                }
                                 const isNextDay = emp.isNextDayOut ?? ((emp.shiftName || '').toLowerCase().includes('night') && (emp.inTime || '').toLowerCase().includes('pm') && (emp.outTime || '').toLowerCase().includes('am'));
                                 if (isNextDay) {
                                   const d = new Date(selectedDate);
@@ -10446,6 +11218,8 @@ const DetailedAuditReportView: React.FC<{
                             inTime={emp.inTime}
                             outTime={emp.outTime} 
                             shiftType={emp.shiftType} 
+                            shiftName={emp.shiftName}
+                            shiftTiming={emp.shiftTiming}
                             selectedDate={selectedDate} 
                             isMissedPunchIn={emp.isMissedPunchIn}
                             isMissedPunchOut={emp.isMissedPunchOut}

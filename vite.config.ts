@@ -544,11 +544,12 @@ export default defineConfig({
 
                 const isPres = emp.status === 'Present' || (emp.inTime && emp.inTime !== '—');
                 const isLate = emp.status === 'Late' || (emp.lateMinutes && emp.lateMinutes > 0);
-                const isDouble = emp.shiftType === 'double' || (emp.shiftName || '').includes('+');
-                const duties = emp.totalDuties || (isDouble ? 2 : 1);
+                const isTriple = emp.shiftType === 'triple' || (emp.shiftName || '').includes('A + B + C') || (emp.shiftName || '').includes('A+B+C') || (emp.shiftName || '').toLowerCase().includes('triple');
+                const isDouble = !isTriple && (emp.shiftType === 'double' || (emp.shiftName || '').includes('+'));
+                const duties = emp.totalDuties || (isTriple ? 3 : (isDouble ? 2 : 1));
 
                 let statusStr = 'A';
-                if (isPres) statusStr = isDouble ? 'P' : 'P';
+                if (isPres) statusStr = isTriple ? 'P' : (isDouble ? 'P' : 'P');
                 else if (isLate) statusStr = 'L';
 
                 if (isPres || isLate) {
@@ -564,7 +565,7 @@ export default defineConfig({
                   outTime: emp.outTime || '—',
                   hours: emp.workingHours && emp.workingHours !== '—' ? emp.workingHours : (isPres ? '9h 00m' : '—'),
                   status: statusStr,
-                  shiftType: isDouble ? 'double' : (emp.shiftType || 'single'),
+                  shiftType: isTriple ? 'triple' : (isDouble ? 'double' : (emp.shiftType || 'single')),
                   shiftName: emp.shiftName || null,
                   totalDuties: duties,
                   isWeeklyOff: false,
@@ -650,6 +651,37 @@ export default defineConfig({
                               e.totalDuties = 2;
                               e.shiftCompleted = true;
                             }
+                          }
+                        }
+
+                        // Next-day morning transition: when employee worked night/triple shift yesterday (hadPrevNightShift = true)
+                        // and has an early morning out punch followed by today's morning punch in (e.g. In: 06:46 am, Out: 06:55 am):
+                        if (e.hadPrevNightShift && e.inTime && e.outTime) {
+                          const parseMins = (s: string) => {
+                            const match = s.match(/(\d{1,2}):(\d{2})\s*(am|pm)?/i);
+                            if (!match) return null;
+                            let hh = parseInt(match[1], 10);
+                            const mm = parseInt(match[2], 10);
+                            const ap = (match[3] || '').toLowerCase();
+                            if (ap === 'pm' && hh < 12) hh += 12;
+                            if (ap === 'am' && hh === 12) hh = 0;
+                            return hh * 60 + mm;
+                          };
+                          const inM = parseMins(e.inTime);
+                          const outM = parseMins(e.outTime);
+                          if (inM !== null && outM !== null && inM >= 300 && inM <= 660 && outM >= 300 && outM <= 720 && outM > inM && (outM - inM <= 180)) {
+                            // inTime was yesterday's out punch. outTime is TODAY's in punch!
+                            e.inTime = e.outTime;
+                            e.outTime = null;
+                            e.workingHours = '-';
+                            e.shiftCompleted = false;
+                            e.status = 'Present';
+                            const isMepCode = e.empCode && String(e.empCode).startsWith('31');
+                            e.shiftName = isMepCode ? 'A Shift Group' : (e.shiftName || 'Day Shift');
+                            e.shiftCode = isMepCode ? 'A' : (e.shiftCode || 'DAY');
+                            e.shiftTiming = isMepCode ? '07:00 AM - 02:00 PM' : '08:00 AM - 08:00 PM';
+                            e.shiftType = 'single';
+                            e.totalDuties = 1;
                           }
                         }
                       });
