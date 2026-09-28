@@ -4449,13 +4449,21 @@ const DetailedAuditReportView: React.FC<{
         // Only apply when prev day did NOT already capture its own morning exit (prevHasRealMorningExit).
         let wasHandoverReconciled = false;
         let morningHandoverPunch: string | null = null;
-        if (!prevHasRealMorningExit && realPunchMins.length >= 2 && realPunchMins[0] <= 10 * 60 + 30) {
+        if (!prevHasRealMorningExit && prevHadNightShift && realPunchMins.length >= 2 && realPunchMins[0] <= 10 * 60 + 30) {
           const afternoonPunchIdx = realPunchMins.findIndex(m => m >= 11 * 60 + 30);
           if (afternoonPunchIdx !== -1 && (realPunchMins[afternoonPunchIdx] - realPunchMins[0] >= 3 * 60 + 30)) {
-            if (prevHadNightShift || dayNum === 1) {
-              morningHandoverPunch = distinctPunchTimes[0];
-              rawIn = distinctPunchTimes[afternoonPunchIdx];
-            }
+            morningHandoverPunch = distinctPunchTimes[0];
+            rawIn = distinctPunchTimes[afternoonPunchIdx];
+          }
+        }
+
+        // When not a night-shift handover, ensure arrival inTime and departure outTime are reliably taken from real biometric punches
+        if (!morningHandoverPunch) {
+          if ((!rawIn || isDummyMssqlTime(rawIn)) && distinctPunchTimes.length > 0) {
+            rawIn = distinctPunchTimes[0];
+          }
+          if ((!rawOut || isDummyMssqlTime(rawOut) || hasOutSE) && distinctPunchTimes.length > 1) {
+            rawOut = distinctPunchTimes[distinctPunchTimes.length - 1];
           }
         }
 
@@ -4608,7 +4616,7 @@ const DetailedAuditReportView: React.FC<{
           rawIn = dbDayRec.inTime;
         }
 
-        // If device logs have a real out-punch (e.g. 16:59 on 26th), prefer it over artificial out(SE) or missing out
+        // If device logs or distinctPunchTimes have a real out-punch (e.g. 17:09 on 26th), prefer it over artificial out(SE) or missing out
         let hasRealDeviceOut = false;
         if (dbDayRec?.outTime && !isDummyTime(dbDayRec.outTime)) {
           const inM = parseTimeToMins(rawIn);
@@ -4617,19 +4625,42 @@ const DetailedAuditReportView: React.FC<{
             rawOut = dbDayRec.outTime;
             hasRealDeviceOut = true;
           }
+        } else if ((!rawOut || isDummyTime(rawOut) || hasOutSE) && distinctPunchTimes.length > 1) {
+          const lastP = distinctPunchTimes[distinctPunchTimes.length - 1];
+          const inM = parseTimeToMins(rawIn);
+          const lastM = parseTimeToMins(lastP);
+          if (inM !== null && lastM !== null && lastM - inM >= 30) {
+            rawOut = lastP;
+            hasRealDeviceOut = true;
+          }
         }
+
+        const hasValidRealOut = Boolean(
+          rawOut &&
+          rawOut !== '-' &&
+          rawOut !== '—' &&
+          !isDummyTime(rawOut) &&
+          rawIn &&
+          rawIn !== '-' &&
+          rawIn !== '—' &&
+          !isDummyTime(rawIn) &&
+          parseTimeToMins(rawOut) !== null &&
+          parseTimeToMins(rawIn) !== null &&
+          (parseTimeToMins(rawOut)! - parseTimeToMins(rawIn)! >= 30 || parseTimeToMins(rawIn)! - parseTimeToMins(rawOut)! >= 30)
+        );
 
         const isOutPunchMissed = Boolean(
           rawIn &&
           !wasHandoverReconciled &&
           !hasRolloverOut &&
           !hasRealDeviceOut &&
+          !hasValidRealOut &&
           (
             hasOutSE ||
             liveMssqlDay.shiftCompleted === false ||
             liveMssqlDay.status === 'Missed Punch OUT' ||
             (!liveMssqlDay.outTime || ['—', '-', 'null', 'undefined', '2026-'].includes(String(liveMssqlDay.outTime).trim())) ||
-            (rawOut && parseTimeToMins(rawOut) !== null && parseTimeToMins(rawIn) !== null && Math.abs((parseTimeToMins(rawOut) || 0) - (parseTimeToMins(rawIn) || 0)) < 15)
+            (!rawOut || rawOut === rawIn || (parseTimeToMins(rawOut) !== null && parseTimeToMins(rawIn) !== null && Math.abs((parseTimeToMins(rawOut) || 0) - (parseTimeToMins(rawIn) || 0)) < 15))
           )
         );
         if (isOutPunchMissed && (!rawOut || rawOut === rawIn)) {
@@ -7172,15 +7203,23 @@ const DetailedAuditReportView: React.FC<{
           );
 
           // Check if first punch was yesterday's night shift exit (<= 10:30) and today has afternoon arrival (>= 11:30):
-          // Only when prev day did NOT already close its own exit.
+          // Only when prev day did NOT already close its own exit and yesterday actually had a night shift.
           let morningHandoverPunch: string | null = null;
-          if (!prevHasRealMorningExit && realPunchMins.length >= 2 && realPunchMins[0] <= 10 * 60 + 30) {
+          if (!prevHasRealMorningExit && prevHadNightShift && realPunchMins.length >= 2 && realPunchMins[0] <= 10 * 60 + 30) {
             const afternoonPunchIdx = realPunchMins.findIndex(m => m >= 11 * 60 + 30);
             if (afternoonPunchIdx !== -1 && (realPunchMins[afternoonPunchIdx] - realPunchMins[0] >= 3 * 60 + 30)) {
-              if (prevHadNightShift || dayNum === 1) {
-                morningHandoverPunch = distinctPunchTimes[0];
-                rawIn = distinctPunchTimes[afternoonPunchIdx];
-              }
+              morningHandoverPunch = distinctPunchTimes[0];
+              rawIn = distinctPunchTimes[afternoonPunchIdx];
+            }
+          }
+
+          // Ensure arrival and departure punches are reliably populated from distinct biometric punches
+          if (!morningHandoverPunch) {
+            if ((!rawIn || ['—', '-', 'null', 'undefined', '2026-'].includes(String(rawIn).trim())) && distinctPunchTimes.length > 0) {
+              rawIn = distinctPunchTimes[0];
+            }
+            if ((!rawOut || ['—', '-', 'null', 'undefined', '2026-'].includes(String(rawOut).trim())) && distinctPunchTimes.length > 1) {
+              rawOut = distinctPunchTimes[distinctPunchTimes.length - 1];
             }
           }
 
@@ -8592,15 +8631,22 @@ const DetailedAuditReportView: React.FC<{
           );
 
           // Check if first punch was yesterday's night shift exit (<= 10:30) and today has afternoon arrival (>= 11:30):
-          // Only when prev day did NOT already close its own exit.
+          // Only when prev day did NOT already close its own exit and yesterday had a night shift.
           let morningHandoverPunch: string | null = null;
-          if (!prevHasRealMorningExit && realPunchMins.length >= 2 && realPunchMins[0] <= 10 * 60 + 30) {
+          if (!prevHasRealMorningExit && prevHadNightShift && realPunchMins.length >= 2 && realPunchMins[0] <= 10 * 60 + 30) {
             const afternoonPunchIdx = realPunchMins.findIndex(m => m >= 11 * 60 + 30);
             if (afternoonPunchIdx !== -1 && (realPunchMins[afternoonPunchIdx] - realPunchMins[0] >= 3 * 60 + 30)) {
-              if (prevHadNightShift || dayNum === 1) {
-                morningHandoverPunch = distinctPunchTimes[0];
-                rawIn = distinctPunchTimes[afternoonPunchIdx];
-              }
+              morningHandoverPunch = distinctPunchTimes[0];
+              rawIn = distinctPunchTimes[afternoonPunchIdx];
+            }
+          }
+
+          if (!morningHandoverPunch) {
+            if ((!rawIn || ['—', '-', 'null', 'undefined', '2026-'].includes(String(rawIn).trim())) && distinctPunchTimes.length > 0) {
+              rawIn = distinctPunchTimes[0];
+            }
+            if ((!rawOut || ['—', '-', 'null', 'undefined', '2026-'].includes(String(rawOut).trim())) && distinctPunchTimes.length > 1) {
+              rawOut = distinctPunchTimes[distinctPunchTimes.length - 1];
             }
           }
 
