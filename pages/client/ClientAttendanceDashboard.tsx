@@ -3853,18 +3853,45 @@ const DetailedAuditReportView: React.FC<{
 
         const targetEmpCodes = (displayEmployees || []).map(e => String(e.empCode || '').trim()).filter(Boolean);
 
-        let bioQuery = supabase
-          .from('biometric_device_logs')
-          .select('emp_code, log_date')
-          .gte('log_date', startDate)
-          .lte('log_date', endDate)
-          .order('log_date', { ascending: true });
+        const fetchBioLogs = async (): Promise<{ data: any[] }> => {
+          try {
+            if (!targetEmpCodes.length) {
+              const ranges = ['0-999', '1000-1999', '2000-2999', '3000-3999', '4000-4999'];
+              const chunkResults = await Promise.all(ranges.map(async (r) => {
+                const res = await supabase
+                  .from('biometric_device_logs')
+                  .select('emp_code, log_date')
+                  .gte('log_date', startDate)
+                  .lte('log_date', endDate)
+                  .order('log_date', { ascending: true })
+                  .range(parseInt(r.split('-')[0], 10), parseInt(r.split('-')[1], 10));
+                return res.data || [];
+              }));
+              return { data: chunkResults.flat() };
+            }
 
-        if (targetEmpCodes.length > 0 && targetEmpCodes.length <= 150) {
-          bioQuery = bioQuery.in('emp_code', targetEmpCodes);
-        } else {
-          bioQuery = bioQuery.limit(50000);
-        }
+            // Chunk targetEmpCodes into batches of 40 to avoid postgREST 1000 row limits
+            const batchSize = 40;
+            const batches: string[][] = [];
+            for (let i = 0; i < targetEmpCodes.length; i += batchSize) {
+              batches.push(targetEmpCodes.slice(i, i + batchSize));
+            }
+            const batchResults = await Promise.all(batches.map(async (batch) => {
+              const res = await supabase
+                .from('biometric_device_logs')
+                .select('emp_code, log_date')
+                .in('emp_code', batch)
+                .gte('log_date', startDate)
+                .lte('log_date', endDate)
+                .order('log_date', { ascending: true })
+                .limit(5000);
+              return res.data || [];
+            }));
+            return { data: batchResults.flat() };
+          } catch (_) {
+            return { data: [] };
+          }
+        };
 
         let mssqlPunches: any[] = [];
         const fetchMssqlPunches = async () => {
@@ -3908,7 +3935,7 @@ const DetailedAuditReportView: React.FC<{
             .select('emp_code, attendance_date, in_time, out_time, status, status_code, duration_mins, ot_mins')
             .gte('attendance_date', startDateDay)
             .lte('attendance_date', endDateDay),
-          bioQuery,
+          fetchBioLogs(),
           fetchMssqlPunches(),
         ]);
 
